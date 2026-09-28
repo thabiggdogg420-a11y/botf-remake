@@ -6,6 +6,7 @@
 #include "CoreMinimal.h"
 #include "BotfUiTheme.h"
 #include "BotfCombatScene.h"
+#include "InputCoreTypes.h"
 #include "Widgets/DeclarativeSyntaxSupport.h"
 #include "Widgets/SLeafWidget.h"
 #include "Rendering/DrawElements.h"
@@ -18,7 +19,7 @@ public:
     SLATE_BEGIN_ARGS(STacticalViewport) {}
     SLATE_END_ARGS()
 
-    void Construct(const FArguments&, ABotfCombatScene* InScene, const FSlateBrush* InBrush, std::function<bool()> InShow) {
+    void Construct(const FArguments&, TWeakObjectPtr<ABotfCombatScene> InScene, const FSlateBrush* InBrush, std::function<bool()> InShow) {
         Scene = InScene;
         Brush = InBrush;
         Show = MoveTemp(InShow);
@@ -30,7 +31,8 @@ public:
 
     virtual int32 OnPaint(const FPaintArgs&, const FGeometry& Geometry, const FSlateRect&,
                          FSlateWindowElementList& Elements, int32 Layer, const FWidgetStyle&, bool) const override {
-        if (!Brush || !Brush->GetResourceObject() || (Show && !Show())) return Layer;
+        // The brush's texture belongs to the scene actor: draw only while the scene is alive.
+        if (!Scene.IsValid() || !Brush || !Brush->GetResourceObject() || (Show && !Show())) return Layer;
         const FVector2D Size = Geometry.GetLocalSize();
         FSlateDrawElement::MakeBox(Elements, Layer, Geometry.ToPaintGeometry(Size, FSlateLayoutTransform()),
             Brush, ESlateDrawEffect::IgnoreTextureAlpha, FLinearColor::White);
@@ -38,47 +40,58 @@ public:
     }
 
     virtual FReply OnMouseButtonDown(const FGeometry& Geometry, const FPointerEvent& MouseEvent) override {
-        if (MouseEvent.GetEffectingButton() == EKeys::LeftMouseButton || MouseEvent.GetEffectingButton() == EKeys::RightMouseButton) {
+        const FKey Button = MouseEvent.GetEffectingButton();
+        if (Button == EKeys::LeftMouseButton || Button == EKeys::RightMouseButton) {
             bIsDragging = true;
+            DragButton = Button;
             LastMousePos = MouseEvent.GetScreenSpacePosition();
             return FReply::Handled().CaptureMouse(AsShared());
         }
-        if (MouseEvent.GetEffectingButton() == EKeys::MiddleMouseButton) {
-            if (Scene) Scene->ResetCameraOrbit();
+        if (Button == EKeys::MiddleMouseButton) {
+            if (Scene.IsValid()) Scene->ResetCameraOrbit();
             return FReply::Handled();
         }
         return FReply::Unhandled();
     }
 
     virtual FReply OnMouseButtonUp(const FGeometry&, const FPointerEvent& MouseEvent) override {
-        if (bIsDragging && (MouseEvent.GetEffectingButton() == EKeys::LeftMouseButton || MouseEvent.GetEffectingButton() == EKeys::RightMouseButton)) {
-            bIsDragging = false;
+        if (bIsDragging && MouseEvent.GetEffectingButton() == DragButton) {
+            EndDrag();
             return FReply::Handled().ReleaseMouseCapture();
         }
         return FReply::Unhandled();
     }
 
     virtual FReply OnMouseMove(const FGeometry&, const FPointerEvent& MouseEvent) override {
-        if (bIsDragging && Scene) {
-            const FVector2D CurrentPos = MouseEvent.GetScreenSpacePosition();
-            const FVector2D Delta = CurrentPos - LastMousePos;
-            LastMousePos = CurrentPos;
-            Scene->AddCameraOrbit(Delta.X * 0.35f, -Delta.Y * 0.35f);
-            return FReply::Handled();
+        if (!bIsDragging) return FReply::Unhandled();
+        // The button was released where we did not hear it (another window, alt-tab): stop orbiting at once.
+        if (!MouseEvent.IsMouseButtonDown(DragButton) || !HasMouseCapture()) {
+            EndDrag();
+            return FReply::Handled().ReleaseMouseCapture();
         }
-        return FReply::Unhandled();
+        const FVector2D CurrentPos = MouseEvent.GetScreenSpacePosition();
+        const FVector2D Delta = CurrentPos - LastMousePos;
+        LastMousePos = CurrentPos;
+        if (Scene.IsValid()) Scene->AddCameraOrbit(Delta.X * 0.35f, -Delta.Y * 0.35f);
+        return FReply::Handled();
+    }
+
+    // Capture taken away (focus change, alt-tab, a popup): a later move must never resume a stale orbit.
+    virtual void OnMouseCaptureLost(const FCaptureLostEvent& CaptureLostEvent) override {
+        SLeafWidget::OnMouseCaptureLost(CaptureLostEvent);
+        EndDrag();
     }
 
     virtual FReply OnMouseWheel(const FGeometry&, const FPointerEvent& MouseEvent) override {
-        if (Scene) {
+        if (Scene.IsValid()) {
             Scene->AddCameraZoom(-MouseEvent.GetWheelDelta() * 140.f);
             return FReply::Handled();
         }
         return FReply::Unhandled();
     }
 
-    virtual FReply OnMouseButtonDoubleClick(const FGeometry&, const FPointerEvent& MouseEvent) override {
-        if (Scene) {
+    virtual FReply OnMouseButtonDoubleClick(const FGeometry&, const FPointerEvent&) override {
+        if (Scene.IsValid()) {
             Scene->ResetCameraOrbit();
             return FReply::Handled();
         }
@@ -86,10 +99,13 @@ public:
     }
 
 private:
-    ABotfCombatScene* Scene = nullptr;
+    void EndDrag() { bIsDragging = false; DragButton = EKeys::Invalid; }
+
+    TWeakObjectPtr<ABotfCombatScene> Scene;
     const FSlateBrush* Brush = nullptr;
     std::function<bool()> Show;
     bool bIsDragging = false;
+    FKey DragButton = EKeys::Invalid;
     FVector2D LastMousePos = FVector2D::ZeroVector;
 };
 

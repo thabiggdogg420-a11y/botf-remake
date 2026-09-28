@@ -413,6 +413,7 @@ void ABotfCombatScene::ConfigureEncounter(const botf::tactical::Encounter& Encou
                 Item.BeamDamage = S.beamDamage;
                 Item.TorpedoDamage = S.torpedoDamage;
                 Item.AttackerOwner = Kinematics.IsValidIndex(AttackerIdx) ? Kinematics[AttackerIdx].OwnerId : 1;
+                Item.bIsRam = S.ram;   // rules 2: ram impact and recoil records
                 Salvos.Add(Item);
             }
         }

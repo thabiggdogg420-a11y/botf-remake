@@ -7,13 +7,18 @@
 #include "BotfTacticalRadar.h"
 #include "BotfCombatUi.h"
 #include "BotfBattleReplay.h"
+#include "BotfCampaign.h"
+#include "BotfViewModel.h"
 #include "Simulation.h"
 #include "CampaignSession.h"
 #include "ReferenceCatalogue.h"
 #include "Engine/Engine.h"
 #include "Engine/GameViewportClient.h"
 #include "Engine/TextureRenderTarget2D.h"
+#include "Engine/World.h"
+#include "Framework/Application/SlateApplication.h"
 #include "GameFramework/PlayerController.h"
+#include "Kismet/KismetSystemLibrary.h"
 #include "InputCoreTypes.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Guid.h"
@@ -46,6 +51,7 @@
 #include <optional>
 #include <stdexcept>
 #include <set>
+#include <tuple>
 #if WITH_DEV_AUTOMATION_TESTS
 #include "Misc/AutomationTest.h"
 #endif
@@ -77,7 +83,33 @@ class FBotfUiShellAutomationTest;
 class SBotfInterface final : public SCompoundWidget {
 public:
     virtual bool SupportsKeyboardFocus() const override { return true; }
+    // Keyboard model.
+    //   Command deck (Shell == Game): global shortcuts run on the tunnelling pass, before the focused control sees the
+    //   key, so a button that kept focus after a mouse click cannot swallow Enter, Space or Ctrl+Enter. Keys with no
+    //   global meaning still reach the focused control, so Enter/Space press a focused button.
+    //   Menus, dialogs and settings: ordinary Slate focus navigation; only the bubbling pass (OnKeyDown) is used.
+    //   Text entry: while a text field has focus no hotkey fires; Escape still unwinds once the field ignores it.
+    virtual FReply OnPreviewKeyDown(const FGeometry& Geometry, const FKeyEvent& Event) override {
+        if (Shell != EUiView::Game || TextInputHasFocus()) return FReply::Unhandled();
+        return HandleShortcut(Geometry, Event, true);
+    }
     virtual FReply OnKeyDown(const FGeometry& Geometry, const FKeyEvent& Event) override {
+        if (Event.GetKey() != EKeys::Escape && TextInputHasFocus()) return SCompoundWidget::OnKeyDown(Geometry, Event);
+        return HandleShortcut(Geometry, Event, false);
+    }
+    // True while one of the interface's text fields has keyboard focus (typing must not trigger hotkeys).
+    bool TextInputHasFocus() const {
+        if (!FSlateApplication::IsInitialized()) return false;
+        if (ReferenceSearchBox.IsValid() && (ReferenceSearchBox->HasKeyboardFocus() || ReferenceSearchBox->HasFocusedDescendants())) return true;
+        if (!HasFocusedDescendants()) return false;   // focus is outside this interface
+        const TSharedPtr<SWidget> Focused = FSlateApplication::Get().GetKeyboardFocusedWidget();
+        if (!Focused.IsValid()) return false;
+        const FName Type = Focused->GetType();
+        return Type == FName(TEXT("SEditableText")) || Type == FName(TEXT("SMultiLineEditableText"));
+    }
+    // bPreview: called on the tunnelling pass, where an unrecognised key must stay unhandled (no default navigation)
+    // so the focused control still receives it.
+    FReply HandleShortcut(const FGeometry& Geometry, const FKeyEvent& Event, bool bPreview) {
         const FKey Key = Event.GetKey();
         if (Key == EKeys::Escape) {
             // Escape unwinds one layer at a time: transient mode, popups, the open sheet, the unit selection, then the menu.
@@ -95,7 +127,7 @@ public:
         }
         if (Shell != EUiView::Game) return SCompoundWidget::OnKeyDown(Geometry, Event);
         auto Guarded = [this](std::function<void()> Action) {
-            try { Action(); RefreshAll(); } catch (const std::exception& E) { Status = TEXT("Order rejected: ") + Str(E.what()); }
+            RunGuarded(Action);
             return FReply::Handled();
         };
         // The end-turn warning is modal: plain Enter confirms it, Esc (above) reviews, every other key is held back
@@ -142,12 +174,12 @@ public:
                 if (Key == EKeys::H) return Guarded([this] { TacOrder(TacticalManeuver::Hail); });
                 if (Key == EKeys::Tab) return Guarded([this] { NextTacShip(); });
                 if (Key == EKeys::T) return Guarded([this] { NextTacTarget(); });
-                if (Key == EKeys::C && Scene) { Scene->CycleCameraMode(); return FReply::Handled(); }
-                if (Key == EKeys::Home && Scene) { Scene->ResetCameraOrbit(); return FReply::Handled(); }
-                if (Key == EKeys::Left && Scene) { Scene->AddCameraOrbit(-15.f, 0.f); return FReply::Handled(); }
-                if (Key == EKeys::Right && Scene) { Scene->AddCameraOrbit(15.f, 0.f); return FReply::Handled(); }
-                if (Key == EKeys::Up && Scene) { Scene->AddCameraOrbit(0.f, 10.f); return FReply::Handled(); }
-                if (Key == EKeys::Down && Scene) { Scene->AddCameraOrbit(0.f, -10.f); return FReply::Handled(); }
+                if (Key == EKeys::C && Scene.IsValid()) { Scene->CycleCameraMode(); return FReply::Handled(); }
+                if (Key == EKeys::Home && Scene.IsValid()) { Scene->ResetCameraOrbit(); return FReply::Handled(); }
+                if (Key == EKeys::Left && Scene.IsValid()) { Scene->AddCameraOrbit(-15.f, 0.f); return FReply::Handled(); }
+                if (Key == EKeys::Right && Scene.IsValid()) { Scene->AddCameraOrbit(15.f, 0.f); return FReply::Handled(); }
+                if (Key == EKeys::Up && Scene.IsValid()) { Scene->AddCameraOrbit(0.f, 10.f); return FReply::Handled(); }
+                if (Key == EKeys::Down && Scene.IsValid()) { Scene->AddCameraOrbit(0.f, -10.f); return FReply::Handled(); }
                 if (Key == EKeys::SpaceBar) return Guarded([this] { if (Session.pending->isFinished) TacContinue(); else TacNextRound(); });
             }
         }
@@ -172,7 +204,7 @@ public:
             if (Key == EKeys::Q) return Guarded([this] { CycleColony(-1); });
             if (Key == EKeys::E) return Guarded([this] { CycleColony(1); });
         }
-        return SCompoundWidget::OnKeyDown(Geometry, Event);
+        return bPreview ? FReply::Unhandled() : SCompoundWidget::OnKeyDown(Geometry, Event);
     }
     SLATE_BEGIN_ARGS(SBotfInterface) {}
 #if WITH_DEV_AUTOMATION_TESTS
@@ -185,10 +217,19 @@ public:
 #else
         (void)Args;
 #endif
+#if WITH_DEV_AUTOMATION_TESTS
+        Campaign.FolderOverride = TestSnapshotFolder;
+#endif
         Scene = InScene;
-        BattleBrush.SetResourceObject(Scene ? Scene->GetBattleTexture() : nullptr);
         BattleBrush.DrawAs = ESlateBrushDrawType::Image;
         BattleBrush.ImageSize = FVector2D(1920, 1080);
+        BindBattleTexture();
+        // The widget consumes campaign changes: a replaced campaign drops every selection made in the old one, and
+        // any change repaints the chart (its supply and route caches are keyed on the draft preview).
+        Campaign.Subscribe([this](EBotfCampaignChange Change) {
+            if (Change == EBotfCampaignChange::Replaced) { OrderCheck = FColonyOrderCheck(); ResetCampaignSelection(); }
+            if (Chart.IsValid()) Chart->Invalidate(EInvalidateWidgetReason::Paint);
+        });
         State = botf::generateReferenceCampaign(1999);
         SelectedCell = State.systems.front().y * State.width + State.systems.front().x;
         RefreshSaves();
@@ -224,24 +265,34 @@ private:
 #endif
     enum class EUiView : int { Title, Game, Setup, Load, Settings, Menu, Confirm };
     enum class EPendingAction : int { None, StartCampaign, LoadCampaign, Quit };
-    botf::GameState State;
-    // Transactional strategic turn. While active, State is the committed pre-turn campaign.
-    botf::session::TurnSession Session;
+    // The campaign (state, turn transaction, draft preview, saves) lives in FBotfCampaign. The references below keep
+    // the existing widget code and the automation test working unchanged while the widget is split into views;
+    // Campaign must stay declared before them (member initialisation order).
+    FBotfCampaign Campaign;
+    botf::GameState& State = Campaign.State;
+    botf::session::TurnSession& Session = Campaign.Session;   // while active, State is the committed pre-turn campaign
+    std::uint64_t& StateVersion = Campaign.StateVersion;
+    std::uint64_t& CampaignVersion = Campaign.CampaignVersion;
+    bool& bHasActiveCampaign = Campaign.bHasActiveCampaign;
+    bool& bHasSavedBaseline = Campaign.bHasSavedBaseline;
+    std::uint64_t& SavedFingerprint = Campaign.SavedFingerprint;
+    FString& SavedSessionText = Campaign.SavedSessionText;
+    TArray<FString>& Saves = Campaign.Saves;
+    TArray<FBotfSnapshotInfo>& SaveInfos = Campaign.SaveInfos;
+    FString& SavePath = Campaign.SavePath;
     bool bEncounterChoice = false;          // Original encounter dialog: Fight / Auto
     int TacShip = 0, TacTarget = 0;         // Selected own ship and enemy target in the live encounter
     bool bTacOrderAll = false;              // Apply the next manoeuvre to every active own ship
     FString TacLog;
-    FString SavedSessionText;               // Envelope at the last verified save/load ("" when no session)
     int SelectedTaskForce = 0;              // Non-zero when a task force (not a single ship) is selected
     std::set<int> FormSelection;            // Colocated ships marked for a new task force
     std::set<int> ExpandedTaskForces;
-    ABotfCombatScene* Scene = nullptr;
-    FSlateBrush BattleBrush;
+    // The actor may be destroyed before the widget (end of play): never hold it, or its render target, strongly.
+    TWeakObjectPtr<ABotfCombatScene> Scene;
+    FSlateBrush BattleBrush;                // resource re-bound through BindBattleTexture; drawn only while Scene is valid
     TSharedPtr<SBotfSettingsPanel> SettingsPanel;
     EUiView Shell = EUiView::Title, SubPageReturn = EUiView::Title, ConfirmReturn = EUiView::Title;
     EPendingAction PendingAction = EPendingAction::None;
-    bool bHasActiveCampaign = false, bHasSavedBaseline = false;
-    std::uint64_t SavedFingerprint = 0;
     FString PendingLoadPath;
     int ActivePanel = PanelGalaxy, PreviousPanel = PanelGalaxy;
     int Selected = 1;
@@ -271,29 +322,12 @@ private:
     std::array<bool, botf::ResearchFields> AllocationLocked{};
     BotfUi::FMapView MapView;
     FString ReferenceSearch;
-    FString Status, LastReport, SavePath;
+    TSharedPtr<SEditableTextBox> ReferenceSearchBox;
+    FString Status, LastReport;
     TArray<FString> LastEvents;             // Last resolved turn's notable lines, for the inbox
-    std::uint64_t StateVersion = 1;
-    // The draft preview is cached. Its key pairs the explicit version with the campaign's identity, so a
-    // replaced campaign (new game, load, committed turn) can never be served the previous campaign's draft,
-    // even on a path that forgets to bump StateVersion before reading it.
-    struct FPreviewKey {
-        std::uint64_t Version = 0, Seed = 0, Rng = 0, LastCommand = 0;
-        int Turn = -1, Player = 0, Pending = -1, Colonies = -1, Fleets = -1;
-        std::int64_t Credits = 0;
-        bool operator==(const FPreviewKey& O) const {
-            return Version == O.Version && Seed == O.Seed && Rng == O.Rng && LastCommand == O.LastCommand && Turn == O.Turn
-                && Player == O.Player && Pending == O.Pending && Colonies == O.Colonies && Fleets == O.Fleets && Credits == O.Credits;
-        }
-    };
-    mutable FPreviewKey CachedKey;
-    mutable botf::GameState CachedPreview;
-    FPreviewKey PreviewKey() const {
-        return { StateVersion, State.seed, State.rngState, State.lastAcceptedCommand, State.turn, State.playerEmpire,
-            static_cast<int>(State.pending.size()), static_cast<int>(State.colonies.size()), static_cast<int>(State.fleets.size()), State.credits };
-    }
-    // Every wholesale replacement of State goes through here.
-    void ReplaceState(botf::GameState&& Next) { State = std::move(Next); ++StateVersion; ++CampaignVersion; OrderCheck = FColonyOrderCheck(); ResetCampaignSelection(); }
+    std::set<std::tuple<int, int, int, int>> RefusedCalls;   // calls to arms the player chose to let lapse (ally, defender, aggressor, issued)
+    // Every wholesale replacement of State goes through here (the campaign notifies Replaced, see Construct).
+    void ReplaceState(botf::GameState&& Next) { Campaign.ReplaceState(std::move(Next)); }
     // Ids are only meaningful inside one campaign: a loaded save can reuse the same task force, ship or system ids
     // for different objects. Everything the player had picked in the outgoing campaign is dropped here.
     void ResetCampaignSelection() {
@@ -304,18 +338,8 @@ private:
         BattleIndex = BattleRoundIndex = 0; ShownBattle = FShownBattle();
         MenuCell = -1; bMenuOpen = bEndTurnCheck = false; MapView.bPlotting = false;
         bTurnForecast = bLastForecast = false; LastFleetUpkeep = LastTradeIncome = 0;
+        RefusedCalls.clear();
     }
-    struct FSnapshotInfo {
-        FString Path;
-        FDateTime Modified;
-        int Turn = 0, Empire = 1, Pending = 0, Colonies = 0;
-        bool bBattle = false;              // Saved mid-turn with a tactical transaction open
-        int BattleRound = 0, BattlesDone = 0;
-        std::uint64_t Seed = 0;
-        botf::Ruleset Ruleset = botf::Ruleset::Prototype;
-    };
-    TArray<FString> Saves;
-    TArray<FSnapshotInfo> SaveInfos;
     TSharedPtr<SVerticalBox> SectorRows, BuildRows, ShipRows, QueueRows, RaceRows, IntelCards, IntelReportRows,
         SystemTableRows, FleetTableRows, ReferenceRows, SaveRows, MenuRows, InboxRows, SheetPlanetRows, ProposalRows;
     TSharedPtr<SVerticalBox> PlanetRows;
@@ -330,8 +354,28 @@ private:
     TAttribute<FSlateColor> C(FLinearColor FPalette::* Field) const {
         return TAttribute<FSlateColor>::CreateLambda([this, Field] { return FSlateColor(P().*Field); });
     }
+    // Attribute and paint code runs inside Slate, which is not exception-safe: a core exception must never unwind
+    // through it. Every text attribute goes through SafeText, every control predicate through SafeBool.
+    static FString SafeText(const std::function<FString()>& Value) {
+        FString Out, Error;
+        if (!FBotfCampaign::Run([&Out, &Value] { Out = Value(); }, Error)) return TEXT("[unavailable: ") + Error + TEXT("]");
+        return Out;
+    }
+    static bool SafeBool(const std::function<bool()>& Value, bool Fallback) {
+        bool Out = Fallback;
+        FString Error;
+        if (!FBotfCampaign::Run([&Out, &Value] { Out = Value(); }, Error)) return Fallback;
+        return Out;
+    }
     static TAttribute<FText> Dyn(std::function<FString()> Value) {
-        return TAttribute<FText>::CreateLambda([Value] { return Txt(Value()); });
+        return TAttribute<FText>::CreateLambda([Value] { return Txt(SafeText(Value)); });
+    }
+    // The single place UI actions meet the campaign's exception boundary: a rejected order is reported in Status.
+    bool RunGuarded(const std::function<void()>& Action) {
+        FString Error;
+        if (FBotfCampaign::Run([this, &Action] { Action(); RefreshAll(); }, Error)) return true;
+        Status = TEXT("Order rejected: ") + Error;
+        return false;
     }
     TSharedRef<SWidget> Para(const TAttribute<FText>& Value, int Size, FLinearColor FPalette::* Field, bool Bold = false) const {
         return SNew(STextBlock).Text(Value).Font(Font(Size, Bold)).ColorAndOpacity(C(Field)).AutoWrapText(true);
@@ -422,11 +466,10 @@ private:
     TSharedRef<SWidget> DynControl(TAttribute<FText> Label, std::function<void()> Action, std::function<bool()> Enabled = nullptr,
                                    std::function<bool()> IsSelected = nullptr, ERole Role = ERole::Primary, FMargin Pad = FMargin(8, 7),
                                    bool bRow = false, int FontSize = 10, const FString& Tip = FString(), int FixedEmpire = 0) {
-        TFunction<bool()> En; if (Enabled) En = [Enabled] { return Enabled(); };
-        TFunction<bool()> Sel; if (IsSelected) Sel = [IsSelected] { return IsSelected(); };
-        return BotfUi::MakeButton(Label, [this, Action] {
-                try { Action(); RefreshAll(); } catch (const std::exception& E) { Status = TEXT("Order rejected: ") + Str(E.what()); }
-            }, En, Sel, [this, FixedEmpire] { return FixedEmpire ? FixedEmpire : ThemeEmpire(); },
+        TFunction<bool()> En; if (Enabled) En = [Enabled] { return SafeBool(Enabled, false); };
+        TFunction<bool()> Sel; if (IsSelected) Sel = [IsSelected] { return SafeBool(IsSelected, false); };
+        return BotfUi::MakeButton(Label, [this, Action] { RunGuarded(Action); },
+            En, Sel, [this, FixedEmpire] { return FixedEmpire ? FixedEmpire : ThemeEmpire(); },
             Role, Pad, bRow, FontSize, Txt(Tip));
     }
     TSharedRef<SWidget> Control(const FString& Label, std::function<void()> Action, std::function<bool()> Enabled,
@@ -477,25 +520,14 @@ private:
         for (const auto& Item : Items) { Panel->AddSlot(Index % Columns, Index / Columns) [ Item ]; ++Index; }
         return Panel;
     }
-    const botf::GameState& Preview() const {
-        const FPreviewKey Key = PreviewKey();
-        if (!(CachedKey == Key)) { CachedPreview = botf::preview(State); CachedKey = Key; }
-        return CachedPreview;
-    }
+    // Committed campaign plus this turn's orders; never throws (see FBotfCampaign::Preview).
+    const botf::GameState& Preview() const { return Campaign.Preview(); }
     // Exact envelope of the open turn transaction; empty when none. Only serialized while a turn is open.
-    FString SessionText() const { return Session.active ? Str(botf::session::serialize(Session)) : FString(); }
+    FString SessionText() const { return Campaign.SessionText(); }
     // Every strategic order goes through here: no new orders while a turn transaction is open.
-    void Submit(const botf::Command& Cmd) {
-        if (Session.active) throw std::runtime_error("Finish the battle in progress before giving new orders");
-        botf::submit(State, Cmd);
-        ++StateVersion;
-    }
-    void CancelLast() {
-        if (Session.active) throw std::runtime_error("Finish the battle in progress before changing orders");
-        botf::cancel(State, State.pending.back().id);
-        ++StateVersion;
-    }
-    std::uint64_t NextId() const { return State.lastAcceptedCommand + 1; }
+    void Submit(const botf::Command& Cmd) { Campaign.Submit(Cmd); }
+    void CancelLast() { Campaign.CancelLast(); }
+    std::uint64_t NextId() const { return Campaign.NextId(); }
 
     // ---- Shell flow (unchanged contracts: confirmation, pending load path, settings rollback) ----
     void ShowView(EUiView View) {
@@ -513,16 +545,21 @@ private:
     }
     bool HasUnsavedChanges() const {
         // Includes an open turn transaction: tactical orders, rounds and completed encounters.
-        return bHasActiveCampaign && (IntelDraftDirty() || !bHasSavedBaseline || botf::fingerprint(State) != SavedFingerprint || SessionText() != SavedSessionText);
+        return bHasActiveCampaign && (IntelDraftDirty() || Campaign.HasUnsavedChanges());
     }
     bool CombatPresentation() const {
         return Shell == EUiView::Game && ActivePanel == PanelCombat && (Session.pending.has_value() || CurrentBattle() != nullptr);
     }
+    // Points the battle brush at the scene's render target, or at nothing once the scene is gone.
+    void BindBattleTexture() {
+        BattleBrush.SetResourceObject(nullptr);
+        if (Scene.IsValid()) BattleBrush.SetResourceObject(Scene->GetBattleTexture());
+    }
     void UpdateScene() {
-        if (!Scene) return;
+        if (!Scene.IsValid()) { BindBattleTexture(); return; }
         if (Session.pending && ActivePanel == PanelCombat) {
             Scene->ConfigureEncounter(*Session.pending);
-            BattleBrush.SetResourceObject(Scene->GetBattleTexture());
+            BindBattleTexture();
             ShownBattle = FShownBattle();   // the scene now holds the live encounter, not a record
         }
         // Battle records: whatever path led here (a finished encounter, a loaded save, the inbox, F7), the scene is
@@ -690,7 +727,17 @@ private:
             if (SavePath.IsEmpty()) throw std::runtime_error("Choose a compatible snapshot before loading");
             Load(); ShowView(EUiView::Game);
             PendingLoadPath.Empty();
-        } else if (Action == EPendingAction::Quit) FPlatformMisc::RequestExit(false);
+        } else if (Action == EPendingAction::Quit) RequestQuit();
+    }
+    // Quits through the engine's normal path: a packaged game exits, a Play-In-Editor session ends without killing
+    // the editor. RequestExit is only a last resort outside the editor when no world is available.
+    void RequestQuit() {
+        UWorld* World = GEngine && GEngine->GameViewport ? GEngine->GameViewport->GetWorld() : nullptr;
+        if (World) {
+            UKismetSystemLibrary::QuitGame(World, World->GetFirstPlayerController(), EQuitPreference::Quit, false);
+            return;
+        }
+        if (!GIsEditor) FPlatformMisc::RequestExit(false);
     }
 
     // ---- Empire-wide figures ----
@@ -698,41 +745,36 @@ private:
     // income less structure upkeep, trade route revenue, less ship maintenance. Mirrors the charges core applies at
     // turn end (Simulation.cpp advance); battles, random events and rival actions during resolution can still differ.
     // One-off order costs (purchases, gifts) are already deducted in the draft treasury and reported as Spend.
+    // The arithmetic lives in BotfViewModel.h (botf::view::forecastIncome); the rules it mirrors are listed there.
     struct FIncomeForecast {
-        int Colonies = 0, Trade = 0, Ships = 0;
+        int Colonies = 0, Trade = 0, Treaties = 0, Ships = 0;   // Trade includes treaty dividends, as core reports it
         std::int64_t Spend = 0;
         int Net() const { return Colonies + Trade - Ships; }
     };
     FIncomeForecast TurnForecast, LastForecast;   // taken when End Turn opens the transaction; the last resolved turn's
     bool bTurnForecast = false, bLastForecast = false;
     int LastFleetUpkeep = 0, LastTradeIncome = 0;
-    static int ShipMaintenance(const botf::Fleet& F) {
-        const auto& Catalogue = botf::referenceData::ShipCatalogue;
-        if (F.referenceShipId >= 0 && static_cast<std::size_t>(F.referenceShipId) < Catalogue.size()) return Catalogue[F.referenceShipId].maintenance;
-        return F.colonyShip ? 2 : F.shipClass == botf::Building::Destroyer ? 4 : F.shipClass == botf::Building::Transport ? 3 : 1;
-    }
+    // Cached per draft preview: the top bar asks for it several times a frame.
+    mutable std::uint64_t ForecastGeneration = 0;
+    mutable FIncomeForecast ForecastCache;
     FIncomeForecast IncomeForecast() const {
-        FIncomeForecast Out;
-        const auto& Draft = Preview();
-        for (const auto& Col : Draft.colonies)
-            if (Col.ownerId == State.playerEmpire) { const auto E = botf::economy(Draft, Col); Out.Colonies += E.income - E.upkeep; }
-        for (const auto& Route : Draft.tradeRoutes) {
-            if (Route.ownerId != State.playerEmpire) continue;
-            const auto* Source = botf::colonyAt(Draft, Route.fromSystemId);
-            const auto* Target = botf::colonyAt(Draft, Route.toSystemId);
-            if (!Source || !Target || Source->ownerId != Route.ownerId || Target->ownerId == Route.ownerId) continue;
-            const auto* R = botf::majorRelation(Draft, Route.ownerId, Target->ownerId);
-            if (!R || R->atWar || !R->tradeTreaty) continue;
-            Out.Trade += 5 + std::min(Source->population, Target->population) / 10;
+        const std::uint64_t Generation = Campaign.PreviewGeneration();
+        if (Generation != ForecastGeneration) {
+            FIncomeForecast Out;
+            FString Error;
+            FBotfCampaign::Run([this, &Out] {
+                const botf::view::IncomeForecast F = botf::view::forecastIncome(State, Preview(), State.playerEmpire);
+                Out.Colonies = F.colonies; Out.Trade = F.tradeReported(); Out.Treaties = F.treaties; Out.Ships = F.ships; Out.Spend = F.spend;
+            }, Error);
+            ForecastCache = Out;
+            ForecastGeneration = Generation;
         }
-        for (const auto& F : Draft.fleets) if (F.ownerId == State.playerEmpire) Out.Ships += ShipMaintenance(F);
-        Out.Spend = State.credits - Draft.credits;
-        return Out;
+        return ForecastCache;
     }
     FString IncomeTip() const {
         const auto F = IncomeForecast();
-        FString Tip = FString::Printf(TEXT("Expected change at turn end: %+d\nColonies (income less structure upkeep) %+d\nTrade routes %+d\nShip maintenance -%d"),
-            F.Net(), F.Colonies, F.Trade, F.Ships);
+        FString Tip = FString::Printf(TEXT("Expected change at turn end: %+d\nColonies (income less structure upkeep) %+d\nTrade routes and treaty dividends %+d (treaties %+d)\nShip maintenance -%d"),
+            F.Net(), F.Colonies, F.Trade, F.Treaties, F.Ships);
         if (F.Spend) Tip += FString::Printf(TEXT("\nOrders this turn already commit %lld credits (purchases, gifts)"), static_cast<long long>(F.Spend));
         return Tip + TEXT("\nBattles, events and rival actions during the turn can change the result.");
     }
@@ -757,7 +799,27 @@ private:
                 Out.Add(FString::Printf(TEXT("%s proposes %s (answer due turn %d)"),
                     *Str(botf::empireName(Offer.proposer)),
                     Offer.type == botf::CommandType::OfferPeace ? TEXT("peace") : TEXT("a trade treaty"), Offer.dueTurn));
+        for (const auto& Proposal : botf::incomingProposals(State, State.playerEmpire))
+            if (!ProposalResponsePending(Proposal.id))
+                Out.Add(Str(botf::view::proposalSummary(State, Proposal, State.playerEmpire)) + TEXT(" (") + Str(botf::view::deadlineText(State, Proposal.dueTurn)) + TEXT(")"));
+        for (const auto& Call : OpenCallsToArms())
+            Out.Add(Str(botf::view::callToArmsText(State, Call)));
         return Out;
+    }
+    // Calls to arms still awaiting the player: not yet answered by a drafted declaration and not let lapse.
+    std::vector<botf::diplomacy::DefenseCall> OpenCallsToArms() const {
+        std::vector<botf::diplomacy::DefenseCall> Out;
+        for (const auto& Call : botf::openCallsToArms(State, State.playerEmpire)) {
+            if (RefusedCalls.count(std::make_tuple(Call.ally, Call.defender, Call.aggressor, Call.issuedTurn))) continue;
+            if (WarDrafted(Call.aggressor)) continue;
+            Out.push_back(Call);
+        }
+        return Out;
+    }
+    bool WarDrafted(int Empire) const {
+        return std::any_of(State.pending.begin(), State.pending.end(), [Empire](const botf::Command& C) {
+            return C.type == botf::CommandType::DeclareWar && C.targetEmpire == Empire;
+        });
     }
     FString AlertsText() const {
         const auto List = Alerts();
@@ -806,8 +868,8 @@ private:
     FString SystemStrategicStatus() const {
         if (!Selected) return TEXT("[UNEXPLORED DEEP SPACE]");
         if (Owned()) return TEXT("[FEDERATION SOVEREIGN SYSTEM]");
-        const auto* Sys = botf::systemAt(Preview(), Selected);
-        if (!Sys) return TEXT("[DEEP SPACE]");
+        const auto& Systems = Preview().systems;
+        if (std::none_of(Systems.begin(), Systems.end(), [this](const botf::System& S) { return S.id == Selected; })) return TEXT("[DEEP SPACE]");
         const auto* Col = botf::colonyAt(Preview(), Selected);
         if (Col) {
             return FString::Printf(TEXT("[%s OCCUPIED COLONY]"), *Str(botf::empireName(Col->ownerId)).ToUpper());
@@ -941,14 +1003,7 @@ private:
     // Atomically cancels matching drafted orders and optionally submits a replacement, through the real
     // cancel/submit contract on a copy; the live draft changes only if every step is accepted.
     void ReplaceOrders(const std::function<bool(const botf::Command&)>& Match, std::optional<botf::Command> Replacement) {
-        if (Session.active) throw std::runtime_error("Finish the battle in progress before changing orders");
-        auto Copy = State;
-        std::vector<std::uint64_t> Ids;
-        for (const auto& O : Copy.pending) if (Match(O)) Ids.push_back(O.id);
-        for (auto It = Ids.rbegin(); It != Ids.rend(); ++It) botf::cancel(Copy, *It);
-        if (Replacement) { Replacement->id = Copy.lastAcceptedCommand + 1; botf::submit(Copy, *Replacement); }
-        State = std::move(Copy);
-        ++StateVersion;
+        Campaign.ReplaceOrders(Match, std::move(Replacement));
     }
     const botf::Fleet* DraftFleet() const {
         for (const auto& F : Preview().fleets) if (F.id == SelectedFleet && F.ownerId == State.playerEmpire) return &F;
@@ -1205,7 +1260,7 @@ private:
             const FString Name = UnitName();
             const bool Here = Unit->x == X && Unit->y == Y;
             if (!Here) {
-                const auto Path = botf::route(Preview(), *DraftFleetOr(*Unit), X, Y);
+                const auto Path = UnitRoute(X, Y);
                 Items.push_back({ Path.empty() ? Name + TEXT(": out of range") : FString::Printf(TEXT("Set course here  /  %d turn%s"), static_cast<int>(Path.size()) - 1,
                         Path.size() == 2 ? TEXT("") : TEXT("s")),
                     TEXT("Ships move when you end the turn"), [this, CellId] { PlotCourse(CellId); }, !Path.empty() && !Session.active });
@@ -1284,6 +1339,19 @@ private:
         return 0;
     }
     const botf::Fleet* DraftFleetOr(const botf::Fleet& Base) const { const auto* D = DraftFleet(); return D ? D : &Base; }
+    // Route of the selected unit in the draft. A task force goes only where every member can (core validates group
+    // orders member by member), so its range is its shortest-ranged member's, not the lead ship's.
+    std::vector<int> UnitRoute(int X, int Y) const {
+        const auto& Draft = Preview();
+        const int Group = CurrentTaskForce() ? SelectedTaskForce : 0;
+        if (Group || botf::view::findFleet(Draft, SelectedFleet)) return botf::view::unitRoute(Draft, SelectedFleet, Group, X, Y);
+        return botf::view::unitRoute(State, SelectedFleet, 0, X, Y);
+    }
+    // Attack reach: a single ship is judged on the committed campaign as before; a task force on its whole membership.
+    bool UnitCanReach(const botf::Fleet& Ship, int X, int Y) const {
+        if (CurrentTaskForce()) return !UnitRoute(X, Y).empty();
+        return !botf::route(State, Ship, X, Y).empty();
+    }
     FString UnitName() const {
         if (const auto* Group = CurrentTaskForce()) return Str(Group->name);
         if (const auto* F = Fleet()) return Str(botf::fleetName(*F)) + FString::Printf(TEXT(" #%d"), F->id);
@@ -1299,7 +1367,7 @@ private:
         const auto* F = Fleet(); const auto* Enemy = HostileFleetAt(CellId);
         if (!F || !Enemy || Session.active) return false;
         const auto* R = botf::majorRelation(State, State.playerEmpire, Enemy->ownerId);
-        return R && R->atWar && !botf::route(State, *F, Enemy->x, Enemy->y).empty();
+        return R && R->atWar && UnitCanReach(*F, Enemy->x, Enemy->y);
     }
     void AttackAt(int CellId) {
         const auto* Enemy = HostileFleetAt(CellId);
@@ -1398,7 +1466,7 @@ private:
         bMenuOpen = false;
         if (Unit->x == CellId % State.width && Unit->y == CellId / State.width) { OpenSectorMenu(CellId, Local); return; }
         if (CanAttackAt(CellId)) { AttackAt(CellId); return; }
-        const auto Path = botf::route(Preview(), *DraftFleetOr(*Unit), CellId % State.width, CellId / State.width);
+        const auto Path = UnitRoute(CellId % State.width, CellId / State.width);
         if (Path.empty()) throw std::runtime_error("That sector is outside the unit's supply range");
         PlotCourse(CellId);
     }
@@ -1407,7 +1475,7 @@ private:
         const FString Where = SystemAtCell(CellId) ? SystemName(SystemAtCell(CellId)) : FString::Printf(TEXT("%d,%d"), CellId % State.width, CellId / State.width);
         if (!Unit || MapView.Mode == BotfUi::EMapMode::Economic) return botf::explored(State, CellId % State.width, CellId / State.width) ? Where : FString(TEXT("Unexplored"));
         if (Unit->x == CellId % State.width && Unit->y == CellId / State.width) return Where + TEXT("  /  right-click for orders");
-        const auto Path = botf::route(Preview(), *DraftFleetOr(*Unit), CellId % State.width, CellId / State.width);
+        const auto Path = UnitRoute(CellId % State.width, CellId / State.width);
         if (Path.empty()) return Where + TEXT("  /  out of range");
         const int Turns = static_cast<int>(Path.size()) - 1;
         if (CanAttackAt(CellId)) return FString::Printf(TEXT("ATTACK %s  /  %d turn%s"), *Where, Turns, Turns == 1 ? TEXT("") : TEXT("s"));
@@ -1416,15 +1484,14 @@ private:
     BotfUi::SStarChart::FBinding ChartBinding() {
         BotfUi::SStarChart::FBinding B;
         B.State = &State; B.Draft = [this]() -> const botf::GameState& { return Preview(); };
-        B.Selected = &Selected; B.Cell = &SelectedCell; B.Fleet = &SelectedFleet; B.View = &MapView;
-        const auto Guard = [this](std::function<void()> Action) {
-            try { Action(); RefreshAll(); } catch (const std::exception& E) { Status = TEXT("Order rejected: ") + Str(E.what()); }
-        };
+        B.Selected = &Selected; B.Cell = &SelectedCell; B.Fleet = &SelectedFleet; B.TaskForce = &SelectedTaskForce; B.View = &MapView;
+        B.Version = [this] { return Campaign.PreviewGeneration(); };
+        const auto Guard = [this](std::function<void()> Action) { RunGuarded(Action); };
         B.Select = [this, Guard](int Cell) { Guard([this, Cell] { ClickCell(Cell); }); };
         B.Activate = [this, Guard](int Cell) { Guard([this, Cell] { ActivateCell(Cell); }); };
         B.Plot = [this, Guard](int Cell) { Guard([this, Cell] { PlotCourse(Cell); }); };
         B.Command = [this, Guard](int Cell, FVector2D Local, bool bMenu) { Guard([this, Cell, Local, bMenu] { CommandCell(Cell, Local, bMenu); }); };
-        B.Hint = [this](int Cell) { return CellHint(Cell); };
+        B.Hint = [this](int Cell) { return SafeText([this, Cell] { return CellHint(Cell); }); };
         return B;
     }
 
@@ -1447,6 +1514,19 @@ private:
                 InboxRow(FString::Printf(TEXT("%s propose %s  (due turn %d)"), *Str(botf::empireName(Offer.proposer)),
                     Offer.type == botf::CommandType::OfferPeace ? TEXT("peace") : TEXT("a trade treaty"), Offer.dueTurn),
                     [this, Who = Offer.proposer] { SelectedEmpire = Who; SelectedMinor = 0; DiplomacyMode = 0; GoPanel(PanelDiplomacy); }, &FPalette::Accent);
+        // AI-initiated proposals (modern diplomacy) with their response window.
+        for (const auto& Proposal : botf::incomingProposals(State, State.playerEmpire)) {
+            if (ProposalResponsePending(Proposal.id)) continue;
+            const int Who = Proposal.proposer.isMinor ? 0 : Proposal.proposer.id;
+            InboxRow(Str(botf::view::proposalSummary(State, Proposal, State.playerEmpire)) + TEXT("  (") + Str(botf::view::deadlineText(State, Proposal.dueTurn)) + TEXT(")"),
+                [this, Who] { if (Who) { SelectedEmpire = Who; SelectedMinor = 0; } DiplomacyMode = 0; GoPanel(PanelDiplomacy); }, &FPalette::Accent,
+                TEXT("Accept or reject in Diplomacy, Events. Unanswered proposals are ignored when the window closes."));
+        }
+        for (const auto& Call : OpenCallsToArms())
+            InboxRow(FString::Printf(TEXT("Call to arms: %s asks you to fight %s (by turn %d)"), *Str(botf::empireName(Call.defender)),
+                    *Str(botf::empireName(Call.aggressor)), Call.dueTurn),
+                [this, Who = Call.defender] { SelectedEmpire = Who; SelectedMinor = 0; DiplomacyMode = 0; GoPanel(PanelDiplomacy); }, &FPalette::Alert,
+                TEXT("Join by declaring war, or let the call lapse"));
         const auto& Draft = Preview();
         for (const auto& Col : Draft.colonies) {
             if (Col.ownerId != State.playerEmpire) continue;
@@ -1499,6 +1579,13 @@ private:
         if (Idle) Out.Add(FString::Printf(TEXT("%d system%s with nothing to build."), Idle, Idle == 1 ? TEXT("") : TEXT("s")));
         if (bAllocationDirty) Out.Add(TEXT("Your research allocation change has not been applied."));
         if (IntelDraftDirty()) Out.Add(TEXT("Your unapplied intelligence allocation will be discarded if you end the turn anyway. Apply it first to keep it."));
+        for (const auto& Proposal : botf::incomingProposals(State, State.playerEmpire))
+            if (!ProposalResponsePending(Proposal.id) && botf::view::turnsLeft(State, Proposal.dueTurn) == 0)
+                Out.Add(Str(botf::view::proposalSummary(State, Proposal, State.playerEmpire)) + TEXT(": unanswered, it will be ignored when this turn ends."));
+        for (const auto& Call : OpenCallsToArms())
+            if (botf::view::turnsLeft(State, Call.dueTurn) == 0)
+                Out.Add(FString::Printf(TEXT("%s's call to arms against %s falls due: refusing costs 20 trust."),
+                    *Str(botf::empireName(Call.defender)), *Str(botf::empireName(Call.aggressor))));
         const auto Income = IncomeForecast();
         if (Income.Net() < 0) {
             const std::int64_t After = Draft.credits + Income.Net();
@@ -1544,6 +1631,7 @@ private:
             if (Id == State.playerEmpire) continue;
             const auto* R = botf::majorRelation(State, State.playerEmpire, Id);
             if (!R || !R->contact) continue;
+            if (botf::empireEliminated(State, Id)) { Text += Str(botf::empireName(Id)) + TEXT(": eliminated\n"); continue; }
             Text += FString::Printf(TEXT("%s: %s, trust %d%s\n"), *Str(botf::empireName(Id)), R->atWar ? TEXT("at war") : TEXT("at peace"),
                 R->trust, R->tradeTreaty ? TEXT(", trade treaty") : TEXT(""));
         }
@@ -1668,7 +1756,7 @@ private:
                         const auto* F = Fleet(); const auto* Enemy = TargetFleet();
                         if (!F || !Enemy) return false;
                         const auto* R = botf::majorRelation(State, State.playerEmpire, Enemy->ownerId);
-                        return R && R->atWar && !botf::route(State, *F, Enemy->x, Enemy->y).empty();
+                        return R && R->atWar && UnitCanReach(*F, Enemy->x, Enemy->y);
                     }, TEXT("Select an enemy ship in this sector (or right-click it on the chart); requires war"), ERole::Alert),
                     OrderButton(TEXT("INVADE"), [this] { OrderInvade(); }, [this] { return CanInvadeHere(); }, TEXT("Troop transport over an enemy colony, at war"), ERole::Alert),
                     OrderButton(TEXT("RETREAT"), [this] {
@@ -1723,6 +1811,9 @@ private:
                 *Str(Group->name).ToUpper(), static_cast<int>(Group->fleetIds.size()),
                 botf::taskForceHull(Draft, Group->id), botf::taskForceShields(Draft, Group->id), botf::taskForceAttack(Draft, Group->id),
                 botf::taskForceSpeed(Draft, Group->id), StanceName(Group->stance), Group->targetX, Group->targetY);
+            if (const auto* Limit = botf::view::rangeLimitingFleet(Draft, Group->id))
+                Text += FString::Printf(TEXT("\nRange %d, set by its shortest-ranged ship: %s #%d"),
+                    botf::view::supplyRange(Draft, *Limit), *Str(botf::fleetName(*Limit)), Limit->id);
             for (const auto& Member : botf::taskForceFleets(Draft, Group->id))
                 Text += FString::Printf(TEXT("\n  %s #%d  hull %d/%d"), *Str(botf::fleetName(Member)), Member.id, Member.hull, botf::fleetMaxHull(Member));
             return Text;
@@ -1732,7 +1823,7 @@ private:
         const auto Path = botf::route(Preview(), *F, F->targetX, F->targetY);
         FString Text = FString::Printf(TEXT("%s  #%d\nSector %d,%d  |  Hull %d/%d  |  Shields %d/%d\nAttack %d  |  Range %d  |  Stance %s"),
             *Str(botf::fleetName(*F)), F->id, F->x, F->y, F->hull, botf::fleetMaxHull(*F), F->shields, botf::fleetMaxShields(*F),
-            botf::fleetAttack(*F), botf::shipRange(*F) + State.technologies[4].level / 2, StanceName(F->stance));
+            botf::fleetAttack(*F), botf::view::supplyRange(Preview(), *F), StanceName(F->stance));
         if (F->targetX != F->x || F->targetY != F->y)
             Text += Path.empty() ? FString::Printf(TEXT("\nDestination %d,%d: out of supply range, holding"), F->targetX, F->targetY)
                 : FString::Printf(TEXT("\nDestination %d,%d: %d turns"), F->targetX, F->targetY, static_cast<int>(Path.size()) - 1);
@@ -1955,7 +2046,7 @@ private:
                 + SHorizontalBox::Slot().FillWidth(1).VAlign(VAlign_Center)
                 // Click or drag across the blocks to staff exactly that many structures.
                 [ SNew(BotfUi::SPickBar, [this, Field](int Blocks) {
-                        try { SetWorkerBlocks(Field, Blocks); RefreshAll(); } catch (const std::exception& E) { Status = TEXT("Order rejected: ") + Str(E.what()); }
+                        RunGuarded([this, Field, Blocks] { SetWorkerBlocks(Field, Blocks); });
                     }).Height(14.f).Limit_Lambda(Count).Value_Lambda([Workers] { return (Workers() + 9) / 10; })
                     .FillColor(C(&FPalette::Primary)).EmptyColor_Lambda([this] { return FSlateColor(BotfUi::Shade(P().Secondary, 0.25f)); }) ]
                 + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(6, 0, 0, 0)
@@ -2069,7 +2160,9 @@ private:
                 [ Para(Dyn([this] {
                     const auto* Col = OwnedColony(); if (!Col) return FString();
                     const auto E = botf::economy(State, *Col);
-                    return FString::Printf(TEXT("Power plants %d\nIdle for lack of power: %d factories, %d laboratories"), Col->powerPlants, E.inactiveFactories, E.inactiveLabs);
+                    return FString::Printf(TEXT("Power plants %d (upkeep %d each)\nFusion plants %d (upkeep %d each)\nIdle for lack of power: %d factories, %d laboratories"),
+                        Col->powerPlants, botf::definition(botf::Building::PowerPlant).creditUpkeep,
+                        Col->fusionPlants, botf::definition(botf::Building::FusionPlant).creditUpkeep, E.inactiveFactories, E.inactiveLabs);
                 }), 10, &FPalette::Text) ]),
             Unavailable(TEXT("Switching other individual structures on and off")) });
     }
@@ -2117,15 +2210,13 @@ private:
     }
     // Buy / scrap eligibility comes from core validation itself: each order is dry-run against a copy of the
     // draft, so the blocker shown is core's exact reason. Cached per state version and system.
-    static constexpr std::array<botf::Building, 6> ScrapKinds{ botf::Building::Farm, botf::Building::Factory, botf::Building::Laboratory,
-        botf::Building::PowerPlant, botf::Building::Shipyard, botf::Building::DefenseBattery };
-    struct FColonyOrderCheck { std::uint64_t Version = 0; int System = -1; FString Buy; std::array<FString, 6> Scrap; };
+    // Fusion plants (schema 12) are their own structure: built from the Build List like any other, scrapped here.
+    static constexpr std::size_t ScrapKindCount = 7;
+    static constexpr std::array<botf::Building, ScrapKindCount> ScrapKinds{ botf::Building::Farm, botf::Building::Factory, botf::Building::Laboratory,
+        botf::Building::PowerPlant, botf::Building::FusionPlant, botf::Building::Shipyard, botf::Building::DefenseBattery };
+    struct FColonyOrderCheck { std::uint64_t Version = 0; int System = -1; FString Buy; std::array<FString, ScrapKindCount> Scrap; };
     mutable FColonyOrderCheck OrderCheck;
-    FString DryRun(const botf::Command& Cmd) const {
-        if (Session.active) return TEXT("Finish the battle in progress first");
-        try { auto Copy = State; botf::submit(Copy, Cmd); return FString(); }
-        catch (const std::exception& E) { return Str(E.what()); }
-    }
+    FString DryRun(const botf::Command& Cmd) const { return Campaign.DryRun(Cmd); }
     const FColonyOrderCheck& ColonyChecks() const {
         if (OrderCheck.Version != StateVersion || OrderCheck.System != Selected) {
             OrderCheck.Version = StateVersion; OrderCheck.System = Selected;
@@ -2146,6 +2237,7 @@ private:
         case botf::Building::Factory: return Col.factories;
         case botf::Building::Laboratory: return Col.laboratories;
         case botf::Building::PowerPlant: return Col.powerPlants;
+        case botf::Building::FusionPlant: return Col.fusionPlants;
         case botf::Building::Shipyard: return Col.shipyards;
         case botf::Building::DefenseBattery: return Col.defenseBatteries;
         default: return 0;
@@ -2181,11 +2273,11 @@ private:
         return Stack({
             Section(Txt(TEXT("CURRENT STRUCTURES")), Para(Dyn([this] {
                 const auto* Col = OwnedColony(); if (!Col) return FString();
-                return FString::Printf(TEXT("Farms %d\nFactories %d\nLaboratories %d\nPower plants %d\nShipyards %d%s\nDefense batteries %d"),
-                    Col->farms, Col->factories, Col->laboratories, Col->powerPlants, Col->shipyards,
+                return FString::Printf(TEXT("Farms %d\nFactories %d\nLaboratories %d\nPower plants %d\nFusion plants %d\nShipyards %d%s\nDefense batteries %d"),
+                    Col->farms, Col->factories, Col->laboratories, Col->powerPlants, Col->fusionPlants, Col->shipyards,
                     Col->shipyards ? (Col->shipyardEnabled ? TEXT("  (switched on)") : TEXT("  (switched off)")) : TEXT(""), Col->defenseBatteries);
             }), 12, &FPalette::Text)),
-            Section(Txt(TEXT("SCRAP STRUCTURES")), Stack({ ScrapRow(0), ScrapRow(1), ScrapRow(2), ScrapRow(3), ScrapRow(4), ScrapRow(5),
+            Section(Txt(TEXT("SCRAP STRUCTURES")), Stack({ ScrapRow(0), ScrapRow(1), ScrapRow(2), ScrapRow(3), ScrapRow(4), ScrapRow(5), ScrapRow(6),
                 Para(Txt(TEXT("Scrapping returns no credits. Move workers out of a structure before scrapping it.")), 9, &FPalette::Muted) }, 4)),
             Unavailable(TEXT("Structure upgrades")) });
     }
@@ -2566,7 +2658,7 @@ private:
                 + SHorizontalBox::Slot().AutoWidth().Padding(0, 0, 5, 0) [ Option(TEXT("SHIPS"), [this] { SetReferenceCategory(1); }, [this] { return ReferenceCategory == 1; }) ]
                 + SHorizontalBox::Slot().AutoWidth().Padding(0, 0, 12, 0) [ Option(TEXT("STRUCTURES"), [this] { SetReferenceCategory(2); }, [this] { return ReferenceCategory == 2; }) ]
                 + SHorizontalBox::Slot().FillWidth(1).VAlign(VAlign_Center)
-                [ SNew(SEditableTextBox).HintText(Txt(TEXT("Search")))
+                [ SAssignNew(ReferenceSearchBox, SEditableTextBox).HintText(Txt(TEXT("Search")))
                     .OnTextChanged_Lambda([this](const FText& Text) {
                         ReferenceSearch = Text.ToString(); ReferencePage = 0;
                         const auto Matches = ReferenceMatches(); ReferenceSelected = Matches.empty() ? -1 : Matches.front(); RefreshReference();
@@ -2590,11 +2682,19 @@ private:
             : ReferenceCategory == 1 ? static_cast<int>(botf::referenceData::ShipCatalogue.size())
             : static_cast<int>(botf::referenceData::BuildingCatalogue.size());
     }
-    std::vector<int> ReferenceMatches() const {
-        std::vector<int> Matches;
-        for (int Index = 0; Index < ReferenceCount(); ++Index)
-            if (ReferenceSearch.IsEmpty() || ReferenceItemLabel(Index).Contains(ReferenceSearch, ESearchCase::IgnoreCase)) Matches.push_back(Index);
-        return Matches;
+    // Cached by category and search text (the catalogues are static): page labels ask for it every frame.
+    mutable int MatchesCategory = -1;
+    mutable FString MatchesSearch;
+    mutable std::vector<int> MatchesCache;
+    const std::vector<int>& ReferenceMatches() const {
+        if (MatchesCategory != ReferenceCategory || !MatchesSearch.Equals(ReferenceSearch, ESearchCase::CaseSensitive)) {
+            MatchesCache.clear();
+            for (int Index = 0; Index < ReferenceCount(); ++Index)
+                if (ReferenceSearch.IsEmpty() || ReferenceItemLabel(Index).Contains(ReferenceSearch, ESearchCase::IgnoreCase)) MatchesCache.push_back(Index);
+            MatchesCategory = ReferenceCategory;
+            MatchesSearch = ReferenceSearch;
+        }
+        return MatchesCache;
     }
     void SetReferenceCategory(int Category) {
         ReferenceCategory = Category; ReferencePage = 0;
@@ -2718,13 +2818,34 @@ private:
         if (!ProposalRows.IsValid()) return;
         ProposalRows->ClearChildren();
         int Count = 0;
+        // Calls to arms: an ally was attacked and expects the player to join the war before the call falls due.
+        // Joining is a declaration of war on the aggressor; refusing lets the call lapse (core applies the penalty then).
+        for (const auto& Call : OpenCallsToArms()) {
+            ++Count;
+            const auto Key = std::make_tuple(Call.ally, Call.defender, Call.aggressor, Call.issuedTurn);
+            const int Aggressor = Call.aggressor;
+            ProposalRows->AddSlot().AutoHeight().Padding(0, 0, 0, 7)
+            [ Section(Txt(TEXT("CALL TO ARMS")), SNew(SVerticalBox)
+                + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 5) [ Para(Txt(Str(botf::view::callToArmsText(State, Call))), 10, &FPalette::Text) ]
+                + SVerticalBox::Slot().AutoHeight() [ Grid({
+                    Pill(TEXT("JOIN THE WAR"), [this, Aggressor] {
+                        Draft(botf::CommandType::DeclareWar, Aggressor);
+                        Status = FString::Printf(TEXT("War on %s ordered: the alliance is honoured when the turn ends."), *Str(botf::empireName(Aggressor)));
+                    }, [this, Aggressor] {
+                        const auto* R = botf::majorRelation(State, State.playerEmpire, Aggressor);
+                        return !Session.active && R && R->contact && !R->atWar && !WarDrafted(Aggressor) && !botf::empireEliminated(State, Aggressor);
+                    }, ERole::Alert, TEXT("Declare war on the aggressor (+10 trust with your ally)")),
+                    Pill(TEXT("REFUSE"), [this, Key] {
+                        RefusedCalls.insert(Key);
+                        Status = TEXT("You will not answer the call. It lapses when due: -20 trust and 2 grievances with your ally.");
+                    }, nullptr, ERole::Tertiary, TEXT("Let the call lapse")) }, 2) ]) ];
+        }
         for (const auto& P : botf::pendingProposals(State, State.playerEmpire)) {
             ++Count;
             const bool Incoming = P.target == botf::diplomacy::ParticipantId::major(State.playerEmpire);
-            const FString Description = FString::Printf(TEXT("%s %s  |  %s  |  %s  |  due turn %d\nTone: %s  |  offer %lld credits  |  demand %lld credits"),
-                Incoming ? TEXT("FROM") : TEXT("TO"), *ParticipantName(Incoming ? P.proposer : P.target),
-                UTF8_TO_TCHAR(botf::diplomacy::treatyTypeName(P.treatyType)), UTF8_TO_TCHAR(botf::diplomacy::treatyDurationName(P.duration)), P.dueTurn,
-                UTF8_TO_TCHAR(botf::diplomacy::toneName(P.tone)), static_cast<long long>(P.creditOffer), static_cast<long long>(P.creditDemand));
+            const FString Description = Str(botf::view::proposalSummary(State, P, State.playerEmpire)) + TEXT("\n")
+                + (Incoming ? Str(botf::view::deadlineText(State, P.dueTurn)) + TEXT(". Unanswered proposals are ignored when the window closes.")
+                            : FString::Printf(TEXT("Their answer is due by turn %d."), P.dueTurn));
             ProposalRows->AddSlot().AutoHeight().Padding(0, 0, 0, 7)
             [ Section(Txt(Incoming ? TEXT("INCOMING PROPOSAL") : TEXT("OUTGOING PROPOSAL")), SNew(SVerticalBox)
                 + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 5) [ Para(Txt(Description), 10, &FPalette::Text) ]
@@ -2757,6 +2878,7 @@ private:
         }
         const auto* R = botf::majorRelation(State, State.playerEmpire, SelectedEmpire);
         if (!R || !R->contact) return TEXT("No contact. Explore until your sensors meet them.");
+        if (botf::empireEliminated(State, SelectedEmpire)) return TEXT("Major power  |  ELIMINATED: no colonies remain; no treaties, war or espionage are possible.");
         return FString::Printf(TEXT("Major power  |  %s  |  trust %d / 100  |  trade treaty %s%s"),
             R->atWar ? TEXT("AT WAR") : TEXT("at peace"), R->trust, R->tradeTreaty ? TEXT("active") : TEXT("none"),
             R->atWar ? *FString::Printf(TEXT("  |  war since turn %d"), R->warStartTurn) : TEXT(""));
@@ -2810,6 +2932,13 @@ private:
                 T.turnsRemaining < 0 ? TEXT("indefinite") : *FString::Printf(TEXT("%d turns remaining"), T.turnsRemaining));
         }
         if (!Count) Text += TEXT("\nNone");
+        const auto Ended = botf::view::treatyHistoryLines(State, State.playerEmpire, 8);
+        if (!Ended.empty()) {
+            Text += TEXT("\n\nENDED TREATIES");
+            for (const auto& Line_ : Ended) Text += TEXT("\n") + Str(Line_);
+        }
+        const std::string Victory = botf::view::diplomaticVictoryText(State, State.playerEmpire);
+        if (!Victory.empty()) Text += TEXT("\n\n") + Str(Victory);
         Text += TEXT("\n\n") + RelationshipsText() + TEXT("\n") + TradeRoutesText();
         return Text;
     }
@@ -2872,7 +3001,13 @@ private:
         }
         const auto* R = botf::majorRelation(State, State.playerEmpire, SelectedEmpire);
         if (!R || !R->contact) return TEXT("No contact.");
-        FString Text = DipStatusLine() + TEXT("\n\n") + MajorOfferText();
+        FString Text = DipStatusLine();
+        const auto Memory = botf::view::relationMemoryLines(State, State.playerEmpire, SelectedEmpire);
+        if (!Memory.empty()) {
+            Text += TEXT("\n\nRELATIONS MEMORY");
+            for (const auto& Line_ : Memory) Text += TEXT("\n") + Str(Line_);
+        }
+        Text += TEXT("\n\n") + MajorOfferText();
         for (auto It = State.intelReports.rbegin(); It != State.intelReports.rend(); ++It)
             if (It->viewer == State.playerEmpire && It->target == SelectedEmpire && It->success) {
                 Text += FString::Printf(TEXT("\n\nLatest intelligence (turn %d): %d known colonies, about %lld credits."), It->turn, It->knownColonies, static_cast<long long>(It->estimatedCredits));
@@ -2885,9 +3020,14 @@ private:
             + SWidgetSwitcher::Slot()
             [ Stack({
                 Section(Txt(TEXT("TREATIES")), Grid({
-                    Pill(TEXT("DECLARE WAR"), [this] { Draft(botf::CommandType::DeclareWar, SelectedEmpire); }, [this] {
-                        const auto* R = botf::majorRelation(State, State.playerEmpire, SelectedEmpire); return R && R->contact && !R->atWar;
-                    }, ERole::Alert, TEXT("Required before attacking their ships or systems")),
+                    Pill(TEXT("DECLARE WAR"), [this] {
+                        const bool Betrayal = botf::treatyForbidsAttack(State, State.playerEmpire, SelectedEmpire);
+                        Draft(botf::CommandType::DeclareWar, SelectedEmpire);
+                        if (Betrayal) Status = TEXT("War ordered. A treaty binds you: this is a betrayal every power will remember.");
+                    }, [this] {
+                        const auto* R = botf::majorRelation(State, State.playerEmpire, SelectedEmpire);
+                        return R && R->contact && !R->atWar && !botf::empireEliminated(State, SelectedEmpire);
+                    }, ERole::Alert, TEXT("Required before attacking their ships or systems. Breaking a treaty is a betrayal.")),
                     Pill(TEXT("PROPOSE PEACE"), [this] { Draft(botf::CommandType::OfferPeace, SelectedEmpire); }, [this] {
                         const auto* R = botf::majorRelation(State, State.playerEmpire, SelectedEmpire);
                         return R && R->contact && R->atWar && !HasPendingMajorOffer(botf::CommandType::OfferPeace);
@@ -2956,8 +3096,7 @@ private:
                 [ SNew(SHorizontalBox)
                     + SHorizontalBox::Slot().AutoWidth().Padding(0, 0, 4, 0) [ SNew(SBox).WidthOverride(5) [ Swatch(Id, 0) ] ]
                     + SHorizontalBox::Slot().FillWidth(1)
-                    [ Row(FString::Printf(TEXT("%s\n%s  |  trust %d  |  trade treaty %s"), *Str(botf::empireName(Id)).ToUpper(),
-                        R->atWar ? TEXT("AT WAR") : TEXT("peace"), R->trust, R->tradeTreaty ? TEXT("yes") : TEXT("no")),
+                    [ Row(RaceRowLabel(Id, *R),
                         [this, Id] { SelectedEmpire = Id; SelectedMinor = 0; }, [this, Id] { return !DipMinor() && SelectedEmpire == Id; }) ] ];
         }
         for (const auto& M : State.minors) {
@@ -2970,6 +3109,16 @@ private:
                     [this, Sys = M.systemId] { SelectedMinor = Sys; }, [this, Sys = M.systemId] { return SelectedMinor == Sys; }) ];
         }
         if (!Count) RaceRows->AddSlot().AutoHeight() [ Para(Txt(TEXT("No races contacted yet. Explore to meet them.")), 10, &FPalette::Muted) ];
+    }
+    FString RaceRowLabel(int Id, const botf::MajorRelation& R) const {
+        if (botf::empireEliminated(State, Id)) return Str(botf::empireName(Id)).ToUpper() + TEXT("\nELIMINATED");
+        const auto Allies = botf::alliedEmpires(State, State.playerEmpire);
+        const auto Sensors = botf::sensorSharingEmpires(State, State.playerEmpire);
+        const bool Ally = std::find(Allies.begin(), Allies.end(), Id) != Allies.end();
+        const bool Shared = std::find(Sensors.begin(), Sensors.end(), Id) != Sensors.end();
+        return FString::Printf(TEXT("%s\n%s  |  trust %d  |  trade treaty %s%s"), *Str(botf::empireName(Id)).ToUpper(),
+            R.atWar ? TEXT("AT WAR") : TEXT("peace"), R.trust, R.tradeTreaty ? TEXT("yes") : TEXT("no"),
+            Ally ? TEXT("  |  ALLY") : Shared ? TEXT("  |  shared sensors") : TEXT(""));
     }
     bool HasPendingMajorOffer(botf::CommandType Type) const {
         for (const auto& Offer : State.pendingMajorOffers)
@@ -3351,7 +3500,7 @@ private:
                     return FString::Printf(TEXT("%d earlier battle%s resolved this turn.\nThe turn completes once every battle is over; your campaign is unchanged until then."),
                         static_cast<int>(Session.completed.size()), Session.completed.size() == 1 ? TEXT("") : TEXT("s"));
                 }), 9, &FPalette::Muted)),
-                Para(Txt(TEXT("Click ships on the radar or in the list. 1-5: Engage, Charge, Circle, Hold, Retreat. Space: next round. You may save mid-battle.")), 8, &FPalette::Muted) }) ];
+                Para(Txt(TEXT("Click ships on the radar or in the list. 1-5: Engage, Charge, Circle, Hold, Retreat. Space: next round. You may save mid-battle.\nCloaked ships cannot fire; any attack order decloaks them for a +25% ambush volley. Retreat takes a full round of disengaging under fire before the ship escapes. A ram hurts both ships. Ships you give no order are commanded by the tactical AI.")), 8, &FPalette::Muted) }) ];
     }
     FString EncounterSummary() const {
         if (!Session.pending) return FString();
@@ -3363,9 +3512,13 @@ private:
             if (TacActive(&S)) (Mine ? OwnUp : FoeUp)++;
             if (!Mine) Enemy = S.ownerId;
         }
-        return FString::Printf(TEXT("Sector %d,%d  |  round %d of at most %d\nYour ships: %d of %d fighting\n%s: %d of %d fighting%s"),
+        FString Text = FString::Printf(TEXT("Sector %d,%d  |  round %d of at most %d\nYour ships: %d of %d fighting\n%s: %d of %d fighting%s"),
             E.sectorX, E.sectorY, E.currentRound, E.maxRounds, OwnUp, Own, *Str(botf::empireName(Enemy)), FoeUp, Foe,
             E.isFinished ? TEXT("\nBATTLE OVER") : TEXT(""));
+        const std::string Hail = botf::view::hailOutlook(E, State.playerEmpire);
+        if (!Hail.empty()) Text += TEXT("\n") + Str(Hail);
+        if (!E.remasterRules()) Text += TEXT("\nThis battle began under the legacy tactical rules of an older save.");
+        return Text;
     }
     TSharedRef<SWidget> BuildReplayContext() {
         return Stack({
@@ -3384,18 +3537,18 @@ private:
     TSharedRef<SWidget> BattleView() {
         return SNew(SOverlay)
             + SOverlay::Slot() [ Fill(EShape::Block, &FPalette::Field) ]
-            + SOverlay::Slot() [ SNew(BotfUi::SBattleImage, &BattleBrush, [this] { return Scene && Session.pending; }) ]
+            + SOverlay::Slot() [ SNew(BotfUi::SBattleImage, &BattleBrush, [this] { return Scene.IsValid() && Session.pending; }) ]
             + SOverlay::Slot().HAlign(HAlign_Right).VAlign(VAlign_Top).Padding(FMargin(6))
-            [ DynControl(Dyn([this] { return Scene && Scene->GetCameraMode() == 1 ? FString(TEXT("CHASE CAM")) : FString(TEXT("OVERVIEW CAM")); }),
-                [this] { if (Scene) Scene->CycleCameraMode(); }, nullptr, nullptr, ERole::Tertiary, FMargin(6, 4), false, 8,
+            [ DynControl(Dyn([this] { return Scene.IsValid() && Scene->GetCameraMode() == 1 ? FString(TEXT("CHASE CAM")) : FString(TEXT("OVERVIEW CAM")); }),
+                [this] { if (Scene.IsValid()) Scene->CycleCameraMode(); }, nullptr, nullptr, ERole::Tertiary, FMargin(6, 4), false, 8,
                 TEXT("Toggle 3D Combat Camera (C)")) ]
             + SOverlay::Slot().HAlign(HAlign_Center).VAlign(VAlign_Center)
-            [ SNew(SBox).Visibility_Lambda([this] { return Scene ? EVisibility::Collapsed : EVisibility::Visible; })
+            [ SNew(SBox).Visibility_Lambda([this] { return Scene.IsValid() ? EVisibility::Collapsed : EVisibility::Visible; })
                 [ Para(Txt(TEXT("3D view unavailable; the radar shows the full battle.")), 10, &FPalette::Muted) ] ];
     }
     TSharedRef<SWidget> ManeuverButton(const FString& Label, botf::tactical::TacticalManeuver Maneuver, const FString& Tip, ERole Role = ERole::Primary) {
         return Control(Label, [this, Maneuver] { TacOrder(Maneuver); },
-            [this] { return Session.pending && !Session.pending->isFinished && (bTacOrderAll || TacActive(TacShipPtr(TacShip))); },
+            [this, Maneuver] { return CanTacOrder(Maneuver); },
             [this, Maneuver] {
                 if (!Session.pending || bTacOrderAll) return false;
                 for (const auto& O : Session.pending->pendingOrders) if (O.fleetId == TacShip) return O.maneuver == Maneuver;
@@ -3438,7 +3591,7 @@ private:
             // 0: Fullscreen 3D Combat Viewport (with mouse orbit drag & wheel zoom)
             + SOverlay::Slot()
             [
-                SNew(BotfUi::STacticalViewport, Scene, &BattleBrush, [this] { return Scene && Session.pending; })
+                SNew(BotfUi::STacticalViewport, Scene, &BattleBrush, [this] { return Scene.IsValid() && Session.pending; })
             ]
             // 1: Top HUD Bar (Title, Round, Faction Matchup, Camera Toolbar)
             + SOverlay::Slot().VAlign(VAlign_Top).HAlign(HAlign_Fill)
@@ -3475,32 +3628,32 @@ private:
                             SNew(SHorizontalBox)
                             + SHorizontalBox::Slot().AutoWidth().Padding(2, 0)
                             [
-                                Option(TEXT("OVERVIEW (C)"), [this] { if (Scene) Scene->SetCameraMode(0); },
-                                    [this] { return Scene && Scene->GetCameraMode() == 0; }, ERole::Tertiary, 0, TEXT("Tactical Overview perspective (C)"))
+                                Option(TEXT("OVERVIEW (C)"), [this] { if (Scene.IsValid()) Scene->SetCameraMode(0); },
+                                    [this] { return Scene.IsValid() && Scene->GetCameraMode() == 0; }, ERole::Tertiary, 0, TEXT("Tactical Overview perspective (C)"))
                             ]
                             + SHorizontalBox::Slot().AutoWidth().Padding(2, 0)
                             [
-                                Option(TEXT("CHASE"), [this] { if (Scene) Scene->SetCameraMode(1); },
-                                    [this] { return Scene && Scene->GetCameraMode() == 1; }, ERole::Tertiary, 0, TEXT("Dynamic Salvo/Dogfight Chase camera"))
+                                Option(TEXT("CHASE"), [this] { if (Scene.IsValid()) Scene->SetCameraMode(1); },
+                                    [this] { return Scene.IsValid() && Scene->GetCameraMode() == 1; }, ERole::Tertiary, 0, TEXT("Dynamic Salvo/Dogfight Chase camera"))
                             ]
                             + SHorizontalBox::Slot().AutoWidth().Padding(2, 0)
                             [
-                                Option(TEXT("FOCUS SHIP"), [this] { if (Scene) { Scene->SetCameraMode(2); Scene->SetFocusedShips(TacShip, TacTarget); } },
-                                    [this] { return Scene && Scene->GetCameraMode() == 2; }, ERole::Tertiary, 0, TEXT("Track currently selected friendly ship"))
+                                Option(TEXT("FOCUS SHIP"), [this] { if (Scene.IsValid()) { Scene->SetCameraMode(2); Scene->SetFocusedShips(TacShip, TacTarget); } },
+                                    [this] { return Scene.IsValid() && Scene->GetCameraMode() == 2; }, ERole::Tertiary, 0, TEXT("Track currently selected friendly ship"))
                             ]
                             + SHorizontalBox::Slot().AutoWidth().Padding(2, 0)
                             [
-                                Option(TEXT("FOCUS TARGET"), [this] { if (Scene) { Scene->SetCameraMode(3); Scene->SetFocusedShips(TacShip, TacTarget); } },
-                                    [this] { return Scene && Scene->GetCameraMode() == 3; }, ERole::Tertiary, 0, TEXT("Track designated hostile target"))
+                                Option(TEXT("FOCUS TARGET"), [this] { if (Scene.IsValid()) { Scene->SetCameraMode(3); Scene->SetFocusedShips(TacShip, TacTarget); } },
+                                    [this] { return Scene.IsValid() && Scene->GetCameraMode() == 3; }, ERole::Tertiary, 0, TEXT("Track designated hostile target"))
                             ]
                             + SHorizontalBox::Slot().AutoWidth().Padding(2, 0)
                             [
-                                Option(TEXT("TOP-DOWN"), [this] { if (Scene) Scene->SetCameraMode(4); },
-                                    [this] { return Scene && Scene->GetCameraMode() == 4; }, ERole::Tertiary, 0, TEXT("Overhead 90-degree tactical arena grid"))
+                                Option(TEXT("TOP-DOWN"), [this] { if (Scene.IsValid()) Scene->SetCameraMode(4); },
+                                    [this] { return Scene.IsValid() && Scene->GetCameraMode() == 4; }, ERole::Tertiary, 0, TEXT("Overhead 90-degree tactical arena grid"))
                             ]
                             + SHorizontalBox::Slot().AutoWidth().Padding(4, 0, 0, 0)
                             [
-                                Pill(TEXT("RESET CAM"), [this] { if (Scene) Scene->ResetCameraOrbit(); }, nullptr, ERole::Secondary, TEXT("Reset camera orbit and zoom (Home, Double-Click)"))
+                                Pill(TEXT("RESET CAM"), [this] { if (Scene.IsValid()) Scene->ResetCameraOrbit(); }, nullptr, ERole::Secondary, TEXT("Reset camera orbit and zoom (Home, Double-Click)"))
                             ]
                         ]
                     ]
@@ -3581,14 +3734,14 @@ private:
                                     ManeuverButton(TEXT("FLYBY"), botf::tactical::TacticalManeuver::Flyby, TEXT("Fast medium-range pass: -15% incoming damage, +1 speed (8)")),
                                     ManeuverButton(TEXT("HARRY"), botf::tactical::TacticalManeuver::Harry, TEXT("Close harassment: -20% incoming damage (7)")),
                                     ManeuverButton(TEXT("EVADE"), botf::tactical::TacticalManeuver::Evade, TEXT("Defensive posture: -35% damage taken (0)")),
-                                    ManeuverButton(TEXT("HOLD"), botf::tactical::TacticalManeuver::Hold, TEXT("Hold position and reinforce shields (4)"), ERole::Secondary),
-                                    ManeuverButton(TEXT("RAM"), botf::tactical::TacticalManeuver::Ram, TEXT("Desperate kinetic collision doing massive hull impact damage (R)"), ERole::Alert),
-                                    ManeuverButton(TEXT("HAIL"), botf::tactical::TacticalManeuver::Hail, TEXT("Diplomatic hail attempting mutual truce (H)"), ERole::Secondary),
-                                    ManeuverButton(TEXT("RETREAT"), botf::tactical::TacticalManeuver::Retreat, TEXT("Withdraw from the battle; weapons offline (5)"), ERole::Tertiary),
+                                    ManeuverButton(TEXT("HOLD"), botf::tactical::TacticalManeuver::Hold, TEXT("Hold position and brace: -20% damage taken, shields do not recharge (4)"), ERole::Secondary),
+                                    ManeuverButton(TEXT("RAM"), botf::tactical::TacticalManeuver::Ram, TEXT("Collide when within one cell: the target takes your hull as damage and you take its hull plus shields; usually both die (R)"), ERole::Alert),
+                                    ManeuverButton(TEXT("HAIL"), botf::tactical::TacticalManeuver::Hail, TEXT("Offer a truce: it holds when every ship of yours hails and the enemy accepts (H)"), ERole::Secondary),
+                                    ManeuverButton(TEXT("RETREAT"), botf::tactical::TacticalManeuver::Retreat, TEXT("Disengage: one round under fire with weapons offline (-25% damage taken), then escape if still retreating (5)"), ERole::Tertiary),
                                     Control(TEXT("ALL SHIPS"), [this] { bTacOrderAll = !bTacOrderAll; }, nullptr, [this] { return bTacOrderAll; },
                                         ERole::Secondary, FMargin(6, 6), false, 9, TEXT("Give the next order to every active ship")),
-                                    DynControl(Dyn([this] { return Scene ? Scene->GetCameraModeName() : FString(TEXT("CAM")); }),
-                                        [this] { if (Scene) Scene->CycleCameraMode(); }, nullptr, nullptr,
+                                    DynControl(Dyn([this] { return Scene.IsValid() ? Scene->GetCameraModeName() : FString(TEXT("CAM")); }),
+                                        [this] { if (Scene.IsValid()) Scene->CycleCameraMode(); }, nullptr, nullptr,
                                         ERole::Tertiary, FMargin(6, 6), false, 9, TEXT("Cycle 3D Combat Camera (C)")) }, 2)
                             ])
                         ]
@@ -3677,10 +3830,19 @@ private:
             const auto* Grp = E.getGroupForShip(S.fleetId);
             const FString GrpTag = Grp ? FString::Printf(TEXT("[%s] "), *Str(botf::tactical::tacticalGroupClassName(Grp->groupClass))) : FString();
             const FString CloakTag = S.isCloaked ? TEXT(" [CLOAKED]") : FString();
-            const FString State_ = !S.isAlive ? FString(TEXT("DESTROYED")) : S.retreated ? FString(TEXT("WITHDRAWN"))
+            FString State_ = !S.isAlive ? FString(TEXT("DESTROYED")) : S.retreated ? FString(TEXT("WITHDRAWN"))
                 : Mine ? (HasOrder ? Str(botf::tactical::maneuverName(Ordered.maneuver)).ToUpper() + (Ordered.targetFleetId ? FString::Printf(TEXT(" > #%d"), Ordered.targetFleetId) : FString())
-                                   : FString(TEXT("AWAITING ORDERS")))
+                                   : E.standingOrders.count(S.fleetId) ? TEXT("STANDING: ") + Str(botf::tactical::maneuverName(Ordered.maneuver)).ToUpper()
+                                   : FString(TEXT("NO ORDER: THE TACTICAL AI DECIDES")))
                 : FString::Printf(TEXT("at %d,%d"), S.position.x, S.position.y);
+            // Rules 2 state: disengaging, no retreat route, unarmed; and what the ship actually did last round.
+            if (S.isAlive && !S.retreated) {
+                std::vector<std::string> Tags = botf::view::shipTags(E, S);
+                Tags.erase(std::remove_if(Tags.begin(), Tags.end(), [](const std::string& Tag) { return Tag.rfind("CLOAKED", 0) == 0; }), Tags.end());
+                if (!Tags.empty()) State_ += TEXT("\n") + Str(botf::view::joinTags(Tags));
+                const std::string Last = botf::view::executedOrderText(E, S.fleetId);
+                if (!Last.empty()) State_ += TEXT("\nLast round: ") + Str(Last);
+            }
 
             const bool bSelected = Mine ? (TacShip == S.fleetId) : (TacTarget == S.fleetId);
             const FLinearColor FrameColor = bSelected ? (Mine ? P().Accent : P().Alert) : BotfUi::Shade(P().Secondary, 0.25f);
@@ -3790,9 +3952,9 @@ private:
                 + SVerticalBox::Slot().FillHeight(1.3f)
                 [ SNew(SOverlay)
                     + SOverlay::Slot() [ Fill(EShape::Block, &FPalette::Field) ]
-                    + SOverlay::Slot() [ SNew(BotfUi::SBattleImage, &BattleBrush, [this] { return CurrentBattle() && Scene && ShownBattle.bValid; }) ]
+                    + SOverlay::Slot() [ SNew(BotfUi::SBattleImage, &BattleBrush, [this] { return CurrentBattle() && Scene.IsValid() && ShownBattle.bValid; }) ]
                     + SOverlay::Slot().HAlign(HAlign_Center).VAlign(VAlign_Center)
-                    [ SNew(SBox).Visibility_Lambda([this] { return CurrentBattle() && Scene ? EVisibility::Collapsed : EVisibility::Visible; })
+                    [ SNew(SBox).Visibility_Lambda([this] { return CurrentBattle() && Scene.IsValid() ? EVisibility::Collapsed : EVisibility::Visible; })
                         [ Para(Dyn([this] { return CurrentBattle() ? FString(TEXT("3D view unavailable; the replay below shows the battle."))
                             : FString(TEXT("No battles fought yet. Declare war, select an enemy ship in range and order an attack.")); }), 12, &FPalette::Muted) ] ] ]
                 // Report-driven replay: always drawn from the battle record, independent of the 3D scene.
@@ -3855,6 +4017,19 @@ private:
             Text += FString::Printf(TEXT("Ship #%d: shields %d to %d, hull %d to %d\n"), D.fleetId, D.shieldBefore, D.shieldAfter, D.hullBefore, D.hullAfter);
         for (const int Id : Round.lostFleetIds) Text += FString::Printf(TEXT("Ship #%d destroyed\n"), Id);
         for (const int Id : Round.retreatedFleetIds) Text += FString::Printf(TEXT("Ship #%d retreated\n"), Id);
+        // Battles fought in this session also keep their encounter: orders, AI decisions, ambushes, disengages, rams.
+        // A committed record alone only holds damage (core's CombatRound has no per-ship orders).
+        const auto& Encounters = Campaign.LastTurnEncounters();
+        const int Match = botf::view::matchEncounter(Encounters, *B);
+        if (Match >= 0) {
+            const auto& Encounter = Encounters[static_cast<std::size_t>(Match)];
+            const int Index = std::clamp(BattleRoundIndex, 0, static_cast<int>(Encounter.rounds.size()) - 1);
+            Text += TEXT("\nORDERS AND EVENTS");
+            for (const auto& Line_ : botf::view::roundDetail(Encounter, Encounter.rounds[static_cast<std::size_t>(Index)], {}))
+                Text += TEXT("\n") + Str(Line_);
+        } else {
+            Text += TEXT("\nOrders, ambushes and rams are shown for the battles of the last turn played in this session.");
+        }
         return Text;
     }
     // Which recorded battle and round the 3D scene currently holds; invalid while it shows a live encounter.
@@ -3866,8 +4041,7 @@ private:
             return bValid == O.bValid && Turn == O.Turn && X == O.X && Y == O.Y && Index == O.Index && Round == O.Round && Version == O.Version;
         }
     };
-    FShownBattle ShownBattle;
-    std::uint64_t CampaignVersion = 1;   // bumped only when State is replaced wholesale (new game, load, committed turn)
+    FShownBattle ShownBattle;   // CampaignVersion (FBotfCampaign) is bumped when State is replaced wholesale or a turn commits
     FShownBattle WantedBattle() const {
         const auto* B = CurrentBattle();
         if (!B) return FShownBattle();
@@ -3879,7 +4053,7 @@ private:
     // the brush is re-bound so Slate drops any handle cached for an earlier texture state.
     void ShowBattle() {
         const auto* B = CurrentBattle();
-        if (!Scene || !B) return;
+        if (!Scene.IsValid() || !B) return;
         Scene->SetPresentationActive(false);
         Scene->ConfigureBattleReport(*B, B->rounds.empty() ? -1 : BattleRoundIndex);
         BattleBrush.SetResourceObject(nullptr);
@@ -3910,20 +4084,19 @@ private:
         if (Session.active) { ContinueTurn(); return; }
         bIntelDraft = false; DraftIntelBudget.clear(); // End Turn Anyway explicitly discards an unapplied allocation.
         TurnForecast = IncomeForecast(); bTurnForecast = true;
-        botf::session::begin(Session, State);
+        Campaign.BeginTurn();
         // A failure before any encounter leaves the committed campaign untouched; close the empty transaction.
         try { ContinueTurn(); }
         catch (...) { if (!Session.pending) { Session = botf::session::TurnSession(); bTurnForecast = false; } throw; }
     }
     void ContinueTurn() {
-        auto Result = botf::session::resume(Session, State);
-        ++StateVersion;   // resume may have committed a new campaign state
+        // The campaign commits the turn (and closes the transaction) or pauses on the next player battle.
+        auto Result = Campaign.ResumeTurn();
         if (!Result) {
             if (!Session.pending) throw std::runtime_error("Turn paused without an encounter");
             OpenEncounter(true);
             return;
         }
-        Session = botf::session::TurnSession();
         bEncounterChoice = false; TacShip = TacTarget = 0; TacLog.Empty();
         FinishTurn(*Result);
     }
@@ -3957,7 +4130,7 @@ private:
         int CurrentIndex = FriendlyIds.IndexOfByKey(TacShip);
         int NextIndex = (CurrentIndex + 1) % FriendlyIds.Num();
         TacShip = FriendlyIds[NextIndex];
-        if (Scene) Scene->SetFocusedShips(TacShip, TacTarget);
+        if (Scene.IsValid()) Scene->SetFocusedShips(TacShip, TacTarget);
         RefreshAll();
     }
     void NextTacTarget() {
@@ -3969,32 +4142,48 @@ private:
         int CurrentIndex = EnemyIds.IndexOfByKey(TacTarget);
         int NextIndex = (CurrentIndex + 1) % EnemyIds.Num();
         TacTarget = EnemyIds[NextIndex];
-        if (Scene) Scene->SetFocusedShips(TacShip, TacTarget);
+        if (Scene.IsValid()) Scene->SetFocusedShips(TacShip, TacTarget);
         RefreshAll();
     }
     void TacPick(int FleetId) {
         const auto* S = TacShipPtr(FleetId);
         if (!S) return;
         if (S->ownerId == State.playerEmpire) TacShip = FleetId; else TacTarget = FleetId;
-        if (Scene) Scene->SetFocusedShips(TacShip, TacTarget);
+        if (Scene.IsValid()) Scene->SetFocusedShips(TacShip, TacTarget);
     }
+    // Whether the manoeuvre can be ordered now for the selection (or, with ALL SHIPS, for at least one ship):
+    // the encounter's own validation, so Retreat is unavailable without a safe withdrawal sector.
+    bool CanTacOrder(botf::tactical::TacticalManeuver Maneuver) const {
+        if (!Session.pending || Session.pending->isFinished) return false;
+        for (const auto& S : Session.pending->ships) {
+            if (S.ownerId != State.playerEmpire || !TacActive(&S)) continue;
+            if (!bTacOrderAll && S.fleetId != TacShip) continue;
+            try { Session.pending->checkOrder(botf::tactical::Order{S.fleetId, 0, Maneuver}); return true; }
+            catch (const std::exception&) {}
+        }
+        return false;
+    }
+    // All or nothing, like the core's group orders: every order is validated before any is given.
     void TacOrder(botf::tactical::TacticalManeuver Maneuver) {
         if (!Session.pending) return;
         const int Target = TacActive(TacShipPtr(TacTarget)) ? TacTarget : 0;
-        int Given = 0;
+        std::vector<botf::tactical::Order> Orders;
         for (const auto& S : Session.pending->ships) {
             if (S.ownerId != State.playerEmpire || !TacActive(&S)) continue;
             if (!bTacOrderAll && S.fleetId != TacShip) continue;
             if (Maneuver == botf::tactical::TacticalManeuver::Retreat && !S.canRetreat) continue;
-            botf::session::order(Session, {S.fleetId, Maneuver == botf::tactical::TacticalManeuver::Retreat ? 0 : Target, Maneuver});
-            ++Given;
+            Orders.push_back(botf::tactical::Order{S.fleetId, Maneuver == botf::tactical::TacticalManeuver::Retreat ? 0 : Target, Maneuver});
         }
-        if (!Given) throw std::runtime_error(Maneuver == botf::tactical::TacticalManeuver::Retreat
+        if (Orders.empty()) throw std::runtime_error(Maneuver == botf::tactical::TacticalManeuver::Retreat
             ? "No safe withdrawal sector: the selected ship cannot retreat" : "Select one of your active ships");
+        for (const auto& Order : Orders) Session.pending->checkOrder(Order);
+        for (const auto& Order : Orders) botf::session::order(Session, Order);
+        Campaign.Notify(EBotfCampaignChange::Session);
+        const int Given = static_cast<int>(Orders.size());
         Status = TEXT("Tactical order accepted.");
         TacLog = FString::Printf(TEXT("%s ordered for %d ship%s%s."), *Str(botf::tactical::maneuverName(Maneuver)), Given, Given == 1 ? TEXT("") : TEXT("s"),
             Target && Maneuver != botf::tactical::TacticalManeuver::Retreat ? *(TEXT(", target #") + FString::FromInt(Target)) : TEXT(""));
-        if (Scene) Scene->SetFocusedShips(TacShip, TacTarget);
+        if (Scene.IsValid()) Scene->SetFocusedShips(TacShip, TacTarget);
     }
     void TacNextRound() {
         botf::session::resolveRound(Session);
@@ -4003,7 +4192,7 @@ private:
         Status = E.isFinished ? TEXT("Battle over. Continue the turn when ready.") : FString::Printf(TEXT("Round %d resolved."), E.currentRound);
         if (!TacActive(TacShipPtr(TacShip))) for (const auto& S : E.ships) if (S.ownerId == State.playerEmpire && TacActive(&S)) { TacShip = S.fleetId; break; }
         if (!TacActive(TacShipPtr(TacTarget))) for (const auto& S : E.ships) if (S.ownerId != State.playerEmpire && TacActive(&S)) { TacTarget = S.fleetId; break; }
-        if (Scene) Scene->SetFocusedShips(TacShip, TacTarget);
+        if (Scene.IsValid()) Scene->SetFocusedShips(TacShip, TacTarget);
         UpdateScene();
     }
     void TacAuto() {
@@ -4021,22 +4210,15 @@ private:
         const auto* S = TacShipPtr(Id);
         return S ? FString::Printf(TEXT("%s #%d"), *Str(S->name), Id) : FString::Printf(TEXT("#%d"), Id);
     }
+    // Round log: orders (AI decisions marked), ambush volleys, disengages and escapes, both halves of a ram, truce.
     FString TacRoundText(const botf::tactical::RoundResult& Round) const {
+        if (!Session.pending) return FString();
         FString Text = FString::Printf(TEXT("ROUND %d"), Round.roundIndex);
-        for (const auto& St : Round.shipStatuses) {
-            if (St.beamDamageDealt + St.torpedoDamageDealt > 0)
-                Text += FString::Printf(TEXT("\n%s: %s, %d beam + %d torpedo at %s"), *TacShipName(St.fleetId),
-                    *Str(botf::tactical::maneuverName(St.maneuverExecuted)), St.beamDamageDealt, St.torpedoDamageDealt,
-                    St.targetFleetId ? *TacShipName(St.targetFleetId) : TEXT("nearest enemy"));
-        }
-        for (const int Id : Round.lostFleetIds) Text += TEXT("\n") + TacShipName(Id) + TEXT(" destroyed");
-        for (const int Id : Round.retreatedFleetIds) Text += TEXT("\n") + TacShipName(Id) + TEXT(" withdrew");
-        if (Round.encounterEnded)
-            Text += TEXT("\nBATTLE OVER: ") + (Round.winnerOwnerId ? Str(botf::empireName(Round.winnerOwnerId)) + TEXT(" hold the field") : FString(TEXT("no victor")));
+        const auto Name = [this](int Id) { return std::string(TCHAR_TO_UTF8(*TacShipName(Id))); };
+        for (const auto& Line_ : botf::view::roundDetail(*Session.pending, Round, Name)) Text += TEXT("\n") + Str(Line_);
         return Text;
     }
     void FinishTurn(const botf::TurnReport& R) {
-        ++CampaignVersion;   // a committed turn replaces the battle records
         LastReport = FString::Printf(TEXT("TURN %d\nCredits %+lld  |  research +%lld  |  trade +%d  |  ship maintenance %d"), State.turn,
             static_cast<long long>(R.creditsAfter - R.creditsBefore), static_cast<long long>(R.researchGained), R.tradeIncome, R.fleetUpkeep);
         LastFleetUpkeep = R.fleetUpkeep; LastTradeIncome = R.tradeIncome;
@@ -4399,7 +4581,7 @@ private:
         LastReport.Empty(); LastEvents.Empty(); BattleIndex = BattleRoundIndex = 0; bAllocationDirty = false; AllocationLocked.fill(false);
         bMenuOpen = bSummaryOpen = bEndTurnCheck = false; MapView = BotfUi::FMapView(); RefreshAll(); ActivePanel = PanelGalaxy;
         if (Chart.IsValid()) Chart->CentreOn(SelectedCell);
-        if (Scene) Scene->SetPresentationActive(false);
+        if (Scene.IsValid()) Scene->SetPresentationActive(false);
         Status = FString::Printf(TEXT("The %s awaits your orders. Turn 1."), *Str(botf::empireName(State.playerEmpire)));
     }
 
@@ -4429,71 +4611,13 @@ private:
             [ Control(TEXT("LOAD SELECTED SAVE"), [this] { RequestAction(EPendingAction::LoadCampaign); }, [this] { return !SavePath.IsEmpty(); },
                 nullptr, ERole::Accent, FMargin(22, 10), false, 12, FString()) ];
     }
-    // A snapshot is either an ordinary campaign (schema 4..11) or a BOTF_TURN_SESSION envelope saved mid-turn,
-    // both complete in one file. For an envelope, State is the committed baseline campaign.
-    struct FSnapshot {
-        botf::GameState State;
-        std::optional<botf::session::TurnSession> Session;
-    };
-    FSnapshot ReadSnapshot(const FString& Path) const {
-        const int64 Size = IFileManager::Get().FileSize(*Path);
-        if (Size < 0 || Size > 32 * 1024 * 1024) throw std::runtime_error("Save missing or exceeds size limit");
-        FString Text;
-        if (!FFileHelper::LoadFileToString(Text, *Path)) throw std::runtime_error("Could not read saved campaign");
-        const std::string Utf8 = TCHAR_TO_UTF8(*Text);
-        FSnapshot Out;
-        if (Utf8.rfind("BOTF_TURN_SESSION", 0) == 0) {
-            auto Restored = botf::session::deserialize(Utf8);
-            if (botf::session::serialize(Restored) != Utf8) throw std::runtime_error("Mid-battle save does not round-trip exactly");
-            Out.State = Restored.baseline;
-            Out.Session = std::move(Restored);
-        } else {
-            if (Size > 1024 * 1024) throw std::runtime_error("Save exceeds size limit");
-            Out.State = botf::deserialize(Utf8);
-        }
-        return Out;
-    }
+    // A snapshot is either an ordinary campaign or a BOTF_TURN_SESSION envelope saved mid-turn, both complete in one
+    // file. Reading, listing, verification and publishing live in FBotfCampaign.
+    FBotfSnapshot ReadSnapshot(const FString& Path) const { return Campaign.ReadSnapshot(Path); }
     botf::GameState ReadSave(const FString& Path) const { return ReadSnapshot(Path).State; }
-    FString SnapshotFolder() const {
-#if WITH_DEV_AUTOMATION_TESTS
-        if (!TestSnapshotFolder.IsEmpty()) return TestSnapshotFolder;
-#endif
-        return FPaths::ProjectSavedDir() / TEXT("BotfSnapshots");
-    }
+    FString SnapshotFolder() const { return Campaign.SnapshotFolder(); }
     void RefreshSaves() {
-        const FString Folder = SnapshotFolder();
-        TArray<FString> Names;
-        IFileManager::Get().FindFiles(Names, *(Folder / TEXT("*.botfsave")), true, false);
-        Names.Sort([&Folder](const FString& A, const FString& B) {
-            const auto AT = IFileManager::Get().GetTimeStamp(*(Folder / A));
-            const auto BT = IFileManager::Get().GetTimeStamp(*(Folder / B));
-            return AT == BT ? A < B : AT > BT;
-        });
-        Saves.Empty(); SaveInfos.Empty();
-        for (const auto& Name : Names) {
-            const FString Path = Folder / Name;
-            try {
-                const auto Snapshot = ReadSnapshot(Path);
-                const auto& Saved = Snapshot.State;
-                Saves.Add(Path);
-                FSnapshotInfo Info;
-                if (Snapshot.Session) {
-                    Info.bBattle = true;
-                    Info.BattlesDone = static_cast<int>(Snapshot.Session->completed.size());
-                    Info.BattleRound = Snapshot.Session->pending ? Snapshot.Session->pending->currentRound : 0;
-                }
-                Info.Path = Path; Info.Modified = IFileManager::Get().GetTimeStamp(*Path);
-                Info.Turn = Saved.turn; Info.Empire = Saved.playerEmpire;
-                Info.Pending = static_cast<int>(Saved.pending.size());
-                Info.Colonies = static_cast<int>(std::count_if(Saved.colonies.begin(), Saved.colonies.end(),
-                    [&Saved](const botf::Colony& C) { return C.ownerId == Saved.playerEmpire; }));
-                Info.Seed = Saved.seed; Info.Ruleset = Saved.ruleset;
-                SaveInfos.Add(MoveTemp(Info));
-            }
-            catch (const std::exception& E) { UE_LOG(LogTemp, Display, TEXT("BOTF_SAVE_SKIPPED %s: %s"), *Name, *Str(E.what())); }
-            if (Saves.Num() >= 256) break;
-        }
-        if (!Saves.Contains(SavePath)) SavePath = Saves.IsEmpty() ? FString() : Saves[0];
+        Campaign.RefreshSaves();
         SavePage = std::max(0, Saves.IndexOfByKey(SavePath)) / 8;
     }
     void RefreshSaveRows() {
@@ -4532,36 +4656,18 @@ private:
             Info.bBattle ? *FString::Printf(TEXT("\nSaved during turn resolution: battle round %d, %d earlier battle(s) this turn."), Info.BattleRound, Info.BattlesDone) : TEXT(""));
     }
     void Save() {
-        if (!bHasActiveCampaign) throw std::runtime_error("Start or load a campaign before saving");
-        if (IntelDraftDirty()) {
-            Submit(botf::makeSetIntelBudgetCommand(NextId(), DraftSecurity, DraftIntelBudget));
-        }
+        // An unapplied intelligence allocation is saved as an order; the draft only changes once the file is published.
+        std::optional<botf::Command> Intel;
+        if (IntelDraftDirty()) Intel = botf::makeSetIntelBudgetCommand(NextId(), DraftSecurity, DraftIntelBudget);
+        Campaign.SaveSnapshot(Intel);
         bIntelDraft = false; DraftIntelBudget.clear();
-        const FString Folder = SnapshotFolder();
-        if (!IFileManager::Get().MakeDirectory(*Folder, true)) throw std::runtime_error("Cannot create snapshot folder");
-        const FString Candidate = Folder / (FString::Printf(TEXT("Turn-%04d-"), State.turn) + FGuid::NewGuid().ToString() + TEXT(".botfsave"));
-        const FString Temporary = Candidate + TEXT(".pending-write");
-        // Mid-turn saves persist the whole transaction envelope in the same file.
-        const auto Text = Session.active ? botf::session::serialize(Session) : botf::serialize(State);
-        if (!FFileHelper::SaveStringToFile(Str(Text), *Temporary, FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM))
-            throw std::runtime_error("Snapshot write failed");
-        const auto Checked = ReadSnapshot(Temporary);
-        if (Session.active ? (!Checked.Session || botf::session::serialize(*Checked.Session) != Text)
-                           : (Checked.Session.has_value() || botf::fingerprint(Checked.State) != botf::fingerprint(State)))
-            throw std::runtime_error("Snapshot verification failed");
-        if (!IFileManager::Get().Move(*Candidate, *Temporary, false, false, false, true))
-            throw std::runtime_error("Could not publish verified save");
-        SavePath = Candidate; RefreshSaves();
-        SavedFingerprint = botf::fingerprint(State); bHasSavedBaseline = true; SavedSessionText = SessionText();
+        SavePage = std::max(0, Saves.IndexOfByKey(SavePath)) / 8;
         Status = Session.active ? FString::Printf(TEXT("Campaign saved mid-battle during turn %d."), State.turn)
             : FString::Printf(TEXT("Campaign saved at turn %d, including orders not yet carried out."), State.turn);
         UE_LOG(LogTemp, Display, TEXT("BOTF_SAVED %s HASH %llu"), *SavePath, static_cast<unsigned long long>(botf::fingerprint(State)));
     }
     void Load() {
-        auto Snapshot = ReadSnapshot(SavePath);
-        ReplaceState(std::move(Snapshot.State));
-        Session = Snapshot.Session ? std::move(*Snapshot.Session) : botf::session::TurnSession();
-        bHasActiveCampaign = true; SavedFingerprint = botf::fingerprint(State); bHasSavedBaseline = true; SavedSessionText = SessionText();
+        Campaign.LoadSnapshot(SavePath);   // replaces the campaign (selection reset via the Replaced notification)
         bEncounterChoice = false; TacLog.Empty();   // tactical selection is re-validated by OpenEncounter
         SetupRuleset = State.ruleset == botf::Ruleset::Reference ? 1 : 0;
         SetupPlayer = State.playerEmpire;
@@ -4579,13 +4685,12 @@ private:
         BattleRoundIndex = CurrentBattle() ? std::max(0, static_cast<int>(CurrentBattle()->rounds.size()) - 1) : 0;
         bAllocationDirty = false; AllocationLocked.fill(false); bMenuOpen = bSummaryOpen = bEndTurnCheck = false; MapView.bPlotting = false;
         ActivePanel = PanelGalaxy;
-        ++StateVersion;
         if (Session.pending) {
             OpenEncounter(false);
             TacLog = FString::Printf(TEXT("Battle resumed at round %d."), Session.pending->currentRound);
             Status = FString::Printf(TEXT("Campaign loaded mid-battle: turn %d, round %d."), State.turn, Session.pending->currentRound);
         } else {
-            if (Scene) Scene->SetPresentationActive(false);
+            if (Scene.IsValid()) Scene->SetPresentationActive(false);
             Status = FString::Printf(TEXT("Campaign loaded: turn %d, %d orders waiting."), State.turn, static_cast<int>(State.pending.size()));
         }
         UE_LOG(LogTemp, Display, TEXT("BOTF_LOADED turn=%d HASH %llu"), State.turn, static_cast<unsigned long long>(botf::fingerprint(State)));
@@ -4641,8 +4746,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FBotfUiShellAutomationTest, "BOTF.UI.Shell",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 bool FBotfUiShellAutomationTest::RunTest(const FString& Parameters) {
+    const FString TestFolder = FPaths::ProjectDir() / TEXT("Build/UiAutomationSnapshots") / FGuid::NewGuid().ToString();
     try {
-        const FString TestFolder = FPaths::ProjectDir() / TEXT("Build/UiAutomationSnapshots") / FGuid::NewGuid().ToString();
         const TSharedRef<SBotfInterface> Ui = SNew(SBotfInterface, static_cast<ABotfCombatScene*>(nullptr))
             .TestSnapshotFolder(TestFolder);
         TestTrue(TEXT("Launch opens the title screen without an active campaign"),
@@ -4836,6 +4941,17 @@ bool FBotfUiShellAutomationTest::RunTest(const FString& Parameters) {
             TestTrue(TEXT("Diplomacy Events shows resolved player history"), HistoryText.Contains(TEXT("Visible treaty accepted")));
             TestFalse(TEXT("Diplomacy Events excludes foreign-only history"), HistoryText.Contains(TEXT("Foreign private treaty")));
 
+            // Calls to arms: listed until the player answers; REFUSE lets the call lapse and hides it.
+            botf::diplomacy::DefenseCall Call;
+            Call.ally = Ui->State.playerEmpire; Call.defender = Fx.EnemyOwner; Call.aggressor = 3;
+            Call.issuedTurn = Ui->State.turn; Call.dueTurn = Ui->State.turn + 3;
+            Ui->State.diplomacyEngineState.defenseCalls.push_back(Call);
+            ++Ui->StateVersion;
+            TestTrue(TEXT("An ally's call to arms reaches the player's alerts"),
+                Ui->OpenCallsToArms().size() == 1 && FString::Join(Ui->Alerts(), TEXT(" ")).Contains(TEXT("calls on you")));
+            Ui->RefusedCalls.insert(std::make_tuple(Call.ally, Call.defender, Call.aggressor, Call.issuedTurn));
+            TestTrue(TEXT("Refusing a call to arms hides it"), Ui->OpenCallsToArms().empty());
+
             Install(Fx);
             Ui->Save();
             const FString IntelBaselinePath = Ui->SavePath;
@@ -4877,6 +4993,8 @@ bool FBotfUiShellAutomationTest::RunTest(const FString& Parameters) {
             TestTrue(TEXT("An unstaffed spare farm can be scrapped"), Ui->ColonyChecks().Scrap[0].IsEmpty());
             Ui->ScrapStructure(botf::Building::Farm);
             TestTrue(TEXT("Scrap submits a real ScrapStructure order"), Ui->State.pending.back().type == botf::CommandType::ScrapStructure);
+            TestTrue(TEXT("Fusion plants are their own structure with core's own scrap check"),
+                SBotfInterface::ScrapKinds[4] == botf::Building::FusionPlant && (Ui->DraftColony()->fusionPlants > 0 || !Ui->ColonyChecks().Scrap[4].IsEmpty()));
 
             {   // Drafted moves are replaced, not stacked, and HOLD withdraws a drafted course.
                 Ui->SelectedFleet = Fx.OwnIds[0]; Ui->SelectedTaskForce = 0;
@@ -5352,6 +5470,17 @@ bool FBotfUiShellAutomationTest::RunTest(const FString& Parameters) {
                     Ui->OnKeyDown(FGeometry(), FKeyEvent(EKeys::BackSpace, FModifierKeysState(), 0, false, 0, 0));
                     TestEqual(TEXT("Second Backspace returns to PanelGalaxy"), Ui->ActivePanel, (int)PanelGalaxy);
 
+                    // Shortcuts run on the tunnelling pass in the command deck (a focused button cannot swallow them)
+                    // and never outside it, where ordinary focus navigation applies.
+                    Ui->OnPreviewKeyDown(FGeometry(), FKeyEvent(EKeys::F6, FModifierKeysState(), 0, false, 0, 0));
+                    TestEqual(TEXT("F6 on the preview pass opens the Empire screen"), Ui->ActivePanel, (int)PanelEmpire);
+                    Ui->OnKeyDown(FGeometry(), FKeyEvent(EKeys::Escape, FModifierKeysState(), 0, false, 0, 0));
+                    TestEqual(TEXT("Escape returns to the chart"), Ui->ActivePanel, (int)PanelGalaxy);
+                    Ui->ShowView(SBotfInterface::EUiView::Menu);
+                    TestFalse(TEXT("Menus leave keys to focus navigation on the preview pass"),
+                        Ui->OnPreviewKeyDown(FGeometry(), FKeyEvent(EKeys::F2, FModifierKeysState(), 0, false, 0, 0)).IsEventHandled());
+                    Ui->ShowView(SBotfInterface::EUiView::Game);
+
                     // Drive Slate keyboard route: F3 to Research then Escape back to Galaxy
                     Ui->OnKeyDown(FGeometry(), FKeyEvent(EKeys::F3, FModifierKeysState(), 0, false, 0, 0));
                     TestEqual(TEXT("F3 Slate key navigates to Research screen"), Ui->ActivePanel, (int)PanelResearch);
@@ -5381,10 +5510,12 @@ bool FBotfUiShellAutomationTest::RunTest(const FString& Parameters) {
                 }
             }
         }
-        // Snapshots written by this test stay in its own GUID folder under Build/UiAutomationSnapshots; nothing is deleted.
     } catch (const std::exception& Error) {
         AddError(FString(TEXT("Shell test threw: ")) + Str(Error.what()));
     }
+    // Snapshots written by this run live only in its own GUID folder; remove it (and the parent once empty).
+    IFileManager::Get().DeleteDirectory(*TestFolder, false, true);
+    IFileManager::Get().DeleteDirectory(*(FPaths::ProjectDir() / TEXT("Build/UiAutomationSnapshots")), false, false);
     return !HasAnyErrors();
 }
 #endif

@@ -35,8 +35,13 @@ public:
         const double Angle = Count > 1 ? 2 * UE_DOUBLE_PI * Index / Count : 0;
         return Centre(E, S.position, Size) + FVector2D(std::cos(Angle), std::sin(Angle)) * Spread;
     }
+    // Paint must never let an exception unwind through Slate.
     virtual int32 OnPaint(const FPaintArgs&, const FGeometry& Geometry, const FSlateRect&,
                          FSlateWindowElementList& Elements, int32 Layer, const FWidgetStyle&, bool) const override {
+        try { return PaintRadar(Geometry, Elements, Layer); }
+        catch (...) { return Layer; }
+    }
+    int32 PaintRadar(const FGeometry& Geometry, FSlateWindowElementList& Elements, int32 Layer) const {
         if (!Encounter || !Encounter->has_value()) return Layer;
         const auto& E = **Encounter;
         const FPalette& Pal = Palette(*Player);
@@ -75,7 +80,14 @@ public:
             }
             if (S.fleetId == *SelectedShip) Box(4, P - FVector2D(R + 4, R + 4), FVector2D(2 * R + 8, 2 * R + 8), Pal.Accent);
             else if (S.fleetId == *TargetShip) Box(4, P - FVector2D(R + 4, R + 4), FVector2D(2 * R + 8, 2 * R + 8), Pal.Alert);
-            Box(5, P - FVector2D(R, R), FVector2D(2 * R, 2 * R), S.retreated ? Shade(Base, 0.35f, 0.7f) : Base);
+            // Cloaked ships are drawn translucent; a disengaging ship (rules 2) carries an outline in its own colour.
+            const FLinearColor Fill = S.retreated ? Shade(Base, 0.35f, 0.7f) : S.isCloaked ? Shade(Base, 1.f, 0.4f) : Base;
+            if (!S.retreated && E.remasterRules() && S.disengaging()) {
+                const double O = R + 2;
+                TArray<FVector2D> Ring = { P + FVector2D(-O, -O), P + FVector2D(O, -O), P + FVector2D(O, O), P + FVector2D(-O, O), P + FVector2D(-O, -O) };
+                FSlateDrawElement::MakeLines(Elements, Layer + 5, Geometry.ToPaintGeometry(), Ring, ESlateDrawEffect::None, Pal.Tertiary, true, 1.5f);
+            }
+            Box(5, P - FVector2D(R, R), FVector2D(2 * R, 2 * R), Fill);
             // Hull bar under the marker.
             const double Frac = S.maxHull > 0 ? static_cast<double>(S.hull) / S.maxHull : 0;
             Box(5, P + FVector2D(-R, R + 2), FVector2D(2 * R, 3), Shade(Pal.Alert, 0.4f));
