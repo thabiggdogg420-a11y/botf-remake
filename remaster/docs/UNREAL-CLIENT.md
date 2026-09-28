@@ -250,6 +250,12 @@ Still unproven, in rough order of likelihood. Each is a single-line fix if it fa
 | `BotfAudioSubsystem.cpp` | `UGameplayStatics::CreateSound2D(World, Sound, Volume, Pitch, StartTime, nullptr, bPersist, bAutoDestroy)` argument order, `UAudioComponent::AdjustVolume`, `FadeOut`, `Collection.InitializeDependency(UClass*)`. |
 | `BotfSettingsPanel.cpp` | `SSlider` `Value_Lambda` / `OnMouseCaptureEnd_Lambda` / `OnControllerCaptureEnd_Lambda` argument names. |
 | `BotfAssetRegistry.cpp` | `FSoftObjectPath(FString).TryLoad()` on `/Game/Local/...` paths that exist only on a PC that ran Import-Assets.ps1; a missing asset logs a warning and falls back. |
+| `BOTFRemake.Build.cs`, `.uproject` | New `Niagara` module dependency and plugin entry (rules 3 battle VFX). Niagara ships enabled with the engine; if the plugin entry is rejected, drop it but keep the module. |
+| `BotfCombatScene.cpp` | `UNiagaraFunctionLibrary::SpawnSystemAttached(System, Root, NAME_None, Location, Rotation, EAttachLocation::KeepRelativeOffset, false)` argument order, and `UNiagaraComponent::SetVariableLinearColor` / `SetVariableVec3` / `SetVariableFloat` taking `FName`. Older overloads took `FString`. |
+| `BotfCombatScene.h` | New `TMap<FString, TObjectPtr<UNiagaraSystem>>` / `TMap<int32, TObjectPtr<UNiagaraComponent>>` UPROPERTYs on forward-declared classes, a `TSharedPtr` to the engine-independent `RoundTimeline` (forward-declared), and a non-reflected `std::vector<std::vector<std::string>>` member. The header now includes `<string>` / `<vector>`. If UHT rejects the std member, move it into the `TSharedPtr` state. |
+| `BotfCombatScene.cpp` | `UStaticMeshComponent::GetSocketTransform(Name, RTS_Component)` and `GetAllSocketNames()` for `WPN_*` sockets; `FRotationMatrix::MakeFromXZ`; `FQuat(FVector Axis, double Angle)`; `UE_PI` (older engines only have `PI`); `FRandomStream::GetUnitVector`. |
+| `BotfCombatScene.cpp` | `ConfigureBattle` now takes a `uint64` station mask (up to 24 ships per side). Any other caller passing `uint32` still converts implicitly. |
+| `BotfAudioCues.h` | New `GameCue::CombatBark` at the end of the enum. A `switch` over `GameCue` elsewhere without a `default` would warn (C4062 is off by default). |
 
 ## Local assets and audio
 
@@ -267,6 +273,33 @@ Still unproven, in rough order of likelihood. Each is a single-line fix if it fa
   briefing, tactical round and diplomacy mapping). Hooks: `FinishTurn`, `OpenEncounter`, `TacOrder`, `TacNextRound`,
   `TacAuto`, `Submit` (war, peace and trade proposals). Volumes (master, effects, voice, interface, music) are sliders
   in Settings, stored in `GameUserSettings.ini` `[BotfAudio]`.
+- **Rules 3 battle playback.** When the shown round has `CombatRound::events` / `RoundResult::events` (tactical rules
+  3), `ABotfCombatScene` builds a schedule with the engine-independent `BotfCombatTimeline.h` and plays that instead
+  of the rules 1/2 salvo animation, which is unchanged for battles without events.
+  - **Timing.** The 12 ticks map onto `SetTimelineRoundSeconds` (default 6 s).
+  - **Ships.** Each ship flies an eased Hermite path from its ManeuverStart pose to its ManeuverEnd pose over ticks
+    0 to 4. Facing takes the shortest arc. Ships bank into turns and sideways slides, and every curve starts and ends
+    at rest, so nothing snaps.
+  - **Visibility.** Cloak and decloak fade the ship. A destroyed ship tumbles and shrinks inside its explosion. A
+    retreating ship stretches and warps out along its bow.
+  - **Weapons.** Beams run from a `WPN_Beam_NN` socket (bounds-based hardpoint when the mesh has none) to the target
+    for one tick. Pulses fire N staggered bolts. Torpedoes fly an arc from `WPN_Torp_NN`: a hit ends at the target, a
+    miss flies past it, and an intercepted volley stops at a point-defence burst.
+  - **Impacts and other effects.** A shield impact is a flattened bubble on the shell where the shot struck. A hull
+    impact is sparks, a scorch and a light flash. Explosions are a light flash plus debris.
+  - **Fallbacks and Niagara.** Every effect has a Niagara-free fallback: pooled cylinders, emissive spheres, the
+    shield material and point lights. An optional Niagara system under `vfx.<WeaponType>`, `vfx.generic.*`,
+    `vfx.impact.*`, `vfx.intercept`, `vfx.explosion`, `vfx.cloak`, `vfx.decloak` or `vfx.warp.out` (manifest
+    entries with fallback null) replaces the fallback. The system receives `User.Color`, `User.BeamStart`,
+    `User.BeamEnd` and `User.Progress`.
+  - **Audio.** Weapon fire (`weapon.<Type>[.fac]`), impacts per impact type, explosions, cloak and warp sounds play
+    at the moment of their visual job. Voice barks `vo.combat.shields.<N>.<fac>`, `vo.combat.torpedo.<fac>` and
+    `vo.combat.kill.<fac>` (`GameCue::CombatBark`) go through the `CueScheduler` voice queue and cooldown.
+    `OnRoundResolved` no longer plays its summary cues for such rounds.
+  - **Camera.** Camera mode 5, `CINEMATIC`, follows the action via `CinematicDirector`: shots are held for at least
+    1.4 s and cut to explosions. The free orbit and zoom still apply on top.
+  - **Ship cap.** The cap is 24 ships per side (was 8).
+  - **Resuming.** Re-showing the same round resumes playback without replaying sounds.
 - **Object Database.** The ship list shows the legacy catalogue and the 98 expanded roster classes
   (`BotfShipDatabase.h`, via the core's `findShip` / `findRosterClass`).
 - `game/Tools/client-logic-tests.cpp` checks all of the above without Unreal; `check-unreal-tu.sh` builds and runs it.

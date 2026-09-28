@@ -4,5 +4,5 @@
   "Category": "Games",
   "Description": "Birth of the Federation modern remake - early playable foundation",
   "Modules": [{ "Name": "BOTFRemake", "Type": "Runtime", "LoadingPhase": "Default" }],
-  "Plugins": [{ "Name": "PythonScriptPlugin", "Enabled": true }, { "Name": "EditorScriptingUtilities", "Enabled": true }]
+  "Plugins": [{ "Name": "PythonScriptPlugin", "Enabled": true }, { "Name": "EditorScriptingUtilities", "Enabled": true }, { "Name": "Niagara", "Enabled": true }]
 }

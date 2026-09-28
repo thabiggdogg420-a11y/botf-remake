@@ -2,6 +2,11 @@
 #include "Simulation.h"
 #include "TacticalCombat.h"
 #include "BotfAssetRegistry.h"
+#include "BotfAudioSubsystem.h"
+#include "BotfCombatTimeline.h"
+#include "NiagaraComponent.h"
+#include "NiagaraFunctionLibrary.h"
+#include "NiagaraSystem.h"
 #include "Components/SceneCaptureComponent2D.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/PointLightComponent.h"
@@ -83,6 +88,7 @@ FString ABotfCombatScene::GetCameraModeName() const
     case Cam_FocusShip: return TEXT("FOCUS SHIP");
     case Cam_FocusTarget: return TEXT("FOCUS TARGET");
     case Cam_Overhead: return TEXT("TOP-DOWN");
+    case Cam_Cinematic: return TEXT("CINEMATIC");
     default: return TEXT("TACTICAL");
     }
 }
@@ -164,7 +170,7 @@ void ABotfCombatScene::SetupEffectPools()
     }
 }
 
-void ABotfCombatScene::ConfigureBattle(int AttackerFaction, int DefenderFaction, int AttackerCount, int DefenderCount, uint32 Seed, uint32 StationSlots)
+void ABotfCombatScene::ConfigureBattle(int AttackerFaction, int DefenderFaction, int AttackerCount, int DefenderCount, uint32 Seed, uint64 StationSlots)
 {
     if (!BattleTexture)
     {
@@ -219,6 +225,19 @@ void ABotfCombatScene::ConfigureBattle(int AttackerFaction, int DefenderFaction,
         Torp->DestroyComponent();
     }
 
+    ClearTimelineFx();
+    for (const auto* Pool : {&FxBeams, &FxOrbs, &FxBubbles, &FxDebris})
+        for (const auto& Fx : *Pool) if (Fx)
+        {
+            Capture->RemoveShowOnlyComponent(Fx);
+            Fx->DestroyComponent();
+        }
+    for (const auto& Light : FxLights) if (Light) Light->DestroyComponent();
+    FxBeams.Reset(); FxBeamMats.Reset(); FxOrbs.Reset(); FxOrbMats.Reset(); FxBubbles.Reset(); FxBubbleMats.Reset();
+    FxDebris.Reset(); FxLights.Reset();
+    bTimelinePlaying = false;
+    TrackSlot.Reset(); SlotSockets.Reset(); SlotSocketNames.clear();
+
     Ships.Reset(); Positions.Reset(); ShipOwners.Reset();
     ShieldShells.Reset(); ShieldMaterials.Reset();
     BeamMeshes.Reset(); BeamMaterials.Reset();
@@ -226,12 +245,16 @@ void ABotfCombatScene::ConfigureBattle(int AttackerFaction, int DefenderFaction,
     Kinematics.Reset(); Salvos.Reset();
 
     SetupEffectPools();
+    SetupTimelinePools();
 
     auto* ShieldMesh = LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Sphere.Sphere"));
     auto* ShieldMaterial = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/Presentation/M_ShieldShell.M_ShieldShell"));
     static const TCHAR* Names[] = {TEXT("Federation"), TEXT("Klingon"), TEXT("Romulan"), TEXT("Cardassian"), TEXT("Ferengi")};
     // Stations (schema 13) are immobile units recorded like ships: they get a flat placeholder disc, never a ship mesh.
-    const auto IsStationSlot = [StationSlots](int Side, int Index) { return Index < 8 && (StationSlots & (1u << (Side * 8 + Index))) != 0; };
+    const auto IsStationSlot = [StationSlots](int Side, int Index)
+    {
+        return Index < MaxShipsPerSide && (StationSlots & (uint64(1) << (Side * MaxShipsPerSide + Index))) != 0;
+    };
     UStaticMesh* StationMesh = nullptr;
     if (StationSlots)
     {
@@ -242,7 +265,7 @@ void ABotfCombatScene::ConfigureBattle(int AttackerFaction, int DefenderFaction,
     for (int Side = 0; Side < 2; ++Side)
     {
         const int Faction = FMath::Clamp(Side == 0 ? AttackerFaction : DefenderFaction, 1, 5);
-        const int Count = FMath::Clamp(Side == 0 ? AttackerCount : DefenderCount, 0, 8);
+        const int Count = FMath::Clamp(Side == 0 ? AttackerCount : DefenderCount, 0, MaxShipsPerSide);
         bool bNeedsShipMesh = false;
         for (int Index = 0; Index < Count; ++Index) bNeedsShipMesh = bNeedsShipMesh || !IsStationSlot(Side, Index);
         UStaticMesh* Mesh = nullptr;
@@ -262,7 +285,10 @@ void ABotfCombatScene::ConfigureBattle(int AttackerFaction, int DefenderFaction,
         if (!Mesh) Mesh = LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Sphere.Sphere"));
         if (!Mesh) continue;
 
-        const int Rows = (Count + 1) / 2;
+        // Two columns up to 8 ships (the original layout); larger sides add columns and tighten the rows.
+        const int Columns = Count <= 8 ? 2 : (Count + 3) / 4;
+        const int Rows = (Count + Columns - 1) / Columns;
+        const float RowSpacing = Rows <= 4 ? 230.f : 920.f / (Rows - 1);
         for (int Index = 0; Index < Count; ++Index)
         {
             const bool bStation = IsStationSlot(Side, Index) && StationMesh != nullptr;
@@ -275,15 +301,16 @@ void ABotfCombatScene::ConfigureBattle(int AttackerFaction, int DefenderFaction,
             const float Radius = FMath::Max(1.f, SlotMesh->GetBounds().SphereRadius);
             const FVector BaseScale = bStation ? FVector(170.f / Radius, 170.f / Radius, 40.f / Radius) : FVector(80.f / Radius);
             Ship->SetRelativeScale3D(BaseScale);
-            const int Row = Index / 2;
-            const int Column = Index % 2;
+            const int Row = Index / Columns;
+            const int Column = Index % Columns;
             const FVector Position((Side == 0 ? -1.f : 1.f) * (Count == 1 ? 445.f : 335.f + Column * 235.f),
-                (Row - (Rows - 1) * 0.5f) * 60.f, (Row - (Rows - 1) * 0.5f) * 230.f + Random.FRandRange(-10.f, 10.f));
+                (Row - (Rows - 1) * 0.5f) * 60.f, (Row - (Rows - 1) * 0.5f) * RowSpacing + Random.FRandRange(-10.f, 10.f));
             const FRotator Rotation(0, Side == 0 ? 0.f : 180.f, 0);
 
             Ship->SetRelativeLocation(Position);
             Ship->SetRelativeRotation(Rotation);
             Ships.Add(Ship); Positions.Add(Position); ShipOwners.Add(Faction);
+            CacheSlotSockets(Ships.Num() - 1);
             Capture->ShowOnlyComponent(Ship);
 
             FShipKinematicState Kin;
@@ -348,6 +375,7 @@ void ABotfCombatScene::ApplyShipMesh(int VisualIndex, int ReferenceShipId, int O
     const FVector BaseScale(static_cast<float>(botf::assets::uniformScaleFor(LengthMeters, Mesh->GetBounds().SphereRadius)));
     Ship->SetRelativeScale3D(BaseScale);
     if (Kinematics.IsValidIndex(VisualIndex)) Kinematics[VisualIndex].BaseScale = BaseScale;
+    CacheSlotSockets(VisualIndex);
     if (!Key.IsEmpty()) UE_LOG(LogTemp, Verbose, TEXT("BOTF battle: ship %d uses %s"), ReferenceShipId, *Key);
 }
 
@@ -360,12 +388,14 @@ void ABotfCombatScene::SetPresentationActive(bool bActive)
 void ABotfCombatScene::ConfigureEncounter(const botf::tactical::Encounter& Encounter)
 {
     const auto Report = botf::tactical::toCombatReport(Encounter);
+    bSuppressReportTimeline = true; // The live encounter below starts the rules 3 timeline with its own poses.
     ConfigureBattleReport(Report, -1);
+    bSuppressReportTimeline = false;
 
     TArray<int> OrderedIds;
-    for (std::size_t Index = 0; Index < std::min<std::size_t>(8, Report.firstFleetIds.size()); ++Index)
+    for (std::size_t Index = 0; Index < std::min<std::size_t>(MaxShipsPerSide, Report.firstFleetIds.size()); ++Index)
         OrderedIds.Add(Report.firstFleetIds[Index]);
-    for (std::size_t Index = 0; Index < std::min<std::size_t>(8, Report.secondFleetIds.size()); ++Index)
+    for (std::size_t Index = 0; Index < std::min<std::size_t>(MaxShipsPerSide, Report.secondFleetIds.size()); ++Index)
         OrderedIds.Add(Report.secondFleetIds[Index]);
 
     const bool bHasRound = !Encounter.rounds.empty();
@@ -439,6 +469,44 @@ void ABotfCombatScene::ConfigureEncounter(const botf::tactical::Encounter& Encou
         }
     }
 
+    // Tactical rules 3: the round's event stream drives the scene (flight tracks, weapons, impacts, audio).
+    if (LastRound && !LastRound->events.empty())
+    {
+        PlaneCenterX = (Encounter.arenaWidth - 1) * 0.5f;
+        PlaneCenterY = (Encounter.arenaHeight - 1) * 0.5f;
+        std::vector<botf::combatfx::ShipInfo> Infos;
+        for (int Index = 0; Index < Ships.Num() && Index < OrderedIds.Num(); ++Index)
+        {
+            const auto* Ship = Encounter.getShip(OrderedIds[Index]);
+            if (!Ship || !Kinematics.IsValidIndex(Index)) continue;
+            const auto* Status = LastRound->getStatus(Ship->fleetId);
+            bool bRetreatedNow = false;
+            for (int Id : LastRound->retreatedFleetIds) bRetreatedNow = bRetreatedNow || Id == Ship->fleetId;
+            auto& K = Kinematics[Index];
+            K.bAliveAtRoundStart = (K.bAlive && !K.bRetreated) || (Status && Status->destroyedThisRound) || bRetreatedNow;
+            K.ShieldsAtRoundStart = Status ? Status->shieldBefore : Ship->shields;
+            K.bCloakedAtRoundStart = Ship->isCloaked || (Status && Status->decloakedThisRound);
+            if (!K.bAliveAtRoundStart) continue;
+            botf::combatfx::ShipInfo Info;
+            Info.fleetId = Ship->fleetId;
+            Info.ownerId = Ship->ownerId;
+            Info.shields = K.ShieldsAtRoundStart;
+            Info.maxShields = FMath::Max(1, K.InitialShields);
+            Info.startsCloaked = K.bCloakedAtRoundStart;
+            Info.x = Status ? Status->positionBefore.x : Ship->position.x;
+            Info.y = Status ? Status->positionBefore.y : Ship->position.y;
+            Info.facing = Ship->facing;
+            Infos.push_back(Info);
+        }
+        const FString Signature = FString::Printf(TEXT("E%d:%d:%d:%d"), static_cast<int>(Encounter.rounds.size()),
+            static_cast<int>(LastRound->events.size()), OrderedIds.Num() > 0 ? OrderedIds[0] : 0, LastRound->roundIndex);
+        Salvos.Reset();
+        bIsRoundAnimating = false;
+        StartTimeline(LastRound->events, Infos, Signature);
+        Capture->CaptureScene();
+        return;
+    }
+
     // Populate weapon salvos for 3D trajectory visualization
     Salvos.Reset();
     if (LastRound)
@@ -477,15 +545,15 @@ void ABotfCombatScene::ConfigureEncounter(const botf::tactical::Encounter& Encou
 void ABotfCombatScene::ConfigureBattleReport(const botf::CombatReport& Report, int RoundIndex)
 {
     // Station participants (fleet ids >= botf::StationCombatantBase) take the same visual slots as below.
-    uint32 StationSlots = 0;
+    uint64 StationSlots = 0;
     for (int Side = 0; Side < 2; ++Side)
     {
         const int FactionId = Side == 0 ? Report.firstOwner : Report.secondOwner;
         int SideCount = 0;
         for (const auto& Participant : Report.participants)
         {
-            if (Participant.ownerId != FactionId || SideCount >= 8) continue;
-            if (botf::isStationCombatant(Participant.fleetId)) StationSlots |= 1u << (Side * 8 + SideCount);
+            if (Participant.ownerId != FactionId || SideCount >= MaxShipsPerSide) continue;
+            if (botf::isStationCombatant(Participant.fleetId)) StationSlots |= uint64(1) << (Side * MaxShipsPerSide + SideCount);
             ++SideCount;
         }
     }
@@ -507,7 +575,11 @@ void ABotfCombatScene::ConfigureBattleReport(const botf::CombatReport& Report, i
         for (int FleetId : Report.secondFleetIds) AddLegacy(FleetId, Report.secondOwner);
     }
     const auto& Participants = Report.participants.empty() ? LegacyParticipants : Report.participants;
-    const int FirstSlots = FMath::Clamp(static_cast<int>(Report.firstFleetIds.size()), 0, 8);
+    const int FirstSlots = FMath::Clamp(static_cast<int>(Report.firstFleetIds.size()), 0, MaxShipsPerSide);
+    const int ShownRound = RoundIndex < 0 ? static_cast<int>(Report.rounds.size()) - 1 :
+        FMath::Min(RoundIndex, static_cast<int>(Report.rounds.size()) - 1);
+    const bool bTimeline = !bSuppressReportTimeline && ShownRound >= 0 && !Report.rounds[ShownRound].events.empty();
+    std::vector<botf::combatfx::ShipInfo> Infos;
 
     for (int Side = 0; Side < 2; ++Side)
     {
@@ -515,7 +587,7 @@ void ABotfCombatScene::ConfigureBattleReport(const botf::CombatReport& Report, i
         int SideCount = 0;
         for (const auto& Participant : Participants)
         {
-            if (Participant.ownerId != FactionId || SideCount >= 8) continue;
+            if (Participant.ownerId != FactionId || SideCount >= MaxShipsPerSide) continue;
             const int VisualIndex = (Side == 0 ? 0 : FirstSlots) + SideCount++;
             if (!Ships.IsValidIndex(VisualIndex) || !ShieldShells.IsValidIndex(VisualIndex) ||
                 !ShieldMaterials.IsValidIndex(VisualIndex) || !ShipOwners.IsValidIndex(VisualIndex) ||
@@ -530,11 +602,15 @@ void ABotfCombatScene::ConfigureBattleReport(const botf::CombatReport& Report, i
             int Hull = Participant.initialHull;
             int Shields = Participant.initialShields;
             bool Retreated = false;
+            // State before the shown round (rules 3 playback starts there).
+            int HullBefore = Hull, ShieldsBefore = Shields;
+            bool RetreatedBefore = false;
             const int LastRound = RoundIndex < 0 ? static_cast<int>(Report.rounds.size()) - 1 :
                 FMath::Min(RoundIndex, static_cast<int>(Report.rounds.size()) - 1);
 
             for (int Round = 0; Round <= LastRound; ++Round)
             {
+                if (Round == LastRound) { HullBefore = Hull; ShieldsBefore = Shields; RetreatedBefore = Retreated; }
                 for (const auto& Damage : Report.rounds[Round].damage)
                     if (Damage.fleetId == Participant.fleetId)
                     {
@@ -568,6 +644,24 @@ void ABotfCombatScene::ConfigureBattleReport(const botf::CombatReport& Report, i
                 Kinematics[VisualIndex].InitialShields = FMath::Max(0, Participant.initialShields);
                 Kinematics[VisualIndex].bAlive = Hull > 0;
                 Kinematics[VisualIndex].bRetreated = Retreated;
+                Kinematics[VisualIndex].bAliveAtRoundStart = HullBefore > 0 && !RetreatedBefore;
+                Kinematics[VisualIndex].ShieldsAtRoundStart = ShieldsBefore;
+                if (bTimeline && HullBefore > 0 && !RetreatedBefore)
+                {
+                    // A record has no arena or positions outside the events; the formation slot is the fallback pose.
+                    botf::combatfx::ShipInfo Info;
+                    Info.fleetId = Participant.fleetId;
+                    Info.ownerId = FactionId;
+                    Info.shields = ShieldsBefore;
+                    Info.maxShields = FMath::Max(1, Participant.initialShields);
+                    Info.facing = Side == 0 ? 0 : 180;
+                    Info.x = Kinematics[VisualIndex].StartPosition.X / CellUnits;
+                    Info.y = Kinematics[VisualIndex].StartPosition.Z / CellUnits;
+                    for (const auto& Event : Report.rounds[ShownRound].events)
+                        if (Event.kind == botf::CombatEventKind::Decloak && Event.fleetId == Participant.fleetId) Info.startsCloaked = true;
+                    Kinematics[VisualIndex].bCloakedAtRoundStart = Info.startsCloaked;
+                    Infos.push_back(Info);
+                }
             }
 
             Ship->SetVisibility(Hull > 0 && !Retreated);
@@ -579,6 +673,26 @@ void ABotfCombatScene::ConfigureBattleReport(const botf::CombatReport& Report, i
                 ShieldMaterials[VisualIndex]->SetScalarParameterValue(TEXT("Strength"), Fraction * 0.45f);
             }
         }
+    }
+    if (bTimeline)
+    {
+        // Centre the plane on the poses the round mentions; the fallback formation poses (scene units / 85 around 0)
+        // are shifted into the same frame.
+        const auto& Events = Report.rounds[ShownRound].events;
+        int MinX = 0, MaxX = 0, MinY = 0, MaxY = 0;
+        bool bAny = false;
+        for (const auto& Event : Events)
+            if (botf::combatfx::eventHasPose(Event.kind) && Event.fleetId != 0)
+            {
+                MinX = bAny ? FMath::Min(MinX, Event.x) : Event.x; MaxX = bAny ? FMath::Max(MaxX, Event.x) : Event.x;
+                MinY = bAny ? FMath::Min(MinY, Event.y) : Event.y; MaxY = bAny ? FMath::Max(MaxY, Event.y) : Event.y;
+                bAny = true;
+            }
+        PlaneCenterX = bAny ? (MinX + MaxX) * 0.5f : 0.f;
+        PlaneCenterY = bAny ? (MinY + MaxY) * 0.5f : 0.f;
+        for (auto& Info : Infos) { Info.x += PlaneCenterX; Info.y += PlaneCenterY; }
+        StartTimeline(Events, Infos, FString::Printf(TEXT("R%d:%d:%d:%d:%d"), Report.turn, Report.x, Report.y, ShownRound,
+            static_cast<int>(Events.size())));
     }
     if (!Capture->bCaptureEveryFrame) Capture->CaptureScene();
 }
@@ -814,6 +928,41 @@ void ABotfCombatScene::AnimateCamera(float DeltaSeconds)
         }
         break;
 
+    case Cam_Cinematic:
+        {
+            bool bShot = false;
+            if (bTimelinePlaying && Timeline && Director)
+            {
+                Director->update(*Timeline, TimelineTime, FocusedFriendlyId);
+                const int32 Subject = SlotForFleet(Director->shot.subjectFleetId);
+                const int32 Other = SlotForFleet(Director->shot.otherFleetId);
+                if (Kinematics.IsValidIndex(Subject))
+                {
+                    const FVector SubjectPos = Kinematics[Subject].CurrentPosition;
+                    const FVector OtherPos = Kinematics.IsValidIndex(Other) ? Kinematics[Other].CurrentPosition : SubjectPos + FVector(400.f, 0.f, 0.f);
+                    FVector Line = OtherPos - SubjectPos;
+                    if (Line.SizeSquared() < 1.f) Line = FVector(1.f, 0.f, 0.f);
+                    const FVector Dir = Line.GetSafeNormal();
+                    // Over the shoulder: behind the subject and out of the plane toward the viewer, looking at a point
+                    // two thirds of the way to the other ship.
+                    FocusPoint = SubjectPos + Line * 0.66f;
+                    const float Back = FMath::Clamp(static_cast<float>(Line.Size()) * 0.6f + 380.f, 450.f, 1400.f);
+                    DesiredLocation = SubjectPos - Dir * Back + FVector(0.f, -520.f, 180.f);
+                    DesiredRotation = (FocusPoint - DesiredLocation).Rotation();
+                    bShot = true;
+                }
+            }
+            if (!bShot)
+            {
+                // Between rounds: a slow establishing drift around the arena.
+                const float Angle = FMath::DegreesToRadians(Elapsed * 6.f);
+                FocusPoint = FVector::ZeroVector;
+                DesiredLocation = FVector(FMath::Sin(Angle) * 900.f, -1700.f, 900.f + FMath::Cos(Angle) * 250.f);
+                DesiredRotation = (FocusPoint - DesiredLocation).Rotation();
+            }
+        }
+        break;
+
     case Cam_Overhead:
         FocusPoint = FVector::ZeroVector;
         DesiredLocation = FVector(0.f, 0.f, 2300.f);
@@ -842,7 +991,7 @@ void ABotfCombatScene::AnimateCamera(float DeltaSeconds)
         DesiredRotation = Rotated;
     }
 
-    const float InterpSpeed = (CameraMode == Cam_Chase) ? 2.5f : 3.5f;
+    const float InterpSpeed = CameraMode == Cam_Chase ? 2.5f : CameraMode == Cam_Cinematic ? 1.8f : 3.5f;
     Capture->SetRelativeLocation(FMath::VInterpTo(Capture->GetRelativeLocation(), DesiredLocation, DeltaSeconds, InterpSpeed));
     Capture->SetRelativeRotation(FMath::RInterpTo(Capture->GetRelativeRotation(), DesiredRotation, DeltaSeconds, InterpSpeed));
 }
@@ -852,7 +1001,11 @@ void ABotfCombatScene::Tick(float DeltaSeconds)
     Super::Tick(DeltaSeconds);
     Elapsed += DeltaSeconds;
 
-    if (bIsRoundAnimating)
+    if (bTimelinePlaying)
+    {
+        TickTimeline(DeltaSeconds);
+    }
+    else if (bIsRoundAnimating)
     {
         RoundAnimElapsed += DeltaSeconds;
         const float NormTime = FMath::Clamp(RoundAnimElapsed / RoundDuration, 0.f, 1.f);
@@ -888,4 +1041,556 @@ void ABotfCombatScene::Tick(float DeltaSeconds)
     }
 
     AnimateCamera(DeltaSeconds);
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Tactical rules 3 playback: BotfCombatTimeline.h builds the schedule; this code only draws and plays it.
+// Every effect has a Niagara-free fallback (pooled cylinders, emissive spheres, the shield-shell material, point
+// lights and cube debris). A Niagara system installed under the job's vfx.* asset key replaces the fallback.
+// ---------------------------------------------------------------------------------------------------------------
+
+namespace
+{
+    constexpr int32 FxBeamPool = 48;
+    constexpr int32 FxOrbPool = 64;
+    constexpr int32 FxBubblePool = 16;
+    constexpr int32 FxDebrisPool = 40;
+    constexpr int32 FxLightPool = 8;
+    constexpr int32 DebrisPerExplosion = 8;
+    constexpr int32 SparksPerHullHit = 3;
+
+    FLinearColor ToLinear(const botf::combatfx::Rgb& Color, float Alpha = 1.f)
+    {
+        return FLinearColor(Color.r, Color.g, Color.b, Alpha);
+    }
+    FString Utf8ToFString(const std::string& Text) { return FString(UTF8_TO_TCHAR(Text.c_str())); }
+    // Rises and falls over a job (0 at both ends).
+    float Envelope(float U) { return FMath::Sin(UE_PI * FMath::Clamp(U, 0.f, 1.f)); }
+}
+
+void ABotfCombatScene::SetupTimelinePools()
+{
+    auto* CylinderMesh = LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Cylinder.Cylinder"));
+    auto* SphereMesh = LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Sphere.Sphere"));
+    auto* CubeMesh = LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Cube.Cube"));
+    auto* GlowMaterial = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/Presentation/M_SpaceGlow.M_SpaceGlow"));
+    auto* ShieldMaterial = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/Presentation/M_ShieldShell.M_ShieldShell"));
+    auto* LitMaterial = LoadObject<UMaterialInterface>(nullptr, TEXT("/Engine/EngineMaterials/DefaultMaterial.DefaultMaterial"));
+    if (!GlowMaterial) GlowMaterial = LitMaterial;
+    if (!ShieldMaterial) ShieldMaterial = GlowMaterial;
+
+    const auto Make = [this](UStaticMesh* Mesh, UMaterialInterface* Material, bool bDynamic,
+        TArray<TObjectPtr<UStaticMeshComponent>>& Pool, TArray<TObjectPtr<UMaterialInstanceDynamic>>* Mats, int32 Count)
+    {
+        if (!Mesh || !Material) return;
+        for (int32 Index = 0; Index < Count; ++Index)
+        {
+            auto* Component = NewObject<UStaticMeshComponent>(this);
+            Component->SetupAttachment(RootComponent);
+            Component->SetStaticMesh(Mesh);
+            Component->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+            Component->SetCastShadow(false);
+            Component->SetVisibility(false);
+            UMaterialInstanceDynamic* Instance = bDynamic ? UMaterialInstanceDynamic::Create(Material, this) : nullptr;
+            Component->SetMaterial(0, Instance ? static_cast<UMaterialInterface*>(Instance) : Material);
+            Component->RegisterComponent();
+            Capture->ShowOnlyComponent(Component);
+            Pool.Add(Component);
+            if (Mats) Mats->Add(Instance);
+        }
+    };
+    Make(CylinderMesh ? CylinderMesh : CubeMesh, GlowMaterial, true, FxBeams, &FxBeamMats, FxBeamPool);
+    Make(SphereMesh, GlowMaterial, true, FxOrbs, &FxOrbMats, FxOrbPool);
+    Make(SphereMesh, ShieldMaterial, true, FxBubbles, &FxBubbleMats, FxBubblePool);
+    Make(CubeMesh, LitMaterial, false, FxDebris, nullptr, FxDebrisPool);
+    for (int32 Index = 0; Index < FxLightPool; ++Index)
+    {
+        auto* Light = NewObject<UPointLightComponent>(this);
+        Light->SetupAttachment(RootComponent);
+        Light->SetIntensity(0.f);
+        Light->SetAttenuationRadius(1500.f);
+        Light->SetCastShadows(false);
+        Light->SetVisibility(false);
+        Light->RegisterComponent();
+        FxLights.Add(Light);
+    }
+}
+
+void ABotfCombatScene::ClearTimelineFx()
+{
+    for (auto& Pair : JobNiagara)
+        if (UNiagaraComponent* Component = Pair.Value)
+        {
+            Capture->RemoveShowOnlyComponent(Component);
+            Component->DestroyComponent();
+        }
+    JobNiagara.Reset();
+    NiagaraTried.Reset();
+    for (const auto* Pool : {&FxBeams, &FxOrbs, &FxBubbles, &FxDebris})
+        for (const auto& Fx : *Pool) if (Fx) Fx->SetVisibility(false);
+    for (const auto& Light : FxLights) if (Light) { Light->SetIntensity(0.f); Light->SetVisibility(false); }
+}
+
+void ABotfCombatScene::CacheSlotSockets(int32 VisualIndex)
+{
+    if (VisualIndex < 0) return;
+    while (SlotSockets.Num() <= VisualIndex) SlotSockets.AddDefaulted();
+    while (static_cast<int32>(SlotSocketNames.size()) <= VisualIndex) SlotSocketNames.emplace_back();
+    SlotSockets[VisualIndex].Reset();
+    SlotSocketNames[VisualIndex].clear();
+    if (!Ships.IsValidIndex(VisualIndex) || !Ships[VisualIndex]) return;
+    SlotSockets[VisualIndex] = Ships[VisualIndex]->GetAllSocketNames();
+    for (const FName& Name : SlotSockets[VisualIndex]) SlotSocketNames[VisualIndex].push_back(std::string(TCHAR_TO_UTF8(*Name.ToString())));
+}
+
+int32 ABotfCombatScene::SlotForFleet(int32 FleetId) const
+{
+    if (FleetId == 0) return -1;
+    for (int32 Index = 0; Index < Kinematics.Num(); ++Index) if (Kinematics[Index].FleetId == FleetId) return Index;
+    return -1;
+}
+
+FVector ABotfCombatScene::PlaneToScene(double X, double Y, int32 VisualIndex) const
+{
+    // Same frame as the rules 2 path: tactical x -> scene X, tactical y -> scene Z, a small per-slot depth offset.
+    const double Depth = ((VisualIndex % 3) - 1.0) * 45.0;
+    return FVector((X - PlaneCenterX) * CellUnits, Depth, (Y - PlaneCenterY) * CellUnits);
+}
+
+FQuat ABotfCombatScene::PoseRotation(double FacingDegrees, double BankDegrees) const
+{
+    // Facing 0 = +x, 90 = +y in the tactical plane (scene X/Z); ship tops face the default camera (-Y). Bank rolls
+    // about the bow.
+    const double Radians = FMath::DegreesToRadians(FacingDegrees);
+    const FVector Forward(FMath::Cos(Radians), 0.0, FMath::Sin(Radians));
+    const FQuat Base = FRotationMatrix::MakeFromXZ(Forward, FVector(0.0, -1.0, 0.0)).ToQuat();
+    return FQuat(Forward, FMath::DegreesToRadians(BankDegrees)) * Base;
+}
+
+float ABotfCombatScene::ShipRadius(int32 VisualIndex) const
+{
+    if (!Ships.IsValidIndex(VisualIndex) || !Ships[VisualIndex] || !Ships[VisualIndex]->GetStaticMesh()) return 80.f;
+    const float Scale = Kinematics.IsValidIndex(VisualIndex) ? static_cast<float>(Kinematics[VisualIndex].BaseScale.GetMax()) : 1.f;
+    return FMath::Max(10.f, static_cast<float>(Ships[VisualIndex]->GetStaticMesh()->GetBounds().SphereRadius) * Scale);
+}
+
+FVector ABotfCombatScene::MuzzleLocation(int32 VisualIndex, int32 Family, int32 MountIndex, int32 EmitterIndex) const
+{
+    if (!Ships.IsValidIndex(VisualIndex) || !Ships[VisualIndex]) return FVector::ZeroVector;
+    const UStaticMeshComponent* Ship = Ships[VisualIndex];
+    const FTransform Relative = Ship->GetRelativeTransform();
+    // Named sockets from the imported model (WPN_Beam_NN, WPN_Torp_NN, ...), else a hardpoint from the mesh bounds.
+    if (static_cast<int32>(SlotSocketNames.size()) > VisualIndex && SlotSockets.IsValidIndex(VisualIndex))
+    {
+        const int32 Socket = botf::combatfx::pickWeaponSocket(SlotSocketNames[VisualIndex], Family, MountIndex, EmitterIndex);
+        if (SlotSockets[VisualIndex].IsValidIndex(Socket))
+            return Relative.TransformPosition(Ship->GetSocketTransform(SlotSockets[VisualIndex][Socket], RTS_Component).GetLocation());
+    }
+    if (const UStaticMesh* Mesh = Ship->GetStaticMesh())
+    {
+        const FBoxSphereBounds Bounds = Mesh->GetBounds();
+        const auto Point = botf::combatfx::fallbackHardpoint(Family, MountIndex, EmitterIndex);
+        return Relative.TransformPosition(Bounds.Origin + FVector(Bounds.BoxExtent.X * Point.x, Bounds.BoxExtent.Y * Point.y, Bounds.BoxExtent.Z * Point.z));
+    }
+    return Ship->GetRelativeLocation();
+}
+
+UNiagaraSystem* ABotfCombatScene::FindNiagara(const std::vector<std::string>& Keys)
+{
+    UBotfAssetRegistry* Registry = UBotfAssetRegistry::Get();
+    for (const auto& Key : Keys)
+    {
+        const FString Name = Utf8ToFString(Key);
+        if (const TObjectPtr<UNiagaraSystem>* Found = NiagaraCache.Find(Name)) return Found->Get();
+        if (NiagaraMissing.Contains(Name) || !Registry) continue;
+        const FSoftObjectPath Path = Registry->ResolvePath(Name);
+        UNiagaraSystem* System = Path.IsValid() ? Cast<UNiagaraSystem>(Path.TryLoad()) : nullptr;
+        if (System) { NiagaraCache.Add(Name, System); return System; }
+        NiagaraMissing.Add(Name);
+    }
+    return nullptr;
+}
+
+bool ABotfCombatScene::UpdateJobNiagara(int32 JobIndex, const botf::combatfx::VisualJob& Job, const FVector& From, const FVector& To, float U)
+{
+    // User parameters a system may read: User.Color, User.BeamStart / User.BeamEnd (world), User.Progress (0..1).
+    const FTransform ActorTransform = GetActorTransform();
+    if (TObjectPtr<UNiagaraComponent>* Existing = JobNiagara.Find(JobIndex))
+    {
+        if (UNiagaraComponent* Component = *Existing)
+        {
+            Component->SetRelativeLocation(From);
+            Component->SetVariableVec3(FName(TEXT("User.BeamStart")), ActorTransform.TransformPosition(From));
+            Component->SetVariableVec3(FName(TEXT("User.BeamEnd")), ActorTransform.TransformPosition(To));
+            Component->SetVariableFloat(FName(TEXT("User.Progress")), U);
+        }
+        return true;
+    }
+    if (NiagaraTried.Contains(JobIndex)) return false;
+    NiagaraTried.Add(JobIndex);
+    UNiagaraSystem* System = FindNiagara(botf::combatfx::vfxKeysFor(Job));
+    if (!System) return false;
+    UNiagaraComponent* Component = UNiagaraFunctionLibrary::SpawnSystemAttached(System, RootComponent, NAME_None, From,
+        (To - From).Rotation(), EAttachLocation::KeepRelativeOffset, false);
+    if (!Component) return false;
+    Component->SetVariableLinearColor(FName(TEXT("User.Color")), ToLinear(Job.color));
+    Component->SetVariableVec3(FName(TEXT("User.BeamStart")), ActorTransform.TransformPosition(From));
+    Component->SetVariableVec3(FName(TEXT("User.BeamEnd")), ActorTransform.TransformPosition(To));
+    Component->SetVariableFloat(FName(TEXT("User.Progress")), U);
+    Capture->ShowOnlyComponent(Component);
+    JobNiagara.Add(JobIndex, Component);
+    return true;
+}
+
+void ABotfCombatScene::StartTimeline(const std::vector<botf::CombatEvent>& Events, const std::vector<botf::combatfx::ShipInfo>& Infos,
+    const FString& Signature)
+{
+    botf::combatfx::TimelineConfig Config;
+    Config.roundSeconds = TimelineRoundSeconds;
+    Config.playerEmpire = PlayerEmpire;
+    auto Built = MakeShared<botf::combatfx::RoundTimeline>(botf::combatfx::buildRoundTimeline(Events, Infos, Config));
+    // The same round shown again (the UI rebuilds the scene on many changes): resume where playback was, without
+    // replaying sounds that already played.
+    const bool bSameRound = Timeline.IsValid() && Signature == TimelineSignature;
+    const float ResumeAt = bSameRound ? FMath::Min(TimelineTime, static_cast<float>(Built->endSeconds)) : 0.f;
+    Timeline = Built;
+    TimelineSignature = Signature;
+    if (!Director) Director = MakeShared<botf::combatfx::CinematicDirector>();
+    Director->reset();
+    TimelineTime = ResumeAt;
+    NextSound = 0;
+    NextBark = 0;
+    if (bSameRound)
+    {
+        while (NextSound < static_cast<int32>(Timeline->sounds.size()) && Timeline->sounds[NextSound].time <= ResumeAt) ++NextSound;
+        while (NextBark < static_cast<int32>(Timeline->barks.size()) && Timeline->barks[NextBark].time <= ResumeAt) ++NextBark;
+    }
+    TrackSlot.Reset();
+    for (const auto& Track : Timeline->ships) TrackSlot.Add(SlotForFleet(Track.fleetId));
+    // Ships already gone before this round stay hidden.
+    for (int32 Index = 0; Index < Ships.Num() && Index < Kinematics.Num(); ++Index)
+        if (!Kinematics[Index].bAliveAtRoundStart && Ships[Index])
+        {
+            Ships[Index]->SetVisibility(false);
+            if (ShieldShells.IsValidIndex(Index) && ShieldShells[Index]) ShieldShells[Index]->SetVisibility(false);
+        }
+    bTimelinePlaying = true;
+    TickTimeline(0.f);
+}
+
+void ABotfCombatScene::FinishTimeline()
+{
+    ClearTimelineFx();
+    bTimelinePlaying = false;
+    for (int32 Index = 0; Index < Ships.Num() && Index < Kinematics.Num(); ++Index)
+    {
+        const auto& K = Kinematics[Index];
+        if (!Ships[Index]) continue;
+        const bool bVisible = K.bAlive && !K.bRetreated && K.Hull > 0 && !K.bCloaked;
+        Ships[Index]->SetVisibility(bVisible);
+        Ships[Index]->SetRelativeScale3D(K.BaseScale);
+        if (ShieldShells.IsValidIndex(Index) && ShieldShells[Index])
+            ShieldShells[Index]->SetVisibility(bVisible && K.Shields > 0);
+    }
+}
+
+void ABotfCombatScene::TickTimeline(float DeltaSeconds)
+{
+    using namespace botf::combatfx;
+    if (!Timeline) { bTimelinePlaying = false; return; }
+    const RoundTimeline& TL = *Timeline;
+    TimelineTime += DeltaSeconds;
+    const double Now = TimelineTime;
+
+    // Ships: pose, visibility, warp-out stretch, destruction tumble, shield strength.
+    for (int32 TrackIndex = 0; TrackIndex < static_cast<int32>(TL.ships.size()); ++TrackIndex)
+    {
+        const int32 Slot = TrackSlot.IsValidIndex(TrackIndex) ? TrackSlot[TrackIndex] : -1;
+        if (!Ships.IsValidIndex(Slot) || !Ships[Slot] || !Kinematics.IsValidIndex(Slot)) continue;
+        const ShipTrack& Track = TL.ships[static_cast<std::size_t>(TrackIndex)];
+        auto& K = Kinematics[Slot];
+        const PlanePose Pose = Track.poseAt(Now);
+        FVector Location = PlaneToScene(Pose.x, Pose.y, Slot);
+        FQuat Rotation = PoseRotation(Pose.facing, Pose.bank);
+        FVector Scale = K.BaseScale;
+        int ShieldsNow = K.ShieldsAtRoundStart;
+        float Flare = 0.f;
+        for (const auto& Job : TL.jobs)
+        {
+            if (Job.start > Now) break;
+            const float U = static_cast<float>(FMath::Clamp((Now - Job.start) / FMath::Max(1e-6, Job.duration), 0.0, 1.0));
+            if (Job.kind == JobKind::ShieldImpact && Job.targetFleetId == Track.fleetId)
+            {
+                ShieldsNow -= Job.shieldDamage;
+                Flare = FMath::Max(Flare, 1.f - U);
+            }
+            if (Job.fleetId != Track.fleetId) continue;
+            if (Job.kind == JobKind::WarpOut)
+            {
+                Location += Rotation.GetForwardVector() * (U * U * U * 2400.f);
+                Scale.X *= 1.f + 3.f * U * U;
+            }
+            else if (Job.kind == JobKind::Explosion && Track.hideAt > Job.start)
+            {
+                const float D = static_cast<float>(FMath::Clamp((Now - Job.start) / (Track.hideAt - Job.start), 0.0, 1.0));
+                Rotation = FQuat(FRotator(D * 140.f, D * 95.f, D * 210.f)) * Rotation;
+                Scale *= FMath::Max(0.05f, 1.f - 0.8f * D);
+            }
+        }
+        const float Visibility = K.bAliveAtRoundStart ? static_cast<float>(Track.visibilityAt(Now)) : 0.f;
+        K.CurrentPosition = Location;
+        K.CurrentRotation = Rotation.Rotator();
+        Ships[Slot]->SetRelativeLocationAndRotation(Location, Rotation);
+        Ships[Slot]->SetRelativeScale3D(Scale);
+        Ships[Slot]->SetVisibility(Visibility > 0.05f);
+        if (ShieldShells.IsValidIndex(Slot) && ShieldShells[Slot])
+        {
+            ShieldShells[Slot]->SetRelativeLocation(Location);
+            const float Fraction = FMath::Clamp(static_cast<float>(ShieldsNow) / FMath::Max(1, K.InitialShields), 0.f, 1.f);
+            ShieldShells[Slot]->SetVisibility(Visibility > 0.5f && (ShieldsNow > 0 || Flare > 0.f));
+            if (ShieldMaterials.IsValidIndex(Slot) && ShieldMaterials[Slot])
+                ShieldMaterials[Slot]->SetScalarParameterValue(TEXT("Strength"), FMath::Max(Fraction * 0.45f, Flare * 0.9f) * Visibility);
+        }
+    }
+
+    // Effects: every frame the pools are handed out again in job order.
+    for (const auto* Pool : {&FxBeams, &FxOrbs, &FxBubbles, &FxDebris})
+        for (const auto& Fx : *Pool) if (Fx) Fx->SetVisibility(false);
+    for (const auto& Light : FxLights) if (Light) Light->SetVisibility(false);
+    int32 BeamIndex = 0, OrbIndex = 0, BubbleIndex = 0, DebrisIndex = 0, LightIndex = 0;
+
+    const auto DrawSegment = [&](const FVector& A, const FVector& B, float Width, const FLinearColor& Color)
+    {
+        if (!FxBeams.IsValidIndex(BeamIndex)) return;
+        UStaticMeshComponent* Beam = FxBeams[BeamIndex];
+        UMaterialInstanceDynamic* Mat = FxBeamMats.IsValidIndex(BeamIndex) ? FxBeamMats[BeamIndex].Get() : nullptr;
+        ++BeamIndex;
+        const FVector Delta = B - A;
+        const float Length = static_cast<float>(Delta.Size());
+        if (!Beam || Length < 1.f || Width <= 0.f) return;
+        Beam->SetRelativeLocation((A + B) * 0.5f);
+        Beam->SetRelativeRotation(FRotationMatrix::MakeFromZ(Delta).Rotator());
+        Beam->SetRelativeScale3D(FVector(Width, Width, Length / 100.f)); // Engine cylinder: radius 50, height 100
+        if (Mat) Mat->SetVectorParameterValue(TEXT("Color"), Color);
+        Beam->SetVisibility(true);
+    };
+    const auto DrawOrb = [&](const FVector& At, const FVector& Scale, const FLinearColor& Color, const FQuat& Rotation)
+    {
+        if (!FxOrbs.IsValidIndex(OrbIndex)) return;
+        UStaticMeshComponent* Orb = FxOrbs[OrbIndex];
+        UMaterialInstanceDynamic* Mat = FxOrbMats.IsValidIndex(OrbIndex) ? FxOrbMats[OrbIndex].Get() : nullptr;
+        ++OrbIndex;
+        if (!Orb || Scale.GetMin() <= 0.001f) return;
+        Orb->SetRelativeLocationAndRotation(At, Rotation);
+        Orb->SetRelativeScale3D(Scale);
+        if (Mat) Mat->SetVectorParameterValue(TEXT("Color"), Color);
+        Orb->SetVisibility(true);
+    };
+    const auto DrawBubble = [&](const FVector& At, const FVector& Scale, float Strength, const FLinearColor& Color, const FQuat& Rotation)
+    {
+        if (!FxBubbles.IsValidIndex(BubbleIndex)) return;
+        UStaticMeshComponent* Bubble = FxBubbles[BubbleIndex];
+        UMaterialInstanceDynamic* Mat = FxBubbleMats.IsValidIndex(BubbleIndex) ? FxBubbleMats[BubbleIndex].Get() : nullptr;
+        ++BubbleIndex;
+        if (!Bubble || Strength <= 0.01f) return;
+        Bubble->SetRelativeLocationAndRotation(At, Rotation);
+        Bubble->SetRelativeScale3D(Scale);
+        if (Mat)
+        {
+            Mat->SetScalarParameterValue(TEXT("Strength"), Strength);
+            Mat->SetVectorParameterValue(TEXT("Color"), Color);
+        }
+        Bubble->SetVisibility(true);
+    };
+    const auto Flash = [&](const FVector& At, float Intensity, float Radius, const FLinearColor& Color)
+    {
+        if (!FxLights.IsValidIndex(LightIndex)) return;
+        UPointLightComponent* Light = FxLights[LightIndex++];
+        if (!Light || Intensity <= 1.f) return;
+        Light->SetRelativeLocation(At);
+        Light->SetIntensity(Intensity);
+        Light->SetAttenuationRadius(Radius);
+        Light->SetLightColor(Color);
+        Light->SetVisibility(true);
+    };
+    const auto Debris = [&](const FVector& Origin, int32 Seed, int32 Count, float Distance, float Size, float U)
+    {
+        FRandomStream Random(Seed);
+        for (int32 Piece = 0; Piece < Count && FxDebris.IsValidIndex(DebrisIndex); ++Piece)
+        {
+            UStaticMeshComponent* Chunk = FxDebris[DebrisIndex++];
+            const FVector Dir = Random.GetUnitVector();
+            const FRotator Spin(Random.FRandRange(-400.f, 400.f), Random.FRandRange(-400.f, 400.f), Random.FRandRange(-400.f, 400.f));
+            const float Speed = Random.FRandRange(0.5f, 1.f);
+            if (!Chunk) continue;
+            Chunk->SetRelativeLocationAndRotation(Origin + Dir * Distance * Speed * (1.f - (1.f - U) * (1.f - U)), Spin * U);
+            Chunk->SetRelativeScale3D(FVector(Size * (1.f - 0.7f * U)));
+            Chunk->SetVisibility(true);
+        }
+    };
+    const auto ShipPos = [this](int32 Slot) { return Kinematics.IsValidIndex(Slot) ? Kinematics[Slot].CurrentPosition : FVector::ZeroVector; };
+    const FVector PlaneNormal(0.f, -1.f, 0.f);
+    const FQuat NoRotation = FQuat::Identity;
+
+    for (int32 JobIndex = 0; JobIndex < static_cast<int32>(TL.jobs.size()); ++JobIndex)
+    {
+        const VisualJob& Job = TL.jobs[static_cast<std::size_t>(JobIndex)];
+        if (Job.start > Now) break;
+        if (Now >= Job.end())
+        {
+            if (TObjectPtr<UNiagaraComponent>* Existing = JobNiagara.Find(JobIndex))
+            {
+                if (UNiagaraComponent* Component = *Existing)
+                {
+                    Component->Deactivate();
+                    Capture->RemoveShowOnlyComponent(Component);
+                    Component->DestroyComponent();
+                }
+                JobNiagara.Remove(JobIndex);
+            }
+            continue;
+        }
+        const float U = static_cast<float>(FMath::Clamp((Now - Job.start) / FMath::Max(1e-6, Job.duration), 0.0, 1.0));
+        const int32 FromSlot = SlotForFleet(Job.fleetId);
+        const int32 ToSlot = SlotForFleet(Job.targetFleetId);
+        const int32 SourceSlot = SlotForFleet(Job.sourceFleetId);
+        const FLinearColor Color = ToLinear(Job.color);
+        switch (Job.kind)
+        {
+        case JobKind::Beam:
+        case JobKind::PulseBolt:
+        case JobKind::Torpedo:
+        {
+            if (!Kinematics.IsValidIndex(FromSlot)) break;
+            const FVector Muzzle = MuzzleLocation(FromSlot, Job.weaponFamily, Job.mountIndex, Job.index);
+            FVector Target = Kinematics.IsValidIndex(ToSlot) ? ShipPos(ToSlot) : Muzzle + FVector(600.f, 0.f, 0.f);
+            const FVector Dir = (Target - Muzzle).GetSafeNormal();
+            if (Job.outcome == ShotOutcome::Miss) Target += Dir * static_cast<float>(Job.overshootCells * CellUnits);
+            else if (Job.kind != JobKind::Torpedo && Kinematics.IsValidIndex(ToSlot))
+                Target -= Dir * ShipRadius(ToSlot) * (Kinematics[ToSlot].ShieldsAtRoundStart > 0 ? 1.1f : 0.5f);
+            if (Job.kind == JobKind::Beam)
+            {
+                if (UpdateJobNiagara(JobIndex, Job, Muzzle, Target, U)) break;
+                const float Env = FMath::Sqrt(Envelope(U));
+                DrawSegment(Muzzle, Target, 0.05f * Env, Color);
+                DrawOrb(Muzzle, FVector(0.12f * Env), Color, NoRotation);
+            }
+            else if (Job.kind == JobKind::PulseBolt)
+            {
+                const FVector Head = FMath::Lerp(Muzzle, Target, U);
+                if (UpdateJobNiagara(JobIndex, Job, Head, Target, U)) break;
+                DrawSegment(Head - Dir * 70.f, Head, 0.08f, Color);
+            }
+            else
+            {
+                // Arcing flight (as botf::combatfx::torpedoPoint, in scene units): bows sideways and out of the plane.
+                const float Flight = U * static_cast<float>(Job.endFraction);
+                const FVector Lateral = FVector::CrossProduct(Target - Muzzle, PlaneNormal).GetSafeNormal();
+                const float Bow = 4.f * Flight * (1.f - Flight);
+                const float Arc = static_cast<float>(Job.arcCells * CellUnits);
+                const FVector At = FMath::Lerp(Muzzle, Target, Flight) + Lateral * Arc * Bow + PlaneNormal * FMath::Abs(Arc) * 0.5f * Bow;
+                if (UpdateJobNiagara(JobIndex, Job, At, Target, U)) break;
+                const float Fade = Job.outcome == ShotOutcome::Miss && U > 0.75f ? (1.f - U) * 4.f : 1.f;
+                const float Pulse = 0.2f + 0.05f * FMath::Sin(static_cast<float>(Now) * 40.f + Job.index);
+                DrawOrb(At, FVector(Pulse * Fade), Color, NoRotation);
+                DrawOrb(At, FVector(Pulse * 2.2f * Fade), Color * 0.35f, NoRotation);
+            }
+            break;
+        }
+        case JobKind::ShieldImpact:
+        {
+            if (!Kinematics.IsValidIndex(ToSlot)) break;
+            const FVector Center = ShipPos(ToSlot);
+            const FVector Source = Kinematics.IsValidIndex(SourceSlot) ? ShipPos(SourceSlot) : Center + FVector(1.f, 0.f, 0.f);
+            const FVector Toward = (Source - Center).GetSafeNormal();
+            const float Radius = ShipRadius(ToSlot) * 1.15f;
+            const FVector Point = Center + Toward * Radius;
+            if (UpdateJobNiagara(JobIndex, Job, Point, Center, U)) break;
+            // A flattened bubble on the shell where the shot struck, plus a quick core glow.
+            DrawBubble(Point - Toward * Radius * 0.15f, FVector(0.12f, 0.8f, 0.8f) * (Radius / 50.f) * (0.6f + 0.4f * U),
+                (1.f - U) * 0.95f, Color, FRotationMatrix::MakeFromX(Toward).ToQuat());
+            DrawOrb(Point, FVector(0.25f * (1.f - U) + 0.05f), Color, NoRotation);
+            break;
+        }
+        case JobKind::HullImpact:
+        {
+            if (!Kinematics.IsValidIndex(ToSlot)) break;
+            const FVector Center = ShipPos(ToSlot);
+            const FVector Toward = ((Kinematics.IsValidIndex(SourceSlot) ? ShipPos(SourceSlot) : Center + FVector(1.f, 0.f, 0.f)) - Center).GetSafeNormal();
+            const FVector Point = Center + Toward * ShipRadius(ToSlot) * 0.45f;
+            if (UpdateJobNiagara(JobIndex, Job, Point, Center, U)) break;
+            DrawOrb(Point, FVector(0.35f * Envelope(FMath::Min(1.f, U * 2.f)) + 0.04f), FLinearColor(1.f, 0.55f, 0.15f), NoRotation);
+            DrawOrb(Point, FVector(0.12f * (1.f - U)), FLinearColor(0.08f, 0.05f, 0.03f), NoRotation); // scorch
+            Flash(Point, 40000.f * (1.f - U), 600.f, FLinearColor(1.f, 0.6f, 0.25f));
+            Debris(Point, JobIndex * 7919 + 17, SparksPerHullHit, 120.f, 0.05f, U);
+            break;
+        }
+        case JobKind::PointDefence:
+        {
+            if (!Kinematics.IsValidIndex(FromSlot)) break;
+            const FVector Muzzle = MuzzleLocation(FromSlot, 2, Job.mountIndex, 0);
+            const FVector Target = Kinematics.IsValidIndex(ToSlot) ? ShipPos(ToSlot) : Muzzle;
+            const FVector Point = FMath::Lerp(Muzzle, Target, static_cast<float>(TimelineConfig{}.interceptFraction));
+            if (UpdateJobNiagara(JobIndex, Job, Point, Target, U)) break;
+            DrawOrb(Point, FVector((0.2f + 0.8f * U) * (1.f - U)), FLinearColor(1.f, 0.9f, 0.6f), NoRotation);
+            Flash(Point, 25000.f * (1.f - U), 500.f, FLinearColor(1.f, 0.85f, 0.6f));
+            break;
+        }
+        case JobKind::Explosion:
+        {
+            if (!Kinematics.IsValidIndex(FromSlot)) break;
+            const FVector Center = ShipPos(FromSlot);
+            const float Radius = ShipRadius(FromSlot);
+            if (UpdateJobNiagara(JobIndex, Job, Center, Center, U)) break;
+            const float Grow = 0.4f + 2.6f * FMath::Sqrt(U);
+            DrawOrb(Center, FVector(Radius / 50.f * Grow * (1.f - 0.6f * U)), FLinearColor(1.f, 0.55f + 0.3f * (1.f - U), 0.2f) * (1.f - U), NoRotation);
+            DrawOrb(Center, FVector(Radius / 50.f * 0.6f * (1.f - U)), FLinearColor(1.f, 1.f, 0.9f), NoRotation);
+            Flash(Center, 250000.f * (1.f - U) * (1.f - U), 2200.f, FLinearColor(1.f, 0.7f, 0.35f));
+            Debris(Center, JobIndex * 104729 + Job.fleetId, DebrisPerExplosion, Radius * 4.f, Radius / 50.f * 0.18f, U);
+            break;
+        }
+        case JobKind::CloakShimmer:
+        case JobKind::Decloak:
+        {
+            if (!Kinematics.IsValidIndex(FromSlot)) break;
+            const FVector Center = ShipPos(FromSlot);
+            if (UpdateJobNiagara(JobIndex, Job, Center, Center, U)) break;
+            const float Shimmer = Envelope(U) * (0.55f + 0.25f * FMath::Sin(static_cast<float>(Now) * 30.f));
+            DrawBubble(Center, FVector(ShipRadius(FromSlot) * 1.1f / 50.f), Shimmer, Color, NoRotation);
+            break;
+        }
+        case JobKind::WarpOut:
+        {
+            if (!Kinematics.IsValidIndex(FromSlot)) break;
+            const FVector Center = ShipPos(FromSlot);
+            const FQuat Rotation = Kinematics[FromSlot].CurrentRotation.Quaternion();
+            if (UpdateJobNiagara(JobIndex, Job, Center, Center + Rotation.GetForwardVector() * 1000.f, U)) break;
+            const float Stretch = 1.f + 12.f * U * U;
+            DrawOrb(Center, FVector(0.3f * Stretch, 0.12f, 0.12f) * (1.f - 0.5f * U), Color, Rotation);
+            if (U > 0.8f) Flash(Center, 120000.f * (1.f - U) * 5.f, 1500.f, Color);
+            break;
+        }
+        case JobKind::Ram:
+        case JobKind::Disengage:
+        case JobKind::Truce:
+            break;
+        }
+    }
+
+    // Audio at the moments of the visual jobs; the audio subsystem's CueScheduler still rate-limits and culls.
+    if (UBotfAudioSubsystem* Audio = UBotfAudioSubsystem::Get())
+    {
+        while (NextSound < static_cast<int32>(TL.sounds.size()) && TL.sounds[NextSound].time <= Now)
+        {
+            const SoundJob& Sound = TL.sounds[NextSound++];
+            Audio->PlaySfxKeys(Sound.keys, botf::audio::Category::Sfx, Sound.priority);
+        }
+        while (NextBark < static_cast<int32>(TL.barks.size()) && TL.barks[NextBark].time <= Now)
+        {
+            const BarkJob& Bark = TL.barks[NextBark++];
+            Audio->PlayCue(botf::audio::GameCue::CombatBark, 0, Utf8ToFString(Bark.detail));
+        }
+    }
+
+    if (Now >= TL.endSeconds) FinishTimeline();
 }

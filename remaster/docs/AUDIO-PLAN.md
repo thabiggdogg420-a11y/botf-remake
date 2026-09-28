@@ -88,6 +88,7 @@ Rule: a missing expansion cue falls back to the matching original category, then
 | Ship destroyed | `sfx.explosion.large` | – | 5 | |
 | Cloak / decloak | `sfx.cloak.<fac>` / `sfx.decloak.<fac>` | – | 4 | Klingon falls back to Romulan |
 | Retreat / warp out | `sfx.warp.out` | – | 3 | |
+| Combat bark (rules 3, player's ships only) | – | `vo.combat.shields.<75\|50\|25>.<fac>` then `vo.combat.shields.<fac>`; `vo.combat.torpedo.<fac>`; `vo.combat.kill.<fac>` | 5-7 / 3 / 5 | "shields at N%", "torpedo away", "target destroyed". At most one of each kind per round (the worst shield crossing), then the voice queue and 4 s cooldown. No beep if missing |
 | Fleet arrives (strategic map) | `sfx.warp.in` | – | 2 | |
 | Background | – | – | – | `mus.botf.all` by context (galaxy, combat, diplomacy); silent if missing |
 
@@ -97,7 +98,7 @@ Rule: a missing expansion cue falls back to the matching original category, then
 - `UBotfAssetRegistry` reads that file and walks each key's fallback chain (`BotfAssetCatalog.h`). A missing asset yields silence, never a crash.
 - `UBotfAudioSubsystem` (`BotfAudioSubsystem.cpp`) plays cues chosen by `BotfAudioCues.h` / `BotfAudioEvents.h`: the table in section 3 (keys and priority), per-key cooldowns (weapons 0.08 s, UI 0.12 s, other sfx 0.15 s, alerts 3 s, a repeated voice line 4 s), one voice line at a time with a 0.6 s gap and a queue of 4 ordered by priority (lines older than 6 s are dropped), at most 24 sfx with the lowest priority culled, and ducking of sfx and music to 45 % while a voice line plays. Voice keys with several files rotate through them.
 - Categories are SFX, Voice, UI and Music plus a master level, each a slider in Settings, stored in `GameUserSettings.ini` `[BotfAudio]`.
-- Hooks: turn briefing (`FinishTurn`: one cue per kind from the chronicle, battles and outcome), encounter start, tactical orders (`vo.combat.<order>.<fac>` then `vo.combat.ack.<fac>`), each resolved round (weapon fire by the attacker's dominant roster weapon, hits, losses, decloaks), and diplomatic orders (war, peace, trade treaty). Music uses `mus.botf.<galaxy|combat>` then `mus.botf.all`.
+- Hooks: turn briefing (`FinishTurn`: one cue per kind from the chronicle, battles and outcome), encounter start, tactical orders (`vo.combat.<order>.<fac>` then `vo.combat.ack.<fac>`), each resolved round (weapon fire by the attacker's dominant roster weapon, hits, losses, decloaks; for tactical rules 3 rounds the battle scene instead plays every shot, impact, explosion, cloak, warp-out and bark at its moment in the round, from `BotfCombatTimeline.h`), and diplomatic orders (war, peace, trade treaty). Music uses `mus.botf.<galaxy|combat>` then `mus.botf.all`.
 - The simulation must not depend on audio, and replays must play the same cues from the event log.
 
 ## 5. Tools

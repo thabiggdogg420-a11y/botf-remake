@@ -1,14 +1,21 @@
 #pragma once
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
+#include <string>
+#include <vector>
 #include "BotfCombatScene.generated.h"
 
 class UTextureRenderTarget2D;
 class USceneCaptureComponent2D;
 class UStaticMeshComponent;
 class UMaterialInstanceDynamic;
-namespace botf { struct CombatReport; }
+class UMaterialInterface;
+class UPointLightComponent;
+class UNiagaraSystem;
+class UNiagaraComponent;
+namespace botf { struct CombatReport; struct CombatEvent; }
 namespace botf::tactical { struct Encounter; }
+namespace botf::combatfx { struct RoundTimeline; struct ShipInfo; struct VisualJob; class CinematicDirector; }
 
 struct FShipKinematicState
 {
@@ -33,6 +40,10 @@ struct FShipKinematicState
     float FlareStrength = 0.f;
     float DestructionProgress = 0.f;
     FVector BaseScale = FVector::OneVector; // Scale-normalised mesh scale; the destruction shrink multiplies it.
+    // Rules 3 timeline playback: state at the start of the shown round (ships already gone get no track).
+    bool bAliveAtRoundStart = true;
+    int ShieldsAtRoundStart = 0;
+    bool bCloakedAtRoundStart = false;
 };
 
 struct FSalvoVisualItem
@@ -53,12 +64,20 @@ public:
     ABotfCombatScene();
     virtual void Tick(float DeltaSeconds) override;
     UTextureRenderTarget2D* GetBattleTexture() const;
-    // StationSlots: bit (Side * 8 + Index) marks a schema-13 station (an immobile unit, not a ship). Station slots
+    // Ships drawn per side. Raised from 8: the station mask is 64 bits wide (2 x 32) and every ship costs a mesh, a
+    // shield shell and its share of the effect pools in the scene capture; 24 keeps a full rules 3 arena readable.
+    static constexpr int32 MaxShipsPerSide = 24;
+    // StationSlots: bit (Side * MaxShipsPerSide + Index) marks a schema-13 station (an immobile unit, not a ship). Station slots
     // get a placeholder disc and never a ship mesh; a side made only of stations loads no ship mesh at all.
-    void ConfigureBattle(int AttackerFaction, int DefenderFaction, int AttackerCount, int DefenderCount, uint32 Seed, uint32 StationSlots = 0);
+    void ConfigureBattle(int AttackerFaction, int DefenderFaction, int AttackerCount, int DefenderCount, uint32 Seed, uint64 StationSlots = 0);
     void ConfigureBattleReport(const botf::CombatReport& Report, int RoundIndex = -1);
     void ConfigureEncounter(const botf::tactical::Encounter& Encounter);
     void SetPresentationActive(bool bActive);
+    // Listening player's empire: combat voice barks are only for its ships.
+    void SetPlayerEmpire(int32 EmpireId) { PlayerEmpire = EmpireId; }
+    // Seconds one rules 3 round (12 ticks) takes on screen.
+    void SetTimelineRoundSeconds(float Seconds) { TimelineRoundSeconds = FMath::Clamp(Seconds, 2.f, 30.f); }
+    bool IsTimelinePlaying() const { return bTimelinePlaying; }
 
     // Modern 3D Combat Experience hooks:
     enum ECameraMode : int
@@ -68,7 +87,8 @@ public:
         Cam_FocusShip = 2,
         Cam_FocusTarget = 3,
         Cam_Overhead = 4,
-        Cam_Count = 5
+        Cam_Cinematic = 5, // Follows the action of a rules 3 round (BotfCombatTimeline.h CinematicDirector)
+        Cam_Count = 6
     };
 
     void SetCameraMode(int InMode);
@@ -93,6 +113,37 @@ private:
     UPROPERTY() TArray<TObjectPtr<UMaterialInstanceDynamic>> BeamMaterials;
     UPROPERTY() TArray<TObjectPtr<UStaticMeshComponent>> TorpedoMeshes;
     UPROPERTY() TArray<TObjectPtr<UMaterialInstanceDynamic>> TorpedoMaterials;
+
+    // Rules 3 effect pools (Niagara-free fallbacks) and optional Niagara systems by asset key (vfx.*).
+    UPROPERTY() TArray<TObjectPtr<UStaticMeshComponent>> FxBeams;
+    UPROPERTY() TArray<TObjectPtr<UMaterialInstanceDynamic>> FxBeamMats;
+    UPROPERTY() TArray<TObjectPtr<UStaticMeshComponent>> FxOrbs;
+    UPROPERTY() TArray<TObjectPtr<UMaterialInstanceDynamic>> FxOrbMats;
+    UPROPERTY() TArray<TObjectPtr<UStaticMeshComponent>> FxBubbles;
+    UPROPERTY() TArray<TObjectPtr<UMaterialInstanceDynamic>> FxBubbleMats;
+    UPROPERTY() TArray<TObjectPtr<UStaticMeshComponent>> FxDebris;
+    UPROPERTY() TArray<TObjectPtr<UPointLightComponent>> FxLights;
+    UPROPERTY() TMap<FString, TObjectPtr<UNiagaraSystem>> NiagaraCache;
+    UPROPERTY() TMap<int32, TObjectPtr<UNiagaraComponent>> JobNiagara;
+    TSet<FString> NiagaraMissing;
+    TSet<int32> NiagaraTried;
+
+    TSharedPtr<botf::combatfx::RoundTimeline> Timeline;
+    TSharedPtr<botf::combatfx::CinematicDirector> Director;
+    TArray<int32> TrackSlot;           // Timeline ship index -> visual slot (-1 = not drawn)
+    TArray<TArray<FName>> SlotSockets; // Per visual slot: the mesh's socket names
+    std::vector<std::vector<std::string>> SlotSocketNames;
+    float TimelineTime = 0.f;
+    float TimelineRoundSeconds = 6.f;
+    bool bTimelinePlaying = false;
+    bool bSuppressReportTimeline = false; // ConfigureEncounter starts the timeline itself
+    int32 NextSound = 0;
+    int32 NextBark = 0;
+    int32 NextJobStart = 0;
+    FString TimelineSignature;
+    float PlaneCenterX = 0.f, PlaneCenterY = 0.f;
+    int32 PlayerEmpire = 0;
+    static constexpr float CellUnits = 85.f;
 
     TArray<FVector> Positions;
     TArray<int> ShipOwners;
@@ -119,6 +170,21 @@ private:
     void AnimateWeaponSalvos(float NormTime);
     void AnimateShieldsAndDamage(float DeltaSeconds, float NormTime);
     void AnimateCamera(float DeltaSeconds);
+
+    // Rules 3 playback (BotfCombatTimeline.h).
+    void SetupTimelinePools();
+    void ClearTimelineFx();
+    void StartTimeline(const std::vector<botf::CombatEvent>& Events, const std::vector<botf::combatfx::ShipInfo>& Infos, const FString& Signature);
+    void TickTimeline(float DeltaSeconds);
+    void FinishTimeline();
+    void CacheSlotSockets(int32 VisualIndex);
+    int32 SlotForFleet(int32 FleetId) const;
+    FVector PlaneToScene(double X, double Y, int32 VisualIndex) const;
+    FQuat PoseRotation(double FacingDegrees, double BankDegrees) const;
+    FVector MuzzleLocation(int32 VisualIndex, int32 Family, int32 MountIndex, int32 EmitterIndex) const;
+    float ShipRadius(int32 VisualIndex) const;
+    UNiagaraSystem* FindNiagara(const std::vector<std::string>& Keys);
+    bool UpdateJobNiagara(int32 JobIndex, const botf::combatfx::VisualJob& Job, const FVector& From, const FVector& To, float U);
     static FLinearColor GetFactionBeamColor(int FactionId);
     static FLinearColor GetFactionTorpedoColor(int FactionId);
 };

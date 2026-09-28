@@ -135,6 +135,9 @@ void UBotfAudioSubsystem::OnEncounterOpened()
 
 void UBotfAudioSubsystem::OnRoundResolved(const botf::tactical::Encounter& Encounter, const botf::tactical::RoundResult& Round)
 {
+    // Tactical rules 3: ABotfCombatScene plays each shot, impact and bark at its moment in the round
+    // (BotfCombatTimeline.h), so the one-shot summary below would double every sound.
+    if (!Round.events.empty()) return;
     for (const auto& Sound : botf::audio::roundCues(Encounter, Round))
     {
         const auto Request = botf::audio::cueFor(Sound.cue, Faction(PlayerEmpire));

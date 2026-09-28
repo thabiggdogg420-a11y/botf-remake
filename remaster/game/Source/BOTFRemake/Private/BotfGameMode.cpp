@@ -587,6 +587,7 @@ private:
     void UpdateScene() {
         if (!Scene.IsValid()) { BindBattleTexture(); return; }
         if (Session.pending && ActivePanel == PanelCombat) {
+            Scene->SetPlayerEmpire(State.playerEmpire);
             Scene->ConfigureEncounter(*Session.pending);
             BindBattleTexture();
             ShownBattle = FShownBattle();   // the scene now holds the live encounter, not a record
@@ -4163,6 +4164,11 @@ private:
                                 Option(TEXT("TOP-DOWN"), [this] { if (Scene.IsValid()) Scene->SetCameraMode(4); },
                                     [this] { return Scene.IsValid() && Scene->GetCameraMode() == 4; }, ERole::Tertiary, 0, TEXT("Overhead 90-degree tactical arena grid"))
                             ]
+                            + SHorizontalBox::Slot().AutoWidth().Padding(2, 0)
+                            [
+                                Option(TEXT("CINEMATIC"), [this] { if (Scene.IsValid()) { Scene->SetCameraMode(5); Scene->SetFocusedShips(TacShip, TacTarget); } },
+                                    [this] { return Scene.IsValid() && Scene->GetCameraMode() == 5; }, ERole::Tertiary, 0, TEXT("Cinematic camera that follows the action of a round"))
+                            ]
                             + SHorizontalBox::Slot().AutoWidth().Padding(4, 0, 0, 0)
                             [
                                 Pill(TEXT("RESET CAM"), [this] { if (Scene.IsValid()) Scene->ResetCameraOrbit(); }, nullptr, ERole::Secondary, TEXT("Reset camera orbit and zoom (Home, Double-Click)"))
@@ -4573,6 +4579,7 @@ private:
         const auto* B = CurrentBattle();
         if (!Scene.IsValid() || !B) return;
         Scene->SetPresentationActive(false);
+        Scene->SetPlayerEmpire(State.playerEmpire);
         Scene->ConfigureBattleReport(*B, B->rounds.empty() ? -1 : BattleRoundIndex);
         BattleBrush.SetResourceObject(nullptr);
         BattleBrush.SetResourceObject(Scene->GetBattleTexture());

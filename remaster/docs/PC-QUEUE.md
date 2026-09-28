@@ -31,7 +31,26 @@ Status markers: `[ ]` pending, `[x]` done (paste the result or log into the PR/s
    - Start a battle: the log line `BOTF assets: N keys from ...` should appear, and a resolved class (for example `ship.fed.galaxy`) should show its own mesh at a sensible size. Report any ship that is huge, tiny or rotated.
    - Settings, Audio: move each slider and confirm the level changes and survives a restart (`Saved/Config/Windows/GameUserSettings.ini` `[BotfAudio]`).
    - End a turn with research or a battle and listen for the beep/alert and advisor voice; say whether ducking (effects dipping under voice) feels right.
-7. [ ] **Editor-side audio setup (optional polish).** If imported WAVs play too loud or too quiet relative to each other, create Sound Classes (Voice, SFX, UI, Music) and a Sound Mix under `/Game/Audio` and report their paths; the subsystem currently sets per-component volume only.
+7. [ ] **Rules 3 battle scene: visual tuning and socket placement in the editor** (after 1; 4 and 5 for real models).
+   - Start a Remastered (rules 3) battle and watch a round in every camera mode, including the new CINEMATIC one.
+   - Check that ships fly from their start pose to their end pose without popping, and that they bank the right way
+     into turns and strafes. `PoseRotation` in `BotfCombatScene.cpp` assumes that ship tops face the default camera
+     (-Y); flip the up vector or the bank sign if the ships look wrong.
+   - Beams, pulses and torpedoes should leave the hull, not the ship's centre.
+     - For each imported model, open the static mesh and add or check sockets `WPN_Beam_NN`, `WPN_Pulse_NN` and
+       `WPN_Torp_NN` (or the manifest's `WPN_<Type>_<Loc>_<NN>`) at the emitters and tubes.
+     - Report models without sockets whose bounds-based hardpoints look wrong.
+   - Check the effect sizes against real models: beam width, torpedo glow, the shield bubble on impact, hull sparks,
+     explosion size and debris, the cloak shimmer and warp-out. The numbers are in `TickTimeline`. Report any that are
+     too large or too small.
+   - Optional: create Niagara systems at `/Game/Local/VFX/...`, set their object paths in the resolved manifest under
+     the `vfx.*` keys, and confirm that they replace the fallbacks. The user parameters are `User.Color`,
+     `User.BeamStart`, `User.BeamEnd` and `User.Progress`.
+   - Listen for weapon fire and impacts in time with the visuals, and for barks ("shields at 50%", "torpedo away",
+     "target destroyed") once the `vo.combat.*` lines exist. Say whether the round length (6 s,
+     `SetTimelineRoundSeconds`) feels right.
+   - Try a battle with more than 8 ships per side (the new cap is 24) and report the frame rate.
+8. [ ] **Editor-side audio setup (optional polish).** If imported WAVs play too loud or too quiet relative to each other, create Sound Classes (Voice, SFX, UI, Music) and a Sound Mix under `/Game/Audio` and report their paths; the subsystem currently sets per-component volume only.
 
 ## Blocked cloud work (waiting on the items above)
 
