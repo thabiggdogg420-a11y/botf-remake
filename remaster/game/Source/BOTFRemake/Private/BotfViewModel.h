@@ -177,7 +177,10 @@ inline std::vector<std::string> shipTags(const tactical::Encounter& encounter, c
     if (ship.retreated) { tags.push_back("WITHDRAWN"); return tags; }
     if (ship.isCloaked) tags.push_back(encounter.remasterRules() ? "CLOAKED (cannot fire; attack to ambush)" : "CLOAKED");
     if (encounter.remasterRules() && ship.disengaging()) tags.push_back("DISENGAGING (escapes next round if still retreating)");
-    if (!ship.canRetreat) tags.push_back("NO RETREAT ROUTE");
+    // Schema-13 stations join as immobile units (fleet ids >= StationCombatantBase): they hold position whatever
+    // their order, never retreat and brace for -20% incoming damage.
+    if (ship.immobile) tags.push_back("STATION (immobile: holds position, cannot retreat)");
+    else if (!ship.canRetreat) tags.push_back("NO RETREAT ROUTE");
     if (ship.beamAttack == 0 && ship.torpedoAttack == 0) tags.push_back("UNARMED");
     return tags;
 }

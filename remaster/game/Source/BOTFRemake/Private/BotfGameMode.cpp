@@ -9,6 +9,7 @@
 #include "BotfBattleReplay.h"
 #include "BotfCampaign.h"
 #include "BotfViewModel.h"
+#include "BotfGameplayViewModel.h"
 #include "Simulation.h"
 #include "CampaignSession.h"
 #include "ReferenceCatalogue.h"
@@ -112,9 +113,11 @@ public:
     FReply HandleShortcut(const FGeometry& Geometry, const FKeyEvent& Event, bool bPreview) {
         const FKey Key = Event.GetKey();
         if (Key == EKeys::Escape) {
-            // Escape unwinds one layer at a time: transient mode, popups, the open sheet, the unit selection, then the menu.
-            if (Shell == EUiView::Game && (MapView.bPlotting || bMenuOpen || bSummaryOpen || bEndTurnCheck)) {
-                MapView.bPlotting = false; bMenuOpen = false; bSummaryOpen = false; bEndTurnCheck = false;
+            // Escape unwinds one layer at a time: the end-of-game overlay, transient mode, popups, the open sheet, the unit
+            // selection, then the menu.
+            if (Shell == EUiView::Game && OutcomeOverlayVisible()) bOutcomeDismissed = true;
+            else if (Shell == EUiView::Game && (MapView.bPlotting || bMenuOpen || bSummaryOpen || bEndTurnCheck || bEventsOpen)) {
+                MapView.bPlotting = false; bMenuOpen = false; bSummaryOpen = false; bEndTurnCheck = false; bEventsOpen = false;
             }
             else if (Shell == EUiView::Game && ActivePanel != PanelGalaxy && !(ActivePanel == PanelCombat && Session.pending)) GoPanel(PanelGalaxy);
             else if (Shell == EUiView::Game && (SelectedFleet || SelectedTaskForce)) { SelectedFleet = 0; SelectedTaskForce = 0; RefreshAll(); }
@@ -126,6 +129,8 @@ public:
             return FReply::Handled();
         }
         if (Shell != EUiView::Game) return SCompoundWidget::OnKeyDown(Geometry, Event);
+        // The end-of-game overlay is modal: shortcuts are held back, a focused overlay button still gets its key.
+        if (OutcomeOverlayVisible()) return bPreview ? FReply::Unhandled() : FReply::Handled();
         auto Guarded = [this](std::function<void()> Action) {
             RunGuarded(Action);
             return FReply::Handled();
@@ -246,7 +251,9 @@ public:
             + SOverlay::Slot().HAlign(HAlign_Left).VAlign(VAlign_Top)
                 .Padding(TAttribute<FMargin>::CreateLambda([this] { return FMargin(MenuAt.X, MenuAt.Y, 0, 0); })) [ BuildSectorMenu() ]
             + SOverlay::Slot().HAlign(HAlign_Center).VAlign(VAlign_Center).Padding(60) [ BuildSummaryWindow() ]
-            + SOverlay::Slot() [ BuildEndTurnCheck() ];
+            + SOverlay::Slot().HAlign(HAlign_Center).VAlign(VAlign_Center).Padding(60) [ BuildEventCard() ]
+            + SOverlay::Slot() [ BuildEndTurnCheck() ]
+            + SOverlay::Slot() [ BuildOutcomeOverlay() ];
         ChildSlot [ SNew(SWidgetSwitcher).WidgetIndex_Lambda([this] { return static_cast<int>(Shell); })
             + SWidgetSwitcher::Slot() [ BuildTitleScreen() ]
             + SWidgetSwitcher::Slot() [ GameShell ]
@@ -299,6 +306,15 @@ private:
     int SelectedCell = 0, SelectedFleet = 1, SelectedEnemyFleet = 0, SelectedEmpire = 2, SelectedMinor = 0;
     int SetupEmpires = 2, SetupSize = 0, SetupSeed = 0, SetupPlayer = 1, SetupRuleset = 1;
     int SetupEra = static_cast<int>(botf::StartingEra::Early);
+    int SetupPreset = static_cast<int>(botf::RulesetPreset::Remastered);   // new campaigns default to Remastered
+    // Schema-13 gameplay layer presentation state (all ids are campaign-local; ResetCampaignSelection drops them).
+    bool bEventsOpen = false;               // galactic event card
+    bool bOutcomeDismissed = false;         // the end-of-game overlay was closed to review the galaxy
+    int UpgradeFunder = 0;                  // colony chosen to fund a starbase upgrade (0 = nearest that can)
+    int SelectedTemplate = 0;               // build template picked on the Solar System sheet
+    FString TemplateNameText;               // name typed for a new or updated build template
+    TSharedPtr<SEditableTextBox> TemplateNameBox;
+    std::vector<botf::view::BriefingEntry> LastBriefing;   // last resolved turn's chronicle, for the inbox
     int ResearchMode = 0, DiplomacyMode = 0, IntelMode = 0, EmpireMode = 0, SummaryMode = 0;
     int EmpireColonyFilter = 0, EmpireFleetFilter = 0;
     int SelectedColonyInEmpire = -1, SelectedFleetInEmpire = 0;
@@ -339,9 +355,11 @@ private:
         MenuCell = -1; bMenuOpen = bEndTurnCheck = false; MapView.bPlotting = false;
         bTurnForecast = bLastForecast = false; LastFleetUpkeep = LastTradeIncome = 0;
         RefusedCalls.clear();
+        bEventsOpen = bOutcomeDismissed = false; UpgradeFunder = SelectedTemplate = 0; LastBriefing.clear();
     }
     TSharedPtr<SVerticalBox> SectorRows, BuildRows, ShipRows, QueueRows, RaceRows, IntelCards, IntelReportRows,
         SystemTableRows, FleetTableRows, ReferenceRows, SaveRows, MenuRows, InboxRows, SheetPlanetRows, ProposalRows;
+    TSharedPtr<SVerticalBox> EventRows, TemplateRows;
     TSharedPtr<SVerticalBox> PlanetRows;
     TSharedPtr<SVerticalBox> TacRows;
     TSharedPtr<SVerticalBox> TacFriendlyRows;
@@ -804,6 +822,7 @@ private:
                 Out.Add(Str(botf::view::proposalSummary(State, Proposal, State.playerEmpire)) + TEXT(" (") + Str(botf::view::deadlineText(State, Proposal.dueTurn)) + TEXT(")"));
         for (const auto& Call : OpenCallsToArms())
             Out.Add(Str(botf::view::callToArmsText(State, Call)));
+        for (const auto& Warning : botf::view::unresolvedEventWarnings(State)) Out.Add(Str(Warning));
         return Out;
     }
     // Calls to arms still awaiting the player: not yet answered by a drafted declaration and not let lapse.
@@ -1113,7 +1132,10 @@ private:
                              SheetButton(TEXT("DIPLOMACY"), PanelDiplomacy, TEXT("F4")), SheetButton(TEXT("INTELLIGENCE"), PanelIntel, TEXT("F5")),
                              SheetButton(TEXT("EMPIRE"), PanelEmpire, TEXT("F6")), SheetButton(TEXT("BATTLES"), PanelCombat, TEXT("F7")) }, 4) ]
                     + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(12, 0, 0, 0)
-                    [ Line({ Control(TEXT("SUMMARY"), [this] { bSummaryOpen = !bSummaryOpen; bMenuOpen = false; }, nullptr, [this] { return bSummaryOpen; },
+                    [ Line({ DynControl(Dyn([this] { return FString::Printf(TEXT("EVENTS %d"), static_cast<int>(botf::view::eventCards(State).size())); }),
+                                [this] { bEventsOpen = !bEventsOpen; bSummaryOpen = bMenuOpen = false; }, nullptr, [this] { return bEventsOpen; },
+                                ERole::Tertiary, FMargin(10, 7), false, 9, TEXT("Galactic events and the decisions they need")),
+                             Control(TEXT("SUMMARY"), [this] { bSummaryOpen = !bSummaryOpen; bMenuOpen = false; bEventsOpen = false; }, nullptr, [this] { return bSummaryOpen; },
                                 ERole::Tertiary, FMargin(10, 7), false, 9, TEXT("Events, relationships and systems (S)")),
                              Control(TEXT("MENU"), [this] { ShowView(EUiView::Menu); }, nullptr, nullptr, ERole::Tertiary, FMargin(10, 7), false, 9,
                                 TEXT("Save, load, settings, quit (Esc)")) }, 4) ] ] ];
@@ -1129,6 +1151,10 @@ private:
                         + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 4)
                         [ SNew(STextBlock).Text(Dyn([this] { return SectorLabel(SelectedCell); })).Font(BotfUi::Condensed(8)).ColorAndOpacity(C(&FPalette::Tertiary)).AutoWrapText(true) ]
                         + SVerticalBox::Slot().AutoHeight() [ Para(Dyn([this] { return SectorBrief(); }), 9, &FPalette::Text) ]
+                        // Charted anomalies in the sector and, for a contacted minor race, its profile.
+                        + SVerticalBox::Slot().AutoHeight().Padding(0, 4, 0, 0)
+                        [ SNew(SBox).Visibility_Lambda([this] { return SafeText([this] { return SectorExtras(); }).IsEmpty() ? EVisibility::Collapsed : EVisibility::Visible; })
+                            [ Para(Dyn([this] { return SectorExtras(); }), 9, &FPalette::Muted) ] ]
                         + SVerticalBox::Slot().AutoHeight().Padding(0, 6, 0, 0) [ SAssignNew(PlanetRows, SVerticalBox) ]
                         + SVerticalBox::Slot().AutoHeight().Padding(0, 6, 0, 0)
                         [ Line({
@@ -1139,6 +1165,8 @@ private:
                     // Economic map: trade routes are assigned here, from the chart (Tutorial p13), as well as in Diplomacy.
                     SNew(SBox).Visibility_Lambda([this] { return MapView.Mode == BotfUi::EMapMode::Economic ? EVisibility::Visible : EVisibility::Collapsed; })
                         [ Glass(BuildTradeRoutePanel()) ],
+                    SNew(SBox).Visibility_Lambda([this] { return SafeBool([this] { return SelectedStation() != nullptr; }, false) ? EVisibility::Visible : EVisibility::Collapsed; })
+                        [ Glass(BuildStationInspector()) ],
                     Glass(SNew(SVerticalBox)
                         + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 4) [ Heading(Txt(TEXT("UNITS IN SECTOR")), 10, &FPalette::Tertiary) ]
                         + SVerticalBox::Slot().AutoHeight() [ SAssignNew(SectorRows, SVerticalBox) ]),
@@ -1183,7 +1211,9 @@ private:
                     [ Line({ MapToggle(TEXT("NAMES"), &BotfUi::FMapView::bNames, TEXT("N"), TEXT("System names")),
                              MapToggle(TEXT("RANGE"), &BotfUi::FMapView::bRange, TEXT("R"), TEXT("Supply range of the selected ship")),
                              MapToggle(TEXT("COURSES"), &BotfUi::FMapView::bCourses, FString(),TEXT("Courses of all your units")),
-                             MapToggle(TEXT("GRID"), &BotfUi::FMapView::bGrid, TEXT("G"), TEXT("Sector grid and coordinates")) }, 3) ]
+                             MapToggle(TEXT("GRID"), &BotfUi::FMapView::bGrid, TEXT("G"), TEXT("Sector grid and coordinates")),
+                             MapToggle(TEXT("ANOMALIES"), &BotfUi::FMapView::bAnomalies, FString(), TEXT("Charted nebulae, black holes, neutron stars, ion storms and wormholes; hover a sector for details")),
+                             MapToggle(TEXT("STATIONS"), &BotfUi::FMapView::bStations, FString(), TEXT("Supply (bright) and sensor (faint) reach of your outposts and starbases")) }, 3) ]
                     + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(10, 0, 0, 0)
                     [ Line({ Pill(TEXT("-"), [this] { if (Chart.IsValid()) Chart->ZoomBy(1.f / 1.25f, ChartMiddle()); }, nullptr, ERole::Tertiary, TEXT("Zoom out (-, wheel)")),
                              Pill(TEXT("+"), [this] { if (Chart.IsValid()) Chart->ZoomBy(1.25f, ChartMiddle()); }, nullptr, ERole::Tertiary, TEXT("Zoom in (+, wheel)")),
@@ -1271,6 +1301,8 @@ private:
             if (Here) {
                 if (CanSettle()) Items.push_back({ TEXT("Colonize this system"), TEXT("The colony ship is used up"), [this] { OrderColonize(); }, true, ERole::Accent });
                 if (CanInvadeHere()) Items.push_back({ TEXT("Invade this system"), TEXT("Ground assault at turn end"), [this] { OrderInvade(); }, true, ERole::Alert });
+                if (Unit->shipClass == botf::Building::Transport && State.rules.stations && !CurrentTaskForce())
+                    Items.push_back({ TEXT("Build outpost here"), OutpostText(), [this] { OrderBuildOutpost(); }, CanBuildOutpost(), ERole::Accent });
                 if (DraftFleetOr(*Unit)->targetX != Unit->x || DraftFleetOr(*Unit)->targetY != Unit->y)
                     Items.push_back({ TEXT("Hold position"), TEXT("Cancel the course"), [this] { HoldSelected(); }, !Session.active, ERole::Secondary });
             }
@@ -1307,6 +1339,9 @@ private:
                 Items.push_back({ TEXT("Intelligence on ") + Str(botf::empireName(Col->ownerId)), FString(),
                     [this, Owner = Col->ownerId, SystemId] { SelectedEmpire = Owner; IntelTargetSystem = SystemId; GoPanel(PanelIntel); }, true, ERole::Secondary });
         }
+        if (const auto* St = botf::view::visibleStationAt(State, X, Y))
+            Items.push_back({ TEXT("Inspect ") + Str(botf::stationName(*St)), TEXT("Station details and, for your outposts, the starbase upgrade"),
+                [this, CellId] { SelectCell(CellId); }, true, ERole::Secondary });
         Items.push_back({ TEXT("Centre view here"), FString(), [this, CellId] { if (Chart.IsValid()) Chart->CentreOn(CellId); }, true, ERole::Tertiary });
         return Items;
     }
@@ -1397,6 +1432,41 @@ private:
         Cmd.fleetId = SelectedFleet; Cmd.systemId = SystemAtCell(F->y * State.width + F->x);
         Submit(Cmd); Status = TEXT("Ground invasion ordered for turn end.");
     }
+    // ---- Outposts (schema 13): a troop transport assembles one in its sector ----
+    // Orders that claim a fleet for the turn in core (one per fleet); Build Outpost replaces any of them.
+    static bool ClaimsFleet(const botf::Command& O) {
+        using botf::CommandType;
+        return O.type == CommandType::MoveFleet || O.type == CommandType::Colonize || O.type == CommandType::AttackFleet
+            || O.type == CommandType::RetreatFleet || O.type == CommandType::Invade || O.type == CommandType::TerraformPlanet
+            || O.type == CommandType::BuildOutpost;
+    }
+    bool OutpostDrafted(int FleetId) const {
+        return std::any_of(State.pending.begin(), State.pending.end(), [FleetId](const botf::Command& O) {
+            return O.type == botf::CommandType::BuildOutpost && O.fleetId == FleetId;
+        });
+    }
+    // A single transport (not a task force selection) that core would let assemble an outpost now.
+    bool CanBuildOutpost() const {
+        const auto* F = Fleet();
+        if (!F || Session.active || CurrentTaskForce() || OutpostDrafted(F->id)) return false;
+        return botf::outpostBlocker(State, F->id).empty();
+    }
+    void OrderBuildOutpost() {
+        const auto* F = Fleet();
+        if (!F || CurrentTaskForce()) throw std::runtime_error("Select a single troop transport first");
+        const int FleetId = F->id;
+        ReplaceOrders([FleetId](const botf::Command& O) { return O.fleetId == FleetId && ClaimsFleet(O); },
+            botf::makeBuildOutpostCommand(NextId(), FleetId));
+        Status = FString::Printf(TEXT("Outpost assembly ordered: it takes %d turns and uses up the transport. Any new order to it abandons the work."),
+            botf::outpostBuildTurns(State, State.playerEmpire));
+    }
+    FString OutpostText() const {
+        const auto* F = Fleet();
+        if (!F || !State.rules.stations || F->shipClass != botf::Building::Transport) return FString();
+        if (OutpostDrafted(F->id))
+            return FString::Printf(TEXT("Outpost ordered: assembly starts when the turn ends and takes %d turns."), botf::outpostBuildTurns(State, State.playerEmpire));
+        return Str(botf::view::outpostOrderText(botf::view::outpostOrder(State, *F)));
+    }
     // Race whose dossier a system opens: an empire id (1..5), a minor's system id as negative, or 0.
     int DiplomacyTargetAt(int SystemId) const {
         const auto S = std::find_if(State.systems.begin(), State.systems.end(), [SystemId](const botf::System& X) { return X.id == SystemId; });
@@ -1470,7 +1540,9 @@ private:
         if (Path.empty()) throw std::runtime_error("That sector is outside the unit's supply range");
         PlotCourse(CellId);
     }
-    FString CellHint(int CellId) const {
+    // Hover hint: what a right click would do (first line), then what the sector holds (anomalies, station, race).
+    FString CellHint(int CellId) const { return CellOrderHint(CellId) + CellDetailLines(CellId); }
+    FString CellOrderHint(int CellId) const {
         const auto* Unit = Fleet();
         const FString Where = SystemAtCell(CellId) ? SystemName(SystemAtCell(CellId)) : FString::Printf(TEXT("%d,%d"), CellId % State.width, CellId / State.width);
         if (!Unit || MapView.Mode == BotfUi::EMapMode::Economic) return botf::explored(State, CellId % State.width, CellId / State.width) ? Where : FString(TEXT("Unexplored"));
@@ -1527,6 +1599,14 @@ private:
                     *Str(botf::empireName(Call.aggressor)), Call.dueTurn),
                 [this, Who = Call.defender] { SelectedEmpire = Who; SelectedMinor = 0; DiplomacyMode = 0; GoPanel(PanelDiplomacy); }, &FPalette::Alert,
                 TEXT("Join by declaring war, or let the call lapse"));
+        // Galactic events awaiting the player's decision open the event card.
+        for (const auto& Card : botf::view::eventCards(State)) {
+            if (!Card.needsDecision) continue;
+            InboxRow(FString::Printf(TEXT("Event: %s%s  /  %s"), *Str(Card.title), Card.where.empty() ? TEXT("") : *(TEXT(" at ") + Str(Card.where)),
+                    Card.chosenThisTurn ? *(TEXT("ordered: ") + Str(botf::view::optionLabel(Card, Card.chosen))) : *Str(botf::view::eventDeadlineText(Card))),
+                [this] { bEventsOpen = true; bSummaryOpen = bMenuOpen = false; }, Card.chosenThisTurn ? &FPalette::Tertiary : &FPalette::Accent,
+                TEXT("Choose how your empire responds; the default applies once the deadline passes"));
+        }
         const auto& Draft = Preview();
         for (const auto& Col : Draft.colonies) {
             if (Col.ownerId != State.playerEmpire) continue;
@@ -1559,9 +1639,52 @@ private:
                     Battle.winnerOwner == State.playerEmpire ? TEXT("victory") : Battle.winnerOwner ? TEXT("defeat") : TEXT("no victor")),
                     [this, Index = static_cast<int>(&Battle - State.latestBattles.data())] { BattleIndex = Index; BattleRoundIndex = 0; GoPanel(PanelCombat); ShowBattle(); },
                     &FPalette::Alert);
+        // Turn briefing: completed projects, then the last turn's chronicle by category; entries with a place focus the chart.
         int Lines = 0;
         for (const auto& Line_ : LastEvents) if (Lines++ < 8) InboxRow(Line_, nullptr, &FPalette::Muted);
+        int Briefed = 0;
+        for (const auto& Entry : LastBriefing) {
+            if (Briefed++ >= 24) {
+                InboxRow(FString::Printf(TEXT("%d more briefing entries in the Summary"), static_cast<int>(LastBriefing.size()) - 24),
+                    [this] { bSummaryOpen = true; SummaryMode = 0; bEventsOpen = bMenuOpen = false; }, &FPalette::Muted);
+                break;
+            }
+            InboxRow(Str(Entry.categoryName).ToUpper() + TEXT("  /  ") + Str(Entry.text), BriefingAction(Entry), BriefingTone(Entry.category),
+                Entry.focusCell >= 0 ? TEXT("Show on the chart") : FString());
+        }
         if (!InboxCount) InboxRows->AddSlot().AutoHeight() [ Para(Txt(TEXT("Nothing needs your attention.")), 9, &FPalette::Muted) ];
+    }
+    using FPaletteColor = FLinearColor FPalette::*;
+    static FPaletteColor BriefingTone(botf::ChronicleCategory Category) {
+        switch (Category) {
+        case botf::ChronicleCategory::Combat: return &FPalette::Alert;
+        case botf::ChronicleCategory::Victory: return &FPalette::Accent;
+        case botf::ChronicleCategory::Events: return &FPalette::Tertiary;
+        case botf::ChronicleCategory::Diplomacy:
+        case botf::ChronicleCategory::Intelligence: return &FPalette::Secondary;
+        case botf::ChronicleCategory::Stations: return &FPalette::Primary;
+        default: return &FPalette::Muted;
+        }
+    }
+    // Clicking a briefing entry centres the chart on its place (and opens the event card for a live event).
+    std::function<void()> BriefingAction(const botf::view::BriefingEntry& Entry) {
+        const int Cell = Entry.focusCell, EventId = Entry.eventId;
+        if (Cell < 0 && !EventId) return nullptr;
+        return [this, Cell, EventId] {
+            if (EventId) {
+                const auto Cards = botf::view::eventCards(State);
+                if (std::any_of(Cards.begin(), Cards.end(), [EventId](const botf::view::EventCard& C) { return C.id == EventId; })) {
+                    bEventsOpen = true; bSummaryOpen = bMenuOpen = false;
+                }
+            }
+            if (Cell >= 0) FocusCell(Cell);
+        };
+    }
+    void FocusCell(int Cell) {
+        if (Cell < 0 || Cell >= State.width * State.height) return;
+        if (ActivePanel != PanelGalaxy) GoPanel(PanelGalaxy);
+        SelectCell(Cell);
+        if (Chart.IsValid()) Chart->CentreOn(Cell);
     }
 
     // ---- End-turn check: catch idle colonies, starvation and unanswered proposals before resolving ----
@@ -1586,6 +1709,8 @@ private:
             if (botf::view::turnsLeft(State, Call.dueTurn) == 0)
                 Out.Add(FString::Printf(TEXT("%s's call to arms against %s falls due: refusing costs 20 trust."),
                     *Str(botf::empireName(Call.defender)), *Str(botf::empireName(Call.aggressor))));
+        // Galactic events awaiting a decision (the default applies once the deadline passes).
+        for (const auto& Warning : botf::view::unresolvedEventWarnings(State)) Out.Add(Str(Warning));
         const auto Income = IncomeForecast();
         if (Income.Net() < 0) {
             const std::int64_t After = Draft.credits + Income.Net();
@@ -1678,6 +1803,96 @@ private:
                 FMargin(16, 12)) ];
     }
 
+    // ---- Galactic event card (schema 13 curated events): decisions with options and a deadline ----
+    TSharedRef<SWidget> BuildEventCard() {
+        return SNew(SBox).Visibility_Lambda([this] { return bEventsOpen && Shell == EUiView::Game ? EVisibility::Visible : EVisibility::Collapsed; })
+            .MinDesiredWidth(560).MaxDesiredWidth(760).MaxDesiredHeight(620)
+            [ Fill(EShape::Row, &FPalette::Void, SNew(SVerticalBox)
+                + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 8)
+                [ SNew(SHorizontalBox)
+                    + SHorizontalBox::Slot().AutoWidth() [ Bar(EShape::ElbowTop, &FPalette::Primary, 40, 24) ]
+                    + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(8, 0) [ Label(Txt(TEXT("GALACTIC EVENTS")), 15, &FPalette::Accent, true) ]
+                    + SHorizontalBox::Slot().FillWidth(1).VAlign(VAlign_Center) [ Bar(EShape::Block, &FPalette::Secondary, 0, 6) ]
+                    + SHorizontalBox::Slot().AutoWidth().Padding(6, 0, 0, 0)
+                    [ Pill(TEXT("CLOSE"), [this] { bEventsOpen = false; }, nullptr, ERole::Alert, TEXT("Close (Esc)")) ] ]
+                + SVerticalBox::Slot().FillHeight(1) [ Scroll(SAssignNew(EventRows, SVerticalBox)) ],
+                FMargin(16, 12)) ];
+    }
+    // A decision is a drafted order: choosing again replaces it; it takes effect when the turn ends.
+    void ChooseEventOption(int EventId, int Option) {
+        ReplaceOrders([EventId](const botf::Command& O) { return O.type == botf::CommandType::ResolveEventChoice && O.eventId == EventId; },
+            botf::makeResolveEventChoiceCommand(NextId(), EventId, Option));
+        for (const auto& Card : botf::view::eventCards(State))
+            if (Card.id == EventId) Status = TEXT("Decision ordered: ") + Str(botf::view::optionLabel(Card, Option)) + TEXT(". It takes effect when the turn ends.");
+    }
+    void RefreshEvents() {
+        if (!EventRows.IsValid()) return;
+        EventRows->ClearChildren();
+        const auto Cards = botf::view::eventCards(State);
+        for (const auto& Card : Cards) {
+            const int EventId = Card.id, Focus = Card.focusCell;
+            auto Options = SNew(SVerticalBox);
+            for (const auto& Option : Card.options) {
+                const int Index = Option.index;
+                const bool Chosen = Card.chosen == Index;
+                Options->AddSlot().AutoHeight().Padding(0, 0, 0, 3)
+                    [ Control(Str(Option.label).ToUpper() + (Option.isDefault ? TEXT("  (DEFAULT)") : TEXT("")) + TEXT("\n") + Str(Option.effect),
+                        [this, EventId, Index] { ChooseEventOption(EventId, Index); },
+                        [this, Open = Card.needsDecision] { return Open && !Session.active; }, [Chosen] { return Chosen; },
+                        ERole::Primary, FMargin(4, 5, 8, 5), true, 10,
+                        Card.needsDecision ? FString(TEXT("Order this response; you can change it until the turn ends")) : FString(TEXT("Already decided"))) ];
+            }
+            const FString Heading_ = Str(Card.title).ToUpper() + (Card.where.empty() ? FString() : TEXT("  /  ") + Str(Card.where).ToUpper());
+            FString Detail = Str(Card.description);
+            if (Card.endTurn > State.turn) Detail += FString::Printf(TEXT("\nIts effects last until turn %d."), Card.endTurn);
+            const std::string Status_ = botf::view::eventStatusText(Card);
+            EventRows->AddSlot().AutoHeight().Padding(0, 0, 0, 8)
+            [ Section(Txt(Heading_), SNew(SVerticalBox)
+                + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 5) [ Para(Txt(Detail), 10, &FPalette::Text) ]
+                + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 5)
+                [ Para(Txt(Str(Status_)), 10, Card.needsDecision && !Card.chosenThisTurn ? &FPalette::Alert : &FPalette::Muted) ]
+                + SVerticalBox::Slot().AutoHeight() [ Options ]
+                + SVerticalBox::Slot().AutoHeight().Padding(0, 4, 0, 0)
+                [ SNew(SBox).Visibility(Focus >= 0 ? EVisibility::Visible : EVisibility::Collapsed)
+                    [ Pill(TEXT("SHOW ON CHART"), [this, Focus] { bEventsOpen = false; FocusCell(Focus); }, nullptr, ERole::Tertiary) ] ]) ];
+        }
+        if (Cards.empty())
+            EventRows->AddSlot().AutoHeight()
+            [ Para(Txt(State.rules.curatedEvents
+                ? TEXT("No galactic events affect your empire. The event deck draws from turn 6, then every 7 turns.")
+                : TEXT("This campaign uses the original random events; curated galactic events are part of the Remastered ruleset.")), 10, &FPalette::Muted) ];
+    }
+
+    // ---- End-of-game overlay ----
+    bool OutcomeOverlayVisible() const { return bHasActiveCampaign && State.outcome != botf::CampaignOutcome::Ongoing && !bOutcomeDismissed; }
+    TSharedRef<SWidget> BuildOutcomeOverlay() {
+        return SNew(SOverlay).Visibility_Lambda([this] { return OutcomeOverlayVisible() && Shell == EUiView::Game ? EVisibility::Visible : EVisibility::Collapsed; })
+            + SOverlay::Slot()
+            [ SNew(SBorder).BorderImage(FCoreStyle::Get().GetBrush("WhiteBrush")).BorderBackgroundColor(FLinearColor(0.f, 0.f, 0.f, 0.72f))
+                .OnMouseButtonDown_Lambda([](const FGeometry&, const FPointerEvent&) { return FReply::Handled(); }) ]
+            + SOverlay::Slot().HAlign(HAlign_Center).VAlign(VAlign_Center)
+            [ SNew(SBox).WidthOverride(640)
+                [ Fill(EShape::Row, &FPalette::Void, Stack({
+                    SNew(STextBlock).Text(Dyn([this] { return Str(botf::view::outcomeView(State).title); })).Font(BotfUi::Condensed(44))
+                        .ColorAndOpacity_Lambda([this] { return FSlateColor(State.outcome == botf::CampaignOutcome::Victory ? P().Accent : P().Alert); }),
+                    Para(Dyn([this] { return Str(botf::view::outcomeView(State).detail); }), 13, &FPalette::Text),
+                    Para(Dyn([this] { return VictorySummaryText(); }), 10, &FPalette::Muted),
+                    Line({ Control(TEXT("REVIEW THE GALAXY"), [this] { bOutcomeDismissed = true; }, nullptr, nullptr, ERole::Accent, FMargin(16, 10), false, 11,
+                               TEXT("Close this and look around; the campaign cannot continue (Esc)")),
+                           Control(TEXT("NEW CAMPAIGN"), [this] { OpenSubPage(EUiView::Setup); }, nullptr, nullptr, ERole::Primary, FMargin(16, 10), false, 11, FString()),
+                           Control(TEXT("MAIN MENU"), [this] { ShowView(EUiView::Title); }, nullptr, nullptr, ERole::Tertiary, FMargin(16, 10), false, 11, FString()) }, 6) }, 12),
+                    FMargin(22, 18)) ] ];
+    }
+    // One line per victory condition with the player's progress.
+    FString VictorySummaryText() const {
+        FString Text;
+        for (const auto& Row_ : botf::view::victoryRows(State, State.playerEmpire)) {
+            if (!Text.IsEmpty()) Text += TEXT("\n");
+            Text += FString::Printf(TEXT("%s: %s"), *Str(Row_.name), Row_.enabled ? *FString::Printf(TEXT("%d%%%s"), Row_.percent, Row_.achieved ? TEXT(", achieved") : TEXT("")) : TEXT("off"));
+        }
+        return Text;
+    }
+
     // ======================= GALAXY =======================
     FString SectorLabel(int Cell) const {
         if (Cell < 0) return FString();
@@ -1726,6 +1941,112 @@ private:
         Text += R && R->atWar ? TEXT("\nAt war: troop transports can invade.") : TEXT("\nNot at war: invasion needs a declaration of war.");
         return Text;
     }
+    // Schema 13: anomalies charted in the selected sector and the profile of a contacted minor race there.
+    FString SectorExtras() const {
+        const int X = SelectedCell % State.width, Y = SelectedCell / State.width;
+        FString Text = Str(botf::view::featureTooltip(State, X, Y));
+        if (const auto* M = Selected ? botf::minorAt(State, Selected) : nullptr; M && M->contact[State.playerEmpire]) {
+            if (!Text.IsEmpty()) Text += TEXT("\n\n");
+            Text += Str(botf::view::minorProfileText(botf::view::minorProfile(State, *M)));
+        }
+        return Text;
+    }
+    // Short sector lines for the chart's hover hint: anomalies, a visible station and a contacted minor race.
+    FString CellDetailLines(int CellId) const {
+        const int X = CellId % State.width, Y = CellId / State.width;
+        FString Text;
+        if (!botf::explored(State, X, Y)) return Text;
+        for (const auto& Feature : botf::featuresAt(State, X, Y)) {
+            Text += TEXT("\n") + Str(botf::galaxyFeatureName(Feature.type)) + TEXT(": ");
+            switch (Feature.type) {
+            case botf::GalaxyFeatureType::Nebula: Text += TEXT("hides ships; shields fail in battle"); break;
+            case botf::GalaxyFeatureType::Wormhole: {
+                FString Exit = TEXT("exit uncharted");
+                for (const auto& Other : State.galaxyFeatures)
+                    if (Other.id == Feature.pairId && botf::explored(State, Other.x, Other.y)) Exit = FString::Printf(TEXT("leads to %d,%d"), Other.x, Other.y);
+                Text += Exit;
+                break;
+            }
+            case botf::GalaxyFeatureType::BlackHole: Text += TEXT("impassable"); break;
+            case botf::GalaxyFeatureType::NeutronStar: Text += TEXT("10% hull damage per turn"); break;
+            case botf::GalaxyFeatureType::IonStorm: Text += TEXT("drifting; drains shields and 5% hull per turn"); break;
+            case botf::GalaxyFeatureType::SubspaceRift: Text += FString::Printf(TEXT("impassable until turn %d"), Feature.expiresTurn); break;
+            }
+        }
+        if (const auto* St = botf::view::visibleStationAt(State, X, Y)) {
+            const auto Stats = botf::stationStats(State, *St);
+            Text += FString::Printf(TEXT("\n%s (%s): hull %d/%d, supply %d, sensors %d"), *Str(botf::stationName(*St)), *Str(botf::empireName(St->ownerId)),
+                St->hull, Stats.maxHull, Stats.supplyRadius, Stats.sensorRadius);
+        }
+        if (const int SystemId = SystemAtCell(CellId))
+            if (const auto* M = botf::minorAt(State, SystemId); M && M->contact[State.playerEmpire])
+                Text += TEXT("\n") + Str(botf::view::minorShortText(botf::view::minorProfile(State, *M)));
+        return Text;
+    }
+    // ---- Stations: inspector and starbase upgrade ----
+    const botf::Station* SelectedStation() const {
+        return botf::view::visibleStationAt(State, SelectedCell % State.width, SelectedCell / State.width);
+    }
+    // The funding colony shown for an upgrade: the one picked, while it is still an option, else the nearest that can.
+    int UpgradeFundingColony() const {
+        const auto* St = SelectedStation();
+        if (!St) return 0;
+        const auto Options = botf::view::upgradeOptions(Preview(), St->id);
+        for (const auto& Option : Options) if (Option.systemId == UpgradeFunder) return UpgradeFunder;
+        const int Best = botf::view::bestUpgradeFunder(Preview(), St->id);
+        return Best ? Best : (Options.empty() ? 0 : Options.front().systemId);
+    }
+    FString UpgradeBlocker() const {
+        const auto* St = SelectedStation();
+        if (!St || St->ownerId != State.playerEmpire) return TEXT("Not one of your stations.");
+        if (Session.active) return TEXT("Finish the battle in progress first.");
+        const int Funder = UpgradeFundingColony();
+        if (!Funder) return St->type == botf::StationType::Outpost ? TEXT("No colony of yours can fund the upgrade.") : TEXT("Already a starbase.");
+        return Str(botf::stationUpgradeBlocker(Preview(), St->id, Funder));
+    }
+    void CycleUpgradeFunder() {
+        const auto* St = SelectedStation();
+        if (!St) return;
+        const auto Options = botf::view::upgradeOptions(Preview(), St->id);
+        if (Options.empty()) { UpgradeFunder = 0; return; }
+        const int Current = UpgradeFundingColony();
+        const auto It = std::find_if(Options.begin(), Options.end(), [Current](const botf::view::UpgradeOption& O) { return O.systemId == Current; });
+        UpgradeFunder = It == Options.end() || std::next(It) == Options.end() ? Options.front().systemId : std::next(It)->systemId;
+    }
+    void OrderStationUpgrade() {
+        const auto* St = SelectedStation();
+        if (!St || St->ownerId != State.playerEmpire) throw std::runtime_error("Select one of your outposts first");
+        const int Funder = UpgradeFundingColony();
+        const int StationId = St->id;
+        Submit(botf::makeUpgradeStationCommand(NextId(), StationId, Funder));
+        Status = FString::Printf(TEXT("Starbase upgrade ordered, funded by %s. The credits are paid now; its industry goes to the upgrade from next turn."),
+            *SystemName(Funder));
+    }
+    TSharedRef<SWidget> BuildStationInspector() {
+        return SNew(SVerticalBox)
+            + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 4)
+            [ Heading(Dyn([this] { const auto* St = SelectedStation(); return St ? Str(botf::stationName(*St)).ToUpper() : FString(); }), 12, &FPalette::Accent) ]
+            + SVerticalBox::Slot().AutoHeight()
+            [ Para(Dyn([this] { const auto* St = SelectedStation(); return St ? Str(botf::view::stationInspectorText(Preview(), St->id)) : FString(); }), 9, &FPalette::Text) ]
+            + SVerticalBox::Slot().AutoHeight().Padding(0, 6, 0, 0)
+            [ SNew(SBox).Visibility_Lambda([this] {
+                    const auto* St = SelectedStation();
+                    return St && St->ownerId == State.playerEmpire && St->type == botf::StationType::Outpost ? EVisibility::Visible : EVisibility::Collapsed; })
+                [ SNew(SVerticalBox)
+                    + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 4)
+                    [ Para(Dyn([this] {
+                        FString Text = Str(botf::view::upgradeCostText(Preview()));
+                        if (const int Funder = UpgradeFundingColony()) Text += TEXT("\nFunding colony: ") + SystemName(Funder);
+                        const FString Blocker = UpgradeBlocker();
+                        return Blocker.IsEmpty() ? Text : Text + TEXT("\n") + Blocker;
+                    }), 9, &FPalette::Muted) ]
+                    + SVerticalBox::Slot().AutoHeight()
+                    [ Grid({
+                        Pill(TEXT("NEXT FUNDING COLONY"), [this] { CycleUpgradeFunder(); }, [this] { return UpgradeFundingColony() != 0; }, ERole::Secondary,
+                            TEXT("Choose which of your colonies within 6 sectors pays the industry")),
+                        Pill(TEXT("UPGRADE TO STARBASE"), [this] { OrderStationUpgrade(); }, [this] { return UpgradeBlocker().IsEmpty(); }, ERole::Accent,
+                            TEXT("Starbase: supply radius 5, sensor radius 3, repairs friendly ships in its sector")) }, 2) ] ] ];
+    }
     TSharedRef<SWidget> OrderButton(const FString& Label, std::function<void()> Action, std::function<bool()> Enabled, const FString& Tip, ERole Role = ERole::Primary) {
         return Control(Label, Action, Enabled, nullptr, Role, FMargin(6, 6), false, 9, Tip);
     }
@@ -1759,6 +2080,8 @@ private:
                         return R && R->atWar && UnitCanReach(*F, Enemy->x, Enemy->y);
                     }, TEXT("Select an enemy ship in this sector (or right-click it on the chart); requires war"), ERole::Alert),
                     OrderButton(TEXT("INVADE"), [this] { OrderInvade(); }, [this] { return CanInvadeHere(); }, TEXT("Troop transport over an enemy colony, at war"), ERole::Alert),
+                    OrderButton(TEXT("BUILD OUTPOST"), [this] { OrderBuildOutpost(); }, [this] { return CanBuildOutpost(); },
+                        TEXT("Troop transport: assemble an outpost in this sector. It extends supply and sensor range; the transport is used up."), ERole::Accent),
                     OrderButton(TEXT("RETREAT"), [this] {
                         botf::Command Cmd; Cmd.id = State.lastAcceptedCommand + 1; Cmd.type = botf::CommandType::RetreatFleet; Cmd.fleetId = SelectedFleet;
                         Submit(Cmd); Status = TEXT("Ship ordered to disengage.");
@@ -1772,6 +2095,10 @@ private:
                         [this] { return !Session.active && !State.pending.empty(); }, TEXT("Undo the most recent order of any kind"), ERole::Tertiary) }, 2) ]
                 + SVerticalBox::Slot().AutoHeight().Padding(0, 4, 0, 0)
                 [ Para(Dyn([this] { return PendingUnitText(); }), 9, &FPalette::Muted) ]
+                // Troop transports in a station ruleset: outpost assembly time, core's blocker or assembly progress.
+                + SVerticalBox::Slot().AutoHeight().Padding(0, 4, 0, 0)
+                [ SNew(SBox).Visibility_Lambda([this] { return SafeText([this] { return OutpostText(); }).IsEmpty() ? EVisibility::Collapsed : EVisibility::Visible; })
+                    [ Para(Dyn([this] { return OutpostText(); }), 9, &FPalette::Tertiary) ] ]
                 + SVerticalBox::Slot().AutoHeight().Padding(0, 6, 0, 2) [ Heading(Txt(TEXT("TASK FORCE")), 9, &FPalette::Muted) ]
                 + SVerticalBox::Slot().AutoHeight()
                 [ Grid({
@@ -1834,7 +2161,10 @@ private:
             else if (Order.type == botf::CommandType::RetreatFleet) Text += TEXT("\nOrdered: retreat");
             else if (Order.type == botf::CommandType::Invade) Text += TEXT("\nOrdered: invade");
             else if (Order.type == botf::CommandType::SetTacticalStance) Text += FString::Printf(TEXT("\nOrdered: stance %s"), StanceName(Order.stance));
+            else if (Order.type == botf::CommandType::BuildOutpost) Text += TEXT("\nOrdered: build outpost");
         }
+        if (const auto* Base = Fleet(); Base && Base->buildingOutpost)
+            Text += FString::Printf(TEXT("\nAssembling an outpost: %d of %d turns"), Base->outpostProgress, botf::outpostBuildTurns(State, Base->ownerId));
         return Text;
     }
     void RefreshSector() {
@@ -1984,7 +2314,8 @@ private:
                     [ Scroll(Stack({
                         Section(Txt(TEXT("PLANETS")), SAssignNew(SheetPlanetRows, SVerticalBox)),
                         Section(Txt(TEXT("WORKFORCE")), BuildProductionView()),
-                        Section(Txt(TEXT("ENERGY")), BuildEnergyView()) })) ]
+                        Section(Txt(TEXT("ENERGY")), BuildEnergyView()),
+                        BuildMegaprojectSection() })) ]
                     + SHorizontalBox::Slot().FillWidth(1.1f).Padding(0, 0, 10, 0)
                     [ SNew(SVerticalBox)
                         + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 6)
@@ -1997,7 +2328,7 @@ private:
                             + SWidgetSwitcher::Slot() [ BuildChoiceView(TEXT("SHIP LIST"), ShipRows) ]
                             + SWidgetSwitcher::Slot() [ Scroll(BuildStructuresView()) ] ] ]
                     + SHorizontalBox::Slot().AutoWidth()
-                    [ SNew(SBox).WidthOverride(300) [ Scroll(BuildQueueColumn()) ] ] ]
+                    [ SNew(SBox).WidthOverride(300) [ Scroll(Stack({ BuildQueueColumn(), BuildTemplateSection() })) ] ] ]
                 + SWidgetSwitcher::Slot()
                 [ Para(Txt(TEXT("This is not one of your systems. Use < > to page through your colonies, or double-click one on the chart.")), 12, &FPalette::Muted) ] ],
             14, SheetHeader({}));
@@ -2432,6 +2763,121 @@ private:
                             bIsPinned ? TEXT("Cannot remove pinned item (unpin first)") : TEXT("Invested work on this item is lost")) ] ],
                     FMargin(8, 5)) ];
         }
+    }
+
+    // ---- Megaproject (scientific victory): start or cancel at the selected colony ----
+    botf::view::MegaprojectView MegaprojectHere() const { return botf::view::megaprojectView(Preview(), State.playerEmpire, Selected); }
+    bool MegaprojectStartDrafted() const {
+        return std::any_of(State.pending.begin(), State.pending.end(), [](const botf::Command& O) { return O.type == botf::CommandType::StartMegaproject; });
+    }
+    void StartMegaproject() {
+        if (!Owned()) throw std::runtime_error("Select one of your systems");
+        Submit(botf::makeStartMegaprojectCommand(NextId(), Selected));
+        Status = TEXT("The ") + Str(botf::megaprojectName(State)) + TEXT(" is ordered here. Its credits are paid now; work begins when the turn ends.");
+    }
+    // A project started this turn is withdrawn (its credits return with the order); one under way is abandoned.
+    void CancelMegaproject() {
+        if (MegaprojectStartDrafted()) {
+            ReplaceOrders([](const botf::Command& O) { return O.type == botf::CommandType::StartMegaproject; }, std::nullopt);
+            Status = TEXT("Megaproject order withdrawn.");
+            return;
+        }
+        Submit(botf::makeCancelMegaprojectCommand(NextId()));
+        Status = TEXT("The megaproject will be abandoned when the turn ends. Its invested industry is lost.");
+    }
+    TSharedRef<SWidget> BuildMegaprojectSection() {
+        return SNew(SBox).Visibility_Lambda([this] { return State.rules.alternativeVictories ? EVisibility::Visible : EVisibility::Collapsed; })
+            [ Section(Dyn([this] { return TEXT("MEGAPROJECT  /  ") + Str(botf::megaprojectName(State)).ToUpper(); }), SNew(SVerticalBox)
+                + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 6)
+                [ Para(Dyn([this] { return Str(botf::view::megaprojectText(Preview(), MegaprojectHere())); }), 9, &FPalette::Text) ]
+                + SVerticalBox::Slot().AutoHeight()
+                [ Line({
+                    Pill(TEXT("START HERE"), [this] { StartMegaproject(); }, [this] { return !Session.active && Owned() && MegaprojectHere().startBlocker.empty(); },
+                        ERole::Accent, TEXT("Begin the megaproject at this colony; completing it wins a scientific victory")),
+                    Pill(TEXT("CANCEL PROJECT"), [this] { CancelMegaproject(); }, [this] { return !Session.active && MegaprojectHere().underWay; },
+                        ERole::Alert, TEXT("Abandon the megaproject (no refund once work has begun)")) }, 4) ]) ];
+    }
+
+    // ---- Build-queue templates: define from the queue, apply, set the default for new colonies, delete ----
+    std::vector<botf::BuildTemplate> OwnTemplates() const { return botf::empireBuildTemplates(Preview(), State.playerEmpire); }
+    FString TemplateFallbackName() const {
+        return Owned() ? SystemName(Selected) + TEXT(" queue") : FString::Printf(TEXT("Template %d"), static_cast<int>(OwnTemplates().size()) + 1);
+    }
+    std::string TemplateNameFor(const FString& Fallback) const {
+        return botf::view::templateName(std::string(TCHAR_TO_UTF8(*TemplateNameText)), std::string(TCHAR_TO_UTF8(*Fallback)));
+    }
+    std::vector<botf::Construction> QueueAsTemplate() const {
+        const auto* Col = DraftColony();
+        if (!Col || Col->queue.empty()) throw std::runtime_error("The build queue is empty: queue the projects to save first");
+        return botf::view::templateItemsFromQueue(*Col);
+    }
+    void SaveQueueAsTemplate() {
+        const auto Items = QueueAsTemplate();
+        Submit(botf::makeDefineBuildTemplateCommand(NextId(), 0, TemplateNameFor(TemplateFallbackName()), Items));
+        const auto Templates = OwnTemplates();
+        SelectedTemplate = Templates.empty() ? 0 : Templates.back().id;
+        Status = TEXT("Build template saved. Apply it to any colony, or make it the default for new colonies.");
+    }
+    void UpdateTemplateFromQueue(int TemplateId) {
+        const auto* Existing = botf::buildTemplateById(Preview(), TemplateId);
+        if (!Existing) throw std::runtime_error("Build template not found");
+        const auto Items = QueueAsTemplate();
+        Submit(botf::makeDefineBuildTemplateCommand(NextId(), TemplateId, TemplateNameFor(Str(Existing->name)), Items));
+        Status = TEXT("Build template replaced with this colony's queue.");
+    }
+    void ApplyTemplate(int TemplateId) {
+        if (!Owned()) throw std::runtime_error("Select one of your systems");
+        Submit(botf::makeApplyBuildTemplateCommand(NextId(), TemplateId, Selected));
+        const auto* Col = DraftColony();
+        Status = Col && !Col->queueExplanation.empty() ? Str(Col->queueExplanation) : FString(TEXT("Build template applied to the queue."));
+    }
+    void SetDefaultTemplate(int TemplateId) {
+        Submit(botf::makeSetDefaultBuildTemplateCommand(NextId(), TemplateId));
+        Status = TemplateId ? TEXT("Default template set: colonies you found, win or capture with an empty queue adopt it.")
+                            : TEXT("No default template: new colonies start with an empty queue.");
+    }
+    void DeleteTemplate(int TemplateId) {
+        Submit(botf::makeDeleteBuildTemplateCommand(NextId(), TemplateId));
+        if (SelectedTemplate == TemplateId) SelectedTemplate = 0;
+        Status = TEXT("Build template deleted.");
+    }
+    TSharedRef<SWidget> BuildTemplateSection() {
+        return Section(Txt(TEXT("BUILD TEMPLATES")), SNew(SVerticalBox)
+            + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 6)
+            [ SAssignNew(TemplateNameBox, SEditableTextBox).HintText(Txt(TEXT("Template name (optional)")))
+                .OnTextChanged_Lambda([this](const FText& Text) { TemplateNameText = Text.ToString(); }) ]
+            + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 6)
+            [ Pill(TEXT("SAVE QUEUE AS TEMPLATE"), [this] { SaveQueueAsTemplate(); },
+                [this] { const auto* Col = DraftColony(); return !Session.active && Col && !Col->queue.empty(); }, ERole::Primary,
+                TEXT("Save this colony's build queue (up to 32 projects) as a named template")) ]
+            + SVerticalBox::Slot().AutoHeight() [ SAssignNew(TemplateRows, SVerticalBox) ]
+            + SVerticalBox::Slot().AutoHeight().Padding(0, 4, 0, 0)
+            [ Para(Txt(TEXT("Applying appends the projects in order; any that are illegal at the time are skipped with the reason shown in the queue governor note.")), 8, &FPalette::Muted) ]);
+    }
+    void RefreshTemplates() {
+        if (!TemplateRows.IsValid()) return;
+        TemplateRows->ClearChildren();
+        const auto Templates = OwnTemplates();
+        for (const auto& Tmpl : Templates) {
+            const int Id = Tmpl.id;
+            const bool bDefault = Tmpl.autoApply;
+            TemplateRows->AddSlot().AutoHeight().Padding(0, 0, 0, 3)
+                [ Fill(EShape::Row, SelectedTemplate == Id ? &FPalette::FieldHi : &FPalette::Field, SNew(SVerticalBox)
+                    + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 3) [ Para(Txt(Str(botf::view::templateSummary(Tmpl))), 9, bDefault ? &FPalette::Accent : &FPalette::Text) ]
+                    + SVerticalBox::Slot().AutoHeight()
+                    [ Grid({
+                        Pill(TEXT("APPLY"), [this, Id] { ApplyTemplate(Id); }, [this] { return !Session.active && Owned(); }, ERole::Primary,
+                            TEXT("Append these projects to this colony's queue")),
+                        Pill(bDefault ? TEXT("UNSET DEFAULT") : TEXT("DEFAULT"), [this, Id, bDefault] { SetDefaultTemplate(bDefault ? 0 : Id); },
+                            [this] { return !Session.active; }, ERole::Secondary, TEXT("Colonies newly acquired with an empty queue adopt the default template")),
+                        Pill(TEXT("UPDATE"), [this, Id] { UpdateTemplateFromQueue(Id); },
+                            [this] { const auto* Col = DraftColony(); return !Session.active && Col && !Col->queue.empty(); }, ERole::Tertiary,
+                            TEXT("Replace the template with this colony's queue (and the typed name, if any)")),
+                        Pill(TEXT("DELETE"), [this, Id] { DeleteTemplate(Id); }, [this] { return !Session.active; }, ERole::Alert, TEXT("Delete this template")) }, 2) ],
+                    FMargin(8, 5)) ];
+        }
+        if (Templates.empty())
+            TemplateRows->AddSlot().AutoHeight() [ Para(Txt(TEXT("No templates yet. Queue projects here, then save the queue as a template.")), 9, &FPalette::Muted) ];
     }
 
     // ======================= RESEARCH =======================
@@ -2872,9 +3318,10 @@ private:
     FString DipStatusLine() const {
         if (DipMinor()) {
             const auto* M = botf::minorAt(State, SelectedMinor);
-            return FString::Printf(TEXT("Minor race  |  relations %d / 100  |  %s  |  %s"), M->attitude[State.playerEmpire],
+            return FString::Printf(TEXT("Minor race of %s  |  relations %d / 100  |  %s  |  %s\n%s"), *Str(botf::view::minorProfile(State, *M).homeworld),
+                M->attitude[State.playerEmpire],
                 M->memberOf ? *(FString(TEXT("member of ")) + Str(botf::empireName(M->memberOf))) : TEXT("independent"),
-                M->friendshipTurn[State.playerEmpire] >= 0 ? TEXT("friendship treaty") : TEXT("no treaty"));
+                M->friendshipTurn[State.playerEmpire] >= 0 ? TEXT("friendship treaty") : TEXT("no treaty"), *MinorRowDetail(*M));
         }
         const auto* R = botf::majorRelation(State, State.playerEmpire, SelectedEmpire);
         if (!R || !R->contact) return TEXT("No contact. Explore until your sensors meet them.");
@@ -2994,9 +3441,13 @@ private:
     FString RaceInfoText() const {
         if (DipMinor()) {
             const auto* M = botf::minorAt(State, SelectedMinor);
-            FString Text = FString::Printf(TEXT("%s, home system %s.\nRelations with you: %d / 100.\n"), *Str(M->name), *SystemName(M->systemId), M->attitude[State.playerEmpire]);
-            if (M->memberOf == State.playerEmpire) Text += TEXT("A member of your empire: +10% empire research.\n");
+            // Roster profile (MinorRaces.h): homeworld, temperament, attitude, technology, population, join bonus, description.
+            const auto Profile = botf::view::minorProfile(State, *M);
+            FString Text = Str(botf::view::minorProfileText(Profile)) + TEXT("\n");
+            if (M->memberOf == State.playerEmpire) Text += TEXT("\nA member of your empire: its join bonus applies to every colony you hold.\n");
             Text += TEXT("\nFriendship needs relations of 50. Membership needs relations of 80 and a friendship signed in an earlier turn. Each gift adds 20 when delivered. Rival offers favour the empire with better relations.");
+            if (Profile.managed)
+                Text += TEXT(" Every five turns an independent race grows, advances its technology and drifts toward its natural view of each empire; its temperament shapes the loyalty of a member.");
             return Text;
         }
         const auto* R = botf::majorRelation(State, State.playerEmpire, SelectedEmpire);
@@ -3103,12 +3554,21 @@ private:
             if (!M.contact[State.playerEmpire]) continue;
             ++Count;
             RaceRows->AddSlot().AutoHeight().Padding(0, 0, 0, 3)
-                [ Row(FString::Printf(TEXT("%s\n%s  |  relations %d%s"), *Str(M.name).ToUpper(),
+                [ Row(FString::Printf(TEXT("%s\n%s  |  relations %d%s\n%s"), *Str(M.name).ToUpper(),
                     M.memberOf ? *(FString(TEXT("member of ")) + Str(botf::empireName(M.memberOf))) : TEXT("independent"),
-                    M.attitude[State.playerEmpire], M.friendshipTurn[State.playerEmpire] >= 0 ? TEXT("  |  friendship") : TEXT("")),
+                    M.attitude[State.playerEmpire], M.friendshipTurn[State.playerEmpire] >= 0 ? TEXT("  |  friendship") : TEXT(""),
+                    *MinorRowDetail(M)),
                     [this, Sys = M.systemId] { SelectedMinor = Sys; }, [this, Sys = M.systemId] { return SelectedMinor == Sys; }) ];
         }
         if (!Count) RaceRows->AddSlot().AutoHeight() [ Para(Txt(TEXT("No races contacted yet. Explore to meet them.")), 10, &FPalette::Muted) ];
+    }
+    // "Scientific  |  +15% research  |  tech 8, pop 80" for the known-races list.
+    FString MinorRowDetail(const botf::Minor& M) const {
+        const auto Profile = botf::view::minorProfile(State, M);
+        FString Text = Profile.temperament.empty() ? FString() : Str(Profile.temperament) + TEXT("  |  ");
+        Text += Str(Profile.joinBonus);
+        if (Profile.managed) Text += FString::Printf(TEXT("  |  tech %d, pop %d"), Profile.techLevel, Profile.population);
+        return Text;
     }
     FString RaceRowLabel(int Id, const botf::MajorRelation& R) const {
         if (botf::empireEliminated(State, Id)) return Str(botf::empireName(Id)).ToUpper() + TEXT("\nELIMINATED");
@@ -3419,20 +3879,66 @@ private:
             + SWidgetSwitcher::Slot()
             [ Scroll(Stack({
                 Section(Txt(TEXT("CAMPAIGN RECORD")), Para(Dyn([this] {
-                    return FString::Printf(TEXT("%s  |  turn %d  |  %s galaxy, seed %llu\n%d systems  |  %d ships  |  %s"),
+                    return FString::Printf(TEXT("%s  |  turn %d  |  %s galaxy, seed %llu  |  %s ruleset\n%d systems  |  %d ships  |  %s"),
                         *Str(botf::empireName(State.playerEmpire)), State.turn,
                         State.ruleset == botf::Ruleset::Reference ? TEXT("classic") : TEXT("prototype"),
-                        static_cast<unsigned long long>(State.seed), OwnColonyCount(), OwnShipCount(),
+                        static_cast<unsigned long long>(State.seed), *Str(botf::view::rulesetLabel(State)), OwnColonyCount(), OwnShipCount(),
                         HasUnsavedChanges() ? TEXT("unsaved progress") : TEXT("saved"));
                 }), 13, &FPalette::Text)),
+                // Member races (MinorRaces.h): the join bonuses every colony of the empire currently draws.
+                Section(Txt(TEXT("MEMBER RACES")), Para(Dyn([this] {
+                    const auto Lines = botf::view::memberBonusLines(State, State.playerEmpire);
+                    if (Lines.empty()) return FString(TEXT("No minor race has joined your empire. Court them in Diplomacy: each member adds its join bonus to every colony."));
+                    FString Text;
+                    for (const auto& Entry : Lines) Text += (Text.IsEmpty() ? FString() : FString(TEXT("\n"))) + Str(Entry);
+                    return Text;
+                }), 11, &FPalette::Text)),
                 Fill(EShape::Row, &FPalette::FieldHi, Heading(Dyn([this] { return OutcomeText(); }), 15, &FPalette::Accent), FMargin(12, 6)),
                 Line({ Button(TEXT("SAVE CAMPAIGN"), [this] { Save(); }),
                        Button(TEXT("LOAD CAMPAIGN"), [this] { OpenSubPage(EUiView::Load); }),
                        Button(TEXT("NEW CAMPAIGN"), [this] { OpenSubPage(EUiView::Setup); }),
-                       Button(TEXT("SETTINGS"), [this] { OpenSubPage(EUiView::Settings); }, [] { return true; }, 12, FString(), ERole::Secondary) }) })) ],
+                       Button(TEXT("SETTINGS"), [this] { OpenSubPage(EUiView::Settings); }, [] { return true; }, 12, FString(), ERole::Secondary) }) })) ]
+            + SWidgetSwitcher::Slot() [ Scroll(BuildVictoryView()) ],
             14, SheetHeader({ ModeButton(TEXT("SYSTEMS"), &EmpireMode, 0, TEXT("All your systems; click to open")),
                               ModeButton(TEXT("FLEETS"), &EmpireMode, 1, TEXT("All your task forces and ships; click to find on the chart")),
-                              ModeButton(TEXT("CAMPAIGN"), &EmpireMode, 2, TEXT("Campaign record, save and load")) }));
+                              ModeButton(TEXT("CAMPAIGN"), &EmpireMode, 2, TEXT("Campaign record, member races, save and load")),
+                              ModeButton(TEXT("VICTORY"), &EmpireMode, 3, TEXT("Progress toward every victory condition")) }));
+    }
+    // Victory progress (victoryProgress): one bar per condition, the megaproject and the rivals racing for it.
+    TSharedRef<SWidget> VictoryRowWidget(int Index) {
+        const auto RowAt = [this, Index]() -> botf::view::VictoryRow {
+            const auto Rows = botf::view::victoryRows(State, State.playerEmpire);
+            return Index < static_cast<int>(Rows.size()) ? Rows[static_cast<std::size_t>(Index)] : botf::view::VictoryRow();
+        };
+        return Fill(EShape::Row, &FPalette::FieldHi, SNew(SVerticalBox)
+            + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 4)
+            [ SNew(SHorizontalBox)
+                + SHorizontalBox::Slot().FillWidth(1)
+                [ Heading(Dyn([RowAt] { const auto R = RowAt(); return Str(R.name).ToUpper() + (R.achieved ? TEXT("  /  ACHIEVED") : TEXT("")); }), 12, &FPalette::Tertiary) ]
+                + SHorizontalBox::Slot().AutoWidth()
+                [ Label(Dyn([RowAt] { const auto R = RowAt(); return R.enabled ? FString::Printf(TEXT("%d%%"), R.percent) : FString(TEXT("OFF")); }), 12, &FPalette::Accent, true) ] ]
+            + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 4)
+            [ SNew(BotfUi::SSegmentBar).Segments(25).Height(9)
+                .Fraction_Lambda([RowAt] {
+                    float Out = 0.f;
+                    FString Error;
+                    FBotfCampaign::Run([&Out, &RowAt] { const auto R = RowAt(); Out = R.enabled ? R.percent / 100.f : 0.f; }, Error);
+                    return Out;
+                })
+                .FillColor(C(&FPalette::Good)).EmptyColor_Lambda([this] { return FSlateColor(BotfUi::Shade(P().Secondary, 0.22f)); }) ]
+            + SVerticalBox::Slot().AutoHeight() [ Para(Dyn([RowAt] { return Str(RowAt().explanation); }), 9, &FPalette::Text) ],
+            FMargin(10, 8));
+    }
+    TSharedRef<SWidget> BuildVictoryView() {
+        return Stack({
+            Section(Txt(TEXT("VICTORY CONDITIONS")), Stack({ VictoryRowWidget(0), VictoryRowWidget(1), VictoryRowWidget(2), VictoryRowWidget(3) }, 6)),
+            Section(Dyn([this] { return TEXT("MEGAPROJECT  /  ") + Str(botf::megaprojectName(State)).ToUpper(); }), Para(Dyn([this] {
+                const auto* Project = botf::empireMegaproject(Preview(), State.playerEmpire);
+                FString Text = Str(botf::view::megaprojectText(Preview(), botf::view::megaprojectView(Preview(), State.playerEmpire, Project ? Project->systemId : 0)));
+                if (!Project && State.rules.alternativeVictories) Text += TEXT("\nStart it from the Solar System sheet of the colony that should build it.");
+                for (const auto& Rival : botf::view::rivalMegaprojectLines(State)) Text += TEXT("\n") + Str(Rival);
+                return Text;
+            }), 10, &FPalette::Text)) });
     }
     void RefreshEmpireTables() {
         if (SystemTableRows.IsValid()) {
@@ -3998,11 +4504,14 @@ private:
         if (!B) return TEXT("-");
         if (B->participants.empty()) return TEXT("This older save did not record the ships involved.");
         FString Text;
+        // Stations are recorded as Destroyer-class participants; they are named by their combatant id, never by class.
         for (const auto& Participant : B->participants) {
-            botf::Fleet Ship; Ship.id = Participant.fleetId; Ship.ownerId = Participant.ownerId;
-            Ship.shipClass = Participant.shipClass; Ship.referenceShipId = Participant.referenceShipId;
-            Text += FString::Printf(TEXT("%s #%d %s  |  hull %d  shields %d\n"),
-                *Str(botf::empireName(Participant.ownerId)), Participant.fleetId, *Str(botf::fleetName(Ship)), Participant.initialHull, Participant.initialShields);
+            const FString Name = Str(botf::view::participantLabel(&State, Participant.fleetId, Participant.ownerId, Participant.shipClass, Participant.referenceShipId));
+            Text += botf::view::isStation(Participant.fleetId)
+                ? FString::Printf(TEXT("%s %s (station)  |  hull %d  shields %d\n"), *Str(botf::empireName(Participant.ownerId)), *Name,
+                    Participant.initialHull, Participant.initialShields)
+                : FString::Printf(TEXT("%s #%d %s  |  hull %d  shields %d\n"), *Str(botf::empireName(Participant.ownerId)), Participant.fleetId, *Name,
+                    Participant.initialHull, Participant.initialShields);
         }
         return Text;
     }
@@ -4013,10 +4522,13 @@ private:
         const auto& Round = B->rounds[std::clamp(BattleRoundIndex, 0, static_cast<int>(B->rounds.size()) - 1)];
         FString Text;
         if (Round.damage.empty()) Text += TEXT("No damage this round.\n");
+        const auto Unit = [](int Id) {
+            return botf::view::isStation(Id) ? FString::Printf(TEXT("Station %d"), botf::stationIdForCombatant(Id)) : FString::Printf(TEXT("Ship #%d"), Id);
+        };
         for (const auto& D : Round.damage)
-            Text += FString::Printf(TEXT("Ship #%d: shields %d to %d, hull %d to %d\n"), D.fleetId, D.shieldBefore, D.shieldAfter, D.hullBefore, D.hullAfter);
-        for (const int Id : Round.lostFleetIds) Text += FString::Printf(TEXT("Ship #%d destroyed\n"), Id);
-        for (const int Id : Round.retreatedFleetIds) Text += FString::Printf(TEXT("Ship #%d retreated\n"), Id);
+            Text += FString::Printf(TEXT("%s: shields %d to %d, hull %d to %d\n"), *Unit(D.fleetId), D.shieldBefore, D.shieldAfter, D.hullBefore, D.hullAfter);
+        for (const int Id : Round.lostFleetIds) Text += Unit(Id) + TEXT(" destroyed\n");
+        for (const int Id : Round.retreatedFleetIds) Text += Unit(Id) + TEXT(" retreated\n");
         // Battles fought in this session also keep their encounter: orders, AI decisions, ambushes, disengages, rams.
         // A committed record alone only holds damage (core's CombatRound has no per-ship orders).
         const auto& Encounters = Campaign.LastTurnEncounters();
@@ -4240,11 +4752,15 @@ private:
                 LastEvents.Add(SystemName(Col.systemId) + TEXT(": completed ") + Str(Col.completed));
             }
         }
+        // The turn briefing (TurnReport::chronicle: one categorised entry per event line, with its place) feeds the
+        // inbox; a report without a chronicle falls back to the plain event lines.
+        LastBriefing = botf::view::briefing(State, R);
         for (const auto& Event : R.events) {
-            LastEvents.Add(Str(Event));
+            if (R.chronicle.empty()) LastEvents.Add(Str(Event));
             LastReport += TEXT("\n") + Str(Event);
             UE_LOG(LogTemp, Display, TEXT("BOTF_EVENT %s"), *Str(Event));
         }
+        if (!LastBriefing.empty()) LastReport += TEXT("\nBriefing: ") + Str(botf::view::briefingSummary(LastBriefing)) + TEXT(".");
         bool PlayerBattle = false;
         for (const auto& Battle : R.battles) {
             LastReport += FString::Printf(TEXT("\nBattle at %d,%d: %s against %s; victor %s; %d ships lost."),
@@ -4265,6 +4781,10 @@ private:
         if (!R.events.empty() || !R.battles.empty() || !R.invasions.empty() || State.outcome != botf::CampaignOutcome::Ongoing) {
             bSummaryOpen = true; SummaryMode = 0;
         }
+        // A new decision (or one falling due) opens the event card over the summary; the end of the game shows its overlay.
+        for (const auto& Card : botf::view::eventCards(State))
+            if (Card.needsDecision && !Card.chosenThisTurn) { bEventsOpen = true; bSummaryOpen = false; break; }
+        if (State.outcome != botf::CampaignOutcome::Ongoing) { bOutcomeDismissed = false; bEventsOpen = false; }
         if (!R.battles.empty()) {
             BattleIndex = std::max(0, static_cast<int>(State.latestBattles.size()) - 1);
             BattleRoundIndex = std::max(0, static_cast<int>(CurrentBattle()->rounds.size()) - 1);
@@ -4278,6 +4798,7 @@ private:
         ++StateVersion;
         SyncAllocation();
         RefreshSector(); RefreshChoices(); RefreshQueue(); RefreshRaces(); RefreshProposals(); RefreshIntel(); RefreshEmpireTables(); RefreshReference(); RefreshSaveRows(); RefreshTactical();
+        RefreshEvents(); RefreshTemplates();
         RefreshInbox();
         if (bMenuOpen && MenuCell >= 0 && MenuCell < State.width * State.height) OpenSectorMenu(MenuCell, MenuAt - FVector2D(6, 6));
     }
@@ -4290,7 +4811,7 @@ private:
             if (S.y * State.width + S.x == CellId && botf::explored(State, S.x, S.y)) Selected = S.id;
         SelectedEnemyFleet = 0;
         if (const auto M = botf::minorAt(State, Selected); M && M->contact[State.playerEmpire]) SelectedMinor = Selected;
-        RefreshSector(); RefreshChoices(); RefreshQueue();
+        RefreshSector(); RefreshChoices(); RefreshQueue(); RefreshTemplates();
     }
     void SelectSystem(int SystemId) {
         for (const auto& S : State.systems) if (S.id == SystemId) {
@@ -4459,6 +4980,9 @@ private:
             Note += FString::Printf(TEXT(" The %s need at least %d powers in play; smaller galaxies are unavailable."), *Str(botf::empireName(SetupPlayer)), SetupPlayer);
         return Note;
     }
+    botf::RulesetPreset SetupPresetValue() const {
+        return SetupPreset == static_cast<int>(botf::RulesetPreset::Classic) ? botf::RulesetPreset::Classic : botf::RulesetPreset::Remastered;
+    }
     TSharedRef<SWidget> PowersOption(int Count) {
         return Control(FString::Printf(TEXT("%d POWERS"), Count), [this, Count] { SetupEmpires = Count; },
             [this, Count] { return SetupPlayer <= Count; }, [this, Count] { return SetupEmpires == Count; },
@@ -4515,7 +5039,16 @@ private:
         };
         return Stack({
             Section(Dyn([this] { return TEXT("EMPIRE  /  ") + Str(botf::empireName(SetupPlayer)).ToUpper(); }), Factions),
-            Section(Txt(TEXT("RULES")), SNew(SVerticalBox)
+            Section(Dyn([this] { return TEXT("GAMEPLAY  /  ") + Str(botf::rulesetPresetName(SetupPresetValue())).ToUpper(); }), SNew(SVerticalBox)
+                + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 6)
+                [ OptionRow({ Option(TEXT("REMASTERED"), [this] { SetupPreset = static_cast<int>(botf::RulesetPreset::Remastered); },
+                                  [this] { return SetupPresetValue() == botf::RulesetPreset::Remastered; }, TEXT("Every remaster gameplay layer (recommended)")),
+                              Option(TEXT("CLASSIC"), [this] { SetupPreset = static_cast<int>(botf::RulesetPreset::Classic); },
+                                  [this] { return SetupPresetValue() == botf::RulesetPreset::Classic; }, TEXT("Original-like rules")) }) ]
+                + SVerticalBox::Slot().AutoHeight()
+                [ Para(Dyn([this] { return Str(botf::view::presetSummary(SetupPresetValue()))
+                    + TEXT(" Both place minor races from the 30-race roster, scaled to the galaxy size."); }), 10, &FPalette::Muted) ]),
+            Section(Txt(TEXT("CATALOGUE")), SNew(SVerticalBox)
                 + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 6)
                 [ OptionRow({ Option(TEXT("CLASSIC CATALOGUE"), [this] { SetupRuleset = 1; }, [this] { return SetupRuleset == 1; }),
                               Option(TEXT("PROTOTYPE GALAXY"), [this] { SetupRuleset = 0; }, [this] { return SetupRuleset == 0; }) }) ]
@@ -4564,11 +5097,14 @@ private:
         const botf::StartingEra ChosenEra = botf::startingEraValid(static_cast<botf::StartingEra>(SetupEra))
             ? static_cast<botf::StartingEra>(SetupEra)
             : botf::StartingEra::Early;
-        auto Fresh = SetupRuleset
-            ? botf::generateReferenceCampaign(Seed, SetupEmpires, SetupSize ? 20 : 16, SetupSize ? 15 : 12, SetupSize ? 42 : 28, SetupPlayer, ChosenEra)
-            : botf::generateCampaign(Seed, SetupEmpires, SetupSize ? 20 : 16, SetupSize ? 15 : 12, SetupSize ? 42 : 28, SetupPlayer, ChosenEra);
-        Fresh.eventsEnabled = SetupEvents;
-        ReplaceState(std::move(Fresh));
+        // New campaigns go through botf::newCampaign (the only generator that places the 30-race minor roster and
+        // applies the ruleset preset); the legacy generators remain the fixtures' baseline.
+        botf::view::SetupChoice Choice;
+        Choice.seed = Seed; Choice.empires = SetupEmpires; Choice.large = SetupSize != 0; Choice.player = SetupPlayer; Choice.era = ChosenEra;
+        Choice.reference = SetupRuleset != 0;
+        Choice.preset = SetupPresetValue();
+        Choice.events = SetupEvents;
+        ReplaceState(botf::view::startCampaign(Choice));
         bHasActiveCampaign = true; bHasSavedBaseline = false;
         Session = botf::session::TurnSession(); SavedSessionText.Empty();
         bEncounterChoice = false; TacShip = TacTarget = 0; TacLog.Empty();
@@ -4582,7 +5118,8 @@ private:
         bMenuOpen = bSummaryOpen = bEndTurnCheck = false; MapView = BotfUi::FMapView(); RefreshAll(); ActivePanel = PanelGalaxy;
         if (Chart.IsValid()) Chart->CentreOn(SelectedCell);
         if (Scene.IsValid()) Scene->SetPresentationActive(false);
-        Status = FString::Printf(TEXT("The %s awaits your orders. Turn 1."), *Str(botf::empireName(State.playerEmpire)));
+        Status = FString::Printf(TEXT("The %s awaits your orders. Turn 1. %s ruleset, %d minor races in the galaxy."),
+            *Str(botf::empireName(State.playerEmpire)), *Str(botf::view::rulesetLabel(State)), static_cast<int>(State.minors.size()));
     }
 
     // ---- Save / load ----
@@ -4674,6 +5211,8 @@ private:
         SetupEmpires = 1 + static_cast<int>(State.rivals.size());
         SetupEvents = State.eventsEnabled;
         SetupEra = static_cast<int>(State.startingEra);
+        // A schema-13 Classic game keeps Classic for the next setup; older saves (every layer off) leave the default.
+        SetupPreset = static_cast<int>(State.rules.stations ? State.rules.preset : botf::RulesetPreset::Remastered);
         Selected = 0; SelectedMinor = 0;
         const auto FirstOwned = std::find_if(State.fleets.begin(), State.fleets.end(), [this](const botf::Fleet& F) { return F.ownerId == State.playerEmpire; });
         SelectedFleet = FirstOwned == State.fleets.end() ? 0 : FirstOwned->id;
@@ -4740,6 +5279,21 @@ FBotfTestFixture MakeBotfTestFixture(bool bWar) {
     }
     botf::validate(S);
     return Fx;
+}
+
+// Test-only: opens a Scientific Breakthrough decision for the player now (deadline two turns out), as the curated
+// event deck would. Needs a Remastered campaign. Mirrored by the plain-compiler scratch test of BotfGameplayViewModel.h.
+int InjectBotfTestEvent(botf::GameState& S) {
+    botf::GalacticEvent Event;
+    Event.id = S.nextEventId++;
+    Event.kind = botf::GalacticEventKind::ScientificBreakthrough;
+    Event.empireId = S.playerEmpire;
+    Event.startTurn = S.turn;
+    Event.choiceDeadline = S.turn + 2;
+    Event.endTurn = S.turn + 3;
+    S.galacticEvents.push_back(Event);
+    botf::validate(S);
+    return Event.id;
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FBotfUiShellAutomationTest, "BOTF.UI.Shell",
@@ -5509,6 +6063,98 @@ bool FBotfUiShellAutomationTest::RunTest(const FString& Parameters) {
                     TestFalse(TEXT("Weapons does NOT show generic +5% bonus"), WeapDetail.Contains(TEXT("+5% per level ladder bonus")));
                 }
             }
+        }
+
+        // Schema-13 gameplay layer and the minor-race roster: a new Remastered campaign through the setup screen, a
+        // Build Outpost order, a galactic event decision, one committed turn and a save/load round trip.
+        {
+            Ui->ShowView(SBotfInterface::EUiView::Game);
+            Ui->OpenSubPage(SBotfInterface::EUiView::Setup);
+            TestTrue(TEXT("New campaigns default to the Remastered ruleset"), Ui->SetupPresetValue() == botf::RulesetPreset::Remastered);
+            Ui->SetupRuleset = 1; Ui->SetupPlayer = 1; Ui->SetupEmpires = 2; Ui->SetupSeed = 0; Ui->SetupSize = 0; Ui->SetupEvents = true;
+            Ui->SetupEra = static_cast<int>(botf::StartingEra::Expanded);   // Expanded empires start with a troop transport
+            Ui->RequestAction(SBotfInterface::EPendingAction::StartCampaign);
+            if (Ui->Shell == SBotfInterface::EUiView::Confirm) Ui->ConfirmAction(false);
+            const auto& Rules = Ui->State.rules;
+            TestTrue(TEXT("A new Remastered campaign has every gameplay layer on and charted anomalies in the galaxy"),
+                Ui->Shell == SBotfInterface::EUiView::Game && Rules.preset == botf::RulesetPreset::Remastered && Rules.stations
+                && Rules.galaxyFeatures && Rules.curatedEvents && Rules.alternativeVictories && !Ui->State.galaxyFeatures.empty());
+            const auto& Minors = Ui->State.minors;
+            TestTrue(TEXT("New campaigns place the minor-race roster, scaled to the galaxy"),
+                static_cast<int>(Minors.size()) >= botf::minors::rosterTarget(static_cast<int>(Ui->State.systems.size()))
+                && std::all_of(Minors.begin(), Minors.end(), [](const botf::Minor& M) { return botf::minors::managed(M); }));
+            if (!Minors.empty()) {
+                const FString Profile = Str(botf::view::minorProfileText(botf::view::minorProfile(Ui->State, Minors.front())));
+                TestTrue(TEXT("A minor race profile shows its temperament, technology, population and join bonus"),
+                    Profile.Contains(TEXT("Join bonus")) && Profile.Contains(TEXT("Technology level")) && Profile.Contains(TEXT("population")));
+            }
+            TestTrue(TEXT("Victory progress lists four conditions, scientific and diplomatic enabled"),
+                botf::view::victoryRows(Ui->State, Ui->State.playerEmpire).size() == 4 && Ui->VictorySummaryText().Contains(TEXT("Scientific"))
+                && !Ui->OutcomeOverlayVisible());
+
+            // Build Outpost: the transport in the home system (an own colony system is a legal site).
+            const auto Transport = std::find_if(Ui->State.fleets.begin(), Ui->State.fleets.end(), [&Ui](const botf::Fleet& F) {
+                return F.ownerId == Ui->State.playerEmpire && F.shipClass == botf::Building::Transport; });
+            TestTrue(TEXT("The Expanded era campaign has a troop transport"), Transport != Ui->State.fleets.end());
+            const int TransportId = Transport != Ui->State.fleets.end() ? Transport->id : 0;
+            if (TransportId) {
+                Ui->SelectCell(Transport->y * Ui->State.width + Transport->x);
+                Ui->SelectedFleet = TransportId; Ui->SelectedTaskForce = 0;
+                TestTrue(TEXT("Build Outpost is offered for a transport on a legal site"), Ui->CanBuildOutpost() && Ui->OutpostText().Contains(TEXT("assembles in")));
+                Ui->OrderBuildOutpost();
+                const auto& Order = Ui->State.pending.back();
+                TestTrue(TEXT("Build Outpost submits a real BuildOutpost order"), Order.type == botf::CommandType::BuildOutpost && Order.fleetId == TransportId);
+                const auto* Drafted = botf::view::findFleet(Ui->Preview(), TransportId);
+                TestTrue(TEXT("The draft shows the transport assembling and the order is not offered twice"),
+                    Drafted && Drafted->buildingOutpost && !Ui->CanBuildOutpost() && Ui->OutpostText().Contains(TEXT("Outpost ordered")));
+            }
+
+            // A galactic event decision: warned at end of turn, ordered from the event card, replaced by a second choice.
+            const int EventId = InjectBotfTestEvent(Ui->State);
+            ++Ui->StateVersion; Ui->RefreshAll();
+            TestTrue(TEXT("An undecided galactic event raises an end-turn warning and an inbox entry"),
+                FString::Join(Ui->EndTurnWarnings(), TEXT(" ")).Contains(TEXT("Scientific breakthrough")) && Ui->InboxCount > 0
+                && Ui->EventRows.IsValid() && Ui->EventRows->NumSlots() == 1);
+            const auto Choices = [&Ui, EventId] { return std::count_if(Ui->State.pending.begin(), Ui->State.pending.end(), [EventId](const botf::Command& O) {
+                return O.type == botf::CommandType::ResolveEventChoice && O.eventId == EventId; }); };
+            Ui->ChooseEventOption(EventId, 1);
+            TestTrue(TEXT("Choosing an event option submits ResolveEventChoice"),
+                Choices() == 1 && Ui->State.pending.back().type == botf::CommandType::ResolveEventChoice && Ui->State.pending.back().eventOption == 1);
+            Ui->ChooseEventOption(EventId, 2);
+            TestTrue(TEXT("Choosing again replaces the drafted decision"), Choices() == 1 && Ui->State.pending.back().eventOption == 2);
+            TestFalse(TEXT("A decided event no longer warns at end of turn"), FString::Join(Ui->EndTurnWarnings(), TEXT(" ")).Contains(TEXT("Scientific breakthrough")));
+
+            const int TurnBefore = Ui->State.turn;
+            Ui->EndTurn();
+            for (int Guard = 0; Guard < 8 && Ui->Session.pending; ++Guard) { Ui->TacAuto(); Ui->TacContinue(); }
+            const auto Cards = botf::view::eventCards(Ui->State);
+            TestTrue(TEXT("End Turn applies the decision and the event closes"), !Ui->Session.active && Ui->State.turn == TurnBefore + 1
+                && std::none_of(Cards.begin(), Cards.end(), [EventId](const botf::view::EventCard& C) { return C.id == EventId; }));
+            if (TransportId) {
+                const auto* Assembling = botf::view::findFleet(Ui->State, TransportId);
+                TestTrue(TEXT("The committed transport is assembling its outpost"), Assembling && Assembling->buildingOutpost);
+            }
+            TestTrue(TEXT("The turn briefing comes from the chronicle, with the event outcome under Events"),
+                std::any_of(Ui->LastBriefing.begin(), Ui->LastBriefing.end(), [](const botf::view::BriefingEntry& E) {
+                    return E.category == botf::ChronicleCategory::Events && E.text.find("breakthrough") != std::string::npos; }));
+
+            const auto RemasteredFingerprint = botf::fingerprint(Ui->State);
+            Ui->Save();
+            Ui->OpenSubPage(SBotfInterface::EUiView::Load);
+            Ui->RequestAction(SBotfInterface::EPendingAction::LoadCampaign);
+            if (Ui->Shell == SBotfInterface::EUiView::Confirm) Ui->ConfirmAction(false);
+            TestTrue(TEXT("A Remastered campaign with its minors and outpost work survives save and load"),
+                botf::fingerprint(Ui->State) == RemasteredFingerprint && Ui->State.rules.preset == botf::RulesetPreset::Remastered
+                && Ui->SetupPresetValue() == botf::RulesetPreset::Remastered && Ui->LastBriefing.empty());
+
+            // Classic stays available from setup and keeps outposts, without the Remastered-only layers.
+            Ui->OpenSubPage(SBotfInterface::EUiView::Setup);
+            Ui->SetupPreset = static_cast<int>(botf::RulesetPreset::Classic);
+            Ui->RequestAction(SBotfInterface::EPendingAction::StartCampaign);
+            if (Ui->Shell == SBotfInterface::EUiView::Confirm) Ui->ConfirmAction(false);
+            TestTrue(TEXT("A Classic campaign keeps stations and the roster but no anomalies or curated events"),
+                Ui->State.rules.preset == botf::RulesetPreset::Classic && Ui->State.rules.stations && Ui->State.galaxyFeatures.empty()
+                && !Ui->State.rules.curatedEvents && !Ui->State.minors.empty());
         }
     } catch (const std::exception& Error) {
         AddError(FString(TEXT("Shell test threw: ")) + Str(Error.what()));

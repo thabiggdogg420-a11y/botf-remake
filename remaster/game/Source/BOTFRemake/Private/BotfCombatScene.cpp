@@ -163,7 +163,7 @@ void ABotfCombatScene::SetupEffectPools()
     }
 }
 
-void ABotfCombatScene::ConfigureBattle(int AttackerFaction, int DefenderFaction, int AttackerCount, int DefenderCount, uint32 Seed)
+void ABotfCombatScene::ConfigureBattle(int AttackerFaction, int DefenderFaction, int AttackerCount, int DefenderCount, uint32 Seed, uint32 StationSlots)
 {
     if (!BattleTexture)
     {
@@ -229,34 +229,50 @@ void ABotfCombatScene::ConfigureBattle(int AttackerFaction, int DefenderFaction,
     auto* ShieldMesh = LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Sphere.Sphere"));
     auto* ShieldMaterial = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/Presentation/M_ShieldShell.M_ShieldShell"));
     static const TCHAR* Names[] = {TEXT("Federation"), TEXT("Klingon"), TEXT("Romulan"), TEXT("Cardassian"), TEXT("Ferengi")};
+    // Stations (schema 13) are immobile units recorded like ships: they get a flat placeholder disc, never a ship mesh.
+    const auto IsStationSlot = [StationSlots](int Side, int Index) { return Index < 8 && (StationSlots & (1u << (Side * 8 + Index))) != 0; };
+    UStaticMesh* StationMesh = nullptr;
+    if (StationSlots)
+    {
+        StationMesh = LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Cylinder.Cylinder"));
+        if (!StationMesh) StationMesh = LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Cube.Cube"));
+    }
     FRandomStream Random(Seed);
     for (int Side = 0; Side < 2; ++Side)
     {
         const int Faction = FMath::Clamp(Side == 0 ? AttackerFaction : DefenderFaction, 1, 5);
-        const FString Name(Names[Faction - 1]);
-        const FString Path = FString::Printf(TEXT("/Game/Presentation/%s/StaticMeshes/%s.%s"), *Name, *Name, *Name);
-        auto* Mesh = Faction == 1 ? LoadObject<UStaticMesh>(nullptr,
-            TEXT("/Game/Presentation/Community/franger/StaticMeshes/franger.franger")) : nullptr;
-        if (!Mesh) Mesh = LoadObject<UStaticMesh>(nullptr, *Path);
-        if (!Mesh)
+        const int Count = FMath::Clamp(Side == 0 ? AttackerCount : DefenderCount, 0, 8);
+        bool bNeedsShipMesh = false;
+        for (int Index = 0; Index < Count; ++Index) bNeedsShipMesh = bNeedsShipMesh || !IsStationSlot(Side, Index);
+        UStaticMesh* Mesh = nullptr;
+        if (bNeedsShipMesh)
         {
-            UE_LOG(LogTemp, Warning, TEXT("BOTF battle visualization missing mesh: %s"), *Path);
-            Mesh = LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Cone.Cone"));
+            const FString Name(Names[Faction - 1]);
+            const FString Path = FString::Printf(TEXT("/Game/Presentation/%s/StaticMeshes/%s.%s"), *Name, *Name, *Name);
+            Mesh = Faction == 1 ? LoadObject<UStaticMesh>(nullptr,
+                TEXT("/Game/Presentation/Community/franger/StaticMeshes/franger.franger")) : nullptr;
+            if (!Mesh) Mesh = LoadObject<UStaticMesh>(nullptr, *Path);
+            if (!Mesh)
+            {
+                UE_LOG(LogTemp, Warning, TEXT("BOTF battle visualization missing mesh: %s"), *Path);
+                Mesh = LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Cone.Cone"));
+            }
         }
         if (!Mesh) Mesh = LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Sphere.Sphere"));
         if (!Mesh) continue;
 
-        const int Count = FMath::Clamp(Side == 0 ? AttackerCount : DefenderCount, 0, 8);
         const int Rows = (Count + 1) / 2;
         for (int Index = 0; Index < Count; ++Index)
         {
+            const bool bStation = IsStationSlot(Side, Index) && StationMesh != nullptr;
+            UStaticMesh* SlotMesh = bStation ? StationMesh : Mesh;
             auto* Ship = NewObject<UStaticMeshComponent>(this);
             Ship->SetupAttachment(RootComponent);
-            Ship->SetStaticMesh(Mesh);
+            Ship->SetStaticMesh(SlotMesh);
             Ship->SetCollisionEnabled(ECollisionEnabled::NoCollision);
             Ship->RegisterComponent();
-            const float Radius = FMath::Max(1.f, Mesh->GetBounds().SphereRadius);
-            Ship->SetRelativeScale3D(FVector(80.f / Radius));
+            const float Radius = FMath::Max(1.f, SlotMesh->GetBounds().SphereRadius);
+            Ship->SetRelativeScale3D(bStation ? FVector(170.f / Radius, 170.f / Radius, 40.f / Radius) : FVector(80.f / Radius));
             const int Row = Index / 2;
             const int Column = Index % 2;
             const FVector Position((Side == 0 ? -1.f : 1.f) * (Count == 1 ? 445.f : 335.f + Column * 235.f),
@@ -430,9 +446,22 @@ void ABotfCombatScene::ConfigureEncounter(const botf::tactical::Encounter& Encou
 
 void ABotfCombatScene::ConfigureBattleReport(const botf::CombatReport& Report, int RoundIndex)
 {
+    // Station participants (fleet ids >= botf::StationCombatantBase) take the same visual slots as below.
+    uint32 StationSlots = 0;
+    for (int Side = 0; Side < 2; ++Side)
+    {
+        const int FactionId = Side == 0 ? Report.firstOwner : Report.secondOwner;
+        int SideCount = 0;
+        for (const auto& Participant : Report.participants)
+        {
+            if (Participant.ownerId != FactionId || SideCount >= 8) continue;
+            if (botf::isStationCombatant(Participant.fleetId)) StationSlots |= 1u << (Side * 8 + SideCount);
+            ++SideCount;
+        }
+    }
     ConfigureBattle(Report.firstOwner, Report.secondOwner,
         static_cast<int>(Report.firstFleetIds.size()), static_cast<int>(Report.secondFleetIds.size()),
-        static_cast<uint32>(Report.turn * 257 + Report.x * 17 + Report.y));
+        static_cast<uint32>(Report.turn * 257 + Report.x * 17 + Report.y), StationSlots);
 
     std::vector<botf::CombatParticipant> LegacyParticipants;
     if (Report.participants.empty())
@@ -463,7 +492,8 @@ void ABotfCombatScene::ConfigureBattleReport(const botf::CombatReport& Report, i
                 ShipOwners[VisualIndex] != FactionId) continue;
 
             auto* Ship = Ships[VisualIndex].Get();
-            if (FactionId == 1 && Participant.shipClass == botf::Building::Destroyer)
+            // Stations are recorded as Destroyer-class participants: never give them a destroyer model.
+            if (FactionId == 1 && Participant.shipClass == botf::Building::Destroyer && !botf::isStationCombatant(Participant.fleetId))
             {
                 if (auto* Mesh = LoadObject<UStaticMesh>(nullptr,
                     TEXT("/Game/Presentation/Community/fUlysses/StaticMeshes/fUlysses.fUlysses")))

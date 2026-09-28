@@ -52,7 +52,9 @@ public:
     ABotfCombatScene();
     virtual void Tick(float DeltaSeconds) override;
     UTextureRenderTarget2D* GetBattleTexture() const;
-    void ConfigureBattle(int AttackerFaction, int DefenderFaction, int AttackerCount, int DefenderCount, uint32 Seed);
+    // StationSlots: bit (Side * 8 + Index) marks a schema-13 station (an immobile unit, not a ship). Station slots
+    // get a placeholder disc and never a ship mesh; a side made only of stations loads no ship mesh at all.
+    void ConfigureBattle(int AttackerFaction, int DefenderFaction, int AttackerCount, int DefenderCount, uint32 Seed, uint32 StationSlots = 0);
     void ConfigureBattleReport(const botf::CombatReport& Report, int RoundIndex = -1);
     void ConfigureEncounter(const botf::tactical::Encounter& Encounter);
     void SetPresentationActive(bool bActive);

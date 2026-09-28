@@ -9,6 +9,7 @@
 
 #include "BotfUiTheme.h"
 #include "BotfViewModel.h"
+#include "BotfGameplayViewModel.h"
 #include "Simulation.h"
 #include "InputCoreTypes.h"
 #include <algorithm>
@@ -27,6 +28,8 @@ enum class EMapMode : uint8 { Military, Economic };
 struct FMapView {
     EMapMode Mode = EMapMode::Military;
     bool bNames = true, bRange = true, bGrid = false, bCourses = true;
+    bool bAnomalies = true;   // Schema 13: charted nebulae, black holes, neutron stars, ion storms, wormholes, rifts
+    bool bStations = true;    // Schema 13: supply (bright) and sensor (faint) rings of own stations and the selected one
     bool bPlotting = false;   // Course plotting: the next left click sets the selected unit's destination.
     float Zoom = 1.f;
     FVector2D Pan = FVector2D::ZeroVector;
@@ -127,6 +130,11 @@ public:
         std::map<int, std::vector<int>> Courses;           // fleet id -> route to its drafted destination
         int HoverCell = -2;
         std::vector<int> HoverPath;
+        // Schema 13 overlays (fog-filtered by the view model): charted anomalies of the committed campaign, stations
+        // the player owns or sees, and own transports assembling an outpost in the draft.
+        std::vector<botf::view::FeatureMark> Features;
+        std::vector<botf::view::StationMark> Stations;
+        std::vector<std::pair<int, int>> Assembling;
     };
     mutable FPaintCache Cache;
     void RefreshPaintCache(const botf::GameState& Draft, const botf::Fleet* Ship) const {
@@ -140,6 +148,10 @@ public:
         for (const auto& F : Draft.fleets)
             if (F.ownerId == Draft.playerEmpire && (F.targetX != F.x || F.targetY != F.y))
                 Cache.Courses[F.id] = botf::route(Draft, F, F.targetX, F.targetY);
+        Cache.Features = botf::view::chartFeatures(*B.State);
+        Cache.Stations = botf::view::chartStations(*B.State);
+        for (const auto& F : Draft.fleets)
+            if (F.ownerId == Draft.playerEmpire && F.buildingOutpost) Cache.Assembling.push_back({F.x, F.y});
     }
     bool CachedSupplied(int X, int Y) const {
         if (!B.State || X < 0 || Y < 0 || X >= B.State->width || Y >= B.State->height) return false;
@@ -226,6 +238,65 @@ public:
         const bool Military = B.View->Mode == EMapMode::Military;
         const botf::Fleet* Ship = OwnShip(Draft);
         RefreshPaintCache(Draft, Ship);
+        auto Circle = [&](int L, FVector2D C, double Radius, const FLinearColor& Color, float Thick) {
+            TArray<FVector2D> Pts;
+            for (int I = 0; I <= 24; ++I) { const double A = I * 6.283185307 / 24; Pts.Add(C + FVector2D(std::cos(A), std::sin(A)) * Radius); }
+            FSlateDrawElement::MakeLines(Elements, Layer + L, Geometry.ToPaintGeometry(), Pts, ESlateDrawEffect::None, Color, true, Thick);
+        };
+        // Charted anomalies (explored sectors only): nebulae and ion storms tint their sectors, point anomalies get a glyph.
+        if (B.View->bAnomalies) {
+            for (const auto& Mark : Cache.Features) {
+                const FVector2D A = Origin(Mark.x, Mark.y, Size), P = Centre(Mark.x, Mark.y, Size);
+                if (!OnScreen(A)) continue;
+                switch (Mark.type) {
+                case botf::GalaxyFeatureType::Nebula:
+                    Box(2, A + FVector2D(0.5, 0.5), FVector2D(CS - 1, CS - 1), FLinearColor(0.55f, 0.24f, 0.78f, 0.30f));
+                    break;
+                case botf::GalaxyFeatureType::IonStorm:
+                    Box(2, A + FVector2D(0.5, 0.5), FVector2D(CS - 1, CS - 1), FLinearColor(0.95f, 0.72f, 0.18f, 0.16f));
+                    for (int I = 1; I <= 3; ++I)
+                        Line(2, A + FVector2D(CS * I / 4.0, 1), A + FVector2D(CS * I / 4.0 - CS * 0.18, CS - 1), FLinearColor(1.f, 0.82f, 0.30f, 0.45f), 1.f);
+                    break;
+                case botf::GalaxyFeatureType::BlackHole:
+                    Box(2, P - FVector2D(CS, CS) * 0.26, FVector2D(CS, CS) * 0.52, FLinearColor(0.f, 0.f, 0.f, 1.f), Round);
+                    Circle(3, P, CS * 0.30, FLinearColor(1.f, 0.55f, 0.15f, 0.85f), 1.5f);
+                    break;
+                case botf::GalaxyFeatureType::NeutronStar:
+                    Box(3, P - FVector2D(CS, CS) * 0.09, FVector2D(CS, CS) * 0.18, FLinearColor(0.80f, 0.92f, 1.f, 1.f), Round);
+                    Line(3, P - FVector2D(CS * 0.28, 0), P + FVector2D(CS * 0.28, 0), FLinearColor(0.70f, 0.88f, 1.f, 0.7f), 1.f);
+                    Line(3, P - FVector2D(0, CS * 0.28), P + FVector2D(0, CS * 0.28), FLinearColor(0.70f, 0.88f, 1.f, 0.7f), 1.f);
+                    break;
+                case botf::GalaxyFeatureType::Wormhole:
+                    Circle(3, P, CS * 0.30, FLinearColor(0.40f, 0.90f, 1.f, 0.95f), 2.f);
+                    Circle(3, P, CS * 0.16, FLinearColor(0.40f, 0.90f, 1.f, 0.55f), 1.f);
+                    // The link to a charted exit (drawn from both ends when both are charted; harmless overdraw).
+                    if (Mark.exitX >= 0) Line(4, P, Centre(Mark.exitX, Mark.exitY, Size), FLinearColor(0.40f, 0.90f, 1.f, 0.35f), 1.5f);
+                    break;
+                case botf::GalaxyFeatureType::SubspaceRift:
+                    Line(3, A + FVector2D(CS * 0.2, CS * 0.15), P + FVector2D(-CS * 0.08, 0), FLinearColor(1.f, 0.30f, 0.35f, 0.95f), 2.f);
+                    Line(3, P + FVector2D(-CS * 0.08, 0), P + FVector2D(CS * 0.08, CS * 0.05), FLinearColor(1.f, 0.30f, 0.35f, 0.95f), 2.f);
+                    Line(3, P + FVector2D(CS * 0.08, CS * 0.05), A + FVector2D(CS * 0.8, CS * 0.85), FLinearColor(1.f, 0.30f, 0.35f, 0.95f), 2.f);
+                    break;
+                }
+            }
+        }
+        // Station rings: supply (bright) and sensor (faint) reach as Chebyshev squares, for own stations and for the
+        // station in the selected sector.
+        if (B.View->bStations) {
+            const auto Ring = [&](int X, int Y, int Radius, const FLinearColor& Color, float Thick) {
+                const int X0 = FMath::Max(0, X - Radius), Y0 = FMath::Max(0, Y - Radius);
+                const int X1 = FMath::Min(W - 1, X + Radius) + 1, Y1 = FMath::Min(State.height - 1, Y + Radius) + 1;
+                const FVector2D TL = Origin(X0, Y0, Size), BR = Origin(X1, Y1, Size);
+                TArray<FVector2D> Pts = { TL, FVector2D(BR.X, TL.Y), BR, FVector2D(TL.X, BR.Y), TL };
+                FSlateDrawElement::MakeLines(Elements, Layer + 3, Geometry.ToPaintGeometry(), Pts, ESlateDrawEffect::None, Color, true, Thick);
+            };
+            for (const auto& St : Cache.Stations) {
+                if (!St.own && St.y * W + St.x != *B.Cell) continue;
+                const FLinearColor Owner = FactionColor(St.ownerId);
+                Ring(St.x, St.y, St.supplyRadius, Shade(Owner, 1.f, 0.55f), 1.5f);
+                Ring(St.x, St.y, St.sensorRadius, Shade(Owner, 0.8f, 0.28f), 1.f);
+            }
+        }
         // Supply range of the selected unit: a task force is bounded by its shortest-ranged member.
         if (Military && Ship && B.View->bRange) {
             const FLinearColor Edge = Shade(Pal.Good, 0.85f, 0.9f);
@@ -300,6 +371,9 @@ public:
                 FSlateDrawElement::MakeLines(Elements, Layer + 6, Geometry.ToPaintGeometry(), Ring, ESlateDrawEffect::None, Pal.Accent, true, 2.f);
             }
             Box(7, P - FVector2D(Star, Star) * 0.5, FVector2D(Star, Star), Color, Round);
+            // A contacted independent minor race (the roster's homeworlds) wears a thin ring; hover for its profile.
+            if (!Seen && Minor && !Minor->memberOf && Minor->contact[State.playerEmpire])
+                Circle(7, P, Star + 3, FLinearColor(0.80f, 0.76f, 1.f, 0.85f), 1.f);
             if (B.View->bNames && CS >= 22) {
                 const FVector2D At = P + FVector2D(-CS * 0.45, Star * 0.5 + 2);
                 Text(8, At, MapStr(S.name), CS >= 48 ? 9 : 8, Own, Seen ? Color : Pal.Text);
@@ -307,6 +381,26 @@ public:
                     const auto E = botf::economy(State, *Colony);
                     Text(8, At + FVector2D(0, 12), FString::Printf(TEXT("pop %d  ind %d"), Colony->population, E.industry), 7, false, Pal.Muted);
                 }
+            }
+        }
+        // Stations sit in the top-right corner of their sector: an outpost is a small block, a starbase a larger block
+        // with a second frame; an upgrade in progress is framed in the accent colour. Transports assembling an
+        // outpost show an empty frame there.
+        {
+            const double Mark = FMath::Clamp(CS * 0.2, 6.0, 12.0);
+            for (const auto& St : Cache.Stations) {
+                const bool Starbase = St.type == botf::StationType::Starbase;
+                const double Ext = Starbase ? Mark * 1.35 : Mark;
+                const FVector2D A = Origin(St.x, St.y, Size) + FVector2D(CS - Ext - 3, 3);
+                if (!OnScreen(A)) continue;
+                const FLinearColor Owner = FactionColor(St.ownerId);
+                Box(8, A, FVector2D(Ext, Ext), Owner, Styles().Get(St.ownerId, EShape::Block));
+                Outline(8, A - FVector2D(2, 2), Ext + 4, St.upgrading ? Pal.Accent : Shade(Owner, 0.7f), 1.f);
+                if (Starbase) Outline(8, A - FVector2D(4, 4), Ext + 8, Shade(Owner, 0.9f, 0.8f), 1.f);
+            }
+            for (const auto& Site : Cache.Assembling) {
+                const FVector2D A = Origin(Site.first, Site.second, Size) + FVector2D(CS - Mark - 3, 3);
+                if (OnScreen(A)) Outline(8, A, Mark, Shade(FactionColor(State.playerEmpire), 1.f, 0.75f), 1.f);
             }
         }
         if (Military) {
@@ -341,11 +435,20 @@ public:
         if (HoverCell >= 0 && B.Hint) {
             const FString Hint = B.Hint(HoverCell);
             if (!Hint.IsEmpty()) {
+                // The first line is the order hint; further lines describe the sector (anomalies, station, race).
+                TArray<FString> Lines;
+                Hint.ParseIntoArray(Lines, TEXT("\n"), true);
+                int Longest = 0;
+                for (const FString& Entry : Lines) Longest = FMath::Max(Longest, Entry.Len());
                 const FVector2D At = HoverLocal + FVector2D(16, 14);
-                const FVector2D Ext(FMath::Min(360.0, 7.0 * Hint.Len() + 16), 22);
-                const FVector2D Place(FMath::Min(At.X, Size.X - Ext.X - 4), FMath::Min(At.Y, Size.Y - Ext.Y - 4));
+                const FVector2D Ext(FMath::Min(520.0, 6.6 * Longest + 18), 8.0 + 15.0 * Lines.Num());
+                const FVector2D Place(FMath::Max(4.0, FMath::Min(At.X, Size.X - Ext.X - 4)), FMath::Max(4.0, FMath::Min(At.Y, Size.Y - Ext.Y - 4)));
                 Box(10, Place, Ext, Shade(Pal.Void, 1.f, 0.88f), Styles().Get(State.playerEmpire, EShape::Row));
-                Text(11, Place + FVector2D(8, 3), Hint, 9, false, B.View->bPlotting ? Pal.Good : Pal.Text);
+                for (int I = 0; I < Lines.Num(); ++I)
+                    FSlateDrawElement::MakeText(Elements, Layer + 11,
+                        Geometry.ToPaintGeometry(FVector2D(Ext.X - 12, 17), FSlateLayoutTransform(Place + FVector2D(8, 3 + 15.0 * I))),
+                        Lines[I], Font(I == 0 ? 9 : 8, false), ESlateDrawEffect::None,
+                        I == 0 ? (B.View->bPlotting ? Pal.Good : Pal.Text) : Pal.Muted);
             }
         }
         return Layer + 11;
