@@ -191,6 +191,7 @@ struct Ship {
     bool canCloak = false;         // True if equipped with cloaking device
     bool isCloaked = false;        // True if currently in cloaked stealth state
     int groupId = 0;               // Tactical like-class group assignment
+    bool immobile = false;         // Schema 13 stations: never move (serialized in the optional FIXED section)
     bool disengaging() const { return retreatSteps > 0 && !retreated && isAlive; }
 };
 
@@ -664,6 +665,7 @@ struct Encounter {
 
             ShipRoundStatus* st = getStatus(s->fleetId);
             if (modern && ord.maneuver != TacticalManeuver::Retreat) s->retreatSteps = 0; // Disengage aborted
+            if (s->immobile) continue; // Stations hold position whatever their order.
 
             if (ord.maneuver == TacticalManeuver::Retreat) {
                 const int retreatTargetX = (s->ownerId == firstOwner) ? 0 : (arenaWidth - 1);
@@ -1446,7 +1448,7 @@ inline void applyEncounterResults(GameState& state, const Encounter& encounter) 
 
     // Helper for finding safe withdrawal sector
     auto safeSector = [&](const Fleet& f, int px, int py) {
-        if (px < 0 || py < 0 || px >= state.width || py >= state.height || !supplied(state, f, px, py)) return false;
+        if (px < 0 || py < 0 || px >= state.width || py >= state.height || !sectorPassable(state, px, py) || !supplied(state, f, px, py)) return false;
         return std::none_of(state.fleets.begin(), state.fleets.end(), [&](const Fleet& other) {
             const auto enemy = majorRelation(state, f.ownerId, other.ownerId);
             return other.hull > 0 && other.x == px && other.y == py && enemy && enemy->atWar;
@@ -1698,6 +1700,16 @@ inline std::string writeEncounter(const Encounter& encounter, bool presentation)
     for (const auto& s : encounter.ships) {
         ss << s.fleetId << " " << (s.canCloak ? 1 : 0) << " " << (s.isCloaked ? 1 : 0) << " " << s.groupId << "\n";
     }
+    // Optional (schema 13): immobile station units. Omitted when none, so older
+    // encounters serialize byte-identically.
+    std::vector<int> fixedIds;
+    for (const auto& s : encounter.ships) if (s.immobile) fixedIds.push_back(s.fleetId);
+    if (!fixedIds.empty()) {
+        std::sort(fixedIds.begin(), fixedIds.end());
+        ss << "FIXED " << fixedIds.size();
+        for (int fid : fixedIds) ss << " " << fid;
+        ss << "\n";
+    }
 
     ss << "END\n";
     return ss.str();
@@ -1732,7 +1744,7 @@ inline Encounter deserializeEncounter(const std::string& text) {
     bool hasArena = false, hasRounds = false, hasSector = false, hasRng = false;
     bool hasController = false, hasShips = false, hasOrders = false, hasRoundResults = false, hasEnd = false;
     bool hasRules = false, hasRelation = false, hasStanding = false;
-    bool hasGroups = false, hasCloakState = false;
+    bool hasGroups = false, hasCloakState = false, hasFixed = false;
     std::set<int> owners;
 
     auto requireShip = [&](int fleetId, const char* what) -> Ship& {
@@ -2094,6 +2106,20 @@ inline Encounter deserializeEncounter(const std::string& text) {
                 if (s.isCloaked && !s.canCloak) fail("Ship is cloaked without a cloaking device.");
                 if (gid < 0 || (gid > 0 && !enc.getGroup(gid))) fail("CLOAK_STATE refers to unknown group.");
                 s.groupId = gid;
+            }
+        } else if (tag == "FIXED") {
+            if (!v2 || !hasShips || hasFixed) fail("FIXED section precedes SHIPS or is duplicated.");
+            hasFixed = true;
+            std::int64_t count = 0;
+            if (!(ss >> count) || count < 1 || count > 256) fail("Failed to parse FIXED count.");
+            int prior = 0;
+            for (std::int64_t i = 0; i < count; ++i) {
+                int fid = 0;
+                if (!(ss >> fid) || fid <= prior) fail("Failed to parse FIXED ship record.");
+                prior = fid;
+                Ship& s = requireShip(fid, "FIXED");
+                if (s.canRetreat || s.canCloak) fail("Immobile ship cannot retreat or cloak.");
+                s.immobile = true;
             }
         } else if (tag == "END") {
             hasEnd = true;

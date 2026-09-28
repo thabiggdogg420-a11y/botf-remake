@@ -30,7 +30,18 @@ if(BOTF_SANITIZE AND NOT MSVC)
     add_link_options(-fsanitize=address,undefined)
 endif()
 
-add_library(botf_core STATIC ${BOTF_CORE_DIR}/Simulation.cpp)
+# Schema-13 gameplay layer modules (GAMEPLAY-REMASTER.md). Keep this list in sync
+# with game/Source/BOTFRemake/Private/SimulationBridge.cpp and Build-Simulation.ps1.
+set(BOTF_CORE_SOURCES
+    ${BOTF_CORE_DIR}/Simulation.cpp
+    ${BOTF_CORE_DIR}/Rules.cpp
+    ${BOTF_CORE_DIR}/Stations.cpp
+    ${BOTF_CORE_DIR}/GalaxyFeatures.cpp
+    ${BOTF_CORE_DIR}/GalacticEvents.cpp
+    ${BOTF_CORE_DIR}/BuildTemplates.cpp
+    ${BOTF_CORE_DIR}/Victory.cpp
+    ${BOTF_CORE_DIR}/Chronicle.cpp)
+add_library(botf_core STATIC ${BOTF_CORE_SOURCES})
 target_include_directories(botf_core PUBLIC ${BOTF_CORE_DIR})
 target_compile_options(botf_core PRIVATE ${BOTF_WARN})
 
@@ -58,6 +69,7 @@ botf_suite(BotfTacticalTests TacticalCombatTests.cpp)
 botf_suite(BotfSessionTests CampaignSessionTests.cpp)
 botf_suite(BotfIntelligenceTests IntelligenceTests.cpp)
 botf_suite(BotfDiplomacyTests DiplomacyTests.cpp)
+botf_suite(BotfRemasterGameplayTests RemasterGameplayTests.cpp)
 botf_suite(BotfSoakTests SoakTests.cpp)
 set_tests_properties(BotfSoakTests PROPERTIES TIMEOUT 1800)
 botf_suite(BotfCampaignDiplomacyTests CampaignDiplomacyTests.cpp)

@@ -1,4 +1,4 @@
-param([switch]$Test, [switch]$Tactical, [switch]$Sessions, [switch]$Intelligence, [switch]$Diplomacy)
+param([switch]$Test, [switch]$Tactical, [switch]$Sessions, [switch]$Intelligence, [switch]$Diplomacy, [switch]$Gameplay)
 $ErrorActionPreference = 'Stop'
 $taskRoot = Split-Path -Parent $PSScriptRoot
 $taskBuild = Join-Path $PSScriptRoot 'Build'
@@ -27,11 +27,15 @@ $env:Path = $taskCompilerPath
 $taskCompiler = Join-Path $env:VCToolsInstallDir 'bin\Hostx64\x64\cl.exe'
 New-Item -ItemType Directory -Path $taskBuild -Force | Out-Null
 $taskCommon = @('/nologo', '/std:c++20', '/EHsc', '/W4', '/WX', '/permissive-', '/utf-8', '/O2', "/I$taskCore")
+# Core translation units: Simulation.cpp plus the schema-13 gameplay layer (keep in
+# sync with BOTF_CORE_SOURCES in remaster/CMakeLists.txt and SimulationBridge.cpp).
+$taskCoreSources = @('Simulation.cpp', 'Rules.cpp', 'Stations.cpp', 'GalaxyFeatures.cpp', 'GalacticEvents.cpp',
+    'BuildTemplates.cpp', 'Victory.cpp', 'Chronicle.cpp') | ForEach-Object { Join-Path $taskCore $_ }
 Push-Location $taskBuild
 try {
-    & $taskCompiler @taskCommon (Join-Path $taskCore 'Simulation.cpp') (Join-Path $taskCore 'Main.cpp') '/Fe:BotfSim.exe'
+    & $taskCompiler @taskCommon @taskCoreSources (Join-Path $taskCore 'Main.cpp') '/Fe:BotfSim.exe'
     if ($LASTEXITCODE -ne 0) { throw 'Simulation compilation failed.' }
-    & $taskCompiler @taskCommon (Join-Path $taskCore 'Simulation.cpp') (Join-Path $taskRoot 'tests\scenarios\SimulationTests.cpp') '/Fe:BotfSimTests.exe'
+    & $taskCompiler @taskCommon @taskCoreSources (Join-Path $taskRoot 'tests\scenarios\SimulationTests.cpp') '/Fe:BotfSimTests.exe'
     if ($LASTEXITCODE -ne 0) { throw 'Scenario-test compilation failed.' }
     if ($Test) {
         & (Join-Path $taskBuild 'BotfSimTests.exe')
@@ -39,7 +43,7 @@ try {
     }
     $taskTacticalTests = Join-Path $taskRoot 'tests\scenarios\TacticalCombatTests.cpp'
     if ($Tactical -and (Test-Path -LiteralPath $taskTacticalTests)) {
-        & $taskCompiler @taskCommon (Join-Path $taskCore 'Simulation.cpp') $taskTacticalTests '/Fe:BotfTacticalTests.exe'
+        & $taskCompiler @taskCommon @taskCoreSources $taskTacticalTests '/Fe:BotfTacticalTests.exe'
         if ($LASTEXITCODE -ne 0) { throw 'Tactical-test compilation failed.' }
         if ($Test) {
             & (Join-Path $taskBuild 'BotfTacticalTests.exe')
@@ -47,11 +51,19 @@ try {
         }
     }
     if ($Sessions) {
-        & $taskCompiler @taskCommon (Join-Path $taskCore 'Simulation.cpp') (Join-Path $taskRoot 'tests\scenarios\CampaignSessionTests.cpp') '/Fe:BotfSessionTests.exe'
+        & $taskCompiler @taskCommon @taskCoreSources (Join-Path $taskRoot 'tests\scenarios\CampaignSessionTests.cpp') '/Fe:BotfSessionTests.exe'
         if ($LASTEXITCODE -ne 0) { throw 'Campaign-session test compilation failed.' }
         if ($Test) {
             & (Join-Path $taskBuild 'BotfSessionTests.exe')
             if ($LASTEXITCODE -ne 0) { throw 'Campaign-session tests failed.' }
+        }
+    }
+    if ($Gameplay) {
+        & $taskCompiler @taskCommon @taskCoreSources (Join-Path $taskRoot 'tests\scenarios\RemasterGameplayTests.cpp') '/Fe:BotfRemasterGameplayTests.exe'
+        if ($LASTEXITCODE -ne 0) { throw 'Gameplay-layer test compilation failed.' }
+        if ($Test) {
+            & (Join-Path $taskBuild 'BotfRemasterGameplayTests.exe')
+            if ($LASTEXITCODE -ne 0) { throw 'Gameplay-layer tests failed.' }
         }
     }
     if ($Intelligence) {
