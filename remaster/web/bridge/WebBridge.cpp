@@ -16,6 +16,7 @@
 #include "../../game/Source/BotfSim/Simulation.h"
 #include "../../game/Source/BotfSim/CampaignSession.h"
 #include "../../game/Source/BotfSim/ReferenceCatalogue.h"
+#include "../../game/Source/BotfSim/ShipRoster.h"
 #include "../../game/Source/BotfSim/MinorRaces.h"
 #include "Json.h"
 
@@ -162,8 +163,8 @@ std::string empireLabel(int id) {
 // Mirrors the per-ship movement speed the core applies in resolveFleets (reference catalogue speed,
 // clamped 1..3; prototype hulls move one sector). Task forces use botf::taskForceSpeed directly.
 int shipSpeed(const botf::Fleet& f) {
-    if (f.referenceShipId >= 0 && static_cast<std::size_t>(f.referenceShipId) < botf::referenceData::ShipCatalogue.size())
-        return std::clamp(static_cast<int>(botf::referenceData::ShipCatalogue[static_cast<std::size_t>(f.referenceShipId)].speed), 1, 3);
+    if (const auto* ship = botf::roster::findShip(f.referenceShipId))
+        return std::clamp(static_cast<int>(ship->speed), 1, 3);
     return 1;
 }
 int unitSpeed(const botf::GameState& s, const botf::Fleet& f) {
@@ -171,8 +172,8 @@ int unitSpeed(const botf::GameState& s, const botf::Fleet& f) {
     return shipSpeed(f);
 }
 int maintenanceOf(const botf::Fleet& f) {
-    if (f.referenceShipId >= 0 && static_cast<std::size_t>(f.referenceShipId) < botf::referenceData::ShipCatalogue.size())
-        return botf::referenceData::ShipCatalogue[static_cast<std::size_t>(f.referenceShipId)].maintenance;
+    if (const auto* ship = botf::roster::findShip(f.referenceShipId))
+        return ship->maintenance;
     return f.colonyShip ? 2 : f.shipClass == botf::Building::Destroyer ? 4 : f.shipClass == botf::Building::Transport ? 3 : 1;
 }
 
@@ -248,8 +249,8 @@ botf::Command commandFromJson(const Value& j, std::uint64_t id) {
 }
 
 std::string constructionLabel(const botf::GameState& s, const botf::Construction& project) {
-    if (project.referenceId >= 0 && static_cast<std::size_t>(project.referenceId) < botf::referenceData::ShipCatalogue.size()) {
-        const auto& ship = botf::referenceData::ShipCatalogue[static_cast<std::size_t>(project.referenceId)];
+    if (botf::roster::validShipId(project.referenceId)) {
+        const auto& ship = *botf::roster::findShip(project.referenceId);
         return std::string(ship.shipClass) + " " + ship.name;
     }
     (void)s;
@@ -477,8 +478,8 @@ int constructionCostOf(const botf::GameState& s, int systemId, const botf::Const
         for (const auto& choice : botf::constructionChoices(s, systemId))
             if (choice.product == project.product && choice.referenceId == project.referenceId) return choice.industryCost;
     } catch (...) {}
-    if (project.referenceId >= 0 && static_cast<std::size_t>(project.referenceId) < botf::referenceData::ShipCatalogue.size())
-        return botf::referenceData::ShipCatalogue[static_cast<std::size_t>(project.referenceId)].industryCost;
+    if (const auto* ship = botf::roster::findShip(project.referenceId))
+        return ship->industryCost;
     return botf::definition(project.product).industryCost;
 }
 
@@ -525,8 +526,8 @@ void writeOwnFleet(Writer& w, const botf::GameState& d, const botf::GameState& c
     w.field("shipClass", enumName(static_cast<int>(f.shipClass), BuildingNames));
     w.field("className", botf::shipName(f.shipClass));
     w.field("referenceShipId", f.referenceShipId);
-    if (f.referenceShipId >= 0 && static_cast<std::size_t>(f.referenceShipId) < botf::referenceData::ShipCatalogue.size()) {
-        const auto& r = botf::referenceData::ShipCatalogue[static_cast<std::size_t>(f.referenceShipId)];
+    if (botf::roster::validShipId(f.referenceShipId)) {
+        const auto& r = *botf::roster::findShip(f.referenceShipId);
         w.field("designClass", r.shipClass); w.field("designName", r.name);
     }
     w.field("x", f.x); w.field("y", f.y); w.field("targetX", f.targetX); w.field("targetY", f.targetY);
@@ -1154,8 +1155,8 @@ void writeColonyDetail(Writer& w, int systemId) {
         w.field("blocker", ch.blocker);
         w.field("isShip", botf::isShip(ch.product));
         w.field("turns", e.industry > 0 ? std::max(1, (ch.industryCost + e.industry - 1) / e.industry) : -1);
-        if (ch.referenceId >= 0 && static_cast<std::size_t>(ch.referenceId) < botf::referenceData::ShipCatalogue.size())
-            writeShipRecord(w, botf::referenceData::ShipCatalogue[static_cast<std::size_t>(ch.referenceId)]);
+        if (const auto* ship = botf::roster::findShip(ch.referenceId))
+            writeShipRecord(w, *ship);
         else {
             const auto& def = botf::definition(ch.product);
             w.field("energyCost", def.energyCost);
@@ -2773,9 +2774,8 @@ std::string dispatch(const std::string& method, const Value& a) {
         w.key("participants").beginArray();
         for (const auto& p : b.participants) {
             std::string name = botf::shipName(p.shipClass);
-            if (p.referenceShipId >= 0 && static_cast<std::size_t>(p.referenceShipId) < botf::referenceData::ShipCatalogue.size())
-                name = std::string(botf::referenceData::ShipCatalogue[static_cast<std::size_t>(p.referenceShipId)].shipClass) + " " +
-                    botf::referenceData::ShipCatalogue[static_cast<std::size_t>(p.referenceShipId)].name;
+            if (const auto* ship = botf::roster::findShip(p.referenceShipId))
+                name = std::string(ship->shipClass) + " " + ship->name;
             w.beginObject().field("id", p.fleetId).field("owner", p.ownerId).field("name", name).field("hull", p.initialHull).field("shields", p.initialShields).endObject();
         }
         w.endArray();

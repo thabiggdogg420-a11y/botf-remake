@@ -7,6 +7,7 @@
 //    secession, progression, temperament, home defense and the optional MINOR_RACES save section.
 #include "MinorRaces.h"
 #include "ReferenceCatalogue.h"
+#include "ShipRoster.h"
 #include "Simulation.h"
 
 #include <algorithm>
@@ -415,6 +416,12 @@ int main() {
     run("ship descriptions are original remaster text", [] {
         for (const auto& ship : botf::referenceData::ShipCatalogue)
             checkOriginalProse(ship.description, std::string("ship ") + std::to_string(ship.id) + " " + ship.shipClass);
+        // Expanded roster (SHIP-ROSTER.md): same originality rules, and no two classes share a description.
+        std::set<std::string> seen;
+        for (const auto& c : botf::roster::ExpandedRoster) {
+            checkOriginalProse(c.description, std::string("roster ship ") + std::to_string(c.id) + " " + c.className);
+            check(seen.insert(c.description).second, std::string("duplicate roster description: ") + c.className);
+        }
     }, passed);
 
     run("building descriptions are original remaster text", [] {

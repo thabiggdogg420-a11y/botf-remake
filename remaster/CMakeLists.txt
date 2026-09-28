@@ -77,3 +77,6 @@ botf_suite(BotfContentTests ContentTests.cpp) # Lane G: original text + minor-ra
 # Schema-14 treaty integration, client queries and battle records (Lane H).
 botf_suite(BotfIntegrationTests IntegrationTests.cpp)
 set_tests_properties(BotfIntegrationTests PROPERTIES TIMEOUT 900)
+# Expanded ship roster (docs/SHIP-ROSTER.md): data integrity, Classic isolation, SHIP_ROSTER section, AI adoption.
+botf_suite(BotfShipRosterTests ShipRosterTests.cpp)
+set_tests_properties(BotfShipRosterTests PROPERTIES TIMEOUT 900)

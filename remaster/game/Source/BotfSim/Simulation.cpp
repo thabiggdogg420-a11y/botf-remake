@@ -3,6 +3,7 @@
 #include "MinorRaces.h"
 #include "ReferenceCatalogue.h"
 #include "ReferencePlanets.h"
+#include "ShipRoster.h"
 #include "TacticalCombat.h"
 
 #include <algorithm>
@@ -30,10 +31,10 @@ int catalogueRace(int owner) {
     return map[owner];
 }
 const referenceData::ShipRecord& sourceShip(int id) {
-    require(id >= 0 && static_cast<std::size_t>(id) < referenceData::ShipCatalogue.size(), "Unknown reference ship");
-    const auto& ship = referenceData::ShipCatalogue[static_cast<std::size_t>(id)];
-    require(ship.id == id, "Reference ship IDs are not indexed canonically");
-    return ship;
+    const referenceData::ShipRecord* ship = roster::findShip(id);
+    require(ship != nullptr, "Unknown reference ship");
+    require(ship->id == id, "Reference ship IDs are not indexed canonically");
+    return *ship;
 }
 Building roleProduct(int role) {
     if (role == 0) return Building::Scout;
@@ -43,6 +44,8 @@ Building roleProduct(int role) {
     throw std::runtime_error("Reference ship role is not supported in campaign play");
 }
 bool playableShip(const referenceData::ShipRecord& ship) {
+    // Expanded-roster records are campaign ships only when flagged buildable (canon, major empire).
+    if (const auto* extended = roster::findRosterClass(ship.id); extended && !extended->buildable) return false;
     return ship.raceId >= 0 && ship.raceId <= 4 && (ship.role == 0 || ship.role == 5 || ship.role == 9 ||
         (ship.role >= 1 && ship.role <= 4));
 }
@@ -279,7 +282,7 @@ void checkCommand(const Command& c) {
     require(static_cast<int>(c.stance) >= 0 && static_cast<int>(c.stance) <= 3 &&
         (c.type == CommandType::SetTacticalStance || c.type == CommandType::SetTaskForceOrder || c.stance == TacticalStance::Balanced),
         "Invalid tactical stance field");
-    require(c.referenceId >= -1 && c.referenceId < static_cast<int>(referenceData::ShipCatalogue.size()) &&
+    require((c.referenceId == -1 || roster::validShipId(c.referenceId)) &&
         (c.type == CommandType::EnqueueBuilding || c.referenceId == -1), "Invalid reference project field");
     require(c.type == CommandType::AssignWorkers || c.type == CommandType::EnqueueBuilding ||
         c.type == CommandType::MoveFleet || c.type == CommandType::Colonize || c.type == CommandType::ToggleShipyard ||
@@ -1292,6 +1295,23 @@ bool queueMilitaryShip(GameState& s, Colony& colony, Building role) {
         const Construction project(role, 0, ship.id);
         if (!constructionTechBlocker(s, project, colony.ownerId).empty()) continue;
         if (!choice || ship.industryCost < choice->industryCost) choice = &ship;
+    }
+    if (s.rules.expandedRoster) {
+        // Expanded roster (Remastered): pick the best value across both catalogues instead of the
+        // cheapest legacy hull. Integer score: combat worth per 1000 industry; ties go to the lower id.
+        const auto score = [](const referenceData::ShipRecord& ship) {
+            const std::int64_t worth = static_cast<std::int64_t>(ship.attack) / 20 + (ship.hull + ship.shields) / 10 + 10;
+            return worth * 100000 / std::max(1, ship.industryCost);
+        };
+        const auto consider = [&](const referenceData::ShipRecord& ship) {
+            if (!playableShip(ship) || ship.raceId != catalogueRace(colony.ownerId) || roleProduct(ship.role) != role) return;
+            const Construction project(role, 0, ship.id);
+            if (!constructionTechBlocker(s, project, colony.ownerId).empty()) return;
+            if (!choice || score(ship) > score(*choice)) choice = &ship;
+        };
+        choice = nullptr;
+        for (const auto& ship : referenceData::ShipCatalogue) consider(ship);
+        for (const auto& ship : roster::ExpandedShipRecords) consider(ship);
     }
     if (!choice) return false;
     colony.queue.emplace_back(role, 0, choice->id);
@@ -2953,6 +2973,8 @@ void resolveInvasions(GameState& s, TurnReport& report) {
 
 std::string constructionTechBlocker(const GameState& state, const Construction& project, int owner) {
     if (project.referenceId < 0) return technologyBlocker(state, project.product, owner);
+    if (roster::isExpandedId(project.referenceId) && !state.rules.expandedRoster)
+        return "Expanded ship roster is off in this ruleset";
     const auto& ship = sourceShip(project.referenceId);
     if (!playableShip(ship) || ship.raceId != catalogueRace(owner)) return "Ship class is unavailable to this empire";
     for (int field = 0; field < ResearchFields; ++field) {
@@ -3146,6 +3168,9 @@ std::string payload(const GameState& s) {
     }
     out << gameplay::serializeSection(s); // Schema 13 (GAMEPLAY_LAYER ... END_GAMEPLAY_LAYER).
     minors::writeMinorRacesSection(out, s); // Lane G: optional MINOR_RACES section (roster minors only)
+    // Expanded ship roster (SHIP-ROSTER.md): optional, written only when the ruleset enables it, so every
+    // save without the roster keeps its exact previous text. The number is the roster data revision.
+    if (s.rules.expandedRoster) out << "SHIP_ROSTER 1\n";
     // Schema 14: per-ship orders of recorded battle rounds. Written only when some
     // round carries orders, so campaigns without them keep the schema-13 layout.
     const bool anyOrders = std::any_of(s.latestBattles.begin(), s.latestBattles.end(), [](const CombatReport& b) {
@@ -3628,6 +3653,18 @@ std::vector<ConstructionChoice> constructionChoices(const GameState& state, int 
             if (queueFull) blocker = "Construction queue is full";
             choices.push_back({product, ship.id, std::string(ship.shipClass) + " — " + ship.name,
                 ship.industryCost, ship.maintenance, blocker});
+        }
+        if (state.rules.expandedRoster) {
+            for (const auto& ship : roster::ExpandedShipRecords) {
+                if (!playableShip(ship) || ship.raceId != catalogueRace(colony->ownerId)) continue;
+                const auto product = roleProduct(ship.role);
+                Construction project(product, 0, ship.id);
+                auto blocker = constructionTechBlocker(state, project, colony->ownerId);
+                if (!yardAvailable && blocker.empty()) blocker = "Build or queue a shipyard first";
+                if (queueFull) blocker = "Construction queue is full";
+                choices.push_back({product, ship.id, std::string(ship.shipClass) + " — " + ship.name,
+                    ship.industryCost, ship.maintenance, blocker});
+            }
         }
     }
     return choices;
@@ -4300,6 +4337,9 @@ void validate(const GameState& s) {
         require(c.systemId > previous && ids.count(c.systemId) == 1, "Invalid colony system ID");
         previous = c.systemId; validateColony(c); empire(s, c.ownerId);
         for (const auto& project : c.queue) if (project.referenceId >= 0)
+            require(!roster::isExpandedId(project.referenceId) || s.rules.expandedRoster,
+                "Expanded roster ship queued while the roster is off");
+        for (const auto& project : c.queue) if (project.referenceId >= 0)
             require(s.ruleset == Ruleset::Reference && sourceShip(project.referenceId).raceId == catalogueRace(c.ownerId),
                 "Reference project owner mismatch");
     }
@@ -4360,6 +4400,8 @@ void validate(const GameState& s) {
         }
         if (f.referenceShipId >= 0) {
             const auto& ship = sourceShip(f.referenceShipId);
+            require(!roster::isExpandedId(f.referenceShipId) || s.rules.expandedRoster,
+                "Expanded roster ship present while the roster is off");
             require(s.ruleset == Ruleset::Reference && playableShip(ship) && ship.raceId == catalogueRace(f.ownerId) &&
                 roleProduct(ship.role) == f.shipClass, "Invalid reference ship owner or role");
         }
@@ -5312,6 +5354,14 @@ GameState deserialize(const std::string& text) {
         require(current || legacy13, "Schema 13 section in an older save");
         minors::readMinorRacesSection(in, s);
         nextTag = readTag("Malformed save section after MINOR_RACES");
+    }
+    if (nextTag == "SHIP_ROSTER") {
+        // Same rule as MINOR_RACES: an optional section of the schema-13 layout, so a schema-13 header may carry it.
+        require(current || legacy13, "Expanded ship roster section in an older save");
+        int revision = 0;
+        require(static_cast<bool>(in >> revision) && revision == 1, "Unsupported expanded ship roster revision");
+        s.rules.expandedRoster = true;
+        nextTag = readTag("Malformed save section after SHIP_ROSTER");
     }
     if (nextTag == "COMBAT_ORDERS") {
         require(current, "Schema 14 section in an older save");
