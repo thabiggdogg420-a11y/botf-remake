@@ -1,8 +1,10 @@
 import { expect, type Page } from '@playwright/test';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import type { GameView } from '../src/core/types';
 
 export const SHOTS_DIR = process.env.BOTF_SHOTS_DIR
-  ?? '/tmp/claude-0/-home-user-botf-remake/01d0f211-0912-522e-a206-0d6c37ffcf64/scratchpad/web-shots';
+  ?? join(tmpdir(), 'botf-web-shots');
 
 export async function view(page: Page): Promise<GameView> {
   return page.evaluate(() => window.__botf!.view() as GameView);

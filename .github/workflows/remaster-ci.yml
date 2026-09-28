@@ -31,3 +31,30 @@ jobs:
       - name: Determinism smoke (200-turn five-empire campaign)
         run: |
           ./build/BotfSim --reference --seed 26713 --empires 5 --player 4 --turns 200 | tail -1
+
+  web:
+    name: web client (wasm + browser)
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: remaster/web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mymindstorm/setup-emsdk@v14
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: remaster/web/package-lock.json
+      - name: Rebuild core module from source
+        run: ./build-wasm.sh --clean
+      - name: Install
+        run: npm ci
+      - name: Bridge tests
+        run: npm test
+      - name: Build
+        run: npm run build
+      - name: Browser tests
+        run: |
+          npx playwright install --with-deps chromium
+          npx playwright test e2e/campaign.spec.ts
