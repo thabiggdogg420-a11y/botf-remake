@@ -93,8 +93,13 @@ public:
         Report = MoveTemp(InReport); Round = MoveTemp(InRound); Player = InPlayer;
     }
     virtual FVector2D ComputeDesiredSize(float) const override { return FVector2D(320, 160); }
+    // Paint must never let an exception unwind through Slate (ship names come from the catalogue, which can throw).
     virtual int32 OnPaint(const FPaintArgs&, const FGeometry& Geometry, const FSlateRect&,
                          FSlateWindowElementList& Elements, int32 Layer, const FWidgetStyle&, bool) const override {
+        try { return PaintPlot(Geometry, Elements, Layer); }
+        catch (...) { return Layer; }
+    }
+    int32 PaintPlot(const FGeometry& Geometry, FSlateWindowElementList& Elements, int32 Layer) const {
         const botf::CombatReport* B = Report ? Report() : nullptr;
         if (!B) return Layer;
         const FPalette& Pal = Palette(Player ? *Player : 1);

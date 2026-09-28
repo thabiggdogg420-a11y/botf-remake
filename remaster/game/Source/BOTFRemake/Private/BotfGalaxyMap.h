@@ -8,12 +8,16 @@
 //   left/middle drag pan; mouse wheel zooms about the cursor
 
 #include "BotfUiTheme.h"
+#include "BotfViewModel.h"
 #include "Simulation.h"
 #include "InputCoreTypes.h"
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <functional>
+#include <map>
 #include <set>
+#include <vector>
 
 namespace BotfUi {
 
@@ -51,6 +55,8 @@ public:
         const int* Selected = nullptr;                             // selected system id (0 = none)
         const int* Cell = nullptr;                                 // selected sector
         const int* Fleet = nullptr;                                // selected own ship (0 = none)
+        const int* TaskForce = nullptr;                            // selected task force (0 = none); its range is its shortest-ranged member's
+        std::function<std::uint64_t()> Version;                    // changes whenever the draft changes; keys the paint caches
         FMapView* View = nullptr;
         std::function<void(int)> Select, Activate, Plot;
         std::function<void(int, FVector2D, bool)> Command;         // cell, local position, force context menu
@@ -110,9 +116,51 @@ public:
         for (const auto& F : S.fleets) if (F.id == *B.Fleet && F.ownerId == S.playerEmpire) return &F;
         return nullptr;
     }
+    int SelectedGroup() const { return B.TaskForce ? *B.TaskForce : 0; }
 
+    // Paint caches. Supply coverage and routes are pure functions of the draft, so they are rebuilt only when the
+    // draft version, the selected unit or the hovered sector changes, never per frame.
+    struct FPaintCache {
+        std::uint64_t Version = 0;
+        int Fleet = -1, Group = -1;
+        std::vector<unsigned char> Supply;                 // range of the selected unit (limiting member for a group)
+        std::map<int, std::vector<int>> Courses;           // fleet id -> route to its drafted destination
+        int HoverCell = -2;
+        std::vector<int> HoverPath;
+    };
+    mutable FPaintCache Cache;
+    void RefreshPaintCache(const botf::GameState& Draft, const botf::Fleet* Ship) const {
+        const std::uint64_t Version = B.Version ? B.Version() : 0;
+        const int FleetId = Ship ? Ship->id : 0, Group = Ship ? SelectedGroup() : 0;
+        if (Version != 0 && Cache.Version == Version && Cache.Fleet == FleetId && Cache.Group == Group) return;
+        Cache = FPaintCache();
+        Cache.Version = Version; Cache.Fleet = FleetId; Cache.Group = Group;
+        if (const botf::Fleet* Limit = Ship ? botf::view::movementFleet(Draft, FleetId, Group) : nullptr)
+            Cache.Supply = botf::view::supplyGrid(Draft, *Limit);
+        for (const auto& F : Draft.fleets)
+            if (F.ownerId == Draft.playerEmpire && (F.targetX != F.x || F.targetY != F.y))
+                Cache.Courses[F.id] = botf::route(Draft, F, F.targetX, F.targetY);
+    }
+    bool CachedSupplied(int X, int Y) const {
+        if (!B.State || X < 0 || Y < 0 || X >= B.State->width || Y >= B.State->height) return false;
+        const std::size_t Index = static_cast<std::size_t>(Y * B.State->width + X);
+        return Index < Cache.Supply.size() && Cache.Supply[Index] != 0;
+    }
+    const std::vector<int>& CachedHoverPath(const botf::GameState& Draft, const botf::Fleet& Ship, int Cell) const {
+        if (Cache.HoverCell != Cell) {
+            Cache.HoverCell = Cell;
+            Cache.HoverPath = botf::view::unitRoute(Draft, Ship.id, SelectedGroup(), Cell % Draft.width, Cell / Draft.width);
+        }
+        return Cache.HoverPath;
+    }
+
+    // Paint must never let an exception unwind through Slate.
     virtual int32 OnPaint(const FPaintArgs&, const FGeometry& Geometry, const FSlateRect&,
                          FSlateWindowElementList& Elements, int32 Layer, const FWidgetStyle&, bool) const override {
+        try { return PaintChart(Geometry, Elements, Layer); }
+        catch (...) { Cache = FPaintCache(); return Layer; }
+    }
+    int32 PaintChart(const FGeometry& Geometry, FSlateWindowElementList& Elements, int32 Layer) const {
         const auto& State = *B.State;
         const auto& Draft = B.Draft ? B.Draft() : State;
         const FPalette& Pal = Palette(State.playerEmpire);
@@ -177,20 +225,20 @@ public:
         }
         const bool Military = B.View->Mode == EMapMode::Military;
         const botf::Fleet* Ship = OwnShip(Draft);
-        // Supply range of the selected ship.
+        RefreshPaintCache(Draft, Ship);
+        // Supply range of the selected unit: a task force is bounded by its shortest-ranged member.
         if (Military && Ship && B.View->bRange) {
             const FLinearColor Edge = Shade(Pal.Good, 0.85f, 0.9f);
             for (int Y = 0; Y < State.height; ++Y) for (int X = 0; X < W; ++X) {
-                if (!botf::supplied(Draft, *Ship, X, Y)) continue;
+                if (!CachedSupplied(X, Y)) continue;
                 const FVector2D A = Origin(X, Y, Size);
-                if (!botf::supplied(Draft, *Ship, X - 1, Y)) Line(3, A, A + FVector2D(0, CS), Edge, 2.f);
-                if (!botf::supplied(Draft, *Ship, X + 1, Y)) Line(3, A + FVector2D(CS, 0), A + FVector2D(CS, CS), Edge, 2.f);
-                if (!botf::supplied(Draft, *Ship, X, Y - 1)) Line(3, A, A + FVector2D(CS, 0), Edge, 2.f);
-                if (!botf::supplied(Draft, *Ship, X, Y + 1)) Line(3, A + FVector2D(0, CS), A + FVector2D(CS, CS), Edge, 2.f);
+                if (!CachedSupplied(X - 1, Y)) Line(3, A, A + FVector2D(0, CS), Edge, 2.f);
+                if (!CachedSupplied(X + 1, Y)) Line(3, A + FVector2D(CS, 0), A + FVector2D(CS, CS), Edge, 2.f);
+                if (!CachedSupplied(X, Y - 1)) Line(3, A, A + FVector2D(CS, 0), Edge, 2.f);
+                if (!CachedSupplied(X, Y + 1)) Line(3, A + FVector2D(0, CS), A + FVector2D(CS, CS), Edge, 2.f);
             }
         }
-        auto DrawPath = [&](const botf::Fleet& F, int X, int Y, const FLinearColor& Color, float Thick, bool Arrow) {
-            const auto Path = botf::route(Draft, F, X, Y);
+        auto DrawRoute = [&](const std::vector<int>& Path, const FLinearColor& Color, float Thick, bool Arrow) {
             for (std::size_t I = 1; I < Path.size(); ++I) {
                 const FVector2D A = Centre(Path[I - 1] % W, Path[I - 1] / W, Size), Z = Centre(Path[I] % W, Path[I] / W, Size);
                 Line(4, A, Z, Color, Thick);
@@ -201,18 +249,23 @@ public:
                     Line(4, Tip, Tip - Dir * 6 - Side * 4, Color, Thick);
                 }
             }
-            return Path;
+        };
+        const auto CourseOf = [this](int FleetId) -> const std::vector<int>* {
+            const auto It = Cache.Courses.find(FleetId);
+            return It == Cache.Courses.end() ? nullptr : &It->second;
         };
         if (Military) {
             // Every own unit's drafted or standing course, faintly; the selected unit's brightly.
             if (B.View->bCourses)
                 for (const auto& F : Draft.fleets)
                     if (F.ownerId == State.playerEmpire && (F.targetX != F.x || F.targetY != F.y) && (!Ship || F.id != Ship->id))
-                        DrawPath(F, F.targetX, F.targetY, Shade(Pal.Primary, 0.8f, 0.55f), 1.5f, false);
+                        if (const auto* Course = CourseOf(F.id)) DrawRoute(*Course, Shade(Pal.Primary, 0.8f, 0.55f), 1.5f, false);
             if (Ship) {
-                if (Ship->targetX != Ship->x || Ship->targetY != Ship->y) DrawPath(*Ship, Ship->targetX, Ship->targetY, Pal.Accent, 2.5f, true);
+                if (Ship->targetX != Ship->x || Ship->targetY != Ship->y)
+                    if (const auto* Course = CourseOf(Ship->id)) DrawRoute(*Course, Pal.Accent, 2.5f, true);
                 if (HoverCell >= 0 && HoverCell != Ship->y * W + Ship->x) {
-                    const auto Path = DrawPath(*Ship, HoverCell % W, HoverCell / W, B.View->bPlotting ? Pal.Good : Shade(Pal.Good, 0.8f, 0.7f), 2.f, true);
+                    const auto& Path = CachedHoverPath(Draft, *Ship, HoverCell);
+                    DrawRoute(Path, B.View->bPlotting ? Pal.Good : Shade(Pal.Good, 0.8f, 0.7f), 2.f, true);
                     if (Path.empty())
                         Line(4, Centre(Ship->x, Ship->y, Size), Centre(HoverCell % W, HoverCell / W, Size), Shade(Pal.Alert, 1.f, 0.7f), 1.5f);
                 }
