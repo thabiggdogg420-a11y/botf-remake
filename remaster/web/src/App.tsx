@@ -21,6 +21,10 @@ import { IntelScreen } from './screens/Intel';
 import { EncyclopediaScreen } from './screens/Encyclopedia';
 import { CombatScreen } from './screens/Combat';
 import { BriefingPanel } from './screens/Briefing';
+import { settings } from './state/settings';
+import { HelpButton, helpOpen, HelpPopover } from './ui/Help';
+import { SettingsModal, settingsOpen } from './ui/SettingsPanel';
+import { TutorialOverlay } from './ui/Tutorial';
 
 const TEXT_INPUTS = new Set(['text', 'number', 'search', 'email', 'password', 'url', 'tel', '']);
 /** True while the user is entering text: shortcuts must not fire. Sliders/checkboxes do not count. */
@@ -39,6 +43,8 @@ export function App() {
   const current = screen.value;
   const v = view.value;
   const empire = v ? v.meta.player : 1;
+  // Reading the settings re-renders the tree when the owner palette or scale changes.
+  const prefs = settings.value;
 
   useEffect(() => {
     document.documentElement.dataset.faction = palette(empire).key;
@@ -51,7 +57,13 @@ export function App() {
         if (e.key === 'Escape') { confirmDialog.value = null; e.preventDefault(); }
         return;
       }
+      if (settingsOpen.value) {
+        if (e.key === 'Escape') { settingsOpen.value = false; e.preventDefault(); }
+        return;
+      }
       const inGame = !!view.value && !['title', 'new', 'saves'].includes(screen.value);
+      if (e.key === '?' && inGame && !e.ctrlKey && !e.metaKey) { e.preventDefault(); helpOpen.value = !helpOpen.value; return; }
+      if (e.key === 'Escape' && helpOpen.value) { helpOpen.value = false; return; }
       const fkey = /^F([1-8])$/.exec(e.key);
       if (fkey && inGame) {
         e.preventDefault();
@@ -99,7 +111,7 @@ export function App() {
 
   const outside = current === 'title' || current === 'new' || current === 'saves';
   return (
-    <div class={`app ${outside ? 'app-outside' : 'app-ingame'}`}>
+    <div class={`app ${outside ? 'app-outside' : 'app-ingame'}${prefs.reducedMotion ? ' reduce-motion' : ''}`} data-scale={prefs.uiScale}>
       {outside || !v ? (
         <main class="outside" id="main">
           {current === 'title' ? <TitleScreen /> : current === 'new' ? <NewCampaignScreen /> : <SavesScreen />}
@@ -114,8 +126,11 @@ export function App() {
           </main>
           {briefingOpen.value && briefing.value ? <BriefingPanel /> : null}
           {menuOpen.value ? <GameMenu /> : null}
+          <HelpPopover />
+          <TutorialOverlay />
         </div>
       )}
+      <SettingsModal />
       <TooltipLayer />
       <ConfirmLayer />
       <Toasts />
@@ -184,6 +199,7 @@ function TopBar() {
         </button>
       </div>
       <div class="tb-actions">
+        <HelpButton />
         {briefing.value ? <Pill small tone="ghost" onClick={() => { briefingOpen.value = true; }} hint="Reopen the last turn briefing">Briefing</Pill> : null}
         <Pill small tone="tertiary" onClick={() => { menuOpen.value = !menuOpen.value; }} kbd="Esc" testid="menu-button">Menu</Pill>
         <button type="button" class={`end-turn${busy.value ? ' busy' : ''}${pendingBattle ? ' battle' : ''}`} data-testid="end-turn"
@@ -242,6 +258,8 @@ function GameMenu() {
           <Pill wide onClick={() => { menuOpen.value = false; }}>Resume</Pill>
           <Pill wide tone="secondary" onClick={quickSave} testid="quick-save">Quick save</Pill>
           <Pill wide tone="secondary" onClick={() => { menuOpen.value = false; goto('saves'); }} testid="open-saves">Save / load…</Pill>
+          <Pill wide tone="ghost" onClick={() => { menuOpen.value = false; settingsOpen.value = true; }} testid="open-settings"
+            hint="Interface scale, reduced motion, colour-blind palette, sound, autosave, tutorial">Settings…</Pill>
           <Pill wide tone="ghost" active={audioEnabled.value} onClick={() => setAudio(!audioEnabled.value)} hint="Synthesised interface sounds">
             Sound {audioEnabled.value ? 'on' : 'off'}
           </Pill>

@@ -29,7 +29,7 @@ export function frameAt(e: Encounter, k: number): Map<number, ShipFrame> {
     let decloakedBy = false;
     for (let r = 0; r < Math.min(k, e.rounds.length); r++) if (statusIn(e.rounds[r], s.id)?.decloaked) decloakedBy = true;
     const cloaked = s.hidden || (s.canCloak && !decloakedBy && (s.cloaked || k < e.rounds.length));
-    let f: ShipFrame = { pos: s.position, hull: s.hull, shields: s.shields, alive: s.alive, retreated: s.retreated, yaw: defaultYaw, cloaked, disengaging: s.disengaging };
+    let f: ShipFrame = { pos: s.position, hull: s.hull, shields: s.shields, alive: s.alive, retreated: s.retreated, yaw: defaultYaw, cloaked, disengaging: s.disengaging && !e.finished };
     if (k < e.rounds.length || (s.hidden && k === e.rounds.length)) {
       if (k === 0) {
         const st = statusIn(first, s.id);
@@ -246,21 +246,43 @@ export function CombatArena({ encounter, round, selected, target, onPick, animat
           pos.set(id, [p[0] + dir * (depth / 2 - rank) * spacing * 0.6, p[1] + side * rank * spacing * 0.62]);
         });
       }
+      // Each ship claims a box: its condition rings above, its name and order chip below. Boxes are
+      // separated along the axis of least overlap so neither glyphs nor labels ever stack.
+      const labelsOn = cell >= 22;
+      ctx.font = '600 10.5px "Antonio Variable", Antonio, "Arial Narrow", sans-serif';
+      const boxes = new Map<number, { hw: number; up: number; down: number }>();
+      for (const id of pos.keys()) {
+        const s = e.ships.find((x) => x.id === id)!;
+        const R = radius(s);
+        const labelW = labelsOn ? ctx.measureText(s.name.split(' — ')[0]!.toUpperCase()).width : 0;
+        boxes.set(id, { hw: Math.max(R * 1.75, labelW / 2 + 4), up: R * 1.75, down: R * 1.7 + (labelsOn ? 30 : 4) });
+      }
       const ids = [...pos.keys()];
-      for (let iter = 0; iter < 10; iter++) {
+      for (let iter = 0; iter < 14; iter++) {
+        let moved = false;
         for (let i = 0; i < ids.length; i++) for (let j = i + 1; j < ids.length; j++) {
           const a = pos.get(ids[i]!)!, b = pos.get(ids[j]!)!;
-          const sa = e.ships.find((s) => s.id === ids[i])!, sb = e.ships.find((s) => s.id === ids[j])!;
-          const min = (radius(sa) + radius(sb)) * 1.35;
-          let dx = b[0] - a[0], dy = b[1] - a[1];
-          let d = Math.hypot(dx, dy);
-          if (d >= min) continue;
-          if (d < 0.01) { const ang = (i * 2.399 + j) % 6.283; dx = Math.cos(ang); dy = Math.sin(ang); d = 1; }
-          const push = (min - d) / 2;
-          a[0] -= (dx / d) * push; a[1] -= (dy / d) * push; b[0] += (dx / d) * push; b[1] += (dy / d) * push;
+          const ba = boxes.get(ids[i]!)!, bb = boxes.get(ids[j]!)!;
+          const dx = b[0] - a[0], dy = b[1] - a[1];
+          const ox = ba.hw + bb.hw - Math.abs(dx);
+          const oy = (dy >= 0 ? ba.down + bb.up : ba.up + bb.down) - Math.abs(dy);
+          if (ox <= 0 || oy <= 0) continue;
+          moved = true;
+          if (oy <= ox * 1.2) {
+            const dir = dy === 0 ? (i % 2 ? -1 : 1) : Math.sign(dy);
+            a[1] -= (dir * oy) / 2; b[1] += (dir * oy) / 2;
+          } else {
+            const dir = dx === 0 ? (i % 2 ? -1 : 1) : Math.sign(dx);
+            a[0] -= (dir * ox) / 2; b[0] += (dir * ox) / 2;
+          }
         }
+        if (!moved) break;
       }
-      for (const p of pos.values()) { p[0] = Math.min(w - baseR, Math.max(baseR, p[0])); p[1] = Math.min(h - baseR * 1.8, Math.max(baseR * 1.4, p[1])); }
+      for (const [id, p] of pos) {
+        const bx = boxes.get(id)!;
+        p[0] = Math.min(w - bx.hw, Math.max(bx.hw, p[0]));
+        p[1] = Math.min(h - bx.down, Math.max(bx.up, p[1]));
+      }
 
       // --- ram lunge offset for rammers during their salvo
       const lunge = new Map<number, [number, number]>();
@@ -467,7 +489,7 @@ export function CombatArena({ encounter, round, selected, target, onPick, animat
         }
 
         // labels: name, then state / next order chip
-        const showLabel = cell >= 30 || s.id === sel || s.id === tgt || s.id === st.hover;
+        const showLabel = labelsOn || s.id === sel || s.id === tgt || s.id === st.hover;
         if (showLabel && alpha > 0.2) {
           const ly = py + R * 1.65 + 3;
           ctx.font = '600 10.5px "Antonio Variable", Antonio, "Arial Narrow", sans-serif';
@@ -644,7 +666,10 @@ export function roundLog(e: Encounter, r: TacticalRound): { text: string; kind: 
   if (r.truce) lines.push({ text: 'Every ship on one side hailed and the other side agreed: a truce ends the engagement before any fire.', kind: 'truce' });
   for (const st of r.ships) {
     if (st.hailed) lines.push({ text: `${name(st.id)} hails the enemy${st.ai ? ' (AI)' : ''}.`, kind: 'hail' });
-    if (st.decloaked) lines.push({ text: `${name(st.id)} decloaks to attack — its volley strikes with +25% ambush damage.`, kind: 'cloak' });
+    if (st.decloaked) {
+      const fired = r.salvos.some((sv) => sv.from === st.id && sv.ambush && sv.beam + sv.torpedo > 0);
+      lines.push({ text: `${name(st.id)} decloaks to attack${fired ? ' — its volley strikes with +25% ambush damage.' : ', but no target is in range: the ambush volley is lost.'}`, kind: 'cloak' });
+    }
     if (st.disengaging) lines.push({ text: `${name(st.id)} is disengaging: weapons offline, −25% incoming; it escapes next round if still retreating.`, kind: 'retreat' });
   }
   const seenRam = new Set<number>();

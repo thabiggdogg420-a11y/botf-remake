@@ -53,10 +53,14 @@ export async function throttleCpu(page: Page): Promise<void> {
   }
 }
 
-export async function newCampaign(page: Page, faction = 1, seed = '424242'): Promise<void> {
+export async function newCampaign(page: Page, faction = 1, seed = '424242', options: { tutorial?: boolean } = {}): Promise<void> {
   await throttleCpu(page);
   await page.goto('/');
-  await page.evaluate(() => localStorage.clear());
+  // A fresh browser profile, with the First Contact tutorial already dismissed unless a test wants it.
+  await page.evaluate((keepTutorial) => {
+    localStorage.clear();
+    if (!keepTutorial) localStorage.setItem('botf.tutorial', 'skipped');
+  }, !!options.tutorial);
   await page.goto('/');
   await page.getByTestId('new-campaign').click();
   await expect(page.getByTestId('screen-new')).toBeVisible();

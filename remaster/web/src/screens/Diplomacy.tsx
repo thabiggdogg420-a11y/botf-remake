@@ -55,12 +55,16 @@ export function DiplomacyScreen() {
   const v = view.value!;
   const d = useMemo<DiplomacyView | null>(() => { try { return core.diplomacy(); } catch (e) { reportError(e); return null; } }, [v.meta.version]);
   const [target, setTarget] = useState<Target | null>(diplomacyFocus.value);
-  const [pane, setPane] = useState<'dossier' | 'ledger' | 'news'>('dossier');
+  const incomingNow = d ? d.proposals.filter((p) => p.incoming && p.status === 'Pending').length + d.callsToArms.filter((c) => !c.honored).length : 0;
+  // The inbox opens first while anything awaits an answer.
+  const [pane, setPane] = useState<'inbox' | 'dossier' | 'ledger' | 'news'>(incomingNow && !diplomacyFocus.value ? 'inbox' : 'dossier');
   useEffect(() => { if (diplomacyFocus.value) { setTarget(diplomacyFocus.value); setPane('dossier'); diplomacyFocus.value = null; } }, [diplomacyFocus.value]);
   if (!d) return <div class="screen pad"><Empty>Diplomacy unavailable.</Empty></div>;
   const contacted = d.empires.filter((e) => e.contact);
   const sel: Target | null = target ?? (contacted.find((e) => !e.eliminated) ? { minor: false, id: contacted.find((e) => !e.eliminated)!.empire } : d.minors[0] ? { minor: true, id: d.minors[0].systemId } : null);
   const incoming = d.proposals.filter((p) => p.incoming && p.status === 'Pending');
+  const hasInbox = incoming.length > 0 || d.callsToArms.length > 0;
+  const shown = pane === 'inbox' && !hasInbox ? 'dossier' : pane;
   return (
     <div class="screen pad diplomacy-screen" data-testid="screen-diplomacy">
       <div class="dip-grid">
@@ -96,15 +100,16 @@ export function DiplomacyScreen() {
           <Standing d={d} v={v} />
         </Frame>
         <div class="dip-main">
-          {incoming.length || d.callsToArms.length ? <Inbox v={v} d={d} incoming={incoming} /> : null}
           <div class="dip-panes">
-            <Tabs value={pane} onChange={setPane} testid="dip-panes" options={[
+            <Tabs value={shown} onChange={setPane} testid="dip-panes" options={[
+              ...(hasInbox ? [{ id: 'inbox' as const, label: 'Incoming', count: incoming.length + d.callsToArms.filter((c) => !c.honored).length }] : []),
               { id: 'dossier', label: 'Dossier' },
               { id: 'ledger', label: 'Treaty ledger', count: d.treaties.length + d.treatyHistory.length },
               { id: 'news', label: 'Galactic news', count: d.news.length },
             ]} />
           </div>
-          {pane === 'ledger' ? <Ledger d={d} /> : pane === 'news' ? <News d={d} />
+          {shown === 'inbox' ? <Inbox v={v} d={d} incoming={incoming} />
+            : shown === 'ledger' ? <Ledger d={d} /> : shown === 'news' ? <News d={d} />
             : sel ? <Dossier key={`${sel.minor ? 'm' : 'e'}${sel.id}`} v={v} d={d} target={sel} /> : <Frame title="Diplomacy"><Empty>Select a contacted race.</Empty></Frame>}
         </div>
       </div>
@@ -149,7 +154,7 @@ function Inbox({ v, d, incoming }: { v: GameView; d: DiplomacyView; incoming: Pr
   const responseFor = (id: number) => v.pending.find((c) => c.type === 'RespondDiplomaticProposal' && c.proposalId === id);
   const count = incoming.length + d.callsToArms.filter((c) => !c.honored).length;
   return (
-    <Frame title="Incoming" sub={`${count} awaiting your answer`} tone="secondary" class="inbox" testid="diplomacy-inbox">
+    <Frame title="Incoming" sub={`${count} awaiting your answer`} tone="secondary" class="fill inbox" testid="diplomacy-inbox">
       <div class="inbox-list">
         {incoming.map((p) => {
           const due = deadline(d.turn, p.dueTurn);
@@ -326,7 +331,7 @@ function Dossier({ v, d, target }: { v: GameView; d: DiplomacyView; target: Targ
         <div class="dh-main">
           <div class="dh-status">
             {rel?.eliminated ? <Badge tone="dim">Eliminated — no colonies remain</Badge> : rel ? (rel.atWar ? <Badge tone="alert">At war since turn {rel.warStartTurn}</Badge> : <Badge tone="good">At peace</Badge>) : null}
-            {rel?.allied ? <Badge tone="good">Full alliance · mutual defence</Badge> : rel?.sensorSharing ? <Badge tone="accent">Shared sensors</Badge> : null}
+            {rel?.allied ? <Badge tone="good" tipText="Full Alliance: shared supply range and star charts; each of you may be called to arms when the other is attacked.">Mutual defence</Badge> : rel?.sensorSharing ? <Badge tone="accent">Shared sensors</Badge> : null}
             {rel?.treatyForbidsAttack ? <Badge tone="secondary" tipText="A non-aggression pact or stronger (or a timed peace) is in force: declaring war on them would be a betrayal.">Treaty forbids attack</Badge> : null}
             {rel?.tradeTreaty ? <Badge tone="accent">Trade pact</Badge> : null}
             {minor ? <Badge tone={minor.memberOf ? 'accent' : 'dim'}>{minor.memberOf ? `Member of ${minor.memberOf === v.meta.player ? 'your empire' : v.empires.find((e) => e.empire === minor.memberOf)?.name}` : 'Independent'}</Badge> : null}

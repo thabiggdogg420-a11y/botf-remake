@@ -2,7 +2,7 @@
 // geometry so tests can click precise canvas positions, plus camera focus; orders always go through
 // the UI.
 import { core } from './core/engine';
-import { focusMap, view } from './state/store';
+import { encounter, focusMap, view } from './state/store';
 
 export interface MapHooks {
   cellCenter(cell: number): { x: number; y: number } | null;
@@ -12,6 +12,7 @@ export interface MapHooks {
 
 interface BotfHooks {
   view: () => unknown;
+  encounter: () => unknown;
   fingerprint: () => unknown;
   focus: (x: number, y: number, zoom?: number) => void;
   map?: MapHooks;
@@ -24,6 +25,7 @@ declare global {
 function base(): BotfHooks {
   return {
     view: () => view.value,
+    encounter: () => encounter.value,
     fingerprint: () => { try { return core.fingerprint(); } catch { return null; } },
     focus: (x, y, zoom) => focusMap(x, y, zoom),
   };

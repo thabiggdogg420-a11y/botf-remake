@@ -226,6 +226,17 @@ export function startDrill(): void {
   }
 }
 
+export function startDiplomacyDrill(): void {
+  try {
+    const next = core.newDiplomacyDrill();
+    enterGame(next, 'Diplomacy drill');
+    toast('Diplomacy drill: proposals await your answer and an ally calls you to arms. Open Diplomacy (F6).', 'warn', 5000);
+    blip('start');
+  } catch (error) {
+    reportError(error);
+  }
+}
+
 export function loadEnvelope(envelope: SaveEnvelope): boolean {
   try {
     const next = core.load(envelope.data, envelope.scenario ?? 'campaign', envelope.briefing ?? '');

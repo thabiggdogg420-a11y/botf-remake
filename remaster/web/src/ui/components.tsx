@@ -68,9 +68,11 @@ export function TooltipLayer() {
   useEffect(() => {
     if (!ref.current || !state) return;
     const r = ref.current.getBoundingClientRect();
+    // Measure against the unshifted position (the rendered one includes the previous tooltip's shift).
     const pad = 8, k = uiScale.value;
-    if (r.left < pad) setShift((pad - r.left) / k);
-    else if (r.right > window.innerWidth - pad) setShift((window.innerWidth - pad - r.right) / k);
+    const left0 = r.left - shift * k, right0 = r.right - shift * k;
+    if (left0 < pad) setShift((pad - left0) / k);
+    else if (right0 > window.innerWidth - pad) setShift((window.innerWidth - pad - right0) / k);
     else setShift(0);
   }, [state]);
   if (!state) return null;

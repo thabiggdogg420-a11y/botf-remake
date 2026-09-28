@@ -34,6 +34,7 @@ export function GalaxyMap() {
     let drag: { x: number; y: number; cx: number; cy: number; moved: boolean; id: number } | null = null;
     let lastFocusSeq = -1;
     let frame = 0;
+    let lastTime = 0;
     const keys = new Set<string>();
 
     // Width of the chart hidden behind the inspector panel (0 when collapsed or on phones).
@@ -140,7 +141,10 @@ export function GalaxyMap() {
       if (keys.has('ArrowUp') || keys.has('w')) target.cy -= pan;
       if (keys.has('ArrowDown') || keys.has('s')) target.cy += pan;
       clampCam(v, target);
-      const k = reducedMotion.value ? 1 : 0.22;
+      // Frame-rate independent glide (0.22 per 60 Hz frame), so slow machines settle as fast.
+      const dt = lastTime ? Math.min(250, time - lastTime) : 16.7;
+      lastTime = time;
+      const k = reducedMotion.value ? 1 : 1 - Math.pow(1 - 0.22, dt / 16.7);
       cam.cx += (target.cx - cam.cx) * k; cam.cy += (target.cy - cam.cy) * k;
       cam.zoom += (target.zoom - cam.zoom) * k;
       if (Math.abs(cameraZoom.value - cam.zoom) > 0.01) cameraZoom.value = cam.zoom;

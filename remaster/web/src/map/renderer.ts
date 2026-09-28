@@ -87,6 +87,7 @@ export class GalaxyRenderer {
   private frontier: [number, number, number, number][] = [];   // world-space segments of the sensor horizon
   private uncharted: { x: number; y: number }[] = [];            // cells deep in unknown space (labels)
   private surveyPattern: CanvasPattern | null = null;
+  private nebulaRect: [number, number, number, number] = [0, 0, 0, 0];
   hits: HitTarget[] = [];
 
   constructor(private canvas: HTMLCanvasElement) {
@@ -220,13 +221,12 @@ export class GalaxyRenderer {
       }
       dist[y * W + x] = best;
     }
-    const candidates: { x: number; y: number; d: number }[] = [];
-    for (let y = 1; y < H - 1; y++) for (let x = 1; x < W - 1; x++) if (unknown[y * W + x] && dist[y * W + x]! >= 3) candidates.push({ x, y, d: dist[y * W + x]! });
-    candidates.sort((a, b) => b.d - a.d || a.y - b.y || a.x - b.x);
+    // Labels on a loose lattice (so some are in view wherever the chart is panned), only where the
+    // uncharted region is at least two sectors deep.
     const labels: { x: number; y: number }[] = [];
-    for (const c of candidates) {
-      if (labels.length >= 4) break;
-      if (labels.every((l) => Math.max(Math.abs(l.x - c.x), Math.abs(l.y - c.y)) >= 5)) labels.push({ x: c.x, y: c.y });
+    for (let y = 1; y < H - 1; y++) for (let x = 1; x < W - 1; x++) {
+      if (!unknown[y * W + x] || dist[y * W + x]! < 2) continue;
+      if ((x + 2 * y) % 5 === 0) labels.push({ x, y });   // thinned in screen space when drawn
     }
     this.uncharted = labels;
     // Fog: one pixel per sector, alpha by knowledge; smoothed when scaled → soft edges.
@@ -320,7 +320,8 @@ export class GalaxyRenderer {
       const n = this.nebula;
       const px = cam.cx * z * 0.18, py = cam.cy * z * 0.18;
       ctx.globalAlpha = 0.95;
-      ctx.drawImage(n, ox - 6 * CELL * z + px * 0.2, oy - 6 * CELL * z + py * 0.2, n.width / 0.25 * z, n.height / 0.25 * z);
+      this.nebulaRect = [ox - 6 * CELL * z + px * 0.2, oy - 6 * CELL * z + py * 0.2, n.width / 0.25 * z, n.height / 0.25 * z];
+      ctx.drawImage(n, ...this.nebulaRect);
       ctx.globalAlpha = 1;
     }
 
@@ -437,6 +438,14 @@ export class GalaxyRenderer {
     if (any) {
       ctx.save();
       ctx.clip(unknownPath);
+      // Nebula fields glow faintly through the veil: uncharted, not empty.
+      if (this.nebula) {
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = 0.55;
+        ctx.drawImage(this.nebula, ...this.nebulaRect);
+        ctx.globalAlpha = 1;
+        ctx.globalCompositeOperation = 'source-over';
+      }
       const pattern = this.ensureSurveyPattern();
       if (pattern) {
         // Anchor the texture to the chart so it pans and zooms with the sectors.
@@ -463,8 +472,12 @@ export class GalaxyRenderer {
         ctx.font = `600 ${size}px "Antonio Variable", Antonio, "Arial Narrow", sans-serif`;
         (ctx as CanvasRenderingContext2D & { letterSpacing?: string }).letterSpacing = `${Math.round(size * 0.45)}px`;
         ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        const placed: [number, number][] = [];
         for (const l of this.uncharted) {
           const [cx, cy] = this.worldToScreen(cam, (l.x + 0.5) * CELL, (l.y + 0.5) * CELL);
+          if (cx < 80 || cy < 20 || cx > this.width - 80 || cy > this.height - 30) continue;
+          if (placed.some(([px, py]) => Math.abs(px - cx) < 190 && Math.abs(py - cy) < 110)) continue;
+          placed.push([cx, cy]);
           ctx.fillStyle = 'rgba(170,190,235,0.30)';
           ctx.fillText('UNCHARTED', cx, cy);
           ctx.font = `500 ${Math.max(9, size - 3)}px "Share Tech Mono", monospace`;

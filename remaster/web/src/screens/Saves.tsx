@@ -1,6 +1,8 @@
 import { useRef, useState } from 'preact/hooks';
+import { hostDownloadsPossible, SAVE_FILE_ACCEPT } from '../platform/fileExport';
 import {
-  AUTOSAVE_ID, captureEnvelope, deleteSlot, exportEnvelope, importFile, readSlot, saveIndex, saveToSlot, writeSlot,
+  AUTOSAVE_ID, captureEnvelope, deleteSlot, exportEnvelope, importFile, readSlot, saveIndex, saveToSlot, storageDegraded, writeSlot,
+  type SaveEnvelope,
 } from '../state/saves';
 import { back, confirmDialog, loadEnvelope, saveName, toast, view } from '../state/store';
 import { Emblem, Empty, Frame, Pill } from '../ui/components';
@@ -11,6 +13,24 @@ export function SavesScreen() {
   const [name, setName] = useState(() => (v ? `${saveName.value || `${v.meta.playerName} campaign`} — turn ${v.meta.turn}` : ''));
   const fileRef = useRef<HTMLInputElement>(null);
   const list = saveIndex.value;
+  // Export key being prepared ('current' or a slot id): the host viewer can take a while to answer.
+  const [exporting, setExporting] = useState<string | null>(null);
+  const runExport = async (key: string, make: () => SaveEnvelope | null) => {
+    if (exporting) return;
+    let envelope: SaveEnvelope | null = null;
+    try { envelope = make(); } catch (e) { toast(e instanceof Error ? e.message : String(e), 'alert'); return; }
+    if (!envelope) { toast('That save could not be read.', 'alert'); return; }
+    if (hostDownloadsPossible()) setExporting(key);
+    try {
+      const outcome = await exportEnvelope(envelope);
+      if (outcome === 'saved') toast('Save file exported.', 'good');
+      else if (outcome === 'downloaded') toast('Save file downloaded.', 'good', 2200);
+    } catch (e) {
+      toast(`Export failed: ${e instanceof Error ? e.message : String(e)}`, 'alert');
+    } finally {
+      setExporting(null);
+    }
+  };
 
   const saveNew = () => {
     if (!v) return;
@@ -58,18 +78,20 @@ export function SavesScreen() {
                 onInput={(e) => setName((e.target as HTMLInputElement).value)}
                 onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); saveNew(); } }} />
               <Pill onClick={saveNew} testid="save-new">Save</Pill>
-              <Pill tone="ghost" onClick={() => { try { exportEnvelope(captureEnvelope(name || 'campaign', 'export')); } catch (e) { toast(String(e), 'alert'); } }}
-                hint="Download the current campaign as a .botfsave file">Export current</Pill>
+              <Pill tone="ghost" testid="export-current" disabled={!!exporting} reason="Preparing file…"
+                onClick={() => void runExport('current', () => captureEnvelope(name || 'campaign', 'export'))}
+                hint="Download the current campaign as a .botfsave file">{exporting === 'current' ? 'Preparing file…' : 'Export current'}</Pill>
             </div>
             {v.session.active ? <p class="hint">A battle is in progress: the save captures the open turn and resumes mid-battle.</p> : null}
           </Frame>
         ) : null}
         <Frame title="Saved campaigns" sub={`${list.length} slot${list.length === 1 ? '' : 's'}`}
           actions={<>
-            <input ref={fileRef} type="file" accept=".botfsave,application/json" class="visually-hidden" id="import-file" data-testid="import-file"
+            <input ref={fileRef} type="file" accept={SAVE_FILE_ACCEPT} class="visually-hidden" id="import-file" data-testid="import-file"
               onChange={(e) => void onImport((e.target as HTMLInputElement).files?.[0])} />
             <Pill small tone="ghost" onClick={() => fileRef.current?.click()} hint="Import a .botfsave file">Import…</Pill>
           </>}>
+          {storageDegraded.value ? <p class="hint warn" data-testid="storage-degraded">This browser is not storing saves right now (private mode, a sandboxed viewer or full storage). Slots last until the page closes — export them to keep them.</p> : null}
           {list.length === 0 ? <Empty>No saved campaigns yet.</Empty> : (
             <ul class="save-list" data-testid="save-list">
               {list.map((s) => (
@@ -85,7 +107,8 @@ export function SavesScreen() {
                       confirmDialog.value = { title: `Overwrite "${s.name}"?`, body: 'The slot will hold the current campaign.', confirm: 'Overwrite',
                         onConfirm: () => { try { saveToSlot(s.name, s.id); toast('Saved.', 'good'); } catch (e) { toast(String(e), 'alert'); } } };
                     }}>Overwrite</Pill> : null}
-                    <Pill small tone="ghost" onClick={() => { const env = readSlot(s.id); if (env) exportEnvelope(env); }}>Export</Pill>
+                    <Pill small tone="ghost" disabled={!!exporting} reason="Preparing file…" testid={`export-${s.id}`}
+                      onClick={() => void runExport(s.id, () => readSlot(s.id))}>{exporting === s.id ? 'Preparing file…' : 'Export'}</Pill>
                     <Pill small tone="alert" onClick={() => {
                       confirmDialog.value = { title: `Delete "${s.name}"?`, body: 'This cannot be undone.', confirm: 'Delete', tone: 'alert', onConfirm: () => deleteSlot(s.id) };
                     }}>Delete</Pill>

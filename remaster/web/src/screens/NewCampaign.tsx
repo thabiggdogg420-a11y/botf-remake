@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'preact/hooks';
-import { back, meta, startCampaign } from '../state/store';
+import { back, meta, startCampaign, view } from '../state/store';
+import { maybeStartTutorial } from '../state/tutorial';
 import { Emblem, Frame, Pill, tip } from '../ui/components';
 import { Starfield } from '../ui/Starfield';
 import { FACTIONS, palette } from '../ui/theme';
@@ -36,9 +37,12 @@ export function NewCampaignScreen() {
   const sz = SIZES.find((s) => s.id === size)!;
   const effectiveEmpires = Math.max(empires, faction);
   const eraInfo = m.eras.find((e) => e.id === era);
-  const start = () => startCampaign({
-    faction, empires: effectiveEmpires, seed, era, ruleset, width: sz.width, height: sz.height, systems: sz.systems, events, aiAggression: aggression,
-  });
+  const start = () => {
+    startCampaign({
+      faction, empires: effectiveEmpires, seed, era, ruleset, width: sz.width, height: sz.height, systems: sz.systems, events, aiAggression: aggression,
+    });
+    if (view.value) maybeStartTutorial();
+  };
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement | null;

@@ -204,7 +204,7 @@ function ShipList({ title, ships, all, selected, onPick, hostile }: {
                 </div>
                 <div class="sc-flags">
                   {s.cloaked && s.alive && !s.retreated ? <span class="sc-flag cloak">Cloaked</span> : null}
-                  {s.disengaging ? <span class="sc-flag disengage" {...tip('Weapons offline, −25% incoming. Escapes at the next movement phase if still retreating.')}>Disengaging</span> : null}
+                  {s.disengaging && s.next ? <span class="sc-flag disengage" {...tip('Weapons offline, −25% incoming. Escapes at the next movement phase if still retreating.')}>Disengaging</span> : null}
                   {s.group ? <span class="sc-group">{s.group}</span> : null}
                   {!hostile && s.alive && !s.retreated ? <span class="sc-weap">B{s.beam} · T{s.torpedo}</span> : null}
                 </div>

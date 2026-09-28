@@ -47,7 +47,7 @@ export function IntelScreen() {
         <div class="stat-grid four">
           <Stat label="Reserve" value={fmt(intel.reserve)} tipText="Intelligence points available to classic operations." />
           <Stat label="Output" value={`${fmt(intel.output)}/turn`} tipText="Intelligence generated each turn, split by the budget below." />
-          <Stat label="Security" value={fmt(intel.securityStockpile)} tipText="Counter-intelligence strength protecting your empire." />
+          <Stat label="Security" value={intel.defenseStrengthMilli !== undefined ? (intel.defenseStrengthMilli / 1000).toFixed(1) : fmt(intel.securityStockpile)} tipText={`Counter-intelligence strength (20-turn security average + 2% of the ${fmt(intel.securityStockpile)} stockpile, at full morale). Rival operations are measured against it.`} />
           <Stat label="Security share" value={`${budget.security}%`} tone={budget.security < 50 ? 'warn' : undefined} />
         </div>
         <div class="research-actions">
@@ -78,7 +78,7 @@ export function IntelScreen() {
                 <span class="rp-main"><b>{o.mine ? `${o.area} vs ${o.defenderName}` : `Intrusion by ${o.attackerName}`}</b> · {o.department} · {o.outcome}
                   {o.creditsStolen ? ` · ¢${fmt(o.creditsStolen)} taken` : ''}{o.researchStolen ? ` · ${fmt(o.researchStolen)} research taken` : ''}
                   {o.details ? <span class="rp-detail">{o.details}</span> : null}</span>
-                {o.detected ? <Badge tone="alert">detected</Badge> : null}
+                {o.detected ? <Badge tone="alert" tipText={o.mine ? 'Their counter-intelligence exposed our agents: trust suffers and they hold a grievance.' : 'Our counter-intelligence caught their agents.'}>{o.mine ? 'exposed' : 'detected'}</Badge> : null}
               </div>
             ))}
             {intel.reports.map((r, i) => (
@@ -105,10 +105,10 @@ function RivalCard({ r, a, onShare, locked, highlight }: {
   const gatherReason = locked ? 'Finish the battle first' : dryRun(gather) || undefined;
   const sabotageReason = locked ? 'Finish the battle first' : !target ? 'No colony of theirs is within sensor range' : dryRun(sabotage) || undefined;
   return (
-    <div class={`intel-card${highlight ? ' highlight' : ''}${r.contact ? '' : ' unknown'}`} data-testid={`intel-${r.id}`}>
+    <div class={`intel-card${highlight ? ' highlight' : ''}${r.contact && !r.eliminated ? '' : ' unknown'}`} data-testid={`intel-${r.id}`}>
       <div class="ic-head">
         <Emblem empire={r.id} size={28} />
-        <div><div class="ic-name">{r.name}</div><div class="ic-sub">{!r.contact ? 'No contact' : r.atWar ? 'At war — sabotage permitted' : 'At peace'}</div></div>
+        <div><div class="ic-name">{r.name}</div><div class="ic-sub">{r.eliminated ? 'Eliminated — no longer a target' : !r.contact ? 'No contact' : r.atWar ? 'At war — sabotage permitted' : 'At peace'}</div></div>
       </div>
       <div class="ic-row" {...tip('Share of intelligence output spent gathering information and stealing credits or research.', 'Espionage')}>
         <span>Espionage</span><Slider value={a.espionage} max={100} label={`Espionage against ${r.name}`} onInput={(val) => onShare('espionage', val)} disabled={locked} /><b>{a.espionage}%</b>
@@ -127,7 +127,7 @@ function RivalCard({ r, a, onShare, locked, highlight }: {
           </div>
         </div>
       ) : null}
-      {r.espionageStockpile !== undefined ? <div class="ic-stock">Stockpiles: espionage {fmt(r.espionageStockpile)} · sabotage {fmt(r.sabotageStockpile ?? 0)}</div> : null}
+      {r.espionageStockpile !== undefined ? <div class="ic-stock">Stockpiles: espionage {fmt(r.espionageStockpile)} · sabotage {fmt(r.sabotageStockpile ?? 0)}{r.attackStrengthMilli !== undefined ? <span {...tip('Our attack strength against them: the 20-turn average of espionage + sabotage output, doubled for concentration. Parity with their security share means even odds; weak operations are often exposed.')}> · strength {(r.attackStrengthMilli / 1000).toFixed(1)}</span> : null}</div> : null}
       <div class="ic-ops">
         <Pill small tone="secondary" disabled={!!gatherReason} reason={gatherReason} onClick={() => issue(gather, { success: 'Espionage mission ordered.' })}>Gather intelligence</Pill>
         {r.visibleColonies.length ? (
