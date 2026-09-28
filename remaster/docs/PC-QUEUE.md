@@ -8,6 +8,7 @@ Status markers: `[ ]` pending, `[x]` done (paste the result or log into the PR/s
 
 ## Pending
 
+0. [ ] **Create accounts** in the order of the sign-up checklist in ASSET-SOURCES-LOGIN.md: Nexus Mods, Steam, Freesound, ModDB, the BOTF forum at armadafleetcommand.com, then Discord/Patreon. Then check the login-gated leads marked [unverified] and download what fills a gap.
 1. [ ] **First real UE 5.8 build.**
    - Run `remaster\game\Package-Windows.ps1 -CheckOnly`, then run it again without `-CheckOnly`.
    - If it fails, paste back `Build\Logs\<stamp>\FAILURE-SUMMARY.txt`. The script also copies it to the clipboard.
