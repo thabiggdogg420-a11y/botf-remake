@@ -15,7 +15,7 @@
     "socketConvention": { "type": "string" },
     "assets": {
       "type": "object",
-      "propertyNames": { "pattern": "^(ship|weapon|study|sfx|vo|mus)(\\.[A-Za-z0-9_]+)+$", "description": "ship.<fac>.<class> (roster assetKey or legacy slug), weapon.<WeaponType>[.<fac>], study.<fac>, sfx.*, vo.*, mus.*. See check_asset_keys.py." },
+      "propertyNames": { "pattern": "^(ship|weapon|study|sfx|vo|mus|vfx)(\\.[A-Za-z0-9_]+)+$", "description": "ship.<fac>.<class> (roster assetKey or legacy slug), weapon.<WeaponType>[.<fac>], study.<fac>, sfx.*, vo.*, mus.*, vfx.* (optional Niagara systems). See check_asset_keys.py." },
       "additionalProperties": { "$ref": "#/$defs/asset" }
     }
   },
@@ -24,7 +24,7 @@
       "type": "object",
       "required": ["kind", "displayName", "candidates", "import", "fallback"],
       "properties": {
-        "kind": { "enum": ["model", "texture", "sfx", "voice", "music"] },
+        "kind": { "enum": ["model", "texture", "sfx", "voice", "music", "vfx"] },
         "faction": { "type": ["string", "null"] },
         "displayName": { "type": "string" },
         "botfClasses": { "type": "array", "items": { "type": "string" } },

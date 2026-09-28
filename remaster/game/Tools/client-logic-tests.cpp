@@ -3,6 +3,7 @@
 #include "BotfAssetCatalog.h"
 #include "BotfAudioCues.h"
 #include "BotfAudioEvents.h"
+#include "BotfCombatTimeline.h"
 #include "BotfJson.h"
 #include "BotfShipDatabase.h"
 
@@ -162,7 +163,7 @@ static void testCues() {
     r = cueFor(GameCue::GalacticEvent, "fer", {}, "12");
     EXPECT(r.voiceKeys[0] == "vo.event.12" && r.voiceKeys[1] == "vo.advisor.fer");
     // Voice never crosses factions: every voice key names the player's or the speaker's faction.
-    for (int c = 0; c <= static_cast<int>(GameCue::UiClick); ++c)
+    for (int c = 0; c <= static_cast<int>(GameCue::CombatBark); ++c)
         for (const auto& k : cueFor(static_cast<GameCue>(c), "fed", "kli").voiceKeys)
             EXPECT(k.find(".fed") != std::string::npos || k.find(".kli") != std::string::npos || k.rfind("vo.event.", 0) == 0);
     EXPECT(cueFor(GameCue::Victory, "fed").priority == 10);
@@ -245,6 +246,224 @@ static void testShipDatabase() {
     EXPECT(view::shipDatabaseDetails(-5, {}) == "Select an entry.");
 }
 
+// ---------------------------------------------------------------------------------------------------------------
+// Rules 3 battle playback schedule (BotfCombatTimeline.h)
+// ---------------------------------------------------------------------------------------------------------------
+
+static CombatEvent ev(int tick, CombatEventKind kind, int fleet) {
+    CombatEvent e;
+    e.tick = tick; e.kind = kind; e.fleetId = fleet;
+    return e;
+}
+static CombatEvent pose(int tick, CombatEventKind kind, int fleet, int x, int y, int facing, int value = 0) {
+    CombatEvent e = ev(tick, kind, fleet);
+    e.x = x; e.y = y; e.facing = facing; e.value = value;
+    return e;
+}
+static CombatEvent fire(int tick, int shooter, int target, int mount, roster::WeaponType type, int impactTick, int projectiles,
+                        bool hit, int shield, int hull, bool destroyed = false, bool intercepted = false) {
+    CombatEvent e = ev(tick, CombatEventKind::Fire, shooter);
+    e.targetFleetId = target; e.mountIndex = mount; e.weaponType = static_cast<int>(type);
+    e.weaponFamily = static_cast<int>(roster::weaponFamily(type)); e.impactTick = impactTick; e.projectiles = projectiles;
+    e.hit = hit; e.shieldDamage = shield; e.hullDamage = hull; e.destroyed = destroyed; e.intercepted = intercepted;
+    return e;
+}
+
+static void testCombatTimeline() {
+    using namespace combatfx;
+    using W = roster::WeaponType;
+    using K = CombatEventKind;
+    // Fleet 1: player (Federation) strafes; 2: Klingon, dies at tick 8; 3: Romulan, starts cloaked and decloaks;
+    // 4: Klingon, retreats; 6: Klingon, rams.
+    std::vector<ShipInfo> ships = {
+        {1, 1, 100, 100, false, 0, 0, 0}, {2, 2, 50, 50, false, 6, 0, 180}, {3, 3, 40, 40, true, 6, 3, 180},
+        {4, 2, 20, 20, false, 7, -2, 180}, {6, 2, 10, 10, false, 3, 1, 180}};
+    std::vector<CombatEvent> events;
+    events.push_back(ev(0, K::Cloak, 3));
+    events.push_back(pose(0, K::Disengage, 4, 7, -2, 180));
+    events.push_back(pose(0, K::Retreated, 4, 7, -2, 180));
+    events.push_back(pose(0, K::ManeuverStart, 1, 0, 0, 0));
+    events.push_back(pose(0, K::ManeuverStart, 2, 6, 0, 180));
+    events.push_back(pose(4, K::ManeuverEnd, 1, 2, 1, 45, 1));
+    events.push_back(pose(4, K::ManeuverEnd, 2, 4, 0, 135));
+    events.push_back(pose(4, K::Decloak, 3, 6, 3, 180));
+    events.push_back(fire(5, 1, 2, 0, W::PhaserArray, 5, 2, true, 30, 0));          // 8: beam, 2 emitters
+    events.push_back(fire(5, 2, 1, 0, W::Disruptor, 5, 1, true, 30, 0));            // 9
+    { auto r = ev(5, K::Ram, 6); r.targetFleetId = 1; r.impactTick = 5; r.hullDamage = 10; events.push_back(r); } // 10
+    events.push_back(fire(6, 1, 2, 1, W::PhotonTorpedo, 8, 2, true, 20, 40, true)); // 11: kills 2 at tick 8
+    events.push_back(fire(6, 3, 1, 0, W::PulsePhaser, 6, 1, true, 30, 0));          // 12: player shields 70 -> 40
+    events.push_back(fire(7, 3, 1, 0, W::PulsePhaser, 7, 1, false, 0, 0));          // 13: miss
+    events.push_back(fire(8, 2, 1, 1, W::PlasmaTorpedo, 10, 1, false, 0, 0, false, true)); // 14: intercepted
+    events.push_back(ev(8, K::Destroyed, 2));                                        // 15
+    { auto t = ev(11, K::Truce, 0); events.push_back(t); }                           // 16
+
+    TimelineConfig cfg;
+    cfg.roundSeconds = 6.0;
+    cfg.playerEmpire = 1;
+    const auto tl = buildRoundTimeline(events, ships, cfg);
+    const double tk = tl.tickSeconds;
+    EXPECT(std::fabs(tk - 0.5) < 1e-12);
+    EXPECT(tl.consumed.size() == events.size() && tl.allConsumed());
+
+    // Ordering: jobs by start, sounds and barks by time.
+    for (std::size_t i = 1; i < tl.jobs.size(); ++i) EXPECT(tl.jobs[i - 1].start <= tl.jobs[i].start);
+    for (std::size_t i = 1; i < tl.sounds.size(); ++i) EXPECT(tl.sounds[i - 1].time <= tl.sounds[i].time);
+    for (const auto& j : tl.jobs) EXPECT(j.duration > 0.0 && j.start >= 0.0 && j.end() <= tl.endSeconds + 1e-9);
+    EXPECT(tl.endSeconds >= tl.roundSeconds);
+
+    // Determinism: same input, identical schedule.
+    const auto again = buildRoundTimeline(events, ships, cfg);
+    EXPECT(again.jobs == tl.jobs && again.sounds == tl.sounds && again.barks == tl.barks);
+    for (double t = 0.0; t <= 6.0; t += 0.37) EXPECT(again.track(1)->poseAt(t) == tl.track(1)->poseAt(t));
+
+    // Flight: exact poses at the ends, no snapping in between, banking into the slide and back to level.
+    const auto* t1 = tl.track(1);
+    EXPECT(t1 && t1->segments.size() == 1 && t1->segments[0].slideCells == 1);
+    EXPECT(t1->poseAt(0.0) == (PlanePose{0, 0, 0, 0}));
+    EXPECT(t1->poseAt(4 * tk) == (PlanePose{2, 1, 45, 0}));
+    EXPECT(t1->poseAt(6.0) == (PlanePose{2, 1, 45, 0}));
+    EXPECT(std::fabs(t1->poseAt(2 * tk).bank) > 5.0 && std::fabs(t1->poseAt(2 * tk).bank) <= cfg.maxBankDegrees);
+    for (int fleet : {1, 2}) {
+        const auto* tr = tl.track(fleet);
+        PlanePose prev = tr->poseAt(0.0);
+        double maxStep = 0.0, maxTurn = 0.0, maxBankStep = 0.0;
+        for (double t = 0.001; t <= 6.0; t += 0.001) {
+            const auto p = tr->poseAt(t);
+            maxStep = std::max(maxStep, std::hypot(p.x - prev.x, p.y - prev.y));
+            maxTurn = std::max(maxTurn, std::fabs(shortestTurn(prev.facing, p.facing)));
+            maxBankStep = std::max(maxBankStep, std::fabs(p.bank - prev.bank));
+            prev = p;
+        }
+        EXPECT(maxStep < 0.02 && maxTurn < 0.5 && maxBankStep < 0.5);
+    }
+    const auto* t2 = tl.track(2);
+    EXPECT(t2->poseAt(4 * tk).facing == 135);
+    EXPECT(t2->poseAt(2 * tk).bank > 0.0); // 180 -> 135 is a clockwise (right) turn: roll right
+
+    // Beams: two emitters from tick 5, one tick long, faction colour, fire sound faction variant first.
+    std::vector<const VisualJob*> beams;
+    for (const auto& j : tl.jobs) if (j.kind == JobKind::Beam && j.eventIndex == 8) beams.push_back(&j);
+    EXPECT(beams.size() == 2 && beams[0]->start == 5 * tk && beams[1]->start > beams[0]->start);
+    EXPECT(std::fabs(beams[0]->end() - 6 * tk) < 1e-9 && beams[0]->color == weaponColor(static_cast<int>(W::PhaserArray), 1));
+    EXPECT(beams[0]->vfxKey == "vfx.PhaserArray" && vfxKeysFor(*beams[0]).back() == "vfx.generic.beam");
+    bool beamSound = false;
+    for (const auto& s : tl.sounds)
+        if (s.eventIndex == 8 && s.cue == audio::GameCue::BeamFire)
+            beamSound = s.time == 5 * tk && s.keys.front() == "weapon.PhaserArray.fed" && s.keys.back() == "weapon.generic.beam";
+    EXPECT(beamSound);
+
+    // Torpedoes: two, arcing opposite ways, arriving at the impact tick; shield and hull impacts there; explosion.
+    std::vector<const VisualJob*> torps;
+    for (const auto& j : tl.jobs) if (j.kind == JobKind::Torpedo && j.eventIndex == 11) torps.push_back(&j);
+    EXPECT(torps.size() == 2 && torps[0]->start == 6 * tk && torps[0]->arcCells * torps[1]->arcCells < 0);
+    EXPECT(std::fabs(torps[0]->end() - 8 * tk) < 1e-9 && torps[1]->end() > torps[0]->end());
+    int shieldHits = 0, hullHits = 0;
+    double impactAt = -1;
+    for (const auto& j : tl.jobs) if (j.eventIndex == 11) {
+        if (j.kind == JobKind::ShieldImpact) { ++shieldHits; impactAt = j.start; EXPECT(j.sourceFleetId == 1 && j.targetFleetId == 2); }
+        if (j.kind == JobKind::HullImpact) { ++hullHits; EXPECT(j.destroysTarget && j.hullDamage == 40); }
+    }
+    EXPECT(shieldHits == 1 && hullHits == 1 && std::fabs(impactAt - torps[1]->end()) < 1e-9);
+    const VisualJob* boom = nullptr;
+    for (const auto& j : tl.jobs) if (j.kind == JobKind::Explosion) boom = &j;
+    EXPECT(boom && boom->fleetId == 2 && std::fabs(boom->start - impactAt) < 1e-9);
+    EXPECT(t2->hideAt > boom->start && t2->visibilityAt(boom->start) == 1.0 && t2->visibilityAt(boom->end()) == 0.0);
+    // Torpedo path: starts at the shooter, arcs, ends at the target; a miss overshoots.
+    const auto p0 = torpedoPoint(0, 0, 4, 0, 0.35, 0, 0.0), p5 = torpedoPoint(0, 0, 4, 0, 0.35, 0, 0.5), p1 = torpedoPoint(0, 0, 4, 0, 0.35, 0, 1.0);
+    EXPECT(p0.x == 0 && std::fabs(p1.x - 4) < 1e-12 && std::fabs(p1.y) < 1e-12 && std::fabs(p5.y - 0.35) < 1e-12 && p5.lift > 0);
+    EXPECT(std::fabs(torpedoPoint(0, 0, 4, 0, 0, 2, 1.0).x - 6) < 1e-12);
+
+    // Intercepted volley: stops short, point-defence burst, no impact on the target.
+    int intercepts = 0, interceptedImpacts = 0;
+    for (const auto& j : tl.jobs) if (j.eventIndex == 14) {
+        if (j.kind == JobKind::Torpedo) EXPECT(j.outcome == ShotOutcome::Intercepted && j.endFraction < 1.0);
+        if (j.kind == JobKind::PointDefence) ++intercepts;
+        if (j.kind == JobKind::ShieldImpact || j.kind == JobKind::HullImpact) ++interceptedImpacts;
+    }
+    EXPECT(intercepts == 1 && interceptedImpacts == 0);
+    // Missed pulse flies past; no impact.
+    for (const auto& j : tl.jobs) if (j.eventIndex == 13) EXPECT(j.kind == JobKind::PulseBolt && j.outcome == ShotOutcome::Miss && j.overshootCells > 0);
+
+    // No overlap: one mount's beams/bolts never overlap each other across events.
+    for (std::size_t a = 0; a < tl.jobs.size(); ++a)
+        for (std::size_t b = a + 1; b < tl.jobs.size(); ++b) {
+            const auto& x = tl.jobs[a];
+            const auto& y = tl.jobs[b];
+            if (x.eventIndex == y.eventIndex || x.fleetId != y.fleetId || x.mountIndex != y.mountIndex) continue;
+            if ((x.kind != JobKind::Beam && x.kind != JobKind::PulseBolt) || x.kind != y.kind) continue;
+            EXPECT(x.end() <= y.start + 1e-9);
+        }
+
+    // Ram: impact on fleet 1 at tick 5.
+    bool ramHull = false;
+    for (const auto& j : tl.jobs) ramHull = ramHull || (j.eventIndex == 10 && j.kind == JobKind::HullImpact && j.targetFleetId == 1 && j.start == 5 * tk);
+    EXPECT(ramHull);
+
+    // Cloak: fleet 3 invisible until it decloaks at tick 4, fully visible a fade later.
+    const auto* t3 = tl.track(3);
+    EXPECT(t3->visibilityAt(0.0) == 0.0 && t3->visibilityAt(4 * tk - 0.01) == 0.0);
+    EXPECT(t3->visibilityAt(4 * tk + 0.5 * cfg.cloakTicks * tk) > 0.2 && t3->visibilityAt(6.0) == 1.0);
+    // Retreat: warps out at tick 0 and is gone after the warp.
+    const auto* t4 = tl.track(4);
+    EXPECT(t4->visibilityAt(0.0) == 1.0 && t4->visibilityAt(cfg.warpTicks * tk + 0.01) == 0.0);
+    bool warpSound = false, cloakSound = false, boomSound = false;
+    for (const auto& s : tl.sounds) {
+        warpSound = warpSound || (s.cue == audio::GameCue::Retreat && s.keys.front() == "sfx.warp.out");
+        cloakSound = cloakSound || (s.cue == audio::GameCue::Decloak && s.keys.front() == "sfx.decloak.rom");
+        boomSound = boomSound || (s.cue == audio::GameCue::ShipDestroyed && s.keys.front() == "sfx.explosion.large");
+    }
+    EXPECT(warpSound && cloakSound && boomSound);
+
+    // Barks: torpedo away at launch, target destroyed after the kill, shields crossing 75 then 50 -> one "shields.50".
+    std::vector<std::string> barkDetails;
+    for (const auto& b : tl.barks) barkDetails.push_back(b.detail);
+    EXPECT(barkDetails.size() == 3);
+    EXPECT(std::count(barkDetails.begin(), barkDetails.end(), "torpedo") == 1);
+    EXPECT(std::count(barkDetails.begin(), barkDetails.end(), "kill") == 1);
+    EXPECT(std::count(barkDetails.begin(), barkDetails.end(), "shields.50") == 1);
+    const auto bark = audio::cueFor(audio::GameCue::CombatBark, "fed", {}, "shields.50");
+    EXPECT(bark.voiceKeys.size() == 2 && bark.voiceKeys[0] == "vo.combat.shields.50.fed" && bark.voiceKeys[1] == "vo.combat.shields.fed");
+    EXPECT(bark.sfxKeys.empty() && !bark.beepIfNoVoice && bark.priority == 6);
+    EXPECT(audio::cueFor(audio::GameCue::CombatBark, "kli", {}, "kill").voiceKeys.size() == 1);
+    // Without a player empire nobody barks.
+    TimelineConfig quiet = cfg;
+    quiet.playerEmpire = 0;
+    EXPECT(buildRoundTimeline(events, ships, quiet).barks.empty());
+
+    // Round duration is configurable: everything scales.
+    TimelineConfig slow = cfg;
+    slow.roundSeconds = 12.0;
+    const auto tl2 = buildRoundTimeline(events, ships, slow);
+    EXPECT(tl2.jobs.size() == tl.jobs.size() && std::fabs(tl2.jobs.back().start - 2 * tl.jobs.back().start) < 1e-9);
+
+    // Empty round (rules 1/2 or nothing happened): static tracks, no jobs.
+    const auto none = buildRoundTimeline({}, ships, cfg);
+    EXPECT(none.jobs.empty() && none.sounds.empty() && none.allConsumed() && none.track(2)->poseAt(3.0) == (PlanePose{6, 0, 180, 0}));
+
+    // Sockets: WPN_Beam_NN for beams, WPN_Torp / *_Torp_* for torpedoes, deterministic by name; none -> -1.
+    const std::vector<std::string> sockets = {"FX_Engine_01", "WPN_Torp_F_02", "WPN_Beam_D_02", "WPN_Beam_D_01", "WPN_Plasma_Torp_01", "WPN_Pulse_01"};
+    EXPECT(pickWeaponSocket(sockets, 0, 0, 0) == 3 && pickWeaponSocket(sockets, 0, 1, 0) == 2 && pickWeaponSocket(sockets, 0, 2, 0) == 3);
+    EXPECT(pickWeaponSocket(sockets, 1, 0, 0) == 5);
+    EXPECT(pickWeaponSocket(sockets, 2, 0, 0) == 4 && pickWeaponSocket(sockets, 2, 1, 0) == 1);
+    EXPECT(pickWeaponSocket({"FX_Engine_01"}, 0, 0, 0) == -1 && pickWeaponSocket({"WPN_Torp_01"}, 0, 0, 0) == -1);
+    EXPECT(pickWeaponSocket({"WPN_Disruptor_01"}, 1, 0, 0) == 0); // pulse falls back to any beam-type socket
+    EXPECT(fallbackHardpoint(2, 0, 0).x > 0.8 && fallbackHardpoint(0, 0, 0).y == -fallbackHardpoint(0, 1, 0).y);
+
+    // Cinematic director: follows the torpedo, cuts to the explosion, and holds shots for the minimum length.
+    CinematicDirector director;
+    EXPECT(director.update(tl, 6 * tk + 0.05));
+    EXPECT(director.shot.subjectFleetId != 0);
+    const auto held = director.shot;
+    director.update(tl, 6 * tk + 0.1);
+    EXPECT(director.shot == held);
+    director.update(tl, boom->start + 0.01);
+    EXPECT(director.shot.subjectFleetId == 2);
+    std::vector<std::string> keys;
+    for (int w = 1; w <= static_cast<int>(W::Torpedo); ++w) keys.push_back(vfxWeaponKey(w, 0));
+    EXPECT(keys.front() == "vfx.PhaseCannon" && keys.back() == "vfx.Torpedo" && vfxWeaponKey(0, 2) == "vfx.generic.torpedo");
+    EXPECT(weaponSoundKeys(0, 2, 1).size() == 1 && weaponSoundKeys(0, 2, 1)[0] == "weapon.generic.torpedo");
+}
+
 int main() {
     testJson();
     testKeys();
@@ -253,6 +472,7 @@ int main() {
     testCues();
     testTurnCues();
     testShipDatabase();
+    testCombatTimeline();
     std::printf("client logic: %d checks, %d failures\n", checks, failures);
     return failures ? 1 : 0;
 }

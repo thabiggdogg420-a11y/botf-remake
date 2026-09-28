@@ -31,7 +31,8 @@ inline const char* categoryName(Category c) {
 enum class GameCue : int {
     TurnStart, ResearchComplete, ConstructionComplete, ColonyFounded, OutpostBuilt, SystemUnderAttack, FirstContact,
     DiplomaticProposal, WarDeclared, TreatySigned, GalacticEvent, Victory, Defeat, EncounterOpens, OrderAccepted,
-    BeamFire, TorpedoLaunch, ShieldHit, HullHit, ShipDestroyed, Cloak, Decloak, Retreat, FleetArrives, UiClick
+    BeamFire, TorpedoLaunch, ShieldHit, HullHit, ShipDestroyed, Cloak, Decloak, Retreat, FleetArrives, UiClick,
+    CombatBark // Tactical voice bark; detail = "shields.<N>", "torpedo" or "kill" (BotfCombatTimeline.h BarkJob)
 };
 
 // One logical request. Keys are tried in order; the first that resolves plays (see Catalog::resolveFirst).
@@ -97,6 +98,15 @@ inline CueRequest cueFor(GameCue cue, const std::string& fac, const std::string&
     case GameCue::Decloak: r.sfxKeys = {"sfx.decloak." + (speaker.empty() ? std::string("rom") : speaker), "sfx.decloak.rom"}; r.priority = 4; break;
     case GameCue::Retreat: r.sfxKeys = {"sfx.warp.out"}; r.priority = 3; break;
     case GameCue::FleetArrives: r.sfxKeys = {"sfx.warp.in"}; r.priority = 2; break;
+    case GameCue::CombatBark:
+        // vo.combat.shields.50.fed, then vo.combat.shields.fed; never another faction's voice, never a beep.
+        if (!fac.empty() && !detail.empty()) {
+            r.voiceKeys.push_back("vo.combat." + detail + "." + fac);
+            const auto dot = detail.find('.');
+            if (dot != std::string::npos) r.voiceKeys.push_back("vo.combat." + detail.substr(0, dot) + "." + fac);
+        }
+        r.priority = detail == "shields.25" ? 7 : detail.rfind("shields", 0) == 0 ? 6 : detail == "kill" ? 5 : 3;
+        break;
     }
     // A duplicate key in the list (e.g. detail == generic) is harmless but wasteful.
     r.sfxKeys.erase(std::unique(r.sfxKeys.begin(), r.sfxKeys.end()), r.sfxKeys.end());

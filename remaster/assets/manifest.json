@@ -8897,6 +8897,666 @@
         "ueFolder": "/Game/Local/Audio/Music/botf_all"
       },
       "fallback": null
+    },
+    "vfx.PhaseCannon": {
+      "kind": "vfx",
+      "faction": null,
+      "displayName": "PhaseCannon Niagara system (optional; procedural fallback)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "ueFolder": "/Game/Local/VFX/PhaseCannon"
+      },
+      "fallback": null
+    },
+    "vfx.PhaserBank": {
+      "kind": "vfx",
+      "faction": null,
+      "displayName": "PhaserBank Niagara system (optional; procedural fallback)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "ueFolder": "/Game/Local/VFX/PhaserBank"
+      },
+      "fallback": null
+    },
+    "vfx.PhaserArray": {
+      "kind": "vfx",
+      "faction": null,
+      "displayName": "PhaserArray Niagara system (optional; procedural fallback)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "ueFolder": "/Game/Local/VFX/PhaserArray"
+      },
+      "fallback": null
+    },
+    "vfx.PulsePhaser": {
+      "kind": "vfx",
+      "faction": null,
+      "displayName": "PulsePhaser Niagara system (optional; procedural fallback)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "ueFolder": "/Game/Local/VFX/PulsePhaser"
+      },
+      "fallback": null
+    },
+    "vfx.Disruptor": {
+      "kind": "vfx",
+      "faction": null,
+      "displayName": "Disruptor Niagara system (optional; procedural fallback)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "ueFolder": "/Game/Local/VFX/Disruptor"
+      },
+      "fallback": null
+    },
+    "vfx.DisruptorCannon": {
+      "kind": "vfx",
+      "faction": null,
+      "displayName": "DisruptorCannon Niagara system (optional; procedural fallback)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "ueFolder": "/Game/Local/VFX/DisruptorCannon"
+      },
+      "fallback": null
+    },
+    "vfx.PlasmaCannon": {
+      "kind": "vfx",
+      "faction": null,
+      "displayName": "PlasmaCannon Niagara system (optional; procedural fallback)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "ueFolder": "/Game/Local/VFX/PlasmaCannon"
+      },
+      "fallback": null
+    },
+    "vfx.PolaronBeam": {
+      "kind": "vfx",
+      "faction": null,
+      "displayName": "PolaronBeam Niagara system (optional; procedural fallback)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "ueFolder": "/Game/Local/VFX/PolaronBeam"
+      },
+      "fallback": null
+    },
+    "vfx.CuttingBeam": {
+      "kind": "vfx",
+      "faction": null,
+      "displayName": "CuttingBeam Niagara system (optional; procedural fallback)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "ueFolder": "/Game/Local/VFX/CuttingBeam"
+      },
+      "fallback": null
+    },
+    "vfx.EnergyDampener": {
+      "kind": "vfx",
+      "faction": null,
+      "displayName": "EnergyDampener Niagara system (optional; procedural fallback)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "ueFolder": "/Game/Local/VFX/EnergyDampener"
+      },
+      "fallback": null
+    },
+    "vfx.TholianWeb": {
+      "kind": "vfx",
+      "faction": null,
+      "displayName": "TholianWeb Niagara system (optional; procedural fallback)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "ueFolder": "/Game/Local/VFX/TholianWeb"
+      },
+      "fallback": null
+    },
+    "vfx.BioEnergy": {
+      "kind": "vfx",
+      "faction": null,
+      "displayName": "BioEnergy Niagara system (optional; procedural fallback)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "ueFolder": "/Game/Local/VFX/BioEnergy"
+      },
+      "fallback": null
+    },
+    "vfx.TemporalWeapon": {
+      "kind": "vfx",
+      "faction": null,
+      "displayName": "TemporalWeapon Niagara system (optional; procedural fallback)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "ueFolder": "/Game/Local/VFX/TemporalWeapon"
+      },
+      "fallback": null
+    },
+    "vfx.SpatialTorpedo": {
+      "kind": "vfx",
+      "faction": null,
+      "displayName": "SpatialTorpedo Niagara system (optional; procedural fallback)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "ueFolder": "/Game/Local/VFX/SpatialTorpedo"
+      },
+      "fallback": null
+    },
+    "vfx.PhotonicTorpedo": {
+      "kind": "vfx",
+      "faction": null,
+      "displayName": "PhotonicTorpedo Niagara system (optional; procedural fallback)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "ueFolder": "/Game/Local/VFX/PhotonicTorpedo"
+      },
+      "fallback": null
+    },
+    "vfx.PhotonTorpedo": {
+      "kind": "vfx",
+      "faction": null,
+      "displayName": "PhotonTorpedo Niagara system (optional; procedural fallback)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "ueFolder": "/Game/Local/VFX/PhotonTorpedo"
+      },
+      "fallback": null
+    },
+    "vfx.QuantumTorpedo": {
+      "kind": "vfx",
+      "faction": null,
+      "displayName": "QuantumTorpedo Niagara system (optional; procedural fallback)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "ueFolder": "/Game/Local/VFX/QuantumTorpedo"
+      },
+      "fallback": null
+    },
+    "vfx.PlasmaTorpedo": {
+      "kind": "vfx",
+      "faction": null,
+      "displayName": "PlasmaTorpedo Niagara system (optional; procedural fallback)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "ueFolder": "/Game/Local/VFX/PlasmaTorpedo"
+      },
+      "fallback": null
+    },
+    "vfx.TricobaltDevice": {
+      "kind": "vfx",
+      "faction": null,
+      "displayName": "TricobaltDevice Niagara system (optional; procedural fallback)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "ueFolder": "/Game/Local/VFX/TricobaltDevice"
+      },
+      "fallback": null
+    },
+    "vfx.Torpedo": {
+      "kind": "vfx",
+      "faction": null,
+      "displayName": "Torpedo Niagara system (optional; procedural fallback)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "ueFolder": "/Game/Local/VFX/Torpedo"
+      },
+      "fallback": null
+    },
+    "vfx.generic.beam": {
+      "kind": "vfx",
+      "faction": null,
+      "displayName": "Generic beam Niagara system (optional; procedural fallback)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "ueFolder": "/Game/Local/VFX/generic_beam"
+      },
+      "fallback": null
+    },
+    "vfx.generic.pulse": {
+      "kind": "vfx",
+      "faction": null,
+      "displayName": "Generic pulse Niagara system (optional; procedural fallback)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "ueFolder": "/Game/Local/VFX/generic_pulse"
+      },
+      "fallback": null
+    },
+    "vfx.generic.torpedo": {
+      "kind": "vfx",
+      "faction": null,
+      "displayName": "Generic torpedo Niagara system (optional; procedural fallback)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "ueFolder": "/Game/Local/VFX/generic_torpedo"
+      },
+      "fallback": null
+    },
+    "vfx.impact.shield": {
+      "kind": "vfx",
+      "faction": null,
+      "displayName": "Shield impact bubble Niagara system (optional; procedural fallback)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "ueFolder": "/Game/Local/VFX/impact_shield"
+      },
+      "fallback": null
+    },
+    "vfx.impact.hull": {
+      "kind": "vfx",
+      "faction": null,
+      "displayName": "Hull impact sparks Niagara system (optional; procedural fallback)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "ueFolder": "/Game/Local/VFX/impact_hull"
+      },
+      "fallback": null
+    },
+    "vfx.intercept": {
+      "kind": "vfx",
+      "faction": null,
+      "displayName": "Point-defence intercept burst Niagara system (optional; procedural fallback)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "ueFolder": "/Game/Local/VFX/intercept"
+      },
+      "fallback": null
+    },
+    "vfx.explosion": {
+      "kind": "vfx",
+      "faction": null,
+      "displayName": "Ship destruction explosion Niagara system (optional; procedural fallback)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "ueFolder": "/Game/Local/VFX/explosion"
+      },
+      "fallback": null
+    },
+    "vfx.cloak": {
+      "kind": "vfx",
+      "faction": null,
+      "displayName": "Cloak shimmer Niagara system (optional; procedural fallback)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "ueFolder": "/Game/Local/VFX/cloak"
+      },
+      "fallback": null
+    },
+    "vfx.decloak": {
+      "kind": "vfx",
+      "faction": null,
+      "displayName": "Decloak shimmer Niagara system (optional; procedural fallback)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "ueFolder": "/Game/Local/VFX/decloak"
+      },
+      "fallback": null
+    },
+    "vfx.warp.out": {
+      "kind": "vfx",
+      "faction": null,
+      "displayName": "Warp-out flash Niagara system (optional; procedural fallback)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "ueFolder": "/Game/Local/VFX/warp_out"
+      },
+      "fallback": null
+    },
+    "vo.combat.shields.fed": {
+      "kind": "voice",
+      "faction": "fed",
+      "displayName": "Federation bridge: shields report",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "ueFolder": "/Game/Local/Audio/Voice/combat_shields_fed"
+      },
+      "fallback": null
+    },
+    "vo.combat.shields.75.fed": {
+      "kind": "voice",
+      "faction": "fed",
+      "displayName": "Federation bridge: shields at 75%",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "ueFolder": "/Game/Local/Audio/Voice/combat_shields_75_fed"
+      },
+      "fallback": "vo.combat.shields.fed"
+    },
+    "vo.combat.shields.50.fed": {
+      "kind": "voice",
+      "faction": "fed",
+      "displayName": "Federation bridge: shields at 50%",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "ueFolder": "/Game/Local/Audio/Voice/combat_shields_50_fed"
+      },
+      "fallback": "vo.combat.shields.fed"
+    },
+    "vo.combat.shields.25.fed": {
+      "kind": "voice",
+      "faction": "fed",
+      "displayName": "Federation bridge: shields at 25%",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "ueFolder": "/Game/Local/Audio/Voice/combat_shields_25_fed"
+      },
+      "fallback": "vo.combat.shields.fed"
+    },
+    "vo.combat.torpedo.fed": {
+      "kind": "voice",
+      "faction": "fed",
+      "displayName": "Federation bridge: torpedo away",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "ueFolder": "/Game/Local/Audio/Voice/combat_torpedo_fed"
+      },
+      "fallback": null
+    },
+    "vo.combat.kill.fed": {
+      "kind": "voice",
+      "faction": "fed",
+      "displayName": "Federation bridge: target destroyed",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "ueFolder": "/Game/Local/Audio/Voice/combat_kill_fed"
+      },
+      "fallback": null
+    },
+    "vo.combat.shields.kli": {
+      "kind": "voice",
+      "faction": "kli",
+      "displayName": "Klingon bridge: shields report",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "ueFolder": "/Game/Local/Audio/Voice/combat_shields_kli"
+      },
+      "fallback": null
+    },
+    "vo.combat.shields.75.kli": {
+      "kind": "voice",
+      "faction": "kli",
+      "displayName": "Klingon bridge: shields at 75%",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "ueFolder": "/Game/Local/Audio/Voice/combat_shields_75_kli"
+      },
+      "fallback": "vo.combat.shields.kli"
+    },
+    "vo.combat.shields.50.kli": {
+      "kind": "voice",
+      "faction": "kli",
+      "displayName": "Klingon bridge: shields at 50%",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "ueFolder": "/Game/Local/Audio/Voice/combat_shields_50_kli"
+      },
+      "fallback": "vo.combat.shields.kli"
+    },
+    "vo.combat.shields.25.kli": {
+      "kind": "voice",
+      "faction": "kli",
+      "displayName": "Klingon bridge: shields at 25%",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "ueFolder": "/Game/Local/Audio/Voice/combat_shields_25_kli"
+      },
+      "fallback": "vo.combat.shields.kli"
+    },
+    "vo.combat.torpedo.kli": {
+      "kind": "voice",
+      "faction": "kli",
+      "displayName": "Klingon bridge: torpedo away",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "ueFolder": "/Game/Local/Audio/Voice/combat_torpedo_kli"
+      },
+      "fallback": null
+    },
+    "vo.combat.kill.kli": {
+      "kind": "voice",
+      "faction": "kli",
+      "displayName": "Klingon bridge: target destroyed",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "ueFolder": "/Game/Local/Audio/Voice/combat_kill_kli"
+      },
+      "fallback": null
+    },
+    "vo.combat.shields.rom": {
+      "kind": "voice",
+      "faction": "rom",
+      "displayName": "Romulan bridge: shields report",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "ueFolder": "/Game/Local/Audio/Voice/combat_shields_rom"
+      },
+      "fallback": null
+    },
+    "vo.combat.shields.75.rom": {
+      "kind": "voice",
+      "faction": "rom",
+      "displayName": "Romulan bridge: shields at 75%",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "ueFolder": "/Game/Local/Audio/Voice/combat_shields_75_rom"
+      },
+      "fallback": "vo.combat.shields.rom"
+    },
+    "vo.combat.shields.50.rom": {
+      "kind": "voice",
+      "faction": "rom",
+      "displayName": "Romulan bridge: shields at 50%",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "ueFolder": "/Game/Local/Audio/Voice/combat_shields_50_rom"
+      },
+      "fallback": "vo.combat.shields.rom"
+    },
+    "vo.combat.shields.25.rom": {
+      "kind": "voice",
+      "faction": "rom",
+      "displayName": "Romulan bridge: shields at 25%",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "ueFolder": "/Game/Local/Audio/Voice/combat_shields_25_rom"
+      },
+      "fallback": "vo.combat.shields.rom"
+    },
+    "vo.combat.torpedo.rom": {
+      "kind": "voice",
+      "faction": "rom",
+      "displayName": "Romulan bridge: torpedo away",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "ueFolder": "/Game/Local/Audio/Voice/combat_torpedo_rom"
+      },
+      "fallback": null
+    },
+    "vo.combat.kill.rom": {
+      "kind": "voice",
+      "faction": "rom",
+      "displayName": "Romulan bridge: target destroyed",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "ueFolder": "/Game/Local/Audio/Voice/combat_kill_rom"
+      },
+      "fallback": null
+    },
+    "vo.combat.shields.car": {
+      "kind": "voice",
+      "faction": "car",
+      "displayName": "Cardassian bridge: shields report",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "ueFolder": "/Game/Local/Audio/Voice/combat_shields_car"
+      },
+      "fallback": null
+    },
+    "vo.combat.shields.75.car": {
+      "kind": "voice",
+      "faction": "car",
+      "displayName": "Cardassian bridge: shields at 75%",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "ueFolder": "/Game/Local/Audio/Voice/combat_shields_75_car"
+      },
+      "fallback": "vo.combat.shields.car"
+    },
+    "vo.combat.shields.50.car": {
+      "kind": "voice",
+      "faction": "car",
+      "displayName": "Cardassian bridge: shields at 50%",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "ueFolder": "/Game/Local/Audio/Voice/combat_shields_50_car"
+      },
+      "fallback": "vo.combat.shields.car"
+    },
+    "vo.combat.shields.25.car": {
+      "kind": "voice",
+      "faction": "car",
+      "displayName": "Cardassian bridge: shields at 25%",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "ueFolder": "/Game/Local/Audio/Voice/combat_shields_25_car"
+      },
+      "fallback": "vo.combat.shields.car"
+    },
+    "vo.combat.torpedo.car": {
+      "kind": "voice",
+      "faction": "car",
+      "displayName": "Cardassian bridge: torpedo away",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "ueFolder": "/Game/Local/Audio/Voice/combat_torpedo_car"
+      },
+      "fallback": null
+    },
+    "vo.combat.kill.car": {
+      "kind": "voice",
+      "faction": "car",
+      "displayName": "Cardassian bridge: target destroyed",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "ueFolder": "/Game/Local/Audio/Voice/combat_kill_car"
+      },
+      "fallback": null
+    },
+    "vo.combat.shields.fer": {
+      "kind": "voice",
+      "faction": "fer",
+      "displayName": "Ferengi bridge: shields report",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "ueFolder": "/Game/Local/Audio/Voice/combat_shields_fer"
+      },
+      "fallback": null
+    },
+    "vo.combat.shields.75.fer": {
+      "kind": "voice",
+      "faction": "fer",
+      "displayName": "Ferengi bridge: shields at 75%",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "ueFolder": "/Game/Local/Audio/Voice/combat_shields_75_fer"
+      },
+      "fallback": "vo.combat.shields.fer"
+    },
+    "vo.combat.shields.50.fer": {
+      "kind": "voice",
+      "faction": "fer",
+      "displayName": "Ferengi bridge: shields at 50%",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "ueFolder": "/Game/Local/Audio/Voice/combat_shields_50_fer"
+      },
+      "fallback": "vo.combat.shields.fer"
+    },
+    "vo.combat.shields.25.fer": {
+      "kind": "voice",
+      "faction": "fer",
+      "displayName": "Ferengi bridge: shields at 25%",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "ueFolder": "/Game/Local/Audio/Voice/combat_shields_25_fer"
+      },
+      "fallback": "vo.combat.shields.fer"
+    },
+    "vo.combat.torpedo.fer": {
+      "kind": "voice",
+      "faction": "fer",
+      "displayName": "Ferengi bridge: torpedo away",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "ueFolder": "/Game/Local/Audio/Voice/combat_torpedo_fer"
+      },
+      "fallback": null
+    },
+    "vo.combat.kill.fer": {
+      "kind": "voice",
+      "faction": "fer",
+      "displayName": "Ferengi bridge: target destroyed",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "ueFolder": "/Game/Local/Audio/Voice/combat_kill_fer"
+      },
+      "fallback": null
     }
   }
 }

@@ -12,6 +12,8 @@ Key scheme (one scheme everywhere: roster, manifest, importer, Unreal client):
   weapon.generic.<beam|torpedo>   last-resort weapon sounds.
   study.<fac>             built-in, in-repo placeholder meshes (project art).
   sfx.* / vo.* / mus.*    sound effects, voice and music cues (AUDIO-PLAN.md).
+  vfx.<Type> / vfx.generic.<beam|pulse|torpedo> / vfx.impact.* ...  optional Niagara systems for the rules 3
+                          battle scene (BotfCombatTimeline.h); fallback null = procedural effects.
 
 The legacy slug rule is mirrored by botf::assets::legacyShipAssetKey in
 remaster/game/Source/BOTFRemake/Private/BotfAssetKeys.h; keep them identical.
@@ -78,6 +80,9 @@ def required_keys():
     keys += list(LEGACY_ALIASES)
     keys += ["weapon." + w for w in weapons]
     keys += ["weapon.generic.beam", "weapon.generic.torpedo"]
+    keys += ["vfx." + w for w in WEAPON_TYPES]
+    keys += ["vfx.generic.beam", "vfx.generic.pulse", "vfx.generic.torpedo", "vfx.impact.shield", "vfx.impact.hull",
+             "vfx.intercept", "vfx.explosion", "vfx.cloak", "vfx.decloak", "vfx.warp.out"]
     seen = set()
     return [k for k in keys if not (k in seen or seen.add(k))]
 
@@ -100,8 +105,8 @@ def main():
                 break
             seen.append(fb)
             fb = manifest[fb].get("fallback")
-        if not re.match(r"^(ship|weapon|study|sfx|vo|mus)\.", k):
-            errors.append("%s: key outside the ship./weapon./study./sfx./vo./mus. scheme" % k)
+        if not re.match(r"^(ship|weapon|study|sfx|vo|mus|vfx)\.", k):
+            errors.append("%s: key outside the ship./weapon./study./sfx./vo./mus./vfx. scheme" % k)
     roster, _ = roster_classes()
     if len(roster) < 90:
         errors.append("roster parse found only %d classes" % len(roster))

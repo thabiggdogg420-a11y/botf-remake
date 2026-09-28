@@ -6,7 +6,7 @@ Research date 2026-09-28. **Do not edit by hand**; edit the manifest and run `py
 
 ## Totals
 
-- 219 asset keys: 164 model, 1 music, 38 sfx, 16 voice.
+- 279 asset keys: 164 model, 1 music, 38 sfx, 30 vfx, 46 voice.
 - 154 ranked source candidates: 71 sketchfab, 32 trekcore, 22 botf-install, 9 gamefront/nexus, 7 trekmeshes, 6 in-repo, 3 blendswap, 3 moddb, 1 archive.org.
 - Permission flags: 6 clear, 22 clear-personal, 32 restricted, 94 unclear.
 
@@ -1638,4 +1638,364 @@ Kind music. Fallback: none.
 | # | Source | Author | Stated terms | Permission | Format | Tris |
 |---:|---|---|---|---|---|---:|
 | 1 | Original BOTF music.snd: BOTF soundtrack (music.snd) (`local:<BOTF>/music.snd`) | MicroProse (1999) | Owned game copy; personal use | clear-personal | wav |  |
+
+### `vfx.PhaseCannon` PhaseCannon Niagara system (optional; procedural fallback)
+
+Kind vfx. Fallback: none.
+
+_No candidate found._
+
+### `vfx.PhaserBank` PhaserBank Niagara system (optional; procedural fallback)
+
+Kind vfx. Fallback: none.
+
+_No candidate found._
+
+### `vfx.PhaserArray` PhaserArray Niagara system (optional; procedural fallback)
+
+Kind vfx. Fallback: none.
+
+_No candidate found._
+
+### `vfx.PulsePhaser` PulsePhaser Niagara system (optional; procedural fallback)
+
+Kind vfx. Fallback: none.
+
+_No candidate found._
+
+### `vfx.Disruptor` Disruptor Niagara system (optional; procedural fallback)
+
+Kind vfx. Fallback: none.
+
+_No candidate found._
+
+### `vfx.DisruptorCannon` DisruptorCannon Niagara system (optional; procedural fallback)
+
+Kind vfx. Fallback: none.
+
+_No candidate found._
+
+### `vfx.PlasmaCannon` PlasmaCannon Niagara system (optional; procedural fallback)
+
+Kind vfx. Fallback: none.
+
+_No candidate found._
+
+### `vfx.PolaronBeam` PolaronBeam Niagara system (optional; procedural fallback)
+
+Kind vfx. Fallback: none.
+
+_No candidate found._
+
+### `vfx.CuttingBeam` CuttingBeam Niagara system (optional; procedural fallback)
+
+Kind vfx. Fallback: none.
+
+_No candidate found._
+
+### `vfx.EnergyDampener` EnergyDampener Niagara system (optional; procedural fallback)
+
+Kind vfx. Fallback: none.
+
+_No candidate found._
+
+### `vfx.TholianWeb` TholianWeb Niagara system (optional; procedural fallback)
+
+Kind vfx. Fallback: none.
+
+_No candidate found._
+
+### `vfx.BioEnergy` BioEnergy Niagara system (optional; procedural fallback)
+
+Kind vfx. Fallback: none.
+
+_No candidate found._
+
+### `vfx.TemporalWeapon` TemporalWeapon Niagara system (optional; procedural fallback)
+
+Kind vfx. Fallback: none.
+
+_No candidate found._
+
+### `vfx.SpatialTorpedo` SpatialTorpedo Niagara system (optional; procedural fallback)
+
+Kind vfx. Fallback: none.
+
+_No candidate found._
+
+### `vfx.PhotonicTorpedo` PhotonicTorpedo Niagara system (optional; procedural fallback)
+
+Kind vfx. Fallback: none.
+
+_No candidate found._
+
+### `vfx.PhotonTorpedo` PhotonTorpedo Niagara system (optional; procedural fallback)
+
+Kind vfx. Fallback: none.
+
+_No candidate found._
+
+### `vfx.QuantumTorpedo` QuantumTorpedo Niagara system (optional; procedural fallback)
+
+Kind vfx. Fallback: none.
+
+_No candidate found._
+
+### `vfx.PlasmaTorpedo` PlasmaTorpedo Niagara system (optional; procedural fallback)
+
+Kind vfx. Fallback: none.
+
+_No candidate found._
+
+### `vfx.TricobaltDevice` TricobaltDevice Niagara system (optional; procedural fallback)
+
+Kind vfx. Fallback: none.
+
+_No candidate found._
+
+### `vfx.Torpedo` Torpedo Niagara system (optional; procedural fallback)
+
+Kind vfx. Fallback: none.
+
+_No candidate found._
+
+### `vfx.generic.beam` Generic beam Niagara system (optional; procedural fallback)
+
+Kind vfx. Fallback: none.
+
+_No candidate found._
+
+### `vfx.generic.pulse` Generic pulse Niagara system (optional; procedural fallback)
+
+Kind vfx. Fallback: none.
+
+_No candidate found._
+
+### `vfx.generic.torpedo` Generic torpedo Niagara system (optional; procedural fallback)
+
+Kind vfx. Fallback: none.
+
+_No candidate found._
+
+### `vfx.impact.shield` Shield impact bubble Niagara system (optional; procedural fallback)
+
+Kind vfx. Fallback: none.
+
+_No candidate found._
+
+### `vfx.impact.hull` Hull impact sparks Niagara system (optional; procedural fallback)
+
+Kind vfx. Fallback: none.
+
+_No candidate found._
+
+### `vfx.intercept` Point-defence intercept burst Niagara system (optional; procedural fallback)
+
+Kind vfx. Fallback: none.
+
+_No candidate found._
+
+### `vfx.explosion` Ship destruction explosion Niagara system (optional; procedural fallback)
+
+Kind vfx. Fallback: none.
+
+_No candidate found._
+
+### `vfx.cloak` Cloak shimmer Niagara system (optional; procedural fallback)
+
+Kind vfx. Fallback: none.
+
+_No candidate found._
+
+### `vfx.decloak` Decloak shimmer Niagara system (optional; procedural fallback)
+
+Kind vfx. Fallback: none.
+
+_No candidate found._
+
+### `vfx.warp.out` Warp-out flash Niagara system (optional; procedural fallback)
+
+Kind vfx. Fallback: none.
+
+_No candidate found._
+
+### `vo.combat.shields.fed` Federation bridge: shields report
+
+Kind voice, faction fed. Fallback: none.
+
+_No candidate found._
+
+### `vo.combat.shields.75.fed` Federation bridge: shields at 75%
+
+Kind voice, faction fed. Fallback: `vo.combat.shields.fed`.
+
+_No candidate found._
+
+### `vo.combat.shields.50.fed` Federation bridge: shields at 50%
+
+Kind voice, faction fed. Fallback: `vo.combat.shields.fed`.
+
+_No candidate found._
+
+### `vo.combat.shields.25.fed` Federation bridge: shields at 25%
+
+Kind voice, faction fed. Fallback: `vo.combat.shields.fed`.
+
+_No candidate found._
+
+### `vo.combat.torpedo.fed` Federation bridge: torpedo away
+
+Kind voice, faction fed. Fallback: none.
+
+_No candidate found._
+
+### `vo.combat.kill.fed` Federation bridge: target destroyed
+
+Kind voice, faction fed. Fallback: none.
+
+_No candidate found._
+
+### `vo.combat.shields.kli` Klingon bridge: shields report
+
+Kind voice, faction kli. Fallback: none.
+
+_No candidate found._
+
+### `vo.combat.shields.75.kli` Klingon bridge: shields at 75%
+
+Kind voice, faction kli. Fallback: `vo.combat.shields.kli`.
+
+_No candidate found._
+
+### `vo.combat.shields.50.kli` Klingon bridge: shields at 50%
+
+Kind voice, faction kli. Fallback: `vo.combat.shields.kli`.
+
+_No candidate found._
+
+### `vo.combat.shields.25.kli` Klingon bridge: shields at 25%
+
+Kind voice, faction kli. Fallback: `vo.combat.shields.kli`.
+
+_No candidate found._
+
+### `vo.combat.torpedo.kli` Klingon bridge: torpedo away
+
+Kind voice, faction kli. Fallback: none.
+
+_No candidate found._
+
+### `vo.combat.kill.kli` Klingon bridge: target destroyed
+
+Kind voice, faction kli. Fallback: none.
+
+_No candidate found._
+
+### `vo.combat.shields.rom` Romulan bridge: shields report
+
+Kind voice, faction rom. Fallback: none.
+
+_No candidate found._
+
+### `vo.combat.shields.75.rom` Romulan bridge: shields at 75%
+
+Kind voice, faction rom. Fallback: `vo.combat.shields.rom`.
+
+_No candidate found._
+
+### `vo.combat.shields.50.rom` Romulan bridge: shields at 50%
+
+Kind voice, faction rom. Fallback: `vo.combat.shields.rom`.
+
+_No candidate found._
+
+### `vo.combat.shields.25.rom` Romulan bridge: shields at 25%
+
+Kind voice, faction rom. Fallback: `vo.combat.shields.rom`.
+
+_No candidate found._
+
+### `vo.combat.torpedo.rom` Romulan bridge: torpedo away
+
+Kind voice, faction rom. Fallback: none.
+
+_No candidate found._
+
+### `vo.combat.kill.rom` Romulan bridge: target destroyed
+
+Kind voice, faction rom. Fallback: none.
+
+_No candidate found._
+
+### `vo.combat.shields.car` Cardassian bridge: shields report
+
+Kind voice, faction car. Fallback: none.
+
+_No candidate found._
+
+### `vo.combat.shields.75.car` Cardassian bridge: shields at 75%
+
+Kind voice, faction car. Fallback: `vo.combat.shields.car`.
+
+_No candidate found._
+
+### `vo.combat.shields.50.car` Cardassian bridge: shields at 50%
+
+Kind voice, faction car. Fallback: `vo.combat.shields.car`.
+
+_No candidate found._
+
+### `vo.combat.shields.25.car` Cardassian bridge: shields at 25%
+
+Kind voice, faction car. Fallback: `vo.combat.shields.car`.
+
+_No candidate found._
+
+### `vo.combat.torpedo.car` Cardassian bridge: torpedo away
+
+Kind voice, faction car. Fallback: none.
+
+_No candidate found._
+
+### `vo.combat.kill.car` Cardassian bridge: target destroyed
+
+Kind voice, faction car. Fallback: none.
+
+_No candidate found._
+
+### `vo.combat.shields.fer` Ferengi bridge: shields report
+
+Kind voice, faction fer. Fallback: none.
+
+_No candidate found._
+
+### `vo.combat.shields.75.fer` Ferengi bridge: shields at 75%
+
+Kind voice, faction fer. Fallback: `vo.combat.shields.fer`.
+
+_No candidate found._
+
+### `vo.combat.shields.50.fer` Ferengi bridge: shields at 50%
+
+Kind voice, faction fer. Fallback: `vo.combat.shields.fer`.
+
+_No candidate found._
+
+### `vo.combat.shields.25.fer` Ferengi bridge: shields at 25%
+
+Kind voice, faction fer. Fallback: `vo.combat.shields.fer`.
+
+_No candidate found._
+
+### `vo.combat.torpedo.fer` Ferengi bridge: torpedo away
+
+Kind voice, faction fer. Fallback: none.
+
+_No candidate found._
+
+### `vo.combat.kill.fer` Ferengi bridge: target destroyed
+
+Kind voice, faction fer. Fallback: none.
+
+_No candidate found._
 

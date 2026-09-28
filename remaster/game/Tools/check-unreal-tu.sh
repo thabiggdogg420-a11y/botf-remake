@@ -41,6 +41,7 @@ cat > "$scratch/viewmodels.cpp" <<EOF
 #include "$client/BotfAssetCatalog.h"
 #include "$client/BotfAudioCues.h"
 #include "$client/BotfAudioEvents.h"
+#include "$client/BotfCombatTimeline.h"
 #include "$client/BotfShipDatabase.h"
 EOF
 manifest="$here/../assets/manifest.json"
