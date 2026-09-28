@@ -133,7 +133,7 @@ function HoverTip({ v }: { v: GameView }) {
     <div class="hover-tip" style={{ left: `${h.x / uiScale.value + 18}px`, top: `${h.y / uiScale.value + 14}px` }} aria-hidden="true">
       <div class="ht-title">{system ? system.name : fog === '0' ? 'Uncharted space' : 'Open space'} <span class="ht-coord">{x}.{y}</span></div>
       {system?.owner ? <div class="ht-line"><Emblem empire={system.owner} size={12} /> {system.owner === v.meta.player ? 'Your colony' : v.empires.find((e) => e.empire === system.owner)?.name ?? 'Colony'}</div> : null}
-      {system?.minor ? <div class="ht-line">◇ {system.minor.name}</div> : null}
+      {system?.minor ? <div class="ht-line">◇ {system.minor.name}{system.minor.temperament ? ` · ${system.minor.temperament}` : ''}{system.minor.bonus ? ` · joins with ${system.minor.bonus}` : ''}</div> : null}
       {fog === '1' ? <div class="ht-line muted">Surveyed — outside sensor range</div> : null}
       {station ? <div class="ht-line"><Emblem empire={station.owner} size={12} /> {station.name} · {station.mine ? 'yours' : station.ownerName} · supply {station.supplyRadius}, sensors {station.sensorRadius}</div> : null}
       {features.map((f) => (
@@ -429,7 +429,8 @@ function SectorCard({ v, cell, system }: { v: GameView; cell: number; system: Sy
       ) : system ? null : <p class="hint">{fog === '0' ? 'Send a scout to survey this region.' : 'No star system in this sector.'}</p>}
       {system?.minor ? (
         <div class="minor-line">
-          {system.minor.unknown ? 'An inhabited world. Make contact to learn more.' : <>◇ <b>{system.minor.name}</b> · {system.minor.memberOf ? `member of ${v.empires.find((e) => e.empire === system.minor!.memberOf)?.name ?? 'an empire'}` : 'independent'}{system.minor.attitude !== undefined ? ` · relations ${system.minor.attitude}` : ''}</>}
+          {system.minor.unknown ? 'An inhabited world. Make contact to learn more.' : <>◇ <b>{system.minor.name}</b> · {system.minor.memberOf ? `member of ${v.empires.find((e) => e.empire === system.minor!.memberOf)?.name ?? 'an empire'}` : 'independent'}{system.minor.attitude !== undefined ? ` · relations ${system.minor.attitude}` : ''}
+            {system.minor.temperament ? <div class="muted small">{system.minor.temperament}{system.minor.techLevel !== undefined ? ` · tech ${system.minor.techLevel}` : ''}{system.minor.population !== undefined ? ` · pop ${system.minor.population}` : ''}{system.minor.bonus ? ` · members give ${system.minor.bonus}` : ''}</div> : null}</>}
         </div>
       ) : null}
       {units.length || contacts.length ? (

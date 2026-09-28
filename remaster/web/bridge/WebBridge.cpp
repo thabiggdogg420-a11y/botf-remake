@@ -16,6 +16,7 @@
 #include "../../game/Source/BotfSim/Simulation.h"
 #include "../../game/Source/BotfSim/CampaignSession.h"
 #include "../../game/Source/BotfSim/ReferenceCatalogue.h"
+#include "../../game/Source/BotfSim/MinorRaces.h"
 #include "Json.h"
 
 #include <algorithm>
@@ -773,6 +774,22 @@ void writeVictory(Writer& w, const botf::GameState& s, int me) {
     w.endObject();
 }
 
+// Minor-race roster profile (MinorRaces.h): identity, temperament, join bonus and description.
+void writeMinorProfile(Writer& w, const botf::minors::MinorRaceRecord& r) {
+    w.field("raceId", r.id);
+    w.field("raceName", r.name);
+    w.field("homeworld", r.homeworld);
+    w.field("temperament", botf::minors::temperamentName(r.temperament));
+    w.field("bonus", botf::minors::describeJoinBonus(r));
+    w.field("bonusKind", botf::minors::joinBonusName(r.bonus));
+    w.field("bonusValue", r.bonusValue);
+    w.field("description", r.description);
+    if (r.signatureShipId >= 0 && static_cast<std::size_t>(r.signatureShipId) < botf::referenceData::ShipCatalogue.size()) {
+        const auto& ship = botf::referenceData::ShipCatalogue[static_cast<std::size_t>(r.signatureShipId)];
+        w.field("signatureShip", std::string(ship.shipClass) + " " + ship.name);
+    }
+}
+
 // ------------------------------------------------------------------------------------------------
 // Full player view
 // ------------------------------------------------------------------------------------------------
@@ -832,6 +849,23 @@ void writeView(Writer& w) {
     w.field("research", s.research); w.field("researchReserve", s.researchReserve);
     w.field("intelligence", s.intelligence);
     w.field("researchOutput", researchOutput); w.field("industry", industryTotal); w.field("food", foodTotal); w.field("population", population);
+    {
+        const auto bonus = botf::minors::memberBonuses(d, me);
+        w.key("memberBonuses").beginObject().field("members", bonus.members).field("research", bonus.researchPct)
+            .field("industry", bonus.industryPct).field("food", bonus.foodPct).field("credits", bonus.creditsPct)
+            .field("morale", bonus.morale).field("groundDefense", bonus.groundDefensePct);
+        w.key("minors").beginArray();
+        for (const auto& m : d.minors)
+            if (m.memberOf == me) {
+                w.beginObject().field("systemId", m.systemId).field("name", m.name);
+                if (const auto* race = botf::minors::managed(m) ? botf::minors::raceById(m.raceId) : nullptr)
+                    w.field("bonus", botf::minors::describeJoinBonus(*race));
+                else w.field("bonus", "+10% research");
+                w.endObject();
+            }
+        w.endArray();
+        w.endObject();
+    }
     w.key("income").beginObject().field("colonies", colonyNet).field("trade", trade).field("ships", ships)
         .field("spend", s.credits - d.credits).field("net", colonyNet + trade - ships).endObject();
     w.key("techs").beginArray();
@@ -883,7 +917,13 @@ void writeView(Writer& w) {
         if (minor && minor->contact[static_cast<std::size_t>(me)]) {
             w.key("minor").beginObject().field("name", minor->name).field("memberOf", minor->memberOf)
                 .field("attitude", minor->attitude[static_cast<std::size_t>(me)])
-                .field("friendship", minor->friendshipTurn[static_cast<std::size_t>(me)] >= 0).endObject();
+                .field("friendship", minor->friendshipTurn[static_cast<std::size_t>(me)] >= 0);
+            if (const auto* race = botf::minors::raceFor(*minor)) {
+                w.field("temperament", botf::minors::temperamentName(race->temperament));
+                w.field("bonus", botf::minors::describeJoinBonus(*race));
+            }
+            if (botf::minors::managed(*minor)) { w.field("techLevel", minor->techLevel); w.field("population", minor->population); }
+            w.endObject();
         } else if (minor && seen) {
             w.key("minor").beginObject().field("name", "Unknown natives").field("memberOf", 0).field("unknown", true).endObject();
         }
@@ -1426,6 +1466,12 @@ void writeDiplomacy(Writer& w) {
         w.field("attitude", m.attitude[static_cast<std::size_t>(me)]);
         w.field("friendship", m.friendshipTurn[static_cast<std::size_t>(me)] >= 0);
         w.field("offerInFlight", waiting);
+        if (const auto* race = botf::minors::raceFor(m)) { w.key("race").beginObject(); writeMinorProfile(w, *race); w.endObject(); }
+        w.field("managed", botf::minors::managed(m));
+        if (botf::minors::managed(m)) {
+            w.field("techLevel", m.techLevel); w.field("population", m.population);
+            w.field("progress", m.progress); w.field("progressNeeded", botf::minors::techThreshold(m.techLevel));
+        }
         w.endObject();
     }
     w.endArray();
@@ -2194,13 +2240,14 @@ void newCampaign(const Value& a) {
     const std::string ruleset = a.getString("ruleset", "reference");
     const int width = a.getInt("width", 16), height = a.getInt("height", 12), systems = a.getInt("systems", 28);
     if (!botf::startingEraValid(static_cast<botf::StartingEra>(era))) fail("Unknown starting era");
-    auto s = ruleset == "prototype"
-        ? botf::generateCampaign(seed, empires, width, height, systems, faction, static_cast<botf::StartingEra>(era))
-        : botf::generateReferenceCampaign(seed, empires, width, height, systems, faction, static_cast<botf::StartingEra>(era));
-    // Ruleset preset (docs/GAMEPLAY-REMASTER.md §1): Remastered by default, like botf::newCampaign.
-    botf::RulesetPreset preset = botf::RulesetPreset::Remastered;
-    if (a.has("preset") && !botf::parseRulesetPreset(a.getString("preset"), preset)) fail("Unknown ruleset preset");
-    botf::applyRulesetPreset(s, preset);
+    // New games go through botf::newCampaign: the ruleset preset (Remastered by default,
+    // docs/GAMEPLAY-REMASTER.md 1) and the minor-race roster (docs/MINOR-RACES.md) are placed there.
+    botf::CampaignSetup setup;
+    setup.seed = seed; setup.empires = empires; setup.width = width; setup.height = height; setup.systems = systems;
+    setup.playerEmpire = faction; setup.era = static_cast<botf::StartingEra>(era); setup.reference = ruleset != "prototype";
+    setup.preset = botf::RulesetPreset::Remastered;
+    if (a.has("preset") && !botf::parseRulesetPreset(a.getString("preset"), setup.preset)) fail("Unknown ruleset preset");
+    auto s = botf::newCampaign(setup);
     if (a.has("events")) s.eventsEnabled = a.getBool("events");
     if (a.has("aiAggression")) s.aiAggressionEnabled = a.getBool("aiAggression");
     botf::validate(s);
@@ -2530,6 +2577,15 @@ void writeEncyclopedia(Writer& w) {
             .field("moraleBonus", b.moraleBonus).field("excludedEmpireMask", b.excludedEmpireMask).field("bonusType", b.bonusType)
             .field("description", b.description);
         w.key("bonusValues").beginArray(); for (int v : b.bonusValues) w.value(v); w.endArray();
+        w.endObject();
+    }
+    w.endArray();
+    w.key("minorRaces").beginArray();
+    for (const auto& r : botf::minors::Roster) {
+        w.beginObject();
+        writeMinorProfile(w, r);
+        w.field("techLevel", r.techLevel); w.field("population", r.population);
+        w.key("affinity").beginArray(); for (int i = 1; i <= 5; ++i) w.value(r.affinity[static_cast<std::size_t>(i)]); w.endArray();
         w.endObject();
     }
     w.endArray();

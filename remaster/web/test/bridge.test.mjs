@@ -337,6 +337,23 @@ test('new campaigns default to the Remastered preset; Classic is selectable', ()
   assert.equal(attempt('newCampaign', { preset: 'modern' }).ok, false);
 });
 
+test('minor-race roster: new campaigns place roster minors; profiles reach diplomacy, empire and the database', () => {
+  const enc = call('encyclopedia');
+  assert.equal(enc.minorRaces.length, 30);
+  assert.ok(enc.minorRaces.every((r) => r.temperament && r.bonus && r.description && r.homeworld));
+  const v = call('newCampaign', { faction: 1, seed: 424242, era: 1, ruleset: 'reference' });
+  assert.ok(v.empire.memberBonuses && v.empire.memberBonuses.members === 0);
+  // Play until a minor is contacted, then its roster profile is in the diplomacy view.
+  let d = call('diplomacy');
+  for (let i = 0; i < 30 && !d.minors.length; i++) { endTurn(); d = call('diplomacy'); }
+  if (d.minors.length) {
+    const m = d.minors[0];
+    assert.ok(m.race && m.race.temperament && m.race.bonus, 'contacted minors carry their roster profile');
+    const sys = call('view').systems.find((s) => s.id === m.systemId);
+    assert.ok(sys.minor.temperament);
+  }
+});
+
 test('frontier drill: build an outpost, upgrade a station, resolve an event, chronicle briefing', () => {
   let v = call('newFrontierDrill');
   assert.equal(v.meta.scenario, 'frontier');

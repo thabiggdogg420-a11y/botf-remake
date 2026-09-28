@@ -147,6 +147,22 @@ test('frontier drill: resolve an event, build an outpost, fund a starbase, chron
   await expect(page.getByTestId('megaproject')).toBeVisible();
   await expect(page.getByTestId('megaproject-start')).toHaveAttribute('aria-disabled', 'true');
   await shot(page, '09-system-megaproject');
+
+  // --- Minor-race roster: contacted minors show their profile; the database lists every race.
+  await page.getByTestId('nav-diplomacy').click();
+  const minorRow = page.locator('.race-row.minor').first();
+  if (await minorRow.count()) {
+    await minorRow.click();
+    await expect(page.getByTestId('minor-profile')).toBeVisible();
+    await shot(page, '13-minor-dossier');
+  }
+  await page.getByTestId('nav-empire').click();
+  await expect(page.getByTestId('member-bonuses')).toBeVisible();
+  await page.getByTestId('nav-encyclopedia').click();
+  await page.getByRole('tab', { name: 'Minor races' }).click();
+  await expect(page.getByTestId('minor-entry')).toBeVisible();
+  await expect(page.getByTestId('minor-entry')).toContainText('Join bonus');
+  await shot(page, '14-database-minor-races');
   expect(errors).toEqual([]);
 });
 

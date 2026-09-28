@@ -12,7 +12,7 @@ function data(): Encyclopedia {
 const ROLE_NAMES: Record<number, string> = { 0: 'Scout', 1: 'Destroyer', 2: 'Cruiser', 3: 'Strike cruiser', 4: 'Command ship', 5: 'Colony ship', 6: 'Outpost', 7: 'Starbase', 8: 'Station', 9: 'Troop transport' };
 const RACE_TO_EMPIRE: Record<number, number> = { 1: 1, 3: 2, 4: 3, 0: 4, 2: 5 };
 
-type Tab = 'ships' | 'technologies' | 'structures' | 'races';
+type Tab = 'ships' | 'technologies' | 'structures' | 'races' | 'minors';
 
 export function EncyclopediaScreen() {
   const d = data();
@@ -33,6 +33,8 @@ export function EncyclopediaScreen() {
       .map((t) => ({ id: t.id, title: t.name, sub: `${m.researchFields[t.field]} level ${t.level}`, badge: `${fmt(t.cost)} pts` }));
     if (tab === 'structures') return d.buildings.filter((b) => (field < 0 || b.field === field) && (!q || `${b.name} ${b.description}`.toLowerCase().includes(q)))
       .map((b) => ({ id: b.id, title: b.name, sub: `${m.researchFields[b.field] ?? '—'} ${b.level}`, badge: `${fmt(b.industryCost)} ind` }));
+    if (tab === 'minors') return (d.minorRaces ?? []).filter((r) => !q || `${r.raceName} ${r.homeworld} ${r.temperament} ${r.description}`.toLowerCase().includes(q))
+      .map((r) => ({ id: r.raceId, title: r.raceName, sub: `${r.temperament} · ${r.homeworld}`, badge: r.bonus }));
     return d.races.filter((r) => !q || r.name.toLowerCase().includes(q)).map((r) => ({ id: r.id, title: r.name, sub: r.id <= 4 ? 'Major power' : 'Minor race', badge: '' }));
   }, [tab, q, race, field]);
   const current = selected !== null ? rows.find((r) => r.id === selected) ?? rows[0] : rows[0];
@@ -42,7 +44,7 @@ export function EncyclopediaScreen() {
       <div class="ency-grid">
         <Frame title="Database" sub={`${rows.length} entries`} class="fill"
           actions={<Tabs value={tab} onChange={(t) => { setTab(t); setSelected(null); }} options={[
-            { id: 'ships', label: 'Ships' }, { id: 'technologies', label: 'Tech' }, { id: 'structures', label: 'Structures' }, { id: 'races', label: 'Races' },
+            { id: 'ships', label: 'Ships' }, { id: 'technologies', label: 'Tech' }, { id: 'structures', label: 'Structures' }, { id: 'races', label: 'Races' }, { id: 'minors', label: 'Minor races' },
           ]} />}>
           <div class="ency-filters">
             <input class="text-input grow" type="search" placeholder="Search…" value={query} aria-label="Search the database" data-testid="ency-search"
@@ -68,7 +70,7 @@ export function EncyclopediaScreen() {
           </div>
         </Frame>
         <Frame title={current?.title ?? 'Entry'} sub={current?.sub} tone="secondary" class="fill ency-detail" testid="ency-detail">
-          {!current ? <Empty>Select an entry.</Empty> : tab === 'ships' ? <ShipEntry id={current.id} /> : tab === 'technologies' ? <TechEntry id={current.id} /> : tab === 'structures' ? <StructureEntry id={current.id} /> : (
+          {!current ? <Empty>Select an entry.</Empty> : tab === 'minors' ? <MinorEntry id={current.id} /> : tab === 'ships' ? <ShipEntry id={current.id} /> : tab === 'technologies' ? <TechEntry id={current.id} /> : tab === 'structures' ? <StructureEntry id={current.id} /> : (
             <div class="ency-entry">
               {RACE_TO_EMPIRE[current.id] ? <Emblem empire={RACE_TO_EMPIRE[current.id]!} size={80} /> : <span class="minor-glyph big">◇</span>}
               <p>{current.id <= 4 ? 'One of the five major powers of the quadrant.' : 'A minor race that can be befriended, courted for membership, or absorbed into an empire.'}</p>
@@ -76,6 +78,30 @@ export function EncyclopediaScreen() {
             </div>
           )}
         </Frame>
+      </div>
+    </div>
+  );
+}
+
+function MinorEntry({ id }: { id: number }) {
+  const r = (data().minorRaces ?? []).find((x) => x.raceId === id);
+  const m = meta.value!;
+  if (!r) return <Empty>Unknown race.</Empty>;
+  return (
+    <div class="ency-entry" data-testid="minor-entry">
+      <div class="ee-head"><span class="minor-glyph big">◇</span><div><h3>{r.raceName}</h3><div class="muted">Homeworld {r.homeworld} · {r.temperament}</div></div></div>
+      <p>{r.description}</p>
+      <div class="minor-facts">
+        <div><span>Temperament</span><b>{r.temperament}</b></div>
+        <div><span>Join bonus</span><b>{r.bonus}</b></div>
+        <div><span>Tech level</span><b>{r.techLevel} (+ era)</b></div>
+        <div><span>Population</span><b>{r.population}</b></div>
+        {r.signatureShip ? <div><span>Signature ship</span><b>{r.signatureShip}</b></div> : null}
+      </div>
+      <div class="affinity-row" aria-label="Affinity toward the major powers">
+        {r.affinity.map((a, i) => (
+          <span key={i} class={`affinity a${a > 0 ? 'pos' : a < 0 ? 'neg' : 'zero'}`}><Emblem empire={i + 1} size={16} /> {m.empires.find((e) => e.id === i + 1)?.name ?? ''} {a > 0 ? `+${a}` : a}</span>
+        ))}
       </div>
     </div>
   );

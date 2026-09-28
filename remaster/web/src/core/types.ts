@@ -41,7 +41,10 @@ export interface Planet {
 export interface SystemView {
   id: number; x: number; y: number; name: string; visible: boolean; owner: number;
   capacity: number; maxCapacity: number; planets: Planet[];
-  minor?: { name: string; memberOf: number; attitude?: number; friendship?: boolean; unknown?: boolean };
+  minor?: {
+    name: string; memberOf: number; attitude?: number; friendship?: boolean; unknown?: boolean;
+    temperament?: string; bonus?: string; techLevel?: number; population?: number;
+  };
 }
 
 export interface Governor {
@@ -94,6 +97,16 @@ export interface PendingCommand {
   id: number; type: string; summary: string; systemId?: number; fleetId?: number; taskForceId?: number;
   targetFleetId?: number; targetSystemId?: number; targetEmpire?: number; targetX?: number; targetY?: number;
   building?: string; referenceId?: number; proposalId?: number; proposalAccept?: boolean; memberFleetIds?: number[]; stance?: string;
+}
+
+/** Minor-race roster profile (MinorRaces.h). */
+export interface MinorProfile {
+  raceId: number; raceName: string; homeworld: string; temperament: string; bonus: string; bonusKind: string; bonusValue: number;
+  description: string; signatureShip?: string;
+}
+export interface MemberBonuses {
+  members: number; research: number; industry: number; food: number; credits: number; morale: number; groundDefense: number;
+  minors: { systemId: number; name: string; bonus: string }[];
 }
 
 export interface Alert { kind: string; severity: Severity; text: string; systemId?: number; fleetId?: number; empire?: number; eventId?: number }
@@ -159,6 +172,7 @@ export interface GameView {
     id: number; name: string; credits: number; draftCredits: number; research: number; researchReserve: number;
     intelligence: number; researchOutput: number; industry: number; food: number; population: number;
     income: { colonies: number; trade: number; ships: number; spend: number; net: number };
+    memberBonuses?: MemberBonuses;
     techs: Tech[];
   };
   fog: string;
@@ -250,7 +264,10 @@ export interface CallToArmsView {
 export interface DiplomacyView {
   modern: boolean; advancedRules: boolean; turn: number;
   empires: RelationView[];
-  minors: { systemId: number; name: string; system: string; memberOf: number; attitude: number; friendship: boolean; offerInFlight: boolean }[];
+  minors: {
+    systemId: number; name: string; system: string; memberOf: number; attitude: number; friendship: boolean; offerInFlight: boolean;
+    race?: MinorProfile; managed?: boolean; techLevel?: number; population?: number; progress?: number; progressNeeded?: number;
+  }[];
   eligibility: { target: number; minor: boolean; treaties: { type: string; name: string; ok: boolean; reason: string }[] }[];
   proposals: ProposalView[];
   treaties: { id: number; counterparty: Participant; type: string; typeName: string; duration: string; turnsRemaining: number; startTurn: number }[];
@@ -347,6 +364,7 @@ export interface Encyclopedia {
     id: number; name: string; field: number; level: number; industryCost: number; energyCost: number; populationCost: number;
     moraleBonus: number; excludedEmpireMask: number; bonusType: number; description: string; bonusValues: number[];
   }[];
+  minorRaces: (MinorProfile & { techLevel: number; population: number; affinity: number[] })[];
 }
 
 /** A command as the bridge accepts it (see commandFromJson in WebBridge.cpp). */

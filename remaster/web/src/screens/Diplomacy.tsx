@@ -89,7 +89,7 @@ export function DiplomacyScreen() {
                 <span class="minor-glyph" aria-hidden="true">◇</span>
                 <span class="rr-main">
                   <span class="rr-name">{m.name}</span>
-                  <span class="rr-status">{m.memberOf ? `Member of ${v.empires.find((e) => e.empire === m.memberOf)?.name ?? (m.memberOf === v.meta.player ? 'your empire' : 'an empire')}` : m.friendship ? 'Friendship' : 'Independent'} · {m.system}</span>
+                  <span class="rr-status">{m.memberOf ? `Member of ${v.empires.find((e) => e.empire === m.memberOf)?.name ?? (m.memberOf === v.meta.player ? 'your empire' : 'an empire')}` : m.friendship ? 'Friendship' : 'Independent'} · {m.system}{m.race ? ` · ${m.race.temperament}` : ''}</span>
                 </span>
                 <span class="rr-trust" {...tip(`Relations ${m.attitude}/100`)}><Meter value={m.attitude} max={100} height={4} tone="good" /></span>
                 <span />
@@ -356,6 +356,20 @@ function Dossier({ v, d, target }: { v: GameView; d: DiplomacyView; target: Targ
               <div {...tip('Treaties they have betrayed by declaring war while bound. The whole galaxy remembers.')}><span>Their betrayals</span><b class={mem.theirBetrayals ? 'neg' : ''}>{mem.theirBetrayals}</b></div>
               <div {...tip('Our proposals they refused or ignored in a row; each doubles their patience before they propose again.')}><span>Our refused proposals</span><b>{mem.ourRefusedProposals ?? 0}</b></div>
               <div><span>Last war / peace</span><b>{mem.lastWarTurn !== undefined && mem.lastWarTurn >= 0 ? `T${mem.lastWarTurn}` : '—'} / {mem.lastPeaceTurn !== undefined && mem.lastPeaceTurn >= 0 ? `T${mem.lastPeaceTurn}` : '—'}</b></div>
+            </div>
+          ) : null}
+          {minor?.race ? (
+            <div class="minor-profile" data-testid="minor-profile">
+              <p>{minor.race.description}</p>
+              <div class="minor-facts">
+                <div><span>Homeworld</span><b>{minor.system}</b></div>
+                <div {...tip('Temperament shapes how the race reacts to envoys, gifts and pressure.')}><span>Temperament</span><b>{minor.race.temperament}</b></div>
+                <div {...tip('What every colony of the empire gains while this race is a member.')}><span>Join bonus</span><b>{minor.race.bonus}</b></div>
+                {minor.techLevel !== undefined ? <div {...tip(`Research progress ${minor.progress ?? 0}/${minor.progressNeeded ?? '?'} toward the next level.`)}><span>Tech level</span><b>{minor.techLevel}</b></div> : null}
+                {minor.population !== undefined ? <div><span>Population</span><b>{minor.population}</b></div> : null}
+                <div><span>Relations</span><b>{minor.attitude}/100</b></div>
+                {minor.race.signatureShip ? <div><span>Signature ship</span><b>{minor.race.signatureShip}</b></div> : null}
+              </div>
             </div>
           ) : null}
           {dossier ? <p>Intelligence (turn {dossier.turn}): {dossier.knownColonies} known colonies, about ¢{fmt(dossier.estimatedCredits)} in reserve.</p> : !target.minor && !rel?.eliminated ? <p class="muted">No intelligence dossier yet — run espionage from the Intel screen.</p> : null}

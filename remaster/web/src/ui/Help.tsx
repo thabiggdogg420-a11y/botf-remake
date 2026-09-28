@@ -17,6 +17,9 @@ export const HELP: Partial<Record<Screen, HelpEntry>> = {
       'Hover a sector with a ship selected to preview the route and its ETA; the shaded area is the ship’s supply range.',
       'Drag or arrow keys pan, the wheel zooms, F fits the galaxy, H returns home, Tab cycles your ships.',
       'Alerts (top left) link to the problem; “Orders this turn” lists and cancels drafted orders.',
+      'Remastered rules: hover an anomaly for its effect (nebulae blind sensors and drop shields, black holes block, neutron stars and ion storms damage, wormholes link two sectors). Routes show wormhole jumps.',
+      'Stations: a troop transport can build an outpost (right-click its sector); click a station to see its supply and sensor range and fund a starbase upgrade.',
+      'Galactic events need a decision before their deadline; open them from the Events button or the card under the alerts. Victory shows your progress on every path to victory.',
     ],
   },
   system: {
@@ -28,6 +31,7 @@ export const HELP: Partial<Record<Screen, HelpEntry>> = {
       'Industry flows into the first queue item. Reorder, pin, remove or buy the current item with credits.',
       'Power plants (10 energy) and fusion plants (40) keep factories, labs, shipyards and batteries running.',
       'Governors can manage workforce and queue automatically; Q/E switch between colonies.',
+      'Build templates save a queue for reuse; the default template is applied to every new colony. The megaproject (Remastered) is the road to a scientific victory.',
     ],
   },
   empire: {

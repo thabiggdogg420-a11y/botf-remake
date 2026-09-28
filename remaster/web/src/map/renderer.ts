@@ -727,8 +727,9 @@ export class GalaxyRenderer {
       if (s.minor && z > 0.7) {
         ctx.font = `500 ${Math.max(9, fontSize - 3)}px "Inter Variable", Inter, sans-serif`;
         ctx.fillStyle = 'rgba(200,210,235,0.75)';
-        ctx.strokeText(s.minor.name, cx, ly + fontSize + 1);
-        ctx.fillText(s.minor.name, cx, ly + fontSize + 1);
+        const minorLabel = s.minor.temperament && z > 1.05 ? `${s.minor.name} · ${s.minor.temperament}` : s.minor.name;
+        ctx.strokeText(minorLabel, cx, ly + fontSize + 1);
+        ctx.fillText(minorLabel, cx, ly + fontSize + 1);
       }
     }
   }
