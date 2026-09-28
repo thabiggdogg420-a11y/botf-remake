@@ -44,7 +44,17 @@ export async function centreOn(page: Page, x: number, y: number): Promise<void> 
   await settle(page);
 }
 
+/** BOTF_CPU_THROTTLE=N slows Chromium's CPU N times, reproducing timing on slow CI runners. */
+export async function throttleCpu(page: Page): Promise<void> {
+  const rate = Number(process.env.BOTF_CPU_THROTTLE ?? 0);
+  if (rate > 1) {
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send('Emulation.setCPUThrottlingRate', { rate });
+  }
+}
+
 export async function newCampaign(page: Page, faction = 1, seed = '424242'): Promise<void> {
+  await throttleCpu(page);
   await page.goto('/');
   await page.evaluate(() => localStorage.clear());
   await page.goto('/');
