@@ -1,10 +1,16 @@
 #include "TacticalCombat.h"
 #include "Simulation.h"
 
-#include <cassert>
+#include <functional>
 #include <iostream>
+#include <stdexcept>
 #include <string>
 #include <vector>
+
+// Checks stay active in every build type (assert() vanished under NDEBUG, which
+// RelWithDebInfo/Release define, so these suites previously verified nothing).
+#define CHECK(cond) do { if (!(cond)) throw std::runtime_error(std::string("Check failed at line ") + \
+    std::to_string(__LINE__) + ": " + #cond); } while (0)
 
 namespace botf::tactical::tests {
 
@@ -30,27 +36,27 @@ void testEncounterConstructionValidation() {
     ensureAtWar(state, 1, 2);
     std::cout << "  Diagnostic: state generated and war ensured." << std::endl;
 
-    assert(state.fleets.size() >= 2);
+    CHECK(state.fleets.size() >= 2);
     Fleet f1 = state.fleets[0];
     Fleet f2 = state.fleets[1];
 
     // Case 1: Less than 2 participants
     try {
         constructEncounter(state, {f1.id});
-        assert(false && "Should have thrown for < 2 participants");
+        CHECK(false && "Should have thrown for < 2 participants");
     } catch (const std::invalid_argument&) {}
     std::cout << "  Diagnostic: Case 1 passed." << std::endl;
 
     // Case 2: Duplicate IDs
     try {
         constructEncounter(state, {f1.id, f1.id});
-        assert(false && "Should have thrown for duplicate IDs");
+        CHECK(false && "Should have thrown for duplicate IDs");
     } catch (const std::invalid_argument&) {}
 
     // Case 3: Non-existent ID
     try {
         constructEncounter(state, {f1.id, 999999});
-        assert(false && "Should have thrown for non-existent ID");
+        CHECK(false && "Should have thrown for non-existent ID");
     } catch (const std::invalid_argument&) {}
 
     // Case 4: Participants in different sectors
@@ -61,7 +67,7 @@ void testEncounterConstructionValidation() {
     state.fleets.push_back(fDiff);
     try {
         constructEncounter(state, {f1.id, fDiff.id});
-        assert(false && "Should have thrown for different sectors");
+        CHECK(false && "Should have thrown for different sectors");
     } catch (const std::invalid_argument&) {}
     state.fleets.pop_back();
 
@@ -71,7 +77,7 @@ void testEncounterConstructionValidation() {
     state.fleets.push_back(fFriendly);
     try {
         constructEncounter(state, {f1.id, fFriendly.id});
-        assert(false && "Should have thrown for 1 owner");
+        CHECK(false && "Should have thrown for 1 owner");
     } catch (const std::invalid_argument&) {}
     state.fleets.pop_back();
 
@@ -85,7 +91,7 @@ void testEncounterConstructionValidation() {
     state.fleets.push_back(f3);
     try {
         constructEncounter(state, {f1_sec.id, f2_sec.id, f3.id});
-        assert(false && "Should have thrown for 3+ owners");
+        CHECK(false && "Should have thrown for 3+ owners");
     } catch (const std::invalid_argument&) {}
     state.fleets.pop_back();
     state.fleets.pop_back();
@@ -102,7 +108,7 @@ void testEncounterConstructionValidation() {
     peacefulState.fleets.push_back(pf2);
     try {
         constructEncounter(peacefulState, {pf1.id, pf2.id});
-        assert(false && "Should have thrown for peaceful combat between non-war empires");
+        CHECK(false && "Should have thrown for peaceful combat between non-war empires");
     } catch (const std::invalid_argument&) {}
 
     // Case 8: Valid construction and deterministic canonical deployment
@@ -114,16 +120,16 @@ void testEncounterConstructionValidation() {
     state.fleets.push_back(hostB);
 
     Encounter enc = constructEncounter(state, {hostB.id, hostA.id}, 4242); // pass in reverse order
-    assert(enc.ships.size() == 2);
-    assert(enc.sectorX == 5 && enc.sectorY == 5);
-    assert(enc.currentRound == 0);
-    assert(!enc.isFinished);
-    assert(enc.controllingOwnerId == state.playerEmpire);
+    CHECK(enc.ships.size() == 2);
+    CHECK(enc.sectorX == 5 && enc.sectorY == 5);
+    CHECK(enc.currentRound == 0);
+    CHECK(!enc.isFinished);
+    CHECK(enc.controllingOwnerId == state.playerEmpire);
     // Deterministic canonical sorting puts owner 1 on left, owner 2 on right
-    assert(enc.ships[0].ownerId == 1 && enc.ships[0].fleetId == 1001);
-    assert(enc.ships[1].ownerId == 2 && enc.ships[1].fleetId == 1002);
-    assert(enc.ships[0].position.x == 1);
-    assert(enc.ships[1].position.x == enc.arenaWidth - 2);
+    CHECK(enc.ships[0].ownerId == 1 && enc.ships[0].fleetId == 1001);
+    CHECK(enc.ships[1].ownerId == 2 && enc.ships[1].fleetId == 1002);
+    CHECK(enc.ships[0].position.x == 1);
+    CHECK(enc.ships[1].position.x == enc.arenaWidth - 2);
 
     std::cout << "  PASS: construction validation verified." << std::endl;
 }
@@ -175,18 +181,18 @@ void testShieldDamageAbsorption() {
 
     RoundResult r = enc.resolveRound();
     const Ship* defAfter = enc.getShip(2);
-    assert(defAfter != nullptr);
+    CHECK(defAfter != nullptr);
     // Round 1: Attacker deals ~40-60 damage. 80 shields absorb, hull remains 100!
-    assert(defAfter->shields < 80);
-    assert(defAfter->hull == 100);
+    CHECK(defAfter->shields < 80);
+    CHECK(defAfter->hull == 100);
     std::cout << "  Defender shields: 80 -> " << defAfter->shields << ", hull remained " << defAfter->hull << std::endl;
 
     // Round 2: Remaining shields should break to 0 and penetrate hull
     enc.submitOrder({1, 2, TacticalManeuver::Engage});
     r = enc.resolveRound();
     defAfter = enc.getShip(2);
-    assert(defAfter->shields == 0);
-    assert(defAfter->hull < 100);
+    CHECK(defAfter->shields == 0);
+    CHECK(defAfter->hull < 100);
     std::cout << "  Defender shields broke to 0, hull took penetration damage: " << defAfter->hull << std::endl;
     std::cout << "  PASS: shield damage absorption verified." << std::endl;
 }
@@ -205,6 +211,9 @@ void testFocusFire() {
     Ship a1{1, 1, "Attacker 1", Building::Scout, -1, 100, 100, 100, 50, 50, 50, 40, 20, 2, {3, 4}, true, true, false, 0};
     Ship a2{2, 1, "Attacker 2", Building::Scout, -1, 100, 100, 100, 50, 50, 50, 40, 20, 2, {3, 6}, true, true, false, 0};
     Ship target{3, 2, "Target", Building::Destroyer, -1, 50, 50, 50, 30, 30, 30, 0, 0, 1, {4, 5}, true, true, false, 0};
+    // Pinned target: under remaster rules an unarmed ship that can escape would
+    // disengage (-25% incoming) instead of holding still for the focus-fire check.
+    target.canRetreat = false;
 
     enc.ships.push_back(a1);
     enc.ships.push_back(a2);
@@ -216,12 +225,12 @@ void testFocusFire() {
 
     RoundResult res = enc.resolveRound();
     const Ship* targetAfter = enc.getShip(3);
-    assert(targetAfter != nullptr);
-    assert(!targetAfter->isAlive || targetAfter->hull == 0);
-    assert(!targetAfter->activeInCombat);
-    assert(std::find(res.lostFleetIds.begin(), res.lostFleetIds.end(), 3) != res.lostFleetIds.end());
-    assert(enc.isFinished);
-    assert(enc.winnerOwnerId == 1);
+    CHECK(targetAfter != nullptr);
+    CHECK(!targetAfter->isAlive || targetAfter->hull == 0);
+    CHECK(!targetAfter->activeInCombat);
+    CHECK(std::find(res.lostFleetIds.begin(), res.lostFleetIds.end(), 3) != res.lostFleetIds.end());
+    CHECK(enc.isFinished);
+    CHECK(enc.winnerOwnerId == 1);
     std::cout << "  PASS: focus fire destroyed target in round 1." << std::endl;
 }
 
@@ -246,13 +255,16 @@ void testAllManeuvers() {
         enc.resolveRound();
 
         const Ship* s1After = enc.getShip(1);
-        assert(s1After->position.x == 5);
+        CHECK(s1After->position.x == 5);
         std::cout << "  Maneuver Charge: moved from x=2 to x=" << s1After->position.x << std::endl;
     }
 
-    // 2. Hold maneuver test: stationary, recharges shields
+    // 2. Hold maneuver test. Legacy rules: stationary, recharges shields. Remaster
+    // rules: stationary brace (-20% incoming) with no recharge, so battle records
+    // only ever show damage.
     {
         Encounter enc;
+        enc.rulesVersion = LegacyTacticalRules;
         enc.arenaWidth = 10;
         enc.arenaHeight = 10;
         enc.controllingOwnerId = 1;
@@ -265,9 +277,28 @@ void testAllManeuvers() {
         enc.resolveRound();
 
         const Ship* s1After = enc.getShip(1);
-        assert(s1After->position.x == 5 && s1After->position.y == 5);
-        assert(s1After->shields > 20);
-        std::cout << "  Maneuver Hold: stationary at (5,5), shields recharged from 20 to " << s1After->shields << std::endl;
+        CHECK(s1After->position.x == 5 && s1After->position.y == 5);
+        CHECK(s1After->shields > 20);
+        std::cout << "  Maneuver Hold (legacy): stationary at (5,5), shields recharged from 20 to " << s1After->shields << std::endl;
+    }
+    {
+        auto braceDamage = [](TacticalManeuver maneuver) {
+            Encounter enc;
+            enc.rngState = 4321;
+            enc.controllingOwnerId = 2;
+            enc.ships.push_back({1, 1, "Attacker", Building::Destroyer, -1, 100, 100, 100, 0, 0, 0, 40, 0, 1, {3, 5}, true, true, false, 0});
+            enc.ships.push_back({2, 2, "Holder", Building::Scout, -1, 100, 100, 100, 20, 100, 20, 0, 0, 1, {4, 5}, true, true, false, 0});
+            enc.ships[1].canRetreat = false;
+            enc.submitOrder({2, 1, maneuver});
+            enc.resolveRound();
+            const Ship* holder = enc.getShip(2);
+            CHECK(holder->position.x == 4 || maneuver != TacticalManeuver::Hold);
+            CHECK(holder->shields <= 20); // No recharge under remaster rules.
+            return (100 - holder->hull) + (20 - holder->shields);
+        };
+        const int held = braceDamage(TacticalManeuver::Hold), engaged = braceDamage(TacticalManeuver::Engage);
+        CHECK(held < engaged);
+        std::cout << "  Maneuver Hold (remaster): braced for " << held << " vs " << engaged << " under Engage." << std::endl;
     }
 
     // 3. Circle/Evade maneuver test: defensive evasion reduces incoming damage
@@ -292,7 +323,7 @@ void testAllManeuvers() {
         encCircle.resolveRound();
         const int circleDamage = 100 - encCircle.getShip(2)->hull;
 
-        assert(circleDamage < engageDamage);
+        CHECK(circleDamage < engageDamage);
         std::cout << "  Maneuver Circle: took " << circleDamage << " damage vs " << engageDamage << " under Engage." << std::endl;
     }
 
@@ -310,15 +341,20 @@ void testAllManeuvers() {
         enc.submitOrder({1, 0, TacticalManeuver::Retreat});
         RoundResult r = enc.resolveRound();
         const Ship* s1After = enc.getShip(1);
+        // Remaster rules: the first round only disengages; the ship stays targetable.
+        CHECK(!s1After->retreated && s1After->activeInCombat && s1After->disengaging());
+        CHECK(r.retreatedFleetIds.empty());
+        r = enc.resolveRound(); // Standing Retreat order: escapes at the next movement phase.
+        s1After = enc.getShip(1);
 
         // Verification of Sol Review Blocker 1:
         // Retreated ship MUST survive: isAlive is TRUE, hull > 0, retreated is TRUE, activeInCombat is FALSE!
-        assert(s1After->retreated);
-        assert(s1After->isAlive);
-        assert(!s1After->activeInCombat);
-        assert(s1After->hull > 0);
-        assert(std::find(r.retreatedFleetIds.begin(), r.retreatedFleetIds.end(), 1) != r.retreatedFleetIds.end());
-        assert(std::find(r.lostFleetIds.begin(), r.lostFleetIds.end(), 1) == r.lostFleetIds.end());
+        CHECK(s1After->retreated);
+        CHECK(s1After->isAlive);
+        CHECK(!s1After->activeInCombat);
+        CHECK(s1After->hull > 0);
+        CHECK(std::find(r.retreatedFleetIds.begin(), r.retreatedFleetIds.end(), 1) != r.retreatedFleetIds.end());
+        CHECK(std::find(r.lostFleetIds.begin(), r.lostFleetIds.end(), 1) == r.lostFleetIds.end());
         std::cout << "  Maneuver Retreat: ship disengaged, survives with hull=" << s1After->hull << ", activeInCombat=false." << std::endl;
     }
     std::cout << "  PASS: all maneuvers verified." << std::endl;
@@ -340,25 +376,25 @@ void testInvalidOrderAuthorizationAndAtomicFailure() {
 
     // Initial valid player order
     enc.submitOrder({1, 3, TacticalManeuver::Engage});
-    assert(enc.pendingOrders.size() == 1);
+    CHECK(enc.pendingOrders.size() == 1);
 
     // Blocker 3: Player submitting order on ENEMY fleet must be rejected
     try {
         enc.submitOrder({3, 1, TacticalManeuver::Engage}); // Fleet 3 belongs to owner 2!
-        assert(false && "Should have thrown when player attempts to command enemy fleet");
+        CHECK(false && "Should have thrown when player attempts to command enemy fleet");
     } catch (const std::invalid_argument&) {}
 
     // Blocker 3: Targeting friendly ship must be rejected
     try {
         enc.submitOrder({1, 2, TacticalManeuver::Engage}); // Target 2 is friendly
-        assert(false && "Should have thrown for targeting friendly ship");
+        CHECK(false && "Should have thrown for targeting friendly ship");
     } catch (const std::invalid_argument&) {}
-    assert(enc.getOrder(1).targetFleetId == 3); // Prior order unchanged
+    CHECK(enc.getOrder(1).targetFleetId == 3); // Prior order unchanged
 
     // Ordering non-existent ship
     try {
         enc.submitOrder({999, 3, TacticalManeuver::Engage});
-        assert(false && "Should have thrown for non-existent ship");
+        CHECK(false && "Should have thrown for non-existent ship");
     } catch (const std::invalid_argument&) {}
 
     // Atomic batch submission failure: if one fails, none apply
@@ -368,15 +404,15 @@ void testInvalidOrderAuthorizationAndAtomicFailure() {
     };
     try {
         enc.submitOrders(batch);
-        assert(false && "Should have thrown for batch containing enemy order");
+        CHECK(false && "Should have thrown for batch containing enemy order");
     } catch (const std::invalid_argument&) {}
-    assert(enc.getOrder(1).maneuver == TacticalManeuver::Engage); // Remains Engage, not Charge
+    CHECK(enc.getOrder(1).maneuver == TacticalManeuver::Engage); // Remains Engage, not Charge
 
     // Blocker 3: Reject orders after encounter is finished
     enc.isFinished = true;
     try {
         enc.submitOrder({1, 3, TacticalManeuver::Engage});
-        assert(false && "Should have thrown for order on finished encounter");
+        CHECK(false && "Should have thrown for order on finished encounter");
     } catch (const std::invalid_argument&) {}
 
     std::cout << "  PASS: authorization and atomic order failure verified." << std::endl;
@@ -407,16 +443,16 @@ void testDeterministicReplay() {
         enc2.submitOrder({1, 2, TacticalManeuver::Engage});
         RoundResult r2 = enc2.resolveRound();
 
-        assert(r1.roundIndex == r2.roundIndex);
-        assert(r1.damage.size() == r2.damage.size());
+        CHECK(r1.roundIndex == r2.roundIndex);
+        CHECK(r1.damage.size() == r2.damage.size());
         for (std::size_t i = 0; i < r1.damage.size(); ++i) {
-            assert(r1.damage[i].fleetId == r2.damage[i].fleetId);
-            assert(r1.damage[i].hullAfter == r2.damage[i].hullAfter);
-            assert(r1.damage[i].shieldAfter == r2.damage[i].shieldAfter);
+            CHECK(r1.damage[i].fleetId == r2.damage[i].fleetId);
+            CHECK(r1.damage[i].hullAfter == r2.damage[i].hullAfter);
+            CHECK(r1.damage[i].shieldAfter == r2.damage[i].shieldAfter);
         }
-        assert(enc1.rngState == enc2.rngState);
-        assert(enc1.getShip(1)->hull == enc2.getShip(1)->hull);
-        assert(enc1.getShip(2)->hull == enc2.getShip(2)->hull);
+        CHECK(enc1.rngState == enc2.rngState);
+        CHECK(enc1.getShip(1)->hull == enc2.getShip(1)->hull);
+        CHECK(enc1.getShip(2)->hull == enc2.getShip(2)->hull);
     }
     std::cout << "  PASS: 5 rounds produced bit-for-bit identical results." << std::endl;
 }
@@ -430,19 +466,19 @@ void testStrictDeserialization() {
     // 1. Invalid header
     try {
         deserializeEncounter("BAD_HEADER\nARENA 16 12\n");
-        assert(false && "Should reject bad header");
+        CHECK(false && "Should reject bad header");
     } catch (const std::invalid_argument&) {}
 
     // 2. Truncated stream
     try {
         deserializeEncounter("TACTICAL_ENCOUNTER_V1\nARENA 16\n");
-        assert(false && "Should reject truncated ARENA");
+        CHECK(false && "Should reject truncated ARENA");
     } catch (const std::invalid_argument&) {}
 
     // 3. Negative / giant count without allocations
     try {
         deserializeEncounter("TACTICAL_ENCOUNTER_V1\nARENA 16 12\nROUNDS 0 50 0 0\nSECTOR 1 1 1\nRNG 1 1\nCONTROLLER 1 0\nSHIPS 999999999\n");
-        assert(false && "Should reject giant ship count");
+        CHECK(false && "Should reject giant ship count");
     } catch (const std::invalid_argument&) {}
 
     // 4. Permissive boolean rejection (e.g. non 0/1 boolean value)
@@ -451,7 +487,7 @@ void testStrictDeserialization() {
                              "1 1 100 100 100 50 50 50 10 10 1 1 1 1 1 0 0 1 0 -1 Ship1\n"
                              "2 2 100 100 100 50 50 50 10 10 1 5 5 1 1 0 0 1 0 -1 Ship2\n"
                              "ORDERS 0\nROUND_RESULTS 0\nEND\n");
-        assert(false && "Should reject non-boolean value 2 for isFinished");
+        CHECK(false && "Should reject non-boolean value 2 for isFinished");
     } catch (const std::invalid_argument&) {}
 
     // 5. Trailing data after END
@@ -463,7 +499,7 @@ void testStrictDeserialization() {
     std::string textWithTrailing = text + "EXTRA_CORRUPT_BYTES\n";
     try {
         deserializeEncounter(textWithTrailing);
-        assert(false && "Should reject trailing data after END");
+        CHECK(false && "Should reject trailing data after END");
     } catch (const std::invalid_argument&) {}
 
     // 6. Multi-round simulation with non-default Charge/Circle/target orders and exact shipStatuses roundtrip
@@ -478,50 +514,50 @@ void testStrictDeserialization() {
     // Round 1: Non-default Charge order
     simEnc.submitOrder({101, 202, TacticalManeuver::Charge});
     RoundResult r1 = simEnc.resolveRound();
-    assert(r1.shipStatuses[0].maneuverExecuted == TacticalManeuver::Charge);
-    assert(r1.shipStatuses[0].targetFleetId == 202);
+    CHECK(r1.shipStatuses[0].maneuverExecuted == TacticalManeuver::Charge);
+    CHECK(r1.shipStatuses[0].targetFleetId == 202);
 
     // Round 2: Non-default Circle order
     simEnc.submitOrder({101, 202, TacticalManeuver::Circle});
     RoundResult r2 = simEnc.resolveRound();
-    assert(r2.shipStatuses[0].maneuverExecuted == TacticalManeuver::Circle);
-    assert(r2.shipStatuses[0].targetFleetId == 202);
+    CHECK(r2.shipStatuses[0].maneuverExecuted == TacticalManeuver::Circle);
+    CHECK(r2.shipStatuses[0].targetFleetId == 202);
 
     // Exact mid-battle serialization
     std::string midTurnText = serializeEncounter(simEnc);
     Encounter loaded = deserializeEncounter(midTurnText);
 
     // Verify all public encounter state matches
-    assert(loaded.currentRound == simEnc.currentRound);
-    assert(loaded.rngState == simEnc.rngState);
-    assert(loaded.ships.size() == simEnc.ships.size());
-    assert(loaded.rounds.size() == simEnc.rounds.size());
+    CHECK(loaded.currentRound == simEnc.currentRound);
+    CHECK(loaded.rngState == simEnc.rngState);
+    CHECK(loaded.ships.size() == simEnc.ships.size());
+    CHECK(loaded.rounds.size() == simEnc.rounds.size());
 
     // Verify full shipStatuses preserved across all rounds
     for (std::size_t roundIdx = 0; roundIdx < simEnc.rounds.size(); ++roundIdx) {
         const auto& origRound = simEnc.rounds[roundIdx];
         const auto& loadRound = loaded.rounds[roundIdx];
-        assert(origRound.roundIndex == loadRound.roundIndex);
-        assert(origRound.encounterEnded == loadRound.encounterEnded);
-        assert(origRound.shipStatuses.size() == loadRound.shipStatuses.size());
+        CHECK(origRound.roundIndex == loadRound.roundIndex);
+        CHECK(origRound.encounterEnded == loadRound.encounterEnded);
+        CHECK(origRound.shipStatuses.size() == loadRound.shipStatuses.size());
         for (std::size_t sIdx = 0; sIdx < origRound.shipStatuses.size(); ++sIdx) {
             const auto& os = origRound.shipStatuses[sIdx];
             const auto& ls = loadRound.shipStatuses[sIdx];
-            assert(os.fleetId == ls.fleetId);
-            assert(os.ownerId == ls.ownerId);
-            assert(os.hullBefore == ls.hullBefore);
-            assert(os.hullAfter == ls.hullAfter);
-            assert(os.shieldBefore == ls.shieldBefore);
-            assert(os.shieldAfter == ls.shieldAfter);
-            assert(os.beamDamageDealt == ls.beamDamageDealt);
-            assert(os.torpedoDamageDealt == ls.torpedoDamageDealt);
-            assert(os.totalDamageTaken == ls.totalDamageTaken);
-            assert(os.positionBefore == ls.positionBefore);
-            assert(os.positionAfter == ls.positionAfter);
-            assert(os.maneuverExecuted == ls.maneuverExecuted);
-            assert(os.targetFleetId == ls.targetFleetId);
-            assert(os.destroyedThisRound == ls.destroyedThisRound);
-            assert(os.retreatedThisRound == ls.retreatedThisRound);
+            CHECK(os.fleetId == ls.fleetId);
+            CHECK(os.ownerId == ls.ownerId);
+            CHECK(os.hullBefore == ls.hullBefore);
+            CHECK(os.hullAfter == ls.hullAfter);
+            CHECK(os.shieldBefore == ls.shieldBefore);
+            CHECK(os.shieldAfter == ls.shieldAfter);
+            CHECK(os.beamDamageDealt == ls.beamDamageDealt);
+            CHECK(os.torpedoDamageDealt == ls.torpedoDamageDealt);
+            CHECK(os.totalDamageTaken == ls.totalDamageTaken);
+            CHECK(os.positionBefore == ls.positionBefore);
+            CHECK(os.positionAfter == ls.positionAfter);
+            CHECK(os.maneuverExecuted == ls.maneuverExecuted);
+            CHECK(os.targetFleetId == ls.targetFleetId);
+            CHECK(os.destroyedThisRound == ls.destroyedThisRound);
+            CHECK(os.retreatedThisRound == ls.retreatedThisRound);
         }
     }
 
@@ -532,15 +568,15 @@ void testStrictDeserialization() {
     loaded.submitOrder({101, 202, TacticalManeuver::Hold});
     RoundResult nextLoaded = loaded.resolveRound();
 
-    assert(nextOrig.roundIndex == nextLoaded.roundIndex);
-    assert(nextOrig.shipStatuses.size() == nextLoaded.shipStatuses.size());
+    CHECK(nextOrig.roundIndex == nextLoaded.roundIndex);
+    CHECK(nextOrig.shipStatuses.size() == nextLoaded.shipStatuses.size());
     for (std::size_t i = 0; i < nextOrig.shipStatuses.size(); ++i) {
-        assert(nextOrig.shipStatuses[i] == nextLoaded.shipStatuses[i]);
+        CHECK(nextOrig.shipStatuses[i] == nextLoaded.shipStatuses[i]);
     }
-    assert(simEnc.rngState == loaded.rngState);
+    CHECK(simEnc.rngState == loaded.rngState);
 
     // Re-serializing loaded must produce identical text
-    assert(serializeEncounter(loaded) == serializeEncounter(simEnc));
+    CHECK(serializeEncounter(loaded) == serializeEncounter(simEnc));
     std::cout << "  PASS: full multi-round shipStatuses and deterministic continuation verified." << std::endl;
 }
 
@@ -567,25 +603,25 @@ void testCampaignResultMappingAndRelocation() {
     // Ship 1 orders retreat
     enc.submitOrder({501, 0, TacticalManeuver::Retreat});
     enc.runUntilFinished();
-    assert(enc.isFinished);
-    assert(enc.getShip(501)->retreated);
-    assert(enc.getShip(501)->isAlive);
-    assert(enc.getShip(501)->hull > 0);
+    CHECK(enc.isFinished);
+    CHECK(enc.getShip(501)->retreated);
+    CHECK(enc.getShip(501)->isAlive);
+    CHECK(enc.getShip(501)->hull > 0);
 
     // Blocker 4: Check CombatReport uses initialHull / initialShields
     CombatReport rep = toCombatReport(enc);
-    assert(rep.participants[0].initialHull == 20);
-    assert(rep.participants[0].initialShields == 0);
+    CHECK(rep.participants[0].initialHull == 20);
+    CHECK(rep.participants[0].initialShields == 0);
     // Retreated ship is in retreatedFleetIds, NOT lostFleetIds
-    assert(std::find(rep.retreatedFleetIds.begin(), rep.retreatedFleetIds.end(), 501) != rep.retreatedFleetIds.end());
-    assert(std::find(rep.lostFleetIds.begin(), rep.lostFleetIds.end(), 501) == rep.lostFleetIds.end());
+    CHECK(std::find(rep.retreatedFleetIds.begin(), rep.retreatedFleetIds.end(), 501) != rep.retreatedFleetIds.end());
+    CHECK(std::find(rep.lostFleetIds.begin(), rep.lostFleetIds.end(), 501) == rep.lostFleetIds.end());
 
     // Blocker 4: Stale turn rejection test
     GameState staleState = state;
     staleState.turn += 1;
     try {
         applyEncounterResults(staleState, enc);
-        assert(false && "Should reject application on stale turn");
+        CHECK(false && "Should reject application on stale turn");
     } catch (const std::invalid_argument&) {}
 
     // Blocker 4: Stale location rejection test
@@ -593,7 +629,7 @@ void testCampaignResultMappingAndRelocation() {
     for (auto& f : movedState.fleets) if (f.id == 501) f.x += 1;
     try {
         applyEncounterResults(movedState, enc);
-        assert(false && "Should reject application if fleet moved");
+        CHECK(false && "Should reject application if fleet moved");
     } catch (const std::invalid_argument&) {}
 
     // Blocker 4: Stale HP rejection test
@@ -601,7 +637,7 @@ void testCampaignResultMappingAndRelocation() {
     for (auto& f : hpModifiedState.fleets) if (f.id == 501) f.hull += 10;
     try {
         applyEncounterResults(hpModifiedState, enc);
-        assert(false && "Should reject application if fleet HP changed concurrently");
+        CHECK(false && "Should reject application if fleet HP changed concurrently");
     } catch (const std::invalid_argument&) {}
 
     // Clean application test
@@ -609,27 +645,27 @@ void testCampaignResultMappingAndRelocation() {
 
     // Verify Blocker 1: Retreated ship survived and was relocated!
     auto it501 = std::find_if(state.fleets.begin(), state.fleets.end(), [](const Fleet& f) { return f.id == 501; });
-    assert(it501 != state.fleets.end() && "Retreated ship must NOT be destroyed in GameState!");
-    assert(it501->hull > 0);
-    assert(it501->retreat == true);
+    CHECK(it501 != state.fleets.end() && "Retreated ship must NOT be destroyed in GameState!");
+    CHECK(it501->hull > 0);
+    CHECK(it501->retreat == true);
     // Relocation moved it to an adjacent sector or withdrawal target
-    assert(it501->x != 3 || it501->y != 3);
+    CHECK(it501->x != 3 || it501->y != 3);
     std::cout << "  Retreated fleet 501 relocated from (3,3) to (" << it501->x << "," << it501->y << ") with hull=" << it501->hull << std::endl;
 
     // Verify Blocker 4: Double application rejected
     try {
         applyEncounterResults(state, enc);
-        assert(false && "Should reject applying results twice");
+        CHECK(false && "Should reject applying results twice");
     } catch (const std::invalid_argument&) {}
 
     // Verify invariants: strategic turn unmodified
-    assert(state.turn == initialTurn);
-    assert(state.colonies.size() == initialColonyCount);
+    CHECK(state.turn == initialTurn);
+    CHECK(state.colonies.size() == initialColonyCount);
 
     // Verify retreat destination was revealed in explored knowledge
     const int destCell = it501->y * state.width + it501->x;
     const auto& explored = empire(state, 1).explored;
-    assert(std::binary_search(explored.begin(), explored.end(), destCell));
+    CHECK(std::binary_search(explored.begin(), explored.end(), destCell));
     std::cout << "  Retreat destination cell " << destCell << " verified in empire explored knowledge." << std::endl;
 
     // Test rejection of retreat when trapped (no safe supplied adjacent sector exists)
@@ -652,10 +688,10 @@ void testCampaignResultMappingAndRelocation() {
     trappedState.fleets.push_back(block3);
 
     Encounter trappedEnc = constructEncounter(trappedState, {601, 602}, 1234);
-    assert(!trappedEnc.getShip(601)->canRetreat);
+    CHECK(!trappedEnc.getShip(601)->canRetreat);
     try {
         trappedEnc.submitOrder({601, 0, TacticalManeuver::Retreat});
-        assert(false && "Should have rejected retreat order for trapped fleet with no safe escape");
+        CHECK(false && "Should have rejected retreat order for trapped fleet with no safe escape");
     } catch (const std::invalid_argument&) {}
     std::cout << "  Trapped fleet retreat order properly rejected." << std::endl;
 
@@ -690,7 +726,7 @@ void testExtendedManeuvers() {
         encEvade.resolveRound();
         const int evadeDamage = 100 - encEvade.getShip(2)->hull;
 
-        assert(evadeDamage < engageDamage);
+        CHECK(evadeDamage < engageDamage);
         std::cout << "  Maneuver Evade: took " << evadeDamage << " damage vs " << engageDamage << " under Engage." << std::endl;
     }
 
@@ -716,7 +752,7 @@ void testExtendedManeuvers() {
         encStrafe.resolveRound();
         const int strafeDealt = 200 - encStrafe.getShip(2)->hull;
 
-        assert(strafeDealt > engageDealt);
+        CHECK(strafeDealt > engageDealt);
         std::cout << "  Maneuver Strafe: dealt " << strafeDealt << " damage vs " << engageDealt << " under Engage." << std::endl;
     }
 
@@ -734,7 +770,7 @@ void testExtendedManeuvers() {
 
         const Ship* victimAfter = encRam.getShip(2);
         const int damageTaken = 300 - victimAfter->hull;
-        assert(damageTaken >= 150); // Impact inflicted rammer's hull value
+        CHECK(damageTaken >= 150); // Impact inflicted rammer's hull value
         std::cout << "  Maneuver Ram: rammer inflicted " << damageTaken << " kinetic impact damage on victim." << std::endl;
     }
 
@@ -752,11 +788,11 @@ void testExtendedManeuvers() {
         encHail.standingOrders[2] = Order{2, 0, TacticalManeuver::Hail};
 
         RoundResult r = encHail.resolveRound();
-        assert(r.hailedTruce);
-        assert(encHail.isFinished);
-        assert(encHail.winnerOwnerId == 0);
-        assert(encHail.getShip(1)->hull == 100);
-        assert(encHail.getShip(2)->hull == 100);
+        CHECK(r.hailedTruce);
+        CHECK(encHail.isFinished);
+        CHECK(encHail.winnerOwnerId == 0);
+        CHECK(encHail.getShip(1)->hull == 100);
+        CHECK(encHail.getShip(2)->hull == 100);
         std::cout << "  Maneuver Hail: mutual hail concluded encounter cleanly in a peaceful truce." << std::endl;
     }
 
@@ -804,19 +840,19 @@ void testTacticalGroups() {
     enc.ships.push_back(e1);
 
     // Verify lookup
-    assert(enc.getGroup(1) != nullptr);
-    assert(enc.getGroupForShip(101)->groupId == 1);
-    assert(enc.getGroupForShip(103)->groupId == 2);
+    CHECK(enc.getGroup(1) != nullptr);
+    CHECK(enc.getGroupForShip(101)->groupId == 1);
+    CHECK(enc.getGroupForShip(103)->groupId == 2);
 
     // Issue group order to group 1: Strafe target 201
     enc.submitGroupOrder(1, TacticalManeuver::Strafe, 201);
-    assert(enc.getOrder(101).maneuver == TacticalManeuver::Strafe);
-    assert(enc.getOrder(101).targetFleetId == 201);
-    assert(enc.getOrder(102).maneuver == TacticalManeuver::Strafe);
-    assert(enc.getOrder(102).targetFleetId == 201);
+    CHECK(enc.getOrder(101).maneuver == TacticalManeuver::Strafe);
+    CHECK(enc.getOrder(101).targetFleetId == 201);
+    CHECK(enc.getOrder(102).maneuver == TacticalManeuver::Strafe);
+    CHECK(enc.getOrder(102).targetFleetId == 201);
 
     // Scout group remains unaffected
-    assert(enc.getOrder(103).maneuver != TacticalManeuver::Strafe);
+    CHECK(enc.getOrder(103).maneuver != TacticalManeuver::Strafe);
 
     std::cout << "  PASS: tactical groups formation and collective orders verified." << std::endl;
 }
@@ -849,7 +885,7 @@ void testCloakLifecycle() {
         const auto& round = enc.rounds.back();
         for (const auto& salvo : round.salvos) {
             if (salvo.attackerFleetId == 4) {
-                assert(salvo.defenderFleetId == 3); // Must target uncloaked Vor'cha, skipping cloaked B'rel!
+                CHECK(salvo.defenderFleetId == 3); // Must target uncloaked Vor'cha, skipping cloaked B'rel!
             }
         }
         std::cout << "  Cloak: auto-targeting successfully ignored cloaked vessel." << std::endl;
@@ -880,11 +916,11 @@ void testCloakLifecycle() {
         encCloaked.submitOrder({10, 20, TacticalManeuver::Engage});
         encCloaked.resolveRound();
 
-        assert(!encCloaked.getShip(10)->isCloaked); // Ship decloaked!
-        assert(encCloaked.rounds.back().shipStatuses[0].decloakedThisRound);
+        CHECK(!encCloaked.getShip(10)->isCloaked); // Ship decloaked!
+        CHECK(encCloaked.rounds.back().shipStatuses[0].decloakedThisRound);
         const int ambushDamage = 300 - encCloaked.getShip(20)->hull;
 
-        assert(ambushDamage > normalDamage);
+        CHECK(ambushDamage > normalDamage);
         std::cout << "  Cloak: decloaked on attack with ambush bonus: " << ambushDamage << " damage vs " << normalDamage << "." << std::endl;
     }
 
@@ -942,10 +978,10 @@ void testRepresentativeFedVsKlingonBattle() {
     reloaded.runUntilFinished();
 
     // Verify bit-for-bit identical state
-    assert(serializeEncounter(fullRun) == serializeEncounter(reloaded));
-    assert(fullRun.isFinished && reloaded.isFinished);
-    assert(fullRun.winnerOwnerId == reloaded.winnerOwnerId);
-    assert(fullRun.currentRound == reloaded.currentRound);
+    CHECK(serializeEncounter(fullRun) == serializeEncounter(reloaded));
+    CHECK(fullRun.isFinished && reloaded.isFinished);
+    CHECK(fullRun.winnerOwnerId == reloaded.winnerOwnerId);
+    CHECK(fullRun.currentRound == reloaded.currentRound);
 
     std::cout << "  Representative battle completed in " << fullRun.currentRound << " rounds. Winner: Owner " << fullRun.winnerOwnerId << std::endl;
     std::cout << "  PASS: mid-battle save/reload bit-for-bit equivalence verified." << std::endl;
@@ -955,23 +991,32 @@ void testRepresentativeFedVsKlingonBattle() {
 
 int main() {
     std::cout << "=== Running BOTF Tactical Combat Tests (Complete Suite) ===" << std::endl;
-    try {
-        botf::tactical::tests::testEncounterConstructionValidation();
-        botf::tactical::tests::testShieldDamageAbsorption();
-        botf::tactical::tests::testFocusFire();
-        botf::tactical::tests::testAllManeuvers();
-        botf::tactical::tests::testInvalidOrderAuthorizationAndAtomicFailure();
-        botf::tactical::tests::testDeterministicReplay();
-        botf::tactical::tests::testStrictDeserialization();
-        botf::tactical::tests::testCampaignResultMappingAndRelocation();
-        botf::tactical::tests::testExtendedManeuvers();
-        botf::tactical::tests::testTacticalGroups();
-        botf::tactical::tests::testCloakLifecycle();
-        botf::tactical::tests::testRepresentativeFedVsKlingonBattle();
-        std::cout << "\n>>> ALL 12 TACTICAL COMBAT SUITES PASSED! <<<" << std::endl;
-        return 0;
-    } catch (const std::exception& ex) {
-        std::cerr << "FAIL with exception: " << ex.what() << std::endl;
-        return 1;
+    using namespace botf::tactical::tests;
+    const std::vector<std::pair<const char*, std::function<void()>>> suites{
+        {"encounter construction validation", testEncounterConstructionValidation},
+        {"shield damage absorption", testShieldDamageAbsorption},
+        {"focus fire", testFocusFire},
+        {"core maneuvers", testAllManeuvers},
+        {"order authorization and atomic failure", testInvalidOrderAuthorizationAndAtomicFailure},
+        {"deterministic replay", testDeterministicReplay},
+        {"strict deserialization", testStrictDeserialization},
+        {"campaign result mapping and relocation", testCampaignResultMappingAndRelocation},
+        {"extended maneuvers", testExtendedManeuvers},
+        {"tactical groups", testTacticalGroups},
+        {"cloak lifecycle", testCloakLifecycle},
+        {"representative Fed vs Klingon battle", testRepresentativeFedVsKlingonBattle},
+    };
+    int passed = 0, failed = 0;
+    for (const auto& [name, suite] : suites) {
+        try {
+            suite();
+            ++passed;
+            std::cout << "PASS " << name << std::endl;
+        } catch (const std::exception& ex) {
+            ++failed;
+            std::cout << "FAIL " << name << ": " << ex.what() << std::endl;
+        }
     }
+    std::cout << (failed ? "FAILED: " : "ALL PASSED: ") << passed << " passed, " << failed << " failed tactical suites" << std::endl;
+    return failed ? 1 : 0;
 }

@@ -226,6 +226,11 @@ void testPartialGroupRetreat() {
     botf::session::order(session,
         {withdrawing, 0, botf::tactical::TacticalManeuver::Retreat});
     botf::session::resolveRound(session);
+    // Remaster rules: one full round disengaging under fire, then the jump out.
+    const auto* disengaging = session.pending->getShip(withdrawing);
+    check(disengaging->isAlive && !disengaging->retreated && disengaging->disengaging(),
+        "Retreating ship escaped without spending a round disengaging");
+    botf::session::resolveRound(session);
     check(session.pending->getShip(withdrawing)->retreated,
         "Fixture ship did not withdraw from the battle");
     const auto report = finish(session, state);
@@ -331,10 +336,19 @@ void testSavedPendingBattleSnapshotRegression() {
     botf::validate(committed);
 }
 
+int failed = 0;
 void run(const char* name, const std::function<void()>& test, int& passed) {
-    test();
-    ++passed;
-    std::cout << "PASS " << name << '\n';
+    try {
+        test();
+        ++passed;
+        std::cout << "PASS " << name << std::endl;
+    } catch (const std::exception& error) {
+        ++failed;
+        std::cout << "FAIL " << name << ": " << error.what() << std::endl;
+    } catch (...) {
+        ++failed;
+        std::cout << "FAIL " << name << ": unknown exception" << std::endl;
+    }
 }
 }
 
@@ -349,9 +363,9 @@ int main() {
         run("partial task-force loss removes the destroyed member", testPartialGroupLoss, passed);
         run("saved pending battle snapshot resumes deterministically", testSavedPendingBattleSnapshotRegression, passed);
     } catch (const std::exception& error) {
-        std::cerr << "FAIL after " << passed << " session scenarios: " << error.what() << '\n';
+        std::cerr << "FAIL suite aborted after " << passed << " session scenarios: " << error.what() << '\n';
         return 1;
     }
-    std::cout << "PASS all " << passed << " campaign session scenarios\n";
-    return 0;
+    std::cout << (failed ? "FAILED: " : "PASS all ") << passed << " passed, " << failed << " failed campaign session scenarios\n";
+    return failed ? 1 : 0;
 }

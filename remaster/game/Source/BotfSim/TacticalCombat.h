@@ -7,8 +7,12 @@
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include <functional>
 #include <iomanip>
+#include <limits>
+#include <locale>
 #include <map>
+#include <optional>
 #include <set>
 #include <sstream>
 #include <stdexcept>
@@ -16,6 +20,37 @@
 #include <vector>
 
 namespace botf::tactical {
+
+// -----------------------------------------------------------------------------
+// Rules versions
+// -----------------------------------------------------------------------------
+// Rules 1 ("legacy") reproduces the schema-11 tactical engine exactly. It is only
+// used for encounters deserialized from TACTICAL_ENCOUNTER_V1 text so that
+// recorded mid-battle sessions from older saves still replay and verify.
+// Rules 2 ("remaster") is used for every newly constructed encounter:
+//   * Ram is mutual: the target takes the rammer's hull as impact damage and the
+//     rammer takes the target's pre-impact hull + shields as recoil. Impact and
+//     recoil bypass maneuver/cloak modifiers, so both ships usually die.
+//   * Cloaked ships cannot fire. Any attack order (Engage, Charge, Assault,
+//     Harry, Flyby, Strafe, Ram) decloaks the ship and grants a +25% "ambush"
+//     volley that round. Circle, Hold, Evade, Retreat and Hail keep the cloak.
+//   * Retreat puts a ship into "disengaging" for one full round (it moves to its
+//     deployment edge, weapons offline, may be fired upon with -25% incoming
+//     damage) and it escapes at the next movement phase if still ordered to
+//     retreat. Changing orders aborts the disengage.
+//   * Hail: a truce ends the battle before movement/fire when every active ship
+//     of one side hails and the other side either also hails or, when AI
+//     controlled, accepts. The AI accepts when the empires are not formally at
+//     war, or when its strength * 100 <= hailer strength * (100 + trust).
+//   * Hold braces (-20% incoming) instead of recharging shields, so per-round
+//     battle records only ever show damage.
+//   * Defensive modifiers use the order actually executed this round, whether it
+//     came from the player, a standing order or the AI. AI decisions are
+//     recorded per round (ShipRoundStatus::aiControlled) so replay verification
+//     re-derives them instead of treating them as player orders.
+inline constexpr int LegacyTacticalRules = 1;
+inline constexpr int RemasterTacticalRules = 2;
+inline constexpr int MaxManeuverValue = 11;
 
 // -----------------------------------------------------------------------------
 // Tactical Coordinate & Enums
@@ -32,7 +67,7 @@ enum class TacticalManeuver : int {
     Engage = 0,    // Standard advance to optimal weapon range and fire
     Charge = 1,    // High-speed closing to close/point-blank range (+beam burst, +incoming vulnerability)
     Circle = 2,    // Stand-off evasive orbit (-incoming damage evasion, -beam accuracy)
-    Hold = 3,      // Stationary shield focus (recharge/reinforce shields)
+    Hold = 3,      // Stationary brace (remaster) / shield recharge (legacy rules)
     Retreat = 4,   // Disengage toward tactical jump boundary, weapons offline
     Assault = 5,   // Original Assault: disciplined advance to medium beam/torpedo envelope
     Harry = 6,     // Original Harry: close-range evasive circling and harassment
@@ -59,6 +94,16 @@ inline const char* maneuverName(TacticalManeuver maneuver) {
         case TacticalManeuver::Hail: return "Hail";
         default: return "Unknown";
     }
+}
+
+inline bool maneuverValid(int value) { return value >= 0 && value <= MaxManeuverValue; }
+
+// Orders that decloak a ship (Manual p. 64). Everything else keeps the cloak.
+inline bool isAttackManeuver(TacticalManeuver m) {
+    return m == TacticalManeuver::Engage || m == TacticalManeuver::Charge ||
+           m == TacticalManeuver::Assault || m == TacticalManeuver::Harry ||
+           m == TacticalManeuver::Flyby || m == TacticalManeuver::Strafe ||
+           m == TacticalManeuver::Ram;
 }
 
 // Like-class tactical group categories (Manual pp. 63-64)
@@ -90,6 +135,34 @@ struct TacticalGroup {
     constexpr bool operator==(const TacticalGroup& other) const = default;
 };
 
+// Deterministic integer heading in degrees [0, 359] (no floating point, so every
+// compiler and platform records identical facings).
+inline int facingDegrees(int dx, int dy) {
+    if (dx == 0 && dy == 0) return 0;
+    static constexpr std::array<int, 46> TanTimes1024{
+        0, 18, 36, 54, 72, 90, 108, 126, 144, 162, 181, 199, 218, 236, 255, 274, 294, 313, 333, 353, 373,
+        393, 414, 435, 456, 477, 499, 522, 544, 568, 591, 615, 640, 665, 691, 717, 744, 772, 800, 829, 859,
+        890, 922, 955, 989, 1024};
+    const long long ax = dx < 0 ? -static_cast<long long>(dx) : dx;
+    const long long ay = dy < 0 ? -static_cast<long long>(dy) : dy;
+    const bool steep = ay > ax;
+    const long long num = (steep ? ax : ay) * 1024, den = steep ? ay : ax;
+    int k = 0;
+    while (k < 45 && TanTimes1024[static_cast<std::size_t>(k + 1)] * den <= num) ++k;
+    if (k < 45) {
+        const long long lo = TanTimes1024[static_cast<std::size_t>(k)] * den;
+        const long long hi = TanTimes1024[static_cast<std::size_t>(k + 1)] * den;
+        if ((num - lo) * 2 >= hi - lo) ++k;
+    }
+    const int firstQuadrant = steep ? 90 - k : k;
+    int angle = 0;
+    if (dx >= 0 && dy >= 0) angle = firstQuadrant;
+    else if (dx < 0 && dy >= 0) angle = 180 - firstQuadrant;
+    else if (dx < 0) angle = 180 + firstQuadrant;
+    else angle = 360 - firstQuadrant;
+    return angle % 360;
+}
+
 // -----------------------------------------------------------------------------
 // Core Structs: Ship, Order, RoundResult, Encounter
 // -----------------------------------------------------------------------------
@@ -113,11 +186,12 @@ struct Ship {
     bool isAlive = true;           // True if vessel is physically intact (hull > 0, not destroyed)
     bool activeInCombat = true;    // True if still actively engaged on the tactical map
     bool retreated = false;        // True if successfully disengaged and retreated
-    int retreatSteps = 0;          // Rounds spent moving toward retreat edge
+    int retreatSteps = 0;          // Rules 2: >0 while disengaging. Rules 1: rounds spent retreating
     bool canRetreat = true;        // True if a safe supplied retreat sector exists
     bool canCloak = false;         // True if equipped with cloaking device
     bool isCloaked = false;        // True if currently in cloaked stealth state
     int groupId = 0;               // Tactical like-class group assignment
+    bool disengaging() const { return retreatSteps > 0 && !retreated && isAlive; }
 };
 
 struct Order {
@@ -147,6 +221,7 @@ struct ShipRoundStatus {
     bool hailedThisRound = false;
     TacticalCoord intermediatePosition{0, 0};
     int facingYaw = 0;             // Heading in degrees [0, 359] for 3D orientation
+    bool aiControlled = false;     // Order came from the tactical AI, not a player/standing order
     constexpr bool operator==(const ShipRoundStatus& other) const = default;
 };
 
@@ -156,6 +231,7 @@ struct WeaponSalvoRecord {
     int beamDamage = 0;
     int torpedoDamage = 0;
     bool absorbedByShields = false;
+    bool ram = false;              // Rules 2 ram impact (attacker -> target) or recoil (target -> rammer)
     constexpr bool operator==(const WeaponSalvoRecord& other) const = default;
 };
 
@@ -218,12 +294,17 @@ struct Encounter {
     int strategicTurn = 0;
     int controllingOwnerId = 1;    // Player empire ID authorized to issue orders
     mutable bool resultsApplied = false; // Guard against applying results twice
+    int rulesVersion = RemasterTacticalRules;
+    bool relationAtWar = true;     // Formal war between the two sides when constructed (hail acceptance)
+    int relationTrust = 50;        // Relation trust 0..100 when constructed (hail acceptance)
 
     std::vector<Ship> ships;
     std::vector<TacticalGroup> groups;
     std::vector<Order> pendingOrders;
     std::map<int, Order> standingOrders;
     std::vector<RoundResult> rounds;
+
+    bool remasterRules() const { return rulesVersion >= RemasterTacticalRules; }
 
     const Ship* getShip(int fleetId) const {
         for (const auto& s : ships) {
@@ -259,21 +340,24 @@ struct Encounter {
         return getGroup(s->groupId);
     }
 
-    void submitOrder(const Order& order) {
+    static bool shipActive(const Ship& s) { return s.isAlive && !s.retreated && s.activeInCombat; }
+
+    // Validates a single order without mutating anything.
+    void checkOrder(const Order& order) const {
         if (isFinished) {
             throw std::invalid_argument("Cannot submit order: tactical encounter is already finished.");
         }
-        Ship* s = getShip(order.fleetId);
+        const Ship* s = getShip(order.fleetId);
         if (!s) {
             throw std::invalid_argument("Fleet ID " + std::to_string(order.fleetId) + " not found in encounter.");
         }
-        if (!s->isAlive || s->retreated || !s->activeInCombat) {
+        if (!shipActive(*s)) {
             throw std::invalid_argument("Cannot issue order to destroyed or retreated ship " + std::to_string(order.fleetId));
         }
         if (s->ownerId != controllingOwnerId) {
             throw std::invalid_argument("Cannot issue order to non-controlled/enemy fleet ID " + std::to_string(order.fleetId));
         }
-        if (static_cast<int>(order.maneuver) < 0 || static_cast<int>(order.maneuver) > 11) {
+        if (!maneuverValid(static_cast<int>(order.maneuver))) {
             throw std::invalid_argument("Invalid maneuver enum value: " + std::to_string(static_cast<int>(order.maneuver)));
         }
         if (order.maneuver == TacticalManeuver::Retreat && !s->canRetreat) {
@@ -285,14 +369,17 @@ struct Encounter {
             if (!target) {
                 throw std::invalid_argument("Target fleet ID " + std::to_string(order.targetFleetId) + " not found in encounter.");
             }
-            if (!target->isAlive || target->retreated || !target->activeInCombat) {
+            if (!shipActive(*target)) {
                 throw std::invalid_argument("Target fleet ID " + std::to_string(order.targetFleetId) + " is already destroyed or retreated.");
             }
             if (target->ownerId == s->ownerId) {
                 throw std::invalid_argument("Cannot target friendly ship " + std::to_string(order.targetFleetId));
             }
         }
+    }
 
+    void submitOrder(const Order& order) {
+        checkOrder(order);
         // Replace existing order or append
         auto it = std::find_if(pendingOrders.begin(), pendingOrders.end(),
             [&](const Order& o) { return o.fleetId == order.fleetId; });
@@ -301,7 +388,6 @@ struct Encounter {
         } else {
             pendingOrders.push_back(order);
         }
-
         // Update standing orders map so order persists into subsequent rounds
         standingOrders[order.fleetId] = order;
     }
@@ -311,41 +397,8 @@ struct Encounter {
             throw std::invalid_argument("Cannot submit orders: tactical encounter is already finished.");
         }
         // Atomic validation: validate all orders before applying any
-        for (const auto& o : orders) {
-            const Ship* s = getShip(o.fleetId);
-            if (!s) {
-                throw std::invalid_argument("Fleet ID " + std::to_string(o.fleetId) + " not found in encounter.");
-            }
-            if (!s->isAlive || s->retreated || !s->activeInCombat) {
-                throw std::invalid_argument("Cannot issue order to destroyed or retreated ship " + std::to_string(o.fleetId));
-            }
-            if (s->ownerId != controllingOwnerId) {
-                throw std::invalid_argument("Cannot issue order to non-controlled/enemy fleet ID " + std::to_string(o.fleetId));
-            }
-            if (static_cast<int>(o.maneuver) < 0 || static_cast<int>(o.maneuver) > 11) {
-                throw std::invalid_argument("Invalid maneuver enum value: " + std::to_string(static_cast<int>(o.maneuver)));
-            }
-            if (o.maneuver == TacticalManeuver::Retreat && !s->canRetreat) {
-                throw std::invalid_argument("Fleet ID " + std::to_string(o.fleetId) +
-                    " cannot retreat: no safe supplied withdrawal sector exists.");
-            }
-            if (o.targetFleetId != 0) {
-                const Ship* target = getShip(o.targetFleetId);
-                if (!target) {
-                    throw std::invalid_argument("Target fleet ID " + std::to_string(o.targetFleetId) + " not found in encounter.");
-                }
-                if (!target->isAlive || target->retreated || !target->activeInCombat) {
-                    throw std::invalid_argument("Target fleet ID " + std::to_string(o.targetFleetId) + " is already destroyed or retreated.");
-                }
-                if (target->ownerId == s->ownerId) {
-                    throw std::invalid_argument("Cannot target friendly ship " + std::to_string(o.targetFleetId));
-                }
-            }
-        }
-
-        for (const auto& o : orders) {
-            submitOrder(o);
-        }
+        for (const auto& o : orders) checkOrder(o);
+        for (const auto& o : orders) submitOrder(o);
     }
 
     // Submit group order to all member ships in a like-class tactical group
@@ -357,24 +410,26 @@ struct Encounter {
         if (g->ownerId != controllingOwnerId) {
             throw std::invalid_argument("Cannot order group belonging to other owner.");
         }
-        g->standingManeuver = maneuver;
-        g->standingTargetFleetId = targetFleetId;
-
+        std::vector<Order> batch;
         for (int fid : g->fleetIds) {
-            Ship* s = getShip(fid);
-            if (s && s->isAlive && !s->retreated && s->activeInCombat) {
+            const Ship* s = getShip(fid);
+            if (s && shipActive(*s)) {
                 if (maneuver == TacticalManeuver::Retreat && !s->canRetreat) {
                     continue; // Skip retreat for ships lacking retreat route
                 }
-                submitOrder(Order{s->fleetId, targetFleetId, maneuver});
+                batch.push_back(Order{s->fleetId, targetFleetId, maneuver});
             }
         }
+        submitOrders(batch);
+        g->standingManeuver = maneuver;
+        g->standingTargetFleetId = targetFleetId;
     }
 
     void clearOrders() {
         pendingOrders.clear();
     }
 
+    // The order the player/standing layer holds for a ship (Engage when none).
     Order getOrder(int fleetId) const {
         for (const auto& o : pendingOrders) {
             if (o.fleetId == fleetId) return o;
@@ -384,6 +439,82 @@ struct Encounter {
         return Order{fleetId, 0, TacticalManeuver::Engage};
     }
 
+    // The order actually executed by a ship in the most recent round, if any
+    // (includes AI decisions, unlike getOrder()).
+    std::optional<Order> lastExecutedOrder(int fleetId) const {
+        if (rounds.empty()) return std::nullopt;
+        const auto* st = rounds.back().getStatus(fleetId);
+        if (!st || st->hullBefore <= 0) return std::nullopt;
+        return Order{fleetId, st->targetFleetId, st->maneuverExecuted};
+    }
+
+    // Combined fighting strength of one side's active ships (integer, deterministic).
+    std::int64_t sideStrength(int ownerId) const {
+        std::int64_t total = 0;
+        for (const auto& s : ships) {
+            if (s.ownerId != ownerId || !shipActive(s)) continue;
+            total += static_cast<std::int64_t>(s.hull) + s.shields + 3LL * (s.beamAttack + s.torpedoAttack);
+        }
+        return total;
+    }
+
+    // Rules 2: whether an AI-controlled side accepts the other side's hail.
+    bool aiAcceptsHail(int acceptorOwner, int hailerOwner) const {
+        if (!relationAtWar) return true;
+        const int threshold = 100 + std::clamp(relationTrust, 0, 100);
+        return sideStrength(acceptorOwner) * 100 <= sideStrength(hailerOwner) * threshold;
+    }
+
+    // Deterministic tactical AI decision for a ship without a player/standing order.
+    Order aiOrderFor(const Ship& ship) const {
+        Order aiOrder;
+        aiOrder.fleetId = ship.fleetId;
+        const bool armed = ship.beamAttack > 0 || ship.torpedoAttack > 0;
+        if (ship.hull * 4 <= ship.maxHull && ship.canRetreat) {
+            aiOrder.maneuver = TacticalManeuver::Retreat;
+        } else if (!armed && ship.canRetreat) {
+            aiOrder.maneuver = TacticalManeuver::Retreat;
+        } else if (remasterRules() && !armed) {
+            aiOrder.maneuver = TacticalManeuver::Hail; // Trapped noncombatant asks for quarter
+        } else if (remasterRules() && ship.isCloaked) {
+            // Cloaked ships cannot fire, so the AI always opens with an ambush.
+            if (ship.torpedoAttack > ship.beamAttack * 2) aiOrder.maneuver = TacticalManeuver::Assault;
+            else if (ship.beamAttack > ship.torpedoAttack * 2) aiOrder.maneuver = TacticalManeuver::Charge;
+            else aiOrder.maneuver = TacticalManeuver::Engage;
+        } else if (ship.torpedoAttack > ship.beamAttack * 2) {
+            aiOrder.maneuver = TacticalManeuver::Circle;
+        } else if (ship.beamAttack > ship.torpedoAttack * 2) {
+            aiOrder.maneuver = TacticalManeuver::Charge;
+        } else {
+            aiOrder.maneuver = TacticalManeuver::Engage;
+        }
+        if (aiOrder.maneuver == TacticalManeuver::Retreat || aiOrder.maneuver == TacticalManeuver::Hail) {
+            if (remasterRules()) return aiOrder;
+        }
+
+        // Pick target: living active hostile with lowest hull + shields (tie break closest)
+        // Disregard cloaked targets unless no other hostiles exist
+        const Ship* bestTarget = nullptr;
+        int bestTotalEhp = std::numeric_limits<int>::max();
+        int bestDist = std::numeric_limits<int>::max();
+        for (int pass = 0; pass < 2 && !bestTarget; ++pass) {
+            for (const auto& other : ships) {
+                if (!shipActive(other) || other.ownerId == ship.ownerId) continue;
+                if (pass == 0 && other.isCloaked) continue; // Cannot auto-target cloaked vessel
+                const int ehp = other.hull + other.shields;
+                const int dist = std::max(std::abs(ship.position.x - other.position.x),
+                                          std::abs(ship.position.y - other.position.y));
+                if (ehp < bestTotalEhp || (ehp == bestTotalEhp && dist < bestDist)) {
+                    bestTotalEhp = ehp;
+                    bestDist = dist;
+                    bestTarget = &other;
+                }
+            }
+        }
+        aiOrder.targetFleetId = bestTarget ? bestTarget->fleetId : 0;
+        return aiOrder;
+    }
+
     // -------------------------------------------------------------------------
     // Round Resolution
     // -------------------------------------------------------------------------
@@ -391,6 +522,7 @@ struct Encounter {
         if (isFinished) {
             throw std::runtime_error("Encounter is already finished; cannot resolve further rounds.");
         }
+        const bool modern = remasterRules();
 
         currentRound++;
         DeterministicRng rng(rngState);
@@ -399,82 +531,37 @@ struct Encounter {
         const int firstOwner = ships.empty() ? 0 : ships[0].ownerId;
 
         // 1. Gather orders for all active combat ships (pending orders, standing orders, or AI decisions)
-        std::vector<Order> activeOrders;
+        struct Planned { Order order; bool ai = false; };
+        std::vector<Planned> activeOrders;
         for (const auto& ship : ships) {
-            if (!ship.isAlive || ship.retreated || !ship.activeInCombat) continue;
-
+            if (!shipActive(ship)) continue;
             auto it = std::find_if(pendingOrders.begin(), pendingOrders.end(),
                 [&](const Order& o) { return o.fleetId == ship.fleetId; });
-
             if (it != pendingOrders.end()) {
-                activeOrders.push_back(*it);
-            } else {
-                auto standIt = standingOrders.find(ship.fleetId);
-                if (standIt != standingOrders.end()) {
-                    Order stand = standIt->second;
-                    // Validate target
-                    const Ship* curTarget = getShip(stand.targetFleetId);
-                    if (curTarget && (!curTarget->isAlive || curTarget->retreated || !curTarget->activeInCombat)) {
-                        stand.targetFleetId = 0; // Clear destroyed target for retargeting
-                    }
-                    activeOrders.push_back(stand);
-                } else {
-                    // Autonomous AI decision for ships without explicit order
-                    Order aiOrder;
-                    aiOrder.fleetId = ship.fleetId;
-
-                    // AI Pick maneuver
-                    if (ship.hull * 4 <= ship.maxHull && ship.canRetreat) {
-                        aiOrder.maneuver = TacticalManeuver::Retreat;
-                    } else if (ship.beamAttack == 0 && ship.torpedoAttack == 0 && ship.canRetreat) {
-                        aiOrder.maneuver = TacticalManeuver::Retreat;
-                    } else if (ship.torpedoAttack > ship.beamAttack * 2) {
-                        aiOrder.maneuver = TacticalManeuver::Circle;
-                    } else if (ship.beamAttack > ship.torpedoAttack * 2) {
-                        aiOrder.maneuver = TacticalManeuver::Charge;
-                    } else {
-                        aiOrder.maneuver = TacticalManeuver::Engage;
-                    }
-
-                    // Pick target: living active hostile with lowest hull + shields (tie break closest)
-                    // Disregard cloaked targets unless no other hostiles exist
-                    const Ship* bestTarget = nullptr;
-                    int bestTotalEhp = std::numeric_limits<int>::max();
-                    int bestDist = std::numeric_limits<int>::max();
-
-                    for (const auto& other : ships) {
-                        if (!other.isAlive || other.retreated || !other.activeInCombat || other.ownerId == ship.ownerId) continue;
-                        if (other.isCloaked) continue; // Cannot auto-target cloaked vessel
-                        const int ehp = other.hull + other.shields;
-                        const int dist = std::max(std::abs(ship.position.x - other.position.x),
-                                                  std::abs(ship.position.y - other.position.y));
-                        if (ehp < bestTotalEhp || (ehp == bestTotalEhp && dist < bestDist)) {
-                            bestTotalEhp = ehp;
-                            bestDist = dist;
-                            bestTarget = &other;
-                        }
-                    }
-
-                    // Fallback to cloaked if all hostiles cloaked
-                    if (!bestTarget) {
-                        for (const auto& other : ships) {
-                            if (!other.isAlive || other.retreated || !other.activeInCombat || other.ownerId == ship.ownerId) continue;
-                            const int ehp = other.hull + other.shields;
-                            const int dist = std::max(std::abs(ship.position.x - other.position.x),
-                                                      std::abs(ship.position.y - other.position.y));
-                            if (ehp < bestTotalEhp || (ehp == bestTotalEhp && dist < bestDist)) {
-                                bestTotalEhp = ehp;
-                                bestDist = dist;
-                                bestTarget = &other;
-                            }
-                        }
-                    }
-
-                    aiOrder.targetFleetId = bestTarget ? bestTarget->fleetId : 0;
-                    activeOrders.push_back(aiOrder);
-                }
+                activeOrders.push_back({*it, false});
+                continue;
             }
+            auto standIt = standingOrders.find(ship.fleetId);
+            if (standIt != standingOrders.end()) {
+                Order stand = standIt->second;
+                const Ship* curTarget = getShip(stand.targetFleetId);
+                if (curTarget && !shipActive(*curTarget)) {
+                    stand.targetFleetId = 0; // Clear destroyed target for retargeting
+                    if (modern) standIt->second.targetFleetId = 0;
+                }
+                if (modern && stand.maneuver == TacticalManeuver::Retreat && !ship.canRetreat) {
+                    activeOrders.push_back({aiOrderFor(ship), true});
+                    continue;
+                }
+                activeOrders.push_back({stand, false});
+                continue;
+            }
+            activeOrders.push_back({aiOrderFor(ship), true});
         }
+        auto plannedFor = [&](int fleetId) -> const Planned* {
+            for (const auto& p : activeOrders) if (p.order.fleetId == fleetId) return &p;
+            return nullptr;
+        };
 
         RoundResult round;
         round.roundIndex = currentRound;
@@ -498,98 +585,134 @@ struct Encounter {
             return nullptr;
         };
 
-        // 1b. Check for Cloak Decloak & Hail triggers
-        int hailCountOwner1 = 0, totalActiveOwner1 = 0;
-        int hailCountOwner2 = 0, totalActiveOwner2 = 0;
-
-        for (const auto& ord : activeOrders) {
-            Ship* s = getShip(ord.fleetId);
-            if (!s || !s->isAlive || s->retreated || !s->activeInCombat) continue;
-
-            if (s->ownerId == firstOwner) totalActiveOwner1++;
-            else totalActiveOwner2++;
-
-            if (ord.maneuver == TacticalManeuver::Hail) {
-                if (s->ownerId == firstOwner) hailCountOwner1++;
-                else hailCountOwner2++;
-                ShipRoundStatus* st = getStatus(s->fleetId);
-                if (st) st->hailedThisRound = true;
-            }
-
-            // Decloak trigger: assigning an offensive tactic decloaks the ship (Manual p. 64)
-            if (s->isCloaked) {
-                if (ord.maneuver == TacticalManeuver::Engage || ord.maneuver == TacticalManeuver::Charge ||
-                    ord.maneuver == TacticalManeuver::Assault || ord.maneuver == TacticalManeuver::Harry ||
-                    ord.maneuver == TacticalManeuver::Flyby || ord.maneuver == TacticalManeuver::Strafe ||
-                    ord.maneuver == TacticalManeuver::Ram) {
-                    s->isCloaked = false;
-                    ShipRoundStatus* st = getStatus(s->fleetId);
-                    if (st) st->decloakedThisRound = true;
-                }
+        for (const auto& planned : activeOrders) {
+            if (ShipRoundStatus* st = getStatus(planned.order.fleetId)) {
+                st->maneuverExecuted = planned.order.maneuver;
+                st->targetFleetId = planned.order.targetFleetId;
+                st->intermediatePosition = st->positionBefore;
+                st->aiControlled = planned.ai;
             }
         }
 
-        // Check mutual hail truce
-        if (totalActiveOwner1 > 0 && totalActiveOwner2 > 0 &&
-            hailCountOwner1 == totalActiveOwner1 && hailCountOwner2 == totalActiveOwner2) {
+        // 1b. Hail truce and decloak triggers
+        bool truce = false;
+        if (!modern) {
+            int hailCountOwner1 = 0, totalActiveOwner1 = 0;
+            int hailCountOwner2 = 0, totalActiveOwner2 = 0;
+            for (const auto& planned : activeOrders) {
+                const Order& ord = planned.order;
+                Ship* s = getShip(ord.fleetId);
+                if (!s || !shipActive(*s)) continue;
+                if (s->ownerId == firstOwner) totalActiveOwner1++;
+                else totalActiveOwner2++;
+                if (ord.maneuver == TacticalManeuver::Hail) {
+                    if (s->ownerId == firstOwner) hailCountOwner1++;
+                    else hailCountOwner2++;
+                    if (ShipRoundStatus* st = getStatus(s->fleetId)) st->hailedThisRound = true;
+                }
+                if (s->isCloaked && isAttackManeuver(ord.maneuver)) {
+                    s->isCloaked = false;
+                    if (ShipRoundStatus* st = getStatus(s->fleetId)) st->decloakedThisRound = true;
+                }
+            }
+            // Legacy: the truce ends the encounter but this round's movement and fire still resolve.
+            truce = totalActiveOwner1 > 0 && totalActiveOwner2 > 0 &&
+                hailCountOwner1 == totalActiveOwner1 && hailCountOwner2 == totalActiveOwner2;
+        } else {
+            std::map<int, int> activeCount, hailCount;
+            for (const auto& planned : activeOrders) {
+                const Ship* s = getShip(planned.order.fleetId);
+                if (!s || !shipActive(*s)) continue;
+                ++activeCount[s->ownerId];
+                if (planned.order.maneuver == TacticalManeuver::Hail) {
+                    ++hailCount[s->ownerId];
+                    if (ShipRoundStatus* st = getStatus(s->fleetId)) st->hailedThisRound = true;
+                }
+            }
+            if (activeCount.size() == 2) {
+                const int a = activeCount.begin()->first, b = std::next(activeCount.begin())->first;
+                const bool aAll = hailCount[a] == activeCount[a], bAll = hailCount[b] == activeCount[b];
+                truce = (aAll && bAll) ||
+                    (aAll && b != controllingOwnerId && aiAcceptsHail(b, a)) ||
+                    (bAll && a != controllingOwnerId && aiAcceptsHail(a, b));
+            }
+            if (!truce) {
+                for (const auto& planned : activeOrders) {
+                    Ship* s = getShip(planned.order.fleetId);
+                    if (s && shipActive(*s) && s->isCloaked && isAttackManeuver(planned.order.maneuver)) {
+                        s->isCloaked = false;
+                        if (ShipRoundStatus* st = getStatus(s->fleetId)) st->decloakedThisRound = true;
+                    }
+                }
+            }
+        }
+        if (truce) {
             round.hailedTruce = true;
             isFinished = true;
             winnerOwnerId = 0;
             round.encounterEnded = true;
             round.winnerOwnerId = 0;
         }
+        const bool combatPhases = !(modern && truce);
 
         // 2. Maneuver & Movement Phase
-        for (const auto& ord : activeOrders) {
+        for (const auto& planned : activeOrders) {
+            if (!combatPhases) break;
+            const Order& ord = planned.order;
             Ship* s = getShip(ord.fleetId);
-            if (!s || !s->isAlive || s->retreated || !s->activeInCombat) continue;
+            if (!s || !shipActive(*s)) continue;
 
             ShipRoundStatus* st = getStatus(s->fleetId);
-            if (st) {
-                st->maneuverExecuted = ord.maneuver;
-                st->targetFleetId = ord.targetFleetId;
-                st->intermediatePosition = s->position;
-            }
+            if (modern && ord.maneuver != TacticalManeuver::Retreat) s->retreatSteps = 0; // Disengage aborted
 
             if (ord.maneuver == TacticalManeuver::Retreat) {
-                s->retreatSteps++;
-                // Move towards deployment edge
                 const int retreatTargetX = (s->ownerId == firstOwner) ? 0 : (arenaWidth - 1);
-                const int dx = (retreatTargetX > s->position.x) - (retreatTargetX < s->position.x);
-                s->position.x += dx * s->speed;
-                s->position.x = std::clamp(s->position.x, 0, arenaWidth - 1);
-
-                if (st) {
-                    st->facingYaw = (s->ownerId == firstOwner) ? 180 : 0;
-                }
-
-                // If reached boundary or retreated for at least 2 rounds, disengage!
-                if (s->position.x == retreatTargetX || s->retreatSteps >= 2) {
-                    s->retreated = true;
-                    s->activeInCombat = false;
-                    round.retreatedFleetIds.push_back(s->fleetId);
-                    if (st) st->retreatedThisRound = true;
+                if (st) st->facingYaw = (s->ownerId == firstOwner) ? 180 : 0;
+                if (modern) {
+                    if (s->retreatSteps >= 1) {
+                        // Survived a full round disengaging: jump out before fire.
+                        s->retreated = true;
+                        s->activeInCombat = false;
+                        round.retreatedFleetIds.push_back(s->fleetId);
+                        if (st) st->retreatedThisRound = true;
+                    } else {
+                        s->retreatSteps = 1;
+                        const int dx = (retreatTargetX > s->position.x) - (retreatTargetX < s->position.x);
+                        s->position.x = std::clamp(s->position.x + dx * s->speed, 0, arenaWidth - 1);
+                    }
+                } else {
+                    s->retreatSteps++;
+                    const int dx = (retreatTargetX > s->position.x) - (retreatTargetX < s->position.x);
+                    s->position.x += dx * s->speed;
+                    s->position.x = std::clamp(s->position.x, 0, arenaWidth - 1);
+                    // If reached boundary or retreated for at least 2 rounds, disengage!
+                    if (s->position.x == retreatTargetX || s->retreatSteps >= 2) {
+                        s->retreated = true;
+                        s->activeInCombat = false;
+                        round.retreatedFleetIds.push_back(s->fleetId);
+                        if (st) st->retreatedThisRound = true;
+                    }
                 }
             } else if (ord.maneuver == TacticalManeuver::Hold) {
-                // Stationary: shield recharge boost (+10% max shields)
-                const int recharge = std::max(1, s->maxShields / 10);
-                s->shields = std::min(s->maxShields, s->shields + recharge);
-                if (st) {
-                    st->facingYaw = (s->ownerId == firstOwner) ? 0 : 180;
+                if (!modern) {
+                    // Legacy: stationary shield recharge boost (+10% max shields)
+                    const int recharge = std::max(1, s->maxShields / 10);
+                    s->shields = std::min(s->maxShields, s->shields + recharge);
                 }
+                if (st) st->facingYaw = (s->ownerId == firstOwner) ? 0 : 180;
             } else if (ord.maneuver == TacticalManeuver::Hail) {
                 // Stationary defensive stance for peaceful hail
-                if (st) {
-                    st->facingYaw = (s->ownerId == firstOwner) ? 0 : 180;
-                }
+                if (st) st->facingYaw = (s->ownerId == firstOwner) ? 0 : 180;
             } else {
                 // Find effective movement target
                 const Ship* target = getShip(ord.targetFleetId);
-                if (!target || !target->isAlive || target->retreated || !target->activeInCombat) {
+                if (!target || !shipActive(*target)) {
+                    // Legacy rules kept the stale pointer when no other hostile remained.
+                    if (modern) target = nullptr;
                     // Auto-target closest living active hostile
                     int minD = std::numeric_limits<int>::max();
                     for (const auto& other : ships) {
-                        if (!other.isAlive || other.retreated || !other.activeInCombat || other.ownerId == s->ownerId) continue;
+                        if (!shipActive(other) || other.ownerId == s->ownerId) continue;
                         const int d = std::max(std::abs(s->position.x - other.position.x),
                                                std::abs(s->position.y - other.position.y));
                         if (d < minD) { minD = d; target = &other; }
@@ -653,10 +776,8 @@ struct Encounter {
                     }
 
                     if (st) {
-                        const int dx = target->position.x - s->position.x;
-                        const int dy = target->position.y - s->position.y;
-                        const double angle = std::atan2(static_cast<double>(dy), static_cast<double>(dx)) * 180.0 / 3.141592653589793;
-                        st->facingYaw = static_cast<int>(angle + 360.0) % 360;
+                        st->facingYaw = facingDegrees(target->position.x - s->position.x,
+                                                      target->position.y - s->position.y);
                     }
                 }
             }
@@ -669,23 +790,28 @@ struct Encounter {
             int beamDamage = 0;
             int torpedoDamage = 0;
             bool isRam = false;
+            int recoil = 0;
         };
         std::vector<Salvo> plannedSalvos;
 
-        for (const auto& ord : activeOrders) {
+        for (const auto& planned : activeOrders) {
+            if (!combatPhases) break;
+            const Order& ord = planned.order;
             Ship* attacker = getShip(ord.fleetId);
-            if (!attacker || !attacker->isAlive || attacker->retreated || !attacker->activeInCombat ||
+            if (!attacker || !shipActive(*attacker) ||
                 ord.maneuver == TacticalManeuver::Retreat || ord.maneuver == TacticalManeuver::Hail) {
                 continue;
             }
+            if (modern && attacker->isCloaked) continue; // Cloaked ships cannot fire
 
             // Find target
             const Ship* target = getShip(ord.targetFleetId);
-            if (!target || !target->isAlive || target->retreated || !target->activeInCombat) {
+            if (!target || !shipActive(*target)) {
+                if (modern) target = nullptr; // Legacy rules fired at the stale target (no effect).
                 // Auto-retarget closest active enemy
                 int minD = std::numeric_limits<int>::max();
                 for (const auto& other : ships) {
-                    if (!other.isAlive || other.retreated || !other.activeInCombat || other.ownerId == attacker->ownerId) continue;
+                    if (!shipActive(other) || other.ownerId == attacker->ownerId) continue;
                     if (other.isCloaked) continue; // Cloaked ships cannot be targeted
                     const int d = std::max(std::abs(attacker->position.x - other.position.x),
                                            std::abs(attacker->position.y - other.position.y));
@@ -699,19 +825,19 @@ struct Encounter {
 
             // Ram execution: if reached point-blank / collision cell, inflict kinetic ramming damage
             if (ord.maneuver == TacticalManeuver::Ram && dist <= 1) {
-                const int ramDmg = attacker->hull; // Impact damage proportional to attacker hull
                 Salvo s;
                 s.attackerFleetId = attacker->fleetId;
                 s.defenderFleetId = target->fleetId;
-                s.beamDamage = ramDmg;
-                s.torpedoDamage = 0;
+                s.beamDamage = attacker->hull; // Impact damage equals the rammer's hull
                 s.isRam = true;
+                s.recoil = modern ? target->hull + target->shields : 0; // Pre-impact hull + shields
                 plannedSalvos.push_back(s);
-
-                ShipRoundStatus* st = getStatus(attacker->fleetId);
-                if (st) st->beamDamageDealt = ramDmg;
+                if (ShipRoundStatus* st = getStatus(attacker->fleetId)) st->beamDamageDealt = s.beamDamage;
                 continue;
             }
+
+            ShipRoundStatus* attackerStatus = getStatus(attacker->fleetId);
+            const bool ambush = attackerStatus && attackerStatus->decloakedThisRound;
 
             // Beam weapon calculation (optimal at range 1-2, dropoff beyond)
             int beamDmg = 0;
@@ -742,10 +868,7 @@ struct Encounter {
                 }
 
                 // Decloak ambush bonus (+25% surprise strike)
-                ShipRoundStatus* st = getStatus(attacker->fleetId);
-                if (st && st->decloakedThisRound) {
-                    beamDmg = (beamDmg * 125) / 100;
-                }
+                if (ambush) beamDmg = (beamDmg * 125) / 100;
             }
 
             // Torpedo weapon calculation (optimal at range 2-5, arming penalty at range 1)
@@ -769,10 +892,7 @@ struct Encounter {
                     torpDmg = (torpDmg * 70) / 100;
                 }
 
-                ShipRoundStatus* st = getStatus(attacker->fleetId);
-                if (st && st->decloakedThisRound) {
-                    torpDmg = (torpDmg * 125) / 100;
-                }
+                if (ambush) torpDmg = (torpDmg * 125) / 100;
             }
 
             // Deterministic dispersion variation (+/- 5%)
@@ -790,50 +910,75 @@ struct Encounter {
             s.defenderFleetId = target->fleetId;
             s.beamDamage = beamDmg;
             s.torpedoDamage = torpDmg;
-            s.isRam = false;
             plannedSalvos.push_back(s);
 
-            ShipRoundStatus* st = getStatus(attacker->fleetId);
-            if (st) {
-                st->beamDamageDealt = beamDmg;
-                st->torpedoDamageDealt = torpDmg;
+            if (attackerStatus) {
+                attackerStatus->beamDamageDealt = beamDmg;
+                attackerStatus->torpedoDamageDealt = torpDmg;
             }
         }
 
         // 4. Apply damage simultaneously to defenders (Shields before Hull)
-        std::map<int, int> incomingDamage;
+        std::map<int, int> incomingDamage, impactDamage;
         for (const auto& salvo : plannedSalvos) {
+            if (modern && salvo.isRam) {
+                impactDamage[salvo.defenderFleetId] += salvo.beamDamage;
+                impactDamage[salvo.attackerFleetId] += salvo.recoil;
+                round.salvos.push_back({salvo.attackerFleetId, salvo.defenderFleetId, salvo.beamDamage, 0, false, true});
+                round.salvos.push_back({salvo.defenderFleetId, salvo.attackerFleetId, salvo.recoil, 0, false, true});
+                continue;
+            }
             incomingDamage[salvo.defenderFleetId] += (salvo.beamDamage + salvo.torpedoDamage);
-            round.salvos.push_back({salvo.attackerFleetId, salvo.defenderFleetId, salvo.beamDamage, salvo.torpedoDamage, false});
+            round.salvos.push_back({salvo.attackerFleetId, salvo.defenderFleetId, salvo.beamDamage, salvo.torpedoDamage, false, false});
         }
 
         for (auto& ship : ships) {
-            if (!ship.isAlive || ship.retreated || !ship.activeInCombat) continue;
+            if (!combatPhases) break;
+            if (!shipActive(ship)) continue;
 
             auto it = incomingDamage.find(ship.fleetId);
             int rawDamage = (it != incomingDamage.end()) ? it->second : 0;
 
             // Defender maneuver defensive modifier
-            Order defOrder = getOrder(ship.fleetId);
-            if (defOrder.maneuver == TacticalManeuver::Circle) {
-                rawDamage = (rawDamage * 75) / 100; // -25% incoming damage due to evasion
-            } else if (defOrder.maneuver == TacticalManeuver::Charge) {
-                rawDamage = (rawDamage * 115) / 100; // +15% incoming damage due to direct approach
-            } else if (defOrder.maneuver == TacticalManeuver::Hold) {
-                rawDamage = (rawDamage * 90) / 100;  // -10% incoming damage (reinforced shields)
-            } else if (defOrder.maneuver == TacticalManeuver::Harry) {
-                rawDamage = (rawDamage * 80) / 100;  // -20% incoming damage (evasive close circling)
-            } else if (defOrder.maneuver == TacticalManeuver::Flyby) {
-                rawDamage = (rawDamage * 85) / 100;  // -15% incoming damage (high-speed pass)
-            } else if (defOrder.maneuver == TacticalManeuver::Strafe) {
-                rawDamage = (rawDamage * 110) / 100; // +10% exposure on close strafe
-            } else if (defOrder.maneuver == TacticalManeuver::Evade) {
-                rawDamage = (rawDamage * 65) / 100;  // -35% incoming damage (maximum evasive stance)
+            if (modern) {
+                const Planned* p = plannedFor(ship.fleetId);
+                const TacticalManeuver m = p ? p->order.maneuver : TacticalManeuver::Engage;
+                if (m == TacticalManeuver::Circle) rawDamage = (rawDamage * 75) / 100;
+                else if (m == TacticalManeuver::Charge) rawDamage = (rawDamage * 115) / 100;
+                else if (m == TacticalManeuver::Hold) rawDamage = (rawDamage * 80) / 100;   // Brace
+                else if (m == TacticalManeuver::Harry) rawDamage = (rawDamage * 80) / 100;
+                else if (m == TacticalManeuver::Flyby) rawDamage = (rawDamage * 85) / 100;
+                else if (m == TacticalManeuver::Strafe) rawDamage = (rawDamage * 110) / 100;
+                else if (m == TacticalManeuver::Evade) rawDamage = (rawDamage * 65) / 100;
+                else if (m == TacticalManeuver::Retreat) rawDamage = (rawDamage * 75) / 100; // Disengaging evasion
+            } else {
+                // Legacy: resolution consulted only player/standing orders (AI ships counted as Engage).
+                Order defOrder = getOrder(ship.fleetId);
+                if (defOrder.maneuver == TacticalManeuver::Circle) {
+                    rawDamage = (rawDamage * 75) / 100; // -25% incoming damage due to evasion
+                } else if (defOrder.maneuver == TacticalManeuver::Charge) {
+                    rawDamage = (rawDamage * 115) / 100; // +15% incoming damage due to direct approach
+                } else if (defOrder.maneuver == TacticalManeuver::Hold) {
+                    rawDamage = (rawDamage * 90) / 100;  // -10% incoming damage (reinforced shields)
+                } else if (defOrder.maneuver == TacticalManeuver::Harry) {
+                    rawDamage = (rawDamage * 80) / 100;  // -20% incoming damage (evasive close circling)
+                } else if (defOrder.maneuver == TacticalManeuver::Flyby) {
+                    rawDamage = (rawDamage * 85) / 100;  // -15% incoming damage (high-speed pass)
+                } else if (defOrder.maneuver == TacticalManeuver::Strafe) {
+                    rawDamage = (rawDamage * 110) / 100; // +10% exposure on close strafe
+                } else if (defOrder.maneuver == TacticalManeuver::Evade) {
+                    rawDamage = (rawDamage * 65) / 100;  // -35% incoming damage (maximum evasive stance)
+                }
             }
 
             // Cloak defense: cloaked ships take -50% area damage
             if (ship.isCloaked) {
                 rawDamage = (rawDamage * 50) / 100;
+            }
+
+            // Rules 2 ram impact / recoil is a collision: no evasion or cloak reduction.
+            if (auto impact = impactDamage.find(ship.fleetId); impact != impactDamage.end()) {
+                rawDamage += impact->second;
             }
 
             ShipRoundStatus* st = getStatus(ship.fleetId);
@@ -878,7 +1023,7 @@ struct Encounter {
         if (!round.hailedTruce) {
             std::map<int, int> activeShipsByOwner;
             for (const auto& s : ships) {
-                if (s.isAlive && !s.retreated && s.activeInCombat) {
+                if (shipActive(s)) {
                     activeShipsByOwner[s.ownerId]++;
                 }
             }
@@ -903,7 +1048,7 @@ struct Encounter {
                 for (const auto& [owner, count] : activeShipsByOwner) {
                     int totalEhp = 0;
                     for (const auto& s : ships) {
-                        if (s.ownerId == owner && s.isAlive && !s.retreated && s.activeInCombat) {
+                        if (s.ownerId == owner && shipActive(s)) {
                             totalEhp += s.hull + s.shields;
                         }
                     }
@@ -1044,6 +1189,9 @@ inline Encounter constructEncounter(const GameState& state,
     enc.strategicTurn = state.turn;
     enc.controllingOwnerId = state.playerEmpire;
     enc.resultsApplied = false;
+    enc.rulesVersion = RemasterTacticalRules;
+    enc.relationAtWar = relation->atWar;
+    enc.relationTrust = std::clamp(relation->trust, 0, 100);
 
     // Helper to evaluate if a safe supplied retreat sector exists
     auto hasSafeEscape = [&](const Fleet& f) {
@@ -1142,6 +1290,25 @@ inline Encounter constructEncounter(const GameState& state,
             s.canCloak = true;
             s.isCloaked = true;
         }
+
+        // Strategic orders become standing tactical orders (remaster rules): a
+        // strategic retreat/withdraw stance disengages under fire, Aggressive
+        // charges, Defensive evades, and an explicit attack target is engaged.
+        std::optional<TacticalManeuver> standing;
+        int standingTarget = 0;
+        const bool targetPresent = f->attackTarget > 0 && std::any_of(matched.begin(), matched.end(),
+            [&](const Fleet* other) { return other->id == f->attackTarget && other->ownerId != f->ownerId; });
+        if ((f->retreat || f->stance == TacticalStance::Withdraw) && s.canRetreat) {
+            standing = TacticalManeuver::Retreat;
+        } else if (f->stance == TacticalStance::Aggressive) {
+            standing = TacticalManeuver::Charge;
+        } else if (f->stance == TacticalStance::Defensive) {
+            standing = TacticalManeuver::Evade;
+        } else if (targetPresent) {
+            standing = TacticalManeuver::Engage;
+        }
+        if (standing && *standing != TacticalManeuver::Retreat && targetPresent) standingTarget = f->attackTarget;
+        if (standing) enc.standingOrders[f->id] = Order{f->id, standingTarget, *standing};
 
         enc.ships.push_back(std::move(s));
     }
@@ -1370,19 +1537,28 @@ inline void applyEncounterResults(GameState& state, const Encounter& encounter) 
 // -----------------------------------------------------------------------------
 // Serialization & Deserialization (Mid-battle save and replay)
 // -----------------------------------------------------------------------------
+// TACTICAL_ENCOUNTER_V2 (written by this build) adds RULES, RELATION, STANDING,
+// per-status presentation fields (decloak/hail/AI flags, intermediate position,
+// facing), per-round truce flag and SALVOS. TACTICAL_ENCOUNTER_V1 is still read:
+// such encounters use legacy rules and rebuild standing orders from the last
+// round, exactly as the schema-11 client did.
 
 inline std::string escapeString(const std::string& str) {
+    if (str.empty()) return "\\e"; // Explicit empty token keeps whitespace-delimited parsing aligned.
     std::ostringstream ss;
     for (char c : str) {
         if (c == ' ') ss << "\\s";
         else if (c == '\\') ss << "\\\\";
         else if (c == '\n') ss << "\\n";
+        else if (c == '\t') ss << "\\t";
+        else if (c == '\r') ss << "\\r";
         else ss << c;
     }
     return ss.str();
 }
 
 inline std::string unescapeString(const std::string& str) {
+    if (str == "\\e") return {};
     std::string out;
     for (std::size_t i = 0; i < str.size(); ++i) {
         if (str[i] == '\\' && i + 1 < str.size()) {
@@ -1390,6 +1566,8 @@ inline std::string unescapeString(const std::string& str) {
             if (next == 's') { out.push_back(' '); i++; }
             else if (next == '\\') { out.push_back('\\'); i++; }
             else if (next == 'n') { out.push_back('\n'); i++; }
+            else if (next == 't') { out.push_back('\t'); i++; }
+            else if (next == 'r') { out.push_back('\r'); i++; }
             else { out.push_back(next); i++; }
         } else {
             out.push_back(str[i]);
@@ -1398,9 +1576,16 @@ inline std::string unescapeString(const std::string& str) {
     return out;
 }
 
-inline std::string serializeEncounter(const Encounter& encounter) {
+namespace detail {
+// presentation=false omits fields that do not affect outcomes (and standing
+// orders); legacy-rules replay verification compares this projection because
+// V1 text never carried those fields.
+inline std::string writeEncounter(const Encounter& encounter, bool presentation) {
     std::ostringstream ss;
-    ss << "TACTICAL_ENCOUNTER_V1\n";
+    ss.imbue(std::locale::classic());
+    ss << "TACTICAL_ENCOUNTER_V2\n";
+    ss << "RULES " << encounter.rulesVersion << "\n";
+    ss << "RELATION " << (encounter.relationAtWar ? 1 : 0) << " " << encounter.relationTrust << "\n";
     ss << "ARENA " << encounter.arenaWidth << " " << encounter.arenaHeight << "\n";
     ss << "ROUNDS " << encounter.currentRound << " " << encounter.maxRounds << " "
        << (encounter.isFinished ? 1 : 0) << " " << encounter.winnerOwnerId << "\n";
@@ -1437,10 +1622,18 @@ inline std::string serializeEncounter(const Encounter& encounter) {
     for (const auto& o : encounter.pendingOrders) {
         ss << o.fleetId << " " << o.targetFleetId << " " << static_cast<int>(o.maneuver) << "\n";
     }
+    if (presentation) {
+        ss << "STANDING " << encounter.standingOrders.size() << "\n";
+        for (const auto& [fid, o] : encounter.standingOrders) {
+            ss << o.fleetId << " " << o.targetFleetId << " " << static_cast<int>(o.maneuver) << "\n";
+        }
+    }
 
     ss << "ROUND_RESULTS " << encounter.rounds.size() << "\n";
     for (const auto& r : encounter.rounds) {
-        ss << "ROUND " << r.roundIndex << " " << (r.encounterEnded ? 1 : 0) << " " << r.winnerOwnerId << "\n";
+        ss << "ROUND " << r.roundIndex << " " << (r.encounterEnded ? 1 : 0) << " " << r.winnerOwnerId;
+        if (presentation) ss << " " << (r.hailedTruce ? 1 : 0);
+        ss << "\n";
         ss << "STATUSES " << r.shipStatuses.size() << "\n";
         for (const auto& st : r.shipStatuses) {
             ss << st.fleetId << " "
@@ -1459,7 +1652,15 @@ inline std::string serializeEncounter(const Encounter& encounter) {
                << static_cast<int>(st.maneuverExecuted) << " "
                << st.targetFleetId << " "
                << (st.destroyedThisRound ? 1 : 0) << " "
-               << (st.retreatedThisRound ? 1 : 0) << "\n";
+               << (st.retreatedThisRound ? 1 : 0);
+            if (presentation) {
+                ss << " " << (st.decloakedThisRound ? 1 : 0)
+                   << " " << (st.hailedThisRound ? 1 : 0)
+                   << " " << (st.aiControlled ? 1 : 0)
+                   << " " << st.intermediatePosition.x << " " << st.intermediatePosition.y
+                   << " " << st.facingYaw;
+            }
+            ss << "\n";
         }
         ss << "DAMAGE " << r.damage.size() << "\n";
         for (const auto& d : r.damage) {
@@ -1472,6 +1673,13 @@ inline std::string serializeEncounter(const Encounter& encounter) {
         ss << "RETREATED " << r.retreatedFleetIds.size();
         for (int id : r.retreatedFleetIds) ss << " " << id;
         ss << "\n";
+        if (presentation) {
+            ss << "SALVOS " << r.salvos.size() << "\n";
+            for (const auto& v : r.salvos) {
+                ss << v.attackerFleetId << " " << v.defenderFleetId << " " << v.beamDamage << " "
+                   << v.torpedoDamage << " " << (v.absorbedByShields ? 1 : 0) << " " << (v.ram ? 1 : 0) << "\n";
+            }
+        }
     }
 
     // Extended section: groups and cloak states
@@ -1494,75 +1702,140 @@ inline std::string serializeEncounter(const Encounter& encounter) {
     ss << "END\n";
     return ss.str();
 }
+} // namespace detail
+
+inline std::string serializeEncounter(const Encounter& encounter) {
+    return detail::writeEncounter(encounter, true);
+}
 
 inline Encounter deserializeEncounter(const std::string& text) {
+    if (text.size() > 16 * 1024 * 1024) {
+        throw std::invalid_argument("Tactical encounter serialization exceeds size limit.");
+    }
     std::istringstream ss(text);
+    ss.imbue(std::locale::classic());
     std::string tag;
     if (!(ss >> tag) || (tag != "TACTICAL_ENCOUNTER_V1" && tag != "TACTICAL_ENCOUNTER_V2")) {
         throw std::invalid_argument("Invalid or corrupt tactical encounter serialization header.");
     }
+    const bool v2 = tag == "TACTICAL_ENCOUNTER_V2";
+
+    constexpr int MaxStat = 1000000;
+    auto fail = [](const std::string& message) { throw std::invalid_argument(message); };
+    auto boolean = [&](int value, const char* what) {
+        if (value != 0 && value != 1) fail(std::string("Invalid boolean value in ") + what + " (expected 0 or 1).");
+        return value == 1;
+    };
 
     Encounter enc;
+    enc.rulesVersion = v2 ? RemasterTacticalRules : LegacyTacticalRules;
     bool hasArena = false, hasRounds = false, hasSector = false, hasRng = false;
-    [[maybe_unused]] bool hasController = false; bool hasShips = false, hasOrders = false, hasRoundResults = false, hasEnd = false;
-    [[maybe_unused]] bool hasGroups = false; [[maybe_unused]] bool hasCloakState = false;
+    bool hasController = false, hasShips = false, hasOrders = false, hasRoundResults = false, hasEnd = false;
+    bool hasRules = false, hasRelation = false, hasStanding = false;
+    bool hasGroups = false, hasCloakState = false;
+    std::set<int> owners;
+
+    auto requireShip = [&](int fleetId, const char* what) -> Ship& {
+        Ship* s = enc.getShip(fleetId);
+        if (!s) fail(std::string(what) + " refers to unknown fleet ID " + std::to_string(fleetId));
+        return *s;
+    };
+    auto readOrder = [&](const char* what) {
+        Order o;
+        int man = 0;
+        if (!(ss >> o.fleetId >> o.targetFleetId >> man)) fail(std::string("Failed to parse ") + what + " record.");
+        if (!maneuverValid(man)) fail(std::string("Invalid maneuver value in ") + what + ": " + std::to_string(man));
+        o.maneuver = static_cast<TacticalManeuver>(man);
+        const Ship& s = requireShip(o.fleetId, what);
+        if (o.targetFleetId != 0) {
+            const Ship& t = requireShip(o.targetFleetId, what);
+            if (t.ownerId == s.ownerId) fail(std::string(what) + " targets a friendly ship.");
+        }
+        return o;
+    };
 
     while (ss >> tag) {
-        if (tag == "ARENA") {
+        if (tag == "RULES") {
+            if (!v2 || hasRules) fail("Unexpected RULES section.");
+            if (!(ss >> enc.rulesVersion) ||
+                (enc.rulesVersion != LegacyTacticalRules && enc.rulesVersion != RemasterTacticalRules)) {
+                fail("Unknown tactical rules version.");
+            }
+            hasRules = true;
+        } else if (tag == "RELATION") {
+            if (!v2 || hasRelation) fail("Unexpected RELATION section.");
+            int atWar = 0;
+            if (!(ss >> atWar >> enc.relationTrust)) fail("Failed to parse RELATION section.");
+            enc.relationAtWar = boolean(atWar, "RELATION");
+            if (enc.relationTrust < 0 || enc.relationTrust > 100) fail("RELATION trust out of bounds [0, 100].");
+            hasRelation = true;
+        } else if (tag == "ARENA") {
+            if (hasArena) fail("Duplicate ARENA section.");
             if (!(ss >> enc.arenaWidth >> enc.arenaHeight)) {
-                throw std::invalid_argument("Failed to parse ARENA dimensions.");
+                fail("Failed to parse ARENA dimensions.");
             }
             if (enc.arenaWidth <= 0 || enc.arenaWidth > 100 || enc.arenaHeight <= 0 || enc.arenaHeight > 100) {
-                throw std::invalid_argument("ARENA dimensions out of valid bounds [1, 100].");
+                fail("ARENA dimensions out of valid bounds [1, 100].");
             }
             hasArena = true;
         } else if (tag == "ROUNDS") {
+            if (hasRounds) fail("Duplicate ROUNDS section.");
             int fin = 0;
             if (!(ss >> enc.currentRound >> enc.maxRounds >> fin >> enc.winnerOwnerId)) {
-                throw std::invalid_argument("Failed to parse ROUNDS section.");
+                fail("Failed to parse ROUNDS section.");
             }
             if (fin != 0 && fin != 1) {
-                throw std::invalid_argument("Invalid boolean for isFinished in ROUNDS (expected 0 or 1).");
+                fail("Invalid boolean for isFinished in ROUNDS (expected 0 or 1).");
             }
-            if (enc.currentRound < 0 || enc.maxRounds <= 0 || enc.maxRounds > 500) {
-                throw std::invalid_argument("ROUNDS counts out of valid bounds.");
+            if (enc.currentRound < 0 || enc.maxRounds <= 0 || enc.maxRounds > 500 || enc.currentRound > enc.maxRounds) {
+                fail("ROUNDS counts out of valid bounds.");
             }
+            if (enc.winnerOwnerId < 0 || enc.winnerOwnerId > 5) fail("ROUNDS winner out of bounds.");
             enc.isFinished = (fin == 1);
             hasRounds = true;
         } else if (tag == "SECTOR") {
+            if (hasSector) fail("Duplicate SECTOR section.");
             if (!(ss >> enc.sectorX >> enc.sectorY >> enc.strategicTurn)) {
-                throw std::invalid_argument("Failed to parse SECTOR section.");
+                fail("Failed to parse SECTOR section.");
             }
-            if (enc.strategicTurn < 0) {
-                throw std::invalid_argument("Negative strategic turn in SECTOR.");
+            if (enc.strategicTurn < 0 || enc.strategicTurn > 1000000) {
+                fail("Strategic turn out of bounds in SECTOR.");
+            }
+            if (enc.sectorX < 0 || enc.sectorX >= 64 || enc.sectorY < 0 || enc.sectorY >= 64) {
+                fail("SECTOR coordinates out of bounds.");
             }
             hasSector = true;
         } else if (tag == "RNG") {
+            if (hasRng) fail("Duplicate RNG section.");
             if (!(ss >> enc.initialSeed >> enc.rngState)) {
-                throw std::invalid_argument("Failed to parse RNG section.");
+                fail("Failed to parse RNG section.");
             }
             hasRng = true;
         } else if (tag == "CONTROLLER") {
+            if (hasController) fail("Duplicate CONTROLLER section.");
             int applied = 0;
             if (!(ss >> enc.controllingOwnerId >> applied)) {
-                throw std::invalid_argument("Failed to parse CONTROLLER section.");
+                fail("Failed to parse CONTROLLER section.");
             }
             if (applied != 0 && applied != 1) {
-                throw std::invalid_argument("Invalid boolean for resultsApplied in CONTROLLER (expected 0 or 1).");
+                fail("Invalid boolean for resultsApplied in CONTROLLER (expected 0 or 1).");
+            }
+            if (enc.controllingOwnerId < 1 || enc.controllingOwnerId > 5) {
+                fail("CONTROLLER owner out of bounds [1, 5].");
             }
             enc.resultsApplied = (applied == 1);
             hasController = true;
         } else if (tag == "SHIPS") {
+            if (hasShips || !hasArena) fail("SHIPS section is duplicated or precedes ARENA.");
             std::int64_t count = 0;
             if (!(ss >> count)) {
-                throw std::invalid_argument("Failed to parse SHIPS count.");
+                fail("Failed to parse SHIPS count.");
             }
             if (count < 2 || count > 256) {
-                throw std::invalid_argument("SHIPS count out of valid bounds [2, 256]: " + std::to_string(count));
+                fail("SHIPS count out of valid bounds [2, 256]: " + std::to_string(count));
             }
             enc.ships.clear();
             std::set<int> seenFleetIds;
-            std::set<int> seenOwners;
 
             for (std::int64_t i = 0; i < count; ++i) {
                 Ship s;
@@ -1575,78 +1848,94 @@ inline Encounter deserializeEncounter(const std::string& text) {
                          >> s.position.x >> s.position.y
                          >> alive >> active >> ret >> s.retreatSteps
                          >> canRet >> sc >> s.referenceShipId >> escName)) {
-                    throw std::invalid_argument("Failed to parse ship record " + std::to_string(i));
+                    fail("Failed to parse ship record " + std::to_string(i));
                 }
 
                 // Strict boolean verification
                 if ((alive != 0 && alive != 1) || (active != 0 && active != 1) ||
                     (ret != 0 && ret != 1) || (canRet != 0 && canRet != 1)) {
-                    throw std::invalid_argument("Invalid boolean value in ship record " + std::to_string(i));
+                    fail("Invalid boolean value in ship record " + std::to_string(i));
                 }
 
                 // Check duplicate fleet IDs
-                if (!seenFleetIds.insert(s.fleetId).second) {
-                    throw std::invalid_argument("Duplicate fleet ID in SHIPS section: " + std::to_string(s.fleetId));
+                if (s.fleetId <= 0 || !seenFleetIds.insert(s.fleetId).second) {
+                    fail("Invalid or duplicate fleet ID in SHIPS section: " + std::to_string(s.fleetId));
                 }
-                seenOwners.insert(s.ownerId);
+                if (s.ownerId < 1 || s.ownerId > 5) fail("Ship owner out of bounds [1, 5].");
+                owners.insert(s.ownerId);
 
                 // Bounds & consistency validation
-                if (s.maxHull <= 0 || s.hull < 0 || s.hull > s.maxHull || s.initialHull < 0 || s.initialHull > s.maxHull) {
-                    throw std::invalid_argument("Invalid hull values for ship " + std::to_string(s.fleetId));
+                if (s.maxHull <= 0 || s.maxHull > MaxStat || s.hull < 0 || s.hull > s.maxHull ||
+                    s.initialHull < 0 || s.initialHull > s.maxHull) {
+                    fail("Invalid hull values for ship " + std::to_string(s.fleetId));
                 }
-                if (s.maxShields < 0 || s.shields < 0 || s.shields > s.maxShields || s.initialShields < 0 || s.initialShields > s.maxShields) {
-                    throw std::invalid_argument("Invalid shield values for ship " + std::to_string(s.fleetId));
+                if (s.maxShields < 0 || s.maxShields > MaxStat || s.shields < 0 || s.shields > s.maxShields ||
+                    s.initialShields < 0 || s.initialShields > s.maxShields) {
+                    fail("Invalid shield values for ship " + std::to_string(s.fleetId));
                 }
+                if (s.beamAttack < 0 || s.beamAttack > MaxStat || s.torpedoAttack < 0 || s.torpedoAttack > MaxStat) {
+                    fail("Invalid attack values for ship " + std::to_string(s.fleetId));
+                }
+                if (s.speed < 1 || s.speed > 10) fail("Invalid speed for ship " + std::to_string(s.fleetId));
+                if (s.retreatSteps < 0 || s.retreatSteps > 1000) fail("Invalid retreat steps for ship " + std::to_string(s.fleetId));
                 if (s.position.x < 0 || s.position.x >= enc.arenaWidth || s.position.y < 0 || s.position.y >= enc.arenaHeight) {
-                    throw std::invalid_argument("Ship coordinates out of arena bounds: (" +
+                    fail("Ship coordinates out of arena bounds: (" +
                         std::to_string(s.position.x) + "," + std::to_string(s.position.y) + ")");
+                }
+                if (!isShip(static_cast<Building>(sc))) fail("Invalid ship class for ship " + std::to_string(s.fleetId));
+                if (s.referenceShipId < -1 ||
+                    s.referenceShipId >= static_cast<int>(referenceData::ShipCatalogue.size())) {
+                    fail("Invalid reference ship for ship " + std::to_string(s.fleetId));
                 }
 
                 s.isAlive = (alive == 1);
                 s.activeInCombat = (active == 1);
                 s.retreated = (ret == 1);
                 s.canRetreat = (canRet == 1);
+                if (s.isAlive != (s.hull > 0)) fail("Ship alive flag disagrees with hull for ship " + std::to_string(s.fleetId));
+                if (s.activeInCombat && (!s.isAlive || s.retreated)) fail("Inactive ship marked active: " + std::to_string(s.fleetId));
                 s.shipClass = static_cast<Building>(sc);
                 s.name = unescapeString(escName);
                 enc.ships.push_back(s);
             }
 
             // Exactly 2 owners required
-            if (seenOwners.size() != 2) {
-                throw std::invalid_argument("SHIPS section must contain exactly 2 distinct owners (found " +
-                    std::to_string(seenOwners.size()) + ")");
+            if (owners.size() != 2) {
+                fail("SHIPS section must contain exactly 2 distinct owners (found " +
+                    std::to_string(owners.size()) + ")");
             }
             hasShips = true;
-        } else if (tag == "ORDERS") {
+        } else if (tag == "ORDERS" || tag == "STANDING") {
+            const bool standing = tag == "STANDING";
+            if (!hasShips) fail(tag + " section precedes SHIPS.");
+            if (standing ? (!v2 || hasStanding) : hasOrders) fail("Duplicate or unexpected " + tag + " section.");
             std::int64_t count = 0;
             if (!(ss >> count)) {
-                throw std::invalid_argument("Failed to parse ORDERS count.");
+                fail("Failed to parse " + tag + " count.");
             }
             if (count < 0 || count > 256) {
-                throw std::invalid_argument("ORDERS count out of valid bounds [0, 256]: " + std::to_string(count));
+                fail(tag + " count out of valid bounds [0, 256]: " + std::to_string(count));
             }
-            enc.pendingOrders.clear();
+            std::set<int> seen;
             for (std::int64_t i = 0; i < count; ++i) {
-                Order o;
-                int man = 0;
-                if (!(ss >> o.fleetId >> o.targetFleetId >> man)) {
-                    throw std::invalid_argument("Failed to parse order " + std::to_string(i));
+                const Order o = readOrder(standing ? "STANDING" : "ORDERS");
+                if (!seen.insert(o.fleetId).second) fail("Duplicate " + tag + " entry for fleet " + std::to_string(o.fleetId));
+                if (standing) {
+                    enc.standingOrders[o.fleetId] = o;
+                } else {
+                    enc.pendingOrders.push_back(o);
+                    if (!v2) enc.standingOrders[o.fleetId] = o;
                 }
-                if (man < 0 || man > 11) {
-                    throw std::invalid_argument("Invalid maneuver value in ORDERS: " + std::to_string(man));
-                }
-                o.maneuver = static_cast<TacticalManeuver>(man);
-                enc.pendingOrders.push_back(o);
-                enc.standingOrders[o.fleetId] = o;
             }
-            hasOrders = true;
+            if (standing) hasStanding = true; else hasOrders = true;
         } else if (tag == "ROUND_RESULTS") {
+            if (!hasShips || hasRoundResults) fail("ROUND_RESULTS section precedes SHIPS or is duplicated.");
             std::int64_t count = 0;
             if (!(ss >> count)) {
-                throw std::invalid_argument("Failed to parse ROUND_RESULTS count.");
+                fail("Failed to parse ROUND_RESULTS count.");
             }
             if (count < 0 || count > 1024) {
-                throw std::invalid_argument("ROUND_RESULTS count out of valid bounds: " + std::to_string(count));
+                fail("ROUND_RESULTS count out of valid bounds: " + std::to_string(count));
             }
             enc.rounds.clear();
             for (std::int64_t i = 0; i < count; ++i) {
@@ -1654,16 +1943,20 @@ inline Encounter deserializeEncounter(const std::string& text) {
                 std::string subTag;
                 int fin = 0;
                 if (!(ss >> subTag >> r.roundIndex >> fin >> r.winnerOwnerId) || subTag != "ROUND") {
-                    throw std::invalid_argument("Malformed ROUND tag in ROUND_RESULTS.");
+                    fail("Malformed ROUND tag in ROUND_RESULTS.");
                 }
-                if (fin != 0 && fin != 1) {
-                    throw std::invalid_argument("Invalid boolean value for encounterEnded in ROUND.");
+                r.encounterEnded = boolean(fin, "ROUND");
+                if (r.roundIndex != i + 1) fail("ROUND index out of sequence.");
+                if (r.winnerOwnerId != 0 && !owners.count(r.winnerOwnerId)) fail("ROUND winner is not a participant.");
+                if (v2) {
+                    int truce = 0;
+                    if (!(ss >> truce)) fail("Malformed ROUND truce flag.");
+                    r.hailedTruce = boolean(truce, "ROUND truce");
                 }
-                r.encounterEnded = (fin == 1);
 
                 std::int64_t statusCount = 0;
                 if (!(ss >> subTag >> statusCount) || subTag != "STATUSES" || statusCount < 0 || statusCount > 256) {
-                    throw std::invalid_argument("Malformed STATUSES tag in ROUND_RESULTS.");
+                    fail("Malformed STATUSES tag in ROUND_RESULTS.");
                 }
                 for (std::int64_t sIdx = 0; sIdx < statusCount; ++sIdx) {
                     ShipRoundStatus st;
@@ -1677,118 +1970,159 @@ inline Encounter deserializeEncounter(const std::string& text) {
                              >> st.positionAfter.x >> st.positionAfter.y
                              >> man >> st.targetFleetId
                              >> dest >> ret)) {
-                        throw std::invalid_argument("Failed to parse ShipRoundStatus in ROUND_RESULTS.");
+                        fail("Failed to parse ShipRoundStatus in ROUND_RESULTS.");
                     }
-                    if (man < 0 || man > 11) {
-                        throw std::invalid_argument("Invalid maneuverExecuted in ShipRoundStatus: " + std::to_string(man));
+                    if (!maneuverValid(man)) {
+                        fail("Invalid maneuverExecuted in ShipRoundStatus: " + std::to_string(man));
                     }
-                    if ((dest != 0 && dest != 1) || (ret != 0 && ret != 1)) {
-                        throw std::invalid_argument("Invalid boolean value in ShipRoundStatus.");
-                    }
+                    st.destroyedThisRound = boolean(dest, "ShipRoundStatus");
+                    st.retreatedThisRound = boolean(ret, "ShipRoundStatus");
                     st.maneuverExecuted = static_cast<TacticalManeuver>(man);
-                    st.destroyedThisRound = (dest == 1);
-                    st.retreatedThisRound = (ret == 1);
+                    if (v2) {
+                        int decloak = 0, hail = 0, ai = 0;
+                        if (!(ss >> decloak >> hail >> ai >> st.intermediatePosition.x >> st.intermediatePosition.y >> st.facingYaw)) {
+                            fail("Failed to parse ShipRoundStatus presentation fields.");
+                        }
+                        st.decloakedThisRound = boolean(decloak, "ShipRoundStatus");
+                        st.hailedThisRound = boolean(hail, "ShipRoundStatus");
+                        st.aiControlled = boolean(ai, "ShipRoundStatus");
+                        if (st.facingYaw < 0 || st.facingYaw > 359) fail("ShipRoundStatus facing out of bounds.");
+                    }
+                    const Ship& ship = requireShip(st.fleetId, "ShipRoundStatus");
+                    if (ship.ownerId != st.ownerId) fail("ShipRoundStatus owner mismatch.");
+                    if (st.targetFleetId != 0) requireShip(st.targetFleetId, "ShipRoundStatus target");
                     r.shipStatuses.push_back(st);
                 }
 
                 std::int64_t dmgCount = 0;
                 if (!(ss >> subTag >> dmgCount) || subTag != "DAMAGE" || dmgCount < 0 || dmgCount > 256) {
-                    throw std::invalid_argument("Malformed DAMAGE tag in ROUND_RESULTS.");
+                    fail("Malformed DAMAGE tag in ROUND_RESULTS.");
                 }
                 for (std::int64_t j = 0; j < dmgCount; ++j) {
                     FleetDamage d;
                     if (!(ss >> d.fleetId >> d.hullBefore >> d.hullAfter >> d.shieldBefore >> d.shieldAfter)) {
-                        throw std::invalid_argument("Failed to parse FleetDamage record.");
+                        fail("Failed to parse FleetDamage record.");
                     }
+                    requireShip(d.fleetId, "DAMAGE");
                     r.damage.push_back(d);
                 }
 
-                std::int64_t lostCount = 0;
-                if (!(ss >> subTag >> lostCount) || subTag != "LOST" || lostCount < 0 || lostCount > 256) {
-                    throw std::invalid_argument("Malformed LOST tag in ROUND_RESULTS.");
+                for (const char* listTag : {"LOST", "RETREATED"}) {
+                    std::int64_t listCount = 0;
+                    if (!(ss >> subTag >> listCount) || subTag != listTag || listCount < 0 || listCount > 256) {
+                        fail(std::string("Malformed ") + listTag + " tag in ROUND_RESULTS.");
+                    }
+                    auto& ids = std::string(listTag) == "LOST" ? r.lostFleetIds : r.retreatedFleetIds;
+                    for (std::int64_t j = 0; j < listCount; ++j) {
+                        int id = 0;
+                        if (!(ss >> id)) fail(std::string("Failed to parse ") + listTag + " fleet ID.");
+                        requireShip(id, listTag);
+                        ids.push_back(id);
+                    }
                 }
-                for (std::int64_t j = 0; j < lostCount; ++j) {
-                    int id = 0;
-                    if (!(ss >> id)) throw std::invalid_argument("Failed to parse lost fleet ID.");
-                    r.lostFleetIds.push_back(id);
-                }
-
-                std::int64_t retCount = 0;
-                if (!(ss >> subTag >> retCount) || subTag != "RETREATED" || retCount < 0 || retCount > 256) {
-                    throw std::invalid_argument("Malformed RETREATED tag in ROUND_RESULTS.");
-                }
-                for (std::int64_t j = 0; j < retCount; ++j) {
-                    int id = 0;
-                    if (!(ss >> id)) throw std::invalid_argument("Failed to parse retreated fleet ID.");
-                    r.retreatedFleetIds.push_back(id);
+                if (v2) {
+                    std::int64_t salvoCount = 0;
+                    if (!(ss >> subTag >> salvoCount) || subTag != "SALVOS" || salvoCount < 0 || salvoCount > 1024) {
+                        fail("Malformed SALVOS tag in ROUND_RESULTS.");
+                    }
+                    for (std::int64_t j = 0; j < salvoCount; ++j) {
+                        WeaponSalvoRecord v;
+                        int absorbed = 0, ram = 0;
+                        if (!(ss >> v.attackerFleetId >> v.defenderFleetId >> v.beamDamage >> v.torpedoDamage >> absorbed >> ram)) {
+                            fail("Failed to parse SALVOS record.");
+                        }
+                        v.absorbedByShields = boolean(absorbed, "SALVOS");
+                        v.ram = boolean(ram, "SALVOS");
+                        requireShip(v.attackerFleetId, "SALVOS");
+                        requireShip(v.defenderFleetId, "SALVOS");
+                        r.salvos.push_back(v);
+                    }
                 }
                 enc.rounds.push_back(r);
             }
             hasRoundResults = true;
         } else if (tag == "GROUPS") {
+            if (!hasShips || hasGroups) fail("GROUPS section precedes SHIPS or is duplicated.");
             hasGroups = true;
             std::int64_t count = 0;
             if (!(ss >> count) || count < 0 || count > 256) {
-                throw std::invalid_argument("Failed to parse GROUPS count.");
+                fail("Failed to parse GROUPS count.");
             }
             enc.groups.clear();
+            std::set<int> groupIds;
             for (std::int64_t i = 0; i < count; ++i) {
                 TacticalGroup g;
                 int gc = 0, man = 0;
                 std::int64_t fCount = 0;
                 std::string escName;
                 if (!(ss >> g.groupId >> g.ownerId >> gc >> man >> g.standingTargetFleetId >> fCount)) {
-                    throw std::invalid_argument("Failed to parse GROUPS header record.");
+                    fail("Failed to parse GROUPS header record.");
                 }
+                if (g.groupId <= 0 || !groupIds.insert(g.groupId).second) fail("Invalid or duplicate group ID.");
+                if (g.ownerId < 1 || g.ownerId > 5) fail("Group owner out of bounds.");
+                if (gc < 0 || gc > 3) fail("Invalid tactical group class.");
+                if (!maneuverValid(man)) fail("Invalid group standing maneuver.");
+                if (fCount < 0 || fCount > 256) fail("Group member count out of bounds.");
+                if (g.standingTargetFleetId != 0) requireShip(g.standingTargetFleetId, "GROUPS target");
                 g.groupClass = static_cast<TacticalGroupClass>(gc);
                 g.standingManeuver = static_cast<TacticalManeuver>(man);
                 for (std::int64_t j = 0; j < fCount; ++j) {
                     int fid = 0;
-                    if (!(ss >> fid)) throw std::invalid_argument("Failed to parse group fleet ID.");
+                    if (!(ss >> fid)) fail("Failed to parse group fleet ID.");
+                    if (requireShip(fid, "GROUPS").ownerId != g.ownerId) fail("Group member owner mismatch.");
                     g.fleetIds.push_back(fid);
                 }
-                if (!(ss >> escName)) throw std::invalid_argument("Failed to parse group name.");
+                if (!(ss >> escName)) fail("Failed to parse group name.");
                 g.name = unescapeString(escName);
                 enc.groups.push_back(g);
             }
         } else if (tag == "CLOAK_STATE") {
+            if (!hasShips || hasCloakState) fail("CLOAK_STATE section precedes SHIPS or is duplicated.");
             hasCloakState = true;
             std::int64_t count = 0;
             if (!(ss >> count) || count < 0 || count > 256) {
-                throw std::invalid_argument("Failed to parse CLOAK_STATE count.");
+                fail("Failed to parse CLOAK_STATE count.");
             }
             for (std::int64_t i = 0; i < count; ++i) {
                 int fid = 0, canC = 0, isC = 0, gid = 0;
                 if (!(ss >> fid >> canC >> isC >> gid)) {
-                    throw std::invalid_argument("Failed to parse CLOAK_STATE ship record.");
+                    fail("Failed to parse CLOAK_STATE ship record.");
                 }
-                Ship* s = enc.getShip(fid);
-                if (s) {
-                    s->canCloak = (canC == 1);
-                    s->isCloaked = (isC == 1);
-                    s->groupId = gid;
-                }
+                Ship& s = requireShip(fid, "CLOAK_STATE");
+                s.canCloak = boolean(canC, "CLOAK_STATE");
+                s.isCloaked = boolean(isC, "CLOAK_STATE");
+                if (s.isCloaked && !s.canCloak) fail("Ship is cloaked without a cloaking device.");
+                if (gid < 0 || (gid > 0 && !enc.getGroup(gid))) fail("CLOAK_STATE refers to unknown group.");
+                s.groupId = gid;
             }
         } else if (tag == "END") {
             hasEnd = true;
             break;
         } else {
-            throw std::invalid_argument("Unknown or unexpected section tag in serialization: " + tag);
+            fail("Unknown or unexpected section tag in serialization: " + tag);
         }
     }
 
-    if (!hasArena || !hasRounds || !hasSector || !hasRng || !hasShips || !hasOrders || !hasRoundResults || !hasEnd) {
-        throw std::invalid_argument("Incomplete tactical encounter serialization: missing required sections.");
+    if (!hasArena || !hasRounds || !hasSector || !hasRng || !hasShips || !hasOrders || !hasRoundResults || !hasEnd ||
+        (v2 && (!hasRules || !hasRelation || !hasStanding || !hasController || !hasCloakState))) {
+        fail("Incomplete tactical encounter serialization: missing required sections.");
+    }
+    if (static_cast<int>(enc.rounds.size()) != enc.currentRound) {
+        fail("ROUND_RESULTS count does not match the current round.");
+    }
+    if (enc.winnerOwnerId != 0 && !owners.count(enc.winnerOwnerId)) {
+        fail("Encounter winner is not a participant.");
     }
 
     // Reject trailing data after END tag
     std::string trailing;
     if (ss >> trailing) {
-        throw std::invalid_argument("Unexpected trailing data after END tag: " + trailing);
+        fail("Unexpected trailing data after END tag: " + trailing);
     }
 
-    // Reconstruct standing orders for controlling player from latest round statuses for mid-battle continuation
-    if (!enc.rounds.empty()) {
+    // V1 never stored standing orders: rebuild them for the controlling player from the
+    // latest round, which is how schema-11 clients continued mid-battle.
+    if (!v2 && !enc.rounds.empty()) {
         for (const auto& st : enc.rounds.back().shipStatuses) {
             if (st.ownerId == enc.controllingOwnerId && enc.standingOrders.find(st.fleetId) == enc.standingOrders.end()) {
                 enc.standingOrders[st.fleetId] = Order{st.fleetId, st.targetFleetId, st.maneuverExecuted};

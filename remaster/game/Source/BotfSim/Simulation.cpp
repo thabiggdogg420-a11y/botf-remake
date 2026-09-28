@@ -1,6 +1,7 @@
 #include "Simulation.h"
 #include "ReferenceCatalogue.h"
 #include "ReferencePlanets.h"
+#include "TacticalCombat.h"
 
 #include <algorithm>
 #include <array>
@@ -202,6 +203,13 @@ std::vector<Planet> generateSystemPlanets(std::uint64_t seed, int systemId, cons
 void validateColony(const Colony& c) {
     require(c.shipyards >= 0 && c.shipyards <= 1, "Only one shipyard per colony");
     require(c.powerPlants >= 0 && c.powerPlants <= MaxBuildings, "Power plant count out of bounds");
+    require(c.fusionPlants >= 0 && c.fusionPlants <= MaxBuildings, "Fusion plant count out of bounds");
+    require(static_cast<int>(c.workforcePriority) >= 0 && static_cast<int>(c.workforcePriority) <= 4 &&
+        static_cast<int>(c.queuePriority) >= 0 && static_cast<int>(c.queuePriority) <= 4, "Invalid governor priority");
+    // Energy is accounted per structure (power plant 10, fusion plant 40), so the
+    // stored grid can never be smaller than what its plants provide.
+    require(static_cast<std::int64_t>(c.energy) >= 10LL * c.powerPlants + 40LL * c.fusionPlants,
+        "Energy is below the output of the colony's power structures");
     require(c.defenseBatteries >= 0 && c.defenseBatteries <= 10, "Defense battery count out of bounds");
     require(c.ownerId >= 1 && c.ownerId <= 5, "Invalid colony owner");
     require(c.population > 0 && c.population <= MaxPopulation, "Population out of bounds");
@@ -253,7 +261,19 @@ bool colonyGovernorCommand(CommandType type) {
     return type == CommandType::SetColonyGovernor || type == CommandType::SetQueuePin || type == CommandType::ClearGovernorOverride;
 }
 
+bool hasControlCharacters(const std::string& text) {
+    return std::any_of(text.begin(), text.end(), [](char ch) {
+        const auto byte = static_cast<unsigned char>(ch);
+        return byte < 0x20 || byte == 0x7f;
+    });
+}
+
 void checkCommand(const Command& c) {
+    // Player-supplied text is saved inside the pending-command line; control
+    // characters (newlines in particular) would make the save unloadable.
+    require(c.proposalReason.size() <= 256 && !hasControlCharacters(c.proposalReason),
+        "Proposal reason must be at most 256 printable characters");
+    require(!hasControlCharacters(c.taskForceName), "Task force name contains control characters");
     require(static_cast<int>(c.stance) >= 0 && static_cast<int>(c.stance) <= 3 &&
         (c.type == CommandType::SetTacticalStance || c.type == CommandType::SetTaskForceOrder || c.stance == TacticalStance::Balanced),
         "Invalid tactical stance field");
@@ -309,6 +329,7 @@ void checkCommand(const Command& c) {
         } else {
             require(c.building == Building::Farm || c.building == Building::Factory ||
                 c.building == Building::Laboratory || c.building == Building::PowerPlant ||
+                c.building == Building::FusionPlant ||
                 c.building == Building::Shipyard || c.building == Building::DefenseBattery,
                 "Unsupported structure for scrapping");
         }
@@ -806,6 +827,8 @@ void applyDraft(GameState& state) {
                 f->targetX = f->x; f->targetY = f->y;
             } else if (command.type == CommandType::CreateTaskForce) {
                 require(!command.memberFleetIds.empty(), "Task force must have at least one member");
+                require(state.taskForces.size() < static_cast<std::size_t>(MaxTaskForces) &&
+                    state.nextTaskForceId < 10000000, "Task force capacity reached");
                 std::set<int> uniqueIds;
                 int commonX = -1, commonY = -1;
                 for (int fid : command.memberFleetIds) {
@@ -1070,6 +1093,12 @@ void applyDraft(GameState& state) {
                 require(it->energy >= 10, "Energy level below decommission capacity");
                 --it->powerPlants;
                 it->energy -= 10;
+            } else if (command.building == Building::FusionPlant) {
+                // Removes exactly the 40 energy a fusion plant added.
+                require(it->fusionPlants > 0, "No fusion plant to scrap");
+                require(it->energy >= 40, "Energy level below decommission capacity");
+                --it->fusionPlants;
+                it->energy -= 40;
             } else if (command.building == Building::Shipyard) {
                 require(it->shipyards > 0, "No shipyard to scrap");
                 it->shipyards = 0;
@@ -1326,7 +1355,7 @@ void planRivals(GameState& s) {
                 }
             }
             for (const auto& [loc, fids] : availableBySector) {
-                if (fids.size() >= 2 && s.taskForces.size() < MaxTaskForces) {
+                if (fids.size() >= 2 && s.taskForces.size() < MaxTaskForces && s.nextTaskForceId < 10000000) {
                     bool hasCombat = false, hasTransport = false;
                     for (int fid : fids) {
                         const auto f = std::find_if(s.fleets.begin(), s.fleets.end(), [fid](const Fleet& x) { return x.id == fid; });
@@ -2382,6 +2411,10 @@ void resolveInvasions(GameState& s, TurnReport& report) {
             int excess = std::max(0, target->foodWorkers + target->industryWorkers + target->researchWorkers - target->population);
             auto trim = [&excess](int& workers) { const int amount = std::min(workers, excess); workers -= amount; excess -= amount; };
             trim(target->industryWorkers); trim(target->researchWorkers); trim(target->foodWorkers);
+            // The previous owner's automation settings do not transfer with the colony.
+            target->workforcePriority = GovernorPriority::Manual;
+            target->queuePriority = GovernorPriority::Manual;
+            target->workforceManualOverride = false;
             reveal(s, loc->x, loc->y, fleet.ownerId);
             for (auto& minor : s.minors) if (minor.systemId == target->systemId) minor.memberOf = fleet.ownerId;
             if (fleet.ownerId == s.playerEmpire || oldOwner == s.playerEmpire)
@@ -2566,6 +2599,12 @@ std::string payload(const GameState& s) {
         }
     }
     out << "STARTING_ERA " << static_cast<int>(s.startingEra) << '\n';
+    // Schema 12 extension: combat model and per-colony fusion plants (only nonzero entries).
+    int fusionColonies = 0;
+    for (const auto& c : s.colonies) if (c.fusionPlants > 0) ++fusionColonies;
+    out << "REMASTER " << s.unifiedCombat << ' ' << fusionColonies;
+    for (const auto& c : s.colonies) if (c.fusionPlants > 0) out << ' ' << c.systemId << ' ' << c.fusionPlants;
+    out << '\n';
     out << "COLONY_GOVERNORS " << s.colonies.size() << '\n';
     for (const auto& c : s.colonies) {
         int pinnedCount = 0;
@@ -2594,6 +2633,53 @@ int count(std::istream& in, int maximum) {
     return value;
 }
 } // namespace
+
+void resolveTacticalBattles(GameState& state, TurnReport& report,
+                            const std::function<void(tactical::Encounter&)>& playerEncounter) {
+    std::set<int> withdrawn; // Ships that left a battle this turn fight no further duels.
+    std::vector<CombatReport> battles;
+    for (int y = 0; y < state.height; ++y) for (int x = 0; x < state.width; ++x) {
+        for (std::size_t index = 0; index < state.majorRelations.size(); ++index) {
+            const MajorRelation relation = state.majorRelations[index];
+            if (!relation.atWar) continue;
+            std::vector<int> ids;
+            bool first = false, second = false;
+            for (const auto& fleet : state.fleets) {
+                if (fleet.hull <= 0 || fleet.x != x || fleet.y != y || withdrawn.count(fleet.id)) continue;
+                if (fleet.ownerId != relation.first && fleet.ownerId != relation.second) continue;
+                ids.push_back(fleet.id);
+                first |= fleet.ownerId == relation.first;
+                second |= fleet.ownerId == relation.second;
+            }
+            if (!first || !second) continue;
+            const auto seed = state.rngState ^ (static_cast<std::uint64_t>(state.turn) << 32)
+                ^ static_cast<std::uint64_t>(y * state.width + x + 1)
+                ^ (static_cast<std::uint64_t>(relation.first * 7 + relation.second) << 16);
+            auto encounter = tactical::constructEncounter(state, ids, seed);
+            const bool playerInvolved = relation.first == state.playerEmpire || relation.second == state.playerEmpire;
+            if (playerInvolved && playerEncounter) playerEncounter(encounter);
+            else encounter.runUntilFinished();
+            require(encounter.isFinished, "Tactical encounter did not finish");
+            tactical::applyEncounterResults(state, encounter);
+            for (const auto& ship : encounter.ships) if (ship.retreated) withdrawn.insert(ship.fleetId);
+            reconcileTaskForces(state); // Destroyed and independently withdrawing ships leave task forces.
+            auto battle = tactical::toCombatReport(encounter);
+            if (playerInvolved)
+                report.events.push_back("Battle at sector " + std::to_string(x) + "," + std::to_string(y) +
+                    ": " + std::to_string(battle.lostFleetIds.size()) + " ships lost, " +
+                    std::to_string(battle.retreatedFleetIds.size()) + " withdrew" +
+                    (encounter.rounds.empty() || !encounter.rounds.back().hailedTruce ? "." : " under a hailed truce."));
+            battles.push_back(std::move(battle));
+        }
+    }
+    // Strategic retreats end on arrival, exactly as in the legacy resolver.
+    for (auto& fleet : state.fleets)
+        if (fleet.x == fleet.targetX && fleet.y == fleet.targetY) fleet.retreat = false;
+    reconcileTaskForces(state);
+    report.battles.insert(report.battles.end(), battles.begin(), battles.end());
+    state.latestBattles.insert(state.latestBattles.end(), battles.begin(), battles.end());
+    if (state.latestBattles.size() > 16) state.latestBattles.erase(state.latestBattles.begin(), state.latestBattles.end() - 16);
+}
 
 const Planet* planetAt(const GameState& state, int systemId, int planetIndex) {
     const auto it = std::find_if(state.systems.begin(), state.systems.end(), [systemId](const System& s) { return s.id == systemId; });
@@ -3050,6 +3136,7 @@ GameState generate(std::uint64_t seed, int width, int height, int total) {
     require(total >= 1 && total <= MaxSystems && total <= width * height, "Invalid system count");
     GameState s;
     s.seed = seed; s.rngState = seed; s.width = width; s.height = height;
+    s.unifiedCombat = true; // New (schema 12) campaigns resolve every battle tactically.
     std::vector<int> cells;
     for (int i = 0; i < width * height; ++i) cells.push_back(i);
     for (int i = 0; i < total; ++i) {
@@ -3749,6 +3836,7 @@ Economy economy(const Colony& c) {
     e.upkeep = c.farms * definition(Building::Farm).creditUpkeep +
         c.factories * definition(Building::Factory).creditUpkeep +
         c.laboratories * definition(Building::Laboratory).creditUpkeep + c.shipyards * 2 + c.powerPlants +
+        c.fusionPlants * definition(Building::FusionPlant).creditUpkeep +
         c.defenseBatteries * definition(Building::DefenseBattery).creditUpkeep;
     return e;
 }
@@ -3880,7 +3968,7 @@ TurnReport advanceWithCombat(GameState& state, const std::function<void(GameStat
                 else if (b == Building::Laboratory) ++c.laboratories;
                 else if (b == Building::Shipyard) ++c.shipyards;
                 else if (b == Building::PowerPlant) { ++c.powerPlants; c.energy += 10; }
-                else if (b == Building::FusionPlant) { c.powerPlants += 2; c.energy += 40; }
+                else if (b == Building::FusionPlant) { ++c.fusionPlants; c.energy += 40; }
                 else if (b == Building::ResearchInstitute) c.laboratories += 2;
                 else if (b == Building::DefenseBattery) ++c.defenseBatteries;
                 else {
@@ -3943,8 +4031,10 @@ TurnReport advanceWithCombat(GameState& state, const std::function<void(GameStat
     }
     if (combatResolver) {
         combatResolver(moving, report);
+    } else if (moving.unifiedCombat) {
+        resolveTacticalBattles(moving, report);
     } else {
-        resolveBattles(moving, report);
+        resolveBattles(moving, report); // Schema 4-11 saves keep their legacy strategic resolver.
     }
     if (moving.advancedRulesEnabled) {
         std::set<int> battleFleetIds;
@@ -3991,10 +4081,30 @@ TurnReport advanceWithCombat(GameState& state, const std::function<void(GameStat
     next.systems = std::move(moving.systems);
     next.rngState = moving.rngState;
     for (auto& e : next.rivals) e.explored = std::move(mutableEmpire(moving, e.id).explored);
+    // Invasions may change minor membership; carry it over with the colonies.
+    next.minors = std::move(moving.minors);
     for (const auto& c : moving.colonies) {
         auto existing = std::find_if(next.colonies.begin(), next.colonies.end(), [&](const Colony& item) { return item.systemId == c.systemId; });
         if (existing == next.colonies.end()) next.colonies.push_back(c);
-        else if (existing->ownerId != c.ownerId) *existing = c;
+        else if (existing->ownerId != c.ownerId) {
+            // Captured this turn. Production already settled for the previous owner
+            // (credits, research, completed structures and progress stay with the
+            // colony), then the conquest applies on top of the produced colony.
+            existing->ownerId = c.ownerId;
+            existing->population = c.population;
+            existing->morale = c.morale;
+            existing->queue = c.queue;
+            existing->overflow = c.overflow;
+            existing->foodWorkers = c.foodWorkers;
+            existing->industryWorkers = c.industryWorkers;
+            existing->researchWorkers = c.researchWorkers;
+            existing->workforcePriority = c.workforcePriority;
+            existing->queuePriority = c.queuePriority;
+            existing->workforceManualOverride = c.workforceManualOverride;
+            existing->workforceExplanation.clear();
+            existing->queueExplanation.clear();
+            existing->governorWarning.clear();
+        }
     }
     std::sort(next.colonies.begin(), next.colonies.end(), [](const Colony& a, const Colony& b) { return a.systemId < b.systemId; });
     next.fleets.insert(next.fleets.end(), launched.begin(), launched.end());
@@ -4115,13 +4225,16 @@ GameState deserialize(const std::string& text) {
     const bool legacy8 = version == 8 && content == "prototype-campaign-8";
     const bool legacy9 = version == 9 && content == "reference-campaign-9";
     const bool legacy10 = version == 10 && content == "reference-campaign-10";
-    require(version == SaveVersion || legacy7 || legacy8 || legacy9 || legacy10, "Unsupported save version");
-    require(content == ContentVersion || legacy7 || legacy8 || legacy9 || legacy10, "Incompatible prototype content");
+    // Schema 11 differs from 12 only by the header and the REMASTER section.
+    const bool legacy11 = version == 11 && content == "campaign-expansion-11";
+    const bool current = version == SaveVersion && content == ContentVersion;
+    require(current || legacy7 || legacy8 || legacy9 || legacy10 || legacy11, "Unsupported save version");
+    require(content == ContentVersion || legacy7 || legacy8 || legacy9 || legacy10 || legacy11, "Incompatible prototype content");
     const auto checksumStart = text.rfind("CHECKSUM ");
     require(checksumStart != std::string::npos, "Missing save checksum");
     const auto rawBody = text.substr(0, checksumStart);
     require(text.substr(checksumStart) == "CHECKSUM " + std::to_string(hashText(rawBody)) + "\n",
-        (legacy7 || legacy8 || legacy9 || legacy10) ? "Legacy save checksum mismatch" : "Save checksum mismatch");
+        (legacy7 || legacy8 || legacy9 || legacy10 || legacy11) ? "Legacy save checksum mismatch" : "Save checksum mismatch");
     GameState s;
     tag(in, "STATE");
     in >> s.seed >> s.rngState >> s.lastAcceptedCommand >> s.width >> s.height >> s.turn >> s.credits >> s.research;
@@ -4301,14 +4414,15 @@ GameState deserialize(const std::string& text) {
                 int deptFocusVal = 0;
                 std::size_t rivalCount = 0;
                 if (rem >> c.intelInternalSecurity >> deptFocusVal >> rivalCount) {
+                    // A crafted count must not drive an unbounded loop: at most five empires exist.
+                    require(rivalCount <= 5, "Invalid intel rival allocation count");
                     c.intelDepartmentFocus = static_cast<intelligence::IntelDepartment>(deptFocusVal);
                     for (std::size_t m = 0; m < rivalCount; ++m) {
                         int rId = 0, espPct = 0, sabPct = 0;
-                        if (rem >> rId >> espPct >> sabPct) {
-                            c.intelRivalIds.push_back(rId);
-                            c.intelEspionagePcts.push_back(espPct);
-                            c.intelSabotagePcts.push_back(sabPct);
-                        }
+                        require(static_cast<bool>(rem >> rId >> espPct >> sabPct), "Truncated intel rival allocation");
+                        c.intelRivalIds.push_back(rId);
+                        c.intelEspionagePcts.push_back(espPct);
+                        c.intelSabotagePcts.push_back(sabPct);
                     }
                     if (colonyGovernorCommand(static_cast<CommandType>(type))) {
                         int govWf = 0, govQ = 0, qPin = 0;
@@ -4348,52 +4462,63 @@ GameState deserialize(const std::string& text) {
     bool hasIntelOperations = false;
     bool hasStartingEra = false;
     bool hasColonyGovernors = false;
+    bool hasRemaster = false;
 
+    // Loading is pure: governor settings are restored exactly as saved and the
+    // governors are not re-run (they run during advance()/preview()).
     auto parseColonyGovernors = [&](std::istream& input) {
-        int govCount = count(input, MaxSystems);
+        const int govCount = count(input, MaxSystems);
+        require(static_cast<std::size_t>(govCount) == s.colonies.size(), "Colony governor count mismatch");
         for (int i = 0; i < govCount; ++i) {
             int sysId = 0, wf = 0, q = 0, over = 0;
-            input >> sysId >> wf >> q >> over;
-            int pinnedCount = count(input, MaxQueue);
-            std::vector<int> pinnedIndices;
+            require(static_cast<bool>(input >> sysId >> wf >> q >> over), "Malformed colony governor record");
+            auto& colony = s.colonies[static_cast<std::size_t>(i)];
+            require(colony.systemId == sysId, "Colony governor record out of order");
+            require(wf >= 0 && wf <= 4 && q >= 0 && q <= 4 && (over == 0 || over == 1), "Invalid colony governor setting");
+            const int pinnedCount = count(input, MaxQueue);
+            int priorIndex = -1;
             for (int p = 0; p < pinnedCount; ++p) {
-                int qIdx = -1; input >> qIdx; pinnedIndices.push_back(qIdx);
+                int qIdx = -1;
+                require(static_cast<bool>(input >> qIdx) && qIdx > priorIndex &&
+                    static_cast<std::size_t>(qIdx) < colony.queue.size(), "Invalid pinned queue index");
+                priorIndex = qIdx;
+                colony.queue[static_cast<std::size_t>(qIdx)].pinned = true;
             }
-            auto colIt = std::find_if(s.colonies.begin(), s.colonies.end(), [sysId](const Colony& c) { return c.systemId == sysId; });
-            if (colIt != s.colonies.end()) {
-                colIt->workforcePriority = static_cast<GovernorPriority>(wf);
-                colIt->queuePriority = static_cast<GovernorPriority>(q);
-                colIt->workforceManualOverride = (over != 0);
-                for (int qIdx : pinnedIndices) {
-                    if (qIdx >= 0 && static_cast<std::size_t>(qIdx) < colIt->queue.size()) {
-                        colIt->queue[qIdx].pinned = true;
-                    }
-                }
-                if (colIt->workforcePriority != GovernorPriority::Manual && !colIt->workforceManualOverride) {
-                    evaluateWorkforceGovernor(s, *colIt);
-                }
-                if (colIt->queuePriority != GovernorPriority::Manual && colIt->queue.empty()) {
-                    evaluateQueueGovernor(s, *colIt);
-                }
-            }
+            colony.workforcePriority = static_cast<GovernorPriority>(wf);
+            colony.queuePriority = static_cast<GovernorPriority>(q);
+            colony.workforceManualOverride = (over != 0);
         }
     };
-
-    auto readAfterEraOrDirect = [&]() {
-        std::string tagAfter;
-        require(static_cast<bool>(in >> tagAfter), "Malformed save section after era/engine");
-        if (tagAfter == "COLONY_GOVERNORS") {
-            hasColonyGovernors = true;
-            parseColonyGovernors(in);
-            tag(in, "CHECKSUM");
-        } else if (tagAfter == "CHECKSUM") {
-            hasColonyGovernors = false;
-        } else {
-            throw std::runtime_error("Unexpected save section: " + tagAfter);
+    auto parseStartingEra = [&]() {
+        int eraVal = 0;
+        require(static_cast<bool>(in >> eraVal), "Missing starting era value");
+        require(startingEraValid(static_cast<StartingEra>(eraVal)), "Invalid starting era in save");
+        s.startingEra = static_cast<StartingEra>(eraVal);
+    };
+    auto parseRemaster = [&]() {
+        int unified = -1;
+        require(static_cast<bool>(in >> unified) && (unified == 0 || unified == 1), "Invalid combat model flag");
+        s.unifiedCombat = unified == 1;
+        const int fusionColonies = count(in, MaxSystems);
+        int priorSystem = 0;
+        for (int i = 0; i < fusionColonies; ++i) {
+            int sysId = 0, plants = 0;
+            require(static_cast<bool>(in >> sysId >> plants) && sysId > priorSystem &&
+                plants > 0 && plants <= MaxBuildings, "Invalid fusion plant record");
+            priorSystem = sysId;
+            const auto colony = std::find_if(s.colonies.begin(), s.colonies.end(), [sysId](const Colony& c) { return c.systemId == sysId; });
+            require(colony != s.colonies.end(), "Fusion plant record for unknown colony");
+            colony->fusionPlants = plants;
         }
     };
+    auto readTag = [&](const char* context) {
+        std::string value;
+        require(static_cast<bool>(in >> value), context);
+        return value;
+    };
 
-    require(static_cast<bool>(in >> nextTag), "Malformed save section");
+    // Optional sections appear in this fixed order; older schemas omit some of them.
+    nextTag = readTag("Malformed save section");
     if (nextTag == "DIPLOMACY_ENGINE") {
         require(s.campaignExpansionEnabled, "Modern diplomacy engine requires campaign expansion");
         std::string diploLine, diploData;
@@ -4427,11 +4552,10 @@ GameState deserialize(const std::string& text) {
         }
         s.modernEnginesActive = true;
         s.intelOperations.clear();
-        std::string nextSubTag;
-        require(static_cast<bool>(in >> nextSubTag), "Malformed save section after INTEL_ENGINE");
-        if (nextSubTag == "INTEL_OPERATIONS") {
+        nextTag = readTag("Malformed save section after INTEL_ENGINE");
+        if (nextTag == "INTEL_OPERATIONS") {
             hasIntelOperations = true;
-            int opCount = count(in, 128);
+            const int opCount = count(in, 64); // Same bound validate() enforces.
             for (int i = 0; i < opCount; ++i) {
                 std::string opLine;
                 while (std::getline(in, opLine) && opLine.empty()) {}
@@ -4442,113 +4566,74 @@ GameState deserialize(const std::string& text) {
                         ("Malformed intel operation save: " + opErr).c_str());
                 s.intelOperations.push_back(op);
             }
-            std::string afterOpsTag;
-            require(static_cast<bool>(in >> afterOpsTag), "Malformed save section after INTEL_OPERATIONS");
-            if (afterOpsTag == "STARTING_ERA") {
-                hasStartingEra = true;
-                int eraVal = 0;
-                require(static_cast<bool>(in >> eraVal), "Missing starting era value");
-                require(startingEraValid(static_cast<StartingEra>(eraVal)), "Invalid starting era in save");
-                s.startingEra = static_cast<StartingEra>(eraVal);
-                readAfterEraOrDirect();
-            } else if (afterOpsTag == "COLONY_GOVERNORS") {
-                hasStartingEra = false;
-                hasColonyGovernors = true;
-                s.startingEra = StartingEra::Early;
-                parseColonyGovernors(in);
-                tag(in, "CHECKSUM");
-            } else if (afterOpsTag == "CHECKSUM") {
-                hasStartingEra = false;
-                hasColonyGovernors = false;
-                s.startingEra = StartingEra::Early;
-            } else {
-                throw std::runtime_error("Unexpected save section after INTEL_OPERATIONS: " + afterOpsTag);
-            }
-        } else if (nextSubTag == "STARTING_ERA") {
-            hasIntelOperations = false;
-            hasStartingEra = true;
-            int eraVal = 0;
-            require(static_cast<bool>(in >> eraVal), "Missing starting era value");
-            require(startingEraValid(static_cast<StartingEra>(eraVal)), "Invalid starting era in save");
-            s.startingEra = static_cast<StartingEra>(eraVal);
-            readAfterEraOrDirect();
-        } else if (nextSubTag == "COLONY_GOVERNORS") {
-            hasIntelOperations = false;
-            hasStartingEra = false;
-            hasColonyGovernors = true;
-            s.startingEra = StartingEra::Early;
-            parseColonyGovernors(in);
-            tag(in, "CHECKSUM");
-        } else if (nextSubTag == "CHECKSUM") {
-            hasIntelOperations = false;
-            hasStartingEra = false;
-            hasColonyGovernors = false;
-            s.startingEra = StartingEra::Early;
-        } else {
-            throw std::runtime_error("Unexpected save section: " + nextSubTag);
+            nextTag = readTag("Malformed save section after INTEL_OPERATIONS");
         }
-    } else if (nextTag == "STARTING_ERA") {
-        s.modernEnginesActive = false;
-        syncDiplomacyStateInternal(s);
-        hasStartingEra = true;
-        int eraVal = 0;
-        require(static_cast<bool>(in >> eraVal), "Missing starting era value");
-        require(startingEraValid(static_cast<StartingEra>(eraVal)), "Invalid starting era in save");
-        s.startingEra = static_cast<StartingEra>(eraVal);
-        readAfterEraOrDirect();
-    } else if (nextTag == "COLONY_GOVERNORS") {
-        s.modernEnginesActive = false;
-        syncDiplomacyStateInternal(s);
-        hasStartingEra = false;
-        hasColonyGovernors = true;
-        s.startingEra = StartingEra::Early;
-        parseColonyGovernors(in);
-        tag(in, "CHECKSUM");
-    } else if (nextTag == "CHECKSUM") {
-        s.modernEnginesActive = false;
-        syncDiplomacyStateInternal(s);
-        hasStartingEra = false;
-        hasColonyGovernors = false;
-        s.startingEra = StartingEra::Early;
     } else {
-        throw std::runtime_error("Unexpected save section: " + nextTag);
+        s.modernEnginesActive = false;
+        syncDiplomacyStateInternal(s);
     }
+    if (nextTag == "STARTING_ERA") {
+        hasStartingEra = true;
+        parseStartingEra();
+        nextTag = readTag("Malformed save section after era/engine");
+    } else {
+        s.startingEra = StartingEra::Early;
+    }
+    if (nextTag == "REMASTER") {
+        require(current, "Schema 12 section in an older save");
+        hasRemaster = true;
+        parseRemaster();
+        nextTag = readTag("Malformed save section after REMASTER");
+    }
+    if (nextTag == "COLONY_GOVERNORS") {
+        hasColonyGovernors = true;
+        parseColonyGovernors(in);
+        nextTag = readTag("Malformed save section after COLONY_GOVERNORS");
+    }
+    require(nextTag == "CHECKSUM", ("Unexpected save section: " + nextTag).c_str());
     std::uint64_t checksum = 0;
     require(static_cast<bool>(in >> checksum), "Missing save checksum");
     in >> std::ws;
     require(in.eof(), "Unexpected trailing save data");
     validate(s);
-    if (!legacy7 && !legacy8 && !legacy9 && !legacy10) {
-        if ((!s.modernEnginesActive || hasIntelOperations) && hasStartingEra && hasColonyGovernors) {
-            require(text == serialize(s), "Save is not in canonical format");
-        } else {
-            std::string expectedOld = payload(s);
-            if (!hasColonyGovernors) {
-                std::ostringstream govSection;
-                govSection.imbue(std::locale::classic());
-                govSection << "COLONY_GOVERNORS " << s.colonies.size() << '\n';
-                for (const auto& c : s.colonies) {
-                    govSection << c.systemId << " 0 0 0 0\n";
-                }
-                const std::string govToken = govSection.str();
-                const auto pos = expectedOld.rfind(govToken);
-                require(pos != std::string::npos, "Malformed canonical payload construction for colony governors");
-                expectedOld.erase(pos, govToken.size());
+    if (current) {
+        require(hasStartingEra && hasRemaster && hasColonyGovernors &&
+            (!s.modernEnginesActive || hasIntelOperations), "Schema 12 save is missing a required section");
+        require(rawBody == payload(s), "Save is not in canonical format");
+    } else if (legacy11) {
+        // Rebuild the schema-11 text this state would have produced and require an exact match.
+        std::string expectedOld = payload(s);
+        const std::string header = std::string("BOTF_SIM ") + std::to_string(SaveVersion) + ' ' + ContentVersion + '\n';
+        require(expectedOld.starts_with(header), "Malformed canonical payload header");
+        expectedOld.replace(0, header.size(), "BOTF_SIM 11 campaign-expansion-11\n");
+        const auto remasterPos = expectedOld.rfind("\nREMASTER ");
+        require(remasterPos != std::string::npos, "Malformed canonical payload construction for schema 12 section");
+        expectedOld.erase(remasterPos + 1, expectedOld.find('\n', remasterPos + 1) - remasterPos);
+        if (!hasColonyGovernors) {
+            std::ostringstream govSection;
+            govSection.imbue(std::locale::classic());
+            govSection << "COLONY_GOVERNORS " << s.colonies.size() << '\n';
+            for (const auto& c : s.colonies) {
+                govSection << c.systemId << " 0 0 0 0\n";
             }
-            if (!hasStartingEra) {
-                const std::string eraToken = "STARTING_ERA " + std::to_string(static_cast<int>(s.startingEra)) + "\n";
-                const auto pos = expectedOld.rfind(eraToken);
-                require(pos != std::string::npos, "Malformed canonical payload construction for starting era");
-                expectedOld.erase(pos, eraToken.size());
-            }
-            if (!hasIntelOperations && s.campaignExpansionEnabled && s.modernEnginesActive) {
-                const std::string opsToken = "INTEL_OPERATIONS 0\n";
-                const auto pos = expectedOld.rfind(opsToken);
-                require(pos != std::string::npos, "Malformed canonical payload construction");
-                expectedOld.erase(pos, opsToken.size());
-            }
-            require(rawBody == expectedOld, "Save is not in canonical format");
+            const std::string govToken = govSection.str();
+            const auto pos = expectedOld.rfind(govToken);
+            require(pos != std::string::npos, "Malformed canonical payload construction for colony governors");
+            expectedOld.erase(pos, govToken.size());
         }
+        if (!hasStartingEra) {
+            const std::string eraToken = "STARTING_ERA " + std::to_string(static_cast<int>(s.startingEra)) + "\n";
+            const auto pos = expectedOld.rfind(eraToken);
+            require(pos != std::string::npos, "Malformed canonical payload construction for starting era");
+            expectedOld.erase(pos, eraToken.size());
+        }
+        if (!hasIntelOperations && s.campaignExpansionEnabled && s.modernEnginesActive) {
+            const std::string opsToken = "INTEL_OPERATIONS 0\n";
+            const auto pos = expectedOld.rfind(opsToken);
+            require(pos != std::string::npos, "Malformed canonical payload construction");
+            expectedOld.erase(pos, opsToken.size());
+        }
+        require(rawBody == expectedOld, "Save is not in canonical format");
     }
     return s;
 }
@@ -4942,8 +5027,12 @@ void evaluateQueueGovernor(const GameState& state, Colony& c) {
 
     const auto eco = economy(state, c);
     const int maxFarmWorkers = std::min(c.population, c.farms * 10);
+    // Probe the farm ceiling with everyone else released; keeping the existing
+    // industry/research workers would exceed the population and throw.
     Colony testCol = c;
     testCol.foodWorkers = maxFarmWorkers;
+    testCol.industryWorkers = 0;
+    testCol.researchWorkers = 0;
     const int maxFoodYield = economy(state, testCol).food;
     const int powerDemand = c.factories * 5 + c.laboratories * 5 + (c.shipyards ? 5 : 0) + c.defenseBatteries * 5;
     const auto& owner = empire(state, c.ownerId);

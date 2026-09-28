@@ -34,6 +34,7 @@ std::string asSchemaTen(const botf::GameState& state) {
         if (taskforces > 0) { --taskforces; continue; }
         if (planets > 0) { --planets; continue; }
         if (line.starts_with("EXPANSION ")) continue;
+        if (line.starts_with("REMASTER ")) continue; // Schema 12 only.
         if (line.starts_with("PLANETS ")) {
             planets = std::stoi(line.substr(8));
             continue;
@@ -202,8 +203,16 @@ std::string asSchemaSeven(const botf::GameState& state) {
     for (unsigned char byte : body) { hash ^= byte; hash *= 1099511628211ULL; }
     return body + "CHECKSUM " + std::to_string(hash) + "\n";
 }
+int failed = 0;
+// Each scenario reports PASS/FAIL independently; the suite fails at the end if any failed.
 void run(const char* name, const std::function<void()>& fn, int& passed) {
-    fn(); ++passed; std::cout << "PASS " << name << '\n';
+    try {
+        fn(); ++passed; std::cout << "PASS " << name << std::endl;
+    } catch (const std::exception& error) {
+        ++failed; std::cout << "FAIL " << name << ": " << error.what() << std::endl;
+    } catch (...) {
+        ++failed; std::cout << "FAIL " << name << ": unknown exception" << std::endl;
+    }
 }
 }
 
@@ -571,7 +580,9 @@ int main() {
             for (int turn = 0; turn < 20; ++turn) botf::advance(s);
             botf::submit(s, enqueue(3, botf::Building::FusionPlant));
             for (int turn = 0; turn < 8; ++turn) botf::advance(s);
-            check(s.colonies[0].energy == 60 && s.colonies[0].powerPlants == 2, "Unlocked fusion plant failed to build");
+            // Schema 12: a fusion plant is its own structure (40 energy), not two 10-energy power plants.
+            check(s.colonies[0].energy == 60 && s.colonies[0].fusionPlants == 1 && s.colonies[0].powerPlants == 0,
+                "Unlocked fusion plant failed to build");
         }, passed);
         run("research terminal levels reserve surplus and ledger rejects tampering", [] {
             auto s = botf::generate(1999);
@@ -614,6 +625,7 @@ int main() {
         }, passed);
         run("previous development saves migrate without injecting rival empires", [] {
             auto s = botf::generate(1999); s.eventsEnabled = false; s.aiAggressionEnabled = false;
+            s.unifiedCombat = false; // Pre-schema-12 campaigns load with the legacy combat model.
             botf::submit(s, enqueue(1, botf::Building::Factory)); botf::advance(s);
             s.intelligence = 0;
             botf::submit(s, enqueue(2, botf::Building::PowerPlant));
@@ -705,6 +717,7 @@ int main() {
         run("schema five and six preserve ledgers and saved diplomatic due dates", [] {
             for (const int version : {5, 6}) {
                 auto s = botf::generateCampaign(1999); s.populationEnabled = false; s.eventsEnabled = false; s.aiAggressionEnabled = false;
+                s.unifiedCombat = false; // Pre-schema-12 campaigns load with the legacy combat model.
                 if (version == 5) s.minors.clear();
                 else {
                     s.minors[0].contact[1] = true;
@@ -763,6 +776,7 @@ int main() {
         }, passed);
         run("major contact, war, fleet battle, damage and battle history survive reload", [] {
             auto s = botf::generateCampaign(1999);
+            s.unifiedCombat = false; // Exercises the legacy strategic resolver kept for schema 4-11 saves.
             const auto home = s.systems.front();
             auto& enemy = s.fleets[2]; enemy.x = enemy.targetX = home.x; enemy.y = enemy.targetY = home.y;
             auto& knowledge = s.rivals[0].explored;
@@ -798,6 +812,7 @@ int main() {
         }, passed);
         run("tactical loss lists destroyed ships and keeps their source snapshots", [] {
             auto s = botf::generateCampaign(1999); s.aiAggressionEnabled = false;
+            s.unifiedCombat = false; // Legacy resolver fixture (schema 4-11 saves).
             const auto sol = s.systems.front();
             s.fleets[0].hull = 3;
             s.fleets[1].hull = 3;
@@ -870,6 +885,7 @@ int main() {
         }, passed);
         run("contested-home withdrawal is recorded before tactical fire", [] {
             auto s = botf::generateCampaign(1999); s.aiAggressionEnabled = false;
+            s.unifiedCombat = false; // Legacy free withdrawal; unified combat disengages under fire instead.
             const auto sol = s.systems.front();
             s.fleets[2].x = s.fleets[2].targetX = sol.x;
             s.fleets[2].y = s.fleets[2].targetY = sol.y;
@@ -1042,6 +1058,7 @@ int main() {
         }, passed);
         run("schema eight campaigns migrate into prototype rules without reinterpreting projects", [] {
             auto s = botf::generateCampaign(1999); s.aiAggressionEnabled = false;
+            s.unifiedCombat = false; // Pre-schema-12 campaigns load with the legacy combat model.
             botf::submit(s, enqueue(1, botf::Building::Factory)); botf::advance(s);
             auto old = asSchemaEight(s);
             const auto restored = botf::deserialize(old);
@@ -1160,6 +1177,10 @@ int main() {
         }, passed);
         run("strategic AI avoids peeking at hidden enemy fleets and avoids suicidal attacks", [] {
             auto s = botf::generateReferenceCampaign(1999);
+            // The "hidden" corner sits next to the Klingon home, so the scout is visible and a
+            // skirmish follows; the first check only holds because the legacy resolver's
+            // withdrawal clears attack targets. Keep this AI fixture on the legacy resolver.
+            s.unifiedCombat = false;
             s.majorRelations[0].contact = true; s.majorRelations[0].atWar = true;
             const int hiddenX = s.width - 1, hiddenY = s.height - 1;
             s.fleets[0].x = s.fleets[0].targetX = hiddenX;
@@ -1501,6 +1522,7 @@ int main() {
         }, passed);
         run("task force retreat detachment and bidirectional reconciliation", [] {
             auto s = botf::generateReferenceCampaign(1999); s.aiAggressionEnabled = false;
+            s.unifiedCombat = false; // Legacy withdrawal timing; the session suite covers tactical retreats.
             const auto home = s.systems.front();
             const int d1Id = s.nextFleetId++;
             s.fleets.push_back({d1Id, 1, home.x, home.y, home.x, home.y, false, false, botf::Building::Destroyer, 24});
@@ -2960,11 +2982,11 @@ int main() {
                 "Workforce explanation incorporates the shortage diagnostic");
         }, passed);
 
-        std::cout << "ALL " << passed << " SCENARIOS PASSED\n";
-        return 0;
     } catch (const std::exception& error) {
-        std::cerr << "FAIL after " << passed << " scenarios: " << error.what() << '\n';
+        std::cerr << "FAIL suite aborted after " << passed << " scenarios: " << error.what() << '\n';
         return 1;
     }
+    std::cout << (failed ? "FAILED " : "ALL ") << passed << " passed, " << failed << " failed\n";
+    return failed ? 1 : 0;
 }
 

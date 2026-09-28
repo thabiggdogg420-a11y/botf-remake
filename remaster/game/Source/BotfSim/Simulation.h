@@ -11,9 +11,11 @@
 #include "Intelligence.h"
 
 namespace botf {
-// Modern BOTF campaign expansion schema and content.
-inline constexpr const char* ContentVersion = "campaign-expansion-11";
-inline constexpr int SaveVersion = 11;
+// BOTF Remastered schema and content. Schema 12 adds the unified tactical combat
+// model and fusion-plant accounting; schemas 4-11 still load and continue.
+inline constexpr const char* ContentVersion = "remaster-12";
+inline constexpr int SaveVersion = 12;
+namespace tactical { struct Encounter; }
 enum class Ruleset : int { Prototype, Reference };
 enum class StartingEra : int { Early = 1, Developed = 2, Expanded = 3, Advanced = 4, Supreme = 5 };
 enum class TacticalStance : int { Balanced, Aggressive, Defensive, Withdraw };
@@ -110,7 +112,8 @@ struct Colony {
     std::vector<Construction> queue;
     int shipyards = 0;
     bool shipyardEnabled = true;
-    int powerPlants = 0;
+    int powerPlants = 0;   // Each contributes 10 energy and 1 credit upkeep.
+    int fusionPlants = 0;  // Schema 12: each contributes 40 energy and 2 credit upkeep.
     int morale = 70;
     int defenseBatteries = 0;
     // Colony automation:
@@ -271,6 +274,10 @@ struct GameState : EmpireState {
     std::vector<intelligence::OperationRecord> intelOperations;
     bool modernEnginesActive = false;
     StartingEra startingEra = StartingEra::Early;
+    // Schema 12: every battle (player and AI-vs-AI) resolves through the tactical
+    // engine, in advance() and in campaign sessions alike. Schema 4-11 saves load
+    // with false and keep the legacy strategic resolver in headless advance().
+    bool unifiedCombat = false;
 };
 struct Economy {
     int food = 0, foodDeficit = 0, industry = 0, research = 0;
@@ -340,6 +347,16 @@ void cancel(GameState& state, std::uint64_t commandId); // IDs never reused.
 GameState preview(const GameState& state); // Draft colony/queue values for inspection, without resolving a turn.
 TurnReport advanceWithCombat(GameState& state, const std::function<void(GameState&, TurnReport&)>& combatResolver = {});
 TurnReport advance(GameState& state); // Publish only after complete success.
+// Resolves every war encounter on the map through the tactical engine. Battles
+// are pairwise: for each sector (row-major) and each warring MajorRelation in
+// empire-id order, the two empires' surviving, non-withdrawn ships fight one
+// encounter, so three or more empires meeting in a sector fight a deterministic
+// sequence of duels. Encounters involving the player are passed to
+// playerEncounter when set (it must leave the encounter finished); all other
+// encounters are auto-resolved. Used by advance() for unified-combat campaigns
+// and by session::resume for every campaign.
+void resolveTacticalBattles(GameState& state, TurnReport& report,
+                            const std::function<void(tactical::Encounter&)>& playerEncounter = {});
 std::string serialize(const GameState& state);
 GameState deserialize(const std::string& text);
 std::uint64_t fingerprint(const GameState& state);
