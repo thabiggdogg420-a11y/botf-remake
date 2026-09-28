@@ -568,6 +568,28 @@ void reconcileTaskForces(GameState& s) {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Lane B: modern diplomacy & intelligence wiring (see remaster/docs/DIPLOMACY.md)
+// ---------------------------------------------------------------------------
+bool campaignEmpire(const GameState& s, int id) {
+    return id == s.playerEmpire || std::any_of(s.rivals.begin(), s.rivals.end(), [id](const EmpireState& e) { return e.id == id; });
+}
+// An empire with no colonies left is eliminated: it can neither negotiate nor spy.
+bool empireEliminatedInternal(const GameState& s, int id) {
+    if (!campaignEmpire(s, id)) return false;
+    return std::none_of(s.colonies.begin(), s.colonies.end(), [id](const Colony& c) { return c.ownerId == id; });
+}
+std::vector<int> survivingEmpires(const GameState& s) {
+    std::vector<int> ids;
+    if (!empireEliminatedInternal(s, s.playerEmpire)) ids.push_back(s.playerEmpire);
+    for (const auto& r : s.rivals) if (!empireEliminatedInternal(s, r.id)) ids.push_back(r.id);
+    std::sort(ids.begin(), ids.end());
+    return ids;
+}
+bool modernDiplomacy(const GameState& s) { return s.campaignExpansionEnabled && s.modernEnginesActive; }
+void enactWar(GameState& s, int aggressor, int defender);
+void planAiWarDeclarations(GameState& s, int ownerId);
+
 class CampaignDiplomacyContext : public diplomacy::DiplomacyContext {
 public:
     const GameState& state;
@@ -575,6 +597,7 @@ public:
 
     bool hasContact(diplomacy::ParticipantId a, diplomacy::ParticipantId b) const override {
         if (a == b) return true;
+        if (isEliminated(a) || isEliminated(b)) return false;
         if (!a.isMinor && !b.isMinor) {
             const auto* rel = majorRelation(state, a.id, b.id);
             return rel && rel->contact;
@@ -612,7 +635,7 @@ public:
         if (p.isMinor) return 0;
         int64_t mil = 0;
         for (const auto& f : state.fleets) {
-            if (f.ownerId == p.id) mil += fleetAttack(f) * 10 + f.hull;
+            if (f.ownerId == p.id && f.hull > 0) mil += fleetAttack(f) * 10 + f.hull;
         }
         return mil;
     }
@@ -658,6 +681,20 @@ public:
 
     bool isHuman(diplomacy::ParticipantId p) const override {
         return !p.isMinor && p.id == state.playerEmpire;
+    }
+
+    bool isEliminated(diplomacy::ParticipantId p) const override {
+        return !p.isMinor && empireEliminatedInternal(state, p.id);
+    }
+
+    std::vector<int> majorEmpires() const override {
+        return survivingEmpires(state);
+    }
+
+    int warDurationTurns(diplomacy::ParticipantId a, diplomacy::ParticipantId b) const override {
+        if (a.isMinor || b.isMinor) return 0;
+        const auto* rel = majorRelation(state, a.id, b.id);
+        return (rel && rel->atWar) ? std::max(0, state.turn - rel->warStartTurn) : 0;
     }
 };
 
@@ -720,6 +757,8 @@ void applyDraft(GameState& state) {
     std::set<int> orderedFleets;
     for (const auto& command : state.pending) {
         if (modernDiplomaticCommand(command.type)) {
+            // Legacy campaigns do not serialize the modern engines: reject rather than lose the order.
+            require(modernDiplomacy(state), "Modern diplomacy requires a modern (reference expansion) campaign");
             if (command.type == CommandType::SubmitDiplomaticProposal) {
                 CampaignDiplomacyContext ctx(state);
                 diplomacy::ParticipantId proposer = diplomacy::ParticipantId::major(state.playerEmpire);
@@ -727,6 +766,7 @@ void applyDraft(GameState& state) {
                     ? diplomacy::ParticipantId::minor(command.targetSystemId ? command.targetSystemId : command.systemId)
                     : diplomacy::ParticipantId::major(command.targetEmpire);
                 require(proposer != target, "Cannot propose treaty to own empire");
+                require(!ctx.isEliminated(target), "That empire has been eliminated");
                 require(ctx.hasContact(proposer, target), "Diplomatic proposal requires first contact");
                 if (command.proposalCreditOffer > 0) {
                     require(state.credits >= command.proposalCreditOffer, "Insufficient credits for proposal offer");
@@ -754,6 +794,7 @@ void applyDraft(GameState& state) {
                 require(!propIt->resolved, "Proposal is already resolved");
                 diplomacy::ParticipantId playerPart = diplomacy::ParticipantId::major(state.playerEmpire);
                 require(propIt->target == playerPart, "Not authorized to respond to proposal: target is not player");
+                require(propIt->treatyType != diplomacy::TreatyType::War, "A declaration of war cannot be answered");
                 bool ok = diplomacy::DiplomacyEngine::respondToOffer(
                     state.diplomacyEngineState,
                     playerPart,
@@ -766,10 +807,12 @@ void applyDraft(GameState& state) {
             continue;
         }
         if (modernIntelCommand(command.type)) {
+            require(modernDiplomacy(state), "Modern intelligence requires a modern (reference expansion) campaign");
             if (command.type == CommandType::SetIntelBudget) {
                 for (int rid : command.intelRivalIds) {
                     require(std::any_of(state.rivals.begin(), state.rivals.end(), [rid](const EmpireState& r) { return r.id == rid; }),
                         "Target empire for intel budget is not a campaign rival");
+                    require(!empireEliminatedInternal(state, rid), "Cannot budget intelligence against an eliminated empire");
                 }
                 auto& intelState = state.empireIntelStates[state.playerEmpire];
                 intelState.empireId = state.playerEmpire;
@@ -791,6 +834,7 @@ void applyDraft(GameState& state) {
                 require(command.targetEmpire != state.playerEmpire, "Cannot target own empire for intel focus");
                 require(std::any_of(state.rivals.begin(), state.rivals.end(), [&](const EmpireState& r) { return r.id == command.targetEmpire; }),
                     "Target empire for intel focus is not a campaign rival");
+                require(!empireEliminatedInternal(state, command.targetEmpire), "Cannot focus intelligence on an eliminated empire");
                 auto& intelState = state.empireIntelStates[state.playerEmpire];
                 intelState.empireId = state.playerEmpire;
                 auto& rivalState = intelState.getOrCreateRivalState(command.targetEmpire);
@@ -895,31 +939,14 @@ void applyDraft(GameState& state) {
             empire(state, other);
             auto& relation = mutableRelation(state, self, other);
             require(relation.contact, "Major diplomacy requires first contact");
+            require(command.type == CommandType::CancelTradeRoute || !empireEliminatedInternal(state, other),
+                "That empire has been eliminated");
             if (command.type == CommandType::DeclareWar) {
                 require(!relation.atWar, "Empires are already at war");
-                relation.atWar = true; relation.tradeTreaty = false;
-                if (state.advancedRulesEnabled) { relation.warStartTurn = state.turn; relation.trust = std::max(0, relation.trust - 25); }
-                std::erase_if(state.tradeRoutes, [&](const TradeRoute& route) {
-                    const auto destination = colonyAt(state, route.toSystemId);
-                    return destination && ((route.ownerId == self && destination->ownerId == other) ||
-                        (route.ownerId == other && destination->ownerId == self));
-                });
-                std::erase_if(state.pendingMajorOffers, [&](const MajorOffer& offer) {
-                    return (offer.proposer == self && offer.target == other) ||
-                           (offer.proposer == other && offer.target == self);
-                });
-                if (state.campaignExpansionEnabled && state.modernEnginesActive) {
-                    state.diplomacyEngineState.currentTurn = state.turn;
-                    diplomacy::TurnResolutionDelta delta;
-                    diplomacy::DiplomacyEngine::declareWar(
-                        state.diplomacyEngineState,
-                        diplomacy::ParticipantId::major(self),
-                        diplomacy::ParticipantId::major(other),
-                        delta);
-                }
+                enactWar(state, self, other);
             } else if (command.type == CommandType::OfferPeace) {
                 require(relation.atWar, "Empires are already at peace");
-                if (!state.advancedRulesEnabled) relation.atWar = false;
+                if (!state.advancedRulesEnabled) { relation.atWar = false; relation.warStartTurn = state.turn; }
                 else {
                     require(std::none_of(state.pendingMajorOffers.begin(), state.pendingMajorOffers.end(), [&](const MajorOffer& offer) {
                         return offer.proposer == self && offer.target == other && offer.type == command.type;
@@ -1232,31 +1259,9 @@ bool queueMilitaryShip(GameState& s, Colony& colony, Building role) {
 
 void planRivals(GameState& s) {
     for (auto& owner : s.rivals) {
-        for (auto& relation : s.majorRelations) {
-            const int other = relation.first == owner.id ? relation.second : relation.second == owner.id ? relation.first : 0;
-            if (!s.aiAggressionEnabled || other != s.playerEmpire || !relation.contact || relation.atWar || s.turn < 25 ||
-                (owner.id != 2 && owner.id != 4)) continue;
-            relation.atWar = true; relation.tradeTreaty = false;
-            if (s.advancedRulesEnabled) { relation.warStartTurn = s.turn; relation.trust = std::max(0, relation.trust - 25); }
-            std::erase_if(s.tradeRoutes, [&](const TradeRoute& route) {
-                const auto target = colonyAt(s, route.toSystemId);
-                return target && ((route.ownerId == owner.id && target->ownerId == other) ||
-                    (route.ownerId == other && target->ownerId == owner.id));
-            });
-            std::erase_if(s.pendingMajorOffers, [&](const MajorOffer& offer) {
-                return (offer.proposer == owner.id && offer.target == other) ||
-                       (offer.proposer == other && offer.target == owner.id);
-            });
-            if (s.campaignExpansionEnabled && s.modernEnginesActive) {
-                s.diplomacyEngineState.currentTurn = s.turn;
-                diplomacy::TurnResolutionDelta delta;
-                diplomacy::DiplomacyEngine::declareWar(
-                    s.diplomacyEngineState,
-                    diplomacy::ParticipantId::major(owner.id),
-                    diplomacy::ParticipantId::major(other),
-                    delta);
-            }
-        }
+        // Personality- and situation-driven war decisions (treaties, cool-downs,
+        // relative strength, trust and grievances); see planAiWarDeclarations.
+        planAiWarDeclarations(s, owner.id);
         const bool atWar = std::any_of(s.majorRelations.begin(), s.majorRelations.end(), [&](const MajorRelation& r) {
             return r.atWar && (r.first == owner.id || r.second == owner.id);
         });
@@ -1745,59 +1750,51 @@ void resolveDiplomacy(GameState& s, TurnReport& report) {
     std::sort(s.colonies.begin(), s.colonies.end(), [](const Colony& a, const Colony& b) { return a.systemId < b.systemId; });
 }
 
-void resolveMajorOffers(GameState& s, TurnReport& report) {
-    for (const auto& offer : s.pendingMajorOffers) {
-        if (offer.dueTurn > s.turn) continue;
-        auto& relation = mutableRelation(s, offer.proposer, offer.target);
-        bool accepted = false;
-        if (offer.type == CommandType::OfferPeace && relation.atWar) {
-            int proposerShips = 0, targetShips = 0;
-            for (const auto& fleet : s.fleets) {
-                if (fleet.ownerId == offer.proposer) proposerShips += fleetAttack(fleet);
-                if (fleet.ownerId == offer.target) targetShips += fleetAttack(fleet);
-            }
-            accepted = relation.trust >= 20 && (s.turn - relation.warStartTurn >= 2 || proposerShips >= targetShips);
-            if (accepted) { relation.atWar = false; relation.warStartTurn = 0; relation.trust = std::min(100, relation.trust + 10); }
-        } else if (offer.type == CommandType::ProposeTradeTreaty && !relation.atWar && !relation.tradeTreaty) {
-            accepted = relation.trust >= 40;
-            if (accepted) relation.tradeTreaty = true;
-        }
-        if (accepted && s.campaignExpansionEnabled && s.modernEnginesActive) {
-            diplomacy::ActiveTreaty at;
-            at.id = s.diplomacyEngineState.nextTreatyId++;
-            at.partyA = diplomacy::ParticipantId::major(offer.proposer);
-            at.partyB = diplomacy::ParticipantId::major(offer.target);
-            at.type = (offer.type == CommandType::OfferPeace) ? diplomacy::TreatyType::Peace : diplomacy::TreatyType::Trade;
-            at.duration = diplomacy::TreatyDuration::Turns25;
-            at.startTurn = s.turn;
-            at.turnsRemaining = 25;
-            at.status = diplomacy::TreatyStatus::Active;
-            if (!std::any_of(s.diplomacyEngineState.activeTreaties.begin(), s.diplomacyEngineState.activeTreaties.end(),
-                [&](const auto& t) { return t.status == diplomacy::TreatyStatus::Active && t.type == at.type && t.involvesBoth(at.partyA, at.partyB); })) {
-                s.diplomacyEngineState.activeTreaties.push_back(at);
-            }
-        }
-        if (offer.proposer == s.playerEmpire || offer.target == s.playerEmpire)
-            report.events.push_back(std::string(empireName(offer.target)) + (accepted ? " accepted " : " declined ") +
-                (offer.type == CommandType::OfferPeace ? "peace terms." : "the trade treaty."));
-    }
-    std::erase_if(s.pendingMajorOffers, [&](const MajorOffer& offer) { return offer.dueTurn <= s.turn; });
+// ---------------------------------------------------------------------------
+// Lane B: shared war/peace/operation application for legacy and modern paths
+// ---------------------------------------------------------------------------
+void applyWarRelation(GameState& s, int a, int b) {
+    auto& relation = mutableRelation(s, a, b);
+    if (relation.atWar) return;
+    relation.atWar = true; relation.tradeTreaty = false;
+    // warStartTurn records the last war/peace transition; AI cool-downs read it.
+    relation.warStartTurn = s.turn;
+    if (s.advancedRulesEnabled) relation.trust = std::max(0, relation.trust - 25);
+    std::erase_if(s.tradeRoutes, [&](const TradeRoute& route) {
+        const auto destination = colonyAt(s, route.toSystemId);
+        return destination && ((route.ownerId == a && destination->ownerId == b) ||
+            (route.ownerId == b && destination->ownerId == a));
+    });
+    std::erase_if(s.pendingMajorOffers, [&](const MajorOffer& offer) {
+        return (offer.proposer == a && offer.target == b) || (offer.proposer == b && offer.target == a);
+    });
 }
 
-void resolveModernDiplomacy(GameState& next, TurnReport& report) {
-    syncDiplomacyStateInternal(next);
-    next.diplomacyEngineState.currentTurn = next.turn;
-    CampaignDiplomacyContext diploCtx(next);
-    auto diploDelta = diplomacy::DiplomacyEngine::resolveTurn(next.diplomacyEngineState, diploCtx, next.rngState);
-    next.diplomacyEngineState.currentTurn = next.turn;
-    for (const auto& op : diploDelta.operations) {
+void applyPeaceRelation(GameState& s, int a, int b) {
+    auto& relation = mutableRelation(s, a, b);
+    if (!relation.atWar) return;
+    relation.atWar = false;
+    relation.warStartTurn = s.turn;
+}
+
+std::string participantName(const GameState& s, diplomacy::ParticipantId p) {
+    if (!p.isMinor) return empireName(p.id);
+    const auto* m = minorAt(s, p.id);
+    return m ? m->name : std::string("an unknown minor race");
+}
+
+void creditEmpire(GameState& s, int id, std::int64_t amount) {
+    auto& e = mutableEmpire(s, id);
+    e.credits = std::clamp<std::int64_t>(e.credits + amount, -MaxBalance, MaxBalance);
+}
+
+void applyDiplomacyOps(GameState& next, const diplomacy::TurnResolutionDelta& delta, TurnReport* report, bool skipWarState) {
+    for (const auto& op : delta.operations) {
         if (op.opType == diplomacy::DiplomaticOpType::TransferCredits) {
-            if (!op.partyA.isMinor && !op.partyB.isMinor) {
-                mutableEmpire(next, op.partyA.id).credits -= op.credits;
-                mutableEmpire(next, op.partyB.id).credits += op.credits;
-            } else if (!op.partyA.isMinor && op.partyB.isMinor) {
-                mutableEmpire(next, op.partyA.id).credits -= op.credits;
-            }
+            // The engine ledger guarantees the payer could afford it; the payee is clamped to MaxBalance.
+            const std::int64_t amount = std::clamp<std::int64_t>(op.credits, 0, MaxBalance);
+            if (!op.partyA.isMinor && campaignEmpire(next, op.partyA.id)) creditEmpire(next, op.partyA.id, -amount);
+            if (!op.partyB.isMinor && campaignEmpire(next, op.partyB.id)) creditEmpire(next, op.partyB.id, amount);
         } else if (op.opType == diplomacy::DiplomaticOpType::ApplyTreaty) {
             if (!op.partyA.isMinor && !op.partyB.isMinor) {
                 auto& rel = mutableRelation(next, op.partyA.id, op.partyB.id);
@@ -1806,16 +1803,17 @@ void resolveModernDiplomacy(GameState& next, TurnReport& report) {
                     op.treatyType == diplomacy::TreatyType::Alliance) {
                     rel.tradeTreaty = true;
                     rel.atWar = false;
-                } else if (op.treatyType == diplomacy::TreatyType::NonAggression) {
-                    rel.atWar = false;
-                } else if (op.treatyType == diplomacy::TreatyType::Peace) {
+                } else if (op.treatyType == diplomacy::TreatyType::NonAggression ||
+                           op.treatyType == diplomacy::TreatyType::Peace) {
                     rel.atWar = false;
                 }
-            } else {
+            } else if (op.treatyType == diplomacy::TreatyType::Friendship ||
+                       op.treatyType == diplomacy::TreatyType::Affiliation) {
+                // Friendship-class treaties with a minor open the road to membership.
                 int majorId = op.partyA.isMinor ? op.partyB.id : op.partyA.id;
                 int minorId = op.partyA.isMinor ? op.partyA.id : op.partyB.id;
                 auto mIt = std::find_if(next.minors.begin(), next.minors.end(), [minorId](const Minor& m) { return m.systemId == minorId; });
-                if (mIt != next.minors.end() && majorId >= 1 && majorId <= 5) {
+                if (mIt != next.minors.end() && majorId >= 1 && majorId <= 5 && mIt->contact[majorId]) {
                     mIt->friendshipTurn[majorId] = next.turn;
                 }
             }
@@ -1838,31 +1836,33 @@ void resolveModernDiplomacy(GameState& next, TurnReport& report) {
                     }
                     if (!stillHasTrade) {
                         rel.tradeTreaty = false;
+                        // Routes need a treaty (advanced rules); drop the orphans between the pair.
+                        if (next.advancedRulesEnabled) {
+                            std::erase_if(next.tradeRoutes, [&](const TradeRoute& route) {
+                                const auto dest = colonyAt(next, route.toSystemId);
+                                return dest && ((route.ownerId == op.partyA.id && dest->ownerId == op.partyB.id) ||
+                                                (route.ownerId == op.partyB.id && dest->ownerId == op.partyA.id));
+                            });
+                        }
                     }
                 }
-            } else {
+            } else if (op.treatyType == diplomacy::TreatyType::Friendship ||
+                       op.treatyType == diplomacy::TreatyType::Affiliation) {
                 int majorId = op.partyA.isMinor ? op.partyB.id : op.partyA.id;
                 int minorId = op.partyA.isMinor ? op.partyA.id : op.partyB.id;
+                const diplomacy::ParticipantId minorP = diplomacy::ParticipantId::minor(minorId);
+                const diplomacy::ParticipantId majorP = diplomacy::ParticipantId::major(majorId);
+                const bool stillFriends = next.diplomacyEngineState.hasActiveTreaty(majorP, minorP, diplomacy::TreatyType::Friendship) ||
+                                          next.diplomacyEngineState.hasActiveTreaty(majorP, minorP, diplomacy::TreatyType::Affiliation);
                 auto mIt = std::find_if(next.minors.begin(), next.minors.end(), [minorId](const Minor& m) { return m.systemId == minorId; });
-                if (mIt != next.minors.end() && majorId >= 1 && majorId <= 5) {
+                if (mIt != next.minors.end() && majorId >= 1 && majorId <= 5 && !stillFriends) {
                     mIt->friendshipTurn[majorId] = -1;
                 }
             }
         } else if (op.opType == diplomacy::DiplomaticOpType::SetWarState) {
-            if (!op.partyA.isMinor && !op.partyB.isMinor) {
-                auto& rel = mutableRelation(next, op.partyA.id, op.partyB.id);
-                rel.atWar = op.setAtWar;
-                if (op.setAtWar) {
-                    rel.tradeTreaty = false;
-                    rel.warStartTurn = next.turn;
-                    rel.trust = std::max(0, rel.trust - 25);
-                    std::erase_if(next.tradeRoutes, [&](const TradeRoute& route) {
-                        const auto dest = colonyAt(next, route.toSystemId);
-                        return dest && ((route.ownerId == op.partyA.id && dest->ownerId == op.partyB.id) ||
-                                        (route.ownerId == op.partyB.id && dest->ownerId == op.partyA.id));
-                    });
-                }
-            }
+            if (skipWarState || op.partyA.isMinor || op.partyB.isMinor) continue;
+            if (op.setAtWar) applyWarRelation(next, op.partyA.id, op.partyB.id);
+            else applyPeaceRelation(next, op.partyA.id, op.partyB.id);
         } else if (op.opType == diplomacy::DiplomaticOpType::TransferMinorMembership) {
             int minorId = op.partyA.id;
             int newOwner = op.newOwner;
@@ -1884,11 +1884,11 @@ void resolveModernDiplomacy(GameState& next, TurnReport& report) {
                     }
                     std::sort(next.colonies.begin(), next.colonies.end(), [](const Colony& a, const Colony& b) { return a.systemId < b.systemId; });
                 }
-                if (mIt->contact[next.playerEmpire]) {
+                if (report && mIt->contact[next.playerEmpire]) {
                     if (newOwner == next.playerEmpire) {
-                        report.events.push_back(mIt->name + " accepted membership! Colony established.");
+                        report->events.push_back(mIt->name + " accepted membership! Colony established.");
                     } else {
-                        report.events.push_back(mIt->name + " joined " + std::string(empireName(newOwner)) + ".");
+                        report->events.push_back(mIt->name + " joined " + std::string(empireName(newOwner)) + ".");
                     }
                 }
             }
@@ -1899,20 +1899,541 @@ void resolveModernDiplomacy(GameState& next, TurnReport& report) {
             if (mIt != next.minors.end() && majorId >= 1 && majorId <= 5) {
                 mIt->attitude[majorId] = std::clamp(mIt->attitude[majorId] + op.attitudeDelta, 0, 100);
             }
-        }
-    }
-    for (const auto& evt : diploDelta.events) {
-        if (!evt.description.empty() && (evt.partyA == diplomacy::ParticipantId::major(next.playerEmpire) ||
-                                         evt.partyB == diplomacy::ParticipantId::major(next.playerEmpire))) {
-            report.events.push_back("Diplomacy: " + evt.description);
+        } else if (op.opType == diplomacy::DiplomaticOpType::AdjustTrust) {
+            if (op.partyA.isMinor || op.partyB.isMinor || op.partyA == op.partyB) continue;
+            if (!campaignEmpire(next, op.partyA.id) || !campaignEmpire(next, op.partyB.id)) continue;
+            auto& rel = mutableRelation(next, op.partyA.id, op.partyB.id);
+            rel.trust = std::clamp(rel.trust + op.attitudeDelta, 0, 100);
         }
     }
 }
 
+// Unified war declaration for the player's DeclareWar order, AI war planning and
+// AI allies answering a call to arms. Legacy campaigns only change the relation.
+void enactWar(GameState& s, int aggressor, int defender) {
+    if (mutableRelation(s, aggressor, defender).atWar) return;
+    applyWarRelation(s, aggressor, defender);
+    if (!modernDiplomacy(s)) return;
+    auto& ds = s.diplomacyEngineState;
+    ds.currentTurn = s.turn;
+    CampaignDiplomacyContext ctx(s);
+    diplomacy::TurnResolutionDelta delta;
+    diplomacy::DiplomacyEngine::declareWar(ds, diplomacy::ParticipantId::major(aggressor),
+        diplomacy::ParticipantId::major(defender), delta, &ctx);
+    applyDiplomacyOps(s, delta, nullptr, /*skipWarState=*/true);
+}
+
+std::int64_t blocMilitaryPower(const GameState& s, const CampaignDiplomacyContext& ctx, int empireId, int excluding) {
+    const auto self = diplomacy::ParticipantId::major(empireId);
+    std::int64_t power = ctx.militaryPower(self);
+    if (!modernDiplomacy(s)) return power;
+    for (const auto& t : s.diplomacyEngineState.activeTreaties) {
+        if (t.status != diplomacy::TreatyStatus::Active || t.type != diplomacy::TreatyType::Alliance || !t.involves(self)) continue;
+        const auto ally = t.getCounterparty(self);
+        if (ally.isMinor || ally.id == excluding || ctx.isEliminated(ally)) continue;
+        power += ctx.militaryPower(ally);
+    }
+    return power;
+}
+
+// Replaces the old "IDs 2/4 declare war on the player every turn after 25" rule.
+void planAiWarDeclarations(GameState& s, int ownerId) {
+    if (!s.aiAggressionEnabled || empireEliminatedInternal(s, ownerId)) return;
+    const bool modern = modernDiplomacy(s);
+    const auto& ds = s.diplomacyEngineState;
+    int activeWars = 0;
+    std::vector<int> candidates;
+    for (const auto& r : s.majorRelations) {
+        const int other = r.first == ownerId ? r.second : r.second == ownerId ? r.first : 0;
+        if (!other || empireEliminatedInternal(s, other)) continue;
+        if (r.atWar) ++activeWars;
+        else if (r.contact) candidates.push_back(other);
+    }
+    std::sort(candidates.begin(), candidates.end());
+    int best = 0, bestScore = 0;
+    for (int other : candidates) {
+        const CampaignDiplomacyContext ctx(s);
+        const auto* rel = majorRelation(s, ownerId, other);
+        if (!rel) continue;
+        diplomacy::WarAssessmentInput in;
+        in.aggressorId = ownerId;
+        in.targetId = other;
+        in.personality = diplomacy::personalityForEmpire(ownerId);
+        in.currentTurn = s.turn;
+        int lastTransition = rel->warStartTurn;
+        if (modern) {
+            if (const auto* mem = ds.findMemory(ownerId, other)) {
+                lastTransition = std::max({lastTransition, mem->lastWarTurn, mem->lastPeaceTurn});
+            }
+            const auto a = diplomacy::ParticipantId::major(ownerId), b = diplomacy::ParticipantId::major(other);
+            in.treatyRank = ds.highestTreatyRank(a, b);
+            in.peaceTreaty = ds.hasActiveTreaty(a, b, diplomacy::TreatyType::Peace);
+            in.grievances = ds.grievances(ownerId, other);
+            in.targetBetrayals = ds.betrayals(other);
+        }
+        in.turnsSinceTransition = s.turn - lastTransition;
+        in.activeWars = activeWars;
+        in.aggressorPower = ctx.militaryPower(diplomacy::ParticipantId::major(ownerId));
+        in.targetPower = blocMilitaryPower(s, ctx, other, ownerId);
+        in.trust = rel->trust;
+        in.tradePact = rel->tradeTreaty;
+        in.seed = s.seed ^ (0x9E3779B97F4A7C15ULL * static_cast<std::uint64_t>(ownerId));
+        const auto verdict = diplomacy::assessWarDeclaration(in);
+        if (verdict.declare && (best == 0 || verdict.score > bestScore)) {
+            best = other;
+            bestScore = verdict.score;
+        }
+    }
+    if (best) enactWar(s, ownerId, best); // At most one new front per empire per turn.
+}
+
+void resolveMajorOffers(GameState& s, TurnReport& report) {
+    for (const auto& offer : s.pendingMajorOffers) {
+        if (offer.dueTurn > s.turn) continue;
+        auto& relation = mutableRelation(s, offer.proposer, offer.target);
+        const bool eliminated = empireEliminatedInternal(s, offer.proposer) || empireEliminatedInternal(s, offer.target);
+        bool accepted = false;
+        if (eliminated) {
+            accepted = false;
+        } else if (offer.type == CommandType::OfferPeace && relation.atWar) {
+            int proposerShips = 0, targetShips = 0;
+            for (const auto& fleet : s.fleets) {
+                if (fleet.ownerId == offer.proposer) proposerShips += fleetAttack(fleet);
+                if (fleet.ownerId == offer.target) targetShips += fleetAttack(fleet);
+            }
+            accepted = relation.trust >= 20 && (s.turn - relation.warStartTurn >= 2 || proposerShips >= targetShips);
+            if (accepted) {
+                relation.atWar = false;
+                relation.warStartTurn = s.turn; // Peace transition: starts the AI war cool-down
+                relation.trust = std::min(100, relation.trust + 10);
+            }
+        } else if (offer.type == CommandType::ProposeTradeTreaty && !relation.atWar && !relation.tradeTreaty) {
+            accepted = relation.trust >= 40;
+            if (accepted) relation.tradeTreaty = true;
+        }
+        if (accepted && modernDiplomacy(s)) {
+            // Routed through the engine so the treaty cap, supersession and events apply.
+            auto& ds = s.diplomacyEngineState;
+            ds.currentTurn = s.turn;
+            diplomacy::TurnResolutionDelta delta;
+            const auto a = diplomacy::ParticipantId::major(offer.proposer);
+            const auto b = diplomacy::ParticipantId::major(offer.target);
+            if (offer.type == CommandType::OfferPeace) diplomacy::DiplomacyEngine::recordPeace(ds, a, b, delta);
+            diplomacy::DiplomacyEngine::establishTreaty(ds, a, b,
+                offer.type == CommandType::OfferPeace ? diplomacy::TreatyType::Peace : diplomacy::TreatyType::Trade,
+                diplomacy::TreatyDuration::Turns25, delta);
+        }
+        if (offer.proposer == s.playerEmpire || offer.target == s.playerEmpire)
+            report.events.push_back(std::string(empireName(offer.target)) + (accepted ? " accepted " : " declined ") +
+                (offer.type == CommandType::OfferPeace ? "peace terms." : "the trade treaty."));
+    }
+    std::erase_if(s.pendingMajorOffers, [&](const MajorOffer& offer) { return offer.dueTurn <= s.turn; });
+}
+
+// AI allies decide whether to honor open calls to arms (the human ally decides by
+// declaring war itself before the call falls due).
+void answerCallsToArms(GameState& next, TurnReport& report) {
+    if (!next.aiAggressionEnabled) return;
+    const auto calls = next.diplomacyEngineState.defenseCalls;
+    for (const auto& call : calls) {
+        if (call.ally == next.playerEmpire || !campaignEmpire(next, call.ally) || !campaignEmpire(next, call.aggressor)) continue;
+        if (empireEliminatedInternal(next, call.ally) || empireEliminatedInternal(next, call.aggressor)) continue;
+        const auto* rel = majorRelation(next, call.ally, call.aggressor);
+        if (!rel || !rel->contact || rel->atWar) continue;
+        const auto* defRel = majorRelation(next, call.defender, call.aggressor);
+        if (!defRel || !defRel->atWar) continue;
+        const CampaignDiplomacyContext ctx(next);
+        const auto ally = diplomacy::ParticipantId::major(call.ally);
+        const auto aggressor = diplomacy::ParticipantId::major(call.aggressor);
+        const auto& ds = next.diplomacyEngineState;
+        const bool bound = ds.highestTreatyRank(ally, aggressor) > 0 || ds.hasActiveTreaty(ally, aggressor, diplomacy::TreatyType::Peace);
+        if (!diplomacy::aiHonorsDefenseCall(diplomacy::personalityForEmpire(call.ally), ctx.militaryPower(ally),
+                ctx.militaryPower(aggressor), bound)) continue;
+        enactWar(next, call.ally, call.aggressor);
+        const bool playerInvolved = call.defender == next.playerEmpire || call.aggressor == next.playerEmpire;
+        const auto* playerRelA = majorRelation(next, next.playerEmpire, call.ally);
+        if (playerInvolved || (playerRelA && playerRelA->contact)) {
+            report.events.push_back(std::string(empireName(call.ally)) + " honored its alliance with " +
+                empireName(call.defender) + " and declared war on " + empireName(call.aggressor) + ".");
+        }
+    }
+}
+
+// Per-turn treaty consequences between surviving majors (modern rules):
+// Friendship/Affiliation/Alliance pay a treaty dividend and grow trust, peaceful
+// relations without treaties drift toward the personalities' baselines, long wars
+// breed weariness, and Affiliation/Alliance partners share their star charts.
+void applyTreatyConsequences(GameState& next, TurnReport& report) {
+    const auto& ds = next.diplomacyEngineState;
+    for (auto& rel : next.majorRelations) {
+        if (!rel.contact || empireEliminatedInternal(next, rel.first) || empireEliminatedInternal(next, rel.second)) continue;
+        const auto a = diplomacy::ParticipantId::major(rel.first), b = diplomacy::ParticipantId::major(rel.second);
+        const int rank = ds.highestTreatyRank(a, b);
+        if (rel.atWar) {
+            if (next.turn - rel.warStartTurn >= 10 && rel.trust < 30 && next.turn % 2 == 0) ++rel.trust;
+            continue;
+        }
+        int dividend = 0, cap = 0, every = 0;
+        if (rank == 4) { dividend = 8; cap = 100; every = 1; }
+        else if (rank == 3) { dividend = 5; cap = 85; every = 1; }
+        else if (rank == 2) { dividend = 3; cap = 75; every = 2; }
+        else if (rank == 1) { cap = 60; every = 4; }
+        if (dividend > 0) {
+            creditEmpire(next, rel.first, dividend);
+            creditEmpire(next, rel.second, dividend);
+            if (rel.first == next.playerEmpire || rel.second == next.playerEmpire) report.tradeIncome += dividend;
+        }
+        if (rank > 0) {
+            if (rel.trust < cap && next.turn % every == 0) ++rel.trust;
+        } else if (next.turn % 3 == 0) {
+            const int baseline = (diplomacy::profileFor(diplomacy::personalityForEmpire(rel.first)).trustBaseline +
+                                  diplomacy::profileFor(diplomacy::personalityForEmpire(rel.second)).trustBaseline) / 2;
+            if (rel.trust < baseline) ++rel.trust;
+            else if (rel.trust > baseline) --rel.trust;
+        }
+        if (rank >= 3) {
+            // Shared sensors/exploration: both empires learn each other's charted sectors.
+            auto& first = mutableEmpire(next, rel.first).explored;
+            auto& second = mutableEmpire(next, rel.second).explored;
+            std::vector<int> merged;
+            merged.reserve(first.size() + second.size());
+            std::set_union(first.begin(), first.end(), second.begin(), second.end(), std::back_inserter(merged));
+            first = merged;
+            second = std::move(merged);
+        }
+    }
+}
+
+// Minor races (modern rules). Every MinorReviewInterval turns each minor council
+// reviews its relations: attitudes drift with treaties (legacy friendship counts),
+// proximity and rival influence; members weigh their empire's care against its
+// wars and may secede when loyalty falls below MinorSecessionAttitude.
+constexpr int MinorReviewInterval = 5;
+constexpr int MinorSecessionAttitude = 30;
+
+int minorFriendshipRank(const GameState& s, const Minor& m, int empireId) {
+    int rank = s.diplomacyEngineState.highestTreatyRank(diplomacy::ParticipantId::major(empireId),
+        diplomacy::ParticipantId::minor(m.systemId));
+    if (empireId >= 1 && empireId <= 5 && m.friendshipTurn[empireId] >= 0) rank = std::max(rank, 2);
+    return rank;
+}
+
+void resolveMinorDynamics(GameState& next, TurnReport& report) {
+    if (next.turn <= 0 || next.turn % MinorReviewInterval != 0) return;
+    auto& ds = next.diplomacyEngineState;
+    const auto alive = survivingEmpires(next);
+    for (auto& m : next.minors) {
+        const auto sys = std::find_if(next.systems.begin(), next.systems.end(), [&](const System& x) { return x.id == m.systemId; });
+        if (sys == next.systems.end()) continue;
+        const auto minorP = diplomacy::ParticipantId::minor(m.systemId);
+        int bestRank = 0;
+        for (int e : alive) if (e >= 1 && e <= 5 && m.contact[e]) bestRank = std::max(bestRank, minorFriendshipRank(next, m, e));
+        for (int e : alive) {
+            if (e < 1 || e > 5 || !m.contact[e]) continue;
+            int& att = m.attitude[e];
+            if (m.memberOf == e) {
+                // Member loyalty: expectations erode it, a content colony restores it,
+                // and an empire fighting on several fronts neglects its members.
+                const auto* colony = colonyAt(next, m.systemId);
+                int wars = 0;
+                for (const auto& r : next.majorRelations) {
+                    if (r.atWar && (r.first == e || r.second == e)) {
+                        const int other = r.first == e ? r.second : r.first;
+                        if (!empireEliminatedInternal(next, other)) ++wars;
+                    }
+                }
+                att -= 2;
+                if (colony && colony->ownerId == e && colony->morale >= 70) att += 2;
+                if (wars >= 2) att -= 2 * (wars - 1);
+                att = std::clamp(att, 0, 100);
+                continue;
+            }
+            const int rank = minorFriendshipRank(next, m, e);
+            if (rank >= 2) att = std::max(att, std::min(att + 2, rank >= 3 ? 90 : 85));
+            else if (rank == 1) att = std::max(att, std::min(att + 1, 65));
+            else if (att > 50) att = std::max(50, att - 2);
+            else if (att < 50) att = std::min(50, att + 2);
+            bool near = false;
+            for (const auto& c : next.colonies) {
+                if (c.ownerId != e || c.systemId == m.systemId) continue;
+                const auto loc = std::find_if(next.systems.begin(), next.systems.end(), [&](const System& x) { return x.id == c.systemId; });
+                if (loc != next.systems.end() && std::max(std::abs(loc->x - sys->x), std::abs(loc->y - sys->y)) <= 3) { near = true; break; }
+            }
+            if (near && att < 70) ++att;
+            if (rank < 2 && bestRank >= 2 && att > 30) att = std::max(30, att - 2); // Rival influence
+            att = std::clamp(att, 0, 100);
+        }
+        // Secession of unhappy members.
+        const int owner = m.memberOf;
+        if (owner >= 1 && owner <= 5 && m.attitude[owner] < MinorSecessionAttitude) {
+            const auto colony = std::find_if(next.colonies.begin(), next.colonies.end(), [&](const Colony& c) { return c.systemId == m.systemId; });
+            if (colony == next.colonies.end() || colony->ownerId != owner) continue;
+            if (std::count_if(next.colonies.begin(), next.colonies.end(), [owner](const Colony& c) { return c.ownerId == owner; }) <= 1) continue;
+            next.colonies.erase(colony);
+            std::erase_if(next.tradeRoutes, [&](const TradeRoute& r) { return r.fromSystemId == m.systemId || r.toSystemId == m.systemId; });
+            m.memberOf = 0;
+            m.friendshipTurn[owner] = -1;
+            m.attitude[owner] = std::min(m.attitude[owner], 20);
+            if (auto* ms = ds.getMinorState(m.systemId)) {
+                ms->membershipOwner = 0;
+                ms->membershipTurn = -1;
+            }
+            diplomacy::DiplomaticEvent evt;
+            evt.turn = next.turn;
+            evt.type = diplomacy::DiplomaticEventType::MinorSeceded;
+            evt.partyA = minorP;
+            evt.partyB = diplomacy::ParticipantId::major(owner);
+            evt.description = "Seceded from its empire after prolonged neglect.";
+            diplomacy::DiplomacyEngine::recordEvent(ds, evt);
+            if (owner == next.playerEmpire) {
+                report.events.push_back(m.name + " seceded from our empire. Neglect and war exhausted their loyalty; the colony is independent again.");
+            } else if (m.contact[next.playerEmpire]) {
+                report.events.push_back(m.name + " seceded from " + std::string(empireName(owner)) + ".");
+            }
+        }
+    }
+}
+
+void submitAiProposals(GameState& next, TurnReport& report) {
+    auto& ds = next.diplomacyEngineState;
+    ds.currentTurn = next.turn;
+    const CampaignDiplomacyContext ctx(next);
+    std::vector<int> planners;
+    for (int id : survivingEmpires(next)) if (id != next.playerEmpire) planners.push_back(id);
+    const auto intents = diplomacy::planAiDiplomacy(ds, ctx, planners, next.seed ^ 0xD1B54A32D192ED03ULL);
+    for (const auto& intent : intents) {
+        const bool toPlayer = ctx.isHuman(intent.target);
+        std::uint64_t id = 0;
+        if (!diplomacy::DiplomacyEngine::submitProposal(ds, ctx, intent.proposer, intent.target, intent.treatyType,
+                intent.duration, intent.tone, intent.creditOffer, intent.creditDemand, &id, nullptr, toPlayer ? 2 : 1)) continue;
+        if (!toPlayer) continue;
+        const auto* p = ds.findProposal(id);
+        const std::string who = empireName(intent.proposer.id);
+        std::string text;
+        if (intent.treatyType == diplomacy::TreatyType::None && intent.creditDemand > 0) {
+            text = who + " demands " + std::to_string(intent.creditDemand) + " credits in tribute";
+        } else if (intent.treatyType == diplomacy::TreatyType::None) {
+            text = who + " offers a gift of " + std::to_string(intent.creditOffer) + " credits";
+        } else {
+            text = who + " proposes a " + diplomacy::treatyTypeName(intent.treatyType);
+        }
+        report.events.push_back("Diplomacy: " + text + " (proposal " + std::to_string(id) + ", respond by turn " +
+            std::to_string(p ? p->dueTurn : next.turn + 2) + ").");
+    }
+}
+
+bool newsworthy(diplomacy::DiplomaticEventType type) {
+    using T = diplomacy::DiplomaticEventType;
+    return type == T::WarDeclared || type == T::PeaceEstablished || type == T::TreatyBetrayed ||
+        type == T::MinorMembershipJoined || type == T::AllianceRefused || type == T::AllianceHonored ||
+        type == T::ParticipantEliminated || type == T::AllianceCalledToArms;
+}
+
+// Player-facing sentence for an engine event, with empire and minor names.
+std::string describeDiplomaticEvent(const GameState& s, const diplomacy::DiplomaticEvent& evt) {
+    using T = diplomacy::DiplomaticEventType;
+    const std::string a = participantName(s, evt.partyA);
+    const std::string b = participantName(s, evt.partyB);
+    const int third = static_cast<int>(evt.numericValue);
+    const std::string thirdName = third >= 1 && third <= 5 ? std::string(empireName(third)) : std::string("its enemy");
+    switch (evt.type) {
+        case T::WarDeclared: return a + " declared war on " + b + ".";
+        case T::PeaceEstablished: return a + " and " + b + " made peace.";
+        case T::TreatyBetrayed: return a + " broke its treaty with " + b + " by declaring war. Every empire takes note.";
+        case T::AllianceCalledToArms: return a + " called its ally " + b + " to arms against " + thirdName + ". " + evt.description;
+        case T::AllianceHonored: return b + "'s ally " + a + " joined the war against " + thirdName + ".";
+        case T::AllianceRefused: return a + " refused " + b + "'s call to arms against " + thirdName + ".";
+        case T::ParticipantEliminated: return a + " has been eliminated; its treaties are dissolved.";
+        case T::MinorMembershipJoined: return b + " joined " + a + ".";
+        default: return "(" + a + (evt.partyA == evt.partyB ? "" : " / " + b) + "): " + evt.description;
+    }
+}
+
+void reportDiplomaticEvent(const GameState& next, TurnReport& report, const diplomacy::DiplomaticEvent& evt, bool includePlayerWars) {
+    using T = diplomacy::DiplomaticEventType;
+    const auto player = diplomacy::ParticipantId::major(next.playerEmpire);
+    const bool involvesPlayer = evt.partyA == player || evt.partyB == player;
+    if (evt.description.empty() || evt.type == T::ProposalSubmitted) return;
+    if (involvesPlayer) {
+        if (!includePlayerWars && (evt.type == T::WarDeclared)) return; // Already reported by the relation diff
+        if (evt.type == T::AllianceCalledToArms && evt.partyB == player) {
+            report.events.push_back("Diplomacy: " + participantName(next, evt.partyA) + " calls on us to honor our alliance against " +
+                (evt.numericValue >= 1 && evt.numericValue <= 5 ? std::string(empireName(static_cast<int>(evt.numericValue))) : std::string("its enemy")) +
+                ". Declare war before the call falls due or lose their trust. " + evt.description);
+        } else {
+            const std::string text = describeDiplomaticEvent(next, evt);
+            report.events.push_back("Diplomacy" + std::string(text.front() == '(' ? " " : ": ") + text);
+        }
+        return;
+    }
+    if (!newsworthy(evt.type) && !(evt.type == T::TreatyEstablished && evt.numericValue >= static_cast<int>(diplomacy::TreatyType::Affiliation) &&
+                                   evt.numericValue <= static_cast<int>(diplomacy::TreatyType::Alliance))) return;
+    auto knows = [&](diplomacy::ParticipantId p) {
+        if (p.isMinor) { const auto* m = minorAt(next, p.id); return m && m->contact[next.playerEmpire]; }
+        const auto* rel = majorRelation(next, next.playerEmpire, p.id);
+        return rel && rel->contact;
+    };
+    if (!knows(evt.partyA) && !knows(evt.partyB)) return;
+    const std::string text = describeDiplomaticEvent(next, evt);
+    report.events.push_back("Galactic news" + std::string(text.front() == '(' ? " " : ": ") + text);
+}
+
+// Membership follows conquest: a member minor whose colony was captured becomes a
+// (resentful) member of the conqueror. Idempotent with an invasion-merge fix in the
+// turn pipeline; keeps "Minor ownership mismatch" from ever reaching validate().
+void reconcileMinorMembership(GameState& next, TurnReport& report) {
+    for (auto& m : next.minors) {
+        const auto* colony = colonyAt(next, m.systemId);
+        const int holder = colony ? colony->ownerId : 0;
+        if (m.memberOf == holder) continue;
+        const int previous = m.memberOf;
+        m.memberOf = holder;
+        if (holder >= 1 && holder <= 5) {
+            m.contact[holder] = true;
+            m.attitude[holder] = std::min(m.attitude[holder], 40);
+        }
+        if (previous >= 1 && previous <= 5) m.friendshipTurn[previous] = -1;
+        if (holder && m.contact[next.playerEmpire]) {
+            report.events.push_back(m.name + " was conquered by " + std::string(empireName(holder)) +
+                (previous ? " and torn from " + std::string(empireName(previous)) : std::string()) + ".");
+        }
+    }
+}
+
+void resolveModernDiplomacy(GameState& next, TurnReport& report) {
+    reconcileMinorMembership(next, report);
+    syncDiplomacyStateInternal(next);
+    auto& ds = next.diplomacyEngineState;
+    // Events recorded earlier this turn (war declarations from orders and AI planning).
+    std::vector<diplomacy::DiplomaticEvent> earlier;
+    for (const auto& evt : ds.eventHistory) if (evt.turn == next.turn) earlier.push_back(evt);
+    ds.currentTurn = next.turn;
+
+    answerCallsToArms(next, report);
+    for (const auto& evt : ds.eventHistory) {
+        if (evt.turn == next.turn && std::find(earlier.begin(), earlier.end(), evt) == earlier.end()) earlier.push_back(evt);
+    }
+
+    CampaignDiplomacyContext diploCtx(next);
+    auto diploDelta = diplomacy::DiplomacyEngine::resolveTurn(ds, diploCtx, next.rngState);
+    ds.currentTurn = next.turn;
+    applyDiplomacyOps(next, diploDelta, &report, /*skipWarState=*/false);
+
+    applyTreatyConsequences(next, report);
+    resolveMinorDynamics(next, report);
+    syncDiplomacyStateInternal(next);
+    submitAiProposals(next, report);
+
+    for (const auto& evt : earlier) {
+        if (evt.type == diplomacy::DiplomaticEventType::ProposalRejected) continue; // Cancellations by war: noise
+        reportDiplomaticEvent(next, report, evt, /*includePlayerWars=*/false);
+    }
+    for (const auto& evt : diploDelta.events) reportDiplomaticEvent(next, report, evt, /*includePlayerWars=*/true);
+    ds.currentTurn = next.turn;
+}
+
+// Research ledger helpers: `research` must always equal reserve + progress + the
+// cost of every level gained (validate's "Research ledger does not reconcile").
+std::int64_t takeResearch(EmpireState& e, std::int64_t amount) {
+    amount = std::clamp<std::int64_t>(amount, 0, e.research);
+    std::int64_t taken = std::min(amount, e.researchReserve);
+    e.researchReserve -= taken;
+    while (taken < amount) {
+        int best = -1;
+        for (int i = 0; i < ResearchFields; ++i) {
+            if (e.technologies[i].progress > 0 && (best < 0 || e.technologies[i].progress > e.technologies[best].progress)) best = i;
+        }
+        if (best < 0) break;
+        const auto part = std::min(amount - taken, e.technologies[best].progress);
+        e.technologies[best].progress -= part;
+        taken += part;
+    }
+    e.research -= taken;
+    return taken;
+}
+
+// Returns the number of levels gained.
+int grantResearch(const GameState& s, EmpireState& e, std::int64_t amount) {
+    amount = std::clamp<std::int64_t>(amount, 0, MaxBalance - e.research);
+    if (amount <= 0) return 0;
+    e.research += amount;
+    int field = -1;
+    for (int i = 0; i < ResearchFields; ++i) {
+        if (e.technologies[i].level < MaxTechLevel && (field < 0 || e.technologies[i].level < e.technologies[field].level)) field = i;
+    }
+    if (field < 0) {
+        e.researchReserve = std::min(MaxBalance, e.researchReserve + amount);
+        return 0;
+    }
+    int gained = 0;
+    auto& tech = e.technologies[field];
+    tech.progress += amount;
+    while (tech.level < MaxTechLevel && tech.progress >= researchCost(s, field, tech.level + 1)) {
+        tech.progress -= researchCost(s, field, ++tech.level);
+        ++gained;
+    }
+    if (tech.level == MaxTechLevel) { e.researchReserve += tech.progress; tech.progress = 0; }
+    return gained;
+}
+
+std::int64_t stealableResearch(const EmpireState& e) {
+    std::int64_t pool = e.researchReserve;
+    for (const auto& tech : e.technologies) pool += tech.progress;
+    return std::clamp<std::int64_t>(pool, 0, MaxBalance);
+}
+
+intelligence::TreatyLevel intelTreatyLevel(const GameState& next, int a, int b) {
+    const auto* rel = majorRelation(next, a, b);
+    if (rel && rel->atWar) return intelligence::TreatyLevel::War;
+    intelligence::TreatyLevel level = intelligence::TreatyLevel::None;
+    for (const auto& t : next.diplomacyEngineState.activeTreaties) {
+        if (t.status != diplomacy::TreatyStatus::Active ||
+            !t.involvesBoth(diplomacy::ParticipantId::major(a), diplomacy::ParticipantId::major(b))) continue;
+        if (t.type == diplomacy::TreatyType::Alliance) level = std::max(level, intelligence::TreatyLevel::Alliance);
+        else if (t.type == diplomacy::TreatyType::Affiliation) level = std::max(level, intelligence::TreatyLevel::Affiliation);
+        else if (t.type == diplomacy::TreatyType::Friendship) level = std::max(level, intelligence::TreatyLevel::Friendship);
+        else if (t.type == diplomacy::TreatyType::NonAggression) level = std::max(level, intelligence::TreatyLevel::NonAggression);
+    }
+    if (level == intelligence::TreatyLevel::None && rel && rel->tradeTreaty) level = intelligence::TreatyLevel::Affiliation;
+    return level;
+}
+
+// AI empires re-plan budget and focus every turn from doctrine and situation.
+void planAiIntelligence(GameState& next, const std::vector<int>& activeEmpires) {
+    if (!next.aiAggressionEnabled) return; // Passive AI keeps its default posture
+    const CampaignDiplomacyContext ctx(next);
+    for (int empId : activeEmpires) {
+        if (empId == next.playerEmpire) continue;
+        std::vector<intelligence::AiIntelRivalView> views;
+        for (int rivalId : activeEmpires) {
+            if (rivalId == empId) continue;
+            const auto* rel = majorRelation(next, empId, rivalId);
+            if (!rel || !rel->contact) continue; // Unknown empires are not targeted
+            intelligence::AiIntelRivalView v;
+            v.rivalId = rivalId;
+            v.atWar = rel->atWar;
+            v.treaty = intelTreatyLevel(next, empId, rivalId);
+            v.trust = rel->trust;
+            v.ownPower = ctx.militaryPower(diplomacy::ParticipantId::major(empId));
+            v.rivalPower = ctx.militaryPower(diplomacy::ParticipantId::major(rivalId));
+            for (const auto& op : next.intelOperations) {
+                if (!op.detectedByDefender || op.turn < next.turn - 10) continue;
+                if (op.attackerEmpireId == rivalId && op.defenderEmpireId == empId) ++v.incidentsAgainstUs;
+                if (op.attackerEmpireId == empId && op.defenderEmpireId == rivalId) ++v.exposedOperations;
+            }
+            views.push_back(v);
+        }
+        auto& intelState = next.empireIntelStates[empId];
+        intelState.empireId = empId;
+        const auto plan = intelligence::planAiIntelStrategy(empId,
+            static_cast<intelligence::IntelDoctrine>(static_cast<int>(diplomacy::personalityForEmpire(empId))), views);
+        intelligence::applyAiIntelPlan(intelState, plan);
+    }
+}
+
 void resolveModernIntelligence(GameState& next, TurnReport& report) {
-    std::vector<int> activeEmpires{next.playerEmpire};
-    for (const auto& r : next.rivals) activeEmpires.push_back(r.id);
-    std::sort(activeEmpires.begin(), activeEmpires.end());
+    // Eliminated empires neither run nor suffer intelligence operations.
+    const std::vector<int> activeEmpires = survivingEmpires(next);
 
     std::map<int, intelligence::DefenderSecurityContext> defenderContexts;
     for (int empId : activeEmpires) {
@@ -1924,16 +2445,32 @@ void resolveModernIntelligence(GameState& next, TurnReport& report) {
         }
         const auto& empState = empire(next, empId);
         dctx.computerTechLevel = empState.technologies[static_cast<int>(ResearchField::Computers)].level;
-        dctx.defenderMoraleMultiplier = 1.0; // Provisional per reviewer notes
+        dctx.defenderMoralePercent = 100; // Provisional per reviewer notes
         defenderContexts[empId] = dctx;
     }
 
     intelligence::IntelligenceRules rules;
-    rules.defaultDefenderMoraleMultiplier = 1.0; // Provisional per reviewer notes
+    rules.defaultDefenderMoralePercent = 100; // Provisional per reviewer notes
+
+    planAiIntelligence(next, activeEmpires);
 
     for (int empId : activeEmpires) {
         auto& intelState = next.empireIntelStates[empId];
         intelState.empireId = empId;
+        // Budget lines against eliminated rivals return to internal security.
+        auto& allocations = intelState.budget.rivalAllocations;
+        for (auto it = allocations.begin(); it != allocations.end();) {
+            if (std::find(activeEmpires.begin(), activeEmpires.end(), it->rivalId) == activeEmpires.end()) {
+                intelState.budget.internalSecurity.percentage += it->espionage.percentage + it->sabotage.percentage;
+                if (empId == next.playerEmpire && it->espionage.percentage + it->sabotage.percentage > 0) {
+                    report.events.push_back("Intelligence: agents recalled from " + std::string(empireName(it->rivalId)) +
+                        "; their budget returns to internal security.");
+                }
+                it = allocations.erase(it);
+            } else {
+                ++it;
+            }
+        }
         if (!intelState.budget.isValid(empId)) {
             std::vector<int> rivals;
             for (int other : activeEmpires) if (other != empId) rivals.push_back(other);
@@ -1951,63 +2488,34 @@ void resolveModernIntelligence(GameState& next, TurnReport& report) {
             if (rivalId == empId) continue;
             intelligence::RivalContext rctx;
             rctx.rivalId = rivalId;
-            const auto* rel = majorRelation(next, empId, rivalId);
-            intelligence::TreatyLevel treatyLvl = intelligence::TreatyLevel::None;
-            if (rel && rel->atWar) {
-                treatyLvl = intelligence::TreatyLevel::War;
-            } else {
-                for (const auto& t : next.diplomacyEngineState.activeTreaties) {
-                    if (t.status == diplomacy::TreatyStatus::Active &&
-                        t.involvesBoth(diplomacy::ParticipantId::major(empId), diplomacy::ParticipantId::major(rivalId))) {
-                        if (t.type == diplomacy::TreatyType::Alliance) {
-                            treatyLvl = std::max(treatyLvl, intelligence::TreatyLevel::Alliance);
-                        } else if (t.type == diplomacy::TreatyType::Affiliation) {
-                            treatyLvl = std::max(treatyLvl, intelligence::TreatyLevel::Affiliation);
-                        } else if (t.type == diplomacy::TreatyType::Friendship) {
-                            treatyLvl = std::max(treatyLvl, intelligence::TreatyLevel::Friendship);
-                        } else if (t.type == diplomacy::TreatyType::NonAggression) {
-                            treatyLvl = std::max(treatyLvl, intelligence::TreatyLevel::NonAggression);
-                        }
-                    }
-                }
-                if (treatyLvl == intelligence::TreatyLevel::None && rel && rel->tradeTreaty) {
-                    treatyLvl = intelligence::TreatyLevel::Affiliation;
-                }
-            }
-            rctx.treaty = treatyLvl;
+            rctx.treaty = intelTreatyLevel(next, empId, rivalId);
             const auto& rivEmp = empire(next, rivalId);
             rctx.currentCredits = std::clamp<std::int64_t>(rivEmp.credits, 0, MaxBalance);
-            rctx.currentResearchReserve = std::clamp<std::int64_t>(rivEmp.researchReserve, 0, MaxBalance);
+            rctx.currentResearchReserve = stealableResearch(rivEmp);
             rctx.computerTechLevel = rivEmp.technologies[static_cast<int>(ResearchField::Computers)].level;
             rctx.difficultyModifier = 0;
             tctx.knownRivals.push_back(rctx);
         }
 
         auto ops = intelligence::advanceTurn(intelState, tctx, defenderContexts, rules, next.rngState);
-        for (const auto& op : ops) {
-            next.intelOperations.push_back(op);
-            if (next.intelOperations.size() > 64) {
-                next.intelOperations.erase(next.intelOperations.begin());
-            }
-
+        for (auto op : ops) {
             if (op.outcome >= intelligence::IntelOutcome::MinorSuccess) {
                 if (op.area == intelligence::IntelArea::Espionage) {
                     if (op.creditsStolen > 0) {
                         auto& def = mutableEmpire(next, op.defenderEmpireId);
-                        auto& att = mutableEmpire(next, op.attackerEmpireId);
-                        std::int64_t stolen = std::min(def.credits, op.creditsStolen);
+                        const std::int64_t stolen = std::clamp<std::int64_t>(std::min(def.credits, op.creditsStolen), 0, MaxBalance);
                         def.credits -= stolen;
-                        att.credits = std::min(MaxBalance, att.credits + stolen);
+                        creditEmpire(next, op.attackerEmpireId, stolen);
+                        op.creditsStolen = stolen;
                     }
                     if (op.researchStolen > 0) {
-                        auto& def = mutableEmpire(next, op.defenderEmpireId);
-                        auto& att = mutableEmpire(next, op.attackerEmpireId);
-                        // Keep both research ledgers reconciled (reserve is part of total research).
-                        std::int64_t stolen = std::min({def.researchReserve, op.researchStolen,
-                            MaxBalance - att.researchReserve, MaxBalance - att.research});
-                        stolen = std::max<std::int64_t>(0, stolen);
-                        def.researchReserve -= stolen; def.research -= stolen;
-                        att.researchReserve += stolen; att.research += stolen;
+                        // Theft moves points between research ledgers so both still reconcile.
+                        const std::int64_t stolen = takeResearch(mutableEmpire(next, op.defenderEmpireId), op.researchStolen);
+                        const int levels = grantResearch(next, mutableEmpire(next, op.attackerEmpireId), stolen);
+                        op.researchStolen = stolen;
+                        if (op.attackerEmpireId == next.playerEmpire && levels > 0) {
+                            report.events.push_back("Intelligence: stolen blueprints advanced our research by " + std::to_string(levels) + " level(s).");
+                        }
                     }
                     IntelReport rpt;
                     rpt.turn = next.turn;
@@ -2021,12 +2529,14 @@ void resolveModernIntelligence(GameState& next, TurnReport& report) {
                     next.intelReports.push_back(rpt);
                     if (next.intelReports.size() > 32) next.intelReports.erase(next.intelReports.begin());
                     if (op.attackerEmpireId == next.playerEmpire) {
-                        report.events.push_back("Intelligence: Espionage against " + std::string(empireName(op.defenderEmpireId)) + " succeeded.");
+                        std::string gain = op.creditsStolen > 0 ? " (" + std::to_string(op.creditsStolen) + " credits stolen)"
+                            : op.researchStolen > 0 ? " (" + std::to_string(op.researchStolen) + " research stolen)" : "";
+                        report.events.push_back("Intelligence: Espionage against " + std::string(empireName(op.defenderEmpireId)) + " succeeded" + gain + ".");
                     }
                 } else if (op.area == intelligence::IntelArea::Sabotage) {
                     if (op.creditsStolen > 0) {
                         auto& def = mutableEmpire(next, op.defenderEmpireId);
-                        def.credits = std::max<std::int64_t>(0, def.credits - op.creditsStolen);
+                        def.credits = std::max<std::int64_t>(-MaxBalance, def.credits - op.creditsStolen);
                     }
                     for (auto& c : next.colonies) {
                         if (c.ownerId == op.defenderEmpireId && !c.queue.empty()) {
@@ -2042,9 +2552,16 @@ void resolveModernIntelligence(GameState& next, TurnReport& report) {
             if (op.detectedByDefender) {
                 auto& rel = mutableRelation(next, op.attackerEmpireId, op.defenderEmpireId);
                 rel.trust = std::max(0, rel.trust - (op.diplomaticIncidentPenalty > 0 ? op.diplomaticIncidentPenalty : 15));
+                next.diplomacyEngineState.addGrievance(op.defenderEmpireId, op.attackerEmpireId, 1);
                 if (op.defenderEmpireId == next.playerEmpire) {
                     report.events.push_back("Security Alert: Hostile agent activity detected from " + std::string(empireName(op.attackerEmpireId)) + "!");
+                } else if (op.attackerEmpireId == next.playerEmpire) {
+                    report.events.push_back("Intelligence: our agents were exposed by " + std::string(empireName(op.defenderEmpireId)) + ".");
                 }
+            }
+            next.intelOperations.push_back(op);
+            if (next.intelOperations.size() > 64) {
+                next.intelOperations.erase(next.intelOperations.begin());
             }
         }
     }
@@ -4725,8 +5242,70 @@ const diplomacy::MinorDiplomacyState* minorDiplomacy(const GameState& state, int
     return state.diplomacyEngineState.getMinorState(minorId);
 }
 
+bool empireEliminated(const GameState& state, int empireId) {
+    return empireEliminatedInternal(state, empireId);
+}
+
+namespace {
+std::vector<int> treatyPartners(const GameState& state, int empireId, int minimumRank) {
+    std::vector<int> partners;
+    if (!modernDiplomacy(state) || empireEliminatedInternal(state, empireId)) return partners;
+    const auto self = diplomacy::ParticipantId::major(empireId);
+    for (const auto& t : state.diplomacyEngineState.activeTreaties) {
+        if (t.status != diplomacy::TreatyStatus::Active || !t.involves(self) || diplomacy::getTreatyRank(t.type) < minimumRank) continue;
+        const auto other = t.getCounterparty(self);
+        if (other.isMinor || !campaignEmpire(state, other.id) || empireEliminatedInternal(state, other.id)) continue;
+        if (std::find(partners.begin(), partners.end(), other.id) == partners.end()) partners.push_back(other.id);
+    }
+    std::sort(partners.begin(), partners.end());
+    return partners;
+}
+} // namespace
+
+std::vector<int> alliedEmpires(const GameState& state, int empireId) {
+    return treatyPartners(state, empireId, diplomacy::getTreatyRank(diplomacy::TreatyType::Alliance));
+}
+
+std::vector<int> sensorSharingEmpires(const GameState& state, int empireId) {
+    return treatyPartners(state, empireId, diplomacy::getTreatyRank(diplomacy::TreatyType::Affiliation));
+}
+
+bool treatyForbidsAttack(const GameState& state, int empireA, int empireB) {
+    if (!modernDiplomacy(state) || empireA == empireB) return false;
+    const auto a = diplomacy::ParticipantId::major(empireA), b = diplomacy::ParticipantId::major(empireB);
+    const auto& ds = state.diplomacyEngineState;
+    return ds.highestTreatyRank(a, b) > 0 || ds.hasActiveTreaty(a, b, diplomacy::TreatyType::Peace);
+}
+
+std::vector<diplomacy::DefenseCall> openCallsToArms(const GameState& state, int allyId) {
+    std::vector<diplomacy::DefenseCall> calls;
+    for (const auto& c : state.diplomacyEngineState.defenseCalls) if (c.ally == allyId) calls.push_back(c);
+    return calls;
+}
+
+diplomacy::DiplomaticVictoryStatus diplomaticVictoryStatus(const GameState& state, int empireId) {
+    std::map<int, std::int64_t> empirePopulation, independentMinors;
+    for (int id : survivingEmpires(state)) empirePopulation[id] = 0;
+    for (const auto& c : state.colonies) {
+        const auto it = empirePopulation.find(c.ownerId);
+        if (it != empirePopulation.end()) it->second += c.population;
+    }
+    for (const auto& m : state.minors) {
+        if (m.memberOf == 0) independentMinors[m.systemId] = diplomacy::IndependentMinorNominalPopulation;
+    }
+    return diplomacy::evaluateDiplomaticVictory(state.diplomacyEngineState, empireId, empirePopulation, independentMinors);
+}
+
+bool diplomaticVictoryAchieved(const GameState& state, int empireId) {
+    return modernDiplomacy(state) && diplomaticVictoryStatus(state, empireId).achieved;
+}
+
 bool canProposeTreaty(const GameState& state, int proposerId, int targetId, bool isTargetMinor,
                       diplomacy::TreatyType type, std::string* outError) {
+    if (!modernDiplomacy(state)) {
+        if (outError) *outError = "Modern diplomacy requires a modern (reference expansion) campaign";
+        return false;
+    }
     CampaignDiplomacyContext ctx(state);
     diplomacy::ParticipantId proposer = diplomacy::ParticipantId::major(proposerId);
     diplomacy::ParticipantId target = isTargetMinor ? diplomacy::ParticipantId::minor(targetId)

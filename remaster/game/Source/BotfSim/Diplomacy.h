@@ -27,6 +27,9 @@
 // - VERIFIED: Credit payment attached to proposal charged only upon successful acceptance.
 // - MODERN RECONSTRUCTION / PROVISIONAL: Numeric AI scoring weights, tone modifiers,
 //   and gift attitude scaling (4% per 1,000 credits baseline per S19).
+// - MODERN (remaster): faction personalities, unilateral war, betrayal & calls to arms,
+//   AI-initiated proposals, war assessment, elimination, diplomatic victory predicate.
+//   All scoring is integer-only. Rules and numbers: remaster/docs/DIPLOMACY.md.
 //
 // Architectural Invariants:
 // - Standalone header; completely independent of Simulation.h (no circular dependencies).
@@ -170,11 +173,12 @@ enum class TreatyStatus : int {
     Active = 0,
     Expired = 1,
     BrokenByWar = 2,
-    Superseded = 3
+    Superseded = 3,
+    Dissolved = 4 // Party eliminated, minor seceded, or alliance cancelled after a refused call to arms
 };
 
 inline bool isValidTreatyStatus(int val) {
-    return val >= 0 && val <= 3;
+    return val >= 0 && val <= 4;
 }
 
 inline const char* treatyStatusName(TreatyStatus status) {
@@ -183,6 +187,7 @@ inline const char* treatyStatusName(TreatyStatus status) {
         case TreatyStatus::Expired: return "Expired";
         case TreatyStatus::BrokenByWar: return "Broken by War";
         case TreatyStatus::Superseded: return "Superseded";
+        case TreatyStatus::Dissolved: return "Dissolved";
         default: return "Unknown";
     }
 }
@@ -210,7 +215,8 @@ enum class DiplomaticOpType : int {
     SetWarState = 4,
     TransferMinorMembership = 5,
     UpdateMinorAttitude = 6,
-    RecordEvent = 7
+    RecordEvent = 7,
+    AdjustTrust = 8 // Major-major trust delta (attitudeDelta) applied symmetrically to the campaign relation
 };
 
 enum class DiplomaticEventType : int {
@@ -225,11 +231,19 @@ enum class DiplomaticEventType : int {
     WarDeclared = 8,
     PeaceEstablished = 9,
     MinorMembershipJoined = 10,
-    GiftDelivered = 11
+    GiftDelivered = 11,
+    // Appended for modern diplomacy (values are persisted; never renumber):
+    TreatyBetrayed = 12,       // Aggressor declared war while bound by a treaty (galaxy-wide trust penalty)
+    AllianceCalledToArms = 13, // Ally asked to join a defensive war
+    AllianceHonored = 14,
+    AllianceRefused = 15,
+    MinorSeceded = 16,
+    ParticipantEliminated = 17,
+    TributeDemanded = 18
 };
 
 inline bool isValidEventType(int val) {
-    return val >= 0 && val <= 11;
+    return val >= 0 && val <= 18;
 }
 
 inline const char* eventTypeName(DiplomaticEventType type) {
@@ -246,6 +260,13 @@ inline const char* eventTypeName(DiplomaticEventType type) {
         case DiplomaticEventType::PeaceEstablished: return "Peace Established";
         case DiplomaticEventType::MinorMembershipJoined: return "Minor Joined Empire";
         case DiplomaticEventType::GiftDelivered: return "Gift Delivered";
+        case DiplomaticEventType::TreatyBetrayed: return "Treaty Betrayed";
+        case DiplomaticEventType::AllianceCalledToArms: return "Alliance Called to Arms";
+        case DiplomaticEventType::AllianceHonored: return "Alliance Honored";
+        case DiplomaticEventType::AllianceRefused: return "Alliance Refused";
+        case DiplomaticEventType::MinorSeceded: return "Minor Seceded";
+        case DiplomaticEventType::ParticipantEliminated: return "Participant Eliminated";
+        case DiplomaticEventType::TributeDemanded: return "Tribute Demanded";
         default: return "Unknown";
     }
 }
@@ -389,6 +410,40 @@ struct TurnResolutionDelta {
 };
 
 // -----------------------------------------------------------------------------
+// Major Personalities (campaign empire slots 1..5)
+// -----------------------------------------------------------------------------
+
+enum class MajorPersonality : int {
+    Federation = 0, // Cooperative: low treaty thresholds, honors alliances, rarely starts wars
+    Klingon = 1,    // Honor & aggression: respects strength, detests demands, never breaks its word
+    Romulan = 2,    // Suspicion: demands more trust for everything, breaks pacts when overwhelming
+    Cardassian = 3, // Order & expansion: demands tribute from the weak, expands by force
+    Ferengi = 4     // Profit: credits and trade pacts decide almost everything
+};
+
+inline bool isValidPersonality(int val) {
+    return val >= 0 && val <= 4;
+}
+
+inline const char* personalityName(MajorPersonality personality) {
+    switch (personality) {
+        case MajorPersonality::Federation: return "Federation";
+        case MajorPersonality::Klingon: return "Klingon";
+        case MajorPersonality::Romulan: return "Romulan";
+        case MajorPersonality::Cardassian: return "Cardassian";
+        case MajorPersonality::Ferengi: return "Ferengi";
+        default: return "Unknown";
+    }
+}
+
+// Campaign empire slots follow the original race order: 1 Federation, 2 Klingon,
+// 3 Romulan, 4 Cardassian, 5 Ferengi. Unknown slots behave like the Federation.
+inline MajorPersonality personalityForEmpire(int empireId) {
+    return (empireId >= 1 && empireId <= 5) ? static_cast<MajorPersonality>(empireId - 1)
+                                            : MajorPersonality::Federation;
+}
+
+// -----------------------------------------------------------------------------
 // Context Interface
 // -----------------------------------------------------------------------------
 
@@ -408,6 +463,16 @@ public:
     virtual bool isHuman(ParticipantId p) const {
         return p == ParticipantId::major(1);
     }
+    // Optional campaign knowledge. Defaults keep standalone harnesses working unchanged.
+    virtual MajorPersonality personality(ParticipantId p) const {
+        return p.isMinor ? MajorPersonality::Federation : personalityForEmpire(p.id);
+    }
+    // Eliminated participants can neither negotiate nor hold treaties.
+    virtual bool isEliminated(ParticipantId) const { return false; }
+    // Surviving major empire IDs (ascending); used for shared-enemy reasoning.
+    virtual std::vector<int> majorEmpires() const { return {}; }
+    // Turns since the current war between a and b began (0 when at peace or unknown).
+    virtual int warDurationTurns(ParticipantId, ParticipantId) const { return 0; }
 };
 
 // Default in-memory context for standalone execution and tests
@@ -421,6 +486,10 @@ public:
     std::map<ParticipantId, int64_t> militaryPowers;
     std::map<ParticipantId, int64_t> economicPowers;
     std::map<int, int> minorOwners; // minorId -> owner (0 if independent)
+    std::map<ParticipantId, MajorPersonality> personalities;
+    std::set<ParticipantId> eliminated;
+    std::vector<int> majors;
+    std::map<std::pair<ParticipantId, ParticipantId>, int> warDurations;
 
     void setContact(ParticipantId a, ParticipantId b, bool val) {
         contacts[{a, b}] = val;
@@ -446,6 +515,16 @@ public:
     }
     void setHuman(ParticipantId p) {
         humanPlayer = p;
+    }
+    void setPersonality(ParticipantId p, MajorPersonality personality) {
+        personalities[p] = personality;
+    }
+    void setEliminated(ParticipantId p, bool val) {
+        if (val) eliminated.insert(p); else eliminated.erase(p);
+    }
+    void setWarDuration(ParticipantId a, ParticipantId b, int turns) {
+        warDurations[{a, b}] = turns;
+        warDurations[{b, a}] = turns;
     }
 
     bool hasContact(ParticipantId a, ParticipantId b) const override {
@@ -486,19 +565,25 @@ public:
     bool isHuman(ParticipantId p) const override {
         return p == humanPlayer;
     }
+    MajorPersonality personality(ParticipantId p) const override {
+        auto it = personalities.find(p);
+        return (it != personalities.end()) ? it->second : DiplomacyContext::personality(p);
+    }
+    bool isEliminated(ParticipantId p) const override {
+        return eliminated.count(p) > 0;
+    }
+    std::vector<int> majorEmpires() const override {
+        return majors;
+    }
+    int warDurationTurns(ParticipantId a, ParticipantId b) const override {
+        auto it = warDurations.find({a, b});
+        return (it != warDurations.end()) ? it->second : 0;
+    }
 };
 
 // -----------------------------------------------------------------------------
 // AI Personality & Decision Models
 // -----------------------------------------------------------------------------
-
-enum class MajorPersonality : int {
-    Federation = 0, // Trusting, peaceful, respects treaties
-    Klingon = 1,    // Militaristic, respects honor/power, detests weakness/demands
-    Romulan = 2,    // Cautious, deceitful, high non-aggression threshold
-    Cardassian = 3, // Aggressive, imperialist, demands tribute
-    Ferengi = 4     // Mercantile, highly influenced by credit sweeteners
-};
 
 struct AiDecisionResult {
     AiDecision decision = AiDecision::Reject;
@@ -508,15 +593,75 @@ struct AiDecisionResult {
 };
 
 // -----------------------------------------------------------------------------
+// Diplomatic Memory (modern rules; persisted as optional save sections)
+// -----------------------------------------------------------------------------
+
+// Per unordered major pair (first < second). Remembers what AI empires need to
+// behave consistently across turns: war/peace transitions for cool-downs, the
+// last proposal each side made (anti-spam), and grievances each side holds.
+struct RelationMemory {
+    int first = 0;
+    int second = 0;
+    int lastWarTurn = -1;
+    int lastPeaceTurn = -1;
+    int lastProposalFirstToSecond = -1;
+    int lastProposalSecondToFirst = -1;
+    int grievancesOfFirst = 0;  // first's grievances against second
+    int grievancesOfSecond = 0; // second's grievances against first
+    int refusalsFirstToSecond = 0; // Consecutive proposals from first that second refused or ignored
+    int refusalsSecondToFirst = 0;
+
+    bool operator==(const RelationMemory& other) const = default;
+
+    int refusalsFrom(int empireId) const {
+        return empireId == first ? refusalsFirstToSecond : empireId == second ? refusalsSecondToFirst : 0;
+    }
+
+    int grievancesOf(int empireId) const {
+        return empireId == first ? grievancesOfFirst : empireId == second ? grievancesOfSecond : 0;
+    }
+    int lastProposalFrom(int empireId) const {
+        return empireId == first ? lastProposalFirstToSecond : empireId == second ? lastProposalSecondToFirst : -1;
+    }
+};
+
+// Galaxy-wide reputation of one major.
+struct EmpireStanding {
+    int empireId = 0;
+    int betrayals = 0;          // Wars declared while bound by a treaty
+    int lastBetrayalTurn = -1;
+
+    bool operator==(const EmpireStanding& other) const = default;
+};
+
+// An ally of `defender` is expected to be at war with `aggressor` by `dueTurn`.
+struct DefenseCall {
+    int ally = 0;
+    int defender = 0;
+    int aggressor = 0;
+    int issuedTurn = 0;
+    int dueTurn = 0;
+
+    bool operator==(const DefenseCall& other) const = default;
+};
+
+// -----------------------------------------------------------------------------
 // Diplomacy State
 // -----------------------------------------------------------------------------
 
 struct DiplomacyState {
-    static constexpr size_t MaxPendingProposals = 128;
+    static constexpr size_t MaxPendingProposals = 128;   // Stored proposals (pending + resolved this turn)
+    static constexpr size_t MaxPendingPerProposer = 16;  // Anti-spam: open proposals per proposer
     static constexpr size_t MaxActiveTreaties = 128;
     static constexpr size_t MaxTreatyHistory = 256;
     static constexpr size_t MaxEventHistory = 256;
     static constexpr size_t MaxMinorStates = 64;
+    static constexpr size_t MaxRelationMemory = 32;
+    static constexpr size_t MaxStandings = 16;
+    static constexpr size_t MaxDefenseCalls = 64;
+    static constexpr int MaxGrievances = 20;
+    static constexpr int MaxRefusals = 5;
+    static constexpr int DefenseCallWindow = 3;          // Turns an ally has to join a defensive war
 
     int currentTurn = 1;
     uint64_t nextProposalId = 1;
@@ -527,8 +672,100 @@ struct DiplomacyState {
     std::vector<ActiveTreaty> treatyHistory;
     std::vector<MinorDiplomacyState> minorStates;
     std::vector<DiplomaticEvent> eventHistory;
+    std::vector<RelationMemory> relationMemory; // Sorted by (first, second)
+    std::vector<EmpireStanding> standings;      // Sorted by empireId
+    std::vector<DefenseCall> defenseCalls;
 
     bool operator==(const DiplomacyState& other) const = default;
+
+    const RelationMemory* findMemory(int a, int b) const {
+        if (a > b) std::swap(a, b);
+        for (const auto& m : relationMemory) {
+            if (m.first == a && m.second == b) return &m;
+        }
+        return nullptr;
+    }
+
+    // Returns nullptr only when the bounded memory table is full.
+    RelationMemory* memory(int a, int b) {
+        if (a == b || a <= 0 || b <= 0) return nullptr;
+        if (a > b) std::swap(a, b);
+        for (auto& m : relationMemory) {
+            if (m.first == a && m.second == b) return &m;
+        }
+        if (relationMemory.size() >= MaxRelationMemory) return nullptr;
+        RelationMemory m;
+        m.first = a;
+        m.second = b;
+        auto pos = std::lower_bound(relationMemory.begin(), relationMemory.end(), m,
+            [](const RelationMemory& x, const RelationMemory& y) {
+                return x.first != y.first ? x.first < y.first : x.second < y.second;
+            });
+        return &*relationMemory.insert(pos, m);
+    }
+
+    int grievances(int holder, int against) const {
+        const auto* m = findMemory(holder, against);
+        return m ? m->grievancesOf(holder) : 0;
+    }
+
+    // Tracks consecutive refusals of `proposer`'s proposals by `target` (AI back-off).
+    void noteProposalOutcome(int proposer, int target, bool accepted) {
+        auto* m = memory(proposer, target);
+        if (!m) return;
+        int& r = (proposer == m->first) ? m->refusalsFirstToSecond : m->refusalsSecondToFirst;
+        r = accepted ? 0 : std::min(MaxRefusals, r + 1);
+    }
+
+    void addGrievance(int holder, int against, int amount) {
+        auto* m = memory(holder, against);
+        if (!m) return;
+        int& g = (holder == m->first) ? m->grievancesOfFirst : m->grievancesOfSecond;
+        g = std::clamp(g + amount, 0, MaxGrievances);
+    }
+
+    const EmpireStanding* findStanding(int empireId) const {
+        for (const auto& st : standings) {
+            if (st.empireId == empireId) return &st;
+        }
+        return nullptr;
+    }
+
+    EmpireStanding* standing(int empireId) {
+        if (empireId <= 0) return nullptr;
+        for (auto& st : standings) {
+            if (st.empireId == empireId) return &st;
+        }
+        if (standings.size() >= MaxStandings) return nullptr;
+        EmpireStanding st;
+        st.empireId = empireId;
+        auto pos = std::lower_bound(standings.begin(), standings.end(), st,
+            [](const EmpireStanding& x, const EmpireStanding& y) { return x.empireId < y.empireId; });
+        return &*standings.insert(pos, st);
+    }
+
+    int betrayals(int empireId) const {
+        const auto* st = findStanding(empireId);
+        return st ? st->betrayals : 0;
+    }
+
+    size_t unresolvedProposalCount() const {
+        return static_cast<size_t>(std::count_if(proposals.begin(), proposals.end(),
+            [](const Proposal& p) { return !p.resolved; }));
+    }
+
+    // Highest active cooperation rank (NAP 1 .. Alliance 4) between two parties; 0 if none.
+    int highestTreatyRank(ParticipantId a, ParticipantId b) const {
+        int best = 0;
+        for (const auto& t : activeTreaties) {
+            if (t.status == TreatyStatus::Active && t.involvesBoth(a, b)) best = std::max(best, getTreatyRank(t.type));
+        }
+        return best;
+    }
+
+    bool hasActiveTreaty(ParticipantId a, ParticipantId b, TreatyType type) const {
+        return findActiveTreaty(a, b, type) != nullptr;
+    }
 
     const Proposal* findProposal(uint64_t id) const {
         for (const auto& p : proposals) {
@@ -620,21 +857,36 @@ inline bool validateProposalCreation(
         return false;
     }
 
-    // 3. Contact requirement
+    // 3. Eliminated participants cannot negotiate
+    if (ctx.isEliminated(p.proposer) || ctx.isEliminated(p.target)) {
+        if (outReason) *outReason = "Eliminated empires cannot conduct diplomacy";
+        return false;
+    }
+
+    // 3b. Contact requirement
     if (!ctx.hasContact(p.proposer, p.target)) {
         if (outReason) *outReason = "Target is uncontacted";
         return false;
     }
 
-    // 4. Bounded capacity check
-    if (state.proposals.size() >= DiplomacyState::MaxPendingProposals) {
+    // 4. Bounded capacity check. Only open proposals count: resolved ones are
+    // purged before new submissions, so the table can never lock up permanently.
+    if (state.unresolvedProposalCount() >= DiplomacyState::MaxPendingProposals) {
         if (outReason) *outReason = "Pending proposal queue limit reached";
+        return false;
+    }
+    size_t openByProposer = 0;
+    for (const auto& existing : state.proposals) {
+        if (!existing.resolved && existing.proposer == p.proposer) ++openByProposer;
+    }
+    if (openByProposer >= DiplomacyState::MaxPendingPerProposer) {
+        if (outReason) *outReason = "Too many open proposals from this proposer";
         return false;
     }
 
     // 5. Duplicate pending proposal check
     for (const auto& existing : state.proposals) {
-        if (existing.status == ProposalStatus::Pending &&
+        if (existing.status == ProposalStatus::Pending && !existing.resolved &&
             existing.proposer == p.proposer &&
             existing.target == p.target &&
             existing.treatyType == p.treatyType)
@@ -661,8 +913,18 @@ inline bool validateProposalCreation(
 
     switch (p.treatyType) {
         case TreatyType::War: {
+            // War is a unilateral declaration: it takes effect at turn resolution
+            // whatever the target says, so it cannot carry payments.
+            if (p.proposer.isMinor || p.target.isMinor) {
+                if (outReason) *outReason = "War declarations are only between major empires";
+                return false;
+            }
             if (currentlyAtWar) {
                 if (outReason) *outReason = "Belligerents are already at war";
+                return false;
+            }
+            if (p.creditOffer != 0 || p.creditDemand != 0) {
+                if (outReason) *outReason = "War declarations cannot carry credit terms";
                 return false;
             }
             break;
@@ -715,6 +977,10 @@ inline bool validateProposalCreation(
                 if (outReason) *outReason = "Alliance is for major empires; minors advance to Membership";
                 return false;
             }
+            if (p.proposer.isMinor || (p.target.isMinor && !ctx.isIndependentMinor(p.target.id))) {
+                if (outReason) *outReason = "Treaties with minors require an independent minor as target";
+                return false;
+            }
             // Check if equal or higher treaty is already active
             int proposedRank = getTreatyRank(p.treatyType);
             for (const auto& t : state.activeTreaties) {
@@ -733,6 +999,10 @@ inline bool validateProposalCreation(
                 if (outReason) *outReason = "Cannot sign trade pacts while at war";
                 return false;
             }
+            if (p.proposer.isMinor || (p.target.isMinor && !ctx.isIndependentMinor(p.target.id))) {
+                if (outReason) *outReason = "Trade pacts with minors require an independent minor as target";
+                return false;
+            }
             for (const auto& t : state.activeTreaties) {
                 if (t.status == TreatyStatus::Active && t.type == TreatyType::Trade && t.involvesBoth(p.proposer, p.target)) {
                     if (outReason) *outReason = "Trade pact is already in effect";
@@ -742,7 +1012,15 @@ inline bool validateProposalCreation(
             break;
         }
         case TreatyType::None: {
-            // Standalone gift / tribute
+            // Standalone gift (creditOffer) or tribute demand (creditDemand).
+            if (p.creditOffer <= 0 && p.creditDemand <= 0) {
+                if (outReason) *outReason = "A gift or tribute must name a credit amount";
+                return false;
+            }
+            if (p.creditDemand > 0 && (p.target.isMinor || p.proposer.isMinor)) {
+                if (outReason) *outReason = "Tribute can only be demanded from a major empire";
+                return false;
+            }
             break;
         }
         default: {
@@ -755,8 +1033,81 @@ inline bool validateProposalCreation(
 }
 
 // -----------------------------------------------------------------------------
+// Deterministic Integer Helpers
+// -----------------------------------------------------------------------------
+//
+// All AI scoring is integer-only so identical inputs produce identical results
+// on every compiler and platform (no floating point anywhere in this header).
+
+inline uint64_t diplomacyMix(uint64_t x) {
+    x += 0x9E3779B97F4A7C15ULL;
+    x = (x ^ (x >> 30)) * 0xBF58476D1CE4E5B9ULL;
+    x = (x ^ (x >> 27)) * 0x94D049BB133111EBULL;
+    return x ^ (x >> 31);
+}
+
+// Uniform integer in [-span, +span] from (seed, turn, salt).
+inline int deterministicVariance(uint64_t seed, int turn, uint64_t salt, int span = 5) {
+    if (span <= 0) return 0;
+    const uint64_t h = diplomacyMix(seed ^ diplomacyMix(static_cast<uint64_t>(static_cast<int64_t>(turn)) ^ diplomacyMix(salt)));
+    return static_cast<int>(h % static_cast<uint64_t>(2 * span + 1)) - span;
+}
+
+// Power comparison without division or floating point: returns 1 when a > factor*b
+// (a clearly stronger), -1 when a*factor < b (a clearly weaker), 0 otherwise.
+inline int comparePower(int64_t a, int64_t b, int64_t factor) {
+    a = std::clamp<int64_t>(a, 0, int64_t{1} << 40);
+    b = std::clamp<int64_t>(b, 0, int64_t{1} << 40);
+    if (a > b * factor) return 1;
+    if (a * factor < b) return -1;
+    return 0;
+}
+
+// a/b expressed in percent, saturating at 1000% and safe for zero denominators.
+inline int64_t powerRatioPercent(int64_t a, int64_t b) {
+    a = std::clamp<int64_t>(a, 0, int64_t{1} << 40);
+    b = std::clamp<int64_t>(b, 0, int64_t{1} << 40);
+    if (b <= 0) return a > 0 ? 1000 : 100;
+    return std::min<int64_t>(1000, (a * 100) / b);
+}
+
+// -----------------------------------------------------------------------------
 // AI Evaluation Function
 // -----------------------------------------------------------------------------
+//
+// Personalities (see remaster/docs/DIPLOMACY.md for the full tables):
+// - Federation: cooperation. Lowest thresholds for cooperative treaties and peace.
+// - Klingon: honor/aggression. Respects strength, punishes weakness and demands,
+//   slow to accept peace, never pays tribute unless overwhelmed.
+// - Romulan: suspicion. Every threshold is higher; loves nothing but itself.
+// - Cardassian: order/expansion. Respects strength, resents demands, wants tribute.
+// - Ferengi: profit. Credits count for far more; trade pacts come cheap.
+
+struct PersonalityThresholds {
+    int peace, nonAggression, friendship, affiliation, alliance, trade, tribute;
+};
+
+inline PersonalityThresholds thresholdsFor(MajorPersonality personality) {
+    switch (personality) {
+        case MajorPersonality::Federation: return {40, 40, 50, 60, 70, 45, 50};
+        case MajorPersonality::Klingon:    return {60, 55, 60, 70, 75, 55, 75};
+        case MajorPersonality::Romulan:    return {55, 55, 65, 75, 85, 55, 60};
+        case MajorPersonality::Cardassian: return {50, 50, 60, 70, 80, 50, 65};
+        case MajorPersonality::Ferengi:    return {45, 45, 55, 65, 80, 35, 60};
+        default: return {50, 45, 55, 65, 75, 50, 55};
+    }
+}
+
+inline int countSharedEnemies(const DiplomacyContext& ctx, ParticipantId a, ParticipantId b) {
+    if (a.isMinor || b.isMinor) return 0;
+    int shared = 0;
+    for (int id : ctx.majorEmpires()) {
+        const ParticipantId z = ParticipantId::major(id);
+        if (z == a || z == b || ctx.isEliminated(z)) continue;
+        if (ctx.isAtWar(a, z) && ctx.isAtWar(b, z)) ++shared;
+    }
+    return shared;
+}
 
 inline AiDecisionResult evaluateAiProposal(
     const DiplomacyState& state,
@@ -770,6 +1121,7 @@ inline AiDecisionResult evaluateAiProposal(
 
     int score = 50; // Neutral baseline
     std::ostringstream expl;
+    expl << personalityName(personality) << " evaluation: ";
 
     // 1. Relationship & Trust
     if (p.target.isMinor) {
@@ -783,26 +1135,31 @@ inline AiDecisionResult evaluateAiProposal(
         expl << "Base trust (" << tr << ") ";
     }
 
-    // 2. Power Balance
-    int64_t proposerMil = ctx.militaryPower(p.proposer);
-    int64_t targetMil = ctx.militaryPower(p.target);
+    // 2. Power Balance (integer comparison; no floating point)
+    const int64_t proposerMil = ctx.militaryPower(p.proposer);
+    const int64_t targetMil = ctx.militaryPower(p.target);
     if (targetMil > 0) {
-        double milRatio = static_cast<double>(proposerMil) / static_cast<double>(targetMil);
-        if (milRatio > 2.0) {
-            score += 10;
-            expl << "+ Proposer superior fleet (+10) ";
-        } else if (milRatio < 0.5) {
-            score -= 10;
-            expl << "- Proposer inferior fleet (-10) ";
+        const int cmp = comparePower(proposerMil, targetMil, 2);
+        int strongBonus = 10, weakPenalty = 10;
+        if (personality == MajorPersonality::Klingon) { strongBonus = 15; weakPenalty = 20; }
+        else if (personality == MajorPersonality::Cardassian) { strongBonus = 10; weakPenalty = 15; }
+        if (cmp > 0) {
+            score += strongBonus;
+            expl << "+ Proposer superior fleet (+" << strongBonus << ") ";
+        } else if (cmp < 0) {
+            score -= weakPenalty;
+            expl << "- Proposer inferior fleet (-" << weakPenalty << ") ";
         }
     }
 
     // 3. Tone Modifiers
     switch (p.tone) {
-        case DiplomaticTone::Cordial:
-            score += 10;
-            expl << "+ Cordial tone (+10) ";
+        case DiplomaticTone::Cordial: {
+            const int bonus = (personality == MajorPersonality::Klingon || personality == MajorPersonality::Romulan) ? 5 : 10;
+            score += bonus;
+            expl << "+ Cordial tone (+" << bonus << ") ";
             break;
+        }
         case DiplomaticTone::Neutral:
             expl << "+ Neutral tone (+0) ";
             break;
@@ -810,6 +1167,9 @@ inline AiDecisionResult evaluateAiProposal(
             if (personality == MajorPersonality::Klingon || personality == MajorPersonality::Cardassian) {
                 score -= 25;
                 expl << "- Demanding tone resisted (-25) ";
+            } else if (personality == MajorPersonality::Ferengi) {
+                score -= 10;
+                expl << "- Demanding tone tolerated (-10) ";
             } else {
                 score -= 15;
                 expl << "- Demanding tone penalty (-15) ";
@@ -832,59 +1192,85 @@ inline AiDecisionResult evaluateAiProposal(
     }
     if (p.creditDemand > 0) {
         int penalty = static_cast<int>(std::min<int64_t>(40, p.creditDemand / 80));
+        if (personality == MajorPersonality::Ferengi) {
+            penalty = static_cast<int>(std::min<int64_t>(60, p.creditDemand / 40));
+        }
         score -= penalty;
         expl << "- Demanded tribute (-" << penalty << ") ";
     }
 
-    // 5. Treaty Type Demands & Personalities
+    // 5. History: treaty-breakers and old grievances are remembered
+    if (!p.proposer.isMinor) {
+        const int betrayals = state.betrayals(p.proposer.id);
+        if (betrayals > 0) {
+            const int penalty = std::min(30, betrayals * 10);
+            score -= penalty;
+            expl << "- Known treaty-breaker (-" << penalty << ") ";
+        }
+        if (!p.target.isMinor) {
+            const int grievances = state.grievances(p.target.id, p.proposer.id);
+            if (grievances > 0) {
+                const int penalty = std::min(15, grievances * 3);
+                score -= penalty;
+                expl << "- Grievances (-" << penalty << ") ";
+            }
+        }
+    }
+
+    // 6. Shared enemies bind empires together
+    const bool cooperative = getTreatyRank(p.treatyType) > 0;
+    if (cooperative && !p.target.isMinor && !p.proposer.isMinor) {
+        const int shared = countSharedEnemies(ctx, p.proposer, p.target);
+        if (shared > 0) {
+            const int bonus = std::min(20, shared * 10);
+            score += bonus;
+            expl << "+ Shared enemies (+" << bonus << ") ";
+        }
+    }
+
+    // 7. Treaty Type Demands & Personalities
+    const PersonalityThresholds th = thresholdsFor(personality);
     switch (p.treatyType) {
         case TreatyType::Peace: {
-            if (personality == MajorPersonality::Klingon) {
-                res.threshold = 60;
-            } else if (personality == MajorPersonality::Federation) {
-                res.threshold = 45;
-            } else {
-                res.threshold = 50;
+            res.threshold = th.peace;
+            const int weariness = std::min(20, std::max(0, ctx.warDurationTurns(p.proposer, p.target)) / 2);
+            if (weariness > 0) {
+                score += weariness;
+                expl << "+ War weariness (+" << weariness << ") ";
             }
             break;
         }
         case TreatyType::NonAggression: {
-            res.threshold = 45;
-            break;
-        }
-        case TreatyType::Friendship: {
-            res.threshold = 55;
-            break;
-        }
-        case TreatyType::Affiliation: {
-            res.threshold = 65;
-            break;
-        }
-        case TreatyType::Alliance: {
-            res.threshold = 75;
-            if (personality == MajorPersonality::Romulan) {
-                res.threshold = 85;
+            res.threshold = th.nonAggression;
+            // A Klingon only binds its hands for a stronger partner.
+            if (personality == MajorPersonality::Klingon && targetMil > 0 && comparePower(proposerMil, targetMil, 1) <= 0) {
+                res.threshold += 5;
             }
             break;
         }
-        case TreatyType::Membership: {
-            res.threshold = 80;
+        case TreatyType::Friendship: res.threshold = p.target.isMinor ? 50 : th.friendship; break;
+        case TreatyType::Affiliation: res.threshold = p.target.isMinor ? 60 : th.affiliation; break;
+        case TreatyType::Alliance: res.threshold = th.alliance; break;
+        case TreatyType::Membership: res.threshold = 80; break;
+        case TreatyType::Trade: res.threshold = p.target.isMinor ? 45 : th.trade; break;
+        case TreatyType::None: {
+            if (p.creditDemand > 0) {
+                res.threshold = th.tribute;
+            } else {
+                res.threshold = 0; // Unconditional gifts are always welcome
+            }
             break;
         }
-        case TreatyType::Trade: {
-            res.threshold = 50;
-            if (personality == MajorPersonality::Ferengi) {
-                res.threshold = 40;
-            }
+        case TreatyType::War: {
+            res.threshold = 0; // Unilateral; never actually evaluated
             break;
         }
         default:
             break;
     }
 
-    // 6. Deterministic Pseudo-Random Variance (Seed + Turn + Proposal ID)
-    uint64_t combinedSeed = seed ^ (static_cast<uint64_t>(state.currentTurn) * 2654435761ULL) ^ (p.id * 1013904223ULL);
-    int variance = static_cast<int>(combinedSeed % 11) - 5; // [-5 .. +5]
+    // 8. Deterministic Pseudo-Random Variance (Seed + Turn + Proposal ID)
+    const int variance = deterministicVariance(seed, state.currentTurn, p.id * 1013904223ULL, 5);
     score += variance;
     expl << "+ Variance (" << variance << ") ";
 
@@ -904,12 +1290,396 @@ inline AiDecisionResult evaluateAiProposal(
 }
 
 // -----------------------------------------------------------------------------
+// AI War & Alliance Decisions (pure functions; campaign supplies the facts)
+// -----------------------------------------------------------------------------
+
+struct PersonalityProfile {
+    int aggression;          // War appetite added to every war score
+    int maxWars;             // Will not open another front beyond this many wars
+    int minWarTurns;         // Fights at least this long before seeking peace
+    int trustBaseline;       // Peacetime trust drifts toward this value (modern rules)
+    int napDesire;           // Desire needed before proposing a non-aggression pact
+    int friendshipDesire;
+    int affiliationDesire;
+    int allianceDesire;
+    int tradeDesire;
+    bool treacherous;        // May break a treaty when overwhelmingly stronger
+    bool demandsTribute;     // Extorts much weaker neighbours
+    bool givesGifts;         // Sends goodwill gifts to improve relations
+};
+
+inline PersonalityProfile profileFor(MajorPersonality personality) {
+    switch (personality) {
+        case MajorPersonality::Federation: return {0, 1, 3, 60, 45, 55, 65, 75, 45, false, false, true};
+        case MajorPersonality::Klingon:    return {45, 2, 15, 40, 60, 65, 75, 80, 60, false, true, false};
+        case MajorPersonality::Romulan:    return {25, 1, 10, 35, 55, 70, 85, 95, 55, true, false, false};
+        case MajorPersonality::Cardassian: return {40, 1, 12, 40, 55, 65, 75, 85, 50, true, true, false};
+        case MajorPersonality::Ferengi:    return {10, 1, 4, 50, 50, 60, 70, 85, 30, false, false, false};
+        default: return {0, 1, 3, 50, 50, 60, 70, 80, 45, false, false, false};
+    }
+}
+
+// Mild cultural affinities between the five majors (symmetric), added to desire.
+inline int personalityAffinity(MajorPersonality a, MajorPersonality b) {
+    auto key = [](MajorPersonality x, MajorPersonality y) {
+        int i = static_cast<int>(x), j = static_cast<int>(y);
+        if (i > j) std::swap(i, j);
+        return i * 10 + j;
+    };
+    switch (key(a, b)) {
+        case 1: return 0;    // Federation-Klingon
+        case 2: return -10;  // Federation-Romulan
+        case 3: return -5;   // Federation-Cardassian
+        case 4: return 5;    // Federation-Ferengi
+        case 12: return -15; // Klingon-Romulan
+        case 13: return -5;  // Klingon-Cardassian
+        case 14: return -5;  // Klingon-Ferengi
+        case 23: return 0;   // Romulan-Cardassian
+        case 24: return 0;   // Romulan-Ferengi
+        case 34: return 5;   // Cardassian-Ferengi
+        default: return 0;
+    }
+}
+
+struct WarAssessmentInput {
+    int aggressorId = 0;
+    int targetId = 0;
+    MajorPersonality personality = MajorPersonality::Federation;
+    int currentTurn = 0;
+    int turnsSinceTransition = 1000; // Turns since the last war/peace change between the pair
+    int activeWars = 0;              // Aggressor's current wars
+    int64_t aggressorPower = 0;
+    int64_t targetPower = 0;         // Including the target's allies
+    int trust = 50;
+    int treatyRank = 0;              // Highest cooperation treaty rank in force
+    bool peaceTreaty = false;        // A timed peace treaty is in force
+    bool tradePact = false;
+    int grievances = 0;              // Aggressor's grievances against the target
+    int targetBetrayals = 0;
+    uint64_t seed = 0;
+};
+
+struct WarAssessment {
+    bool declare = false;
+    bool breaksTreaty = false;
+    int score = 0;
+    int threshold = 60;
+    std::string rationale;
+};
+
+inline constexpr int WarCooldownTurns = 20;  // No re-declaration within this many turns of peace
+inline constexpr int EarlyPeaceTurns = 25;   // No AI-initiated wars before this campaign turn
+
+inline WarAssessment assessWarDeclaration(const WarAssessmentInput& in) {
+    WarAssessment out;
+    const PersonalityProfile prof = profileFor(in.personality);
+    std::ostringstream why;
+    why << personalityName(in.personality) << " war assessment vs " << in.targetId << ": ";
+
+    if (in.currentTurn < EarlyPeaceTurns) {
+        out.rationale = why.str() + "early-game peace";
+        return out;
+    }
+    if (in.turnsSinceTransition < WarCooldownTurns) {
+        out.rationale = why.str() + "cool-down after last war/peace transition";
+        return out;
+    }
+    if (in.activeWars >= prof.maxWars) {
+        out.rationale = why.str() + "already fighting enough wars";
+        return out;
+    }
+    const int64_t ratio = powerRatioPercent(in.aggressorPower, in.targetPower);
+    const bool bound = in.treatyRank > 0 || in.peaceTreaty;
+    if (bound) {
+        // Honourable empires never break their word; treacherous ones only when
+        // overwhelmingly stronger and the relationship is already poisoned.
+        if (!prof.treacherous || ratio < 300 || in.trust >= 20) {
+            out.rationale = why.str() + "bound by treaty";
+            return out;
+        }
+        out.breaksTreaty = true;
+    }
+    if (prof.aggression == 0 && (in.grievances < 10 || in.trust >= 15)) {
+        out.rationale = why.str() + "does not start wars";
+        return out;
+    }
+
+    int score = prof.aggression + (50 - in.trust) + 6 * std::min(in.grievances, 10) + std::min(15, 5 * in.targetBetrayals);
+    if (ratio >= 100) score += static_cast<int>(std::min<int64_t>(30, (ratio - 100) / 5));
+    else score -= static_cast<int>(std::min<int64_t>(40, (100 - ratio) / 2));
+    if (prof.aggression >= 20) score += std::min(15, std::max(0, (in.currentTurn - EarlyPeaceTurns) / 5));
+    if (in.tradePact) score -= (in.personality == MajorPersonality::Ferengi) ? 20 : 10;
+    score += deterministicVariance(in.seed, in.currentTurn,
+        static_cast<uint64_t>(in.aggressorId) * 131ULL + static_cast<uint64_t>(in.targetId) * 7919ULL, 5);
+
+    out.score = score;
+    out.threshold = 60;
+    out.declare = score >= out.threshold;
+    why << "score " << score << " vs " << out.threshold << " (power " << ratio << "%, trust " << in.trust
+        << ", grievances " << in.grievances << ")";
+    out.rationale = why.str();
+    if (!out.declare) out.breaksTreaty = false;
+    return out;
+}
+
+// Whether an AI ally answers a call to arms against `aggressor`.
+inline bool aiHonorsDefenseCall(MajorPersonality personality, int64_t allyPower, int64_t aggressorPower,
+                                bool boundToAggressor) {
+    if (boundToAggressor && personality != MajorPersonality::Klingon) return false;
+    const int64_t ratio = powerRatioPercent(allyPower, aggressorPower);
+    switch (personality) {
+        case MajorPersonality::Klingon: return ratio >= 33;     // Honour: joins unless hopeless
+        case MajorPersonality::Federation: return ratio >= 50;  // Cooperation: joins unless badly outmatched
+        case MajorPersonality::Cardassian: return ratio >= 100;
+        case MajorPersonality::Romulan: return ratio >= 150;
+        case MajorPersonality::Ferengi: return ratio >= 200;
+        default: return ratio >= 100;
+    }
+}
+
+// -----------------------------------------------------------------------------
+// AI-Initiated Diplomacy Planner
+// -----------------------------------------------------------------------------
+
+struct AiDiplomaticIntent {
+    ParticipantId proposer;
+    ParticipantId target;
+    TreatyType treatyType = TreatyType::None;
+    TreatyDuration duration = TreatyDuration::Turns50;
+    DiplomaticTone tone = DiplomaticTone::Cordial;
+    int64_t creditOffer = 0;
+    int64_t creditDemand = 0;
+    std::string rationale;
+
+    bool operator==(const AiDiplomaticIntent& other) const = default;
+};
+
+inline constexpr int AiProposalCooldownTurns = 6;   // Between AI proposals to the same AI empire
+inline constexpr int AiHumanProposalCooldownTurns = 8; // Between AI proposals to the human player
+inline constexpr int AiDemandCooldownTurns = 15;
+inline constexpr int AiMaxIntentsPerTurn = 2;
+
+// Desire of `self` for closer ties with `other` (trust-based, integer).
+inline int diplomaticDesire(const DiplomacyState& state, const DiplomacyContext& ctx, ParticipantId self, ParticipantId other) {
+    const MajorPersonality selfP = ctx.personality(self);
+    const MajorPersonality otherP = ctx.personality(other);
+    int desire = ctx.trust(self, other) + personalityAffinity(selfP, otherP);
+    desire += 10 * std::min(2, countSharedEnemies(ctx, self, other));
+    desire -= 5 * std::min(4, state.grievances(self.id, other.id));
+    desire -= 10 * std::min(3, state.betrayals(other.id));
+    if (comparePower(ctx.militaryPower(other), ctx.militaryPower(self), 2) > 0) desire += 10; // Fear buys pacts
+    return desire;
+}
+
+inline int activeTreatyAge(const DiplomacyState& state, ParticipantId a, ParticipantId b, int rank) {
+    for (const auto& t : state.activeTreaties) {
+        if (t.status == TreatyStatus::Active && t.involvesBoth(a, b) && getTreatyRank(t.type) == rank) {
+            return state.currentTurn - t.startTurn;
+        }
+    }
+    return 0;
+}
+
+// Plans this turn's AI-initiated proposals (treaties, peace, tribute demands and
+// goodwill gifts) for every AI major in `aiEmpires`. Pure and deterministic: the
+// caller submits the intents through DiplomacyEngine::submitProposal.
+inline std::vector<AiDiplomaticIntent> planAiDiplomacy(
+    const DiplomacyState& state,
+    const DiplomacyContext& ctx,
+    const std::vector<int>& aiEmpires,
+    uint64_t seed)
+{
+    std::vector<AiDiplomaticIntent> intents;
+    std::vector<int> majors = ctx.majorEmpires();
+    std::sort(majors.begin(), majors.end());
+    std::vector<int> planners = aiEmpires;
+    std::sort(planners.begin(), planners.end());
+
+    for (int selfId : planners) {
+        const ParticipantId self = ParticipantId::major(selfId);
+        if (ctx.isEliminated(self) || ctx.isHuman(self)) continue;
+        const MajorPersonality selfP = ctx.personality(self);
+        const PersonalityProfile prof = profileFor(selfP);
+        int planned = 0;
+
+        for (int otherId : majors) {
+            if (planned >= AiMaxIntentsPerTurn) break;
+            if (otherId == selfId) continue;
+            const ParticipantId other = ParticipantId::major(otherId);
+            if (ctx.isEliminated(other) || !ctx.hasContact(self, other)) continue;
+
+            // One open proposal per direction at a time, and a cool-down between them.
+            const bool open = std::any_of(state.proposals.begin(), state.proposals.end(), [&](const Proposal& p) {
+                return !p.resolved && p.proposer == self && p.target == other;
+            });
+            if (open) continue;
+            const auto* mem = state.findMemory(selfId, otherId);
+            const int lastProposal = mem ? mem->lastProposalFrom(selfId) : -1;
+            // Back-off: every consecutive refusal (or silence) doubles the wait, up to 4x.
+            const int refusals = mem ? mem->refusalsFrom(selfId) : 0;
+            const int cooldown = (ctx.isHuman(other) ? AiHumanProposalCooldownTurns : AiProposalCooldownTurns) *
+                                 (1 << std::min(refusals, 2));
+            if (lastProposal >= 0 && state.currentTurn - lastProposal < cooldown) continue;
+
+            AiDiplomaticIntent intent;
+            intent.proposer = self;
+            intent.target = other;
+            const int64_t selfPower = ctx.militaryPower(self);
+            const int64_t otherPower = ctx.militaryPower(other);
+            const int64_t ratio = powerRatioPercent(selfPower, otherPower);
+            const int trust = ctx.trust(self, other);
+            const int jitter = deterministicVariance(seed, state.currentTurn,
+                static_cast<uint64_t>(selfId) * 6151ULL + static_cast<uint64_t>(otherId) * 97ULL, 3);
+
+            if (ctx.isAtWar(self, other)) {
+                const int duration = ctx.warDurationTurns(self, other);
+                const bool losing = ratio < 80;
+                const bool weary = duration >= 3 * prof.minWarTurns;
+                if (duration >= prof.minWarTurns && (losing || weary || trust + jitter >= 35)) {
+                    intent.treatyType = TreatyType::Peace;
+                    intent.duration = TreatyDuration::Indefinite;
+                    intent.tone = DiplomaticTone::Cordial;
+                    intent.rationale = losing ? "losing the war" : weary ? "war weariness" : "relations have thawed";
+                    intents.push_back(intent);
+                    ++planned;
+                }
+                continue;
+            }
+
+            const int desire = diplomaticDesire(state, ctx, self, other) + jitter;
+            const int rank = state.highestTreatyRank(self, other);
+            const bool hasTrade = state.hasActiveTreaty(self, other, TreatyType::Trade);
+            const int shared = countSharedEnemies(ctx, self, other);
+
+            // Profit first: Ferengi open with trade.
+            if (!hasTrade && selfP == MajorPersonality::Ferengi && desire >= prof.tradeDesire) {
+                intent.treatyType = TreatyType::Trade;
+                intent.rationale = "profitable trade";
+            } else if (rank == 0 && desire >= prof.napDesire) {
+                intent.treatyType = TreatyType::NonAggression;
+                intent.rationale = "secure the border";
+            } else if (rank == 1 && activeTreatyAge(state, self, other, 1) >= 5 && desire >= prof.friendshipDesire) {
+                intent.treatyType = TreatyType::Friendship;
+                intent.duration = TreatyDuration::Indefinite;
+                intent.rationale = "deepen a proven pact";
+            } else if (rank == 2 && activeTreatyAge(state, self, other, 2) >= 8 && desire >= prof.affiliationDesire) {
+                intent.treatyType = TreatyType::Affiliation;
+                intent.duration = TreatyDuration::Indefinite;
+                intent.rationale = "share sensors and exploration";
+            } else if (rank == 3 && activeTreatyAge(state, self, other, 3) >= 10 && desire >= prof.allianceDesire &&
+                       (shared > 0 || selfP == MajorPersonality::Federation)) {
+                intent.treatyType = TreatyType::Alliance;
+                intent.duration = TreatyDuration::Indefinite;
+                intent.rationale = shared > 0 ? "common enemies" : "lasting cooperation";
+            } else if (!hasTrade && desire >= prof.tradeDesire) {
+                intent.treatyType = TreatyType::Trade;
+                intent.rationale = "mutual profit";
+            } else if (prof.demandsTribute && rank == 0 && ratio >= 200 && trust < 50 &&
+                       ctx.creditBalance(other) >= 100 &&
+                       (lastProposal < 0 || state.currentTurn - lastProposal >= AiDemandCooldownTurns)) {
+                intent.treatyType = TreatyType::None;
+                intent.tone = DiplomaticTone::Demanding;
+                intent.creditDemand = std::clamp<int64_t>(ctx.creditBalance(other) / 10, 25, 250);
+                intent.duration = TreatyDuration::Indefinite;
+                intent.rationale = "tribute from the weak";
+            } else if (prof.givesGifts && rank == 0 && desire < prof.napDesire && desire >= prof.napDesire - 15 &&
+                       ctx.creditBalance(self) >= 400) {
+                intent.treatyType = TreatyType::None;
+                intent.creditOffer = std::min<int64_t>(100, ctx.creditBalance(self) / 10);
+                intent.duration = TreatyDuration::Indefinite;
+                intent.rationale = "goodwill gift";
+            } else {
+                continue;
+            }
+            std::string error;
+            Proposal probe;
+            probe.id = state.nextProposalId;
+            probe.proposer = intent.proposer;
+            probe.target = intent.target;
+            probe.treatyType = intent.treatyType;
+            probe.duration = intent.duration;
+            probe.tone = intent.tone;
+            probe.creditOffer = intent.creditOffer;
+            probe.creditDemand = intent.creditDemand;
+            probe.submittedTurn = state.currentTurn;
+            probe.dueTurn = state.currentTurn + 1;
+            if (!validateProposalCreation(state, ctx, probe, &error)) continue;
+            intents.push_back(intent);
+            ++planned;
+        }
+    }
+    return intents;
+}
+
+// -----------------------------------------------------------------------------
+// Diplomatic Victory Predicate
+// -----------------------------------------------------------------------------
+
+inline constexpr int64_t IndependentMinorNominalPopulation = 30;
+
+struct DiplomaticVictoryStatus {
+    int empireId = 0;
+    int64_t blocPopulation = 0;   // Own colonies (member minors included) + allied empires
+    int64_t galaxyPopulation = 0; // Every colony + nominal population of independent minors
+    std::vector<int> allies;      // Majors in a Full Alliance with empireId
+    std::vector<int> memberMinors;
+    bool achieved = false;
+
+    bool operator==(const DiplomaticVictoryStatus& other) const = default;
+};
+
+// Pure predicate: an empire wins diplomatically when its alliance bloc (itself,
+// its Full Alliance partners and its member minors) holds a strict majority of
+// the galaxy's population and at least one ally or member minor contributes.
+inline DiplomaticVictoryStatus evaluateDiplomaticVictory(
+    const DiplomacyState& state,
+    int empireId,
+    const std::map<int, int64_t>& empirePopulation, // Surviving majors only
+    const std::map<int, int64_t>& independentMinorPopulation)
+{
+    DiplomaticVictoryStatus st;
+    st.empireId = empireId;
+    for (const auto& [id, pop] : empirePopulation) st.galaxyPopulation += std::max<int64_t>(0, pop);
+    for (const auto& [id, pop] : independentMinorPopulation) st.galaxyPopulation += std::max<int64_t>(0, pop);
+    const auto self = empirePopulation.find(empireId);
+    if (self == empirePopulation.end() || self->second <= 0) return st;
+    st.blocPopulation = self->second;
+    for (const auto& t : state.activeTreaties) {
+        if (t.status != TreatyStatus::Active || t.type != TreatyType::Alliance) continue;
+        const ParticipantId me = ParticipantId::major(empireId);
+        if (!t.involves(me)) continue;
+        const ParticipantId other = t.getCounterparty(me);
+        if (other.isMinor) continue;
+        const auto it = empirePopulation.find(other.id);
+        if (it == empirePopulation.end() || it->second <= 0) continue;
+        if (std::find(st.allies.begin(), st.allies.end(), other.id) != st.allies.end()) continue;
+        st.allies.push_back(other.id);
+        st.blocPopulation += it->second;
+    }
+    std::sort(st.allies.begin(), st.allies.end());
+    for (const auto& m : state.minorStates) {
+        if (m.membershipOwner == empireId) st.memberMinors.push_back(m.minorId);
+    }
+    std::sort(st.memberMinors.begin(), st.memberMinors.end());
+    st.achieved = (!st.allies.empty() || !st.memberMinors.empty()) &&
+                  st.galaxyPopulation > 0 && st.blocPopulation * 2 > st.galaxyPopulation;
+    return st;
+}
+
+// -----------------------------------------------------------------------------
 // Engine Core Operations
 // -----------------------------------------------------------------------------
 
+struct WarDeclarationResult {
+    bool brokeTreaty = false;           // A cooperation treaty or timed peace was in force
+    TreatyType strongestBroken = TreatyType::None;
+    std::vector<int> alliesCalled;      // Allies of the defender asked to join
+};
+
 class DiplomacyEngine {
 public:
-    // Submits a new proposal atomically
+    // Submits a new proposal atomically. `responseTurns` is the number of turn
+    // resolutions a human target has before the proposal lapses (minimum 1).
     static bool submitProposal(
         DiplomacyState& state,
         const DiplomacyContext& ctx,
@@ -921,7 +1691,8 @@ public:
         int64_t creditOffer,
         int64_t creditDemand,
         uint64_t* outProposalId = nullptr,
-        std::string* outError = nullptr)
+        std::string* outError = nullptr,
+        int responseTurns = 1)
     {
         Proposal p;
         p.id = state.nextProposalId;
@@ -933,7 +1704,7 @@ public:
         p.creditOffer = creditOffer;
         p.creditDemand = creditDemand;
         p.submittedTurn = state.currentTurn;
-        p.dueTurn = state.currentTurn + 1;
+        p.dueTurn = state.currentTurn + std::clamp(responseTurns, 1, 10);
         p.status = ProposalStatus::Pending;
         p.resolved = false;
 
@@ -941,9 +1712,25 @@ public:
             return false;
         }
 
+        // Resolved proposals are history (the event log keeps the record); drop
+        // them before the table fills so it can never lock up permanently.
+        if (state.proposals.size() >= DiplomacyState::MaxPendingProposals) {
+            purgeResolvedProposals(state);
+        }
+        if (state.proposals.size() >= DiplomacyState::MaxPendingProposals) {
+            if (outError) *outError = "Pending proposal queue limit reached";
+            return false;
+        }
+
         state.nextProposalId++;
         state.proposals.push_back(p);
         if (outProposalId) *outProposalId = p.id;
+
+        if (!proposer.isMinor && !target.isMinor) {
+            if (auto* mem = state.memory(proposer.id, target.id)) {
+                (proposer.id == mem->first ? mem->lastProposalFirstToSecond : mem->lastProposalSecondToFirst) = state.currentTurn;
+            }
+        }
 
         DiplomaticEvent evt;
         evt.turn = state.currentTurn;
@@ -952,14 +1739,15 @@ public:
         evt.partyB = target;
         evt.numericValue = creditOffer;
         std::ostringstream desc;
-        desc << "Proposal " << p.id << " (" << treatyTypeName(treatyType) << ") submitted.";
+        desc << "Proposal " << p.id << " (" << proposalLabel(p) << ") submitted.";
         evt.description = desc.str();
         recordEvent(state, evt);
 
         return true;
     }
 
-    // Authorized player or manual response: responder MUST equal proposal.target strictly
+    // Authorized player or manual response: responder MUST equal proposal.target strictly.
+    // War declarations are unilateral and cannot be answered.
     static bool respondToOffer(
         DiplomacyState& state,
         ParticipantId responder,
@@ -970,6 +1758,7 @@ public:
         Proposal* p = state.findProposal(proposalId);
         if (!p) return false;
         if (p->status != ProposalStatus::Pending || p->resolved) return false;
+        if (p->treatyType == TreatyType::War) return false;
 
         // Authorization check: responder identity MUST match proposal target
         if (p->target != responder) {
@@ -981,25 +1770,19 @@ public:
         return true;
     }
 
-    // Backward-compatible overload for harness calls
-    static bool respondToOffer(
-        DiplomacyState& state,
-        uint64_t proposalId,
-        bool accept,
-        const std::string& reason = "")
-    {
-        Proposal* p = state.findProposal(proposalId);
-        if (!p) return false;
-        return respondToOffer(state, p->target, proposalId, accept, reason);
-    }
-
-    // Immediately breaks all incompatible treaties upon war
-    static void declareWar(
+    // Immediately declares war: cancels pending proposals between the parties,
+    // breaks every treaty between them, records betrayal when a treaty was in
+    // force (galaxy-wide trust penalty via AdjustTrust ops when `ctx` is given)
+    // and calls the defender's allies to arms.
+    static WarDeclarationResult declareWar(
         DiplomacyState& state,
         ParticipantId aggressor,
         ParticipantId defender,
-        TurnResolutionDelta& delta)
+        TurnResolutionDelta& delta,
+        const DiplomacyContext* ctx = nullptr)
     {
+        WarDeclarationResult result;
+
         DiplomacyOperation op;
         op.opType = DiplomaticOpType::SetWarState;
         op.partyA = aggressor;
@@ -1013,18 +1796,20 @@ public:
         evt.type = DiplomaticEventType::WarDeclared;
         evt.partyA = aggressor;
         evt.partyB = defender;
-        evt.description = "War declared between belligerents.";
+        evt.description = "War declared.";
         recordEvent(state, evt);
         delta.events.push_back(evt);
 
         for (auto& p : state.proposals) {
-            if (p.status == ProposalStatus::Pending &&
+            if (!p.resolved && p.status == ProposalStatus::Pending &&
                 ((p.proposer == aggressor && p.target == defender) ||
-                 (p.proposer == defender && p.target == aggressor)) &&
-                p.treatyType != TreatyType::War)
+                 (p.proposer == defender && p.target == aggressor)))
             {
-                p.status = ProposalStatus::Rejected;
-                p.rejectionReason = "Cancelled due to declaration of war";
+                p.status = ProposalStatus::Cancelled;
+                p.resolved = true;
+                p.rejectionReason = p.treatyType == TreatyType::War
+                    ? "Superseded by an immediate declaration of war"
+                    : "Cancelled due to declaration of war";
                 delta.rejectedProposals.push_back(p.id);
 
                 DiplomaticEvent rejEvt;
@@ -1032,13 +1817,326 @@ public:
                 rejEvt.type = DiplomaticEventType::ProposalRejected;
                 rejEvt.partyA = p.proposer;
                 rejEvt.partyB = p.target;
-                rejEvt.description = "Proposal cancelled due to declaration of war.";
+                rejEvt.description = std::string(proposalLabel(p)) + " proposal cancelled by the declaration of war.";
                 recordEvent(state, rejEvt);
                 delta.events.push_back(rejEvt);
             }
         }
 
+        for (const auto& t : state.activeTreaties) {
+            if (t.status != TreatyStatus::Active || !t.involvesBoth(aggressor, defender)) continue;
+            if (getTreatyRank(t.type) > 0 || t.type == TreatyType::Peace) {
+                result.brokeTreaty = true;
+                if (getTreatyRank(t.type) > getTreatyRank(result.strongestBroken) || result.strongestBroken == TreatyType::None) {
+                    result.strongestBroken = t.type;
+                }
+            }
+        }
+
         breakIncompatibleTreaties(state, aggressor, defender, delta);
+
+        if (!aggressor.isMinor && !defender.isMinor) {
+            if (auto* mem = state.memory(aggressor.id, defender.id)) mem->lastWarTurn = state.currentTurn;
+            // A war declared between these two lapses any call to arms about them.
+            dropDefenseCallsBetween(state, aggressor.id, defender.id, /*onlyAsBelligerents=*/false, aggressor.id);
+        }
+
+        if (result.brokeTreaty && !aggressor.isMinor) {
+            if (auto* st = state.standing(aggressor.id)) {
+                st->betrayals = std::min(1000, st->betrayals + 1);
+                st->lastBetrayalTurn = state.currentTurn;
+            }
+            if (!defender.isMinor) state.addGrievance(defender.id, aggressor.id, 3);
+
+            DiplomaticEvent betrayal;
+            betrayal.turn = state.currentTurn;
+            betrayal.type = DiplomaticEventType::TreatyBetrayed;
+            betrayal.partyA = aggressor;
+            betrayal.partyB = defender;
+            betrayal.numericValue = static_cast<int64_t>(result.strongestBroken);
+            betrayal.description = std::string("Broke the ") + treatyTypeName(result.strongestBroken) +
+                                   " by declaring war; the galaxy takes note.";
+            recordEvent(state, betrayal);
+            delta.events.push_back(betrayal);
+
+            if (ctx) {
+                // Victim: extra -15 on top of the campaign's war penalty. Everyone else: -10.
+                pushTrust(delta, aggressor, defender, -15, "Treaty betrayal");
+                for (int id : ctx->majorEmpires()) {
+                    const ParticipantId z = ParticipantId::major(id);
+                    if (z == aggressor || z == defender || ctx->isEliminated(z) || !ctx->hasContact(aggressor, z)) continue;
+                    pushTrust(delta, aggressor, z, -10, "Galaxy-wide reputation loss for treaty betrayal");
+                }
+            }
+        }
+
+        // Mutual defence: every ally of the defender is called to arms.
+        if (!aggressor.isMinor && !defender.isMinor) {
+            for (const auto& t : state.activeTreaties) {
+                if (t.status != TreatyStatus::Active || t.type != TreatyType::Alliance || !t.involves(defender)) continue;
+                const ParticipantId ally = t.getCounterparty(defender);
+                if (ally.isMinor || ally == aggressor) continue;
+                if (state.hasActiveTreaty(ally, aggressor, TreatyType::Alliance)) continue; // Torn loyalties: no call
+                if (ctx && (ctx->isEliminated(ally) || ctx->isAtWar(ally, aggressor))) continue;
+                if (std::find(result.alliesCalled.begin(), result.alliesCalled.end(), ally.id) != result.alliesCalled.end()) continue;
+                bool duplicate = false;
+                for (const auto& c : state.defenseCalls) {
+                    if (c.ally == ally.id && c.defender == defender.id && c.aggressor == aggressor.id) duplicate = true;
+                }
+                if (duplicate || state.defenseCalls.size() >= DiplomacyState::MaxDefenseCalls) continue;
+                DefenseCall call;
+                call.ally = ally.id;
+                call.defender = defender.id;
+                call.aggressor = aggressor.id;
+                call.issuedTurn = state.currentTurn;
+                call.dueTurn = state.currentTurn + DiplomacyState::DefenseCallWindow;
+                state.defenseCalls.push_back(call);
+                result.alliesCalled.push_back(ally.id);
+
+                DiplomaticEvent callEvt;
+                callEvt.turn = state.currentTurn;
+                callEvt.type = DiplomaticEventType::AllianceCalledToArms;
+                callEvt.partyA = defender;
+                callEvt.partyB = ally;
+                callEvt.numericValue = aggressor.id;
+                callEvt.description = "Called its ally to arms against empire " + std::to_string(aggressor.id) +
+                                      "; join the war by turn " + std::to_string(call.dueTurn) + ".";
+                recordEvent(state, callEvt);
+                delta.events.push_back(callEvt);
+            }
+        }
+        return result;
+    }
+
+    // Records a peace settlement reached outside proposal resolution (e.g. the
+    // legacy peace offer) and emits the SetWarState(false) operation.
+    static void recordPeace(DiplomacyState& state, ParticipantId a, ParticipantId b, TurnResolutionDelta& delta) {
+        DiplomacyOperation peaceOp;
+        peaceOp.opType = DiplomaticOpType::SetWarState;
+        peaceOp.partyA = a;
+        peaceOp.partyB = b;
+        peaceOp.setAtWar = false;
+        peaceOp.notes = "Peace established";
+        delta.operations.push_back(peaceOp);
+
+        DiplomaticEvent evt;
+        evt.turn = state.currentTurn;
+        evt.type = DiplomaticEventType::PeaceEstablished;
+        evt.partyA = a;
+        evt.partyB = b;
+        evt.description = "Peace treaty concluded.";
+        recordEvent(state, evt);
+        delta.events.push_back(evt);
+
+        if (!a.isMinor && !b.isMinor) {
+            if (auto* mem = state.memory(a.id, b.id)) mem->lastPeaceTurn = state.currentTurn;
+            dropDefenseCallsBetween(state, a.id, b.id, /*onlyAsBelligerents=*/true, 0);
+        }
+    }
+
+    // Establishes a treaty, superseding weaker cooperation treaties between the
+    // parties. Enforces duplicates, downgrades and the active-treaty cap before
+    // anything is emitted: on failure nothing changes and false is returned.
+    static bool establishTreaty(
+        DiplomacyState& state,
+        ParticipantId a,
+        ParticipantId b,
+        TreatyType type,
+        TreatyDuration duration,
+        TurnResolutionDelta& delta,
+        std::string* outError = nullptr)
+    {
+        if (a == b || type == TreatyType::None || type == TreatyType::War || type == TreatyType::Membership) {
+            if (outError) *outError = "Not a treaty that can be established";
+            return false;
+        }
+        const int rank = getTreatyRank(type);
+        size_t superseded = 0;
+        for (const auto& existing : state.activeTreaties) {
+            if (existing.status != TreatyStatus::Active || !existing.involvesBoth(a, b)) continue;
+            if (existing.type == type) {
+                if (outError) *outError = "Identical treaty is already active";
+                return false;
+            }
+            const int existingRank = getTreatyRank(existing.type);
+            if (rank > 0 && existingRank >= rank) {
+                if (outError) *outError = "An equal or stronger treaty is already active";
+                return false;
+            }
+            if (supersedes(type, existing.type)) ++superseded;
+        }
+        if (state.activeTreaties.size() - superseded >= DiplomacyState::MaxActiveTreaties) {
+            if (outError) *outError = "Active treaty capacity reached";
+            return false;
+        }
+
+        std::vector<ActiveTreaty> remaining;
+        remaining.reserve(state.activeTreaties.size() + 1);
+        for (auto& existing : state.activeTreaties) {
+            if (existing.status == TreatyStatus::Active && existing.involvesBoth(a, b) && supersedes(type, existing.type)) {
+                existing.status = TreatyStatus::Superseded;
+                archiveTreaty(state, existing);
+
+                DiplomacyOperation termOp;
+                termOp.opType = DiplomaticOpType::TerminateTreaty;
+                termOp.partyA = existing.partyA;
+                termOp.partyB = existing.partyB;
+                termOp.treatyType = existing.type;
+                termOp.notes = "Superseded by higher treaty";
+                delta.operations.push_back(termOp);
+
+                DiplomaticEvent sup;
+                sup.turn = state.currentTurn;
+                sup.type = DiplomaticEventType::TreatySuperseded;
+                sup.partyA = existing.partyA;
+                sup.partyB = existing.partyB;
+                sup.numericValue = static_cast<int64_t>(existing.type);
+                sup.description = std::string(treatyTypeName(existing.type)) + " superseded by " + treatyTypeName(type) + ".";
+                recordEvent(state, sup);
+                delta.events.push_back(sup);
+            } else {
+                remaining.push_back(existing);
+            }
+        }
+        state.activeTreaties = std::move(remaining);
+
+        ActiveTreaty newTreaty;
+        newTreaty.id = state.nextTreatyId++;
+        newTreaty.partyA = a;
+        newTreaty.partyB = b;
+        newTreaty.type = type;
+        newTreaty.duration = duration;
+        newTreaty.startTurn = state.currentTurn;
+        newTreaty.turnsRemaining = (duration == TreatyDuration::Indefinite) ? -1 : static_cast<int>(duration);
+        newTreaty.status = TreatyStatus::Active;
+        state.activeTreaties.push_back(newTreaty);
+
+        if (type == TreatyType::Friendship) {
+            if (b.isMinor) {
+                if (auto* minor = state.getMinorState(b.id)) minor->friendshipTurns[a.id] = state.currentTurn;
+            } else if (a.isMinor) {
+                if (auto* minor = state.getMinorState(a.id)) minor->friendshipTurns[b.id] = state.currentTurn;
+            }
+        }
+
+        DiplomacyOperation treatOp;
+        treatOp.opType = DiplomaticOpType::ApplyTreaty;
+        treatOp.partyA = a;
+        treatOp.partyB = b;
+        treatOp.treatyType = type;
+        treatOp.duration = duration;
+        treatOp.turnsRemaining = newTreaty.turnsRemaining;
+        treatOp.notes = "Treaty ratified";
+        delta.operations.push_back(treatOp);
+
+        DiplomaticEvent evt;
+        evt.turn = state.currentTurn;
+        evt.type = DiplomaticEventType::TreatyEstablished;
+        evt.partyA = a;
+        evt.partyB = b;
+        evt.numericValue = static_cast<int64_t>(type);
+        evt.description = std::string(treatyTypeName(type)) + " ratified.";
+        recordEvent(state, evt);
+        delta.events.push_back(evt);
+        return true;
+    }
+
+    // Dissolves one active treaty (e.g. an alliance after a refused call to arms).
+    static bool dissolveTreaty(
+        DiplomacyState& state,
+        ParticipantId a,
+        ParticipantId b,
+        TreatyType type,
+        const std::string& reason,
+        TurnResolutionDelta& delta)
+    {
+        bool found = false;
+        std::vector<ActiveTreaty> remaining;
+        remaining.reserve(state.activeTreaties.size());
+        for (auto& t : state.activeTreaties) {
+            if (!found && t.status == TreatyStatus::Active && t.type == type && t.involvesBoth(a, b)) {
+                found = true;
+                t.status = TreatyStatus::Dissolved;
+                archiveTreaty(state, t);
+                clearMinorFriendship(state, t);
+                DiplomacyOperation op;
+                op.opType = DiplomaticOpType::TerminateTreaty;
+                op.partyA = t.partyA;
+                op.partyB = t.partyB;
+                op.treatyType = t.type;
+                op.notes = reason;
+                delta.operations.push_back(op);
+
+                DiplomaticEvent evt;
+                evt.turn = state.currentTurn;
+                evt.type = DiplomaticEventType::TreatyExpired;
+                evt.partyA = t.partyA;
+                evt.partyB = t.partyB;
+                evt.numericValue = static_cast<int64_t>(t.type);
+                evt.description = std::string(treatyTypeName(t.type)) + " dissolved: " + reason;
+                recordEvent(state, evt);
+                delta.events.push_back(evt);
+            } else {
+                remaining.push_back(t);
+            }
+        }
+        state.activeTreaties = std::move(remaining);
+        return found;
+    }
+
+    // Removes an eliminated participant from diplomacy: its treaties dissolve,
+    // its open proposals are cancelled and calls to arms about it lapse.
+    // Returns the number of treaties and proposals affected.
+    static int dissolveParticipant(DiplomacyState& state, ParticipantId gone, TurnResolutionDelta& delta) {
+        int affected = 0;
+        std::vector<ActiveTreaty> remaining;
+        remaining.reserve(state.activeTreaties.size());
+        for (auto& t : state.activeTreaties) {
+            if (t.involves(gone)) {
+                ++affected;
+                t.status = TreatyStatus::Dissolved;
+                archiveTreaty(state, t);
+                clearMinorFriendship(state, t);
+                DiplomacyOperation op;
+                op.opType = DiplomaticOpType::TerminateTreaty;
+                op.partyA = t.partyA;
+                op.partyB = t.partyB;
+                op.treatyType = t.type;
+                op.notes = "Party eliminated";
+                delta.operations.push_back(op);
+            } else {
+                remaining.push_back(t);
+            }
+        }
+        state.activeTreaties = std::move(remaining);
+        for (auto& p : state.proposals) {
+            if (!p.resolved && (p.proposer == gone || p.target == gone)) {
+                ++affected;
+                p.status = ProposalStatus::Cancelled;
+                p.resolved = true;
+                p.rejectionReason = "Party eliminated";
+                delta.rejectedProposals.push_back(p.id);
+            }
+        }
+        if (!gone.isMinor) {
+            const auto before = state.defenseCalls.size();
+            std::erase_if(state.defenseCalls, [&](const DefenseCall& c) {
+                return c.ally == gone.id || c.defender == gone.id || c.aggressor == gone.id;
+            });
+            affected += static_cast<int>(before - state.defenseCalls.size());
+        }
+        if (affected > 0) {
+            DiplomaticEvent evt;
+            evt.turn = state.currentTurn;
+            evt.type = DiplomaticEventType::ParticipantEliminated;
+            evt.partyA = gone;
+            evt.partyB = gone;
+            evt.numericValue = affected;
+            evt.description = "Eliminated; all treaties dissolved and negotiations cancelled.";
+            recordEvent(state, evt);
+            delta.events.push_back(evt);
+        }
+        return affected;
     }
 
     // Resolves turn boundary: decrements treaties, resolves pending offers, produces operations
@@ -1050,13 +2148,40 @@ public:
         TurnResolutionDelta delta;
 
         // ---------------------------------------------------------------------
-        // Step 1: Tick Active Treaties & Check Expiry
+        // Step 0: Purge proposals resolved on earlier turns (the event history
+        // keeps their record) and remove eliminated participants.
+        // ---------------------------------------------------------------------
+        purgeResolvedProposals(state);
+        {
+            std::set<ParticipantId> gone;
+            for (const auto& t : state.activeTreaties) {
+                if (ctx.isEliminated(t.partyA)) gone.insert(t.partyA);
+                if (ctx.isEliminated(t.partyB)) gone.insert(t.partyB);
+            }
+            for (const auto& p : state.proposals) {
+                if (ctx.isEliminated(p.proposer)) gone.insert(p.proposer);
+                if (ctx.isEliminated(p.target)) gone.insert(p.target);
+            }
+            for (const auto& c : state.defenseCalls) {
+                for (int id : {c.ally, c.defender, c.aggressor}) {
+                    if (ctx.isEliminated(ParticipantId::major(id))) gone.insert(ParticipantId::major(id));
+                }
+            }
+            for (const auto& p : gone) dissolveParticipant(state, p, delta);
+        }
+
+        // ---------------------------------------------------------------------
+        // Step 1: Tick Active Treaties & Check Expiry. Non-active rows (e.g.
+        // from an old save) are archived rather than silently dropped.
         // ---------------------------------------------------------------------
         std::vector<ActiveTreaty> remainingActive;
         remainingActive.reserve(state.activeTreaties.size());
 
         for (auto& treaty : state.activeTreaties) {
-            if (treaty.status != TreatyStatus::Active) continue;
+            if (treaty.status != TreatyStatus::Active) {
+                archiveTreaty(state, treaty);
+                continue;
+            }
 
             if (treaty.duration != TreatyDuration::Indefinite && treaty.turnsRemaining > 0) {
                 treaty.turnsRemaining--;
@@ -1069,14 +2194,7 @@ public:
 
                 // If expired treaty was friendship with minor, update minor's friendship status
                 if (treaty.type == TreatyType::Friendship) {
-                    if (treaty.partyA.isMinor) {
-                        auto* m = state.getMinorState(treaty.partyA.id);
-                        if (m) m->friendshipTurns[treaty.partyB.id] = -1;
-                    }
-                    if (treaty.partyB.isMinor) {
-                        auto* m = state.getMinorState(treaty.partyB.id);
-                        if (m) m->friendshipTurns[treaty.partyA.id] = -1;
-                    }
+                    clearMinorFriendship(state, treaty);
                 }
 
                 DiplomacyOperation op;
@@ -1092,7 +2210,8 @@ public:
                 evt.type = DiplomaticEventType::TreatyExpired;
                 evt.partyA = treaty.partyA;
                 evt.partyB = treaty.partyB;
-                evt.description = "Treaty expired naturally.";
+                evt.numericValue = static_cast<int64_t>(treaty.type);
+                evt.description = std::string(treatyTypeName(treaty.type)) + " expired.";
                 recordEvent(state, evt);
                 delta.events.push_back(evt);
             } else {
@@ -1137,7 +2256,6 @@ public:
             }
         }
 
-        // ---------------------------------------------------------------------
         // ---------------------------------------------------------------------
         // Step 3: Rank Concurrent Membership Offers by Preference (DIP-02)
         // Group membership proposals by target minor:
@@ -1210,33 +2328,44 @@ public:
         // ---------------------------------------------------------------------
         std::set<int> minorsJoinedThisTurn;
 
+        auto rejectWithEvent = [&](Proposal& p, ProposalStatus status, const std::string& reason, const std::string& text) {
+            p.status = status;
+            p.rejectionReason = reason;
+            delta.rejectedProposals.push_back(p.id);
+            if (!text.empty()) {
+                DiplomaticEvent evt;
+                evt.turn = state.currentTurn;
+                evt.type = DiplomaticEventType::ProposalRejected;
+                evt.partyA = p.proposer;
+                evt.partyB = p.target;
+                evt.numericValue = static_cast<int64_t>(p.treatyType);
+                evt.description = text;
+                recordEvent(state, evt);
+                delta.events.push_back(evt);
+            }
+        };
+
         for (size_t idx : proposalIndices) {
             auto& p = state.proposals[idx];
-            if (p.resolved) continue;
+            if (p.resolved) continue; // e.g. cancelled by a war declared earlier this step
 
             // Check if minor has already joined an empire during this turn's resolution
             if (p.target.isMinor && p.treatyType == TreatyType::Membership) {
                 if (minorsJoinedThisTurn.count(p.target.id) > 0) {
                     p.resolved = true;
-                    p.status = ProposalStatus::Rejected;
-                    p.rejectionReason = "Minor accepted competing membership offer from another empire";
-                    delta.rejectedProposals.push_back(p.id);
-
-                    DiplomaticEvent evt;
-                    evt.turn = state.currentTurn;
-                    evt.type = DiplomaticEventType::ProposalRejected;
-                    evt.partyA = p.proposer;
-                    evt.partyB = p.target;
-                    evt.description = "Minor rejected membership in favor of rival empire.";
-                    recordEvent(state, evt);
-                    delta.events.push_back(evt);
+                    rejectWithEvent(p, ProposalStatus::Rejected,
+                        "Minor accepted competing membership offer from another empire",
+                        "Minor rejected membership in favor of rival empire.");
                     continue;
                 }
             }
 
             if (p.status == ProposalStatus::Pending) {
-                if (!ctx.isHuman(p.target)) {
-                    AiDecisionResult aiRes = evaluateAiProposal(state, ctx, p, aiSeed);
+                if (p.treatyType == TreatyType::War) {
+                    // Unilateral: a declaration of war needs nobody's consent.
+                    p.status = ProposalStatus::Accepted;
+                } else if (!ctx.isHuman(p.target)) {
+                    AiDecisionResult aiRes = evaluateAiProposal(state, ctx, p, aiSeed, ctx.personality(p.target));
                     if (aiRes.decision == AiDecision::Accept) {
                         p.status = ProposalStatus::Accepted;
                     } else if (aiRes.decision == AiDecision::Reject) {
@@ -1263,7 +2392,17 @@ public:
 
                 // 1. Working war check
                 bool atWarNow = isWorkingAtWar(p.proposer, p.target);
-                if (p.treatyType != TreatyType::Peace && p.treatyType != TreatyType::War && p.treatyType != TreatyType::None && atWarNow) {
+                if (p.treatyType == TreatyType::War) {
+                    if (atWarNow) {
+                        rejectWithEvent(p, ProposalStatus::Rejected, "Belligerents are already at war", "");
+                        continue;
+                    }
+                    delta.acceptedProposals.push_back(p.id);
+                    setWorkingAtWar(p.proposer, p.target, true);
+                    declareWar(state, p.proposer, p.target, delta, &ctx);
+                    continue;
+                }
+                if (p.treatyType != TreatyType::Peace && p.treatyType != TreatyType::None && atWarNow) {
                     p.status = ProposalStatus::VoidedByWar;
                     p.rejectionReason = "Voided by intervening outbreak of war";
                     delta.rejectedProposals.push_back(p.id);
@@ -1280,70 +2419,60 @@ public:
                 if (p.treatyType == TreatyType::Membership) {
                     const auto* minor = state.getMinorState(p.target.id);
                     if (!minor) {
-                        p.status = ProposalStatus::Rejected;
-                        p.rejectionReason = "Minor not found";
-                        delta.rejectedProposals.push_back(p.id);
+                        rejectWithEvent(p, ProposalStatus::Rejected, "Minor not found", "");
                         continue;
                     }
                     if (minorsJoinedThisTurn.count(p.target.id) > 0) {
-                        p.status = ProposalStatus::Rejected;
-                        p.rejectionReason = "Minor accepted competing membership offer from another empire";
-                        delta.rejectedProposals.push_back(p.id);
-
-                        DiplomaticEvent evt;
-                        evt.turn = state.currentTurn;
-                        evt.type = DiplomaticEventType::ProposalRejected;
-                        evt.partyA = p.proposer;
-                        evt.partyB = p.target;
-                        evt.description = "Minor rejected membership in favor of rival empire.";
-                        recordEvent(state, evt);
-                        delta.events.push_back(evt);
+                        rejectWithEvent(p, ProposalStatus::Rejected,
+                            "Minor accepted competing membership offer from another empire",
+                            "Minor rejected membership in favor of rival empire.");
                         continue;
                     }
                     if (minor->membershipOwner != 0) {
-                        p.status = ProposalStatus::Rejected;
-                        p.rejectionReason = "Minor is already a member of an empire";
-                        delta.rejectedProposals.push_back(p.id);
+                        rejectWithEvent(p, ProposalStatus::Rejected, "Minor is already a member of an empire", "");
                         continue;
                     }
                     int frTurn = minor->getFriendshipTurn(p.proposer.id);
                     if (frTurn < 0 || frTurn >= state.currentTurn) {
-                        p.status = ProposalStatus::Rejected;
-                        p.rejectionReason = "Membership requires an established active Friendship from a prior turn";
-                        delta.rejectedProposals.push_back(p.id);
+                        rejectWithEvent(p, ProposalStatus::Rejected,
+                            "Membership requires an established active Friendship from a prior turn", "");
                         continue;
                     }
                     if (minor->getAttitude(p.proposer.id) < 80) {
-                        p.status = ProposalStatus::Rejected;
-                        p.rejectionReason = "Minor attitude at settlement fell below required 80 threshold";
-                        delta.rejectedProposals.push_back(p.id);
+                        rejectWithEvent(p, ProposalStatus::Rejected,
+                            "Minor attitude at settlement fell below required 80 threshold", "");
                         continue;
                     }
                 }
 
-                // 3. Treaty Downgrade / Conflict Check against cumulative active treaties
-                int proposedRank = getTreatyRank(p.treatyType);
-                bool conflictFound = false;
-                for (const auto& existing : state.activeTreaties) {
-                    if (existing.status == TreatyStatus::Active && existing.involvesBoth(p.proposer, p.target)) {
-                        if (existing.type == p.treatyType) {
-                            p.status = ProposalStatus::Rejected;
-                            p.rejectionReason = "Identical treaty is already active";
-                            conflictFound = true;
-                            break;
-                        }
-                        int existingRank = getTreatyRank(existing.type);
-                        if (existingRank >= proposedRank && proposedRank > 0) {
-                            p.status = ProposalStatus::Rejected;
-                            p.rejectionReason = "An equal or stronger treaty is already active";
-                            conflictFound = true;
-                            break;
+                // 3. Treaty Downgrade / Conflict / Capacity Check against cumulative active treaties
+                const bool createsTreaty = p.treatyType != TreatyType::None && p.treatyType != TreatyType::Peace &&
+                                           p.treatyType != TreatyType::Membership;
+                if (createsTreaty) {
+                    int proposedRank = getTreatyRank(p.treatyType);
+                    std::string conflict;
+                    size_t superseded = 0;
+                    for (const auto& existing : state.activeTreaties) {
+                        if (existing.status == TreatyStatus::Active && existing.involvesBoth(p.proposer, p.target)) {
+                            if (existing.type == p.treatyType) {
+                                conflict = "Identical treaty is already active";
+                                break;
+                            }
+                            int existingRank = getTreatyRank(existing.type);
+                            if (existingRank >= proposedRank && proposedRank > 0) {
+                                conflict = "An equal or stronger treaty is already active";
+                                break;
+                            }
+                            if (supersedes(p.treatyType, existing.type)) ++superseded;
                         }
                     }
-                }
-                if (conflictFound) {
-                    delta.rejectedProposals.push_back(p.id);
-                    continue;
+                    if (conflict.empty() && state.activeTreaties.size() - superseded >= DiplomacyState::MaxActiveTreaties) {
+                        conflict = "Active treaty capacity reached";
+                    }
+                    if (!conflict.empty()) {
+                        rejectWithEvent(p, ProposalStatus::Rejected, conflict, "");
+                        continue;
+                    }
                 }
 
                 // 4. Working Ledger Overdraft Check
@@ -1351,34 +2480,16 @@ public:
                 int64_t targetBal = getWorkingBalance(p.target);
 
                 if (p.creditOffer > 0 && propBal < p.creditOffer) {
-                    p.status = ProposalStatus::Rejected;
-                    p.rejectionReason = "Proposer overdraft: insufficient funds in resolution ledger";
-                    delta.rejectedProposals.push_back(p.id);
-
-                    DiplomaticEvent evt;
-                    evt.turn = state.currentTurn;
-                    evt.type = DiplomaticEventType::ProposalRejected;
-                    evt.partyA = p.proposer;
-                    evt.partyB = p.target;
-                    evt.description = "Proposal rejected: Proposer unable to pay offered credits.";
-                    recordEvent(state, evt);
-                    delta.events.push_back(evt);
+                    rejectWithEvent(p, ProposalStatus::Rejected,
+                        "Proposer overdraft: insufficient funds in resolution ledger",
+                        "Proposal rejected: Proposer unable to pay offered credits.");
                     continue;
                 }
 
                 if (p.creditDemand > 0 && targetBal < p.creditDemand) {
-                    p.status = ProposalStatus::Rejected;
-                    p.rejectionReason = "Target overdraft: insufficient funds in resolution ledger";
-                    delta.rejectedProposals.push_back(p.id);
-
-                    DiplomaticEvent evt;
-                    evt.turn = state.currentTurn;
-                    evt.type = DiplomaticEventType::ProposalRejected;
-                    evt.partyA = p.proposer;
-                    evt.partyB = p.target;
-                    evt.description = "Proposal rejected: Target unable to pay demanded credits.";
-                    recordEvent(state, evt);
-                    delta.events.push_back(evt);
+                    rejectWithEvent(p, ProposalStatus::Rejected,
+                        "Target overdraft: insufficient funds in resolution ledger",
+                        "Proposal rejected: Target unable to pay demanded credits.");
                     continue;
                 }
 
@@ -1386,6 +2497,7 @@ public:
                 // ALL CHECKS PASSED: Commit Acceptance & Apply State Mutations
                 // -------------------------------------------------------------
                 delta.acceptedProposals.push_back(p.id);
+                if (!p.proposer.isMinor && !p.target.isMinor) state.noteProposalOutcome(p.proposer.id, p.target.id, true);
 
                 // A. Update Working Ledger
                 if (p.creditOffer > 0) {
@@ -1414,46 +2526,9 @@ public:
                 }
 
                 // B. Treaty Effects
-                if (p.treatyType == TreatyType::War) {
-                    setWorkingAtWar(p.proposer, p.target, true);
-
-                    DiplomacyOperation warOp;
-                    warOp.opType = DiplomaticOpType::SetWarState;
-                    warOp.partyA = p.proposer;
-                    warOp.partyB = p.target;
-                    warOp.setAtWar = true; // Explicit typed boolean
-                    warOp.notes = "War state established via proposal";
-                    delta.operations.push_back(warOp);
-
-                    DiplomaticEvent evt;
-                    evt.turn = state.currentTurn;
-                    evt.type = DiplomaticEventType::WarDeclared;
-                    evt.partyA = p.proposer;
-                    evt.partyB = p.target;
-                    evt.description = "State of war declared between belligerents.";
-                    recordEvent(state, evt);
-                    delta.events.push_back(evt);
-
-                    breakIncompatibleTreaties(state, p.proposer, p.target, delta);
-                } else if (p.treatyType == TreatyType::Peace) {
+                if (p.treatyType == TreatyType::Peace) {
                     setWorkingAtWar(p.proposer, p.target, false);
-
-                    DiplomacyOperation peaceOp;
-                    peaceOp.opType = DiplomaticOpType::SetWarState;
-                    peaceOp.partyA = p.proposer;
-                    peaceOp.partyB = p.target;
-                    peaceOp.setAtWar = false; // Explicit typed boolean
-                    peaceOp.notes = "Peace established";
-                    delta.operations.push_back(peaceOp);
-
-                    DiplomaticEvent evt;
-                    evt.turn = state.currentTurn;
-                    evt.type = DiplomaticEventType::PeaceEstablished;
-                    evt.partyA = p.proposer;
-                    evt.partyB = p.target;
-                    evt.description = "Peace treaty concluded.";
-                    recordEvent(state, evt);
-                    delta.events.push_back(evt);
+                    recordPeace(state, p.proposer, p.target, delta);
                 } else if (p.treatyType == TreatyType::Membership) {
                     auto* minor = state.getMinorState(p.target.id);
                     if (minor) {
@@ -1477,70 +2552,50 @@ public:
                         recordEvent(state, evt);
                         delta.events.push_back(evt);
                     }
-                } else if (p.treatyType != TreatyType::None) {
-                    for (auto& existing : state.activeTreaties) {
-                        if (existing.status == TreatyStatus::Active && existing.involvesBoth(p.proposer, p.target)) {
-                            if (p.treatyType != TreatyType::Trade && existing.type != TreatyType::Trade) {
-                                existing.status = TreatyStatus::Superseded;
-                                archiveTreaty(state, existing);
-
-                                DiplomacyOperation termOp;
-                                termOp.opType = DiplomaticOpType::TerminateTreaty;
-                                termOp.partyA = existing.partyA;
-                                termOp.partyB = existing.partyB;
-                                termOp.treatyType = existing.type;
-                                termOp.notes = "Superseded by higher treaty";
-                                delta.operations.push_back(termOp);
-                            }
+                } else if (p.treatyType == TreatyType::None) {
+                    if (p.creditDemand > 0) {
+                        DiplomaticEvent evt;
+                        evt.turn = state.currentTurn;
+                        evt.type = DiplomaticEventType::TributeDemanded;
+                        evt.partyA = p.proposer;
+                        evt.partyB = p.target;
+                        evt.numericValue = p.creditDemand;
+                        evt.description = "Tribute of " + std::to_string(p.creditDemand) + " credits paid.";
+                        recordEvent(state, evt);
+                        delta.events.push_back(evt);
+                        if (!p.target.isMinor) {
+                            pushTrust(delta, p.proposer, p.target, -5, "Resentment over paid tribute");
+                            state.addGrievance(p.target.id, p.proposer.id, 1);
+                        }
+                    } else if (p.creditOffer > 0) {
+                        DiplomaticEvent evt;
+                        evt.turn = state.currentTurn;
+                        evt.type = DiplomaticEventType::GiftDelivered;
+                        evt.partyA = p.proposer;
+                        evt.partyB = p.target;
+                        evt.numericValue = p.creditOffer;
+                        evt.description = "Gift of " + std::to_string(p.creditOffer) + " credits delivered.";
+                        recordEvent(state, evt);
+                        delta.events.push_back(evt);
+                        if (!p.target.isMinor && !p.proposer.isMinor) {
+                            const int gain = static_cast<int>(std::clamp<int64_t>(p.creditOffer / 50, 1, 10));
+                            pushTrust(delta, p.proposer, p.target, gain, "Goodwill gift");
                         }
                     }
-
-                    ActiveTreaty newTreaty;
-                    newTreaty.id = state.nextTreatyId++;
-                    newTreaty.partyA = p.proposer;
-                    newTreaty.partyB = p.target;
-                    newTreaty.type = p.treatyType;
-                    newTreaty.duration = p.duration;
-                    newTreaty.startTurn = state.currentTurn;
-                    newTreaty.turnsRemaining = (p.duration == TreatyDuration::Indefinite) ? -1 : static_cast<int>(p.duration);
-                    newTreaty.status = TreatyStatus::Active;
-
-                    if (state.activeTreaties.size() < DiplomacyState::MaxActiveTreaties) {
-                        state.activeTreaties.push_back(newTreaty);
-                    }
-
-                    if (p.target.isMinor && p.treatyType == TreatyType::Friendship) {
-                        auto* minor = state.getMinorState(p.target.id);
-                        if (minor) {
-                            minor->friendshipTurns[p.proposer.id] = state.currentTurn;
+                } else {
+                    std::string err;
+                    if (establishTreaty(state, p.proposer, p.target, p.treatyType, p.duration, delta, &err)) {
+                        if (!p.target.isMinor && !p.proposer.isMinor) {
+                            pushTrust(delta, p.proposer, p.target, 5, "Treaty signed");
                         }
                     }
-
-                    DiplomacyOperation treatOp;
-                    treatOp.opType = DiplomaticOpType::ApplyTreaty;
-                    treatOp.partyA = p.proposer;
-                    treatOp.partyB = p.target;
-                    treatOp.treatyType = p.treatyType;
-                    treatOp.duration = p.duration;
-                    treatOp.turnsRemaining = newTreaty.turnsRemaining;
-                    treatOp.notes = "Treaty ratified";
-                    delta.operations.push_back(treatOp);
-
-                    DiplomaticEvent evt;
-                    evt.turn = state.currentTurn;
-                    evt.type = DiplomaticEventType::TreatyEstablished;
-                    evt.partyA = p.proposer;
-                    evt.partyB = p.target;
-                    evt.description = "Treaty ratified between parties.";
-                    recordEvent(state, evt);
-                    delta.events.push_back(evt);
                 }
 
                 if (p.target.isMinor && p.creditOffer > 0) {
                     auto* minor = state.getMinorState(p.target.id);
                     if (minor) {
-                        int gain = static_cast<int>((p.creditOffer * 4) / 1000);
-                        if (gain < 1) gain = 1;
+                        // S19 baseline: 4 attitude per 1,000 credits (no overflow for any credit value).
+                        int gain = static_cast<int>(std::clamp<int64_t>(p.creditOffer / 250, 1, 100));
                         int oldAtt = minor->getAttitude(p.proposer.id);
                         int newAtt = std::clamp(oldAtt + gain, 0, 100);
                         minor->attitudes[p.proposer.id] = newAtt;
@@ -1552,30 +2607,109 @@ public:
                         attOp.attitudeDelta = newAtt - oldAtt;
                         attOp.notes = "Attitude increased by gift";
                         delta.operations.push_back(attOp);
+
+                        // Rival influence: courting another empire's member loosens its loyalty.
+                        const int owner = minor->membershipOwner;
+                        if (owner > 0 && owner != p.proposer.id) {
+                            const int oldOwnerAtt = minor->getAttitude(owner);
+                            const int newOwnerAtt = std::clamp(oldOwnerAtt - std::max(1, gain / 2), 0, 100);
+                            minor->attitudes[owner] = newOwnerAtt;
+                            DiplomacyOperation rivalOp;
+                            rivalOp.opType = DiplomaticOpType::UpdateMinorAttitude;
+                            rivalOp.partyA = p.target;
+                            rivalOp.partyB = ParticipantId::major(owner);
+                            rivalOp.attitudeDelta = newOwnerAtt - oldOwnerAtt;
+                            rivalOp.notes = "Loyalty eroded by rival influence";
+                            delta.operations.push_back(rivalOp);
+                        }
                     }
                 }
             } else if (p.status == ProposalStatus::Rejected) {
                 delta.rejectedProposals.push_back(p.id);
+                if (!p.proposer.isMinor && !p.target.isMinor) state.noteProposalOutcome(p.proposer.id, p.target.id, false);
 
                 DiplomaticEvent evt;
                 evt.turn = state.currentTurn;
                 evt.type = DiplomaticEventType::ProposalRejected;
                 evt.partyA = p.proposer;
                 evt.partyB = p.target;
-                evt.description = "Proposal rejected by target.";
+                evt.numericValue = static_cast<int64_t>(p.treatyType);
+                evt.description = std::string(proposalLabel(p)) + " proposal rejected by target.";
                 recordEvent(state, evt);
                 delta.events.push_back(evt);
+                if (p.treatyType == TreatyType::None && p.creditDemand > 0 && !p.proposer.isMinor && !p.target.isMinor) {
+                    // A refused demand is an insult the demander remembers.
+                    state.addGrievance(p.proposer.id, p.target.id, 2);
+                    pushTrust(delta, p.proposer, p.target, -3, "Tribute refused");
+                }
             } else if (p.status == ProposalStatus::Ignored) {
                 delta.ignoredProposals.push_back(p.id);
+                if (!p.proposer.isMinor && !p.target.isMinor) state.noteProposalOutcome(p.proposer.id, p.target.id, false);
 
                 DiplomaticEvent evt;
                 evt.turn = state.currentTurn;
                 evt.type = DiplomaticEventType::ProposalIgnored;
                 evt.partyA = p.proposer;
                 evt.partyB = p.target;
-                evt.description = "Proposal lapsed without answer.";
+                evt.numericValue = static_cast<int64_t>(p.treatyType);
+                evt.description = std::string(proposalLabel(p)) + " proposal lapsed without answer.";
                 recordEvent(state, evt);
                 delta.events.push_back(evt);
+                if (p.treatyType == TreatyType::None && p.creditDemand > 0 && !p.proposer.isMinor && !p.target.isMinor) {
+                    state.addGrievance(p.proposer.id, p.target.id, 1);
+                }
+            }
+        }
+
+        // ---------------------------------------------------------------------
+        // Step 5: Calls to arms that fall due are honored or refused.
+        // ---------------------------------------------------------------------
+        {
+            std::vector<DefenseCall> stillOpen;
+            for (const auto& call : state.defenseCalls) {
+                const ParticipantId ally = ParticipantId::major(call.ally);
+                const ParticipantId defender = ParticipantId::major(call.defender);
+                const ParticipantId aggressor = ParticipantId::major(call.aggressor);
+                if (!isWorkingAtWar(defender, aggressor) || !state.hasActiveTreaty(ally, defender, TreatyType::Alliance)) {
+                    continue; // Peace was made or the alliance ended: the call lapses.
+                }
+                const bool joined = isWorkingAtWar(ally, aggressor);
+                if (!joined && state.currentTurn < call.dueTurn) {
+                    stillOpen.push_back(call);
+                    continue;
+                }
+                DiplomaticEvent evt;
+                evt.turn = state.currentTurn;
+                evt.partyA = ally;
+                evt.partyB = defender;
+                evt.numericValue = call.aggressor;
+                if (joined) {
+                    evt.type = DiplomaticEventType::AllianceHonored;
+                    evt.description = "Honored the alliance and joined the war against empire " + std::to_string(call.aggressor) + ".";
+                    pushTrust(delta, ally, defender, 10, "Alliance honored");
+                } else {
+                    evt.type = DiplomaticEventType::AllianceRefused;
+                    evt.description = "Refused the call to arms against empire " + std::to_string(call.aggressor) + ".";
+                    pushTrust(delta, ally, defender, -20, "Alliance obligation refused");
+                    state.addGrievance(defender.id, ally.id, 2);
+                }
+                recordEvent(state, evt);
+                delta.events.push_back(evt);
+                if (!joined && !ctx.isHuman(defender) && ctx.trust(defender, ally) - 20 < 40) {
+                    dissolveTreaty(state, defender, ally, TreatyType::Alliance,
+                        "Alliance cancelled after a refused call to arms", delta);
+                }
+            }
+            state.defenseCalls = std::move(stillOpen);
+        }
+
+        // ---------------------------------------------------------------------
+        // Step 6: Old grievances fade slowly (one point per ten turns).
+        // ---------------------------------------------------------------------
+        if (state.currentTurn > 0 && state.currentTurn % 10 == 0) {
+            for (auto& m : state.relationMemory) {
+                m.grievancesOfFirst = std::max(0, m.grievancesOfFirst - 1);
+                m.grievancesOfSecond = std::max(0, m.grievancesOfSecond - 1);
             }
         }
 
@@ -1586,7 +2720,69 @@ public:
         return delta;
     }
 
+    // Appends to the bounded event history (oldest entries drop first).
+    static void recordEvent(DiplomacyState& state, const DiplomaticEvent& evt) {
+        if (state.eventHistory.size() >= DiplomacyState::MaxEventHistory) {
+            state.eventHistory.erase(state.eventHistory.begin());
+        }
+        state.eventHistory.push_back(evt);
+    }
+
+    static const char* proposalLabel(const Proposal& p) {
+        if (p.treatyType == TreatyType::None) {
+            return p.creditDemand > 0 ? "Tribute Demand" : "Gift";
+        }
+        if (p.treatyType == TreatyType::War) return "Declaration of War";
+        return treatyTypeName(p.treatyType);
+    }
+
 private:
+    // Whether establishing `incoming` retires `existing` between the same parties.
+    // Cooperation treaties (NAP..Alliance) and Membership replace each other;
+    // Trade pacts and timed Peace treaties coexist with them.
+    static bool supersedes(TreatyType incoming, TreatyType existing) {
+        if (incoming == TreatyType::Trade || existing == TreatyType::Trade) return false;
+        if (incoming == TreatyType::Peace) return false;
+        if (existing == TreatyType::Peace) return getTreatyRank(incoming) > 0;
+        return true;
+    }
+
+    static void pushTrust(TurnResolutionDelta& delta, ParticipantId a, ParticipantId b, int amount, const char* note) {
+        if (a.isMinor || b.isMinor || a == b || amount == 0) return;
+        DiplomacyOperation op;
+        op.opType = DiplomaticOpType::AdjustTrust;
+        op.partyA = a;
+        op.partyB = b;
+        op.attitudeDelta = amount;
+        op.notes = note;
+        delta.operations.push_back(op);
+    }
+
+    static void clearMinorFriendship(DiplomacyState& state, const ActiveTreaty& t) {
+        if (t.type != TreatyType::Friendship) return;
+        if (t.partyA.isMinor) {
+            auto* m = state.getMinorState(t.partyA.id);
+            if (m) m->friendshipTurns[t.partyB.id] = -1;
+        }
+        if (t.partyB.isMinor) {
+            auto* m = state.getMinorState(t.partyB.id);
+            if (m) m->friendshipTurns[t.partyA.id] = -1;
+        }
+    }
+
+    // onlyAsBelligerents: drop calls where {defender, aggressor} == {a, b} (peace made).
+    // Otherwise also drop calls asking `a`/`b` to fight each other once they are at war
+    // (they are resolved as honored/refused normally when due, so only the
+    // aggressor-side duplicates matter here).
+    static void dropDefenseCallsBetween(DiplomacyState& state, int a, int b, bool onlyAsBelligerents, int newAggressor) {
+        std::erase_if(state.defenseCalls, [&](const DefenseCall& c) {
+            const bool belligerents = (c.defender == a && c.aggressor == b) || (c.defender == b && c.aggressor == a);
+            if (onlyAsBelligerents) return belligerents;
+            // The ally itself became the aggressor against the defender: the call is void.
+            return newAggressor != 0 && c.ally == newAggressor && (c.defender == a || c.defender == b);
+        });
+    }
+
     static void breakIncompatibleTreaties(
         DiplomacyState& state,
         ParticipantId a,
@@ -1625,7 +2821,8 @@ private:
                 evt.type = DiplomaticEventType::TreatyBrokenByWar;
                 evt.partyA = a;
                 evt.partyB = b;
-                evt.description = "Treaty terminated due to war.";
+                evt.numericValue = static_cast<int64_t>(t.type);
+                evt.description = std::string(treatyTypeName(t.type)) + " terminated due to war.";
                 recordEvent(state, evt);
                 delta.events.push_back(evt);
             } else {
@@ -1642,14 +2839,19 @@ private:
         state.treatyHistory.push_back(treaty);
     }
 
-    static void recordEvent(DiplomacyState& state, const DiplomaticEvent& evt) {
-        if (state.eventHistory.size() >= DiplomacyState::MaxEventHistory) {
-            state.eventHistory.erase(state.eventHistory.begin());
-        }
-        state.eventHistory.push_back(evt);
+    static void purgeResolvedProposals(DiplomacyState& state) {
+        std::erase_if(state.proposals, [](const Proposal& p) { return p.resolved; });
     }
 
     static void pruneProposals(DiplomacyState& state) {
+        // Resolved proposals go first; then the oldest open ones.
+        if (state.proposals.size() > DiplomacyState::MaxPendingProposals) {
+            size_t excess = state.proposals.size() - DiplomacyState::MaxPendingProposals;
+            std::erase_if(state.proposals, [&](const Proposal& p) {
+                if (excess > 0 && p.resolved) { --excess; return true; }
+                return false;
+            });
+        }
         while (state.proposals.size() > DiplomacyState::MaxPendingProposals) {
             state.proposals.erase(state.proposals.begin());
         }
@@ -1810,6 +3012,32 @@ inline std::string serializeDiplomacyState(const DiplomacyState& state) {
            << e.partyB.id << " " << (e.partyB.isMinor ? 1 : 0) << " "
            << e.numericValue << " "
            << encodeString(e.description) << "\n";
+    }
+
+    // Optional modern-rule sections: emitted only when non-empty so saves written
+    // before they existed re-serialize byte-for-byte (canonical save check).
+    if (!state.relationMemory.empty()) {
+        ss << "relationMemory " << state.relationMemory.size() << "\n";
+        for (const auto& m : state.relationMemory) {
+            ss << "rm " << m.first << " " << m.second << " "
+               << m.lastWarTurn << " " << m.lastPeaceTurn << " "
+               << m.lastProposalFirstToSecond << " " << m.lastProposalSecondToFirst << " "
+               << m.grievancesOfFirst << " " << m.grievancesOfSecond << " "
+               << m.refusalsFirstToSecond << " " << m.refusalsSecondToFirst << "\n";
+        }
+    }
+    if (!state.standings.empty()) {
+        ss << "standings " << state.standings.size() << "\n";
+        for (const auto& st : state.standings) {
+            ss << "st " << st.empireId << " " << st.betrayals << " " << st.lastBetrayalTurn << "\n";
+        }
+    }
+    if (!state.defenseCalls.empty()) {
+        ss << "defenseCalls " << state.defenseCalls.size() << "\n";
+        for (const auto& c : state.defenseCalls) {
+            ss << "dc " << c.ally << " " << c.defender << " " << c.aggressor << " "
+               << c.issuedTurn << " " << c.dueTurn << "\n";
+        }
     }
 
     ss << "END_BOTF_DIPLOMACY\n";
@@ -2237,7 +3465,110 @@ inline bool deserializeDiplomacyState(
         temp.eventHistory.push_back(e);
     }
 
-    if (!(ss >> token) || token != "END_BOTF_DIPLOMACY") {
+    // Optional modern-rule sections, in fixed order, each at most once.
+    auto validMajor = [](int id) { return id >= 1 && id <= 5; };
+    if (!(ss >> token)) {
+        if (outError) *outError = "Missing END_BOTF_DIPLOMACY terminal token";
+        return false;
+    }
+    if (token == "relationMemory") {
+        size_t count = 0;
+        if (!(ss >> count) || count == 0 || count > DiplomacyState::MaxRelationMemory) {
+            if (outError) *outError = "Malformed relationMemory count";
+            return false;
+        }
+        for (size_t i = 0; i < count; ++i) {
+            RelationMemory m;
+            if (!(ss >> token) || token != "rm" ||
+                !(ss >> m.first >> m.second >> m.lastWarTurn >> m.lastPeaceTurn
+                     >> m.lastProposalFirstToSecond >> m.lastProposalSecondToFirst
+                     >> m.grievancesOfFirst >> m.grievancesOfSecond
+                     >> m.refusalsFirstToSecond >> m.refusalsSecondToFirst))
+            {
+                if (outError) *outError = "Malformed relation memory row";
+                return false;
+            }
+            if (!validMajor(m.first) || !validMajor(m.second) || m.first >= m.second ||
+                m.lastWarTurn < -1 || m.lastPeaceTurn < -1 ||
+                m.lastProposalFirstToSecond < -1 || m.lastProposalSecondToFirst < -1 ||
+                m.lastWarTurn > temp.currentTurn || m.lastPeaceTurn > temp.currentTurn ||
+                m.lastProposalFirstToSecond > temp.currentTurn || m.lastProposalSecondToFirst > temp.currentTurn ||
+                m.grievancesOfFirst < 0 || m.grievancesOfFirst > DiplomacyState::MaxGrievances ||
+                m.grievancesOfSecond < 0 || m.grievancesOfSecond > DiplomacyState::MaxGrievances ||
+                m.refusalsFirstToSecond < 0 || m.refusalsFirstToSecond > DiplomacyState::MaxRefusals ||
+                m.refusalsSecondToFirst < 0 || m.refusalsSecondToFirst > DiplomacyState::MaxRefusals)
+            {
+                if (outError) *outError = "Out-of-range relation memory row";
+                return false;
+            }
+            if (!temp.relationMemory.empty()) {
+                const auto& prev = temp.relationMemory.back();
+                if (prev.first > m.first || (prev.first == m.first && prev.second >= m.second)) {
+                    if (outError) *outError = "Relation memory rows must be unique and sorted";
+                    return false;
+                }
+            }
+            temp.relationMemory.push_back(m);
+        }
+        if (!(ss >> token)) {
+            if (outError) *outError = "Missing END_BOTF_DIPLOMACY terminal token";
+            return false;
+        }
+    }
+    if (token == "standings") {
+        size_t count = 0;
+        if (!(ss >> count) || count == 0 || count > DiplomacyState::MaxStandings) {
+            if (outError) *outError = "Malformed standings count";
+            return false;
+        }
+        for (size_t i = 0; i < count; ++i) {
+            EmpireStanding st;
+            if (!(ss >> token) || token != "st" || !(ss >> st.empireId >> st.betrayals >> st.lastBetrayalTurn)) {
+                if (outError) *outError = "Malformed standing row";
+                return false;
+            }
+            if (!validMajor(st.empireId) || st.betrayals < 0 || st.betrayals > 1000 ||
+                st.lastBetrayalTurn < -1 || st.lastBetrayalTurn > temp.currentTurn ||
+                (!temp.standings.empty() && temp.standings.back().empireId >= st.empireId))
+            {
+                if (outError) *outError = "Out-of-range or unsorted standing row";
+                return false;
+            }
+            temp.standings.push_back(st);
+        }
+        if (!(ss >> token)) {
+            if (outError) *outError = "Missing END_BOTF_DIPLOMACY terminal token";
+            return false;
+        }
+    }
+    if (token == "defenseCalls") {
+        size_t count = 0;
+        if (!(ss >> count) || count == 0 || count > DiplomacyState::MaxDefenseCalls) {
+            if (outError) *outError = "Malformed defenseCalls count";
+            return false;
+        }
+        for (size_t i = 0; i < count; ++i) {
+            DefenseCall c;
+            if (!(ss >> token) || token != "dc" || !(ss >> c.ally >> c.defender >> c.aggressor >> c.issuedTurn >> c.dueTurn)) {
+                if (outError) *outError = "Malformed defense call row";
+                return false;
+            }
+            if (!validMajor(c.ally) || !validMajor(c.defender) || !validMajor(c.aggressor) ||
+                c.ally == c.defender || c.ally == c.aggressor || c.defender == c.aggressor ||
+                c.issuedTurn < 0 || c.issuedTurn > temp.currentTurn || c.dueTurn < c.issuedTurn ||
+                c.dueTurn > c.issuedTurn + 100)
+            {
+                if (outError) *outError = "Out-of-range defense call row";
+                return false;
+            }
+            temp.defenseCalls.push_back(c);
+        }
+        if (!(ss >> token)) {
+            if (outError) *outError = "Missing END_BOTF_DIPLOMACY terminal token";
+            return false;
+        }
+    }
+    if (token != "END_BOTF_DIPLOMACY") {
         if (outError) *outError = "Missing END_BOTF_DIPLOMACY terminal token";
         return false;
     }

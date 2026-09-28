@@ -409,6 +409,15 @@ const diplomacy::MinorDiplomacyState* minorDiplomacy(const GameState& state, int
 bool canProposeTreaty(const GameState& state, int proposerId, int targetId, bool isTargetMinor,
                       diplomacy::TreatyType type, std::string* outError = nullptr);
 
+// Modern diplomacy consequences & integration hooks (Lane B; see remaster/docs/DIPLOMACY.md)
+bool empireEliminated(const GameState& state, int empireId);                 // Campaign empire with no colonies left
+std::vector<int> alliedEmpires(const GameState& state, int empireId);        // Full Alliance: shared supply range + mutual defense
+std::vector<int> sensorSharingEmpires(const GameState& state, int empireId); // Affiliation or Alliance: shared sensors/exploration
+bool treatyForbidsAttack(const GameState& state, int empireA, int empireB);  // Non-aggression or stronger, or a timed peace, in force
+std::vector<diplomacy::DefenseCall> openCallsToArms(const GameState& state, int allyId);
+diplomacy::DiplomaticVictoryStatus diplomaticVictoryStatus(const GameState& state, int empireId);
+bool diplomaticVictoryAchieved(const GameState& state, int empireId);
+
 Command makeProposeTreatyCommand(std::uint64_t id, int targetId, bool isTargetMinor,
                                  diplomacy::TreatyType treatyType,
                                  diplomacy::TreatyDuration duration = diplomacy::TreatyDuration::Turns25,

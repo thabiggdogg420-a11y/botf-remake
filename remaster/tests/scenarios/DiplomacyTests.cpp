@@ -1,8 +1,12 @@
 #include "Diplomacy.h"
 
-#include <cassert>
-#include <cmath>
+#include <algorithm>
+#include <climits>
+#include <cstdint>
 #include <iostream>
+#include <map>
+#include <sstream>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -12,11 +16,13 @@ using namespace botf::diplomacy;
 // Helper Assertions
 // -----------------------------------------------------------------------------
 
+// Throws (never compiled out under NDEBUG, unlike assert).
 #define DIPLOMACY_ASSERT(cond, msg) \
     do { \
         if (!(cond)) { \
-            std::cerr << "ASSERTION FAILED: " << msg << " (" << __FILE__ << ":" << __LINE__ << ")" << std::endl; \
-            assert(cond); \
+            std::ostringstream diplomacyAssertMessage; \
+            diplomacyAssertMessage << "ASSERTION FAILED: " << msg << " (" << __FILE__ << ":" << __LINE__ << ")"; \
+            throw std::runtime_error(diplomacyAssertMessage.str()); \
         } \
     } while (0)
 
@@ -1155,6 +1161,525 @@ void testDeterministicAiDecisions() {
     std::cout << "  PASS: deterministic AI decisions and personality differentiation verified." << std::endl;
 }
 
+// =============================================================================
+// Lane B regression and modern-rule suites
+// =============================================================================
+
+namespace {
+SimpleDiplomacyContext fiveEmpireContext() {
+    SimpleDiplomacyContext ctx;
+    ctx.majors = {1, 2, 3, 4, 5};
+    for (int a = 1; a <= 5; ++a) {
+        for (int b = a + 1; b <= 5; ++b) ctx.setContact(ParticipantId::major(a), ParticipantId::major(b), true);
+        ctx.setBalance(ParticipantId::major(a), 1000);
+        ctx.setPower(ParticipantId::major(a), 100, 100);
+    }
+    return ctx;
+}
+}
+
+// Bug 1: proposals were never pruned; creation refused at 128 stored rows forever.
+void testProposalTableNeverLocksUp() {
+    std::cout << "Testing: proposal table never locks up (bug 1)..." << std::endl;
+    auto ctx = fiveEmpireContext();
+    ctx.setTrust(ParticipantId::major(1), ParticipantId::major(2), 0); // Klingons refuse everything
+    ctx.setHuman(ParticipantId::major(9));
+    DiplomacyState state;
+    for (int turn = 0; turn < 400; ++turn) {
+        std::string err;
+        const bool ok = DiplomacyEngine::submitProposal(state, ctx, ParticipantId::major(1), ParticipantId::major(2),
+            TreatyType::Trade, TreatyDuration::Turns25, DiplomaticTone::Neutral, 0, 0, nullptr, &err);
+        DIPLOMACY_ASSERT(ok, "Submission refused at turn " << turn << ": " << err);
+        DiplomacyEngine::resolveTurn(state, ctx);
+        DIPLOMACY_ASSERT(state.proposals.size() <= DiplomacyState::MaxPendingProposals, "Proposal table exceeded its bound");
+    }
+    DIPLOMACY_ASSERT(state.nextProposalId == 401, "Every submission must have been accepted");
+
+    // A table full of resolved rows (e.g. from an old save) is purged on the next submission.
+    DiplomacyState full;
+    for (uint64_t i = 1; i <= DiplomacyState::MaxPendingProposals; ++i) {
+        Proposal p;
+        p.id = i;
+        p.proposer = ParticipantId::major(3);
+        p.target = ParticipantId::major(4);
+        p.treatyType = TreatyType::Trade;
+        p.status = ProposalStatus::Rejected;
+        p.resolved = true;
+        full.proposals.push_back(p);
+    }
+    full.nextProposalId = DiplomacyState::MaxPendingProposals + 1;
+    std::string err;
+    DIPLOMACY_ASSERT(DiplomacyEngine::submitProposal(full, ctx, ParticipantId::major(1), ParticipantId::major(2),
+        TreatyType::NonAggression, TreatyDuration::Turns25, DiplomaticTone::Cordial, 0, 0, nullptr, &err),
+        "Resolved rows must not block new proposals: " << err);
+    DIPLOMACY_ASSERT(full.proposals.size() == 1, "Resolved rows must be purged when the table is full");
+
+    // Open proposals per proposer are capped so one empire cannot exhaust the table.
+    DiplomacyState spam;
+    int accepted = 0;
+    for (int target = 2; target <= 5; ++target) {
+        for (TreatyType type : {TreatyType::NonAggression, TreatyType::Friendship, TreatyType::Affiliation,
+                                TreatyType::Alliance, TreatyType::Trade}) {
+            if (DiplomacyEngine::submitProposal(spam, ctx, ParticipantId::major(1), ParticipantId::major(target),
+                    type, TreatyDuration::Turns25, DiplomaticTone::Cordial, 0, 0)) ++accepted;
+        }
+    }
+    DIPLOMACY_ASSERT(accepted == static_cast<int>(DiplomacyState::MaxPendingPerProposer), "Per-proposer cap not enforced");
+    std::cout << "  PASS: 400 turns of proposals, purge of resolved rows, per-proposer cap." << std::endl;
+}
+
+// Bug 2: declareWar marked proposals Rejected but left them unresolved.
+void testDeclareWarResolvesVoidedProposals() {
+    std::cout << "Testing: declareWar resolves the proposals it voids (bug 2)..." << std::endl;
+    auto ctx = fiveEmpireContext();
+    ctx.setHuman(ParticipantId::major(1));
+    DiplomacyState state;
+    uint64_t incoming = 0, outgoing = 0;
+    DiplomacyEngine::submitProposal(state, ctx, ParticipantId::major(2), ParticipantId::major(1), TreatyType::NonAggression,
+        TreatyDuration::Turns25, DiplomaticTone::Cordial, 0, 0, &incoming, nullptr, 3);
+    DiplomacyEngine::submitProposal(state, ctx, ParticipantId::major(1), ParticipantId::major(2), TreatyType::Trade,
+        TreatyDuration::Turns25, DiplomaticTone::Cordial, 0, 0, &outgoing);
+    TurnResolutionDelta warDelta;
+    DiplomacyEngine::declareWar(state, ParticipantId::major(1), ParticipantId::major(2), warDelta);
+    for (uint64_t id : {incoming, outgoing}) {
+        const auto* p = state.findProposal(id);
+        DIPLOMACY_ASSERT(p && p->resolved && p->status == ProposalStatus::Cancelled, "Voided proposal must be resolved as Cancelled");
+    }
+    ctx.setWar(ParticipantId::major(1), ParticipantId::major(2), true);
+    const auto next = DiplomacyEngine::resolveTurn(state, ctx);
+    DIPLOMACY_ASSERT(next.rejectedProposals.empty() && next.ignoredProposals.empty(), "Voided proposals reported again next turn");
+    for (const auto& e : next.events) {
+        DIPLOMACY_ASSERT(e.type != DiplomaticEventType::ProposalRejected, "Voided proposal re-reported as rejected by target");
+    }
+    DIPLOMACY_ASSERT(state.findProposal(incoming) == nullptr, "Resolved proposals are purged on the following turn");
+    std::cout << "  PASS: voided proposals resolved once and never re-reported." << std::endl;
+}
+
+// Bug 3: resolveTurn ignored faction personalities.
+void testPersonalitiesDriveResolution() {
+    std::cout << "Testing: faction personalities drive AI resolution (bug 3)..." << std::endl;
+    auto ctx = fiveEmpireContext();
+    ctx.setHuman(ParticipantId::major(9));
+    DIPLOMACY_ASSERT(ctx.personality(ParticipantId::major(2)) == MajorPersonality::Klingon &&
+                     ctx.personality(ParticipantId::major(5)) == MajorPersonality::Ferengi &&
+                     personalityForEmpire(3) == MajorPersonality::Romulan &&
+                     personalityForEmpire(4) == MajorPersonality::Cardassian &&
+                     personalityForEmpire(1) == MajorPersonality::Federation, "Default empire personalities");
+    for (int id = 2; id <= 5; ++id) ctx.setTrust(ParticipantId::major(1), ParticipantId::major(id), 40);
+
+    // The same trade offer with a 300-credit sweetener: the Ferengi take it, the Klingons do not.
+    DiplomacyState state;
+    uint64_t toFerengi = 0, toKlingon = 0;
+    DiplomacyEngine::submitProposal(state, ctx, ParticipantId::major(1), ParticipantId::major(5), TreatyType::Trade,
+        TreatyDuration::Turns25, DiplomaticTone::Neutral, 300, 0, &toFerengi);
+    DiplomacyEngine::submitProposal(state, ctx, ParticipantId::major(1), ParticipantId::major(2), TreatyType::Trade,
+        TreatyDuration::Turns25, DiplomaticTone::Neutral, 300, 0, &toKlingon);
+    const auto delta = DiplomacyEngine::resolveTurn(state, ctx);
+    auto contains = [](const std::vector<uint64_t>& v, uint64_t id) { return std::find(v.begin(), v.end(), id) != v.end(); };
+    DIPLOMACY_ASSERT(contains(delta.acceptedProposals, toFerengi), "Ferengi must accept a profitable trade pact");
+    DIPLOMACY_ASSERT(!contains(delta.acceptedProposals, toKlingon), "Klingons must not be bought");
+
+    // Personality overrides from the context are honoured.
+    ctx.setPersonality(ParticipantId::major(2), MajorPersonality::Ferengi);
+    DiplomacyState again;
+    uint64_t retry = 0;
+    DiplomacyEngine::submitProposal(again, ctx, ParticipantId::major(1), ParticipantId::major(2), TreatyType::Trade,
+        TreatyDuration::Turns25, DiplomaticTone::Neutral, 300, 0, &retry);
+    const auto d2 = DiplomacyEngine::resolveTurn(again, ctx);
+    DIPLOMACY_ASSERT(contains(d2.acceptedProposals, retry), "Context personality must be used by resolveTurn");
+
+    // Romulan suspicion: an alliance at trust 80 is still refused; the Federation accepts.
+    Proposal alliance;
+    alliance.id = 77;
+    alliance.proposer = ParticipantId::major(4);
+    alliance.treatyType = TreatyType::Alliance;
+    alliance.tone = DiplomaticTone::Cordial;
+    auto trusting = fiveEmpireContext();
+    trusting.setTrust(ParticipantId::major(4), ParticipantId::major(3), 70);
+    trusting.setTrust(ParticipantId::major(4), ParticipantId::major(1), 70);
+    alliance.target = ParticipantId::major(3);
+    DIPLOMACY_ASSERT(evaluateAiProposal(state, trusting, alliance, 5, MajorPersonality::Romulan).decision != AiDecision::Accept,
+                     "Romulans must refuse an alliance at trust 70");
+    alliance.target = ParticipantId::major(1);
+    DIPLOMACY_ASSERT(evaluateAiProposal(state, trusting, alliance, 5, MajorPersonality::Federation).decision == AiDecision::Accept,
+                     "The Federation must accept an alliance at trust 70");
+
+    // Integer power comparison: no overflow or floating point at the extremes.
+    SimpleDiplomacyContext extreme = fiveEmpireContext();
+    extreme.setPower(ParticipantId::major(1), INT64_MAX, 0);
+    extreme.setPower(ParticipantId::major(2), 1, 0);
+    Proposal nap;
+    nap.id = 3;
+    nap.proposer = ParticipantId::major(1);
+    nap.target = ParticipantId::major(2);
+    nap.treatyType = TreatyType::NonAggression;
+    const auto r = evaluateAiProposal(state, extreme, nap, 9, MajorPersonality::Klingon);
+    DIPLOMACY_ASSERT(r.explanation.find("superior fleet") != std::string::npos, "Overwhelming power must register without overflow");
+    std::cout << "  PASS: Ferengi profit, Klingon honor, Romulan suspicion, Federation cooperation." << std::endl;
+}
+
+// Bug 4: war required the target's acceptance.
+void testWarIsUnilateral() {
+    std::cout << "Testing: war declarations are unilateral (bug 4)..." << std::endl;
+    auto ctx = fiveEmpireContext();
+    ctx.setHuman(ParticipantId::major(1));
+    ctx.setTrust(ParticipantId::major(3), ParticipantId::major(2), 100);
+
+    DiplomacyState state;
+    uint64_t onHuman = 0, onAi = 0;
+    DIPLOMACY_ASSERT(DiplomacyEngine::submitProposal(state, ctx, ParticipantId::major(2), ParticipantId::major(1), TreatyType::War,
+        TreatyDuration::Indefinite, DiplomaticTone::Hostile, 0, 0, &onHuman, nullptr, 5), "War declaration on the human");
+    DIPLOMACY_ASSERT(DiplomacyEngine::submitProposal(state, ctx, ParticipantId::major(2), ParticipantId::major(3), TreatyType::War,
+        TreatyDuration::Indefinite, DiplomaticTone::Hostile, 0, 0, &onAi), "War declaration on an AI");
+    DIPLOMACY_ASSERT(!DiplomacyEngine::respondToOffer(state, ParticipantId::major(1), onHuman, false),
+                     "A declaration of war cannot be answered");
+    DIPLOMACY_ASSERT(!DiplomacyEngine::submitProposal(state, ctx, ParticipantId::major(4), ParticipantId::major(5), TreatyType::War,
+        TreatyDuration::Indefinite, DiplomaticTone::Hostile, 0, 50), "War cannot carry credit terms");
+
+    const auto delta = DiplomacyEngine::resolveTurn(state, ctx);
+    int wars = 0;
+    for (const auto& op : delta.operations) {
+        if (op.opType == DiplomaticOpType::SetWarState && op.setAtWar) ++wars;
+    }
+    DIPLOMACY_ASSERT(wars == 2, "Both declarations take effect this turn without consent");
+    DIPLOMACY_ASSERT(state.findProposal(onHuman)->status == ProposalStatus::Accepted, "Human target did not need to respond");
+    std::cout << "  PASS: war takes effect at resolution whatever the target says." << std::endl;
+}
+
+// Bug 5: eliminated empires kept treaties and could negotiate.
+void testEliminatedParticipantsDissolve() {
+    std::cout << "Testing: eliminated participants are removed from diplomacy (bug 5)..." << std::endl;
+    auto ctx = fiveEmpireContext();
+    ctx.setHuman(ParticipantId::major(1));
+    DiplomacyState state;
+    TurnResolutionDelta setup;
+    DIPLOMACY_ASSERT(DiplomacyEngine::establishTreaty(state, ParticipantId::major(1), ParticipantId::major(3),
+        TreatyType::Friendship, TreatyDuration::Indefinite, setup), "Setup treaty");
+    DIPLOMACY_ASSERT(DiplomacyEngine::establishTreaty(state, ParticipantId::major(2), ParticipantId::major(4),
+        TreatyType::NonAggression, TreatyDuration::Turns50, setup), "Unrelated treaty");
+    uint64_t pending = 0;
+    DiplomacyEngine::submitProposal(state, ctx, ParticipantId::major(3), ParticipantId::major(1), TreatyType::Trade,
+        TreatyDuration::Turns25, DiplomaticTone::Cordial, 0, 0, &pending, nullptr, 4);
+
+    ctx.setEliminated(ParticipantId::major(3), true);
+    std::string err;
+    DIPLOMACY_ASSERT(!DiplomacyEngine::submitProposal(state, ctx, ParticipantId::major(1), ParticipantId::major(3),
+        TreatyType::NonAggression, TreatyDuration::Turns25, DiplomaticTone::Cordial, 0, 0, nullptr, &err),
+        "Proposals to an eliminated empire must be refused");
+    const auto delta = DiplomacyEngine::resolveTurn(state, ctx);
+    DIPLOMACY_ASSERT(state.activeTreaties.size() == 1 && state.activeTreaties[0].involvesBoth(ParticipantId::major(2), ParticipantId::major(4)),
+                     "Only the unrelated treaty survives");
+    bool dissolved = false;
+    for (const auto& t : state.treatyHistory) dissolved |= t.status == TreatyStatus::Dissolved && t.involves(ParticipantId::major(3));
+    DIPLOMACY_ASSERT(dissolved, "The eliminated empire's treaty is archived as Dissolved");
+    DIPLOMACY_ASSERT(std::find(delta.rejectedProposals.begin(), delta.rejectedProposals.end(), pending) != delta.rejectedProposals.end(),
+                     "Pending proposal from the eliminated empire is cancelled");
+    bool terminated = false, eliminatedEvent = false;
+    for (const auto& op : delta.operations) terminated |= op.opType == DiplomaticOpType::TerminateTreaty && op.treatyType == TreatyType::Friendship;
+    for (const auto& e : delta.events) eliminatedEvent |= e.type == DiplomaticEventType::ParticipantEliminated;
+    DIPLOMACY_ASSERT(terminated && eliminatedEvent, "Campaign receives termination ops and an elimination event");
+    const auto quiet = DiplomacyEngine::resolveTurn(state, ctx);
+    for (const auto& e : quiet.events) DIPLOMACY_ASSERT(e.type != DiplomaticEventType::ParticipantEliminated, "Elimination re-reported");
+    std::cout << "  PASS: treaties dissolved, proposals cancelled, negotiation refused." << std::endl;
+}
+
+// Bug 6: treaty cap dropped the treaty but emitted its effects; non-active rows vanished; overflow.
+void testTreatyCapArchiveAndOverflow() {
+    std::cout << "Testing: treaty cap, archiving and credit overflow (bug 6)..." << std::endl;
+    auto ctx = fiveEmpireContext();
+    ctx.setHuman(ParticipantId::major(9));
+    DiplomacyState state;
+    for (size_t i = 0; i < DiplomacyState::MaxActiveTreaties; ++i) {
+        ActiveTreaty t;
+        t.id = state.nextTreatyId++;
+        t.partyA = ParticipantId::major(3);
+        t.partyB = ParticipantId::minor(static_cast<int>(100 + i));
+        t.type = TreatyType::Trade;
+        t.status = TreatyStatus::Active;
+        state.activeTreaties.push_back(t);
+    }
+    uint64_t id = 0;
+    DiplomacyEngine::submitProposal(state, ctx, ParticipantId::major(1), ParticipantId::major(2), TreatyType::Trade,
+        TreatyDuration::Turns25, DiplomaticTone::Cordial, 200, 0, &id);
+    DiplomacyEngine::respondToOffer(state, ParticipantId::major(2), id, true);
+    const auto delta = DiplomacyEngine::resolveTurn(state, ctx);
+    DIPLOMACY_ASSERT(state.findProposal(id)->status == ProposalStatus::Rejected &&
+                     state.findProposal(id)->rejectionReason.find("capacity") != std::string::npos, "Cap must reject the proposal");
+    for (const auto& op : delta.operations) {
+        DIPLOMACY_ASSERT(op.opType != DiplomaticOpType::ApplyTreaty && op.opType != DiplomaticOpType::TransferCredits,
+                         "No effects may be emitted for a treaty that was not created");
+    }
+    TurnResolutionDelta direct;
+    std::string err;
+    DIPLOMACY_ASSERT(!DiplomacyEngine::establishTreaty(state, ParticipantId::major(1), ParticipantId::major(2), TreatyType::Peace,
+        TreatyDuration::Turns25, direct, &err) && direct.operations.empty(), "establishTreaty enforces the cap too");
+
+    // Non-active rows (from an old save) are archived rather than silently dropped.
+    DiplomacyState legacy;
+    ActiveTreaty stale;
+    stale.id = legacy.nextTreatyId++;
+    stale.partyA = ParticipantId::major(1);
+    stale.partyB = ParticipantId::major(2);
+    stale.type = TreatyType::Friendship;
+    stale.status = TreatyStatus::Superseded;
+    legacy.activeTreaties.push_back(stale);
+    DiplomacyEngine::resolveTurn(legacy, ctx);
+    DIPLOMACY_ASSERT(legacy.activeTreaties.empty() && legacy.treatyHistory.size() == 1 && legacy.treatyHistory[0] == stale,
+                     "Stale row archived");
+
+    // Gift attitude gain cannot overflow for any credit amount (was creditOffer * 4 into int).
+    DiplomacyState minorState;
+    MinorDiplomacyState m;
+    m.minorId = 50;
+    m.systemId = 50;
+    m.raceName = "Bynars";
+    m.attitudes[1] = 10;
+    m.contacts[1] = true;
+    minorState.minorStates.push_back(m);
+    SimpleDiplomacyContext rich = fiveEmpireContext();
+    rich.setMinorOwner(50, 0);
+    rich.setContact(ParticipantId::major(1), ParticipantId::minor(50), true);
+    rich.setBalance(ParticipantId::major(1), 1000000000000000LL);
+    uint64_t gift = 0;
+    DIPLOMACY_ASSERT(DiplomacyEngine::submitProposal(minorState, rich, ParticipantId::major(1), ParticipantId::minor(50),
+        TreatyType::None, TreatyDuration::Indefinite, DiplomaticTone::Cordial, 1000000000000000LL, 0, &gift), "Huge gift");
+    DiplomacyEngine::resolveTurn(minorState, rich);
+    DIPLOMACY_ASSERT(minorState.getMinorState(50)->getAttitude(1) == 100, "Huge gift saturates attitude at 100");
+    std::cout << "  PASS: cap rejects before effects, stale rows archived, no overflow." << std::endl;
+}
+
+void testBetrayalAndCallsToArms() {
+    std::cout << "Testing: treaty betrayal penalties and alliance calls to arms..." << std::endl;
+    auto ctx = fiveEmpireContext();
+    ctx.setHuman(ParticipantId::major(9));
+    DiplomacyState state;
+    TurnResolutionDelta setup;
+    DiplomacyEngine::establishTreaty(state, ParticipantId::major(1), ParticipantId::major(2), TreatyType::NonAggression, TreatyDuration::Turns50, setup);
+    DiplomacyEngine::establishTreaty(state, ParticipantId::major(2), ParticipantId::major(3), TreatyType::Alliance, TreatyDuration::Indefinite, setup);
+    DiplomacyEngine::establishTreaty(state, ParticipantId::major(2), ParticipantId::major(5), TreatyType::Alliance, TreatyDuration::Indefinite, setup);
+
+    TurnResolutionDelta delta;
+    const auto result = DiplomacyEngine::declareWar(state, ParticipantId::major(1), ParticipantId::major(2), delta, &ctx);
+    ctx.setWar(ParticipantId::major(1), ParticipantId::major(2), true);
+    DIPLOMACY_ASSERT(result.brokeTreaty && result.strongestBroken == TreatyType::NonAggression, "Breaking a NAP is a betrayal");
+    DIPLOMACY_ASSERT(state.betrayals(1) == 1 && state.grievances(2, 1) == 3, "Standing and grievance recorded");
+    int galaxyPenalties = 0, victimPenalty = 0;
+    for (const auto& op : delta.operations) {
+        if (op.opType != DiplomaticOpType::AdjustTrust) continue;
+        if (op.partyB == ParticipantId::major(2)) victimPenalty += op.attitudeDelta;
+        else if (op.attitudeDelta == -10) ++galaxyPenalties;
+    }
+    DIPLOMACY_ASSERT(victimPenalty == -15 && galaxyPenalties == 3, "Victim -15 and every other contacted empire -10");
+    DIPLOMACY_ASSERT(result.alliesCalled == std::vector<int>({3, 5}) && state.defenseCalls.size() == 2, "Both allies called to arms");
+
+    // Empire 3 joins; empire 5 stays out past the deadline.
+    ctx.setWar(ParticipantId::major(3), ParticipantId::major(1), true);
+    auto d1 = DiplomacyEngine::resolveTurn(state, ctx);
+    bool honored = false;
+    for (const auto& e : d1.events) honored |= e.type == DiplomaticEventType::AllianceHonored && e.partyA == ParticipantId::major(3);
+    DIPLOMACY_ASSERT(honored && state.defenseCalls.size() == 1, "Joining the war honors the call immediately");
+    ctx.setTrust(ParticipantId::major(2), ParticipantId::major(5), 50);
+    bool refused = false, dissolvedOp = false;
+    int trustDelta = 0, resolutions = 0;
+    while (!refused && resolutions < 6) {
+        const auto d = DiplomacyEngine::resolveTurn(state, ctx);
+        ++resolutions;
+        for (const auto& e : d.events) refused |= e.type == DiplomaticEventType::AllianceRefused && e.partyA == ParticipantId::major(5);
+        for (const auto& op : d.operations) {
+            if (op.opType == DiplomaticOpType::AdjustTrust && op.partyA == ParticipantId::major(5)) trustDelta += op.attitudeDelta;
+            dissolvedOp |= op.opType == DiplomaticOpType::TerminateTreaty && op.treatyType == TreatyType::Alliance;
+        }
+    }
+    DIPLOMACY_ASSERT(resolutions == DiplomacyState::DefenseCallWindow, "Call falls due after the window, not before");
+    DIPLOMACY_ASSERT(refused && trustDelta == -20 && state.defenseCalls.empty(), "Refusal costs trust once the call falls due");
+    DIPLOMACY_ASSERT(dissolvedOp && !state.hasActiveTreaty(ParticipantId::major(2), ParticipantId::major(5), TreatyType::Alliance),
+                     "An AI defender cancels the alliance with an ally it no longer trusts");
+
+    // Peace between the belligerents lapses open calls.
+    DiplomacyState peaceState;
+    TurnResolutionDelta s2;
+    DiplomacyEngine::establishTreaty(peaceState, ParticipantId::major(2), ParticipantId::major(3), TreatyType::Alliance, TreatyDuration::Indefinite, s2);
+    const auto peaceCtx = fiveEmpireContext();
+    DiplomacyEngine::declareWar(peaceState, ParticipantId::major(1), ParticipantId::major(2), s2, &peaceCtx);
+    DIPLOMACY_ASSERT(peaceState.defenseCalls.size() == 1, "Call issued");
+    DiplomacyEngine::recordPeace(peaceState, ParticipantId::major(1), ParticipantId::major(2), s2);
+    DIPLOMACY_ASSERT(peaceState.defenseCalls.empty() && peaceState.findMemory(1, 2)->lastPeaceTurn == peaceState.currentTurn,
+                     "Peace lapses the call and is remembered");
+    std::cout << "  PASS: betrayal penalties, honored/refused calls, alliance cancellation." << std::endl;
+}
+
+void testWarAssessmentRules() {
+    std::cout << "Testing: AI war assessment respects treaties, cool-downs and strength..." << std::endl;
+    WarAssessmentInput in;
+    in.aggressorId = 2;
+    in.targetId = 1;
+    in.personality = MajorPersonality::Klingon;
+    in.currentTurn = 60;
+    in.turnsSinceTransition = 60;
+    in.aggressorPower = 100;
+    in.targetPower = 100;
+    in.trust = 20;
+    in.seed = 42;
+    DIPLOMACY_ASSERT(assessWarDeclaration(in).declare, "A distrustful Klingon goes to war");
+    auto early = in; early.currentTurn = 20;
+    DIPLOMACY_ASSERT(!assessWarDeclaration(early).declare, "No AI wars before turn 25");
+    auto cooled = in; cooled.turnsSinceTransition = 5;
+    DIPLOMACY_ASSERT(!assessWarDeclaration(cooled).declare, "Cool-down after peace");
+    auto bound = in; bound.treatyRank = 1; bound.aggressorPower = 10000; bound.trust = 0;
+    DIPLOMACY_ASSERT(!assessWarDeclaration(bound).declare, "Klingons never break a treaty");
+    auto peaceBound = in; peaceBound.peaceTreaty = true;
+    DIPLOMACY_ASSERT(!assessWarDeclaration(peaceBound).declare, "A timed peace binds");
+    auto romulan = bound; romulan.personality = MajorPersonality::Romulan;
+    const auto treachery = assessWarDeclaration(romulan);
+    DIPLOMACY_ASSERT(treachery.declare && treachery.breaksTreaty, "Romulans break pacts when overwhelming and distrustful");
+    auto weak = in; weak.aggressorPower = 30;
+    DIPLOMACY_ASSERT(!assessWarDeclaration(weak).declare, "Hopelessly outmatched empires do not declare");
+    auto federation = in; federation.personality = MajorPersonality::Federation; federation.trust = 0;
+    DIPLOMACY_ASSERT(!assessWarDeclaration(federation).declare, "The Federation does not start wars without grievances");
+    auto busy = in; busy.activeWars = 2;
+    DIPLOMACY_ASSERT(!assessWarDeclaration(busy).declare, "No new fronts beyond the personality limit");
+    auto friendly = in; friendly.trust = 60;
+    DIPLOMACY_ASSERT(!assessWarDeclaration(friendly).declare, "Trusted neighbours are left alone");
+    DIPLOMACY_ASSERT(assessWarDeclaration(in).score == assessWarDeclaration(in).score, "Deterministic");
+
+    DIPLOMACY_ASSERT(aiHonorsDefenseCall(MajorPersonality::Klingon, 50, 100, false), "Klingon honour");
+    DIPLOMACY_ASSERT(!aiHonorsDefenseCall(MajorPersonality::Ferengi, 150, 100, false), "Ferengi need overwhelming odds");
+    DIPLOMACY_ASSERT(!aiHonorsDefenseCall(MajorPersonality::Federation, 500, 100, true), "Treaty with the aggressor binds");
+    std::cout << "  PASS: war assessment and alliance obligations." << std::endl;
+}
+
+void testAiDiplomacyPlanner() {
+    std::cout << "Testing: AI-initiated proposals by personality and situation..." << std::endl;
+    auto ctx = fiveEmpireContext();
+    ctx.setHuman(ParticipantId::major(1));
+    for (int a = 1; a <= 5; ++a)
+        for (int b = a + 1; b <= 5; ++b) ctx.setTrust(ParticipantId::major(a), ParticipantId::major(b), 30);
+    ctx.setTrust(ParticipantId::major(5), ParticipantId::major(1), 60);   // Ferengi like the Federation...
+    for (int other : {2, 3, 4}) ctx.setTrust(ParticipantId::major(5), ParticipantId::major(other), 10); // ...and nobody else
+    ctx.setTrust(ParticipantId::major(3), ParticipantId::major(4), 75);   // Romulan-Cardassian understanding
+    DiplomacyState state;
+    state.currentTurn = 30;
+
+    auto intents = planAiDiplomacy(state, ctx, {2, 3, 4, 5}, 7);
+    auto find = [&](int from, int to) -> const AiDiplomaticIntent* {
+        for (const auto& i : intents) if (i.proposer.id == from && i.target.id == to) return &i;
+        return nullptr;
+    };
+    DIPLOMACY_ASSERT(find(5, 1) && find(5, 1)->treatyType == TreatyType::Trade, "Ferengi open with trade");
+    DIPLOMACY_ASSERT(find(3, 4) && find(3, 4)->treatyType == TreatyType::NonAggression, "Trusting neighbours propose a NAP");
+    DIPLOMACY_ASSERT(!find(2, 1), "Klingons do not court a neighbour they distrust");
+    for (const auto& i : intents) DIPLOMACY_ASSERT(i.proposer.id != 1, "The human is never planned for");
+
+    // Weak neighbours are extorted by demanding personalities.
+    auto bully = ctx;
+    bully.setPower(ParticipantId::major(2), 1000, 100);
+    const auto demands = planAiDiplomacy(state, bully, {2}, 7);
+    bool tribute = false;
+    for (const auto& i : demands) tribute |= i.treatyType == TreatyType::None && i.creditDemand > 0 && i.tone == DiplomaticTone::Demanding;
+    DIPLOMACY_ASSERT(tribute, "A much stronger Klingon demands tribute");
+
+    // Long wars end: the losing side sues for peace.
+    auto war = ctx;
+    war.setWar(ParticipantId::major(2), ParticipantId::major(3), true);
+    war.setWarDuration(ParticipantId::major(2), ParticipantId::major(3), 30);
+    war.setPower(ParticipantId::major(3), 20, 100);
+    const auto peace = planAiDiplomacy(state, war, {3}, 7);
+    bool suesForPeace = false;
+    for (const auto& i : peace) suesForPeace |= i.target.id == 2 && i.treatyType == TreatyType::Peace;
+    DIPLOMACY_ASSERT(suesForPeace, "The losing side proposes peace");
+
+    // Cool-down and refusal back-off.
+    for (const auto& i : intents) {
+        DIPLOMACY_ASSERT(DiplomacyEngine::submitProposal(state, ctx, i.proposer, i.target, i.treatyType, i.duration, i.tone,
+            i.creditOffer, i.creditDemand, nullptr, nullptr, ctx.isHuman(i.target) ? 2 : 1), "Planned intents are valid");
+    }
+    state.currentTurn += 1;
+    DIPLOMACY_ASSERT(planAiDiplomacy(state, ctx, {5}, 7).empty(), "Open proposals and cool-downs prevent spam");
+    state.noteProposalOutcome(5, 1, false);
+    state.noteProposalOutcome(5, 1, false);
+    state.proposals.clear();
+    state.currentTurn = 30 + AiHumanProposalCooldownTurns;
+    for (const auto& i : planAiDiplomacy(state, ctx, {5}, 7)) DIPLOMACY_ASSERT(i.target.id != 1, "Back-off after refusals");
+    state.currentTurn = 30 + 4 * AiHumanProposalCooldownTurns;
+    DIPLOMACY_ASSERT(!planAiDiplomacy(state, ctx, {5}, 7).empty(), "Back-off is bounded");
+
+    // Eliminated empires are ignored.
+    auto gone = ctx;
+    gone.setEliminated(ParticipantId::major(1), true);
+    DiplomacyState fresh;
+    fresh.currentTurn = 30;
+    for (const auto& i : planAiDiplomacy(fresh, gone, {2, 3, 4, 5}, 7)) DIPLOMACY_ASSERT(i.target.id != 1, "No proposals to the eliminated");
+    DIPLOMACY_ASSERT(planAiDiplomacy(fresh, ctx, {2, 3, 4, 5}, 7) == planAiDiplomacy(fresh, ctx, {2, 3, 4, 5}, 7), "Deterministic");
+    std::cout << "  PASS: trade, pacts, tribute, peace, cool-downs and back-off." << std::endl;
+}
+
+void testDiplomaticVictoryPredicate() {
+    std::cout << "Testing: diplomatic victory predicate..." << std::endl;
+    DiplomacyState state;
+    TurnResolutionDelta d;
+    std::map<int, int64_t> pop{{1, 300}, {2, 200}, {3, 250}, {4, 100}};
+    std::map<int, int64_t> minors{{40, 30}};
+    auto alone = evaluateDiplomaticVictory(state, 1, pop, minors);
+    DIPLOMACY_ASSERT(!alone.achieved && alone.galaxyPopulation == 880 && alone.blocPopulation == 300, "No bloc, no victory");
+    DiplomacyEngine::establishTreaty(state, ParticipantId::major(1), ParticipantId::major(2), TreatyType::Alliance, TreatyDuration::Indefinite, d);
+    auto two = evaluateDiplomaticVictory(state, 1, pop, minors);
+    DIPLOMACY_ASSERT(two.achieved && two.blocPopulation == 500 && two.allies == std::vector<int>({2}), "500 of 880 is a majority");
+    DIPLOMACY_ASSERT(!evaluateDiplomaticVictory(state, 3, pop, minors).achieved, "Rivals do not share the win");
+    DiplomacyState affiliated;
+    DiplomacyEngine::establishTreaty(affiliated, ParticipantId::major(1), ParticipantId::major(2), TreatyType::Affiliation, TreatyDuration::Indefinite, d);
+    DIPLOMACY_ASSERT(!evaluateDiplomaticVictory(affiliated, 1, pop, minors).achieved, "Only full alliances count");
+    auto withoutTwo = pop;
+    withoutTwo.erase(2); // Eliminated allies do not count
+    DIPLOMACY_ASSERT(!evaluateDiplomaticVictory(state, 1, withoutTwo, minors).achieved, "Eliminated allies excluded");
+    DiplomacyState members;
+    MinorDiplomacyState m;
+    m.minorId = 41; m.systemId = 41; m.raceName = "Members"; m.membershipOwner = 4;
+    members.minorStates.push_back(m);
+    std::map<int, int64_t> bigFour{{1, 100}, {4, 400}};
+    auto memberWin = evaluateDiplomaticVictory(members, 4, bigFour, {});
+    DIPLOMACY_ASSERT(memberWin.achieved && memberWin.memberMinors == std::vector<int>({41}), "Member minors form a bloc");
+    std::cout << "  PASS: alliance and membership majorities." << std::endl;
+}
+
+void testMemorySectionsRoundtrip() {
+    std::cout << "Testing: relation memory, standings and calls to arms persist..." << std::endl;
+    DiplomacyState state;
+    state.currentTurn = 40;
+    state.nextProposalId = 3;
+    state.nextTreatyId = 2;
+    const std::string plain = serializeDiplomacyState(state);
+    DIPLOMACY_ASSERT(plain.find("relationMemory") == std::string::npos, "Empty sections are omitted (canonical old saves)");
+    auto* mem = state.memory(3, 1);
+    mem->lastWarTurn = 12; mem->lastPeaceTurn = 30; mem->lastProposalFirstToSecond = 39;
+    state.addGrievance(3, 1, 4);
+    state.noteProposalOutcome(1, 3, false);
+    state.standing(2)->betrayals = 2;
+    state.standing(2)->lastBetrayalTurn = 35;
+    state.defenseCalls.push_back({4, 1, 2, 38, 41});
+    const std::string text = serializeDiplomacyState(state);
+    DiplomacyState loaded;
+    std::string err;
+    DIPLOMACY_ASSERT(deserializeDiplomacyState(text, loaded, &err), "Roundtrip: " << err);
+    DIPLOMACY_ASSERT(loaded == state && serializeDiplomacyState(loaded) == text, "Byte-exact roundtrip");
+    DIPLOMACY_ASSERT(loaded.findMemory(1, 3)->first == 1 && loaded.grievances(3, 1) == 4, "Unordered pair lookups");
+
+    auto corrupt = [&](const std::string& from, const std::string& to) {
+        std::string bad = text;
+        const auto pos = bad.find(from);
+        DIPLOMACY_ASSERT(pos != std::string::npos, "Fixture token missing: " << from);
+        bad.replace(pos, from.size(), to);
+        DiplomacyState out;
+        return !deserializeDiplomacyState(bad, out, &err);
+    };
+    DIPLOMACY_ASSERT(corrupt("rm 1 3", "rm 3 1"), "Unordered pair rejected");
+    DIPLOMACY_ASSERT(corrupt("st 2 2 35", "st 2 -1 35"), "Negative betrayals rejected");
+    DIPLOMACY_ASSERT(corrupt("st 2 2 35", "st 2 2 99"), "Future betrayal turn rejected");
+    DIPLOMACY_ASSERT(corrupt("dc 4 1 2", "dc 4 4 2"), "Self-referential call rejected");
+    DIPLOMACY_ASSERT(corrupt("defenseCalls 1", "defenseCalls 0"), "Empty declared section rejected");
+    DIPLOMACY_ASSERT(corrupt("END_BOTF_DIPLOMACY", "standings 1\nst 3 0 -1\nEND_BOTF_DIPLOMACY"), "Out-of-order section rejected");
+    std::cout << "  PASS: optional sections roundtrip exactly and reject corruption." << std::endl;
+}
+
 // -----------------------------------------------------------------------------
 // Main Test Runner
 // -----------------------------------------------------------------------------
@@ -1178,8 +1703,19 @@ int main() {
         testIntraTurnTreatyDowngradeAndWar();
         testStrictSaveReloadAndInvariantMatrix();
         testDeterministicAiDecisions();
+        testProposalTableNeverLocksUp();
+        testDeclareWarResolvesVoidedProposals();
+        testPersonalitiesDriveResolution();
+        testWarIsUnilateral();
+        testEliminatedParticipantsDissolve();
+        testTreatyCapArchiveAndOverflow();
+        testBetrayalAndCallsToArms();
+        testWarAssessmentRules();
+        testAiDiplomacyPlanner();
+        testDiplomaticVictoryPredicate();
+        testMemorySectionsRoundtrip();
 
-        std::cout << "\n>>> ALL 14 DIPLOMACY TEST SUITES PASSED CLEANLY! <<<" << std::endl;
+        std::cout << "\n>>> ALL 25 DIPLOMACY TEST SUITES PASSED CLEANLY! <<<" << std::endl;
         return 0;
     } catch (const std::exception& ex) {
         std::cerr << "FAILED with exception: " << ex.what() << std::endl;

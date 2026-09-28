@@ -1,8 +1,15 @@
+// Scenario suites must check even in RelWithDebInfo/Release (NDEBUG) builds.
+#ifdef NDEBUG
+#undef NDEBUG
+#endif
 #include "Intelligence.h"
 
 #include <cassert>
+#include <climits>
 #include <cmath>
 #include <iostream>
+#include <map>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -528,7 +535,7 @@ void testDefenderTechAndMoraleUnifiedAuthority() {
     dSec.rollingSecuritySum = 100;
     dSec.securityStockpile = 50;
     dSec.computerTechLevel = 2;
-    dSec.defenderMoraleMultiplier = 1.0;
+    dSec.defenderMoralePercent = 100;
     defContexts[2] = dSec;
 
     uint64_t seed1 = 4242;
@@ -538,19 +545,19 @@ void testDefenderTechAndMoraleUnifiedAuthority() {
     assert(ops.size() == 1);
 
     int expectedTechDiff = 4 - 2; // 2 (NOT 4 - 2 - 2 = 0)
-    double totalDef = calculateDefenseStrength(dSec.rollingSecuritySum, dSec.securityStockpile, dSec.defenderMoraleMultiplier, rules);
+    const int64_t totalDef = calculateDefenseStrength(dSec.rollingSecuritySum, dSec.securityStockpile, dSec.defenderMoralePercent, rules);
 
     selectDepartment(attacker.getRivalState(2)->departmentWeights, seedCopy);
 
     OperationRecord directOp = resolveAttempt(
         1, 2, IntelArea::Espionage, ops[0].department, 1,
-        attacker.getRivalState(2)->getCombinedRollingAttackSum(),
+        concentratedAttackStrength(*attacker.getRivalState(2), rules),
         totalDef,
         expectedTechDiff, TreatyLevel::None,
-        0, 0, seedCopy
+        0, 0, seedCopy, rules
     );
 
-    assert(ops[0].outcome == directOp.outcome);
+    assert(ops[0] == directOp);
     std::cout << "  PASS: defender tech/morale resolved authoritatively without duplicate penalty." << std::endl;
 }
 
@@ -562,23 +569,23 @@ void testS16DefenseStrengthCalculationRegression() {
 
     IntelligenceRules rules;
     assert(rules.securityHistoryDivisor == 20);
-    assert(std::abs(rules.securityStockpileCoefficient - 0.02) < 1e-6);
+    assert(rules.securityStockpilePermille == 20);
 
     int64_t rollingSec = 200;
     int64_t secStockpile = 500;
 
-    // S16 formula with default morale 1.0: (200 / 20) + (500 * 0.02) = 10.0 + 10.0 = 20.0
-    double defStrength = calculateDefenseStrength(rollingSec, secStockpile, 1.0, rules);
-    assert(std::abs(defStrength - 20.0) < 1e-6);
-    assert(defStrength != 325.0);
+    // S16 formula with default morale 100%: (200 / 20) + (500 * 0.02) = 10.0 + 10.0 = 20.0 (20000 milli-points)
+    const int64_t defStrength = calculateDefenseStrength(rollingSec, secStockpile, 100, rules);
+    assert(defStrength == 20000);
+    assert(defStrength != 325000);
 
-    // Morale multiplier verification: 1.25x morale boosts defense to 25.0
-    double boostedDef = calculateDefenseStrength(rollingSec, secStockpile, 1.25, rules);
-    assert(std::abs(boostedDef - 25.0) < 1e-6);
+    // Morale 125% boosts defense to 25.0 exactly
+    const int64_t boostedDef = calculateDefenseStrength(rollingSec, secStockpile, 125, rules);
+    assert(boostedDef == 25000);
 
-    // Morale multiplier verification: 0.8x morale lowers defense to 16.0
-    double weakenedDef = calculateDefenseStrength(rollingSec, secStockpile, 0.8, rules);
-    assert(std::abs(weakenedDef - 16.0) < 1e-6);
+    // Morale 80% lowers defense to 16.0 exactly
+    const int64_t weakenedDef = calculateDefenseStrength(rollingSec, secStockpile, 80, rules);
+    assert(weakenedDef == 16000);
 
     // Live advanceTurn regression: verify advanceTurn uses this denominator
     EmpireIntelState attacker;
@@ -598,7 +605,7 @@ void testS16DefenseStrengthCalculationRegression() {
     DefenderSecurityContext dSec;
     dSec.rollingSecuritySum = rollingSec;
     dSec.securityStockpile = secStockpile;
-    dSec.defenderMoraleMultiplier = 1.0;
+    dSec.defenderMoralePercent = 100;
     defContexts[2] = dSec;
 
     uint64_t seed1 = 7777;
@@ -610,13 +617,13 @@ void testS16DefenseStrengthCalculationRegression() {
     selectDepartment(attacker.getRivalState(2)->departmentWeights, seedCopy);
     OperationRecord expectedOp = resolveAttempt(
         1, 2, IntelArea::Espionage, ops[0].department, 1,
-        attacker.getRivalState(2)->getCombinedRollingAttackSum(),
-        20.0,
+        concentratedAttackStrength(*attacker.getRivalState(2), rules),
+        20000,
         0, TreatyLevel::None,
-        0, 0, seedCopy
+        0, 0, seedCopy, rules
     );
 
-    assert(ops[0].outcome == expectedOp.outcome);
+    assert(ops[0] == expectedOp);
     std::cout << "  Calculated defense strength: " << defStrength << " (expected 20.0, legacy bug would be 325.0)" << std::endl;
     std::cout << "  PASS: advanceTurn strictly uses S16 defense denominator with multiplicative morale factor." << std::endl;
 }
@@ -651,13 +658,13 @@ void testSignedAttackStrengthReducesOdds() {
     // Run A: attackStrength = 0
     OperationRecord opNeutral = resolveAttempt(
         1, 2, IntelArea::Espionage, IntelDepartment::Economic, 1,
-        0, 20.0, 2, TreatyLevel::None, 1000, 1000, seed1
+        0, 20000, 2, TreatyLevel::None, 1000, 1000, seed1
     );
 
-    // Run B: attackStrength = -50 (penalized by unallocated zero-area decay history)
+    // Run B: attackStrength = -50 points average (penalized by unallocated zero-area decay history)
     OperationRecord opNegative = resolveAttempt(
         1, 2, IntelArea::Espionage, IntelDepartment::Economic, 1,
-        -50, 20.0, 2, TreatyLevel::None, 1000, 1000, seed2
+        -50000, 20000, 2, TreatyLevel::None, 1000, 1000, seed2
     );
 
     std::cout << "  Neutral attack (0 points) outcome:    " << outcomeName(opNeutral.outcome) << std::endl;
@@ -738,6 +745,264 @@ void testMaxBalanceAndOverflowSafety() {
     std::cout << "  PASS: MaxBalance core bounds strictly enforced; signed overflow mathematically prevented." << std::endl;
 }
 
+// =============================================================================
+// Lane B regression suites
+// =============================================================================
+
+// Bug 11: double + floor misrounded (100 x 29% gave 28) and outcomes used doubles.
+void testIntegerOutputIsExact() {
+    std::cout << "Testing: integer area output and exact defense math (bug 11)..." << std::endl;
+    assert(calculateAreaOutput(100, 29, 0, BonusModel::ProportionalCorrected) == 29);
+    assert(calculateAreaOutput(100, 57, 0, BonusModel::ProportionalCorrected) == 57);
+    for (int pct = 1; pct <= 100; ++pct) {
+        assert(calculateAreaOutput(100, pct, 0, BonusModel::ProportionalCorrected) == pct);
+        assert(calculateAreaOutput(1000, pct, 10, BonusModel::ProportionalCorrected) == pct * 11);
+    }
+    assert(calculateAreaOutput(333, 33, 33, BonusModel::ProportionalCorrected) == (333 * 33 * 133) / 10000);
+    assert(calculateAreaOutput(100, 29, 0, BonusModel::LegacyAdditiveParity) == 29);
+    assert(calculateAreaOutput(100, 90, 50, BonusModel::LegacyAdditiveParity) == 100);
+    assert(calculateAreaOutput(100, 50, -200, BonusModel::ProportionalCorrected) == 0); // Bonus clamps at -100%
+    // Saturating and overflow-free at the bounds.
+    assert(calculateAreaOutput(MaxIntelBalance, 100, 1000, BonusModel::ProportionalCorrected) == MaxIntelBalance);
+    assert(calculateAreaOutput(INT64_MAX, 100, 0, BonusModel::ProportionalCorrected) == MaxIntelBalance);
+
+    IntelligenceRules rules;
+    // 199 / 20 = 9.95 -> 9950 milli-points exactly; 7 * 0.02 = 0.14 -> 140.
+    assert(calculateDefenseStrength(199, 7, 100, rules) == 10090);
+    assert(calculateDefenseStrength(MaxIntelBalance * 20, MaxIntelBalance, 500, rules) > 0);
+    assert(intelStrengthRatioPermille(10000, 20000, 0) == 500);
+    assert(intelStrengthRatioPermille(10000, 20000, 3) == 800);
+    assert(intelStrengthRatioPermille(-50000, 20000, 1) == 0);
+    assert(intelStrengthRatioPermille(MaxIntelBalance * 1000, 1000, 0) == 1000000);
+    std::cout << "  PASS: 100 x 29% = 29; defense and ratios exact in fixed point." << std::endl;
+}
+
+namespace {
+// Runs `attempts` operations of an attacker holding `attackPct` of output against a single
+// rival whose security share is `securityPct` (both empires produce 100 intel per turn).
+std::array<int, 5> duel(int attackPct, int securityPct, int attempts, uint64_t seed) {
+    IntelligenceRules rules;
+    rules.attackDelayTurns = 0;
+    rules.baseAttackThreshold = 50;
+    EmpireIntelState attacker;
+    attacker.empireId = 1;
+    attacker.budget.internalSecurity.percentage = 100 - attackPct;
+    RivalAllocation alloc;
+    alloc.rivalId = 2;
+    alloc.espionage.percentage = attackPct;
+    attacker.budget.rivalAllocations.push_back(alloc);
+    assert(attacker.budget.isValid(1));
+    std::map<int, DefenderSecurityContext> defenders;
+    DefenderSecurityContext def;
+    def.rollingSecuritySum = static_cast<int64_t>(securityPct) * 20; // 20 turns at securityPct of 100 output
+    def.securityStockpile = securityPct;
+    defenders[2] = def;
+    TurnContext ctx;
+    ctx.totalEmpireBaseIntelOutput = 100;
+    RivalContext rc;
+    rc.rivalId = 2;
+    rc.currentCredits = 1000;
+    ctx.knownRivals.push_back(rc);
+    std::array<int, 5> outcomes{};
+    int done = 0;
+    for (int turn = 1; done < attempts && turn < 5000; ++turn) {
+        ctx.currentTurn = turn;
+        for (const auto& op : advanceTurn(attacker, ctx, defenders, rules, seed)) {
+            if (turn <= 20) continue; // Let the attack history fill its window first
+            ++outcomes[static_cast<int>(op.outcome)];
+            ++done;
+        }
+    }
+    return outcomes;
+}
+}
+
+// Bug 12: attack used a 20-turn SUM against a 20-turn AVERAGE defense.
+void testSecurityInvestmentMatters() {
+    std::cout << "Testing: rebalanced attack vs security and failure exposure (bug 12)..." << std::endl;
+    const auto weak = duel(20, 80, 60, 11);
+    const int weakSuccesses = weak[2] + weak[3] + weak[4];
+    assert(weakSuccesses == 0 && "A 20% operation must not beat 80% security");
+    assert(weak[static_cast<int>(IntelOutcome::Fiasco)] > 0 && "Strong security exposes failed operations");
+
+    const auto even = duel(50, 50, 60, 11);
+    const int evenSuccesses = even[2] + even[3] + even[4];
+    assert(evenSuccesses > 40 && "A concentrated 50% service beats 50% security most of the time");
+
+    // Shallow failures are sometimes exposed too (not only deep fiascos).
+    IntelligenceRules rules;
+    int exposedShallow = 0, quietShallow = 0;
+    for (uint64_t seed = 1; seed <= 400; ++seed) {
+        uint64_t rng = seed * 7919ULL;
+        // Ratio 700 permille: score spans 420..980, so failures here are shallow ones.
+        const auto op = resolveAttempt(1, 2, IntelArea::Espionage, IntelDepartment::General, 1, 7000, 10000, 0,
+                                       TreatyLevel::None, 0, 0, rng, rules);
+        if (op.outcome == IntelOutcome::Fiasco) {
+            ++exposedShallow;
+            assert(op.diplomaticIncidentPenalty == 8);
+        } else if (op.outcome == IntelOutcome::UndetectedFailure) {
+            ++quietShallow;
+        }
+    }
+    assert(exposedShallow > 0 && quietShallow > exposedShallow && "Shallow failures are exposed at ~32%, not always");
+    assert(failureDetectionPercent(0, rules) == 90 && failureDetectionPercent(5000, rules) == 10);
+    std::cout << "  PASS: 20% vs 80%: " << weakSuccesses << " successes; 50% vs 50%: " << evenSuccesses
+              << "/60; shallow failures exposed " << exposedShallow << "/" << (exposedShallow + quietShallow) << "." << std::endl;
+}
+
+// Bug 12 (parsing): strtol accepted '%+F'; opType and amounts were unbounded on load.
+void testStrictDecodingAndBoundedRecords() {
+    std::cout << "Testing: strict hex decoding and bounded operation records (bug 12)..." << std::endl;
+    std::string out;
+    assert(decodeString("A%20B", out) && out == "A B");
+    assert(!decodeString("%+F", out));
+    assert(!decodeString("% F", out));
+    assert(!decodeString("%-0", out));
+    assert(!decodeString("%0x", out));
+    assert(!decodeString("%4", out));
+
+    OperationRecord op;
+    op.attackerEmpireId = 1;
+    op.defenderEmpireId = 2;
+    op.opType = IntelOpType::StealCredits;
+    op.outcome = IntelOutcome::StandardSuccess;
+    op.turn = 12;
+    op.creditsStolen = 150;
+    op.details = "Stole 150 credits.";
+    const std::string line = serializeOperationRecord(op);
+    OperationRecord back;
+    std::string err;
+    assert(deserializeOperationRecord(line, back, &err) && back == op);
+    auto mutate = [&](int field, const std::string& value) {
+        std::istringstream in(line);
+        std::vector<std::string> parts;
+        std::string tok;
+        while (in >> tok) parts.push_back(tok);
+        parts[static_cast<size_t>(field)] = value;
+        std::string joined;
+        for (size_t i = 0; i < parts.size(); ++i) joined += (i ? " " : "") + parts[i];
+        OperationRecord tmp;
+        return deserializeOperationRecord(joined, tmp, &err);
+    };
+    assert(!mutate(5, "7") && "opType beyond StealResearch/SabotageFacility rejected");
+    assert(!mutate(7, "-5") && "Negative credits rejected");
+    assert(!mutate(7, "1000000000001") && "Credits beyond MaxIntelBalance rejected");
+    assert(!mutate(8, "-1") && "Negative research rejected");
+    assert(!mutate(10, "4") && "Severity beyond 3 rejected");
+    assert(!mutate(11, "2") && "Non-boolean detection flag rejected");
+    assert(!mutate(12, "101") && "Penalty beyond 100 rejected");
+    assert(!mutate(1, "1") && "Attacker equal to defender rejected");
+    assert(!deserializeOperationRecord(line + " trailing", back, &err) && "Trailing tokens rejected");
+    std::cout << "  PASS: strict escapes and bounded operation records." << std::endl;
+}
+
+// Bug 10: only rivals present in the budget were serialized.
+void testAllRivalStateSerialized() {
+    std::cout << "Testing: per-rival state outside the budget survives reload (bug 10)..." << std::endl;
+    EmpireIntelState state;
+    state.empireId = 1;
+    state.budget.setDefault({2});
+    state.getOrCreateRivalState(2).espionageStockpile = 40;
+    {
+        auto& unbudgeted = state.getOrCreateRivalState(4);
+        unbudgeted.focusDepartment = IntelDepartment::Science;
+        unbudgeted.sabotageStockpile = 77;
+        unbudgeted.lastEspionageAttackTurn = 9;
+        unbudgeted.espionageHistory = {5, -2, 8};
+        unbudgeted.departmentWeights = {{3, 4, 25, 6}};
+    }
+    state.getOrCreateRivalState(3); // Pristine: indistinguishable from absent, omitted
+    const RivalIntelState expected = *state.getRivalState(4); // (references above may dangle after growth)
+    const std::string text = serializeIntelState(state);
+    assert(text.find("extraRivals 1") != std::string::npos && text.find("xrival 4") != std::string::npos);
+    EmpireIntelState loaded;
+    std::string err;
+    assert(deserializeIntelState(text, loaded, &err));
+    const auto* r4 = loaded.getRivalState(4);
+    assert(r4 && *r4 == expected && "Focus, stockpiles, clocks and history of rival 4 preserved");
+    assert(loaded.getRivalState(2)->espionageStockpile == 40);
+    assert(serializeIntelState(loaded) == text && "Canonical re-serialization");
+
+    // Saves without extra rivals keep their exact old format.
+    EmpireIntelState plain;
+    plain.empireId = 1;
+    plain.initializeDefault({2, 3});
+    const std::string plainText = serializeIntelState(plain);
+    assert(plainText.find("extraRivals") == std::string::npos);
+
+    std::string bad = text;
+    bad.replace(bad.find("xrival 4"), 8, "xrival 1");
+    assert(!deserializeIntelState(bad, loaded, &err) && "Self as extra rival rejected");
+    bad = text;
+    bad.replace(bad.find("xrival 4"), 8, "xrival 2");
+    assert(!deserializeIntelState(bad, loaded, &err) && "Duplicate extra rival rejected");
+    std::cout << "  PASS: all per-rival state roundtrips; pristine rows omitted." << std::endl;
+}
+
+// Bug 13: AI intelligence budgets never changed from the defaults.
+void testAdaptiveAiIntelDoctrines() {
+    std::cout << "Testing: adaptive AI intelligence doctrines (bug 13)..." << std::endl;
+    auto view = [](int id) {
+        AiIntelRivalView v;
+        v.rivalId = id;
+        v.ownPower = 100;
+        v.rivalPower = 100;
+        return v;
+    };
+    std::vector<AiIntelRivalView> peace{view(1), view(3), view(4)};
+    const auto fed = planAiIntelStrategy(1 + 1, IntelDoctrine::Federation, peace);
+    assert(fed.budget.isValid(2) && fed.budget.internalSecurity.percentage == 80);
+    for (const auto& a : fed.budget.rivalAllocations) assert(a.sabotage.percentage == 0 && "No peacetime sabotage for the Federation");
+    assert(fed.budget.rivalAllocations.size() <= AiIntelMaxTargets);
+
+    auto war = peace;
+    war[1].atWar = true; // At war with empire 3
+    const auto klingon = planAiIntelStrategy(2, IntelDoctrine::Klingon, war);
+    assert(klingon.budget.isValid(2));
+    const RivalAllocation* enemy = nullptr;
+    for (const auto& a : klingon.budget.rivalAllocations) if (a.rivalId == 3) enemy = &a;
+    assert(enemy && enemy->sabotage.percentage > enemy->espionage.percentage && "Klingons sabotage their enemies");
+    assert(klingon.focus.at(3) == IntelDepartment::Military);
+    int enemyShare = enemy->espionage.percentage + enemy->sabotage.percentage;
+    for (const auto& a : klingon.budget.rivalAllocations) {
+        if (a.rivalId != 3) assert(a.espionage.percentage + a.sabotage.percentage <= enemyShare && "Enemies get the largest share");
+    }
+
+    const auto ferengi = planAiIntelStrategy(5, IntelDoctrine::Ferengi, peace);
+    for (const auto& [id, dept] : ferengi.focus) assert(dept == IntelDepartment::Economic && "Ferengi steal credits");
+
+    auto allies = peace;
+    for (auto& v : allies) v.treaty = TreatyLevel::Alliance;
+    assert(planAiIntelStrategy(2, IntelDoctrine::Federation, allies).budget.rivalAllocations.empty() && "No spying on allies");
+    assert(!planAiIntelStrategy(3, IntelDoctrine::Romulan, allies).budget.rivalAllocations.empty() && "The Tal Shiar spies on everyone");
+
+    auto spied = peace;
+    spied[0].incidentsAgainstUs = 3;
+    const auto alarmed = planAiIntelStrategy(2, IntelDoctrine::Cardassian, spied);
+    assert(alarmed.budget.internalSecurity.percentage > planAiIntelStrategy(2, IntelDoctrine::Cardassian, peace).budget.internalSecurity.percentage &&
+           "Detected spies raise internal security");
+
+    auto burned = war;
+    burned[1].exposedOperations = 3;
+    burned[1].atWar = false;
+    const auto cautious = planAiIntelStrategy(2, IntelDoctrine::Romulan, burned);
+    for (const auto& a : cautious.budget.rivalAllocations) assert(a.rivalId != 3 && "Back off after repeated exposure");
+
+    auto dead = peace;
+    for (auto& v : dead) v.eliminated = true;
+    const auto none = planAiIntelStrategy(2, IntelDoctrine::Klingon, dead);
+    assert(none.budget.internalSecurity.percentage == 100 && none.budget.rivalAllocations.empty());
+
+    EmpireIntelState applied;
+    applied.empireId = 2;
+    applied.getOrCreateRivalState(3).espionageStockpile = 99;
+    applyAiIntelPlan(applied, klingon);
+    assert(applied.budget == klingon.budget && applied.getRivalState(3)->espionageStockpile == 99 &&
+           applied.getRivalState(3)->focusDepartment == IntelDepartment::Military && "Plans keep per-rival history");
+    assert(planAiIntelStrategy(2, IntelDoctrine::Klingon, war) == klingon && "Deterministic");
+    std::cout << "  PASS: doctrine, war, alliance, retaliation and back-off behaviour." << std::endl;
+}
+
 // -----------------------------------------------------------------------------
 // Main Runner
 // -----------------------------------------------------------------------------
@@ -761,8 +1026,13 @@ int main() {
         testS16DefenseStrengthCalculationRegression();
         testSignedAttackStrengthReducesOdds();
         testMaxBalanceAndOverflowSafety();
+        testIntegerOutputIsExact();
+        testSecurityInvestmentMatters();
+        testStrictDecodingAndBoundedRecords();
+        testAllRivalStateSerialized();
+        testAdaptiveAiIntelDoctrines();
 
-        std::cout << "\n>>> ALL 14 INTELLIGENCE TEST SUITES PASSED CLEANLY! <<<" << std::endl;
+        std::cout << "\n>>> ALL 19 INTELLIGENCE TEST SUITES PASSED CLEANLY! <<<" << std::endl;
         return 0;
     } catch (const std::exception& ex) {
         std::cerr << "FAIL with exception: " << ex.what() << std::endl;

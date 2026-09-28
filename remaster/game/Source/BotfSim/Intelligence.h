@@ -18,7 +18,15 @@
 //   Stockpile cleared upon attempt.
 // - VERIFIED (S16): Attack success combines up to the last 20 turns of Espionage + Sabotage output
 //   against the target divided by the defender counter-intelligence defense denominator:
-//   defenseDenominator = ((last 20 security outputs / 20) + (securityStockpile * 0.02)) * defenderMoraleMultiplier.
+//   defenseDenominator = ((last 20 security outputs / 20) + (securityStockpile * 0.02)) * defenderMorale.
+// - MODERN REBALANCE: the attack numerator is the same 20-turn window divided by 20 (an average, like
+//   the defense) times a 2x concentration factor, so both sides are compared per turn of investment.
+//   The raw S16 sum made a 20% attacker beat an 80% defender 11 times in 12; now parity needs a
+//   per-rival share of half the defender's security share, and security investment decides.
+// - MODERN: every outcome is computed in integer fixed point (strengths in milli-points, ratios and
+//   rolls in permille), so results are exact and identical on every compiler.
+// - MODERN: counter-intelligence exposes failed operations with a chance that grows with the
+//   defense/attack ratio (not only catastrophic fiascos). Exposed failures are reported as Fiasco.
 // - VERIFIED (S16): Zero-allocation areas contribute -2% of total intelligence output to rolling history
 //   for success calculation, and decay stockpile by 2% of total output (clamped to 0).
 // - VERIFIED (S16): Internal Security stockpile is a running weighted average across turns:
@@ -27,7 +35,7 @@
 // - VERIFIED (S16): Department preference counters range 1..30; General focus adds +2 to ALL 4 departments;
 //   targeted focus adds +2 to selected and -2 to others; weighted draw uses actual counter sum.
 // - PROVISIONAL / MODERN RECONSTRUCTION: Base readiness threshold (250), attack delay (5 turns),
-//   treaty modifiers, credit/sabotage scaling, and exact morale multiplier mapping (default 1.0).
+//   treaty modifiers, credit/sabotage scaling, and exact morale mapping (default 100%).
 //
 // Architectural Invariants:
 // - Self-contained header; independent of Simulation.h (no circular dependencies).
@@ -37,7 +45,6 @@
 
 #include <algorithm>
 #include <array>
-#include <cmath>
 #include <cstdint>
 #include <iomanip>
 #include <map>
@@ -154,10 +161,19 @@ struct IntelligenceRules {
 
     // S16 Source: defense strength denominator uses (last 20 security outputs / 20) + (securityStockpile * 0.02)
     int securityHistoryDivisor = 20;
-    double securityStockpileCoefficient = 0.02; // S16: 0.02 multiplier on security stockpile
+    int securityStockpilePermille = 20; // S16: 0.02 multiplier on security stockpile, in permille
 
-    // PROVISIONAL: Default defender morale multiplier when unspecified (default 1.0)
-    double defaultDefenderMoraleMultiplier = 1.0;
+    // PROVISIONAL: Default defender morale when unspecified, in percent (100 = 1.0x)
+    int defaultDefenderMoralePercent = 100;
+
+    // MODERN: counter-intelligence exposure odds for failed operations (percent).
+    int minFailureDetectionPercent = 10;
+    int maxFailureDetectionPercent = 90;
+
+    // MODERN REBALANCE: a concentrated operation against one rival counts double
+    // against a security service that must cover the whole empire. Parity is thus
+    // reached when the attacker's per-rival share is half the defender's security share.
+    int attackConcentrationPercent = 200;
 
     // History depth (VERIFIED: community reverse-engineering S16)
     int maxHistoryTurns = 20;
@@ -441,6 +457,13 @@ struct RivalIntelState {
         return getRollingEspionageSum() + getRollingSabotageSum();
     }
 
+    // MODERN REBALANCE: per-turn average of the combined window in milli-points
+    // (sum * 1000 / window), directly comparable with calculateDefenseStrength().
+    int64_t getAverageAttackStrengthMilli(int window) const {
+        const int64_t w = std::max(1, window);
+        return (getCombinedRollingAttackSum() * 1000) / w;
+    }
+
     void recordEspionageOutput(int64_t output, int maxHistory) {
         espionageHistory.push_back(output);
         if (static_cast<int>(espionageHistory.size()) > maxHistory) {
@@ -551,7 +574,7 @@ struct RivalContext {
     TreatyLevel treaty = TreatyLevel::None;
     int difficultyModifier = 0;
     int64_t currentCredits = 0;
-    int64_t currentResearchReserve = 0;
+    int64_t currentResearchReserve = 0; // Research points a theft can reach (reserve + unspent progress)
 };
 
 // Authoritative defender counter-intelligence state
@@ -559,8 +582,8 @@ struct DefenderSecurityContext {
     int64_t rollingSecuritySum = 0;
     int64_t securityStockpile = 0;
     int computerTechLevel = 0;
-    // Sourced defense morale multiplier. Exact curve is PROVISIONAL (default 1.0).
-    double defenderMoraleMultiplier = 1.0;
+    // Sourced defense morale multiplier in percent. Exact curve is PROVISIONAL (default 100 = 1.0x).
+    int defenderMoralePercent = 100;
 };
 
 struct TurnContext {
@@ -576,19 +599,21 @@ struct TurnContext {
 // -----------------------------------------------------------------------------
 
 // Calculate area output given total base intelligence, allocation percentage, and building bonus.
-// Proportional Corrected: base * (alloc / 100.0) * (1.0 + bonus / 100.0)
-// Example: 1000 base * 40% * 1.5 = 600.
-// Legacy Additive Bug: base * (alloc + bonus) / 100.0 = 900.
+// Proportional Corrected: base * alloc * (100 + bonus) / 10000   (exact integer floor)
+// Example: 1000 base * 40% * 1.5 = 600; 100 base * 29% = 29 (the old double path gave 28).
+// Legacy Additive Bug: base * min(100, alloc + bonus) / 100 = 900.
 inline int64_t calculateAreaOutput(int64_t totalBaseOutput, int allocPct, int bonusPct, BonusModel model) {
     if (totalBaseOutput <= 0 || allocPct <= 0) return 0;
+    const int64_t base = std::min<int64_t>(totalBaseOutput, MaxIntelBalance);
+    const int64_t alloc = std::min(allocPct, 100);
+    const int64_t bonus = std::clamp(bonusPct, -100, 1000);
 
     if (model == BonusModel::ProportionalCorrected) {
-        double allocFraction = static_cast<double>(allocPct) / 100.0;
-        double bonusMultiplier = 1.0 + (static_cast<double>(bonusPct) / 100.0);
-        return static_cast<int64_t>(std::floor(static_cast<double>(totalBaseOutput) * allocFraction * bonusMultiplier));
+        // base <= 1e12, alloc <= 100, (100 + bonus) <= 1100: product <= 1.1e17 fits in int64.
+        return std::min<int64_t>(MaxIntelBalance, (base * alloc * (100 + bonus)) / 10000);
     } else {
-        double combinedPct = std::min(100.0, static_cast<double>(allocPct + bonusPct));
-        return static_cast<int64_t>(std::floor(static_cast<double>(totalBaseOutput) * (combinedPct / 100.0)));
+        const int64_t combinedPct = std::clamp<int64_t>(alloc + bonus, 0, 100);
+        return (base * combinedPct) / 100;
     }
 }
 
@@ -652,19 +677,22 @@ inline void trainDepartmentWeights(
     }
 }
 
-// S16 Source: Defense strength denominator = ((last 20 Security outputs / 20) + (securityStockpile * 0.02)) * defenderMoraleMultiplier.
-// PROVISIONAL: Exact numeric morale lookup is unverified in intel.bin; defenderMoraleMultiplier default is 1.0.
-inline double calculateDefenseStrength(
+// S16 Source: Defense strength denominator = ((last 20 Security outputs / 20) + (securityStockpile * 0.02)) * defenderMorale.
+// Returned in milli-points (x1000) so the result is exact: 200 rolling + 500 stockpile at 100% = 20000 (20.0).
+// PROVISIONAL: Exact numeric morale lookup is unverified in intel.bin; morale defaults to 100%.
+inline int64_t calculateDefenseStrength(
     int64_t rollingSecuritySum,
     int64_t securityStockpile,
-    double defenderMoraleMultiplier,
+    int defenderMoralePercent,
     const IntelligenceRules& rules
 ) {
-    double rollingAvg = static_cast<double>(rollingSecuritySum) / static_cast<double>(rules.securityHistoryDivisor);
-    double stockpileTerm = static_cast<double>(securityStockpile) * rules.securityStockpileCoefficient;
-    double baseDefense = rollingAvg + stockpileTerm;
-    double effectiveMultiplier = std::max(0.1, defenderMoraleMultiplier);
-    return baseDefense * effectiveMultiplier;
+    const int64_t divisor = std::max(1, rules.securityHistoryDivisor);
+    const int64_t rolling = std::clamp<int64_t>(rollingSecuritySum, 0, MaxIntelBalance * 20);
+    const int64_t stockpile = std::clamp<int64_t>(securityStockpile, 0, MaxIntelBalance);
+    const int64_t baseMilli = (rolling * 1000) / divisor + stockpile * std::clamp(rules.securityStockpilePermille, 0, 1000);
+    const int64_t morale = std::clamp(defenderMoralePercent, 10, 500);
+    // Split the multiply so (base * morale) cannot overflow for any bounded input.
+    return (baseMilli / 100) * morale + ((baseMilli % 100) * morale) / 100;
 }
 
 // Deterministic department selection based on actual sum of counters
@@ -684,20 +712,60 @@ inline IntelDepartment selectDepartment(const std::array<int, 4>& weights, uint6
     return IntelDepartment::General;
 }
 
-// Resolve operation attempt given attack and defense factors.
+// Per-turn combined attack strength (milli-points) including the concentration factor.
+inline int64_t concentratedAttackStrength(const RivalIntelState& rState, const IntelligenceRules& rules) {
+    const int64_t average = rState.getAverageAttackStrengthMilli(rules.maxHistoryTurns);
+    return (average * std::clamp(rules.attackConcentrationPercent, 0, 1000)) / 100;
+}
+
+// Deterministic LCG step shared by department selection and outcome rolls.
+inline uint64_t intelNextRandom(uint64_t& rngState) {
+    rngState = rngState * 6364136223846793005ULL + 1442695040888963407ULL;
+    return rngState >> 32;
+}
+
+// Attack/defense ratio in permille (1000 = evenly matched), including the +100
+// permille per computer tech level lead. Never negative.
+inline int64_t intelStrengthRatioPermille(int64_t attackStrengthMilli, int64_t defenseStrengthMilli, int techDiff) {
+    const int64_t attack = std::clamp<int64_t>(attackStrengthMilli, -MaxIntelBalance * 1000, MaxIntelBalance * 1000);
+    const int64_t defense = std::clamp<int64_t>(defenseStrengthMilli, 1000, MaxIntelBalance * 1000); // Floor of 1.0 point
+    // attack <= 1e15: split the division so the permille scaling cannot overflow.
+    int64_t ratio = (attack / defense) * 1000 + ((attack % defense) * 1000) / defense;
+    ratio = std::clamp<int64_t>(ratio, -1000000, 1000000);
+    ratio += static_cast<int64_t>(std::clamp(techDiff, -100, 100)) * 100; // +10% per computer tech lead
+    return std::clamp<int64_t>(ratio, 0, 1000000);
+}
+
+// Chance (percent) that counter-intelligence exposes a failed operation:
+// clamp(90 - ratio/12, min, max). Weak attacks against strong security are
+// usually exposed; evenly matched ones rarely.
+inline int failureDetectionPercent(int64_t ratioPermille, const IntelligenceRules& rules) {
+    const int64_t chance = 90 - ratioPermille / 12;
+    return static_cast<int>(std::clamp<int64_t>(chance, rules.minFailureDetectionPercent, rules.maxFailureDetectionPercent));
+}
+
+// Resolve operation attempt given attack and defense factors (milli-points).
+// Integer fixed point throughout (MODERN RECONSTRUCTION / PROVISIONAL brackets):
+//   ratio R  = attack / defense in permille (+100 per computer tech lead), clamped >= 0
+//   roll  r  = [0, 1000)
+//   score    = R * (600 + r * 800 / 1000) / 1000        (permille)
+//   score < 400: deep failure   (exposed with max(50%, detection%); trust penalty 15, 5 at war)
+//   score < 800: failure        (exposed with detection% = clamp(90 - R/12, 10, 90); penalty 8, 2 at war)
+//   score < 1300 minor, < 2000 standard, otherwise major success.
 inline OperationRecord resolveAttempt(
     int attackerId,
     int defenderId,
     IntelArea area,
     IntelDepartment dept,
     int turn,
-    int64_t attackStrength,
-    double defenseStrength,
+    int64_t attackStrengthMilli,
+    int64_t defenseStrengthMilli,
     int techDiff,
     TreatyLevel treaty,
     int64_t defenderCredits,
     int64_t defenderResearch,
-    uint64_t& rngState
+    uint64_t& rngState,
+    const IntelligenceRules& rules = IntelligenceRules{}
 ) {
     OperationRecord op;
     op.attackerEmpireId = attackerId;
@@ -706,48 +774,35 @@ inline OperationRecord resolveAttempt(
     op.department = dept;
     op.turn = turn;
 
-    // Defense denominator already incorporates defender's morale multiplier
-    double safeDefense = std::max(1.0, defenseStrength);
-    double strengthRatio = static_cast<double>(attackStrength) / safeDefense;
+    const int64_t ratio = intelStrengthRatioPermille(attackStrengthMilli, defenseStrengthMilli, techDiff);
+    const int64_t roll = static_cast<int64_t>(intelNextRandom(rngState) % 1000);
+    const int64_t score = (ratio * (600 + (roll * 800) / 1000)) / 1000;
 
-    // Modifiers: applied exactly once
-    double techBonus = static_cast<double>(techDiff) * 0.10; // +10% per computer tech lead
-
-    double netRatio = strengthRatio + techBonus;
-
-    // Valid probability clamping: if netRatio <= 0, clamped at probability stage
-    if (netRatio < 0.0) {
-        netRatio = 0.0;
-    }
-
-    // PRNG roll [0.0, 1.0)
-    rngState = rngState * 6364136223846793005ULL + 1442695040888963407ULL;
-    double roll = static_cast<double>((rngState >> 32) & 0xFFFFFF) / 16777216.0;
-
-    // Outcomes scoring brackets (MODERN RECONSTRUCTION / PROVISIONAL):
-    double score = netRatio * (0.6 + roll * 0.8);
-
-    if (score < 0.4) {
-        rngState = rngState * 6364136223846793005ULL + 1442695040888963407ULL;
-        bool caught = ((rngState >> 32) % 100) < 50;
+    if (score < 800) {
+        const bool deep = score < 400;
+        int detectPct = failureDetectionPercent(ratio, rules);
+        if (deep) detectPct = std::max(detectPct, 50);
+        const bool caught = static_cast<int64_t>(intelNextRandom(rngState) % 100) < detectPct;
         if (caught) {
             op.outcome = IntelOutcome::Fiasco;
             op.detectedByDefender = true;
-            op.diplomaticIncidentPenalty = (treaty == TreatyLevel::War) ? 10 : 30;
-            op.details = "Operatives compromised and captured during infiltration.";
+            if (deep) {
+                op.diplomaticIncidentPenalty = (treaty == TreatyLevel::War) ? 5 : 15;
+                op.details = "Operatives compromised and captured during infiltration.";
+            } else {
+                op.diplomaticIncidentPenalty = (treaty == TreatyLevel::War) ? 2 : 8;
+                op.details = "Counter-intelligence exposed the operation as it withdrew.";
+            }
         } else {
             op.outcome = IntelOutcome::UndetectedFailure;
             op.detectedByDefender = false;
-            op.details = "Operation foiled by enemy counter-intelligence without detection.";
+            op.details = deep ? "Operation foiled by enemy counter-intelligence without detection."
+                              : "Mission objectives not met; operatives safely withdrew.";
         }
-    } else if (score < 0.8) {
-        op.outcome = IntelOutcome::UndetectedFailure;
-        op.detectedByDefender = false;
-        op.details = "Mission objectives not met; operatives safely withdrew.";
-    } else if (score < 1.3) {
+    } else if (score < 1300) {
         op.outcome = IntelOutcome::MinorSuccess;
         op.detectedByDefender = false;
-    } else if (score < 2.0) {
+    } else if (score < 2000) {
         op.outcome = IntelOutcome::StandardSuccess;
         op.detectedByDefender = false;
     } else {
@@ -759,15 +814,16 @@ inline OperationRecord resolveAttempt(
         if (area == IntelArea::Espionage) {
             if (dept == IntelDepartment::Economic) {
                 op.opType = IntelOpType::StealCredits;
-                double stealPct = (op.outcome == IntelOutcome::MinorSuccess) ? 0.05 :
-                                  (op.outcome == IntelOutcome::StandardSuccess) ? 0.15 : 0.35;
-                op.creditsStolen = static_cast<int64_t>(std::floor(static_cast<double>(defenderCredits) * stealPct));
+                const int64_t stealPct = (op.outcome == IntelOutcome::MinorSuccess) ? 5 :
+                                         (op.outcome == IntelOutcome::StandardSuccess) ? 15 : 35;
+                const int64_t credits = std::clamp<int64_t>(defenderCredits, 0, MaxIntelBalance);
+                op.creditsStolen = (credits * stealPct) / 100;
                 op.details = "Stole " + std::to_string(op.creditsStolen) + " credits from financial reserves.";
             } else if (dept == IntelDepartment::Science) {
                 op.opType = IntelOpType::StealResearch;
-                int64_t stealAmount = (op.outcome == IntelOutcome::MinorSuccess) ? 50 :
-                                      (op.outcome == IntelOutcome::StandardSuccess) ? 150 : 400;
-                op.researchStolen = std::min(defenderResearch, stealAmount);
+                const int64_t stealAmount = (op.outcome == IntelOutcome::MinorSuccess) ? 50 :
+                                            (op.outcome == IntelOutcome::StandardSuccess) ? 150 : 400;
+                op.researchStolen = std::clamp<int64_t>(std::min(defenderResearch, stealAmount), 0, MaxIntelBalance);
                 op.details = "Acquired technical blueprints (" + std::to_string(op.researchStolen) + " research points).";
             } else {
                 op.opType = IntelOpType::GatherIntel;
@@ -792,8 +848,8 @@ inline OperationRecord resolveAttempt(
 //    and history receives negative 2% of total output.
 // 4. Update rolling 20-turn history (dropping turn 21+).
 // 5. Update department training counters (1..30 range).
-// 6. Evaluate attack thresholds and resolve attacks if threshold reached using COMBINED
-//    signed espionage + sabotage rolling history.
+// 6. Evaluate attack thresholds and resolve attacks if threshold reached using the COMBINED
+//    signed espionage + sabotage rolling history averaged over the window (milli-points).
 // 7. Clear stockpile upon attack attempt.
 inline std::vector<OperationRecord> advanceTurn(
     EmpireIntelState& attackerState,
@@ -847,20 +903,20 @@ inline std::vector<OperationRecord> advanceTurn(
         int64_t defRollingSec = 0;
         int64_t defStockpile = 0;
         int defTech = 0;
-        double defMoraleMult = rules.defaultDefenderMoraleMultiplier;
+        int defMorale = rules.defaultDefenderMoralePercent;
 
         auto defIt = defenderContexts.find(rivalId);
         if (defIt != defenderContexts.end()) {
             defRollingSec = defIt->second.rollingSecuritySum;
             defStockpile = defIt->second.securityStockpile;
             defTech = defIt->second.computerTechLevel;
-            defMoraleMult = defIt->second.defenderMoraleMultiplier;
+            defMorale = defIt->second.defenderMoralePercent;
         } else if (rCtx) {
             defTech = rCtx->computerTechLevel;
         }
 
         int techDiff = context.attackerComputerTechLevel - defTech;
-        double totalDefStrength = calculateDefenseStrength(defRollingSec, defStockpile, defMoraleMult, rules);
+        const int64_t totalDefStrength = calculateDefenseStrength(defRollingSec, defStockpile, defMorale, rules);
 
         // Update department training counters (range 1..30)
         trainDepartmentWeights(rState.departmentWeights, rState.focusDepartment, rules);
@@ -896,12 +952,12 @@ inline std::vector<OperationRecord> advanceTurn(
             rState.lastEspionageAttackTurn = context.currentTurn;
 
             IntelDepartment opDept = selectDepartment(rState.departmentWeights, rngSeed);
-            int64_t attackStrength = rState.getCombinedRollingAttackSum();
+            const int64_t attackStrength = concentratedAttackStrength(rState, rules);
 
             OperationRecord op = resolveAttempt(
                 attackerState.empireId, rivalId, IntelArea::Espionage, opDept,
                 context.currentTurn, attackStrength, totalDefStrength,
-                techDiff, treaty, targetCredits, targetResearch, rngSeed
+                techDiff, treaty, targetCredits, targetResearch, rngSeed, rules
             );
             operations.push_back(op);
         }
@@ -913,12 +969,12 @@ inline std::vector<OperationRecord> advanceTurn(
             rState.lastSabotageAttackTurn = context.currentTurn;
 
             IntelDepartment opDept = selectDepartment(rState.departmentWeights, rngSeed);
-            int64_t attackStrength = rState.getCombinedRollingAttackSum();
+            const int64_t attackStrength = concentratedAttackStrength(rState, rules);
 
             OperationRecord op = resolveAttempt(
                 attackerState.empireId, rivalId, IntelArea::Sabotage, opDept,
                 context.currentTurn, attackStrength, totalDefStrength,
-                techDiff, treaty, targetCredits, targetResearch, rngSeed
+                techDiff, treaty, targetCredits, targetResearch, rngSeed, rules
             );
             operations.push_back(op);
         }
@@ -928,8 +984,249 @@ inline std::vector<OperationRecord> advanceTurn(
 }
 
 // -----------------------------------------------------------------------------
+// Adaptive AI Intelligence Strategy (MODERN)
+// -----------------------------------------------------------------------------
+//
+// AI empires re-plan their intelligence budget and department focus every turn
+// from their doctrine (personality) and situation. Pure, integer-only and
+// deterministic. Doctrine indices mirror diplomacy::MajorPersonality so this
+// header stays independent of Diplomacy.h.
+
+enum class IntelDoctrine : int {
+    Federation = 0, // Security first; spies on enemies, sabotages only in war
+    Klingon = 1,    // Sabotage-heavy against enemies; military intelligence
+    Romulan = 2,    // Tal Shiar: the largest foreign service; science theft
+    Cardassian = 3, // Obsidian Order: strong security and broad surveillance
+    Ferengi = 4     // Economic espionage for profit
+};
+
+struct IntelDoctrineProfile {
+    int baseSecurity;        // Internal security percentage in peacetime
+    int foreignWeight;       // Baseline interest in any rival
+    int enemyWeight;         // Extra interest in rivals we are at war with
+    int peaceSabotageShare;  // Share (percent) of a rival's foreign budget used for sabotage at peace
+    int warSabotageShare;    // ... and at war
+    bool spiesOnAllies;
+    IntelDepartment peaceFocus;
+    IntelDepartment warFocus;
+};
+
+inline IntelDoctrineProfile doctrineProfile(IntelDoctrine doctrine) {
+    switch (doctrine) {
+        case IntelDoctrine::Federation: return {80, 2, 6, 0, 40, false, IntelDepartment::Science, IntelDepartment::Military};
+        case IntelDoctrine::Klingon:    return {65, 2, 8, 20, 70, false, IntelDepartment::Military, IntelDepartment::Military};
+        case IntelDoctrine::Romulan:    return {55, 4, 6, 30, 50, true, IntelDepartment::Science, IntelDepartment::Military};
+        case IntelDoctrine::Cardassian: return {70, 3, 6, 30, 60, false, IntelDepartment::General, IntelDepartment::Military};
+        case IntelDoctrine::Ferengi:    return {70, 3, 4, 10, 30, false, IntelDepartment::Economic, IntelDepartment::Economic};
+        default: return {80, 2, 6, 0, 40, false, IntelDepartment::General, IntelDepartment::Military};
+    }
+}
+
+struct AiIntelRivalView {
+    int rivalId = 0;
+    bool atWar = false;
+    TreatyLevel treaty = TreatyLevel::None;
+    int trust = 50;
+    int64_t ownPower = 0;
+    int64_t rivalPower = 0;
+    int incidentsAgainstUs = 0; // Operations by this rival we detected recently
+    int exposedOperations = 0;  // Our recent operations against this rival that were exposed
+    bool eliminated = false;
+};
+
+inline constexpr size_t AiIntelMaxTargets = 2; // AI concentrates its foreign service
+
+struct AiIntelPlan {
+    BudgetAllocations budget;
+    std::map<int, IntelDepartment> focus; // rivalId -> department focus
+
+    bool operator==(const AiIntelPlan& other) const = default;
+};
+
+inline AiIntelPlan planAiIntelStrategy(int empireId, IntelDoctrine doctrine, const std::vector<AiIntelRivalView>& rivals) {
+    const IntelDoctrineProfile prof = doctrineProfile(doctrine);
+    AiIntelPlan plan;
+
+    // 1. Security: doctrine baseline, raised by wars and by spies we caught.
+    int incidents = 0;
+    bool anyWar = false;
+    for (const auto& r : rivals) {
+        if (r.eliminated || r.rivalId == empireId) continue;
+        incidents += std::max(0, r.incidentsAgainstUs);
+        anyWar = anyWar || r.atWar;
+    }
+    int security = prof.baseSecurity + std::min(20, 5 * incidents) + (anyWar ? 5 : 0);
+    security = std::clamp(security, 40, 90);
+
+    // 2. Interest in each rival (the two most interesting, highest first, ties by ID).
+    struct Interest { int rivalId; int weight; const AiIntelRivalView* view; };
+    std::vector<Interest> interests;
+    for (const auto& r : rivals) {
+        if (r.eliminated || r.rivalId <= 0 || r.rivalId == empireId) continue;
+        int weight = prof.foreignWeight;
+        if (r.atWar) weight += prof.enemyWeight;
+        if (r.trust < 30) weight += 2;
+        if (r.rivalPower > r.ownPower) weight += 2;
+        weight += std::min(3, std::max(0, r.incidentsAgainstUs)); // Retaliation
+        weight -= 2 * std::min(3, std::max(0, r.exposedOperations)); // Our agents keep getting caught: back off
+        if (r.atWar) weight = std::max(weight, 1);
+        if (!r.atWar && (r.treaty == TreatyLevel::Alliance || r.treaty == TreatyLevel::Affiliation)) {
+            if (!prof.spiesOnAllies) weight = 0;
+        } else if (!r.atWar && r.treaty == TreatyLevel::Friendship) {
+            weight /= 2;
+        }
+        if (weight > 0) interests.push_back({r.rivalId, weight, &r});
+    }
+    std::sort(interests.begin(), interests.end(), [](const Interest& a, const Interest& b) {
+        return a.weight != b.weight ? a.weight > b.weight : a.rivalId < b.rivalId;
+    });
+    if (interests.size() > AiIntelMaxTargets) interests.resize(AiIntelMaxTargets);
+
+    if (interests.empty()) {
+        plan.budget.internalSecurity.percentage = 100;
+        return plan;
+    }
+
+    // 3. Distribute the foreign share by interest (largest remainder, ties by order).
+    const int foreign = 100 - security;
+    int totalWeight = 0;
+    for (const auto& i : interests) totalWeight += i.weight;
+    std::vector<int> shares(interests.size(), 0);
+    std::vector<std::pair<int, size_t>> remainders;
+    int assigned = 0;
+    for (size_t i = 0; i < interests.size(); ++i) {
+        shares[i] = (foreign * interests[i].weight) / totalWeight;
+        remainders.push_back({(foreign * interests[i].weight) % totalWeight, i});
+        assigned += shares[i];
+    }
+    std::stable_sort(remainders.begin(), remainders.end(), [](const auto& a, const auto& b) { return a.first > b.first; });
+    for (size_t k = 0; assigned < foreign && k < remainders.size(); ++k, ++assigned) {
+        ++shares[remainders[k].second];
+    }
+
+    plan.budget.internalSecurity.percentage = security;
+    std::vector<size_t> order(interests.size());
+    std::iota(order.begin(), order.end(), size_t{0});
+    std::sort(order.begin(), order.end(), [&](size_t a, size_t b) { return interests[a].rivalId < interests[b].rivalId; });
+    for (size_t idx : order) {
+        const auto& interest = interests[idx];
+        const int share = shares[idx];
+        const int sabotageShare = interest.view->atWar ? prof.warSabotageShare : prof.peaceSabotageShare;
+        RivalAllocation alloc;
+        alloc.rivalId = interest.rivalId;
+        alloc.sabotage.percentage = (share * sabotageShare) / 100;
+        alloc.espionage.percentage = share - alloc.sabotage.percentage;
+        plan.budget.rivalAllocations.push_back(alloc);
+        plan.focus[interest.rivalId] = interest.view->atWar ? prof.warFocus : prof.peaceFocus;
+    }
+    if (!plan.budget.isValid(empireId)) {
+        // Defensive fallback; cannot happen for bounded inputs.
+        plan.budget = BudgetAllocations{};
+        plan.budget.internalSecurity.percentage = 100;
+        plan.focus.clear();
+    }
+    return plan;
+}
+
+// Applies a plan: budget replaced, focus set per rival, per-rival history kept.
+inline void applyAiIntelPlan(EmpireIntelState& state, const AiIntelPlan& plan) {
+    state.budget = plan.budget;
+    for (const auto& [rivalId, dept] : plan.focus) {
+        state.getOrCreateRivalState(rivalId).focusDepartment = dept;
+    }
+}
+
+// -----------------------------------------------------------------------------
 // Bounded Serialization & Deserialization
 // -----------------------------------------------------------------------------
+
+inline void writeRivalIntelBody(std::ostringstream& ss, const RivalIntelState* rState) {
+    if (rState) {
+        ss << "rData " << rState->espionageStockpile << " " << rState->sabotageStockpile << " "
+           << rState->lastEspionageAttackTurn << " " << rState->lastSabotageAttackTurn << " "
+           << static_cast<int>(rState->focusDepartment) << " "
+           << rState->departmentWeights[0] << " " << rState->departmentWeights[1] << " "
+           << rState->departmentWeights[2] << " " << rState->departmentWeights[3] << "\n";
+
+        ss << "espHist " << rState->espionageHistory.size();
+        for (auto v : rState->espionageHistory) ss << " " << v;
+        ss << "\n";
+
+        ss << "sabHist " << rState->sabotageHistory.size();
+        for (auto v : rState->sabotageHistory) ss << " " << v;
+        ss << "\n";
+    } else {
+        ss << "rData 0 0 -100 -100 0 10 10 10 10\n";
+        ss << "espHist 0\n";
+        ss << "sabHist 0\n";
+    }
+}
+
+// Parses the rData/espHist/sabHist body of one rival (strict bounds).
+inline bool readRivalIntelBody(std::istringstream& ss, RivalIntelState& rState, std::string* errorMsg) {
+    std::string token;
+    int focusDept = 0;
+    if (!(ss >> token) || token != "rData" ||
+        !(ss >> rState.espionageStockpile >> rState.sabotageStockpile
+             >> rState.lastEspionageAttackTurn >> rState.lastSabotageAttackTurn
+             >> focusDept
+             >> rState.departmentWeights[0] >> rState.departmentWeights[1]
+             >> rState.departmentWeights[2] >> rState.departmentWeights[3])) {
+        if (errorMsg) *errorMsg = "Malformed rData entry";
+        return false;
+    }
+    if (rState.espionageStockpile < 0 || rState.espionageStockpile > MaxIntelBalance ||
+        rState.sabotageStockpile < 0 || rState.sabotageStockpile > MaxIntelBalance) {
+        if (errorMsg) *errorMsg = "Stockpile out of bounds [0, MaxIntelBalance]";
+        return false;
+    }
+    if (rState.lastEspionageAttackTurn < MinLastAttackTurn || rState.lastEspionageAttackTurn > MaxIntelTurns ||
+        rState.lastSabotageAttackTurn < MinLastAttackTurn || rState.lastSabotageAttackTurn > MaxIntelTurns) {
+        if (errorMsg) *errorMsg = "Last attack turn out of bounds [-100, MaxIntelTurns]";
+        return false;
+    }
+    if (focusDept < 0 || focusDept > 3) {
+        if (errorMsg) *errorMsg = "Invalid focus department";
+        return false;
+    }
+    rState.focusDepartment = static_cast<IntelDepartment>(focusDept);
+
+    for (int i = 0; i < 4; ++i) {
+        if (rState.departmentWeights[i] < 1 || rState.departmentWeights[i] > 30) {
+            if (errorMsg) *errorMsg = "Department counter out of valid range 1..30";
+            return false;
+        }
+    }
+
+    size_t espHistCount = 0;
+    if (!(ss >> token) || token != "espHist" || !(ss >> espHistCount) || espHistCount > 20) {
+        if (errorMsg) *errorMsg = "Malformed espHist";
+        return false;
+    }
+    for (size_t i = 0; i < espHistCount; ++i) {
+        int64_t v = 0;
+        if (!(ss >> v) || v < -MaxIntelBalance || v > MaxIntelBalance) {
+            if (errorMsg) *errorMsg = "Malformed or out-of-bounds espHist value";
+            return false;
+        }
+        rState.espionageHistory.push_back(v);
+    }
+
+    size_t sabHistCount = 0;
+    if (!(ss >> token) || token != "sabHist" || !(ss >> sabHistCount) || sabHistCount > 20) {
+        if (errorMsg) *errorMsg = "Malformed sabHist";
+        return false;
+    }
+    for (size_t i = 0; i < sabHistCount; ++i) {
+        int64_t v = 0;
+        if (!(ss >> v) || v < -MaxIntelBalance || v > MaxIntelBalance) {
+            if (errorMsg) *errorMsg = "Malformed or out-of-bounds sabHist value";
+            return false;
+        }
+        rState.sabotageHistory.push_back(v);
+    }
+    return true;
+}
 
 inline std::string serializeIntelState(const EmpireIntelState& state) {
     std::ostringstream ss;
@@ -953,24 +1250,28 @@ inline std::string serializeIntelState(const EmpireIntelState& state) {
            << rAlloc.espionage.percentage << " " << (rAlloc.espionage.isLocked ? 1 : 0) << " "
            << rAlloc.sabotage.percentage << " " << (rAlloc.sabotage.isLocked ? 1 : 0) << "\n";
 
-        if (rState) {
-            ss << "rData " << rState->espionageStockpile << " " << rState->sabotageStockpile << " "
-               << rState->lastEspionageAttackTurn << " " << rState->lastSabotageAttackTurn << " "
-               << static_cast<int>(rState->focusDepartment) << " "
-               << rState->departmentWeights[0] << " " << rState->departmentWeights[1] << " "
-               << rState->departmentWeights[2] << " " << rState->departmentWeights[3] << "\n";
+        writeRivalIntelBody(ss, rState);
+    }
 
-            ss << "espHist " << rState->espionageHistory.size();
-            for (auto v : rState->espionageHistory) ss << " " << v;
-            ss << "\n";
-
-            ss << "sabHist " << rState->sabotageHistory.size();
-            for (auto v : rState->sabotageHistory) ss << " " << v;
-            ss << "\n";
-        } else {
-            ss << "rData 0 0 -100 -100 0 10 10 10 10\n";
-            ss << "espHist 0\n";
-            ss << "sabHist 0\n";
+    // Per-rival state for rivals outside the current budget (focus, stockpiles,
+    // history, attack clocks) must survive a reload too. Emitted only when present
+    // so saves without such rivals re-serialize byte-for-byte.
+    // A pristine (default) rival state is indistinguishable from an absent one, so
+    // it is omitted to keep the save canonical.
+    std::vector<const RivalIntelState*> extras;
+    for (const auto& r : state.rivalStates) {
+        const bool budgeted = std::any_of(state.budget.rivalAllocations.begin(), state.budget.rivalAllocations.end(),
+            [&](const RivalAllocation& a) { return a.rivalId == r.rivalId; });
+        RivalIntelState pristine;
+        pristine.rivalId = r.rivalId;
+        if (!budgeted && !(r == pristine)) extras.push_back(&r);
+    }
+    if (!extras.empty()) {
+        std::sort(extras.begin(), extras.end(), [](const RivalIntelState* a, const RivalIntelState* b) { return a->rivalId < b->rivalId; });
+        ss << "extraRivals " << extras.size() << "\n";
+        for (const auto* r : extras) {
+            ss << "xrival " << r->rivalId << "\n";
+            writeRivalIntelBody(ss, r);
         }
     }
 
@@ -1082,71 +1383,46 @@ inline bool deserializeIntelState(const std::string& data, EmpireIntelState& out
 
         RivalIntelState rState;
         rState.rivalId = rivalId;
-        int focusDept = 0;
-        if (!(ss >> token) || token != "rData" ||
-            !(ss >> rState.espionageStockpile >> rState.sabotageStockpile
-                 >> rState.lastEspionageAttackTurn >> rState.lastSabotageAttackTurn
-                 >> focusDept
-                 >> rState.departmentWeights[0] >> rState.departmentWeights[1]
-                 >> rState.departmentWeights[2] >> rState.departmentWeights[3])) {
-            if (errorMsg) *errorMsg = "Malformed rData entry";
-            return false;
-        }
-        if (rState.espionageStockpile < 0 || rState.espionageStockpile > MaxIntelBalance ||
-            rState.sabotageStockpile < 0 || rState.sabotageStockpile > MaxIntelBalance) {
-            if (errorMsg) *errorMsg = "Stockpile out of bounds [0, MaxIntelBalance]";
-            return false;
-        }
-        if (rState.lastEspionageAttackTurn < MinLastAttackTurn || rState.lastEspionageAttackTurn > MaxIntelTurns ||
-            rState.lastSabotageAttackTurn < MinLastAttackTurn || rState.lastSabotageAttackTurn > MaxIntelTurns) {
-            if (errorMsg) *errorMsg = "Last attack turn out of bounds [-100, MaxIntelTurns]";
-            return false;
-        }
-        if (focusDept < 0 || focusDept > 3) {
-            if (errorMsg) *errorMsg = "Invalid focus department";
-            return false;
-        }
-        rState.focusDepartment = static_cast<IntelDepartment>(focusDept);
-
-        for (int i = 0; i < 4; ++i) {
-            if (rState.departmentWeights[i] < 1 || rState.departmentWeights[i] > 30) {
-                if (errorMsg) *errorMsg = "Department counter out of valid range 1..30";
-                return false;
-            }
-        }
-
-        size_t espHistCount = 0;
-        if (!(ss >> token) || token != "espHist" || !(ss >> espHistCount) || espHistCount > 20) {
-            if (errorMsg) *errorMsg = "Malformed espHist";
-            return false;
-        }
-        for (size_t i = 0; i < espHistCount; ++i) {
-            int64_t v = 0;
-            if (!(ss >> v) || v < -MaxIntelBalance || v > MaxIntelBalance) {
-                if (errorMsg) *errorMsg = "Malformed or out-of-bounds espHist value";
-                return false;
-            }
-            rState.espionageHistory.push_back(v);
-        }
-
-        size_t sabHistCount = 0;
-        if (!(ss >> token) || token != "sabHist" || !(ss >> sabHistCount) || sabHistCount > 20) {
-            if (errorMsg) *errorMsg = "Malformed sabHist";
-            return false;
-        }
-        for (size_t i = 0; i < sabHistCount; ++i) {
-            int64_t v = 0;
-            if (!(ss >> v) || v < -MaxIntelBalance || v > MaxIntelBalance) {
-                if (errorMsg) *errorMsg = "Malformed or out-of-bounds sabHist value";
-                return false;
-            }
-            rState.sabotageHistory.push_back(v);
-        }
+        if (!readRivalIntelBody(ss, rState, errorMsg)) return false;
 
         temp.rivalStates.push_back(rState);
     }
 
-    if (!(ss >> token) || token != "END_BOTF_INTEL") {
+    if (!(ss >> token)) {
+        if (errorMsg) *errorMsg = "Missing END_BOTF_INTEL termination token";
+        return false;
+    }
+    if (token == "extraRivals") {
+        size_t extraCount = 0;
+        if (!(ss >> extraCount) || extraCount == 0 || extraCount + rivalCount > 4) {
+            if (errorMsg) *errorMsg = "Malformed extraRivals count";
+            return false;
+        }
+        int previousExtra = 0;
+        for (size_t r = 0; r < extraCount; ++r) {
+            int rivalId = 0;
+            if (!(ss >> token) || token != "xrival" || !(ss >> rivalId)) {
+                if (errorMsg) *errorMsg = "Malformed extra rival entry";
+                return false;
+            }
+            if (rivalId <= 0 || rivalId == temp.empireId || rivalId <= previousExtra ||
+                std::find(seenRivalIds.begin(), seenRivalIds.end(), rivalId) != seenRivalIds.end()) {
+                if (errorMsg) *errorMsg = "Duplicate, unsorted, self, or non-positive extra rivalId";
+                return false;
+            }
+            previousExtra = rivalId;
+            seenRivalIds.push_back(rivalId);
+            RivalIntelState rState;
+            rState.rivalId = rivalId;
+            if (!readRivalIntelBody(ss, rState, errorMsg)) return false;
+            temp.rivalStates.push_back(rState);
+        }
+        if (!(ss >> token)) {
+            if (errorMsg) *errorMsg = "Missing END_BOTF_INTEL termination token";
+            return false;
+        }
+    }
+    if (token != "END_BOTF_INTEL") {
         if (errorMsg) *errorMsg = "Missing END_BOTF_INTEL termination token";
         return false;
     }
@@ -1202,14 +1478,20 @@ inline bool decodeString(const std::string& token, std::string& out, std::string
                 if (outError) *outError = "Malformed hex escape in encoded string";
                 return false;
             }
-            std::string hexStr = token.substr(i + 1, 2);
-            char* endPtr = nullptr;
-            long val = std::strtol(hexStr.c_str(), &endPtr, 16);
-            if (!endPtr || *endPtr != '\0' || val < 0 || val > 255) {
+            // Exactly two hex digits: strtol would also accept "+F", " F" or "-0".
+            auto fromHex = [](char c) -> int {
+                if (c >= '0' && c <= '9') return c - '0';
+                if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+                if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+                return -1;
+            };
+            const int hi = fromHex(token[i + 1]);
+            const int lo = fromHex(token[i + 2]);
+            if (hi < 0 || lo < 0) {
                 if (outError) *outError = "Invalid hex escape in encoded string";
                 return false;
             }
-            out.push_back(static_cast<char>(val));
+            out.push_back(static_cast<char>((hi << 4) | lo));
             i += 2;
         } else {
             out.push_back(token[i]);
@@ -1240,14 +1522,14 @@ inline std::string serializeOperationRecord(const OperationRecord& op) {
 inline bool deserializeOperationRecord(const std::string& line, OperationRecord& outOp, std::string* errorMsg = nullptr) {
     std::istringstream ss(line);
     int areaInt = 0, deptInt = 0, outcomeInt = 0, opTypeInt = 0, detectedInt = 0;
-    std::string encodedDetails;
+    std::string encodedDetails, trailing;
     if (!(ss >> outOp.attackerEmpireId >> outOp.defenderEmpireId
              >> areaInt >> deptInt >> outcomeInt >> opTypeInt
              >> outOp.turn
              >> outOp.creditsStolen >> outOp.researchStolen
              >> outOp.sabotageTargetId >> outOp.sabotageSeverity
              >> detectedInt >> outOp.diplomaticIncidentPenalty
-             >> encodedDetails)) {
+             >> encodedDetails) || (ss >> trailing)) {
         if (errorMsg) *errorMsg = "Malformed operation record row";
         return false;
     }
@@ -1256,8 +1538,17 @@ inline bool deserializeOperationRecord(const std::string& line, OperationRecord&
         return false;
     }
     if (areaInt < 0 || areaInt > 2 || deptInt < 0 || deptInt > 3 ||
-        outcomeInt < 0 || outcomeInt > 4 || opTypeInt < 0 || opTypeInt > 10) {
+        outcomeInt < 0 || outcomeInt > 4 || opTypeInt < 0 || opTypeInt > 4 ||
+        (detectedInt != 0 && detectedInt != 1)) {
         if (errorMsg) *errorMsg = "Invalid enum value in operation record";
+        return false;
+    }
+    if (outOp.attackerEmpireId == outOp.defenderEmpireId || outOp.turn > MaxIntelTurns ||
+        outOp.creditsStolen < 0 || outOp.creditsStolen > MaxIntelBalance ||
+        outOp.researchStolen < 0 || outOp.researchStolen > MaxIntelBalance ||
+        outOp.sabotageTargetId < 0 || outOp.sabotageSeverity < 0 || outOp.sabotageSeverity > 3 ||
+        outOp.diplomaticIncidentPenalty < 0 || outOp.diplomaticIncidentPenalty > 100) {
+        if (errorMsg) *errorMsg = "Out-of-range value in operation record";
         return false;
     }
     outOp.area = static_cast<IntelArea>(areaInt);

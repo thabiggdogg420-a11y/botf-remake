@@ -1247,10 +1247,18 @@ int main() {
                 botf::serialize(s) == botf::serialize(resumed), "Defeat with surviving rivals failed validation or replay");
         }, passed);
         run("aggressive rival declares war only after contact and threshold", [] {
+            // Lane B: war is personality/situation driven (trust, strength, cool-downs), not
+            // unconditional. A distrustful Klingon neighbour escalates once the early peace ends.
             auto s = botf::generateCampaign(1999); s.turn = 24;
             s.majorRelations[0].contact = true;
+            s.majorRelations[0].trust = 20;
             botf::advance(s);
             check(s.majorRelations[0].atWar, "Klingon rival did not escalate after contact");
+            auto cooled = botf::generateCampaign(1999); cooled.turn = 40;
+            cooled.majorRelations[0].contact = true; cooled.majorRelations[0].trust = 20;
+            cooled.majorRelations[0].warStartTurn = 35; // Peace signed five turns ago
+            botf::advance(cooled);
+            check(!cooled.majorRelations[0].atWar, "Klingon rival ignored the post-peace cool-down");
             auto peaceful = botf::generateCampaign(1999); peaceful.turn = 24;
             peaceful.aiAggressionEnabled = false; peaceful.majorRelations[0].contact = true;
             botf::advance(peaceful);
@@ -2297,9 +2305,18 @@ int main() {
             s2.diplomacyEngineState.activeTreaties.push_back(aiTreaty);
             check(!botf::activeTreaties(s2, 2).empty(), "AI has active alliance before aggression");
 
+            // Lane B: an honourable Klingon never breaks a treaty in force, however low the trust.
+            s2.majorRelations[0].trust = 10;
             botf::advance(s2);
-            check(s2.majorRelations[0].atWar, "AI declared war upon turn advance to 25");
-            check(botf::activeTreaties(s2, 2).empty(), "AI war declaration cleanly broke active alliance");
+            check(!s2.majorRelations[0].atWar, "AI broke an active alliance to declare war");
+            check(!botf::activeTreaties(s2, 2).empty(), "AI alliance survived turn 25");
+            // Without the treaty the same situation escalates, and the engine records the war.
+            s2.diplomacyEngineState.activeTreaties.clear();
+            s2.majorRelations[0].tradeTreaty = false;
+            s2.turn = 30; s2.diplomacyEngineState.currentTurn = 30;
+            botf::advance(s2);
+            check(s2.majorRelations[0].atWar, "AI declared war once no treaty bound it");
+            check(botf::activeTreaties(s2, 2).empty(), "AI war declaration left treaties active");
         }, passed);
 
         run("Modern consistency: legacy minor diplomacy synchronizes attitude, friendship, and membership to modern engine", [] {
