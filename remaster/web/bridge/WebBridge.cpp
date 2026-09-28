@@ -12,9 +12,10 @@
 //  * Derive views from public structs so schema growth in the core flows through untouched.
 //  * The single entry point is botf_call(method, argsJson) -> {"ok":bool,"result"|"error"}.
 
-#include "Simulation.h"
-#include "CampaignSession.h"
-#include "ReferenceCatalogue.h"
+// Core headers by relative path so the bridge also compiles from remaster/CMakeLists.txt unchanged.
+#include "../../game/Source/BotfSim/Simulation.h"
+#include "../../game/Source/BotfSim/CampaignSession.h"
+#include "../../game/Source/BotfSim/ReferenceCatalogue.h"
 #include "Json.h"
 
 #include <algorithm>
@@ -732,6 +733,10 @@ void writeView(Writer& w) {
         else if (const auto blocker = botf::constructionBlocker(d, c); !blocker.empty())
             w.beginObject().field("kind", "blocked").field("severity", "warn").field("systemId", c.systemId)
                 .field("text", systemLabel(s, c.systemId) + ": " + blocker).endObject();
+        if (c.shipyards > 0 && !e.shipyardPowered)
+            w.beginObject().field("kind", "shipyard").field("severity", "warn").field("systemId", c.systemId)
+                .field("text", systemLabel(s, c.systemId) + ": shipyard " + (c.shipyardEnabled ? "unpowered" : "switched off") +
+                    " — no shipbuilding or supply range").endObject();
         if (!c.governorWarning.empty())
             w.beginObject().field("kind", "governor").field("severity", "warn").field("systemId", c.systemId)
                 .field("text", systemLabel(s, c.systemId) + ": " + c.governorWarning).endObject();

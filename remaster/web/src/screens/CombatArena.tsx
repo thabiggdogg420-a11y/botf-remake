@@ -110,10 +110,30 @@ export function CombatArena({ encounter, round, selected, target, onPick, animat
           ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke(); ctx.setLineDash([]);
         }
       }
-      // ships
+      // ships (several ships in one tactical cell are fanned out around the cell centre)
       const positions = new Map<number, [number, number]>();
+      const raw = new Map<number, [number, number]>();
+      const groups = new Map<string, number[]>();
       for (const s of e.ships) {
         const p = pos(s);
+        if (!p) continue;
+        raw.set(s.id, p);
+        const a = after.get(s.id)!;
+        if (!a.alive || (a.retreated && !animating)) continue;
+        const key = `${Math.round(p[0] / (cell * 0.5))},${Math.round(p[1] / (cell * 0.5))}`;
+        (groups.get(key) ?? groups.set(key, []).get(key)!).push(s.id);
+      }
+      for (const ids of groups.values()) {
+        if (ids.length < 2) continue;
+        ids.forEach((id, i) => {
+          const p = raw.get(id)!;
+          const ang = (i / ids.length) * Math.PI * 2 - Math.PI / 2;
+          const r = cell * 0.34;
+          raw.set(id, [p[0] + Math.cos(ang) * r, p[1] + Math.sin(ang) * r]);
+        });
+      }
+      for (const s of e.ships) {
+        const p = raw.get(s.id) ?? null;
         const a = after.get(s.id)!;
         if (!p) continue;
         positions.set(s.id, p);

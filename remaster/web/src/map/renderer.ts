@@ -584,7 +584,8 @@ export class GalaxyRenderer {
       const owners = [...new Set(contacts.map((c) => c.owner))];
       owners.forEach((owner, i) => {
         const group = contacts.filter((c) => c.owner === owner);
-        const [sx, sy] = this.worldToScreen(cam, x * CELL + CELL * 0.86, y * CELL + CELL * 0.84 - i * (size * 2.05) / z);
+        // Foreign contacts stack down the sector's right edge (labels sit below the star).
+        const [sx, sy] = this.worldToScreen(cam, x * CELL + CELL * 0.86, y * CELL + CELL * 0.16 + i * (size * 2.05) / z);
         const selected = group.some((c) => c.id === overlay.selectedFleetId);
         this.drawMarker(sx, sy, size, owner, false, group.length > 1 ? group.length : 0, selected, false, false, t, 0,
           group.some((c) => c.atWar));

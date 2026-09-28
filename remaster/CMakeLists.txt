@@ -35,6 +35,7 @@ target_include_directories(botf_core PUBLIC ${BOTF_CORE_DIR})
 target_compile_options(botf_core PRIVATE ${BOTF_WARN})
 
 add_executable(BotfSim ${BOTF_CORE_DIR}/Main.cpp)
+add_library(botf_web_bridge STATIC ${CMAKE_CURRENT_SOURCE_DIR}/web/bridge/WebBridge.cpp) # Browser client bridge (remaster/web); compiled here to catch core API drift.
 target_link_libraries(BotfSim PRIVATE botf_core)
 target_compile_options(BotfSim PRIVATE ${BOTF_WARN})
 
