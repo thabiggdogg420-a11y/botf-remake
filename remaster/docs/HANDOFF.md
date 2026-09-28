@@ -14,19 +14,19 @@ thabiggdogg420-a11y/botf-remake#1. The original playable beta is untouched in `g
 | D | Outposts/starbases, anomalies, event deck, Classic/Remastered presets, scientific + diplomatic victory, chronicle, build templates, schema 13 | GAMEPLAY-REMASTER.md |
 | E | Unreal client catch-up and review fixes, `FBotfCampaign` | UNREAL-CLIENT.md |
 | G2 | 520 original descriptions (no original-game prose), 30-race minor roster | MINOR-RACES.md |
+| H | Treaty effects in the turn loop (allied supply, shared sensors, no attacks under treaty, refuse call to arms), creditForecast and range/route queries, per-ship battle orders, 8 MiB saves, schema 14 | GAMEPLAY-REMASTER.md §13 |
+| F2 | Browser beta: stations, anomalies, events, victory, chronicle, templates, ruleset choice, minor races, tutorial, settings, artifact-safe export; 18 bridge + 23 e2e tests | ../web/README.md |
 
-Orchestrator integration rules: a campaign diplomatic victory needs two-thirds of galactic population, at least two
-partners (allied empires or member races) and turn 80 or later. Retreats never enter impassable sectors.
+Integration rules: a campaign diplomatic victory needs two-thirds of galactic population, at least two partners
+(allied empires or member races), turn 150 or later, and the claimant must lead its alliance by population. Retreats never enter impassable sectors.
 
 ## In flight when parked
 
-Each lane works in a git worktree under `.claude/worktrees/`. The branch is named `worktree-agent-<id>`. Check `git branch --list 'worktree-agent-*'` for commits that are not yet merged.
+- **I — Unreal round 2** (worktree branch `worktree-agent-ad27d7320e97ef1ae`): newCampaign + ruleset choice, and surfacing
+  stations, anomalies, events, victory, chronicle, templates and minors in the Unreal client. Merge it if it finished;
+  otherwise commit its worktree as WIP first.
 
-- **F2 — browser beta.** It continues lane F's WIP (commits e82d9a9, f78aa8d) and adds phase-2 and minor-race UI, a tutorial, settings, and artifact-safe save export.
-- **H — core integration.** Allies share supply and sensors, treaties forbid attacks, an explicit call-to-arms refusal, `creditForecast`, ship/task-force range and route queries, per-ship orders in combat rounds, a larger save cap, and an AI-war balance check.
-- **I — Unreal round 2.** Adds `newCampaign` with a ruleset choice, and surfaces stations, anomalies, events, victory, chronicle, templates and minors.
-
-If a lane never reported, its worktree may hold uncommitted work. Commit it as WIP before deleting anything.
+The playable browser beta (all lanes except I) is published at https://claude.ai/artifact/TJQpg1jaVSvoWCmnFrALJS.
 
 ## Resume checklist
 
@@ -46,7 +46,7 @@ If a lane never reported, its worktree may hold uncommitted work. Commit it as W
 
 - Unreal client: needs a first real compile. The per-screen view/presenter split is only partly done.
 - Minor races: signature ships are data only, and independent minors cannot be attacked.
-- Balance is provisional.
+- Balance is provisional. AI alliances usually win diplomatically at turn 150; rival AIs are too weak to capture stations.
   - Supreme-era games end by scientific victory around turn 150.
   - An idle player is sometimes conquered before turn 200.
 - Art, audio and the 3D battle scene are still interim. The ship roster and tech tree have not been expanded.
