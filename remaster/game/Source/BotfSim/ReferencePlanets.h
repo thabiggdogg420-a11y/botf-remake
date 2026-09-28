@@ -4,6 +4,9 @@
 // planet.pst   SHA256: 12c5cf1e64b7033cd8245a98f1fd27c7bd44b87bfbdf5da230413ae9f4015592
 // planspac.bin SHA256: 3717112631800e171f14c8379b72bf28e7c847b8961473a019c0b258ee9ab693
 // Pinned layout source: GitLab stbotf/ultimate-editor commit 7ee45c4b89942c324aa8ff0b9cb4334defbc667e
+// This file carries names and numbers only: no descriptive prose from the original game. Player-facing
+// descriptions are ORIGINAL remaster text and live in ReferenceCatalogue.h (technologies, ships, buildings)
+// and MinorRaces.h (minor races); ContentTests guards them.
 #pragma once
 
 #include <array>

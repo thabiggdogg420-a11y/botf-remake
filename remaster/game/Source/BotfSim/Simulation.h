@@ -12,9 +12,11 @@
 
 namespace botf {
 // BOTF Remastered schema and content. Schema 12 adds the unified tactical combat
-// model and fusion-plant accounting; schemas 4-11 still load and continue.
-inline constexpr const char* ContentVersion = "remaster-12";
-inline constexpr int SaveVersion = 12;
+// model and fusion-plant accounting; schema 13 adds the gameplay layer (ruleset
+// presets, stations, galaxy features, curated events, alternative victories and
+// build templates, see docs/GAMEPLAY-REMASTER.md). Schemas 4-12 still load and continue.
+inline constexpr const char* ContentVersion = "remaster-13";
+inline constexpr int SaveVersion = 13;
 namespace tactical { struct Encounter; }
 enum class Ruleset : int { Prototype, Reference };
 enum class StartingEra : int { Early = 1, Developed = 2, Expanded = 3, Advanced = 4, Supreme = 5 };
@@ -38,7 +40,11 @@ enum class CommandType : int {
     SubmitDiplomaticProposal, RespondDiplomaticProposal,
     SetIntelBudget, SetIntelFocus,
     // Appended for colony automation:
-    SetColonyGovernor, SetQueuePin, ClearGovernorOverride
+    SetColonyGovernor, SetQueuePin, ClearGovernorOverride,
+    // Appended for the schema-13 gameplay layer (GAMEPLAY-REMASTER.md):
+    BuildOutpost, UpgradeStation, ResolveEventChoice,
+    DefineBuildTemplate, DeleteBuildTemplate, ApplyBuildTemplate, SetDefaultBuildTemplate,
+    StartMegaproject, CancelMegaproject
 };
 enum class CampaignOutcome : int { Ongoing, Victory, Defeat };
 inline constexpr int ResearchFields = 6, MaxTechLevel = 10;
@@ -157,6 +163,12 @@ struct Command {
     GovernorPriority governorWorkforce = GovernorPriority::Manual;
     GovernorPriority governorQueue = GovernorPriority::Manual;
     bool queuePinned = false;
+    // Schema-13 gameplay layer (zero/empty for every other command type):
+    int stationId = 0;                       // UpgradeStation
+    int eventId = 0, eventOption = 0;        // ResolveEventChoice
+    int templateId = 0;                      // Define/Delete/Apply/SetDefault build template
+    std::string templateName;                // DefineBuildTemplate
+    std::vector<Construction> templateItems; // DefineBuildTemplate (product + referenceId only)
 };
 struct Fleet {
     int id = 0, ownerId = 1;
@@ -174,6 +186,9 @@ struct Fleet {
     bool terraforming = false;
     int terraformSystemId = 0;
     int terraformPlanetIndex = 0;
+    // Schema 13: a troop transport assembling an outpost in its current sector.
+    bool buildingOutpost = false;
+    int outpostProgress = 0; // Turns of assembly completed.
 };
 
 struct TaskForce {
@@ -242,6 +257,106 @@ struct DiplomaticOffer {
     int empireId = 1, systemId = 0, dueTurn = 0;
     CommandType type = CommandType::OfferFriendship;
 };
+// ---------------------------------------------------------------------------
+// Schema-13 gameplay layer (docs/GAMEPLAY-REMASTER.md). All values are integers.
+// ---------------------------------------------------------------------------
+// Ruleset presets. Classic is original-like (outposts and starbases, the original
+// random events, conquest/domination only). Remastered switches every new layer on.
+// Saves from schema 12 and older load as Classic with every layer off, so they
+// keep playing exactly as before.
+enum class RulesetPreset : int { Classic = 0, Remastered = 1 };
+struct GameplayRules {
+    RulesetPreset preset = RulesetPreset::Classic;
+    bool stations = false;             // Outposts and starbases.
+    bool galaxyFeatures = false;       // Nebulae, wormholes, black holes, neutron stars, ion storms.
+    bool curatedEvents = false;        // Event deck (replaces the original random events).
+    bool alternativeVictories = false; // Scientific megaproject and diplomatic victory.
+    bool operator==(const GameplayRules&) const = default;
+};
+
+enum class StationType : int { Outpost = 0, Starbase = 1 };
+struct Station {
+    int id = 0, ownerId = 1;
+    int x = 0, y = 0;
+    StationType type = StationType::Outpost;
+    int hull = 1, shields = 0; // Current values; maxima come from stationStats().
+    int builtTurn = 0;
+};
+// A starbase upgrade funded by one colony's industry (the colony's queue pauses).
+struct StationUpgrade { int stationId = 0, fundingSystemId = 0, work = 0; };
+struct StationStats {
+    int maxHull = 0, maxShields = 0, beam = 0, torpedo = 0;
+    int supplyRadius = 0, sensorRadius = 0, upkeep = 0;
+    int repairPercent = 0; // Hull repaired per turn for friendly ships in the sector.
+};
+struct StationUpgradeCost { std::int64_t credits = 0; int industry = 0; };
+// Tactical encounters and battle records identify a station as this fleet ID.
+inline constexpr int StationCombatantBase = 2000000;
+
+enum class GalaxyFeatureType : int { Nebula = 0, Wormhole = 1, BlackHole = 2, NeutronStar = 3, IonStorm = 4, SubspaceRift = 5 };
+struct GalaxyFeature {
+    int id = 0;
+    GalaxyFeatureType type = GalaxyFeatureType::Nebula;
+    int x = 0, y = 0;          // Ion storms: centre of a plus-shaped storm front.
+    int pairId = 0;            // Wormhole: the other endpoint's feature ID.
+    int clusterId = 0;         // Nebula cells of one cloud share a cluster (one survey reward).
+    int driftX = 0, driftY = 0; // Ion storm drift direction (moves every IonStormDriftTurns).
+    int expiresTurn = 0;       // Temporary features (subspace rifts) vanish after this turn; 0 = permanent.
+    int surveyedMask = 0;      // Bit (1 << empireId) once that empire collected the survey reward.
+};
+inline constexpr int IonStormDriftTurns = 2;
+
+enum class GalacticEventKind : int {
+    Plague = 0, SupernovaWarning = 1, SubspaceRift = 2, TradeBoom = 3,
+    DerelictVessel = 4, LaborUnrest = 5, ScientificBreakthrough = 6
+};
+struct GalacticEvent {
+    int id = 0;
+    GalacticEventKind kind = GalacticEventKind::Plague;
+    int empireId = 0;          // Affected empire (0 = galaxy-wide).
+    int systemId = 0;          // Affected system (0 = none).
+    int x = -1, y = -1;        // Affected sector (-1 = none).
+    int startTurn = 0, endTurn = 0; // endTurn: last turn of effects / detonation turn.
+    int choiceDeadline = 0;    // Last turn a choice may be submitted (0 = no choice).
+    int choice = -1;           // -1 undecided, otherwise the option index.
+    bool choiceApplied = false;
+    int magnitude = 0;         // Kind-specific parameter (e.g. plague loss percent).
+    int featureId = 0;         // Feature spawned by the event (subspace rift).
+};
+struct EventChoiceInfo { int index = 0; std::string label, effect; bool isDefault = false; };
+
+struct BuildTemplate {
+    int id = 0, ownerId = 1;
+    std::string name;
+    std::vector<Construction> items; // product + referenceId (work 0, unpinned)
+    bool autoApply = false;          // Default template for newly acquired colonies.
+};
+
+struct Megaproject { int ownerId = 1, systemId = 0, work = 0, startTurn = 0; };
+
+enum class VictoryCondition : int { Conquest = 0, Domination = 1, Scientific = 2, Diplomatic = 3 };
+struct VictoryProgress {
+    int empireId = 0;
+    VictoryCondition condition = VictoryCondition::Conquest;
+    bool enabled = true;
+    bool achieved = false;
+    int percent = 0; // 0-100
+    std::string explanation;
+};
+
+enum class ChronicleCategory : int {
+    Construction = 0, Research = 1, Exploration = 2, Colonization = 3, Combat = 4,
+    Diplomacy = 5, Intelligence = 6, Events = 7, Stations = 8, Victory = 9
+};
+struct ChronicleEntry {
+    ChronicleCategory category = ChronicleCategory::Events;
+    std::string text;
+    int x = -1, y = -1;       // Sector (-1 = none)
+    int systemId = 0, fleetId = 0, stationId = 0, eventId = 0;
+    int empireId = 0, otherEmpireId = 0;
+    int eventIndex = -1;      // Index of the matching line in TurnReport::events.
+};
+
 struct GameState : EmpireState {
     std::uint64_t seed = 0, rngState = 0;
     std::uint64_t lastAcceptedCommand = 0;
@@ -282,6 +397,21 @@ struct GameState : EmpireState {
     // engine, in advance() and in campaign sessions alike. Schema 4-11 saves load
     // with false and keep the legacy strategic resolver in headless advance().
     bool unifiedCombat = false;
+    // Schema-13 gameplay layer (all empty/off for schema 4-12 saves):
+    GameplayRules rules;
+    std::vector<Station> stations;
+    int nextStationId = 1;
+    std::vector<StationUpgrade> stationUpgrades;
+    std::vector<GalaxyFeature> galaxyFeatures;
+    int nextFeatureId = 1;
+    std::vector<GalacticEvent> galacticEvents;
+    int nextEventId = 1;
+    int lastCuratedEventTurn = 0;
+    std::vector<int> eventDeck;   // GalacticEventKind values in draw order.
+    int eventDeckPosition = 0;
+    std::vector<BuildTemplate> buildTemplates;
+    int nextBuildTemplateId = 1;
+    std::vector<Megaproject> megaprojects;
 };
 struct Economy {
     int food = 0, foodDeficit = 0, industry = 0, research = 0;
@@ -312,6 +442,9 @@ struct TurnReport {
     std::vector<CombatReport> battles;
     std::vector<InvasionReport> invasions;
     CampaignOutcome outcome = CampaignOutcome::Ongoing;
+    // Schema 13: structured, categorized "Turn Briefing" covering every line of
+    // `events` (same order) plus structured references. Player-visible only.
+    std::vector<ChronicleEntry> chronicle;
 };
 
 const char* startingEraName(StartingEra era);
@@ -453,5 +586,91 @@ Command makeMoveConstructionCommand(std::uint64_t id, int systemId, int queueInd
 
 void evaluateWorkforceGovernor(const GameState& state, Colony& colony);
 void evaluateQueueGovernor(const GameState& state, Colony& colony);
+
+// ---------------------------------------------------------------------------
+// Schema-13 gameplay layer APIs (docs/GAMEPLAY-REMASTER.md)
+// ---------------------------------------------------------------------------
+// Ruleset presets and new-game setup. generateCampaign()/generateReferenceCampaign()
+// keep producing the pre-13 baseline (Classic with every layer off); new games
+// should use newCampaign(), whose preset defaults to Remastered.
+struct CampaignSetup {
+    std::uint64_t seed = 1999;
+    int empires = 5, width = 16, height = 12, systems = 28, playerEmpire = 1;
+    StartingEra era = StartingEra::Early;
+    bool reference = true;
+    RulesetPreset preset = RulesetPreset::Remastered;
+};
+GameState newCampaign(const CampaignSetup& setup);
+// Lane G: places a deterministic, galaxy-size-scaled subset of the minor-race roster (MinorRaces.h)
+// on a turn-0 campaign and adopts roster-named starter minors. newCampaign() calls it for every preset;
+// generateCampaign()/generateReferenceCampaign() stay on the legacy baseline.
+void placeMinorRaceRoster(GameState& state);
+GameplayRules rulesForPreset(RulesetPreset preset);
+const char* rulesetPresetName(RulesetPreset preset);
+bool parseRulesetPreset(const std::string& text, RulesetPreset& preset); // "classic" / "remastered" (case-insensitive)
+// Switches a freshly generated (turn 0) campaign to a preset, generating galaxy
+// features and the event deck when the preset enables them.
+void applyRulesetPreset(GameState& state, RulesetPreset preset);
+
+// Stations (outposts and starbases).
+const Station* stationById(const GameState& state, int stationId);
+const Station* stationAt(const GameState& state, int x, int y);
+StationStats stationStats(const GameState& state, const Station& station);
+StationStats stationStats(const GameState& state, int ownerId, StationType type);
+const char* stationTypeName(StationType type);
+std::string stationName(const Station& station);
+std::vector<Station> visibleStations(const GameState& state, int viewerEmpire); // Own stations plus sensor contacts.
+int outpostBuildTurns(const GameState& state, int ownerId);
+std::string outpostBlocker(const GameState& state, int fleetId); // Empty when BuildOutpost is legal.
+StationUpgradeCost stationUpgradeCost(const GameState& state, int ownerId);
+std::string stationUpgradeBlocker(const GameState& state, int stationId, int fundingSystemId);
+const StationUpgrade* stationUpgradeFor(const GameState& state, int stationId);
+bool isStationCombatant(int fleetId);
+int stationIdForCombatant(int fleetId);
+Command makeBuildOutpostCommand(std::uint64_t id, int fleetId);
+Command makeUpgradeStationCommand(std::uint64_t id, int stationId, int fundingSystemId);
+
+// Galaxy features and anomalies.
+const char* galaxyFeatureName(GalaxyFeatureType type);
+std::vector<GalaxyFeature> featuresAt(const GameState& state, int x, int y); // Includes ion storm fronts.
+std::vector<GalaxyFeature> knownFeatures(const GameState& state, int viewerEmpire); // Explored cells only.
+std::vector<std::pair<int, int>> ionStormCells(const GameState& state, const GalaxyFeature& storm);
+bool sectorPassable(const GameState& state, int x, int y);  // Black holes and subspace rifts block movement.
+bool sectorHazardous(const GameState& state, int x, int y); // Neutron stars and ion storms damage ships.
+bool sectorInNebula(const GameState& state, int x, int y);
+
+// Curated galactic events.
+const char* galacticEventName(GalacticEventKind kind);
+std::vector<EventChoiceInfo> eventChoices(GalacticEventKind kind);
+int eventDefaultChoice(GalacticEventKind kind);
+std::string describeEvent(const GameState& state, const GalacticEvent& event);
+std::vector<GalacticEvent> empireEvents(const GameState& state, int empireId); // Active events affecting an empire.
+Command makeResolveEventChoiceCommand(std::uint64_t id, int eventId, int option);
+
+// Build-queue templates.
+std::vector<BuildTemplate> empireBuildTemplates(const GameState& state, int ownerId);
+const BuildTemplate* buildTemplateById(const GameState& state, int templateId);
+Command makeDefineBuildTemplateCommand(std::uint64_t id, int templateId, const std::string& name,
+                                       const std::vector<Construction>& items);
+Command makeDeleteBuildTemplateCommand(std::uint64_t id, int templateId);
+Command makeApplyBuildTemplateCommand(std::uint64_t id, int templateId, int systemId);
+Command makeSetDefaultBuildTemplateCommand(std::uint64_t id, int templateId); // 0 clears the default.
+
+// Victory conditions and progress.
+std::vector<VictoryProgress> victoryProgress(const GameState& state, int empireId);
+const char* victoryConditionName(VictoryCondition condition);
+int scientificVictoryThreshold(const GameState& state);
+const char* megaprojectName(const GameState& state);
+int megaprojectIndustryCost(const GameState& state);
+int megaprojectWorkPerTurn(const GameState& state, int empireId); // Most industry the project absorbs per turn.
+std::int64_t megaprojectCreditCost(const GameState& state);
+const Megaproject* empireMegaproject(const GameState& state, int empireId);
+std::string megaprojectBlocker(const GameState& state, int empireId, int systemId);
+Command makeStartMegaprojectCommand(std::uint64_t id, int systemId);
+Command makeCancelMegaprojectCommand(std::uint64_t id);
+
+// Turn chronicle.
+const char* chronicleCategoryName(ChronicleCategory category);
+std::string describeChronicle(const TurnReport& report);
 } // namespace botf
 

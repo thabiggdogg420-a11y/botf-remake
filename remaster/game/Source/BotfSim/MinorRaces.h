@@ -5,14 +5,16 @@
 // one-line hooks (generation, turn review, economy, morale, invasion, membership, save, validate).
 //
 // Managed minors: a Minor with raceId != 0 carries roster identity plus progression state
-// (techLevel, population, progress). New campaigns (generateCampaign*) place managed minors;
-// minors from older saves and hand-built fixtures keep raceId 0 and the legacy rules, and are
-// matched to the roster by name only for display and for their join bonus.
+// (techLevel, population, progress). New campaigns (newCampaign -> placeMinorRaceRoster) place
+// managed minors; generateCampaign*/generateReferenceCampaign* keep the legacy baseline. Minors from
+// older saves and hand-built fixtures keep raceId 0 and the legacy rules exactly (flat +10% research
+// on membership, 30-population colony, morale 70); raceFor() matches them by name for display only.
 //
 // Save support: the optional section
 //     MINOR_RACES <count>
 //     <systemId> <raceId> <techLevel> <population> <progress>     (one line per managed minor)
-// is written after COLONY_GOVERNORS and before CHECKSUM, and only when at least one minor is managed.
+// is written after GAMEPLAY_LAYER and before CHECKSUM (schema 13, no bump), and only when at least one
+// minor is managed.
 // Saves without it load exactly as before.
 #pragma once
 
@@ -176,7 +178,7 @@ inline bool managed(const Minor& m) { return m.raceId != 0; }
 
 // Number of minors a new campaign of this size should hold (including the starter minor).
 inline int rosterTarget(int systemCount) {
-    return std::clamp(systemCount / 7, 1, MinorRaceCount);
+    return std::clamp(systemCount / 5, 1, MinorRaceCount);
 }
 
 // Technology progress needed to reach the next level.
@@ -285,8 +287,8 @@ inline MemberBonuses memberBonuses(const GameState& s, int empireId) {
     for (const auto& m : s.minors) {
         if (m.memberOf != empireId) continue;
         ++b.members;
-        const auto* r = raceFor(m);
-        if (!r) { b.researchPct += 10; continue; } // Legacy membership dividend for unknown minors.
+        const auto* r = managed(m) ? raceById(m.raceId) : nullptr;
+        if (!r) { b.researchPct += 10; continue; } // Legacy minors keep the flat pre-roster research dividend.
         switch (r->bonus) {
             case JoinBonus::Research: b.researchPct += r->bonusValue; break;
             case JoinBonus::Industry: b.industryPct += r->bonusValue; break;

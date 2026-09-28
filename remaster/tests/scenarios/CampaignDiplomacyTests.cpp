@@ -315,11 +315,6 @@ int main() {
         run("diplomatic victory predicate: alliance blocs holding a population majority", [] {
             auto s = botf::generateReferenceCampaign(101, 3);
             s.aiAggressionEnabled = false;
-            // Keep only the starter minor so the three-equal-empires arithmetic holds; roster minors
-            // (MinorRaces.h) each add nominal population to the galaxy total.
-            std::erase_if(s.minors, [](const botf::Minor& m) { return m.name != "Bynars"; });
-            std::erase_if(s.diplomacyEngineState.minorStates, [&](const auto& ms) { return !botf::minorAt(s, ms.minorId); });
-            botf::validate(s);
             meetEveryone(s);
             const auto alone = botf::diplomaticVictoryStatus(s, 1);
             check(!alone.achieved && alone.allies.empty(), "No bloc, no diplomatic victory");

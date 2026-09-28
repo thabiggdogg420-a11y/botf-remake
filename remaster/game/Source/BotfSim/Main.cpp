@@ -34,6 +34,37 @@ std::string readSave(const std::filesystem::path& path) {
     if (!file) throw std::runtime_error("Cannot open save");
     return {std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>()};
 }
+// Schema-13 gameplay layer summary for the player (fog of war respected).
+void printGameplayLayer(const botf::GameState& state) {
+    const auto& rules = state.rules;
+    std::cout << "RULESET " << botf::rulesetPresetName(rules.preset) << " | stations " << rules.stations
+        << " | anomalies " << rules.galaxyFeatures << " | curated events " << rules.curatedEvents
+        << " | alternative victories " << rules.alternativeVictories << '\n';
+    for (const auto& station : botf::visibleStations(state, state.playerEmpire)) {
+        const auto stats = botf::stationStats(state, station);
+        std::cout << "  STATION " << botf::stationName(station) << " (" << botf::empireName(station.ownerId) << ") at ("
+            << station.x << ',' << station.y << ") hull " << station.hull << '/' << stats.maxHull << " shields "
+            << station.shields << '/' << stats.maxShields;
+        if (const auto upgrade = botf::stationUpgradeFor(state, station.id))
+            std::cout << " | starbase upgrade " << upgrade->work << '/' << botf::stationUpgradeCost(state, station.ownerId).industry;
+        std::cout << '\n';
+    }
+    for (const auto& feature : botf::knownFeatures(state, state.playerEmpire))
+        std::cout << "  ANOMALY " << botf::galaxyFeatureName(feature.type) << " at (" << feature.x << ',' << feature.y << ")"
+            << ((feature.surveyedMask >> state.playerEmpire) & 1 ? " (surveyed)" : "") << '\n';
+    for (const auto& event : botf::empireEvents(state, state.playerEmpire)) {
+        std::cout << "  EVENT #" << event.id << ' ' << botf::galacticEventName(event.kind) << ": " << botf::describeEvent(state, event);
+        if (event.choiceDeadline > 0 && event.choice < 0) {
+            std::cout << " Options:";
+            for (const auto& option : botf::eventChoices(event.kind))
+                std::cout << " [" << option.index << "] " << option.label << (option.isDefault ? " (default)" : "");
+        }
+        std::cout << '\n';
+    }
+    for (const auto& progress : botf::victoryProgress(state, state.playerEmpire))
+        std::cout << "  VICTORY " << botf::victoryConditionName(progress.condition) << ' ' << progress.percent << "% "
+            << (progress.enabled ? "" : "(disabled) ") << "- " << progress.explanation << '\n';
+}
 void saveNew(const std::filesystem::path& path, const botf::GameState& state) {
     // Never overwrite an existing user save. A failed write is left recoverable.
     auto temporary = path;
@@ -62,15 +93,20 @@ int main(int argc, char** argv) {
         int playerEmpire = 1;
         bool seedSet = false;
         bool reference = false;
-        bool eraSet = false;
+        bool eraSet = false, rulesetSet = false, chronicle = false;
         botf::StartingEra era = botf::StartingEra::Early;
+        botf::RulesetPreset preset = botf::RulesetPreset::Remastered;
         std::string loadPath, savePath, battleFixturePath;
         for (int i = 1; i < argc; ++i) {
             const std::string option = argv[i];
             if (option == "--help") {
                 std::cout << "BotfSim [--seed N | --load FILE] [--empires 2..5] [--player 1..5] [--reference]\n"
-                    << "        [--era early|developed|expanded|advanced|supreme] [--turns N] [--save NEW_FILE]\n"
+                    << "        [--era early|developed|expanded|advanced|supreme] [--ruleset classic|remastered]\n"
+                    << "        [--turns N] [--save NEW_FILE] [--chronicle]\n"
                     << "--era selects the starting era for a new --empires campaign (default early; also 1..5).\n"
+                    << "--ruleset selects the preset for a new --empires campaign (default remastered: anomalies,\n"
+                    << "  curated events and alternative victories; classic: original-like with outposts/starbases).\n"
+                    << "--chronicle prints each turn as a categorized briefing instead of plain event lines.\n"
                     << "New campaigns use save schema " << botf::SaveVersion << " (" << botf::ContentVersion
                     << "): every battle resolves through the tactical engine. Older saves load and continue.\n"
                     << "BotfSim --battle-fixture NEW_FILE writes a campaign after one structured battle.\n"
@@ -79,6 +115,7 @@ int main(int argc, char** argv) {
                 return 0;
             }
             if (option == "--reference") { reference = true; continue; }
+            if (option == "--chronicle") { chronicle = true; continue; }
             if (i + 1 >= argc) throw std::runtime_error("Missing option value");
             const std::string value = argv[++i];
             if (option == "--seed") { seed = number(value); seedSet = true; }
@@ -95,13 +132,17 @@ int main(int argc, char** argv) {
                 if (n < 1 || n > 5) throw std::runtime_error("Player empire must be one through five");
                 playerEmpire = static_cast<int>(n);
             } else if (option == "--era") { era = parseEra(value); eraSet = true; }
+            else if (option == "--ruleset") {
+                if (!botf::parseRulesetPreset(value, preset)) throw std::runtime_error("Unknown ruleset: " + value + " (classic, remastered)");
+                rulesetSet = true;
+            }
             else if (option == "--load") loadPath = value;
             else if (option == "--save") savePath = value;
             else if (option == "--battle-fixture") battleFixturePath = value;
             else throw std::runtime_error("Unknown option: " + option);
         }
         if (!battleFixturePath.empty()) {
-            if (seedSet || empires || !loadPath.empty() || !savePath.empty() || reference || playerEmpire != 1 || eraSet)
+            if (seedSet || empires || !loadPath.empty() || !savePath.empty() || reference || playerEmpire != 1 || eraSet || rulesetSet)
                 throw std::runtime_error("Battle fixture option cannot be combined with a campaign or save option");
             auto fixture = botf::generateReferenceCampaign(1999);
             fixture.eventsEnabled = false; fixture.aiAggressionEnabled = false;
@@ -123,13 +164,16 @@ int main(int argc, char** argv) {
             return 0;
         }
         if (seedSet && !loadPath.empty()) throw std::runtime_error("Choose --seed or --load, not both");
-        if ((empires || reference || playerEmpire != 1 || eraSet) && !loadPath.empty())
+        if ((empires || reference || playerEmpire != 1 || eraSet || rulesetSet) && !loadPath.empty())
             throw std::runtime_error("Cannot change campaign setup while loading a save");
         if (playerEmpire != 1 && !empires) throw std::runtime_error("Choose --empires with --player");
         if (eraSet && !empires) throw std::runtime_error("Choose --empires with --era");
+        if (rulesetSet && !empires) throw std::runtime_error("Choose --empires with --ruleset");
         if (empires && playerEmpire > empires) throw std::runtime_error("Player empire exceeds campaign empire count");
-        auto state = loadPath.empty() ? (empires ? (reference ? botf::generateReferenceCampaign(seed, empires, 16, 12, 28, playerEmpire, era)
-            : botf::generateCampaign(seed, empires, 16, 12, 28, playerEmpire, era)) : botf::generate(seed)) : botf::deserialize(readSave(loadPath));
+        botf::CampaignSetup setup;
+        setup.seed = seed; setup.empires = empires; setup.playerEmpire = playerEmpire;
+        setup.era = era; setup.reference = reference; setup.preset = preset;
+        auto state = loadPath.empty() ? (empires ? botf::newCampaign(setup) : botf::generate(seed)) : botf::deserialize(readSave(loadPath));
         if (loadPath.empty()) {
             std::uint64_t id = 0;
             const auto home = std::find_if(state.colonies.begin(), state.colonies.end(), [&](const botf::Colony& colony) {
@@ -149,8 +193,17 @@ int main(int argc, char** argv) {
             << ", " << state.systems.size() << " systems, turn " << state.turn << '\n';
         for (const auto& system : state.systems)
             std::cout << "  " << system.id << ' ' << system.name << " (" << system.x << ',' << system.y << ")\n";
-        for (int i = 0; i < turns && state.outcome == botf::CampaignOutcome::Ongoing; ++i)
-            std::cout << botf::describe(botf::advance(state));
+        for (int i = 0; i < turns && state.outcome == botf::CampaignOutcome::Ongoing; ++i) {
+            const auto report = botf::advance(state);
+            if (chronicle) {
+                auto summary = report;
+                summary.events.clear(); // The briefing replaces the plain event lines.
+                std::cout << botf::describe(summary) << botf::describeChronicle(report);
+            } else {
+                std::cout << botf::describe(report);
+            }
+        }
+        printGameplayLayer(state);
         std::cout << "FINAL_HASH " << botf::fingerprint(state) << '\n';
         if (!savePath.empty()) {
             saveNew(savePath, state);

@@ -35,17 +35,25 @@ needs_build() {  # target, sources...
 }
 
 CORE_HEADERS=("$CORE"/*.h)
-if needs_build "$CACHE/Simulation.o" "$CORE/Simulation.cpp" "${CORE_HEADERS[@]}"; then
-  echo "[wasm] compiling simulation core (slow: large constexpr catalogues)..."
-  em++ "${CXXFLAGS[@]}" -c "$CORE/Simulation.cpp" -o "$CACHE/Simulation.o"
-fi
+# Every core translation unit except the CLI entry point.
+CORE_OBJECTS=()
+for src in "$CORE"/*.cpp; do
+  name="$(basename "$src" .cpp)"
+  [[ "$name" == "Main" ]] && continue
+  obj="$CACHE/$name.o"
+  CORE_OBJECTS+=("$obj")
+  if needs_build "$obj" "$src" "${CORE_HEADERS[@]}"; then
+    echo "[wasm] compiling core $name.cpp..."
+    em++ "${CXXFLAGS[@]}" -c "$src" -o "$obj"
+  fi
+done
 if needs_build "$CACHE/WebBridge.o" "$BRIDGE/WebBridge.cpp" "$BRIDGE/Json.h" "${CORE_HEADERS[@]}"; then
   echo "[wasm] compiling bridge..."
   em++ "${CXXFLAGS[@]}" -c "$BRIDGE/WebBridge.cpp" -o "$CACHE/WebBridge.o"
 fi
 
 echo "[wasm] linking ES module..."
-em++ -O2 -fexceptions "$CACHE/Simulation.o" "$CACHE/WebBridge.o" -o "$OUT/botf-core.mjs" \
+em++ -O2 -fexceptions "${CORE_OBJECTS[@]}" "$CACHE/WebBridge.o" -o "$OUT/botf-core.mjs" \
   -sSINGLE_FILE=1 -sMODULARIZE=1 -sEXPORT_ES6=1 -sALLOW_MEMORY_GROWTH=1 \
   -sEXPORT_NAME=createBotfCore -sENVIRONMENT=web,worker,node \
   -sINITIAL_MEMORY=33554432 -sSTACK_SIZE=4194304 \

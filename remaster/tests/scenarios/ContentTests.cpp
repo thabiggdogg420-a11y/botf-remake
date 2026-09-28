@@ -377,6 +377,15 @@ void join(botf::GameState& s, botf::Minor& m, int owner) {
     known.erase(std::unique(known.begin(), known.end()), known.end());
     botf::syncDiplomacyState(s);
 }
+// A new campaign as clients start one (newCampaign places the minor-race roster).
+botf::GameState fresh(std::uint64_t seed, int empires = 5, bool reference = true,
+                      botf::RulesetPreset preset = botf::RulesetPreset::Classic, int w = 16, int h = 12, int systems = 28,
+                      botf::StartingEra era = botf::StartingEra::Early) {
+    botf::CampaignSetup setup;
+    setup.seed = seed; setup.empires = empires; setup.reference = reference; setup.preset = preset;
+    setup.width = w; setup.height = h; setup.systems = systems; setup.era = era;
+    return botf::newCampaign(setup);
+}
 std::string withChecksum(std::string body) {
     if (const auto pos = body.rfind("CHECKSUM "); pos != std::string::npos) body.erase(pos);
     return body + "CHECKSUM " + std::to_string(fnv(body)) + "\n";
@@ -449,8 +458,8 @@ int main() {
         struct Size { int w, h, systems; };
         for (const auto size : {Size{12, 8, 14}, Size{16, 12, 28}, Size{20, 15, 42}, Size{24, 16, 56}}) {
             for (std::uint64_t seed : {1ULL, 1999ULL, 424242ULL}) {
-                const auto a = botf::generateCampaign(seed, 2, size.w, size.h, size.systems);
-                const auto b = botf::generateCampaign(seed, 2, size.w, size.h, size.systems);
+                const auto a = fresh(seed, 2, false, botf::RulesetPreset::Classic, size.w, size.h, size.systems);
+                const auto b = fresh(seed, 2, false, botf::RulesetPreset::Classic, size.w, size.h, size.systems);
                 check(botf::serialize(a) == botf::serialize(b), "same seed, same galaxy");
                 check(static_cast<int>(a.minors.size()) == botf::minors::rosterTarget(size.systems),
                       "minor count " + std::to_string(a.minors.size()) + " for " + std::to_string(size.systems) + " systems");
@@ -468,21 +477,30 @@ int main() {
                         check(m.name == "Bynars" || m.attitude[static_cast<std::size_t>(e)] == 60 + 5 * r->affinity[static_cast<std::size_t>(e)] - xeno,
                               "initial attitude follows affinity");
                 }
-                const auto ref = botf::generateReferenceCampaign(seed, 2, size.w, size.h, size.systems);
-                check(ref.minors.size() == a.minors.size(), "reference campaigns place the same roster");
-                for (std::size_t i = 0; i < ref.minors.size(); ++i) check(ref.minors[i].raceId == a.minors[i].raceId, "same placement");
+                for (const auto preset : {botf::RulesetPreset::Classic, botf::RulesetPreset::Remastered}) {
+                    const auto ref = fresh(seed, 2, true, preset, size.w, size.h, size.systems);
+                    check(ref.minors.size() == a.minors.size(), "reference campaigns and both presets place the same roster");
+                    for (std::size_t i = 0; i < ref.minors.size(); ++i)
+                        check(ref.minors[i].raceId == a.minors[i].raceId && ref.minors[i].systemId == a.minors[i].systemId, "same placement");
+                }
+                // The legacy generators keep the pre-roster baseline: only the unmanaged starter minor.
+                const auto legacy = botf::generateReferenceCampaign(seed, 2, size.w, size.h, size.systems);
+                check(std::none_of(legacy.minors.begin(), legacy.minors.end(), [](const botf::Minor& m) { return botf::minors::managed(m); }) &&
+                      legacy.minors.size() <= 1, "generateReferenceCampaign stays on the legacy baseline");
             }
         }
+        check(fresh(5, 5, true, botf::RulesetPreset::Classic, 12, 8, 14).minors.size() <
+              fresh(5, 5, true, botf::RulesetPreset::Classic, 32, 24, 90).minors.size(), "bigger galaxies hold more minors");
         std::set<std::vector<int>> selections;
         for (std::uint64_t seed = 1; seed <= 12; ++seed) {
             std::vector<int> ids;
-            for (const auto& m : botf::generateCampaign(seed).minors) ids.push_back(m.raceId);
+            for (const auto& m : fresh(seed).minors) ids.push_back(m.raceId);
             std::sort(ids.begin(), ids.end());
             selections.insert(ids);
         }
         check(selections.size() >= 6, "different seeds meet different minors");
         // Later eras start minors further along.
-        const auto supreme = botf::generateCampaignWithEra(1999, botf::StartingEra::Supreme);
+        const auto supreme = fresh(1999, 5, true, botf::RulesetPreset::Classic, 16, 12, 28, botf::StartingEra::Supreme);
         for (const auto& m : supreme.minors)
             check(m.techLevel == std::min(10, botf::minors::raceFor(m)->techLevel + 4), "era offset on minor technology");
     }, passed);
@@ -535,7 +553,7 @@ int main() {
     }, passed);
 
     run("membership through the real pipeline uses the roster profile", [] {
-        auto s = botf::generateReferenceCampaign(55);
+        auto s = fresh(55);
         auto& m = s.minors.front();
         const int minorSystem = m.systemId;
         m.contact[1] = true; m.attitude[1] = 95; m.friendshipTurn[1] = 1;
@@ -568,8 +586,26 @@ int main() {
         check(botf::minors::memberBonuses(s, 1).researchPct == 20, "unknown legacy minors keep the generic dividend");
     }, passed);
 
+    run("old saves keep their minors exactly and load byte-identically", [] {
+        for (const bool reference : {false, true}) {
+            auto s = reference ? botf::generateReferenceCampaign(8080, 3) : botf::generateCampaign(8080, 3);
+            for (int t = 0; t < 11; ++t) botf::advance(s);
+            const auto text = botf::serialize(s);
+            check(text.find("MINOR_RACES") == std::string::npos, "legacy campaigns write no roster section");
+            const auto loaded = botf::deserialize(text);
+            check(botf::serialize(loaded) == text, "byte-identical reload");
+            check(loaded.minors.size() == s.minors.size(), "same minors");
+            for (std::size_t i = 0; i < s.minors.size(); ++i) {
+                const auto& a = s.minors[i];
+                const auto& b = loaded.minors[i];
+                check(a.name == b.name && a.systemId == b.systemId && a.memberOf == b.memberOf && a.attitude == b.attitude &&
+                      !botf::minors::managed(b) && b.techLevel == 0 && b.population == 0, "legacy minor unchanged");
+            }
+        }
+    }, passed);
+
     run("minors grow and advance over time, deterministically across save/load", [] {
-        auto s = botf::generateReferenceCampaign(31337, 2);
+        auto s = fresh(31337, 2, true, botf::RulesetPreset::Remastered);
         s.aiAggressionEnabled = false;
         const auto start = s.minors;
         auto resumed = botf::deserialize(botf::serialize(s));
@@ -651,7 +687,7 @@ int main() {
     }, passed);
 
     run("MINOR_RACES save section: round trip, optional on load, strict validation", [] {
-        auto s = botf::generateReferenceCampaign(1999);
+        auto s = fresh(1999, 5, true, botf::RulesetPreset::Remastered);
         for (int t = 0; t < 12; ++t) botf::advance(s);
         const auto text = botf::serialize(s);
         check(text.find("\nMINOR_RACES " + std::to_string(s.minors.size()) + "\n") != std::string::npos, "section written");

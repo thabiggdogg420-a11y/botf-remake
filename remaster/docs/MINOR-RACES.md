@@ -38,16 +38,21 @@ file without carrying the descriptions across. The test will catch it if you do.
 
 Vulcans, Andorians, Bajorans, Trill and the other BOTF minors are minors here. They are not majors.
 
-**Placement.** `generateCampaign*` keeps the starter Bynars and gives them their roster profile.
-`placeRosterMinors` then adds minors until there are `rosterTarget(systems) = clamp(systems / 7, 1, 30)`
-of them:
+**Placement.** `newCampaign(CampaignSetup)` calls `placeMinorRaceRoster(state)` for both presets
+(Classic and Remastered) and both rulesets, after the map is generated and before the preset is applied.
+It keeps the starter Bynars and gives them their roster profile. `placeRosterMinors` then adds minors
+until there are `rosterTarget(systems) = clamp(systems / 5, 1, 30)` of them:
 
 | Systems | Minors |
 |---|---|
 | 14 | 2 |
-| 28 | 4 |
-| 42 | 6 |
-| 56 | 8 |
+| 28 (default) | 5 |
+| 42 | 8 |
+| 56 | 11 |
+| 150+ | 30 |
+
+`generateCampaign*` and `generateReferenceCampaign*` are unchanged. They keep producing Lane D's
+pre-roster baseline (one unmanaged Bynars minor), so fixtures, old tests and old saves are unaffected.
 
 How placement works:
 
@@ -61,9 +66,10 @@ Existing saves keep exactly the minors they had.
 
 ## 3. Rules
 
-A **managed** minor is one with `raceId != 0`. Minors from older saves or hand-built fixtures keep
-`raceId 0`. They follow the legacy rules unchanged, and are matched to the roster by name only for
-display and for their join bonus.
+A **managed** minor is one with `raceId != 0`. Minors from older saves, the legacy generators and
+hand-built fixtures keep `raceId 0`. They follow the legacy rules exactly: +10% research on membership,
+a 30-population colony, morale target 70, no progression. `raceFor()` matches them to the roster by name
+for display only.
 
 **Join bonus** (`memberBonuses`). Each member minor adds its bonus to every colony of its empire:
 
@@ -74,8 +80,8 @@ display and for their join bonus.
 | Morale | Raises the morale level colonies settle toward (70 + bonus, bonuses capped at +20) |
 | GroundDefense | Percent of invasion defense strength |
 
-A minor with no roster profile keeps the legacy +10% research. The Bynars' roster bonus is exactly
-that +10%. Bonuses come from current membership only, so secession or conquest removes them at once.
+A legacy (unmanaged) minor keeps the flat +10% research. The Bynars' roster bonus is exactly that
++10%. Bonuses come from current membership only, so secession or conquest removes them at once.
 
 **Joining.** A managed minor's new colony has the minor's own population, with workers fitted to the
 default facilities (`configureJoinedColony`). Legacy minors bring 30.
@@ -105,8 +111,8 @@ default facilities (`configureJoinedColony`). Legacy minors bring 30.
 
 `Minor` gains `raceId`, `techLevel`, `population` and `progress`, all 0 for legacy minors.
 
-There is one optional section. It comes after `COLONY_GOVERNORS` and before `CHECKSUM`, and is written
-only when at least one minor is managed:
+There is one optional section. It comes after Lane D's `GAMEPLAY_LAYER ... END_GAMEPLAY_LAYER` and
+before `CHECKSUM`, and is written only when at least one minor is managed:
 
 ```
 MINOR_RACES <count>
@@ -120,9 +126,9 @@ Loading enforces the following:
 - The raceId is known, unique and matches the minor's name.
 - The tech level is 1..10, the population is 1..1000, and progress is below the next threshold.
 
-A save without the section loads its minors as legacy minors. No schema bump was needed. The section
-is independent of Lane D's schema-13 sections, so a merge only needs to keep its position just before
-`CHECKSUM`.
+A save without the section loads its minors as legacy minors, and re-serializes byte-identically.
+The schema stays 13; no bump or migration was needed. The section is accepted only in a schema-13 save:
+schema 11 and 12 saves cannot contain it.
 
 ## 5. For clients
 
@@ -130,7 +136,9 @@ The web and Unreal clients can use:
 
 - `minors::raceFor(minor)` to get a minor's profile: name, homeworld, temperament, `describeJoinBonus`, description and `signatureShipId`;
 - `Minor::techLevel` and `Minor::population` for the current progression;
-- `minors::memberBonuses(state, empire)` for the empire screen.
+- `minors::memberBonuses(state, empire)` for the empire screen;
+- `minors::Roster`, `raceById`, `temperamentName`, `joinBonusName` for encyclopedia screens;
+- `placeMinorRaceRoster(state)` if a client builds its own turn-0 campaign without `newCampaign`.
 
 ## 6. Not done yet
 
