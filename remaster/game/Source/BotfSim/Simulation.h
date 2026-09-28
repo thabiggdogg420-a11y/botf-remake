@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <array>
 #include <functional>
@@ -14,9 +15,14 @@ namespace botf {
 // BOTF Remastered schema and content. Schema 12 adds the unified tactical combat
 // model and fusion-plant accounting; schema 13 adds the gameplay layer (ruleset
 // presets, stations, galaxy features, curated events, alternative victories and
-// build templates, see docs/GAMEPLAY-REMASTER.md). Schemas 4-12 still load and continue.
-inline constexpr const char* ContentVersion = "remaster-13";
-inline constexpr int SaveVersion = 13;
+// build templates, see docs/GAMEPLAY-REMASTER.md); schema 14 adds per-ship orders and
+// flags to recorded battle rounds (COMBAT_ORDERS) and the RefuseCallToArms order.
+// Schemas 4-13 still load and continue.
+inline constexpr const char* ContentVersion = "remaster-14";
+inline constexpr int SaveVersion = 14;
+// Largest campaign save deserialize() accepts (and the CLI reads). A 300-turn
+// five-empire Remastered soak peaks far below this; see GAMEPLAY-REMASTER.md.
+inline constexpr std::size_t MaxSaveBytes = 8u * 1024u * 1024u;
 namespace tactical { struct Encounter; }
 enum class Ruleset : int { Prototype, Reference };
 enum class StartingEra : int { Early = 1, Developed = 2, Expanded = 3, Advanced = 4, Supreme = 5 };
@@ -44,7 +50,9 @@ enum class CommandType : int {
     // Appended for the schema-13 gameplay layer (GAMEPLAY-REMASTER.md):
     BuildOutpost, UpgradeStation, ResolveEventChoice,
     DefineBuildTemplate, DeleteBuildTemplate, ApplyBuildTemplate, SetDefaultBuildTemplate,
-    StartMegaproject, CancelMegaproject
+    StartMegaproject, CancelMegaproject,
+    // Appended for schema 14 (treaty integration, DIPLOMACY.md 4.1):
+    RefuseCallToArms
 };
 enum class CampaignOutcome : int { Ongoing, Victory, Defeat };
 inline constexpr int ResearchFields = 6, MaxTechLevel = 10;
@@ -169,6 +177,8 @@ struct Command {
     int templateId = 0;                      // Define/Delete/Apply/SetDefault build template
     std::string templateName;                // DefineBuildTemplate
     std::vector<Construction> templateItems; // DefineBuildTemplate (product + referenceId only)
+    // Schema 14: RefuseCallToArms names the defender in targetEmpire and the aggressor here.
+    int callAggressor = 0;
 };
 struct Fleet {
     int id = 0, ownerId = 1;
@@ -223,10 +233,23 @@ struct CombatParticipant {
     Building shipClass = Building::Scout;
     int referenceShipId = -1, initialHull = 0, initialShields = 0;
 };
+// Schema 14: what one ship did in one recorded round of a unified-resolver battle,
+// so replays from saves and older turns can show orders, not only damage.
+struct CombatShipOrder {
+    int fleetId = 0, targetFleetId = 0;
+    int maneuver = 0;          // tactical::TacticalManeuver executed (0 Engage ... 11 Hail)
+    bool aiControlled = false; // Chosen by the tactical AI rather than a player or standing order
+    bool decloaked = false;    // Dropped its cloak to attack (ambush volley)
+    bool disengaging = false;  // Retreating this round but not yet clear of the battle
+    bool hailed = false;       // Offered a truce
+    bool rammed = false;       // Carried out a ram impact
+    bool operator==(const CombatShipOrder&) const = default;
+};
 struct CombatRound {
     int index = 0;
     std::vector<FleetDamage> damage;
     std::vector<int> lostFleetIds, retreatedFleetIds;
+    std::vector<CombatShipOrder> orders; // Empty for legacy-resolver and pre-schema-14 battles.
 };
 struct CombatReport {
     int turn = 0, x = 0, y = 0, firstOwner = 0, secondOwner = 0, winnerOwner = 0;
@@ -429,6 +452,29 @@ struct ColonyReport {
 struct PopulationForecast { int minimum = 0, maximum = 0, upwardChances = 0; }; // Chance denominator 20000.
 inline constexpr int PrototypePopulationCapacity = 100, PrototypeGrowthBasisPoints = 200;
 PopulationForecast populationForecast(int population, int food, int capacity, int employment, int growthBasisPoints);
+// Treasury breakdown by source. creditForecast() predicts the coming turn; the
+// same structure in TurnReport::ledger records what the turn actually did.
+struct CreditForecast {
+    int empireId = 0;
+    std::int64_t treasury = 0;          // Credits before the turn.
+    std::int64_t orders = 0;            // Credits pending orders spend when the turn starts (rush buys, upgrades; <= 0).
+    // Income by source.
+    std::int64_t colonyIncome = 0;      // Colony revenue (population).
+    std::int64_t tradeRouteIncome = 0;  // Active trade routes.
+    std::int64_t treatyDividends = 0;   // Friendship/affiliation/alliance dividends (modern diplomacy).
+    std::int64_t eventIncome = 0;       // Curated events: trade boom, derelict salvage.
+    // Upkeep by source.
+    std::int64_t buildingUpkeep = 0;    // Colony structures.
+    std::int64_t fleetUpkeep = 0;       // Ship maintenance.
+    std::int64_t stationUpkeep = 0;     // Outposts and starbases.
+    std::int64_t eventCosts = 0;        // Paid event decisions (cure, shielding, meeting demands).
+    std::int64_t income = 0, upkeep = 0, net = 0; // income - upkeep
+    // Ledger only: changes no forecast can know in advance (gifts and tribute answered
+    // this turn, espionage theft, refunded minor gifts). Always 0 in a forecast.
+    std::int64_t other = 0;
+    std::int64_t nextTreasury = 0;      // treasury + orders + net (+ other in the ledger).
+    bool operator==(const CreditForecast&) const = default;
+};
 struct TurnReport {
     int turn = 0;
     std::int64_t creditsBefore = 0, creditsAfter = 0;
@@ -445,6 +491,8 @@ struct TurnReport {
     // Schema 13: structured, categorized "Turn Briefing" covering every line of
     // `events` (same order) plus structured references. Player-visible only.
     std::vector<ChronicleEntry> chronicle;
+    // Schema 14: the player's treasury movement this turn, by source (see CreditForecast).
+    CreditForecast ledger;
 };
 
 const char* startingEraName(StartingEra era);
@@ -563,6 +611,33 @@ Command makeProposeTreatyCommand(std::uint64_t id, int targetId, bool isTargetMi
 
 Command makeRespondProposalCommand(std::uint64_t id, std::uint64_t proposalId, bool accept,
                                    const std::string& reason = "");
+
+// ---------------------------------------------------------------------------
+// Treaty integration and client queries (schema 14; docs/GAMEPLAY-REMASTER.md
+// section 13 and DIPLOMACY.md section 4).
+// ---------------------------------------------------------------------------
+// True when the two empires may fight: formally at war and no non-aggression pact
+// or stronger (or timed peace) in force. Battles, invasions, station raids and
+// captures, AI targeting and player attack/invade orders all use it.
+bool combatAllowed(const GameState& state, int empireA, int empireB);
+// Refuses an open call to arms from `defenderId` against `aggressorId` at once:
+// -20 trust with the defender and +2 grievances (an AI defender may cancel the alliance).
+Command makeRefuseCallToArmsCommand(std::uint64_t id, int defenderId, int aggressorId);
+// Treasury forecast for the coming turn, by source. Colony, fleet, station and
+// order lines always equal what advance() charges; trade, treaty and event lines
+// match unless the turn itself changes a treaty or war (see TurnReport::ledger).
+CreditForecast creditForecast(const GameState& state, int empireId);
+int fleetUpkeep(const Fleet& fleet);                                  // Credits per turn.
+int tradeRouteRevenue(const GameState& state, const TradeRoute& route); // Credits per turn; 0 when idle.
+// Sectors per turn the fleet moves (its task force's pace when it belongs to one).
+int shipSpeed(const GameState& state, const Fleet& fleet);
+// Chebyshev distance from a powered shipyard (own or allied) within which the fleet
+// is supplied: shipRange + Propulsion/2. Stations and wormholes extend supply beyond it.
+int supplyRange(const GameState& state, const Fleet& fleet);
+int taskForceRange(const GameState& state, int taskForceId);          // Shortest member supply range (0 if none).
+// The sectors (x, y), start included, a task force would travel to reach (x, y);
+// empty exactly when SetTaskForceOrder would reject the destination.
+std::vector<std::pair<int, int>> taskForceRoute(const GameState& state, int taskForceId, int x, int y);
 
 // Modern Campaign Intelligence APIs (UI handoff for Claude)
 const intelligence::EmpireIntelState* empireIntelState(const GameState& state, int empireId);

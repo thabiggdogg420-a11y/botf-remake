@@ -9,6 +9,11 @@
 // upgrades outposts, answers events, applies build templates and starts the
 // megaproject; Classic-preset campaigns exercise stations alone.
 //
+// Schema 14: 300-turn five-empire Remastered campaigns (a passive player, so the
+// rivals decide the galaxy) measure AI-vs-AI wars, battles, station raids and
+// captures, check that no battle is fought under a pact, and record the largest
+// save, which must stay below botf::MaxSaveBytes.
+//
 // BOTF_SOAK_SCALE=N (environment) multiplies the seed count and adds turns for
 // longer local soaks; the default keeps CI time modest.
 #include "CampaignSession.h"
@@ -34,6 +39,7 @@ struct SoakConfig {
     bool lockstepSession = false;
     bool gameplayLayer = false; // newCampaign() with `preset` and a scripted player.
     botf::RulesetPreset preset = botf::RulesetPreset::Remastered;
+    bool passivePlayer = false; // No scripted orders or governors: AI-vs-AI statistics.
 };
 
 std::string describe(const SoakConfig& c) {
@@ -182,6 +188,11 @@ bool governorsEnabled() {
 struct SoakStats {
     int turns = 0, stationsBuilt = 0, stationBattles = 0, starbases = 0, surveys = 0, events = 0;
     bool alternativeVictory = false;
+    // Schema 14 war statistics (AI-vs-AI excludes the player).
+    int aiWars = 0, aiBattles = 0, aiStationBattles = 0, stationCaptures = 0, colonyCaptures = 0;
+    int firstEliminationTurn = 0;
+    std::size_t largestSave = 0;
+    std::string ending;
 };
 
 SoakStats soak(const SoakConfig& config) {
@@ -199,11 +210,11 @@ SoakStats soak(const SoakConfig& config) {
             return describe(config) + " turn " + std::to_string(state.turn) + " (" + phase + ")";
         };
         try {
-            if (turn % 20 == 0 && governorsEnabled()) {
+            if (turn % 20 == 0 && governorsEnabled() && !config.passivePlayer) {
                 assignGovernors(state, rng);
                 if (config.lockstepSession) mirror = state;
             }
-            if (config.gameplayLayer) {
+            if (config.gameplayLayer && !config.passivePlayer) {
                 scriptGameplay(state, rng);
                 if (config.lockstepSession) mirror = state;
             }
@@ -211,8 +222,31 @@ SoakStats soak(const SoakConfig& config) {
             const int stationsBefore = state.nextStationId, eventsBefore = state.nextEventId;
             int surveyBits = 0;
             for (const auto& f : state.galaxyFeatures) for (int e = 1; e <= 5; ++e) surveyBits += (f.surveyedMask >> e) & 1;
+            const auto before = state;
             const auto report = botf::advance(state);
             botf::validate(state);
+            const int player = state.playerEmpire;
+            for (const auto& r : state.majorRelations) {
+                const auto* old = botf::majorRelation(before, r.first, r.second);
+                if (r.atWar && old && !old->atWar && r.first != player && r.second != player) ++stats.aiWars;
+            }
+            for (const auto& b : report.battles) {
+                if (botf::treatyForbidsAttack(before, b.firstOwner, b.secondOwner)) throw std::runtime_error("battle fought under a pact");
+                if (b.firstOwner == player || b.secondOwner == player) continue;
+                ++stats.aiBattles;
+                if (std::any_of(b.participants.begin(), b.participants.end(), [](const botf::CombatParticipant& p) {
+                    return botf::isStationCombatant(p.fleetId); })) ++stats.aiStationBattles;
+            }
+            for (const auto& st : state.stations)
+                if (const auto* old = botf::stationById(before, st.id); old && old->ownerId != st.ownerId) ++stats.stationCaptures;
+            for (const auto& c : state.colonies)
+                if (const auto* old = botf::colonyAt(before, c.systemId); old && old->ownerId != c.ownerId) ++stats.colonyCaptures;
+            if (!stats.firstEliminationTurn)
+                for (int e = 1; e <= config.empires; ++e)
+                    if (botf::empireEliminated(state, e) && !botf::empireEliminated(before, e)) stats.firstEliminationTurn = state.turn;
+            if (state.outcome != botf::CampaignOutcome::Ongoing)
+                for (const auto& line : report.events)
+                    if (line.find("victory") != std::string::npos || line.find("defeat") != std::string::npos) stats.ending = line;
             if (report.chronicle.size() != report.events.size()) throw std::runtime_error("chronicle does not cover the events");
             stats.turns = state.turn;
             stats.stationsBuilt += state.nextStationId - stationsBefore;
@@ -239,6 +273,8 @@ SoakStats soak(const SoakConfig& config) {
         if (turn % 10 == 9 || state.outcome != botf::CampaignOutcome::Ongoing) {
             try {
                 const auto text = botf::serialize(state);
+                stats.largestSave = std::max(stats.largestSave, text.size());
+                if (text.size() > botf::MaxSaveBytes) throw std::runtime_error("save exceeds botf::MaxSaveBytes");
                 auto reloaded = botf::deserialize(text);
                 if (botf::serialize(reloaded) != text) throw std::runtime_error("save did not round-trip exactly");
                 if (turn % 30 == 29 && state.outcome == botf::CampaignOutcome::Ongoing) {
@@ -307,6 +343,18 @@ int main() {
                 configs.push_back(c);
             }
         }
+        // Schema 14: long five-empire Remastered campaigns decided by the rival AIs.
+        if (era == botf::StartingEra::Early)
+            for (std::uint64_t seed : {26713ULL, 1999ULL, 4242ULL, 90210ULL, 31337ULL, 8086ULL}) {
+                SoakConfig c;
+                c.seed = seed;
+                c.era = era;
+                c.player = 3;
+                c.turns = 300 + 50 * (scale - 1);
+                c.gameplayLayer = true;
+                c.passivePlayer = true;
+                configs.push_back(c);
+            }
         SoakConfig classic;
         classic.seed = 5150 + static_cast<std::uint64_t>(era);
         classic.era = era;
@@ -320,10 +368,26 @@ int main() {
     int passed = 0, failed = 0;
     int layerTurns = 0, layerCampaigns = 0, alternativeVictories = 0, shortCampaigns = 0;
     SoakStats layerStats;
+    std::size_t largestSave = 0;
+    int warCampaigns = 0, warTurns = 0, aiWars = 0, aiBattles = 0, aiStationBattles = 0, stationCaptures = 0, colonyCaptures = 0;
+    int earlyEliminations = 0;
     for (const auto& config : configs) {
         try {
             const auto stats = soak(config);
-            if (config.gameplayLayer) {
+            largestSave = std::max(largestSave, stats.largestSave);
+            if (config.passivePlayer) {
+                ++warCampaigns;
+                warTurns += stats.turns;
+                aiWars += stats.aiWars; aiBattles += stats.aiBattles; aiStationBattles += stats.aiStationBattles;
+                stationCaptures += stats.stationCaptures; colonyCaptures += stats.colonyCaptures;
+                if (stats.firstEliminationTurn && stats.firstEliminationTurn <= 60) ++earlyEliminations;
+                std::cout << "WARS seed " << config.seed << ": " << stats.turns << " turns, " << stats.aiWars << " AI-vs-AI wars, "
+                          << stats.aiBattles << " AI battles (" << stats.aiStationBattles << " at stations), "
+                          << stats.stationCaptures << " station captures, " << stats.colonyCaptures << " colony captures, first elimination "
+                          << (stats.firstEliminationTurn ? "turn " + std::to_string(stats.firstEliminationTurn) : std::string("none"))
+                          << (stats.ending.empty() ? std::string() : " | " + stats.ending) << std::endl;
+            }
+            if (config.gameplayLayer && !config.passivePlayer) {
                 ++layerCampaigns;
                 layerTurns += stats.turns;
                 layerStats.stationsBuilt += stats.stationsBuilt;
@@ -345,6 +409,19 @@ int main() {
         << " ended before turn 200, " << alternativeVictories << " by scientific victory), stations built " << layerStats.stationsBuilt
         << ", station battles " << layerStats.stationBattles << ", starbases standing " << layerStats.starbases
         << ", anomaly surveys " << layerStats.surveys << ", curated events " << layerStats.events << std::endl;
+    std::cout << "AI wars (" << warCampaigns << " passive-player Remastered campaigns, " << warTurns << " turns): " << aiWars
+              << " AI-vs-AI war declarations, " << aiBattles << " AI-vs-AI battles, " << aiStationBattles << " at stations, "
+              << stationCaptures << " station captures, " << colonyCaptures << " colony captures, "
+              << earlyEliminations << " campaigns with an elimination by turn 60" << std::endl;
+    std::cout << "Largest save: " << largestSave << " bytes (cap " << botf::MaxSaveBytes << ")" << std::endl;
+    if (warCampaigns && (aiWars == 0 || aiBattles == 0)) {
+        std::cout << "FAIL soak: rival AIs never went to war with each other" << std::endl;
+        ++failed;
+    }
+    if (warCampaigns && earlyEliminations * 2 > warCampaigns) {
+        std::cout << "FAIL soak: most campaigns lose an empire by turn 60" << std::endl;
+        ++failed;
+    }
     std::cout << (failed ? "FAILED: " : "ALL PASSED: ") << passed << " passed, " << failed << " failed soak campaigns" << std::endl;
     return failed ? 1 : 0;
 }

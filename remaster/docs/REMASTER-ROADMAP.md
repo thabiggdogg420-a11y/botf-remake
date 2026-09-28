@@ -17,12 +17,12 @@ preserved playable-beta baseline.
 | Phase | Content | Status |
 |---|---|---|
 | 0 Foundation | Fork, CMake, CI (GCC + Clang ASan/UBSan), fixture-independent tests | Done |
-| 1 Stability | Fix every game-breaking defect in the audit. Soak harness across seeds, eras and players. Save schema 12 with migrations from 4–11. | In progress (lanes A and B) |
-| 1 Combat | One tactical engine for headless and client play. Mutual ramming, cloak-ambush, disengage-under-fire retreat, negotiated hail truces, 3+ empire battles. | In progress (lane A) |
-| 1 Diplomacy/Intel | AI-initiated diplomacy with faction personalities. Treaties with real effects (trade, shared sensors, shared supply, mutual defense). Dynamic minor membership and secession. Integer espionage math with meaningful security. | In progress (lane B) |
-| 1 Web client | WASM bridge and a modern-LCARS TypeScript client covering the galaxy, systems, empire, research, fleets, tactical combat, diplomacy, intel, encyclopedia and saves | In progress (lane C) |
-| 2 Modern gameplay | Troop-transport outposts and starbases (extending supply and sensors, and defending in combat). Empire-wide governors and queue templates. A turn chronicle. Minor-race progression and more minors. Curated galactic events and anomalies. Ruleset presets ("Classic", "Remastered"). Alternative victories: diplomatic, scientific and domination. | Core layer landed in lane D (schema 13, [GAMEPLAY-REMASTER.md](GAMEPLAY-REMASTER.md)); minor-race roster (30 races) and progression landed in lane G ([MINOR-RACES.md](MINOR-RACES.md)); the diplomatic victory awaits lane B's predicate |
-| 3 Unreal client | Apply the Unreal review fixes, split the god-widget into a campaign subsystem with per-screen views, and surface all phase 1–2 features | After phase 2 core lands |
+| 1 Stability | Fix every game-breaking defect in the audit. Soak harness across seeds, eras and players. Save schema 12 with migrations from 4–11. | Done (lane A) |
+| 1 Combat | One tactical engine for headless and client play. Mutual ramming, cloak-ambush, disengage-under-fire retreat, negotiated hail truces, 3+ empire battles. | Done (lane A) |
+| 1 Diplomacy/Intel | AI-initiated diplomacy with faction personalities. Treaties with real effects (trade, shared sensors, shared supply, mutual defense). Dynamic minor membership and secession. Integer espionage math with meaningful security. | Done (lanes B and H). Treaty effects are wired into the turn loop in schema 14 ([GAMEPLAY-REMASTER.md](GAMEPLAY-REMASTER.md) section 13) |
+| 1 Web client | WASM bridge and a modern-LCARS TypeScript client covering the galaxy, systems, empire, research, fleets, tactical combat, diplomacy, intel, encyclopedia and saves | Round 1 done (lane C); phase-2 UI in lane F2 |
+| 2 Modern gameplay | Troop-transport outposts and starbases (extending supply and sensors, and defending in combat). Empire-wide governors and queue templates. A turn chronicle. Minor-race progression and more minors. Curated galactic events and anomalies. Ruleset presets ("Classic", "Remastered"). Alternative victories: diplomatic, scientific and domination. | Done: lane D core layer (schema 13), lane G2 minor-race roster ([MINOR-RACES.md](MINOR-RACES.md)), lane H schema-14 treaty integration and diplomatic victory pacing |
+| 3 Unreal client | Apply the Unreal review fixes, split the god-widget into a campaign subsystem with per-screen views, and surface all phase 1–2 features | Lane E merged (not yet compiled in Unreal); phase-2 UI in lane I |
 | 4 Content & polish | Replace embedded original text with original remaster descriptions. Expand the ship roster and tech tree, add art and audio, balance with long AI-vs-AI soaks, add a tutorial. | Later |
 
 ## Working rules

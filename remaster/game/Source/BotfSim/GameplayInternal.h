@@ -42,6 +42,9 @@ void validateColony(const Colony& colony);
 // supplied() without the gameplay layer: powered shipyards within ship range.
 bool colonySupplied(const GameState& state, const Fleet& fleet, int x, int y);
 bool colonySuppliedWithRange(const GameState& state, int owner, int range, int x, int y);
+// Full supply test for a ship of `owner` with base range `range` (supplied() uses it):
+// own and allied powered shipyards, own and allied stations, known wormhole exits.
+bool supplyReaches(const GameState& state, int owner, int range, int x, int y);
 std::vector<int> activeEmpires(const GameState& state); // Player and rivals, sorted.
 } // namespace botf::internal
 
@@ -60,11 +63,8 @@ inline const System* systemAtCell(const GameState& s, int x, int y) {
     for (const auto& sys : s.systems) if (sys.x == x && sys.y == y) return &sys;
     return nullptr;
 }
-inline bool empiresAtWar(const GameState& s, int a, int b) {
-    if (a == b) return false;
-    const auto relation = majorRelation(s, a, b);
-    return relation && relation->atWar;
-}
+// Schema 14: hostile only when combat is allowed (at war and no treaty forbids it).
+inline bool empiresAtWar(const GameState& s, int a, int b) { return combatAllowed(s, a, b); }
 inline int stationSupplyRadiusFor(StationType type) { return type == StationType::Outpost ? 3 : 5; }
 inline int stationSensorRadiusFor(StationType type) { return type == StationType::Outpost ? 2 : 3; }
 inline bool empireAtAnyWar(const GameState& s, int owner) {
@@ -128,6 +128,8 @@ void initializeEventDeck(GameState& state);
 void validateEvents(const GameState& state);
 void applyEventChoiceCommand(GameState& state, const Command& command);
 void resolveGalacticEvents(GameState& next, TurnReport& report);
+struct EventCredit { std::int64_t income = 0, cost = 0; };
+EventCredit eventCredits(const GameState& state, const GalacticEvent& event, int turn, std::int64_t balance, int colonies);
 
 // ---- Build templates (BuildTemplates.cpp) ----
 void validateTemplates(const GameState& state);

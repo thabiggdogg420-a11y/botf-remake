@@ -90,16 +90,33 @@ void resolveMegaprojectLosses(GameState& next, TurnReport& report) {
 
 // Campaign diplomatic victory: the diplomacy engine's bloc-majority predicate plus
 // remaster pacing rules, so a single early alliance or member race cannot end the game.
-constexpr int DiplomaticVictoryEarliestTurn = 80;
+// Balance (schema 14, GAMEPLAY-REMASTER.md "Balance notes"): with turn 80 an AI
+// grand alliance claimed the galaxy on exactly turn 80 in 16 of 24 five-empire
+// campaigns, before most wars were fought. The earliest turn is now 150 and the claimant must lead its
+// bloc (hold more population than any of its allies), so one bloc has one winner.
+constexpr int DiplomaticVictoryEarliestTurn = 150;
 constexpr int DiplomaticVictoryMinimumPartners = 2;
 bool diplomaticSupermajority(const diplomacy::DiplomaticVictoryStatus& bloc) {
     return bloc.galaxyPopulation > 0 && bloc.blocPopulation * 3 >= bloc.galaxyPopulation * 2;
+}
+std::int64_t empirePopulation(const GameState& state, int empireId) {
+    std::int64_t total = 0;
+    for (const auto& c : state.colonies) if (c.ownerId == empireId) total += c.population;
+    return total;
+}
+bool leadsBloc(const GameState& state, int empireId, const diplomacy::DiplomaticVictoryStatus& bloc) {
+    const auto own = empirePopulation(state, empireId);
+    for (int ally : bloc.allies) {
+        const auto theirs = empirePopulation(state, ally);
+        if (theirs > own || (theirs == own && ally < empireId)) return false;
+    }
+    return true;
 }
 bool diplomaticVictoryClaimed(const GameState& state, int empireId) {
     if (state.turn < DiplomaticVictoryEarliestTurn || !diplomaticVictoryAchieved(state, empireId)) return false;
     const auto bloc = diplomaticVictoryStatus(state, empireId);
     const auto partners = static_cast<int>(bloc.allies.size() + bloc.memberMinors.size());
-    return partners >= DiplomaticVictoryMinimumPartners && diplomaticSupermajority(bloc);
+    return partners >= DiplomaticVictoryMinimumPartners && diplomaticSupermajority(bloc) && leadsBloc(state, empireId, bloc);
 }
 
 void evaluateVictory(GameState& next, TurnReport& report) {
@@ -261,8 +278,8 @@ std::vector<VictoryProgress> victoryProgress(const GameState& state, int empireI
         diplomacyProgress.explanation = "Alliance bloc holds " + std::to_string(bloc.blocPopulation) + " of " +
             std::to_string(bloc.galaxyPopulation) + " galactic population with " + std::to_string(partners) +
             " partner(s). Victory needs two-thirds of the population, at least " +
-            std::to_string(gameplay::DiplomaticVictoryMinimumPartners) + " allied empires or member races, and turn " +
-            std::to_string(gameplay::DiplomaticVictoryEarliestTurn) + " or later.";
+            std::to_string(gameplay::DiplomaticVictoryMinimumPartners) + " allied empires or member races, the largest population "
+            "among the allies, and turn " + std::to_string(gameplay::DiplomaticVictoryEarliestTurn) + " or later.";
     } else {
         diplomacyProgress.percent = 0;
         diplomacyProgress.explanation = "Disabled by the Classic ruleset.";
