@@ -1,0 +1,61 @@
+{
+  "candidate_name": "franger",
+  "target_class": "Ranger Scout / Light Escort (Provisional Illustration)",
+  "canonical_faction": "Federation",
+  "source_file": "franger.ms3d",
+  "source_relative_path": "source/Icewolf132/Completed/ranger/franger.ms3d",
+  "source_sha256": "9537c99db7e331eeb6b1ec5acf5c67fa97a8b2c519c6d9152c5c9be6055e6c1b",
+  "output_glb": "franger.glb",
+  "output_glb_sha256": "882b2ed4b5b9b4b889eca0bbcf9f0cf621cd4a2b5b6c75e575edf55b3e9cd504",
+  "output_size_bytes": 335352,
+  "author": "Icewolf132",
+  "triangles": 677,
+  "vertices": 581,
+  "mesh_groups": 36,
+  "material_count": 6,
+  "textures": [
+    "franger.tga",
+    "franger.tga",
+    "franger.tga",
+    "franger.tga",
+    "franger.tga",
+    "franger.tga"
+  ],
+  "texture_hashes": {
+    "franger.tga": "1d0c8bde8a37dce5dadcb97f327d0d5b7ccfdcda9aebe75596cc39339ae92060"
+  },
+  "bounds": {
+    "min": [
+      -5.436755180358887,
+      -8.794388771057129,
+      -1.5501397848129272
+    ],
+    "max": [
+      5.436755180358887,
+      8.794388771057129,
+      1.5501397848129272
+    ],
+    "dimensions_xyz": [
+      10.873510360717773,
+      17.588777542114258,
+      3.1002795696258545
+    ],
+    "bounding_sphere_radius": 10.28821903209657,
+    "bounding_box_center_offset": [
+      0.0,
+      0.8461258411407471,
+      0.05454528331756592
+    ]
+  },
+  "coordinate_transform": {
+    "source_axes": [
+      "x",
+      "-z",
+      "y"
+    ],
+    "pivot": "bounding_box_center",
+    "gltf_export_y_up": true
+  },
+  "helper_joints": [],
+  "status": "Ready"
+}

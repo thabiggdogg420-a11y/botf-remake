@@ -1,0 +1,56 @@
+{
+  "candidate_name": "RemanBoP",
+  "target_class": "Reman Bird of Prey Study (Abandoned author project; distinct from Romulan BOTF classes)",
+  "canonical_faction": "Reman",
+  "source_file": "RemanBoP.ms3d",
+  "source_relative_path": "source/Icewolf132/Unfinished/RemanBoP/RemanBoP.ms3d",
+  "source_sha256": "091cf9879932edac88ba91fd9ff8236504e5552d660315a49b03009fa8ece5a8",
+  "output_glb": "RemanBoP.glb",
+  "output_glb_sha256": "456b607ea6f0701be203ff7d456c28c4a116dd5b35e732f07cf6d2a08b7dda6c",
+  "output_size_bytes": 95456,
+  "author": "Icewolf132",
+  "triangles": 371,
+  "vertices": 575,
+  "mesh_groups": 21,
+  "material_count": 1,
+  "textures": [
+    "remanbop.bmp"
+  ],
+  "texture_hashes": {
+    "remanbop.bmp": "808da8164d17dac00e8d021569aa2d0990bef7b36e2daeb7086cc15d8a1d65b8"
+  },
+  "bounds": {
+    "min": [
+      -7.555807113647461,
+      -5.271625995635986,
+      -1.5081021785736084
+    ],
+    "max": [
+      7.555807113647461,
+      5.271625995635986,
+      1.5081021785736084
+    ],
+    "dimensions_xyz": [
+      15.111614227294922,
+      10.543251991271973,
+      3.016204357147217
+    ],
+    "bounding_sphere_radius": 7.704230780478284,
+    "bounding_box_center_offset": [
+      0.0,
+      -0.2414698600769043,
+      -0.3739338517189026
+    ]
+  },
+  "coordinate_transform": {
+    "source_axes": [
+      "x",
+      "-z",
+      "y"
+    ],
+    "pivot": "bounding_box_center",
+    "gltf_export_y_up": true
+  },
+  "helper_joints": [],
+  "status": "Experimental"
+}

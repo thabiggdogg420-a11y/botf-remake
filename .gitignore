@@ -1,0 +1,22 @@
+# Unreal generated files
+**/Binaries/
+**/DerivedDataCache/
+**/Intermediate/
+**/Saved/
+**/.vs/
+**/__pycache__/
+*.sln
+*.VC.db
+*.obj
+*.pdb
+*.py[cod]
+# Local setup verification output
+setup/output/
+# Standalone simulation build output (not source or saves)
+game/Build/
+# Local reference extraction from Simon's installer; never package or commit.
+research/reference-local/
+# Local connectivity experiments and proposed edits to the separate Gemini runner.
+setup/staging/
+# One-off PowerShell inventory export from the frozen milestone.
+/scratch_milestone_manifest.xml

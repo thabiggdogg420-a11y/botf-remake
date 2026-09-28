@@ -1,0 +1,56 @@
+{
+  "candidate_name": "rhhawk_TMP",
+  "target_class": "Romulan Hellhawk TMP Study (Unfinished author concept)",
+  "canonical_faction": "Romulan",
+  "source_file": "rhhawk_TMP.ms3d",
+  "source_relative_path": "source/Icewolf132/Unfinished/Romulan Hellhawk/rhhawk_TMP.ms3d",
+  "source_sha256": "0f542b1e2f34785ec19c26cf6518901bd00cd0d73207d87883825f72a5083f1c",
+  "output_glb": "rhhawk_TMP.glb",
+  "output_glb_sha256": "4ac2e0d7f80ff318923981d7872c5a2314e9d8a537ee9578af8fecac0aaba5f0",
+  "output_size_bytes": 302968,
+  "author": "Icewolf132",
+  "triangles": 263,
+  "vertices": 276,
+  "mesh_groups": 17,
+  "material_count": 2,
+  "textures": [
+    "hhawktmp1.tga"
+  ],
+  "texture_hashes": {
+    "hhawktmp1.tga": "6d8f21a475ed3bab6e9f334fdedbfd9a08f17cbc3c0493b7405c634b213fc1df"
+  },
+  "bounds": {
+    "min": [
+      -7.175384521484375,
+      -5.0467376708984375,
+      -0.9336727857589722
+    ],
+    "max": [
+      7.175384521484375,
+      5.0467376708984375,
+      0.9336727857589722
+    ],
+    "dimensions_xyz": [
+      14.35076904296875,
+      10.093475341796875,
+      1.8673455715179443
+    ],
+    "bounding_sphere_radius": 8.249033752124253,
+    "bounding_box_center_offset": [
+      -0.3750419616699219,
+      -0.9806065559387207,
+      -0.14446985721588135
+    ]
+  },
+  "coordinate_transform": {
+    "source_axes": [
+      "x",
+      "-z",
+      "y"
+    ],
+    "pivot": "bounding_box_center",
+    "gltf_export_y_up": true
+  },
+  "helper_joints": [],
+  "status": "Experimental"
+}

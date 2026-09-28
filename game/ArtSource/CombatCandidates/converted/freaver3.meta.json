@@ -1,0 +1,421 @@
+{
+  "candidate_name": "freaver3",
+  "target_class": "Reaver Heavy Destroyer (Variant 3)",
+  "canonical_faction": "Federation",
+  "source_file": "freaver3.ms3d",
+  "source_relative_path": "source/Icewolf132/Completed/reaver/freaver3.ms3d",
+  "source_sha256": "dd795a453abef639aae14e41c109acb2d919c3a1bcf9aecdd17c742d0f340d20",
+  "output_glb": "freaver3.glb",
+  "output_glb_sha256": "a546b6a1f556a92d19c819898bd80a22427059ae939aaaaba1375e04acdc1b96",
+  "output_size_bytes": 357300,
+  "author": "Icewolf132",
+  "triangles": 891,
+  "vertices": 822,
+  "mesh_groups": 1,
+  "material_count": 1,
+  "textures": [
+    "freaver.tga"
+  ],
+  "texture_hashes": {
+    "freaver.tga": "52961734c74ed39b7ceffc3eeeb8d034f9e7436efdfd0816f614facb3f845fb7"
+  },
+  "bounds": {
+    "min": [
+      -4.7697343826293945,
+      -5.683403015136719,
+      -2.1396987438201904
+    ],
+    "max": [
+      4.7697343826293945,
+      5.683403015136719,
+      2.1396987438201904
+    ],
+    "dimensions_xyz": [
+      9.539468765258789,
+      11.366806030273438,
+      4.279397487640381
+    ],
+    "bounding_sphere_radius": 6.76455468572251,
+    "bounding_box_center_offset": [
+      0.0014510154724121094,
+      -0.345670223236084,
+      -0.6299593448638916
+    ]
+  },
+  "coordinate_transform": {
+    "source_axes": [
+      "x",
+      "-z",
+      "y"
+    ],
+    "pivot": "bounding_box_center",
+    "gltf_export_y_up": true
+  },
+  "helper_joints": [
+    {
+      "name": "h_root",
+      "parent": "",
+      "rotation": [
+        0.0,
+        -0.0,
+        0.0
+      ],
+      "position": [
+        0.0,
+        0.0,
+        0.0714285746216774
+      ]
+    },
+    {
+      "name": "h_geomtery",
+      "parent": "h_root",
+      "rotation": [
+        0.0,
+        -0.0,
+        0.0
+      ],
+      "position": [
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "name": "m_freaver",
+      "parent": "h_geomtery",
+      "rotation": [
+        0.0,
+        -0.0,
+        0.0
+      ],
+      "position": [
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "name": "h_hardpoints",
+      "parent": "h_root",
+      "rotation": [
+        0.0,
+        -0.0,
+        0.0
+      ],
+      "position": [
+        0.0,
+        0.0,
+        -0.010822512209415436
+      ]
+    },
+    {
+      "name": "h_hp01",
+      "parent": "h_hardpoints",
+      "rotation": [
+        0.0,
+        -0.0,
+        0.0
+      ],
+      "position": [
+        0.018037647008895874,
+        -0.1303909718990326,
+        5.739692211151123
+      ]
+    },
+    {
+      "name": "h_hp02",
+      "parent": "h_hardpoints",
+      "rotation": [
+        0.0,
+        -0.0,
+        0.0
+      ],
+      "position": [
+        -1.65486741065979,
+        -0.08858107030391693,
+        -3.3150084018707275
+      ]
+    },
+    {
+      "name": "h_hp03",
+      "parent": "h_hardpoints",
+      "rotation": [
+        0.0,
+        -0.0,
+        0.0
+      ],
+      "position": [
+        1.7946568727493286,
+        -0.08748318254947662,
+        -3.3143715858459473
+      ]
+    },
+    {
+      "name": "h_hp04",
+      "parent": "h_hardpoints",
+      "rotation": [
+        0.0,
+        0.02990971878170967,
+        0.0
+      ],
+      "position": [
+        -3.7206931114196777,
+        -0.0038609951734542847,
+        2.0956315994262695
+      ]
+    },
+    {
+      "name": "h_hp05",
+      "parent": "h_hardpoints",
+      "rotation": [
+        0.0,
+        0.017569808289408684,
+        0.0
+      ],
+      "position": [
+        3.707174301147461,
+        -0.010554082691669464,
+        2.1054141521453857
+      ]
+    },
+    {
+      "name": "h_hp06",
+      "parent": "h_hardpoints",
+      "rotation": [
+        0.0,
+        -0.0,
+        0.0
+      ],
+      "position": [
+        -2.9818027019500732,
+        -2.255845308303833,
+        -4.306283950805664
+      ]
+    },
+    {
+      "name": "h_hp07",
+      "parent": "h_hardpoints",
+      "rotation": [
+        0.0,
+        -0.0,
+        0.0
+      ],
+      "position": [
+        -0.6028749346733093,
+        -0.07417125999927521,
+        -3.7390666007995605
+      ]
+    },
+    {
+      "name": "h_hp08",
+      "parent": "h_hardpoints",
+      "rotation": [
+        0.0,
+        -0.0,
+        0.0
+      ],
+      "position": [
+        2.969496965408325,
+        -1.7624714374542236,
+        1.3872876167297363
+      ]
+    },
+    {
+      "name": "h_hp09",
+      "parent": "h_hardpoints",
+      "rotation": [
+        0.0,
+        -0.0,
+        0.0
+      ],
+      "position": [
+        0.0026121139526367188,
+        -0.6240813732147217,
+        4.9528069496154785
+      ]
+    },
+    {
+      "name": "h_hp10",
+      "parent": "h_hardpoints",
+      "rotation": [
+        0.0,
+        -0.0,
+        0.0
+      ],
+      "position": [
+        0.33690130710601807,
+        1.2413790225982666,
+        0.6407998204231262
+      ]
+    },
+    {
+      "name": "h_hp11",
+      "parent": "h_hardpoints",
+      "rotation": [
+        0.0,
+        -0.0,
+        0.0
+      ],
+      "position": [
+        -3.2450737953186035,
+        0.3793103098869324,
+        -0.47154325246810913
+      ]
+    },
+    {
+      "name": "h_hp12",
+      "parent": "h_hardpoints",
+      "rotation": [
+        0.0,
+        -0.0,
+        0.0
+      ],
+      "position": [
+        -1.4220378398895264,
+        -0.3793103098869324,
+        3.2379908561706543
+      ]
+    },
+    {
+      "name": "h_hp13",
+      "parent": "h_hardpoints",
+      "rotation": [
+        0.0,
+        -0.0,
+        0.0
+      ],
+      "position": [
+        4.432818412780762,
+        -0.1551724076271057,
+        -0.7708794474601746
+      ]
+    },
+    {
+      "name": "h_hp14",
+      "parent": "h_hardpoints",
+      "rotation": [
+        0.0,
+        -0.0,
+        0.0
+      ],
+      "position": [
+        -4.413727760314941,
+        0.08620690554380417,
+        1.4833714962005615
+      ]
+    },
+    {
+      "name": "h_hp15",
+      "parent": "h_hardpoints",
+      "rotation": [
+        0.0,
+        -0.0,
+        0.0
+      ],
+      "position": [
+        -2.64388108253479,
+        -1.275231122970581,
+        -1.162717580795288
+      ]
+    },
+    {
+      "name": "h_hp16",
+      "parent": "h_hardpoints",
+      "rotation": [
+        0.0,
+        -0.0,
+        0.0
+      ],
+      "position": [
+        1.3070300817489624,
+        0.7213113307952881,
+        3.326050281524658
+      ]
+    },
+    {
+      "name": "h_hp17",
+      "parent": "h_hardpoints",
+      "rotation": [
+        0.0,
+        -0.0,
+        0.0
+      ],
+      "position": [
+        -0.30218642950057983,
+        -1.13567054271698,
+        1.1307563781738281
+      ]
+    },
+    {
+      "name": "h_hp18",
+      "parent": "h_hardpoints",
+      "rotation": [
+        0.0,
+        -0.0,
+        0.0
+      ],
+      "position": [
+        1.5467450618743896,
+        -0.3281514048576355,
+        -0.8959228992462158
+      ]
+    },
+    {
+      "name": "h_hp19",
+      "parent": "h_hardpoints",
+      "rotation": [
+        0.0,
+        -0.0,
+        0.0
+      ],
+      "position": [
+        -2.1004858016967773,
+        0.0,
+        3.999882221221924
+      ]
+    },
+    {
+      "name": "h_hp20",
+      "parent": "h_hardpoints",
+      "rotation": [
+        0.0,
+        -0.0,
+        0.0
+      ],
+      "position": [
+        -0.04126298427581787,
+        -0.6611074805259705,
+        2.466607093811035
+      ]
+    },
+    {
+      "name": "hp04_dir",
+      "parent": "h_hp04",
+      "rotation": [
+        0.0,
+        -0.0,
+        0.0
+      ],
+      "position": [
+        0.0,
+        0.0,
+        1.0234792232513428
+      ]
+    },
+    {
+      "name": "hp05_dir",
+      "parent": "h_hp05",
+      "rotation": [
+        0.0,
+        -0.0,
+        0.0
+      ],
+      "position": [
+        0.0,
+        0.0,
+        0.9890010952949524
+      ]
+    }
+  ],
+  "status": "Ready"
+}
