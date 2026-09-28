@@ -12,12 +12,11 @@ Status markers: `[ ]` pending, `[x]` done (paste the result or log into the PR/s
    - Run `remaster\game\Package-Windows.ps1 -CheckOnly`, then run it again without `-CheckOnly`.
    - If it fails, paste back `Build\Logs\<stamp>\FAILURE-SUMMARY.txt`. The script also copies it to the clipboard.
    - Risk list: UNREAL-CLIENT.md, "First real compile: risk list".
-2. [ ] **BOTF audio extraction.**
-   - Run `python remaster\game\Tools\Extract-BotfAudio.py` with the path to your own BOTF install.
-   - Confirm `english_0000.wav` and a few sfx play.
-   - Report any file the extractor rejects.
-3. [ ] **Voice cue mapping.**
-   - Fill `LocalAssets/botf-original/cue-map.json`, using Ultimate Editor to identify race and group, or wait for the automatic `converse.bin` mapping.
+2. [ ] **Online audio downloads** (the main audio route; see AUDIO-SOURCES-ONLINE.md, "Recommended acquisition order").
+   - TrekCore audio library, archive.org Sound Source Interactive TOS/TNG AudioClips, the voice packs from Armada Fleet Command's BOTF Ultimate Mod 5, and LCARS UI-sound repos.
+   - Save them into the same downloads folder as item 4. `Import-Assets.ps1` converts and indexes them.
+3. [ ] **Optional: original BOTF audio extraction.** This is a fallback now.
+   - `python remaster\game\Tools\Extract-BotfAudio.py` against your own install, if you want the original voice lines alongside.
 4. [ ] **Asset downloads.**
    - Download candidates from `remaster/docs/ASSET-SOURCES.md` into one folder, then run `remaster\game\Import-Assets.ps1 -Downloads <folder>`.
    - Requires Blender (with NifTools for .nif), ffmpeg and 7-Zip.
