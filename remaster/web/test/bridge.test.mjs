@@ -324,4 +324,96 @@ test('diplomacy drill: an unanswered call to arms lapses with consequences', () 
   assert.ok(d.events.some((e) => e.typeKey === 15), 'AllianceRefused recorded');
 });
 
+// ---- Schema-13 gameplay layer -----------------------------------------------------------------
+test('new campaigns default to the Remastered preset; Classic is selectable', () => {
+  const remastered = call('newCampaign', { faction: 1, seed: 5150, era: 1, ruleset: 'reference' });
+  assert.equal(remastered.meta.rules.preset, 'remastered');
+  assert.ok(remastered.meta.rules.galaxyFeatures && remastered.meta.rules.curatedEvents && remastered.meta.rules.alternativeVictories);
+  assert.equal(remastered.victory.conditions.length, 4);
+  const classic = call('newCampaign', { faction: 1, seed: 5150, era: 1, ruleset: 'reference', preset: 'classic' });
+  assert.equal(classic.meta.rules.preset, 'classic');
+  assert.equal(classic.meta.rules.galaxyFeatures, false);
+  assert.equal(classic.features.length, 0);
+  assert.equal(attempt('newCampaign', { preset: 'modern' }).ok, false);
+});
+
+test('frontier drill: build an outpost, upgrade a station, resolve an event, chronicle briefing', () => {
+  let v = call('newFrontierDrill');
+  assert.equal(v.meta.scenario, 'frontier');
+  assert.ok(v.features.length > 0, 'charted anomalies are visible');
+  assert.ok(v.features.every((f) => f.effect.length > 0));
+  const wormhole = v.features.find((f) => f.type === 'Wormhole');
+  if (wormhole) assert.ok(wormhole.exit, 'charted wormholes expose their exit');
+  const storm = v.features.find((f) => f.type === 'IonStorm');
+  if (storm) assert.equal(storm.cells.length >= 1, true);
+  // Stations: an existing outpost with funding options dry-run through the core.
+  const outpost = v.stations.find((s) => s.mine);
+  assert.ok(outpost && outpost.type === 'Outpost' && outpost.supplyRadius === 3);
+  const detail = call('station', { stationId: outpost.id });
+  assert.ok(detail.funding.length >= 1);
+  const funder = detail.funding.find((f) => !f.blocker);
+  assert.ok(funder, 'a colony can fund the starbase');
+  call('submit', { command: { type: 'UpgradeStation', stationId: outpost.id, systemId: funder.systemId } });
+  // Outpost assembly by the troop transport.
+  const transport = v.fleets.find((f) => f.shipClass === 'Transport');
+  assert.equal(call('dryRun', { command: { type: 'BuildOutpost', fleetId: transport.id } }).ok, true);
+  call('submit', { command: { type: 'BuildOutpost', fleetId: transport.id } });
+  // A pending decision on a galactic event.
+  const event = v.events.find((e) => e.awaitingChoice);
+  assert.ok(event && event.choices.length >= 2 && event.deadline >= v.meta.turn);
+  call('submit', { command: { type: 'ResolveEventChoice', eventId: event.id, eventOption: 0 } });
+  v = call('view');
+  assert.ok(v.fleets.find((f) => f.id === transport.id).buildingOutpost);
+  assert.equal(v.events.find((e) => e.id === event.id).drafted, 0);
+  assert.ok(v.stations.find((s) => s.id === outpost.id).upgrade, 'upgrade drafted');
+  for (const kind of ['BuildOutpost', 'UpgradeStation', 'ResolveEventChoice'])
+    assert.ok(v.pending.some((p) => p.type === kind && !/^[A-Z][a-zA-Z]+$/.test(p.summary)), `${kind} has a readable summary`);
+  const briefings = [];
+  for (let i = 0; i < v.outpostTurns + 1; i++) briefings.push(endTurn());
+  v = call('view');
+  assert.ok(v.stations.filter((s) => s.mine).length >= 2, 'the outpost was assembled');
+  assert.ok(!v.fleets.some((f) => f.id === transport.id), 'the transport was consumed');
+  assert.ok(v.events.find((e) => e.id === event.id)?.choice !== -1 || !v.events.some((e) => e.id === event.id));
+  const all = briefings.flatMap((b) => b.events);
+  assert.ok(all.some((e) => e.category === 'stations' && e.stationId), 'chronicle files stations with a reference');
+  assert.ok(all.some((e) => e.category === 'events' && e.eventId), 'chronicle files galactic events');
+  // Save/load keeps the gameplay layer.
+  const save = call('save');
+  const reloaded = call('load', { data: save.data });
+  assert.equal(reloaded.stations.length, v.stations.length);
+});
+
+test('build templates: define, apply, set default, delete', () => {
+  let v = call('newCampaign', { faction: 1, seed: 424242, era: 1, ruleset: 'reference' });
+  const home = v.colonies[0].systemId;
+  call('submit', { command: { type: 'DefineBuildTemplate', templateId: 0, templateName: 'Core worlds', templateItems: [{ product: 'Farm' }, { product: 'Factory' }] } });
+  v = call('view');
+  const t = v.templates.find((x) => x.name === 'Core worlds');
+  assert.ok(t && t.items.length === 2);
+  const detail = call('colony', { systemId: home });
+  assert.ok(detail.templates.some((x) => x.id === t.id));
+  const queued = detail.queue.length;
+  call('submit', { command: { type: 'ApplyBuildTemplate', templateId: t.id, systemId: home } });
+  assert.ok(call('colony', { systemId: home }).queue.length > queued, 'template items queued');
+  call('submit', { command: { type: 'SetDefaultBuildTemplate', templateId: t.id } });
+  assert.ok(call('view').templates.find((x) => x.id === t.id).isDefault);
+  call('submit', { command: { type: 'DeleteBuildTemplate', templateId: t.id } });
+  assert.ok(!call('view').templates.some((x) => x.id === t.id));
+  const mega = call('colony', { systemId: home }).megaproject;
+  assert.match(mega.startBlocker, /turn|level/);
+});
+
+test('station drill: the starbase fights as an immobile combatant', () => {
+  call('newBattleDrill', { station: true });
+  const status = call('endTurn');
+  assert.equal(status.status, 'battle');
+  const e = call('tactical');
+  const base = e.ships.find((s) => s.station);
+  assert.ok(base && base.immobile && base.id >= 2000000 && base.mine);
+  const at = { ...base.position };
+  call('tacticalRound');
+  const after = call('tactical').ships.find((s) => s.id === base.id);
+  if (after.alive) assert.deepEqual(after.position, at, 'stations never move');
+});
+
 console.log(`${passed} bridge tests passed`);

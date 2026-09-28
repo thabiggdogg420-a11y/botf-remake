@@ -48,7 +48,7 @@ namespace intel = botf::intelligence;
 // ------------------------------------------------------------------------------------------------
 // Enum name tables. Numbers are always accepted as well, so enum growth in the core keeps working.
 // ------------------------------------------------------------------------------------------------
-constexpr std::array<const char*, 37> CommandTypeNames{
+constexpr std::array<const char*, 46> CommandTypeNames{
     "AssignWorkers", "EnqueueBuilding", "MoveFleet", "Colonize", "ToggleShipyard",
     "CancelFirstConstruction", "PrioritizeLastConstruction", "MoveConstruction",
     "RemoveConstruction", "AllocateResearch", "SendGift", "OfferFriendship",
@@ -59,7 +59,17 @@ constexpr std::array<const char*, 37> CommandTypeNames{
     "BuyConstruction", "ScrapStructure",
     "SubmitDiplomaticProposal", "RespondDiplomaticProposal",
     "SetIntelBudget", "SetIntelFocus",
-    "SetColonyGovernor", "SetQueuePin", "ClearGovernorOverride"};
+    "SetColonyGovernor", "SetQueuePin", "ClearGovernorOverride",
+    "BuildOutpost", "UpgradeStation", "ResolveEventChoice",
+    "DefineBuildTemplate", "DeleteBuildTemplate", "ApplyBuildTemplate", "SetDefaultBuildTemplate",
+    "StartMegaproject", "CancelMegaproject"};
+constexpr std::array<const char*, 2> StationTypeNames{"Outpost", "Starbase"};
+constexpr std::array<const char*, 6> FeatureKeys{"Nebula", "Wormhole", "BlackHole", "NeutronStar", "IonStorm", "SubspaceRift"};
+constexpr std::array<const char*, 7> EventKeys{"Plague", "SupernovaWarning", "SubspaceRift", "TradeBoom", "DerelictVessel",
+    "LaborUnrest", "ScientificBreakthrough"};
+constexpr std::array<const char*, 4> VictoryKeys{"Conquest", "Domination", "Scientific", "Diplomatic"};
+constexpr std::array<const char*, 10> ChronicleKeys{"construction", "research", "exploration", "colonization", "combat",
+    "diplomacy", "intel", "events", "stations", "victory"};
 constexpr std::array<const char*, 12> BuildingNames{
     "Farm", "Factory", "Laboratory", "Shipyard", "Scout", "ColonyShip", "PowerPlant", "FusionPlant",
     "ResearchInstitute", "Destroyer", "Transport", "DefenseBattery"};
@@ -221,6 +231,18 @@ botf::Command commandFromJson(const Value& j, std::uint64_t id) {
     c.governorWorkforce = static_cast<botf::GovernorPriority>(enumIndex(j["governorWorkforce"], GovernorNames, "governor priority", 0));
     c.governorQueue = static_cast<botf::GovernorPriority>(enumIndex(j["governorQueue"], GovernorNames, "governor priority", 0));
     c.queuePinned = j.getBool("queuePinned");
+    // Schema-13 gameplay layer
+    c.stationId = j.getInt("stationId");
+    c.eventId = j.getInt("eventId");
+    c.eventOption = j.getInt("eventOption");
+    c.templateId = j.getInt("templateId");
+    c.templateName = j.getString("templateName");
+    if (j["templateItems"].isArray())
+        for (const auto& item : j["templateItems"].items) {
+            botf::Construction project(static_cast<botf::Building>(enumIndex(item["product"], BuildingNames, "building", 0)), 0,
+                item.getInt("referenceId", -1));
+            c.templateItems.push_back(project);
+        }
     return c;
 }
 
@@ -308,6 +330,39 @@ std::string describeCommand(const botf::GameState& s, const botf::Command& c) {
     case botf::CommandType::SetQueuePin:
         return systemLabel(s, c.systemId) + ": " + (c.queuePinned ? "pin" : "unpin") + " queue item " + std::to_string(c.queueIndex + 1);
     case botf::CommandType::ClearGovernorOverride: return systemLabel(s, c.systemId) + ": resume governor";
+    case botf::CommandType::BuildOutpost: return fleet(c.fleetId) + ": assemble an outpost";
+    case botf::CommandType::UpgradeStation: {
+        const auto* st = botf::stationById(s, c.stationId);
+        return (st ? botf::stationName(*st) : "Station " + std::to_string(c.stationId)) + ": upgrade to starbase, funded by " + systemLabel(s, c.systemId);
+    }
+    case botf::CommandType::ResolveEventChoice: {
+        for (const auto& e : s.galacticEvents)
+            if (e.id == c.eventId) {
+                const auto options = botf::eventChoices(e.kind);
+                const std::string label = c.eventOption >= 0 && static_cast<std::size_t>(c.eventOption) < options.size()
+                    ? options[static_cast<std::size_t>(c.eventOption)].label : "option " + std::to_string(c.eventOption + 1);
+                return std::string(botf::galacticEventName(e.kind)) + ": " + label;
+            }
+        return "Event " + std::to_string(c.eventId) + ": option " + std::to_string(c.eventOption + 1);
+    }
+    case botf::CommandType::DefineBuildTemplate:
+        return (c.templateId ? "Update build template \"" : "Create build template \"") + c.templateName + "\" (" +
+            std::to_string(c.templateItems.size()) + " items)";
+    case botf::CommandType::DeleteBuildTemplate: {
+        const auto* t = botf::buildTemplateById(s, c.templateId);
+        return "Delete build template " + (t ? "\"" + t->name + "\"" : "#" + std::to_string(c.templateId));
+    }
+    case botf::CommandType::ApplyBuildTemplate: {
+        const auto* t = botf::buildTemplateById(s, c.templateId);
+        return systemLabel(s, c.systemId) + ": apply template " + (t ? "\"" + t->name + "\"" : "#" + std::to_string(c.templateId));
+    }
+    case botf::CommandType::SetDefaultBuildTemplate: {
+        if (!c.templateId) return "Clear the default build template";
+        const auto* t = botf::buildTemplateById(s, c.templateId);
+        return "Default build template: " + (t ? "\"" + t->name + "\"" : "#" + std::to_string(c.templateId));
+    }
+    case botf::CommandType::StartMegaproject: return systemLabel(s, c.systemId) + ": begin the " + botf::megaprojectName(s);
+    case botf::CommandType::CancelMegaproject: return std::string("Abandon the ") + botf::megaprojectName(s);
     }
     return enumName(static_cast<int>(c.type), CommandTypeNames);
 }
@@ -350,6 +405,9 @@ void writeCommand(Writer& w, const botf::GameState& s, const botf::Command& c) {
     }
     if (c.type == botf::CommandType::SetTacticalStance || c.type == botf::CommandType::SetTaskForceOrder)
         w.field("stance", enumName(static_cast<int>(c.stance), StanceNames));
+    if (c.stationId) w.field("stationId", c.stationId);
+    if (c.type == botf::CommandType::ResolveEventChoice) { w.field("eventId", c.eventId); w.field("eventOption", c.eventOption); }
+    if (c.templateId) w.field("templateId", c.templateId);
     w.endObject();
 }
 
@@ -487,6 +545,8 @@ void writeOwnFleet(Writer& w, const botf::GameState& d, const botf::GameState& c
     w.field("terraforming", f.terraforming);
     w.field("terraformSystemId", f.terraformSystemId);
     w.field("terraformPlanetIndex", f.terraformPlanetIndex);
+    w.field("buildingOutpost", f.buildingOutpost);
+    w.field("outpostProgress", f.outpostProgress);
     // Remaining course along the core's supplied route (draft positions/targets).
     const auto path = (f.x == f.targetX && f.y == f.targetY) ? std::vector<int>{} : botf::route(d, f, f.targetX, f.targetY);
     w.key("route").beginArray();
@@ -547,6 +607,173 @@ bool fleetVisibleToPlayer(const botf::GameState& s, const botf::Fleet& f) {
 }
 
 // ------------------------------------------------------------------------------------------------
+// Schema-13 gameplay layer: stations, anomalies, galactic events, templates, victory
+// ------------------------------------------------------------------------------------------------
+const char* featureEffect(botf::GalaxyFeatureType t) {
+    switch (t) {
+    case botf::GalaxyFeatureType::Nebula:
+        return "Sensor-blind: only ships inside see into it, and they see only their own sector. Shields fail inside, so battles here are hull-only.";
+    case botf::GalaxyFeatureType::Wormhole:
+        return "Instant link: once explored, routes may step straight to the paired endpoint. Supply flows through to the exit.";
+    case botf::GalaxyFeatureType::BlackHole: return "Impassable. Routes steer around it.";
+    case botf::GalaxyFeatureType::NeutronStar:
+        return "Hazard: ships here lose 10% of their hull (never below 1) and half their shields each turn. Routes avoid it when they can.";
+    case botf::GalaxyFeatureType::IonStorm:
+        return "Drifting hazard: moves one sector every 2 turns. Ships inside lose their shields and 5% hull each turn.";
+    case botf::GalaxyFeatureType::SubspaceRift: return "Impassable until it collapses.";
+    }
+    return "";
+}
+const char* featureSurvey(botf::GalaxyFeatureType t) {
+    switch (t) {
+    case botf::GalaxyFeatureType::Nebula: return "Energy research";
+    case botf::GalaxyFeatureType::Wormhole: return "Propulsion research, intelligence and the exit charted";
+    case botf::GalaxyFeatureType::BlackHole: return "Propulsion research";
+    case botf::GalaxyFeatureType::NeutronStar: return "Construction research";
+    case botf::GalaxyFeatureType::IonStorm: return "Energy research";
+    case botf::GalaxyFeatureType::SubspaceRift: return "Computers research";
+    }
+    return "";
+}
+
+void writeStationStats(Writer& w, const botf::StationStats& st) {
+    w.field("maxHull", st.maxHull); w.field("maxShields", st.maxShields);
+    w.field("beam", st.beam); w.field("torpedo", st.torpedo);
+    w.field("supplyRadius", st.supplyRadius); w.field("sensorRadius", st.sensorRadius);
+    w.field("upkeep", st.upkeep); w.field("repairPercent", st.repairPercent);
+}
+
+void writeStation(Writer& w, const botf::GameState& s, const botf::Station& st, int me) {
+    w.beginObject();
+    w.field("id", st.id); w.field("owner", st.ownerId); w.field("ownerName", empireLabel(st.ownerId));
+    w.field("mine", st.ownerId == me);
+    w.field("name", botf::stationName(st));
+    w.field("type", enumName(static_cast<int>(st.type), StationTypeNames));
+    w.field("typeName", botf::stationTypeName(st.type));
+    w.field("x", st.x); w.field("y", st.y);
+    w.field("hull", st.hull); w.field("shields", st.shields);
+    w.field("builtTurn", st.builtTurn);
+    writeStationStats(w, botf::stationStats(s, st));
+    if (st.ownerId == me) {
+        if (const auto* u = botf::stationUpgradeFor(s, st.id)) {
+            w.key("upgrade").beginObject().field("fundingSystemId", u->fundingSystemId).field("funding", systemLabel(s, u->fundingSystemId))
+                .field("work", u->work).field("cost", botf::stationUpgradeCost(s, me).industry).endObject();
+        }
+    }
+    w.endObject();
+}
+
+void writeFeature(Writer& w, const botf::GameState& s, const botf::GalaxyFeature& f, int me) {
+    w.beginObject();
+    w.field("id", f.id);
+    w.field("type", enumName(static_cast<int>(f.type), FeatureKeys));
+    w.field("name", botf::galaxyFeatureName(f.type));
+    w.field("x", f.x); w.field("y", f.y);
+    if (f.pairId) {
+        w.field("pairId", f.pairId);
+        // The exit is known once it is explored (a wormhole survey charts it).
+        for (const auto& other : s.galaxyFeatures)
+            if (other.id == f.pairId && botf::explored(s, other.x, other.y))
+                w.key("exit").beginObject().field("x", other.x).field("y", other.y).endObject();
+    }
+    if (f.clusterId) w.field("clusterId", f.clusterId);
+    if (f.type == botf::GalaxyFeatureType::IonStorm) {
+        w.field("driftX", f.driftX); w.field("driftY", f.driftY);
+        w.key("cells").beginArray();
+        for (const auto& [cx, cy] : botf::ionStormCells(s, f)) w.value(cy * s.width + cx);
+        w.endArray();
+    }
+    if (f.expiresTurn) w.field("expiresTurn", f.expiresTurn);
+    w.field("surveyed", me >= 0 && me < 31 && (f.surveyedMask & (1 << me)) != 0);
+    w.field("effect", featureEffect(f.type));
+    w.field("surveyReward", featureSurvey(f.type));
+    w.field("passable", f.type != botf::GalaxyFeatureType::BlackHole && f.type != botf::GalaxyFeatureType::SubspaceRift);
+    w.endObject();
+}
+
+void writeGalacticEvent(Writer& w, const botf::GameState& s, const botf::GalacticEvent& e) {
+    w.beginObject();
+    w.field("id", e.id);
+    w.field("kind", enumName(static_cast<int>(e.kind), EventKeys));
+    w.field("name", botf::galacticEventName(e.kind));
+    w.field("empire", e.empireId);
+    if (e.systemId) { w.field("systemId", e.systemId); w.field("system", systemLabel(s, e.systemId)); }
+    if (e.x >= 0) { w.field("x", e.x); w.field("y", e.y); }
+    w.field("startTurn", e.startTurn); w.field("endTurn", e.endTurn);
+    w.field("deadline", e.choiceDeadline);
+    w.field("choice", e.choice); w.field("choiceApplied", e.choiceApplied);
+    w.field("magnitude", e.magnitude);
+    w.field("description", botf::describeEvent(s, e));
+    int drafted = -1;
+    std::vector<std::uint64_t> draftedIds;
+    for (const auto& c : s.pending)
+        if (c.type == botf::CommandType::ResolveEventChoice && c.eventId == e.id) { drafted = c.eventOption; draftedIds.push_back(c.id); }
+    w.field("drafted", drafted);
+    w.key("draftIds").beginArray(); for (auto id : draftedIds) w.value(id); w.endArray();
+    const bool open = e.choiceDeadline > 0 && e.choice < 0 && e.empireId == s.playerEmpire;
+    w.field("awaitingChoice", open);
+    w.field("defaultChoice", e.choiceDeadline > 0 ? botf::eventDefaultChoice(e.kind) : -1);
+    w.key("choices").beginArray();
+    if (e.choiceDeadline > 0)
+        for (const auto& o : botf::eventChoices(e.kind)) {
+            w.beginObject().field("index", o.index).field("label", o.label).field("effect", o.effect).field("isDefault", o.isDefault);
+            if (open) {
+                // Dry-run through the core (replacing any drafted decision) so the UI shows the core's reason.
+                auto copy = s;
+                auto ids = draftedIds;
+                std::sort(ids.rbegin(), ids.rend());
+                std::string blocker;
+                try {
+                    for (auto id : ids) botf::cancel(copy, id);
+                    botf::submit(copy, botf::makeResolveEventChoiceCommand(copy.lastAcceptedCommand + 1, e.id, o.index));
+                } catch (const std::exception& ex) { blocker = ex.what(); }
+                w.field("blocker", blocker);
+            }
+            w.endObject();
+        }
+    w.endArray();
+    w.endObject();
+}
+
+void writeTemplate(Writer& w, const botf::GameState& s, const botf::BuildTemplate& t) {
+    w.beginObject();
+    w.field("id", t.id); w.field("name", t.name); w.field("isDefault", t.autoApply);
+    w.key("items").beginArray();
+    for (const auto& item : t.items)
+        w.beginObject().field("product", enumName(static_cast<int>(item.product), BuildingNames)).field("referenceId", item.referenceId)
+            .field("name", constructionLabel(s, item)).field("isShip", botf::isShip(item.product)).endObject();
+    w.endArray();
+    w.endObject();
+}
+
+void writeVictory(Writer& w, const botf::GameState& s, int me) {
+    w.beginObject();
+    w.key("conditions").beginArray();
+    for (const auto& p : botf::victoryProgress(s, me))
+        w.beginObject().field("condition", enumName(static_cast<int>(p.condition), VictoryKeys))
+            .field("name", botf::victoryConditionName(p.condition)).field("enabled", p.enabled).field("achieved", p.achieved)
+            .field("percent", p.percent).field("explanation", p.explanation).endObject();
+    w.endArray();
+    w.field("alternative", s.rules.alternativeVictories);
+    w.field("threshold", botf::scientificVictoryThreshold(s));
+    w.field("megaprojectName", botf::megaprojectName(s));
+    w.field("megaprojectCost", botf::megaprojectIndustryCost(s));
+    w.field("megaprojectCredits", botf::megaprojectCreditCost(s));
+    w.field("megaprojectWorkPerTurn", botf::megaprojectWorkPerTurn(s, me));
+    if (const auto* m = botf::empireMegaproject(s, me))
+        w.key("megaproject").beginObject().field("systemId", m->systemId).field("system", systemLabel(s, m->systemId))
+            .field("work", m->work).field("startTurn", m->startTurn).endObject();
+    // Rival megaprojects are announced to every empire as galactic news.
+    w.key("rivalProjects").beginArray();
+    for (const auto& m : s.megaprojects)
+        if (m.ownerId != me)
+            w.beginObject().field("owner", m.ownerId).field("ownerName", empireLabel(m.ownerId)).field("work", m.work)
+                .field("startTurn", m.startTurn).endObject();
+    w.endArray();
+    w.endObject();
+}
+
+// ------------------------------------------------------------------------------------------------
 // Full player view
 // ------------------------------------------------------------------------------------------------
 void writeView(Writer& w) {
@@ -573,6 +800,11 @@ void writeView(Writer& w) {
     w.field("scenario", B.scenario);
     w.field("version", B.version);
     w.field("empireCount", static_cast<int>(s.rivals.size()) + 1);
+    w.key("rules").beginObject()
+        .field("preset", s.rules.preset == botf::RulesetPreset::Remastered ? "remastered" : "classic")
+        .field("presetName", botf::rulesetPresetName(s.rules.preset))
+        .field("stations", s.rules.stations).field("galaxyFeatures", s.rules.galaxyFeatures)
+        .field("curatedEvents", s.rules.curatedEvents).field("alternativeVictories", s.rules.alternativeVictories).endObject();
     w.endObject();
 
     // --- empire summary (player only)
@@ -588,6 +820,7 @@ void writeView(Writer& w) {
         trade += 5 + std::min(src->population, dst->population) / 10;   // as resolved by advanceWithCombat
     }
     for (const auto& f : d.fleets) if (f.ownerId == me) ships += maintenanceOf(f);
+    for (const auto& st : d.stations) if (st.ownerId == me) ships += botf::stationStats(d, st).upkeep;   // military upkeep
     int researchOutput = 0, industryTotal = 0, foodTotal = 0, population = 0;
     for (const auto& c : d.colonies) if (c.ownerId == me) {
         const auto e = botf::economy(d, c);
@@ -745,6 +978,24 @@ void writeView(Writer& w) {
     w.field("replays", static_cast<int>(B.lastEncounters.size()));
     w.endObject();
 
+    // --- schema-13 gameplay layer
+    w.key("stations").beginArray();
+    if (s.rules.stations) for (const auto& st : botf::visibleStations(s, me)) writeStation(w, d, st, me);
+    w.endArray();
+    w.field("outpostTurns", s.rules.stations ? botf::outpostBuildTurns(s, me) : 0);
+    w.key("stationUpgradeCost").beginObject().field("credits", botf::stationUpgradeCost(s, me).credits)
+        .field("industry", botf::stationUpgradeCost(s, me).industry).endObject();
+    w.key("features").beginArray();
+    if (s.rules.galaxyFeatures) for (const auto& f : botf::knownFeatures(s, me)) writeFeature(w, s, f, me);
+    w.endArray();
+    w.key("events").beginArray();
+    for (const auto& e : botf::empireEvents(s, me)) writeGalacticEvent(w, s, e);
+    w.endArray();
+    w.key("templates").beginArray();
+    for (const auto& t : botf::empireBuildTemplates(d, me)) writeTemplate(w, d, t);
+    w.endArray();
+    w.key("victory"); writeVictory(w, d, me);
+
     // --- alerts (derived from core values, like the Unreal inbox)
     w.key("alerts").beginArray();
     for (const auto& c : d.colonies) {
@@ -792,6 +1043,14 @@ void writeView(Writer& w) {
                     " — declare war by turn " + std::to_string(call.dueTurn)).endObject();
         }
     } catch (...) {}
+    for (const auto& e : botf::empireEvents(s, me)) {
+        if (e.choiceDeadline <= 0 || e.choice >= 0 || e.empireId != me) continue;
+        bool drafted = false;
+        for (const auto& c : s.pending) drafted |= c.type == botf::CommandType::ResolveEventChoice && c.eventId == e.id;
+        if (drafted) continue;
+        w.beginObject().field("kind", "event").field("severity", "warn").field("eventId", e.id)
+            .field("text", std::string(botf::galacticEventName(e.kind)) + ": decision needed by turn " + std::to_string(e.choiceDeadline)).endObject();
+    }
     for (const auto& f : d.fleets)
         if (f.ownerId == me && (f.x != f.targetX || f.y != f.targetY) && botf::route(d, f, f.targetX, f.targetY).empty())
             w.beginObject().field("kind", "route").field("severity", "warn").field("fleetId", f.id)
@@ -909,6 +1168,81 @@ void writeColonyDetail(Writer& w, int systemId) {
         w.endObject();
     }
     w.endArray();
+
+    // Schema-13: megaproject, build templates and starbase funding at this colony.
+    const std::string lock = B.session.active ? "Finish the battle in progress first" : "";
+    {
+        const auto* m = botf::empireMegaproject(d, s.playerEmpire);
+        w.key("megaproject").beginObject();
+        w.field("enabled", s.rules.alternativeVictories);
+        w.field("name", botf::megaprojectName(s));
+        w.field("here", m && m->systemId == systemId);
+        if (m) { w.field("systemId", m->systemId); w.field("system", systemLabel(s, m->systemId)); w.field("work", m->work); }
+        w.field("cost", botf::megaprojectIndustryCost(s));
+        w.field("credits", botf::megaprojectCreditCost(s));
+        w.field("workPerTurn", botf::megaprojectWorkPerTurn(d, s.playerEmpire));
+        w.field("startBlocker", !lock.empty() ? lock : dryRunError(s, botf::makeStartMegaprojectCommand(next, systemId)));
+        w.field("cancelBlocker", !lock.empty() ? lock : dryRunError(s, botf::makeCancelMegaprojectCommand(next)));
+        w.endObject();
+    }
+    w.key("templates").beginArray();
+    for (const auto& t : botf::empireBuildTemplates(d, s.playerEmpire))
+        w.beginObject().field("id", t.id).field("name", t.name)
+            .field("blocker", !lock.empty() ? lock : dryRunError(s, botf::makeApplyBuildTemplateCommand(next, t.id, systemId))).endObject();
+    w.endArray();
+    w.field("queueExplanation", c->queueExplanation);
+    for (const auto& u : d.stationUpgrades)
+        if (u.fundingSystemId == systemId)
+            if (const auto* st = botf::stationById(d, u.stationId))
+                w.key("fundsStation").beginObject().field("stationId", st->id).field("name", botf::stationName(*st))
+                    .field("x", st->x).field("y", st->y).field("work", u.work)
+                    .field("cost", botf::stationUpgradeCost(d, s.playerEmpire).industry).endObject();
+    w.endObject();
+}
+
+// Station inspector: own outposts list every colony that could fund a starbase upgrade, each
+// dry-run through the core so a refused option carries the core's reason.
+void writeStationDetail(Writer& w, int stationId) {
+    requireGame();
+    const auto& s = B.state;
+    const auto& d = draft();
+    const int me = s.playerEmpire;
+    const botf::Station* st = nullptr;
+    for (const auto& v : botf::visibleStations(s, me)) if (v.id == stationId) st = botf::stationById(s, v.id);
+    if (!st) fail("That station is not in sensor range");
+    w.beginObject();
+    w.key("station"); writeStation(w, d, *st, me);
+    const bool mine = st->ownerId == me;
+    // Starbase statistics for comparison (what an upgrade buys).
+    w.key("starbase").beginObject(); writeStationStats(w, botf::stationStats(s, st->ownerId, botf::StationType::Starbase)); w.endObject();
+    const auto cost = botf::stationUpgradeCost(s, me);
+    w.field("upgradeCredits", cost.credits); w.field("upgradeIndustry", cost.industry);
+    w.key("funding").beginArray();
+    if (mine && st->type == botf::StationType::Outpost) {
+        const std::uint64_t next = s.lastAcceptedCommand + 1;
+        for (const auto& c : d.colonies) {
+            if (c.ownerId != me) continue;
+            const auto* sys = systemById(d, c.systemId);
+            if (!sys) continue;
+            const auto e = botf::economy(d, c);
+            w.beginObject().field("systemId", c.systemId).field("name", sys->name)
+                .field("distance", std::max(std::abs(sys->x - st->x), std::abs(sys->y - st->y)))
+                .field("industry", e.industry)
+                .field("blocker", B.session.active ? std::string("Finish the battle in progress first")
+                    : dryRunError(s, botf::makeUpgradeStationCommand(next, st->id, c.systemId))).endObject();
+        }
+    }
+    w.endArray();
+    bool drafted = false;
+    for (const auto& c : s.pending) drafted |= c.type == botf::CommandType::UpgradeStation && c.stationId == st->id;
+    w.field("upgradeDrafted", drafted);
+    // Ships in the sector (own ships are repaired by a starbase; hostile ships start a battle).
+    int own = 0, hostile = 0;
+    for (const auto& f : s.fleets) if (f.x == st->x && f.y == st->y) {
+        if (f.ownerId == me) ++own;
+        else if (fleetVisibleToPlayer(s, f)) ++hostile;
+    }
+    w.field("ownShipsHere", own); w.field("contactsHere", hostile);
     w.endObject();
 }
 
@@ -1447,6 +1781,15 @@ void writeEncounter(Writer& w, const tac::Encounter& e, int me) {
         w.field("canRetreat", ship.canRetreat); w.field("canCloak", ship.canCloak); w.field("cloaked", ship.isCloaked);
         w.field("groupId", ship.groupId);
         if (const auto* g = e.getGroupForShip(ship.fleetId)) w.field("group", tac::tacticalGroupClassName(g->groupClass));
+        // Outposts and starbases fight as immobile combatants (fleet id StationCombatantBase + station id).
+        w.field("immobile", ship.immobile);
+        if (botf::isStationCombatant(ship.fleetId)) {
+            w.field("station", true);
+            if (const auto* st = botf::stationById(B.state, botf::stationIdForCombatant(ship.fleetId))) {
+                w.field("stationType", enumName(static_cast<int>(st->type), StationTypeNames));
+                w.field("stationName", botf::stationName(*st));
+            }
+        }
         w.field("disengaging", ship.disengaging());
         if (mine) {
             w.field("maneuver", enumName(static_cast<int>(order.maneuver), ManeuverKeys));
@@ -1528,7 +1871,7 @@ void writeManeuvers(Writer& w) {
 // ------------------------------------------------------------------------------------------------
 struct BriefEvent {
     std::string category, severity, text, kind;
-    int systemId = 0, fleetId = 0, x = -1, y = -1, battle = -1, dueTurn = -1;
+    int systemId = 0, fleetId = 0, x = -1, y = -1, battle = -1, dueTurn = -1, stationId = 0, eventId = 0;
     std::uint64_t proposalId = 0;
 };
 
@@ -1587,7 +1930,7 @@ std::string writeBriefing(const botf::GameState& before, const botf::GameState& 
     for (const auto& c : after.colonies) {
         const auto* old = botf::colonyAt(before, c.systemId);
         if (c.ownerId == me && (!old || old->ownerId != me)) {
-            BriefEvent e; e.category = "exploration"; e.severity = "good"; e.systemId = c.systemId;
+            BriefEvent e; e.category = old ? "combat" : "colonization"; e.severity = "good"; e.systemId = c.systemId;
             e.text = (old ? "Captured " : "Colony founded at ") + systemLabel(after, c.systemId) + ".";
             add(e);
         } else if (c.ownerId != me && old && old->ownerId == me) {
@@ -1625,30 +1968,64 @@ std::string writeBriefing(const botf::GameState& before, const botf::GameState& 
             " vs " + std::to_string(inv.defenseStrength) + ", " + (inv.conquered ? "colony taken" : "defenders held") + ".";
         add(e);
     }
-    // Remaining core event strings, categorised for presentation.
-    for (const auto& raw : r.events) {
-        if (contains(raw, "advanced to level") || startsWith(raw, "Discovered ") || startsWith(raw, "Colony founded at ")) continue;
+    // The turn chronicle (TurnReport::chronicle, one categorised entry with structured references per
+    // player-visible report line). Lines already covered by the structured items above are skipped;
+    // everything else keeps the core's category and references, with presentation tags added.
+    for (const auto& entry : r.chronicle) {
+        const std::string& raw = entry.text;
+        if (contains(raw, "advanced to level") || startsWith(raw, "Discovered ") || startsWith(raw, "Colony founded at ") ||
+            startsWith(raw, "Battle at sector ")) continue;
+        if (!r.invasions.empty() && (startsWith(raw, "Invasion of ") || contains(raw, " captured by "))) continue;
         BriefEvent e; e.severity = "info";
+        const int cat = static_cast<int>(entry.category);
+        e.category = enumName(cat, ChronicleKeys);
         e.text = humanise(after, raw, &e.systemId);
-        if (startsWith(raw, "Fleet ")) {
-            try { e.fleetId = std::stoi(raw.substr(6)); } catch (...) {}
+        if (entry.systemId) e.systemId = entry.systemId;
+        if (entry.fleetId) e.fleetId = entry.fleetId;
+        if (entry.x >= 0 && entry.y >= 0 && entry.x < after.width && entry.y < after.height && botf::explored(after, entry.x, entry.y)) {
+            e.x = entry.x; e.y = entry.y;
         }
-        if (contains(raw, "launched at") || contains(raw, "construction paused") || contains(raw, "repaired at")) {
-            e.category = "construction";
+        e.stationId = entry.stationId;
+        e.eventId = entry.eventId;
+        switch (entry.category) {
+        case botf::ChronicleCategory::Construction:
             if (contains(raw, "paused")) e.severity = "warn";
-            if (contains(raw, "launched at")) {
-                const auto at = raw.rfind(" at ");
-                if (at != std::string::npos) {
-                    const std::string name = raw.substr(at + 4, raw.size() - at - 5);
-                    for (const auto& sys : after.systems) if (sys.name == name) e.systemId = sys.id;
-                }
+            else if (contains(raw, "launched at")) e.severity = "good";
+            break;
+        case botf::ChronicleCategory::Combat:
+            if (contains(raw, "captured by") || contains(raw, "failed") || contains(raw, "blocked")) e.severity = "alert";
+            break;
+        case botf::ChronicleCategory::Exploration:
+        case botf::ChronicleCategory::Colonization:
+            if (contains(raw, "paused")) e.severity = "warn";
+            else if (contains(raw, "completed") || contains(raw, "survey")) e.severity = "good";
+            break;
+        case botf::ChronicleCategory::Stations:
+            if (contains(raw, "destroyed") || contains(raw, "captured") || contains(raw, "boarded") || contains(raw, "lost") ||
+                contains(raw, "abandoned") || contains(raw, "dropped")) e.severity = "alert";
+            else if (contains(raw, "operational") || contains(raw, "commissioned") || contains(raw, "completed") || contains(raw, "assembled"))
                 e.severity = "good";
-            }
-        } else if (startsWith(raw, "Diplomacy") || startsWith(raw, "Galactic news") || contains(raw, "seceded") ||
-                   contains(raw, "honored its alliance") || contains(raw, "was conquered by")) {
+            break;
+        case botf::ChronicleCategory::Events:
+            if (entry.eventId) e.kind = "galacticEvent";
+            if (contains(raw, "no decision")) e.severity = "warn";
+            if (const auto at = raw.find("Decide by turn "); at != std::string::npos) {
+                e.kind = "eventChoice"; e.severity = "warn";
+                try { e.dueTurn = std::stoi(raw.substr(at + 15)); } catch (...) {}
+            } else if (contains(raw, "shortage") || contains(raw, "unrest") || contains(raw, "warning") || contains(raw, "plague") ||
+                       contains(raw, "Plague") || contains(raw, "detonat") || contains(raw, "lost")) e.severity = "warn";
+            else if (contains(raw, "windfall") || contains(raw, "celebration") || contains(raw, "boom") || contains(raw, "breakthrough") ||
+                     contains(raw, "salvage") || contains(raw, "Salvage")) e.severity = "good";
+            break;
+        case botf::ChronicleCategory::Victory:
+            e.severity = contains(raw, "defeat") || contains(raw, "lost the") ? "alert" : entry.empireId && entry.empireId != me ? "warn" : "good";
+            break;
+        case botf::ChronicleCategory::Research: e.severity = "good"; break;
+        default: break;
+        }
+        if (entry.category == botf::ChronicleCategory::Diplomacy) {
             // Modern diplomacy: the core's own player-facing sentences (Simulation.cpp reportDiplomaticEvent,
             // submitAiProposals), tagged so the UI can link them to the inbox and treaty history.
-            e.category = "diplomacy";
             const bool news = startsWith(raw, "Galactic news");
             if (news) e.kind = "news";
             if (contains(raw, "calls on us to honor")) { e.kind = "callToArms"; e.severity = "alert"; }
@@ -1671,22 +2048,11 @@ std::string writeBriefing(const botf::GameState& before, const botf::GameState& 
             else if (contains(raw, "Dissolved") || contains(raw, "dissolved")) { e.kind = "dissolved"; e.severity = "warn"; }
             else if (contains(raw, "Rejected") || contains(raw, "Ignored")) e.severity = "warn";
             else if (contains(raw, "Accepted") || contains(raw, "Established")) e.severity = "good";
-        } else if (contains(raw, "First contact") || contains(raw, "at war") || contains(raw, "peace") || contains(raw, "treaty") ||
-                   contains(raw, "joined") || contains(raw, "friendship") || contains(raw, "membership") || contains(raw, "proposal") ||
-                   contains(raw, "gift") || contains(raw, "Gift") || contains(raw, "accepted") || contains(raw, "declined")) {
+            else if (contains(raw, "at war")) e.severity = "alert";
+        } else if (contains(raw, "seceded") || contains(raw, "Galactic news") || startsWith(raw, "Diplomacy")) {
+            // Defensive: diplomatic sentences the classifier filed elsewhere stay with diplomacy.
             e.category = "diplomacy";
-            if (contains(raw, "at war")) e.severity = "alert";
-        } else if (contains(raw, "Intelligence") || contains(raw, "Sabotage") || contains(raw, "intelligence") || contains(raw, "espionage")) {
-            e.category = "intel";
-        } else if (contains(raw, "route paused") || contains(raw, "Terraforming")) {
-            e.category = "fleets";
-            if (contains(raw, "paused")) e.severity = "warn";
-        } else if (contains(raw, "victory") || contains(raw, "defeat")) {
-            e.category = "combat"; e.severity = contains(raw, "victory") ? "good" : "alert";
-        } else {
-            e.category = "economy";
-            if (contains(raw, "shortage") || contains(raw, "unrest") || contains(raw, "warning")) e.severity = "warn";
-            else if (contains(raw, "windfall") || contains(raw, "celebration")) e.severity = "good";
+            if (startsWith(raw, "Galactic news")) e.kind = "news";
         }
         add(e);
     }
@@ -1747,6 +2113,8 @@ std::string writeBriefing(const botf::GameState& before, const botf::GameState& 
         if (!e.kind.empty()) w.field("kind", e.kind);
         if (e.proposalId) w.field("proposalId", e.proposalId);
         if (e.dueTurn >= 0) w.field("dueTurn", e.dueTurn);
+        if (e.stationId) w.field("stationId", e.stationId);
+        if (e.eventId) w.field("eventId", e.eventId);
         w.endObject();
     }
     w.endArray();
@@ -1829,6 +2197,10 @@ void newCampaign(const Value& a) {
     auto s = ruleset == "prototype"
         ? botf::generateCampaign(seed, empires, width, height, systems, faction, static_cast<botf::StartingEra>(era))
         : botf::generateReferenceCampaign(seed, empires, width, height, systems, faction, static_cast<botf::StartingEra>(era));
+    // Ruleset preset (docs/GAMEPLAY-REMASTER.md §1): Remastered by default, like botf::newCampaign.
+    botf::RulesetPreset preset = botf::RulesetPreset::Remastered;
+    if (a.has("preset") && !botf::parseRulesetPreset(a.getString("preset"), preset)) fail("Unknown ruleset preset");
+    botf::applyRulesetPreset(s, preset);
     if (a.has("events")) s.eventsEnabled = a.getBool("events");
     if (a.has("aiAggression")) s.aiAggressionEnabled = a.getBool("aiAggression");
     botf::validate(s);
@@ -1859,8 +2231,24 @@ void addDrillShips(botf::GameState& s, int owner, int x, int y, int count) {
     }
 }
 
-void newBattleDrill() {
+void markExplored(std::vector<int>& explored, int cell) { explored.push_back(cell); }
+void normaliseExplored(std::vector<int>& explored) {
+    std::sort(explored.begin(), explored.end());
+    explored.erase(std::unique(explored.begin(), explored.end()), explored.end());
+}
+
+botf::Station makeStation(const botf::GameState& s, int owner, int x, int y, botf::StationType type) {
+    botf::Station st;
+    st.id = s.nextStationId; st.ownerId = owner; st.x = x; st.y = y; st.type = type; st.builtTurn = s.turn;
+    const auto stats = botf::stationStats(s, owner, type);
+    st.hull = stats.maxHull; st.shields = stats.maxShields;
+    return st;
+}
+
+void newBattleDrill(bool withStation) {
     auto s = botf::generateReferenceCampaign(1999);
+    // The station variant plays under the Remastered preset, where outposts and starbases fight.
+    if (withStation) botf::applyRulesetPreset(s, botf::RulesetPreset::Remastered);
     s.eventsEnabled = false; s.aiAggressionEnabled = false;
     const auto& sol = s.systems.front();
     auto rival = std::find_if(s.fleets.begin(), s.fleets.end(), [&](const botf::Fleet& f) { return f.ownerId != s.playerEmpire; });
@@ -1877,9 +2265,83 @@ void newBattleDrill() {
     addDrillShips(armed, s.playerEmpire, sol.x, sol.y, 3);
     addDrillShips(armed, foe, sol.x, sol.y, 3);
     try { botf::validate(armed); s = std::move(armed); } catch (...) { botf::validate(s); }
+    if (withStation) {
+        // Sol's starbase joins the defence as an immobile combatant (fleet id StationCombatantBase + id).
+        auto fortified = s;
+        const auto& home = fortified.systems.front();
+        fortified.stations.push_back(makeStation(fortified, s.playerEmpire, home.x, home.y, botf::StationType::Starbase));
+        fortified.nextStationId++;
+        botf::validate(fortified);
+        s = std::move(fortified);
+    }
     botf::Command war; war.id = s.lastAcceptedCommand + 1; war.type = botf::CommandType::DeclareWar; war.targetEmpire = foe;
     botf::submit(s, war);
-    startGame(std::move(s), "drill");
+    startGame(std::move(s), withStation ? "drill-station" : "drill");
+}
+
+// Frontier drill (also the e2e fixture for the schema-13 layer): a Remastered campaign in the
+// Developed era where long-range sensors have charted the region around the capital and every
+// anomaly. A troop transport waits at the capital, ready to assemble an outpost; an outpost already
+// stands nearby and can be upgraded to a starbase; and two galactic events await a decision.
+void newFrontierDrill() {
+    botf::CampaignSetup setup;
+    setup.seed = 7707; setup.era = botf::StartingEra::Developed; setup.preset = botf::RulesetPreset::Remastered;
+    auto s = botf::newCampaign(setup);
+    s.aiAggressionEnabled = false;
+    s.eventsEnabled = false;   // only the drill's own events
+    const int me = s.playerEmpire;
+    const auto home = std::find_if(s.colonies.begin(), s.colonies.end(), [&](const botf::Colony& c) { return c.ownerId == me; });
+    if (home == s.colonies.end()) fail("Drill needs a home colony");
+    const auto* capital = systemById(s, home->systemId);
+    // Long-range survey: the capital's neighbourhood and every anomaly are charted.
+    for (int y = 0; y < s.height; ++y) for (int x = 0; x < s.width; ++x)
+        if (std::max(std::abs(x - capital->x), std::abs(y - capital->y)) <= 4) markExplored(s.explored, y * s.width + x);
+    for (const auto& f : s.galaxyFeatures) {
+        markExplored(s.explored, f.y * s.width + f.x);
+        if (f.type == botf::GalaxyFeatureType::IonStorm)
+            for (const auto& [cx, cy] : botf::ionStormCells(s, f)) markExplored(s.explored, cy * s.width + cx);
+    }
+    normaliseExplored(s.explored);
+    s.credits = std::max<decltype(s.credits)>(s.credits, 2600);
+
+    // A troop transport at the capital.
+    const int race = catalogueRaceOf(me);
+    const botf::referenceData::ShipRecord* transport = nullptr;
+    for (const auto& ship : botf::referenceData::ShipCatalogue)
+        if (ship.raceId == race && ship.role == 9) {   // role 9: troop transport
+            const int t = *std::max_element(ship.technologyRequirements.begin(), ship.technologyRequirements.end());
+            if (!transport || t < *std::max_element(transport->technologyRequirements.begin(), transport->technologyRequirements.end())) transport = &ship;
+        }
+    {
+        botf::Fleet f;
+        f.id = s.nextFleetId++; f.ownerId = me; f.x = f.targetX = capital->x; f.y = f.targetY = capital->y;
+        f.shipClass = botf::Building::Transport; f.referenceShipId = transport ? transport->id : -1;
+        f.hull = botf::fleetMaxHull(f); f.shields = botf::fleetMaxShields(f);
+        s.fleets.push_back(f);
+    }
+    // An outpost two sectors out, in charted open space.
+    for (int radius = 2; radius <= 3 && s.stations.empty(); ++radius)
+        for (int dy = -radius; dy <= radius && s.stations.empty(); ++dy)
+            for (int dx = -radius; dx <= radius && s.stations.empty(); ++dx) {
+                const int x = capital->x + dx, y = capital->y + dy;
+                if (std::max(std::abs(dx), std::abs(dy)) != radius || x < 0 || y < 0 || x >= s.width || y >= s.height) continue;
+                if (systemAtCell(s, x, y) || !botf::featuresAt(s, x, y).empty() || !botf::explored(s, x, y)) continue;
+                s.stations.push_back(makeStation(s, me, x, y, botf::StationType::Outpost));
+                s.nextStationId++;
+            }
+    // Two decisions from the curated deck.
+    const auto addEvent = [&](botf::GalacticEventKind kind, int x, int y) {
+        botf::GalacticEvent e;
+        e.id = s.nextEventId++; e.kind = kind; e.empireId = me; e.x = x; e.y = y;
+        e.startTurn = s.turn; e.choiceDeadline = s.turn + 2; e.endTurn = s.turn + 3;
+        s.galacticEvents.push_back(e);
+    };
+    const auto scout = std::find_if(s.fleets.begin(), s.fleets.end(), [&](const botf::Fleet& f) { return f.ownerId == me && f.shipClass == botf::Building::Scout; });
+    addEvent(botf::GalacticEventKind::DerelictVessel, scout != s.fleets.end() ? scout->x : capital->x, scout != s.fleets.end() ? scout->y : capital->y);
+    addEvent(botf::GalacticEventKind::ScientificBreakthrough, -1, -1);
+    botf::validate(s);
+    queueStarterProjects(s);
+    startGame(std::move(s), "frontier");
 }
 
 // A diplomacy training scenario (also the e2e fixture for the incoming-proposal inbox and calls to
@@ -2082,7 +2544,9 @@ std::string dispatch(const std::string& method, const Value& a) {
     if (method == "meta") writeMeta(w);
     else if (method == "encyclopedia") writeEncyclopedia(w);
     else if (method == "newCampaign") { newCampaign(a); writeView(w); }
-    else if (method == "newBattleDrill") { newBattleDrill(); writeView(w); }
+    else if (method == "newBattleDrill") { newBattleDrill(a.getBool("station")); writeView(w); }
+    else if (method == "newFrontierDrill") { newFrontierDrill(); writeView(w); }
+    else if (method == "station") writeStationDetail(w, a.getInt("stationId"));
     else if (method == "newDiplomacyDrill") { newDiplomacyDrill(); writeView(w); }
     else if (method == "headlessFingerprint") {
         // Fingerprint of the drafted turn advanced headlessly by botf::advance (auto-resolving every
