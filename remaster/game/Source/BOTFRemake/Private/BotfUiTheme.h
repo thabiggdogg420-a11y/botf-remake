@@ -124,6 +124,18 @@ inline FSlateFontInfo Condensed(int Size) {
     return FCoreStyle::GetDefaultFontStyle("BoldCondensed", Size);
 }
 
+// Polyline in widget-local space. UE 5.1+ Slate takes line points as FVector2f (the FVector2D overload is a
+// deprecation shim that later engine versions may drop), so every widget draws lines through this one helper.
+inline void DrawLines(FSlateWindowElementList& Elements, int32 Layer, const FGeometry& Geometry,
+    const TArray<FVector2D>& Points, const FLinearColor& Color, float Thickness)
+{
+    TArray<FVector2f> Local;
+    Local.Reserve(Points.Num());
+    for (const FVector2D& Point : Points) Local.Add(FVector2f(static_cast<float>(Point.X), static_cast<float>(Point.Y)));
+    FSlateDrawElement::MakeLines(Elements, Layer, Geometry.ToPaintGeometry(), MoveTemp(Local), ESlateDrawEffect::None,
+        Color, true, Thickness);
+}
+
 // Themed LCARS control. Pill = coloured button with dark ink; Row = dense list row with a state cap.
 inline TSharedRef<SWidget> MakeButton(const TAttribute<FText>& Label, TFunction<void()> OnClick,
     TFunction<bool()> Enabled, TFunction<bool()> Selected, TFunction<int()> Empire,

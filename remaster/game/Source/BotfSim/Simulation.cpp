@@ -2183,13 +2183,13 @@ void resolveMinorDynamics(GameState& next, TurnReport& report) {
             else if (rank == 1) att = std::max(att, std::min(att + 1, 65));
             else if (att > 50) att = std::max(50, att - 2);
             else if (att < 50) att = std::min(50, att + 2);
-            bool near = false;
+            bool nearOwnColony = false;   // not "near": <windows.h> defines near/far as empty macros
             for (const auto& c : next.colonies) {
                 if (c.ownerId != e || c.systemId == m.systemId) continue;
                 const auto loc = std::find_if(next.systems.begin(), next.systems.end(), [&](const System& x) { return x.id == c.systemId; });
-                if (loc != next.systems.end() && std::max(std::abs(loc->x - sys->x), std::abs(loc->y - sys->y)) <= 3) { near = true; break; }
+                if (loc != next.systems.end() && std::max(std::abs(loc->x - sys->x), std::abs(loc->y - sys->y)) <= 3) { nearOwnColony = true; break; }
             }
-            if (near && att < 70) ++att;
+            if (nearOwnColony && att < 70) ++att;
             if (rank < 2 && bestRank >= 2 && att > 30) att = std::max(30, att - 2); // Rival influence
             att = std::clamp(att, 0, 100);
         }

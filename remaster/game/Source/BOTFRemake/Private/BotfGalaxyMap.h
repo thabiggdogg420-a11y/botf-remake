@@ -188,11 +188,11 @@ public:
         };
         auto Line = [&](int L, FVector2D A, FVector2D Z, const FLinearColor& Color, float Thick) {
             TArray<FVector2D> Pts; Pts.Add(A); Pts.Add(Z);
-            FSlateDrawElement::MakeLines(Elements, Layer + L, Geometry.ToPaintGeometry(), Pts, ESlateDrawEffect::None, Color, true, Thick);
+            BotfUi::DrawLines(Elements, Layer + L, Geometry, Pts, Color, Thick);
         };
         auto Outline = [&](int L, FVector2D A, double Ext, const FLinearColor& Color, float Thick) {
             TArray<FVector2D> Pts = { A, A + FVector2D(Ext, 0), A + FVector2D(Ext, Ext), A + FVector2D(0, Ext), A };
-            FSlateDrawElement::MakeLines(Elements, Layer + L, Geometry.ToPaintGeometry(), Pts, ESlateDrawEffect::None, Color, true, Thick);
+            BotfUi::DrawLines(Elements, Layer + L, Geometry, Pts, Color, Thick);
         };
         auto Text = [&](int L, FVector2D At, const FString& Value, int Pt, bool Bold, const FLinearColor& Color) {
             FSlateDrawElement::MakeText(Elements, Layer + L, Geometry.ToPaintGeometry(FVector2D(220, Pt + 8), FSlateLayoutTransform(At)),
@@ -241,7 +241,7 @@ public:
         auto Circle = [&](int L, FVector2D C, double Radius, const FLinearColor& Color, float Thick) {
             TArray<FVector2D> Pts;
             for (int I = 0; I <= 24; ++I) { const double A = I * 6.283185307 / 24; Pts.Add(C + FVector2D(std::cos(A), std::sin(A)) * Radius); }
-            FSlateDrawElement::MakeLines(Elements, Layer + L, Geometry.ToPaintGeometry(), Pts, ESlateDrawEffect::None, Color, true, Thick);
+            BotfUi::DrawLines(Elements, Layer + L, Geometry, Pts, Color, Thick);
         };
         // Charted anomalies (explored sectors only): nebulae and ion storms tint their sectors, point anomalies get a glyph.
         if (B.View->bAnomalies) {
@@ -288,7 +288,7 @@ public:
                 const int X1 = FMath::Min(W - 1, X + Radius) + 1, Y1 = FMath::Min(State.height - 1, Y + Radius) + 1;
                 const FVector2D TL = Origin(X0, Y0, Size), BR = Origin(X1, Y1, Size);
                 TArray<FVector2D> Pts = { TL, FVector2D(BR.X, TL.Y), BR, FVector2D(TL.X, BR.Y), TL };
-                FSlateDrawElement::MakeLines(Elements, Layer + 3, Geometry.ToPaintGeometry(), Pts, ESlateDrawEffect::None, Color, true, Thick);
+                BotfUi::DrawLines(Elements, Layer + 3, Geometry, Pts, Color, Thick);
             };
             for (const auto& St : Cache.Stations) {
                 if (!St.own && St.y * W + St.x != *B.Cell) continue;
@@ -368,7 +368,7 @@ public:
             if (*B.Selected == S.id) {
                 TArray<FVector2D> Ring;
                 for (int I = 0; I <= 32; ++I) { const double A = I * 6.283185307 / 32; Ring.Add(P + FVector2D(std::cos(A), std::sin(A)) * (Star + 5)); }
-                FSlateDrawElement::MakeLines(Elements, Layer + 6, Geometry.ToPaintGeometry(), Ring, ESlateDrawEffect::None, Pal.Accent, true, 2.f);
+                BotfUi::DrawLines(Elements, Layer + 6, Geometry, Ring, Pal.Accent, 2.f);
             }
             Box(7, P - FVector2D(Star, Star) * 0.5, FVector2D(Star, Star), Color, Round);
             // A contacted independent minor race (the roster's homeworlds) wears a thin ring; hover for its profile.

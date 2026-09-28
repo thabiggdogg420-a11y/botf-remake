@@ -53,7 +53,7 @@ public:
         };
         auto Line = [&](int L, FVector2D A, FVector2D B, const FLinearColor& Color, float Thick) {
             TArray<FVector2D> Pts; Pts.Add(A); Pts.Add(B);
-            FSlateDrawElement::MakeLines(Elements, Layer + L, Geometry.ToPaintGeometry(), Pts, ESlateDrawEffect::None, Color, true, Thick);
+            BotfUi::DrawLines(Elements, Layer + L, Geometry, Pts, Color, Thick);
         };
         Box(0, FVector2D(0, 0), Size, Shade(Pal.Void, 1.f));
         const FLinearColor GridColor = Shade(Pal.Secondary, 0.22f, 0.6f);
@@ -85,14 +85,14 @@ public:
             if (!S.retreated && E.remasterRules() && S.disengaging()) {
                 const double O = R + 2;
                 TArray<FVector2D> Ring = { P + FVector2D(-O, -O), P + FVector2D(O, -O), P + FVector2D(O, O), P + FVector2D(-O, O), P + FVector2D(-O, -O) };
-                FSlateDrawElement::MakeLines(Elements, Layer + 5, Geometry.ToPaintGeometry(), Ring, ESlateDrawEffect::None, Pal.Tertiary, true, 1.5f);
+                BotfUi::DrawLines(Elements, Layer + 5, Geometry, Ring, Pal.Tertiary, 1.5f);
             }
             Box(5, P - FVector2D(R, R), FVector2D(2 * R, 2 * R), Fill);
             // Schema-13 stations are immobile units: an outer frame in their owner's colour marks them apart from ships.
             if (S.immobile) {
                 const double O = R + 5;
                 TArray<FVector2D> Frame = { P + FVector2D(-O, -O), P + FVector2D(O, -O), P + FVector2D(O, O), P + FVector2D(-O, O), P + FVector2D(-O, -O) };
-                FSlateDrawElement::MakeLines(Elements, Layer + 5, Geometry.ToPaintGeometry(), Frame, ESlateDrawEffect::None, Base, true, 2.f);
+                BotfUi::DrawLines(Elements, Layer + 5, Geometry, Frame, Base, 2.f);
             }
             // Hull bar under the marker.
             const double Frac = S.maxHull > 0 ? static_cast<double>(S.hull) / S.maxHull : 0;

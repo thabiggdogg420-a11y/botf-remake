@@ -46,7 +46,9 @@ public:
     }
     int32 StepAt(const FGeometry& Geometry, const FPointerEvent& Event) const {
         const FVector2D Local = Geometry.AbsoluteToLocal(Event.GetScreenSpacePosition());
-        const double X = FMath::Clamp(Local.X / FMath::Max(1.0, Geometry.GetLocalSize().X), 0.0, 1.0);
+        // GetLocalSize() returns FVector2f-based data in UE 5.1+: pin the type so FMath::Max is not float/double mixed.
+        const FVector2D LocalSize = Geometry.GetLocalSize();
+        const double X = FMath::Clamp(Local.X / FMath::Max(1.0, LocalSize.X), 0.0, 1.0);
         return FMath::Clamp(static_cast<int32>(FMath::RoundToDouble(X * Count())), 0, Count());
     }
     virtual FReply OnMouseButtonDown(const FGeometry& Geometry, const FPointerEvent& Event) override {

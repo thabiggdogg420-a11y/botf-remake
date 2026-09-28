@@ -39,7 +39,8 @@ Neither lane E nor lane I has been compiled by UE 5.8. See UNREAL-CLIENT.md for 
 5. Republish the web build.
    - Convert `dist/index.html` into an artifact fragment: title, style, body and module script.
    - Publish it to https://claude.ai/artifact/TJQpg1jaVSvoWCmnFrALJS with `capabilities: {downloads: true}`.
-6. Compile the Unreal client on Windows (UE 5.8): run `game/Build-Unreal.ps1` from `remaster/`.
+6. Compile and package the Unreal client on Windows (UE 5.8): run `game/Package-Windows.ps1` from `remaster/`
+   (see PACKAGING.md). On failure, paste `game/Build/Logs/<stamp>/FAILURE-SUMMARY.txt` back into the session.
    - Nothing in the Unreal client has been compiled by Unreal yet.
    - Lanes E and I list the spots least certain to compile; start there.
 

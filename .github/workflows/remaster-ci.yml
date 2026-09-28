@@ -32,6 +32,14 @@ jobs:
         run: |
           ./build/BotfSim --reference --seed 26713 --empires 5 --player 4 --turns 200 | tail -1
 
+  unreal-tu:
+    name: unreal stand-in (one-TU core, engine macro names)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Core and view models as Unreal compiles them
+        run: bash remaster/game/Tools/check-unreal-tu.sh g++ clang++
+
   web:
     name: web client (wasm + browser)
     runs-on: ubuntu-24.04

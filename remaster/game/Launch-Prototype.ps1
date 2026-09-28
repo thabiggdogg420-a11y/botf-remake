@@ -17,7 +17,12 @@ if (-not $EditorRuntime) {
     $taskManifestPath = Join-Path $PackageDirectory 'build-manifest.json'
     if (Test-Path -LiteralPath $taskManifestPath) {
         $taskManifest = Get-Content -LiteralPath $taskManifestPath -Raw | ConvertFrom-Json
-        $taskRuntime = Join-Path $PackageDirectory 'BOTFRemake\Binaries\Win64\BOTFRemake.exe'
+        # Package-Windows.ps1 records the real binary (BOTFRemake-Win64-Shipping.exe for Shipping packages).
+        $taskRuntimeRelative = 'BOTFRemake\Binaries\Win64\BOTFRemake.exe'
+        if ($taskManifest.PSObject.Properties['runtimeExecutable'] -and $taskManifest.runtimeExecutable) {
+            $taskRuntimeRelative = $taskManifest.runtimeExecutable
+        }
+        $taskRuntime = Join-Path $PackageDirectory $taskRuntimeRelative
         if (-not $taskManifest.buildId -or -not $taskManifest.executableSha256 -or
             -not (Test-Path -LiteralPath $taskRuntime) -or
             (Get-FileHash -LiteralPath $taskRuntime -Algorithm SHA256).Hash -ne $taskManifest.executableSha256) {

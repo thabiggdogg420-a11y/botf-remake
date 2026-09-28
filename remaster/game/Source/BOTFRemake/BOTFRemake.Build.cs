@@ -12,6 +12,9 @@ public class BOTFRemake : ModuleRules
         // from the standalone GCC/Clang/MSVC builds. FPSemantics requires NoPCHs or a private PCH (NoPCHs above).
         FPSemantics = FPSemanticsMode.Precise;
         PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "InputCore", "Slate", "SlateCore" });
+        // GenericPlatform/GenericWindow.h (EWindowMode, BotfSettingsPanel.h) lives in ApplicationCore. Slate pulls it in
+        // today, but naming it keeps the module building if an engine release trims Slate's public dependencies.
+        PrivateDependencyModuleNames.AddRange(new string[] { "ApplicationCore" });
         PrivateIncludePaths.Add(Path.Combine(ModuleDirectory, "..", "BotfSim"));
     }
 }

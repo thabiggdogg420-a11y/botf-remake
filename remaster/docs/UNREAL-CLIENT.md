@@ -212,6 +212,40 @@ How the Slate shim is built (rebuilt by lane I; the harness is not kept in the r
 These harnesses live outside the repository (they are not part of CMake or the Unreal build). Keep new
 client logic in `BotfViewModel.h`-style headers so it can be checked the same way.
 
+One stand-in check is in the repository and runs in CI (job `unreal-tu`): `game/Tools/check-unreal-tu.sh`. It
+compiles `SimulationBridge.cpp` as the single translation unit UBT builds, with `-Wshadow -Werror`. It then compiles
+the core and both view-model headers again, with engine and `<windows.h>` macro names predefined (`near`, `far`,
+`IN`, `OUT`, `check`, `verify`, `TEXT`, `PI`, `interface`, `small`, ...). The check was calibrated on the core's old
+`bool near` local, which it rejects.
+
+## First real compile: risk list
+
+Build with `game/Package-Windows.ps1` (see [PACKAGING.md](PACKAGING.md)).
+
+Fixed before the first compile:
+
+- `FSlateDrawElement::MakeLines` gets its points as `FVector2f` through `BotfUi::DrawLines`. The `TArray<FVector2D>`
+  overload is a UE 5 deprecation shim.
+- `SPickBar::StepAt` stores `GetLocalSize()` in an `FVector2D` before `FMath::Max(1.0, ...)`. Since UE 5.1 the
+  getter returns float-based data, and a mixed float/double template call can fail to deduce.
+- The module declares `ApplicationCore`, which provides `GenericPlatform/GenericWindow.h` and `EWindowMode`.
+- The core no longer names a local `near`, which `<windows.h>` defines as an empty macro.
+
+Still unproven, in rough order of likelihood. Each is a single-line fix if it fails:
+
+| Where | Risk |
+|---|---|
+| `BotfGameMode.cpp`, `BOTF.UI.Shell` test | `FKeyEvent(Key, FModifierKeysState(), 0, false, 0, 0)` uses the `uint32 UserIndex` constructor. Newer engines prefer `FInputDeviceId`; if the overload is gone, use `FInputDeviceId::CreateFromInternalId(0)`. |
+| every `OnPaint` | `Geometry.ToPaintGeometry(FVector2D, FSlateLayoutTransform(FVector2D))` depends on the `FDeprecateVector2DParameter` conversions. If they fail, pass `FVector2f`. |
+| custom leaf widgets | `ComputeDesiredSize(float) const` returning `FVector2D`. If the engine moved this to `FVector2f`, the `override` fails loudly. |
+| `BotfUiTheme.h` | `FSlateRoundedBoxBrush(FLinearColor, FVector4)`. If the radii type changed, use `FVector4f`. |
+| `BotfGameMode.cpp` `BeginPlay` | `PC->bShowMouseCursor = true` writes the field directly. Use `PC->SetShowMouseCursor(true)` if it is made private. |
+| `BotfCombatScene.h` | A plain `enum ECameraMode : int` inside a `UCLASS` body. UHT normally ignores it; if not, move it outside the class. |
+| `IMPLEMENT_SIMPLE_AUTOMATION_TEST` flags | `EAutomationTestFlags::EditorContext \| ProductFilter` is valid in UE 5.5+. |
+| `BOTFRemake.uproject` | `EditorScriptingUtilities` plugin: if 5.8 removed or renamed it, the project refuses to open. Drop the entry. |
+| `Content/` | Assets saved by a newer engine than the local one fail to load at cook time (`LogLinker`). |
+| Runtime only | `FCoreStyle::GetDefaultFontStyle("BoldCondensed", ...)` falls back to the default face if the typeface is missing. |
+
 ## Core queries the client needs
 
 `BotfViewModel.h` mirrors these formulas. Schema 14 (GAMEPLAY-REMASTER.md section 13) adds the core queries, so the
