@@ -76,6 +76,7 @@ test('campaign: scout, colonize, build, staff, research, turns, screens, save/re
   await centreOn(page, target.x, target.y);
   p = await fleetPoint(page, ship.id);
   await page.mouse.click(p.x, p.y);
+  await expect(page.getByTestId('unit-card')).toContainText(/colony/i);
   await openContextMenu(page, target.y * W + target.x);
   const colonize = page.locator('[data-testid=context-menu] [data-action=colonize]');
   await expect(colonize).not.toHaveAttribute('aria-disabled', 'true');

@@ -58,3 +58,10 @@ jobs:
         run: |
           npx playwright install --with-deps chromium
           npx playwright test e2e/campaign.spec.ts
+      - name: Upload browser traces
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-traces
+          path: remaster/web/test-results/
+          retention-days: 7

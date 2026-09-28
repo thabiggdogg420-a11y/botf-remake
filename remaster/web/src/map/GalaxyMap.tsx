@@ -283,7 +283,9 @@ export function GalaxyMap() {
         const r = canvas.getBoundingClientRect();
         return { x: r.left + hit.x, y: r.top + hit.y };
       },
-      settled: () => Math.abs(cam.cx - target.cx) < 0.5 && Math.abs(cam.cy - target.cy) < 0.5 && Math.abs(cam.zoom - target.zoom) < 0.002,
+      // A focus request is applied on the next animation frame; until then the camera target is stale.
+      settled: () => (focusRequest.value === null || focusRequest.value.seq === lastFocusSeq)
+        && Math.abs(cam.cx - target.cx) < 0.5 && Math.abs(cam.cy - target.cy) < 0.5 && Math.abs(cam.zoom - target.zoom) < 0.002,
     });
 
     canvas.addEventListener('pointerdown', onPointerDown);
