@@ -10,6 +10,8 @@ export interface Settings {
   /** Owner colours from the Okabe–Ito colour-blind-safe palette (emblem shapes stay the primary cue). */
   colorblind: boolean;
   autosave: boolean;
+  /** Sound volume in percent (0–100) for interface and battle cues. */
+  volume: number;
 }
 
 const KEY = 'botf.settings';
@@ -21,7 +23,7 @@ function systemPrefersReducedMotion(): boolean {
 }
 
 function defaults(): Settings {
-  return { uiScale: 100, reducedMotion: systemPrefersReducedMotion(), colorblind: false, autosave: true };
+  return { uiScale: 100, reducedMotion: systemPrefersReducedMotion(), colorblind: false, autosave: true, volume: 70 };
 }
 
 function sanitize(raw: Partial<Settings> | null | undefined): Settings {
@@ -32,6 +34,7 @@ function sanitize(raw: Partial<Settings> | null | undefined): Settings {
     reducedMotion: typeof raw?.reducedMotion === 'boolean' ? raw.reducedMotion : d.reducedMotion,
     colorblind: typeof raw?.colorblind === 'boolean' ? raw.colorblind : d.colorblind,
     autosave: typeof raw?.autosave === 'boolean' ? raw.autosave : d.autosave,
+    volume: Number.isFinite(Number(raw?.volume)) && raw?.volume !== undefined ? Math.min(100, Math.max(0, Math.round(Number(raw.volume)))) : d.volume,
   };
 }
 

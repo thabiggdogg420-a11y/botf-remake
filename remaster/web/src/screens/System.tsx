@@ -5,6 +5,7 @@ import {
   cancelOrders, confirmDialog, goto, issue, meta, reportError, selectSystem, selection, view,
 } from '../state/store';
 import { Badge, Empty, fmt, Frame, IconButton, Meter, Pill, signed, Slider, Stat, Tabs, tip } from '../ui/components';
+import { eraLabel, sourceLabel, weaponSummary } from '../core/roster';
 import { FundingNotice, MegaprojectFrame, TemplatesFrame } from '../ui/Remaster';
 
 export function SystemScreen() {
@@ -294,7 +295,7 @@ function BuildOptions({ detail, locked }: { detail: ColonyDetail; locked: boolea
             const disabled = locked || !!ch.blocker;
             const reason = locked ? 'Finish the battle first' : ch.blocker;
             const details = ch.isShip && ch.hull !== undefined
-              ? `${ch.designClass ?? ''} ${ch.designName ?? ''}\nHull ${ch.hull} · shields ${ch.shields} · attack ${ch.attack}\nSpeed ${ch.speed} · range ${ch.range} · upkeep ${ch.maintenance}\n${ch.description ?? ''}`
+              ? `${ch.designClass ?? ''} ${ch.designName ?? ''}${ch.roster ? ` · ${eraLabel(ch.roster.era)} · ${sourceLabel(ch.roster.sourceKind)}` : ''}\nHull ${ch.hull} · shields ${ch.shields} · attack ${ch.attack}\nSpeed ${ch.speed} · range ${ch.range} · upkeep ${ch.maintenance}${ch.roster?.weapons.length ? `\nWeapons: ${weaponSummary(ch.roster.weapons)}` : ''}\n${ch.description ?? ''}`
               : `${ch.name}\nIndustry ${ch.cost}${ch.energyCost !== undefined ? ` · energy ${ch.energyCost}` : ''} · upkeep ${ch.upkeep} credits/turn`;
             return (
               <button type="button" role="listitem" key={`${ch.product}-${ch.referenceId}`} class={`choice${disabled ? ' disabled' : ''}`}
@@ -303,7 +304,7 @@ function BuildOptions({ detail, locked }: { detail: ColonyDetail; locked: boolea
                 {...tip(disabled ? `Unavailable: ${reason}` : details, ch.name)}>
                 <span class={`choice-icon ci-${ch.isShip ? 'ship' : ch.product}`} aria-hidden="true" />
                 <span class="choice-main">
-                  <span class="choice-name">{ch.name}</span>
+                  <span class="choice-name">{ch.name}{ch.roster ? <span class="roster-chip" data-testid="roster-chip">{eraLabel(ch.roster.era)}</span> : null}</span>
                   <span class="choice-meta">
                     {ch.isShip && ch.hull !== undefined ? <>H{ch.hull} · S{ch.shields} · A{ch.attack} · </> : null}
                     {fmt(ch.cost)} ind · {ch.upkeep ? `¢${ch.upkeep}/t` : 'no upkeep'}

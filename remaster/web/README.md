@@ -74,6 +74,26 @@ the Chromium in `PLAYWRIGHT_BROWSERS_PATH` when set.
 - **Settings** (menu or title): interface scale 90–130%, reduced motion, colour-blind-safe owner
   colours (Okabe–Ito), sound, autosave. Stored per browser; everything works without storage.
 
+### Expanded ship roster, battle effects and sound
+
+- The bridge exposes the 98-class expanded roster (docs/SHIP-ROSTER.md): every ship record carries a `roster`
+  object (null for legacy ids) with `assetKey`, faction, hull role, era, tier, source kind/note, buildable, cloak,
+  sensors, torpedo share and typed `weapons` (`type`, `key` = `weapon.<Type>`, `count`, `arc`, `torpedo`). It appears
+  in `encyclopedia` (legacy + expanded), colony build `choices`, own fleets, and tactical ships (`weapons`, `assetKey`).
+- **Database** ship filters: faction (majors, other powers, minors), role, era (plus "Legacy catalogue") and source
+  (Legacy / Canon / Mod-derived / Kelvin). Build options show an era chip and the weapon fit; the fleet views show
+  role, era, source and mounts.
+- **Tactical arena** effects come from a `CombatPresentationSource` (`src/combat/presentation.ts`). The current
+  `roundResultSource` derives typed shots from each round's salvos and the shooter's roster mounts (legacy hulls get
+  their faction's classic fit): continuous beams coloured per faction, pulse volleys, torpedoes as glowing projectiles
+  (photon red-orange, quantum blue, plasma green), shield-bubble flashes vs hull sparks, explosions with shockwaves,
+  and ships that glide along a curve and turn smoothly. A core combat event stream can replace it through
+  `setPresentationSource()` without touching the renderer or the audio.
+- **Sound** (`src/audio/cues.ts`): WebAudio cues keyed `weapon.<WeaponType>` and the AUDIO-PLAN `sfx.*` categories,
+  all synthesised at runtime (no recorded audio in the repo). Settings has a volume slider and an optional picker
+  for your own local files named after a cue key (`weapon.PhotonTorpedo.wav`); they are decoded in memory only,
+  never uploaded, stored or bundled.
+
 ### Remastered gameplay (save schema 13)
 
 New campaigns go through `botf::newCampaign` with a **Classic / Remastered** choice (Remastered by

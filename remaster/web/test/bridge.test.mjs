@@ -433,4 +433,38 @@ test('station drill: the starbase fights as an immobile combatant', () => {
   if (after.alive) assert.deepEqual(after.position, at, 'stations never move');
 });
 
+test('expanded ship roster: database, build options and typed weapon mounts', () => {
+  const enc = call('encyclopedia');
+  const expanded = enc.ships.filter((s) => s.id >= 1000);
+  assert.equal(expanded.length, 98);
+  assert.ok(enc.ships.filter((s) => s.id < 1000).every((s) => s.roster === null), 'legacy records carry roster: null');
+  for (const s of expanded) {
+    const r = s.roster;
+    assert.ok(r && /^ship\.[a-z0-9]+\./.test(r.assetKey), `asset key for ${s.id}`);
+    assert.ok(['Canon', 'ModDerived', 'Kelvin'].includes(r.sourceKind));
+    assert.ok(typeof r.era === 'string' && typeof r.hullRole === 'string' && typeof r.faction === 'string');
+    for (const m of r.weapons) {
+      assert.equal(m.key, `weapon.${m.type}`);
+      assert.ok(m.count > 0 && ['Forward', 'ForwardWide', 'Broadside', 'Aft', 'All'].includes(m.arc));
+    }
+  }
+  const akira = expanded.find((s) => s.designClass === 'Akira');
+  assert.equal(akira.roster.assetKey, 'ship.fed.akira');
+  assert.equal(akira.roster.era, 'DominionWar');
+  assert.ok(akira.roster.weapons.some((m) => m.type === 'PhotonTorpedo' && m.torpedo));
+  assert.ok(expanded.some((s) => s.roster.sourceKind === 'ModDerived') && expanded.some((s) => s.roster.sourceKind === 'Kelvin'));
+
+  // Remastered build options list buildable expanded classes with their roster detail; Classic never does.
+  const v = call('newCampaign', { faction: 1, seed: 424242, era: 1, ruleset: 'reference' });
+  const choices = call('colony', { systemId: v.colonies[0].systemId }).choices;
+  const rosterChoices = choices.filter((c) => c.referenceId >= 1000);
+  assert.ok(rosterChoices.length > 0, 'expanded classes are offered');
+  assert.ok(rosterChoices.every((c) => c.roster && c.roster.faction === 'Federation' && c.roster.buildable));
+  const nx = rosterChoices.find((c) => c.designClass === 'NX');
+  assert.ok(nx && nx.blocker === '', 'the tier-0 NX is buildable from the start');
+  call('submit', { command: { type: 'EnqueueBuilding', systemId: v.colonies[0].systemId, building: nx.product, referenceId: nx.referenceId } });
+  const c = call('newCampaign', { faction: 1, seed: 424242, era: 1, ruleset: 'reference', preset: 'classic' });
+  assert.ok(!call('colony', { systemId: c.colonies[0].systemId }).choices.some((x) => x.referenceId >= 1000));
+});
+
 console.log(`${passed} bridge tests passed`);

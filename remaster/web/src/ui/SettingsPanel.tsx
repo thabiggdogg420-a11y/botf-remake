@@ -6,9 +6,11 @@ import { resetSettings, settings, UI_SCALE_MAX, UI_SCALE_MIN, updateSettings } f
 import { view } from '../state/store';
 import { resetTutorial, startTutorial } from '../state/tutorial';
 import { audioEnabled, setAudio } from './audio';
+import { loadUserCues, userCueKeys } from '../audio/cues';
 import { Emblem, Frame, Pill } from './components';
 
 export const settingsOpen = signal(false);
+const loadedCues = signal('');
 
 function Toggle({ label, detail, checked, onChange, testid }: { label: string; detail: string; checked: boolean; onChange: (on: boolean) => void; testid: string }) {
   return (
@@ -52,6 +54,27 @@ export function SettingsModal() {
           </div>
           <Toggle label="Interface sound" detail="Short synthesised cues for orders, turns and battle." checked={audioEnabled.value}
             onChange={(on) => setAudio(on)} testid="setting-sound" />
+          <div class="setting-row">
+            <div class="sr-text"><label class="sr-label" for="sound-volume">Sound volume</label>
+              <div class="sr-detail">Interface and battle cues (weapons, shield hits, explosions). All sounds are synthesised placeholders.</div></div>
+            <div class="scale-control">
+              <input id="sound-volume" class="slider" type="range" min={0} max={100} step={5} value={s.volume} data-testid="setting-volume"
+                style={{ '--pct': `${s.volume}%` } as never}
+                onInput={(e) => updateSettings({ volume: Number((e.target as HTMLInputElement).value) })} />
+              <b class="mono" data-testid="setting-volume-value">{s.volume}%</b>
+            </div>
+          </div>
+          <div class="setting-row">
+            <div class="sr-text"><label class="sr-label" for="sound-files">Your own sound files</label>
+              <div class="sr-detail">Optional. Name files after a cue key, e.g. <code>weapon.PhotonTorpedo.wav</code> or <code>sfx.explosion.large.ogg</code>.
+                They stay in this tab's memory only — never uploaded or saved.{loadedCues.value ? ` ${loadedCues.value}` : ''}</div></div>
+            <input id="sound-files" type="file" accept="audio/*" multiple data-testid="setting-sound-files"
+              onChange={async (e) => {
+                const input = e.target as HTMLInputElement;
+                const { skipped } = await loadUserCues(Array.from(input.files ?? []));
+                loadedCues.value = `Loaded ${userCueKeys().length} cue${userCueKeys().length === 1 ? '' : 's'}${skipped.length ? `; skipped ${skipped.join(', ')}` : ''}.`;
+              }} />
+          </div>
           <Toggle label="Autosave every turn" detail="Keeps one rolling autosave slot for the campaign in progress." checked={s.autosave}
             onChange={(on) => updateSettings({ autosave: on })} testid="setting-autosave" />
           <div class="settings-foot">
