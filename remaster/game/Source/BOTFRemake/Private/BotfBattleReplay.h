@@ -7,6 +7,7 @@
 //                 always readable even when the capture is unavailable.
 
 #include "BotfUiTheme.h"
+#include "BotfGameplayViewModel.h"
 #include "Simulation.h"
 #include <functional>
 #include <vector>
@@ -49,8 +50,10 @@ inline std::vector<FBattleShipState> BattleShipStates(const botf::CombatReport& 
     auto Add = [&](int FleetId, int OwnerId, botf::Building Class, int ReferenceId, int Hull, int Shields) {
         FBattleShipState S;
         S.FleetId = FleetId; S.OwnerId = OwnerId; S.Side = OwnerId == Report.firstOwner ? 0 : 1;
-        botf::Fleet Ship; Ship.id = FleetId; Ship.ownerId = OwnerId; Ship.shipClass = Class; Ship.referenceShipId = ReferenceId;
-        S.Name = FString::Printf(TEXT("#%d %s"), FleetId, UTF8_TO_TCHAR(botf::fleetName(Ship).c_str()));
+        // A schema-13 station is recorded as a Destroyer-class participant: name it by its combatant id instead.
+        const std::string Label = botf::view::participantLabel(nullptr, FleetId, OwnerId, Class, ReferenceId);
+        S.Name = botf::isStationCombatant(FleetId) ? FString(UTF8_TO_TCHAR(Label.c_str()))
+            : FString::Printf(TEXT("#%d %s"), FleetId, UTF8_TO_TCHAR(Label.c_str()));
         S.Hull = S.MaxHull = FMath::Max(1, Hull); S.Shields = S.MaxShields = FMath::Max(0, Shields);
         Out.push_back(S);
     };

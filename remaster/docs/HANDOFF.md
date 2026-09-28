@@ -15,18 +15,19 @@ thabiggdogg420-a11y/botf-remake#1. The original playable beta is untouched in `g
 | E | Unreal client catch-up and review fixes, `FBotfCampaign` | UNREAL-CLIENT.md |
 | G2 | 520 original descriptions (no original-game prose), 30-race minor roster | MINOR-RACES.md |
 | H | Treaty effects in the turn loop (allied supply, shared sensors, no attacks under treaty, refuse call to arms), creditForecast and range/route queries, per-ship battle orders, 8 MiB saves, schema 14 | GAMEPLAY-REMASTER.md §13 |
+| I | Unreal round 2: newCampaign + ruleset choice; stations, anomalies, events, victory, chronicle, templates, minor races in the Slate UI (shim-checked, not UE-compiled) | UNREAL-CLIENT.md |
 | F2 | Browser beta: stations, anomalies, events, victory, chronicle, templates, ruleset choice, minor races, tutorial, settings, artifact-safe export; 18 bridge + 23 e2e tests | ../web/README.md |
 
 Integration rules: a campaign diplomatic victory needs two-thirds of galactic population, at least two partners
 (allied empires or member races), turn 150 or later, and the claimant must lead its alliance by population. Retreats never enter impassable sectors.
 
-## In flight when parked
+## Status when parked
 
-- **I — Unreal round 2** (worktree branch `worktree-agent-ad27d7320e97ef1ae`): newCampaign + ruleset choice, and surfacing
-  stations, anomalies, events, victory, chronicle, templates and minors in the Unreal client. Merge it if it finished;
-  otherwise commit its worktree as WIP first.
+Nothing is in flight. Every lane is merged. The playable browser beta is published at
+https://claude.ai/artifact/TJQpg1jaVSvoWCmnFrALJS.
 
-The playable browser beta (all lanes except I) is published at https://claude.ai/artifact/TJQpg1jaVSvoWCmnFrALJS.
+The Unreal client has passed stand-in compile checks: g++/clang against a Slate shim, plus 194 view-model checks against the real core.
+Neither lane E nor lane I has been compiled by UE 5.8. See UNREAL-CLIENT.md for the spots least likely to compile.
 
 ## Resume checklist
 

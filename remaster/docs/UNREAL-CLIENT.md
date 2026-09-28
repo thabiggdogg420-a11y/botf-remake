@@ -22,9 +22,10 @@ describes where the client is today, the architecture it is moving to, and the o
 
 | File | Role |
 |---|---|
-| `BotfGameMode.cpp` | `ABotfGameMode` plus `SBotfInterface`, the single ~4,700-line widget that builds every screen, and the `BOTF.UI.Shell` automation test |
-| `BotfCampaign.h/.cpp` | **New.** `FBotfCampaign`: the campaign itself (see below) |
-| `BotfViewModel.h` | **New.** Engine-independent view-model helpers (range, forecast, tactical and diplomacy text), unit-tested with a plain compiler |
+| `BotfGameMode.cpp` | `ABotfGameMode` plus `SBotfInterface`, the single ~6,200-line widget that builds every screen, and the `BOTF.UI.Shell` automation test |
+| `BotfCampaign.h/.cpp` | `FBotfCampaign`: the campaign itself (see below) |
+| `BotfViewModel.h` | Engine-independent view-model helpers (range, forecast, tactical and diplomacy text), unit-tested with a plain compiler |
+| `BotfGameplayViewModel.h` | **New (lane I).** Engine-independent view models for the schema-13 gameplay layer and the minor-race roster (see [Gameplay layer and minor races](#gameplay-layer-and-minor-races)) |
 | `BotfGalaxyMap.h` | `SStarChart`, the galaxy chart, with per-draft paint caches |
 | `BotfCombatUi.h`, `BotfTacticalRadar.h`, `BotfBattleReplay.h` | Tactical viewport, radar, battle image and record replay |
 | `BotfUiTheme.h`, `BotfUiControls.h` | LCARS palette, buttons, bars and sliders |
@@ -91,6 +92,32 @@ should call the campaign's methods rather than the aliases.
     (expired, broken, superseded, dissolved), relation memory and standing, betrayal warnings, allies, shared
     sensors, eliminated empires and the diplomatic-majority status.
 - **Compile fix.** `SystemStrategicStatus` called a `botf::systemAt` that has never existed in the core.
+
+### Gameplay layer and minor races
+
+The client surfaces the schema-13 layer ([GAMEPLAY-REMASTER.md](GAMEPLAY-REMASTER.md)) and the minor-race roster
+([MINOR-RACES.md](MINOR-RACES.md)). The logic lives in `BotfGameplayViewModel.h` (`botf::view`); the Slate code only
+converts its results and submits orders through `FBotfCampaign`.
+
+| Feature | Where | Core API |
+|---|---|---|
+| **New campaign** | Setup: GAMEPLAY row, REMASTERED (default) or CLASSIC, with a summary of each preset. Every new campaign goes through `view::startCampaign`, which calls `botf::newCampaign(CampaignSetup)`; `generateCampaign` / `generateReferenceCampaign` stay the fixtures' baseline. Loading keeps a schema-13 Classic choice; older saves leave the default. | `newCampaign`, `rulesetPresetName` |
+| **Stations on the chart** | Station block in the sector's top-right corner (a starbase gets a second frame, an upgrade in progress an accent frame); an empty frame marks a transport assembling an outpost. Supply (bright) and sensor (faint) Chebyshev rings for own stations and the station in the selected sector; STATIONS toggle. | `visibleStations`, `stationStats` |
+| **Build Outpost** | Unit card (BUILD OUTPOST, with the assembly time or core's blocker) and the sector menu. The order replaces the transport's other drafted fleet orders (core accepts one per fleet). | `makeBuildOutpostCommand`, `outpostBlocker`, `outpostBuildTurns` |
+| **Station inspector** | Left dock when the selected sector holds a visible station: hull, shields, armament, reach, upkeep, repairs, upgrade progress. For an own outpost: funding colony (cycle), cost and core's blocker, UPGRADE TO STARBASE. | `stationUpgradeCost`, `stationUpgradeBlocker`, `stationUpgradeFor` |
+| **Stations in battle** | Ship cards tag them `STATION (immobile ...)`; the radar frames them in their owner's colour; replays and records name them by combatant id (they are recorded as Destroyer-class participants). The 3D scene gives station slots a flat placeholder disc and never loads a ship mesh for them (`ConfigureBattle`'s `StationSlots`). | `isStationCombatant`, `stationIdForCombatant` |
+| **Anomalies** | Nebulae and ion storms tint their sectors; black holes, neutron stars, wormholes (with a link to a charted exit) and rifts get glyphs; only explored sectors. The hover hint lists each anomaly's effect; the left dock gives the full text. ANOMALIES toggle. | `knownFeatures`, `featuresAt`, `ionStormCells` |
+| **Galactic events** | EVENTS card (top bar; opens by itself when a decision is waiting): description, place, deadline, each option with its effect and the default. A choice is a drafted `ResolveEventChoice`; choosing again replaces it. Inbox rows and end-turn warnings for undecided events. | `empireEvents`, `eventChoices`, `eventDefaultChoice`, `describeEvent` |
+| **Victory** | Empire, VICTORY tab: one bar per condition, the megaproject and rivals' projects. Solar System sheet: MEGAPROJECT section (START HERE, CANCEL PROJECT; a start drafted this turn is withdrawn). End-of-game overlay (Esc or REVIEW THE GALAXY closes it; NEW CAMPAIGN, MAIN MENU). | `victoryProgress`, `megaprojectBlocker`, `megaprojectIndustryCost`, `megaprojectWorkPerTurn`, `megaprojectCreditCost` |
+| **Turn briefing** | The inbox lists the last turn's `TurnReport::chronicle` by category; an entry with a place centres the chart there, an event entry reopens its card. | `chronicleCategoryName` |
+| **Build templates** | Solar System sheet, under the queue: name field, SAVE QUEUE AS TEMPLATE, and per template APPLY, DEFAULT / UNSET DEFAULT, UPDATE (from the queue), DELETE. | `empireBuildTemplates`, `make...BuildTemplateCommand` |
+| **Minor races** | Chart: a ring around contacted independent minors, profile line in the hover hint, full profile in the left dock. Diplomacy: known-races rows (temperament, join bonus, tech, population), dossier status line and RACE INFO profile with the description. Empire, CAMPAIGN tab: MEMBER RACES with the active bonuses. | `minors::raceFor`, `minors::memberBonuses`, `describeJoinBonus` |
+
+`BOTF.UI.Shell` gained a block that starts a Remastered Expanded campaign through the setup screen (layers on,
+anomalies present, roster placed, profiles and victory rows readable), orders Build Outpost, injects a galactic event
+decision (test-only `InjectBotfTestEvent`), checks the end-turn warning, chooses and re-chooses an option, ends one
+turn (decision applied, transport assembling, briefing entry under Events), round-trips a save and starts a Classic
+campaign.
 
 ## Target architecture
 
@@ -161,6 +188,26 @@ The core-facing parts compile and run without Unreal:
   where our code's correctness depends on it: own members, core calls, lambdas and printf formats.
   - This catches typos, wrong member names, shadowing, const and capture errors, and format mismatches.
   - It does not prove that a Slate API exists. The owner's UE build remains the authority for those.
+- `BotfGameplayViewModel.h` compiles against the core with GCC and Clang (`-Wall -Wextra -Wshadow -Werror`). A scratch
+  test (about 190 checks) runs it against real campaigns: both presets and every era through `newCampaign`, fog-filtered
+  anomaly marks and tooltips, Build Outpost through assembly, the inspector and upgrade blockers against core, a real
+  station battle (immobile combatant, tags, record labels), a curated event decided and resolved, briefing entries for
+  90 turns, victory rows, megaproject start and cancel, outcome text, templates and minor profiles. It also mirrors the
+  new `BOTF.UI.Shell` block step by step against the core.
+
+How the Slate shim is built (rebuilt by lane I; the harness is not kept in the repository):
+
+- Every engine include resolves to one `Shim.h`. SNew/SAssignNew construct the widget and call its `Construct` with
+  the stored extra arguments, so our own widgets' `Construct` signatures, `SLATE_ARGUMENT` / `SLATE_ATTRIBUTE` names
+  and virtual overrides are checked. Standard widgets take any layout method, but text, colour, visibility, brush,
+  index and callback arguments are typed, and `_Lambda` results are checked.
+- It runs twice: with `TCHAR = char` so `FString::Printf` and `UE_LOG` get printf format checking, and with
+  `TCHAR = wchar_t` / `TEXT() = L"..."` to catch char/TCHAR mixing.
+- It is calibrated on the unmodified files (they must pass unchanged) and on negative probes that must fail: an
+  `FString` passed as text, a missing `*` for `%s`, a format mismatch, a wrong `_Lambda` result, an unknown own-widget
+  argument, and a narrow literal as `TCHAR*`.
+- `BotfGameMode.cpp`, `BotfCombatScene.cpp` and `BotfCampaign.cpp` (with every client header they include) pass with
+  GCC 13 and Clang 18 in both modes, with `-Wall -Wextra -Wshadow -Werror`.
 
 These harnesses live outside the repository (they are not part of CMake or the Unreal build). Keep new
 client logic in `BotfViewModel.h`-style headers so it can be checked the same way.
@@ -181,6 +228,19 @@ mirrors can be deleted when the client is next updated:
 | web bridge `shipSpeed` / `unitSpeed` | `botf::shipSpeed(state, fleet)` | ETA |
 | orders read from `tactical::Encounter` only | `CombatRound::orders` (maneuver, target, AI, decloak/ambush, disengaging, hail, ram) | replays of battles from saves and older turns |
 | the call to arms could only lapse | `botf::makeRefuseCallToArmsCommand(id, defenderId, aggressorId)` | an explicit REFUSE that applies at once |
+| `megaprojectPace(state, empire)` | the megaproject share in `divertIndustry` (min of work per turn and colony industry) | turns left on the megaproject |
+| `outcomeCondition(state)` (or a field) | inferred from `victoryProgress` flags and the colony count | the end-of-game overlay's "how" |
+| `minors::joinBonusFor(minor)` | the legacy (+10% research) branch of `memberBonuses` | minor profiles of older saves |
+| `templateNameProblem(name)` | the 1-48 printable-byte name check of `DefineBuildTemplate` | naming a template from free text |
+
+Other gaps the gameplay layer showed (no formula is mirrored for these, the client works around them):
+
+| Wanted | Why |
+|---|---|
+| a station flag or type on `CombatParticipant` | records list stations as Destroyer-class; once a station is destroyed a record cannot say whether it was an outpost or a starbase |
+| `knownFeatureCells(state, viewer)` | `knownFeatures` admits an ion storm by its centre only; the client draws only the explored cells of its front |
+| `wormholeExit(state, feature)` | the client looks the exit up by `pairId` |
+| resolved option costs in `EventChoiceInfo` | effects carry both rulesets' prices as text ("150 credits (60 in prototype rules)") |
 
 Save size: `botf::MaxSaveBytes` (8 MiB) is the campaign cap in `botf::deserialize`, which also loads a turn-session
 envelope's baseline. The largest soak save is about 51 KiB. The client no longer adds a limit of its own.
