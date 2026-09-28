@@ -3,7 +3,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import fs from 'node:fs';
 import type { Encounter, GameView } from '../src/core/types';
-import { centreOn, endTurn, settle, SHOTS_DIR, throttleCpu, view } from './helpers';
+import { centreOn, endTurn, fleetPoint, openContextMenu, settle, SHOTS_DIR, throttleCpu, view } from './helpers';
 
 const dir = `${SHOTS_DIR}/remaster`;
 
@@ -89,6 +89,27 @@ test('frontier drill: resolve an event, build an outpost, fund a starbase, chron
   await expect(page.locator('.hover-tip')).toContainText(feature.name);
   await expect(page.locator('.hover-tip')).toContainText(feature.effect.slice(0, 20));
   await shot(page, '03-anomaly-tooltip');
+
+  // --- Routes use charted wormholes: the scout's course jumps from one mouth to the other.
+  const mouth = v.features.find((f) => f.type === 'Wormhole' && f.exit);
+  if (mouth) {
+    const scout = v.fleets.find((f) => f.shipClass === 'Scout')!;
+    await centreOn(page, scout.x, scout.y);
+    const mp = await fleetPoint(page, scout.id);
+    await page.mouse.click(mp.x, mp.y);
+    await expect(page.getByTestId('unit-card')).toContainText(scout.name.split(' — ')[0]!);
+    const far = [mouth, v.features.find((f) => f.id === mouth.pairId)!].sort((a, b) =>
+      Math.max(Math.abs(b.x - scout.x), Math.abs(b.y - scout.y)) - Math.max(Math.abs(a.x - scout.x), Math.abs(a.y - scout.y)))[0]!;
+    await page.evaluate(({ x, y }) => window.__botf!.focus(x, y, 0.8), { x: (far.x + scout.x) / 2, y: (far.y + scout.y) / 2 });
+    await openContextMenu(page, far.y * v.meta.width + far.x);
+    await page.locator('[data-testid=context-menu] [data-action=move]').click();
+    await expect.poll(async () => {
+      const f = (await view(page)).fleets.find((x) => x.id === scout.id)!;
+      return f.route.some((c, i) => i > 0 && Math.max(Math.abs((c % v.meta.width) - (f.route[i - 1]! % v.meta.width)),
+        Math.abs(Math.floor(c / v.meta.width) - Math.floor(f.route[i - 1]! / v.meta.width))) > 1);
+    }).toBe(true);
+    await shot(page, '03b-wormhole-route');
+  }
 
   // --- End turns until the outpost is assembled; the chronicle briefing files it under Stations.
   const before = v.stations.filter((s) => s.mine).length;

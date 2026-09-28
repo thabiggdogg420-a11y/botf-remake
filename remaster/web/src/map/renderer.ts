@@ -600,9 +600,11 @@ export class GalaxyRenderer {
         ctx.fillStyle = 'rgba(4,7,14,0.85)';
         const label = 'WORMHOLE';
         const w = ctx.measureText(label).width + 10;
-        roundRect(ctx, cx - w / 2, cy - 8, w, 15, 7); ctx.fill();
+        // On the arc itself: the quadratic curve's midpoint.
+        const lx = (ax + 2 * cx + bx) / 4, ly = (ay + 2 * cy + by) / 4;
+        roundRect(ctx, lx - w / 2, ly - 8, w, 15, 7); ctx.fill();
         ctx.fillStyle = '#9ff7e8';
-        ctx.fillText(label, cx, cy);
+        ctx.fillText(label, lx, ly);
       }
     }
     // waypoint ticks
