@@ -11,7 +11,7 @@
        into one folder and pass it as -DownloadsPath. Loose files (TrekCore .mp3s) can sit in the same folder.
     2. The script extracts .zip (built in) and .7z/.rar/.exe (7-Zip) archives into LocalAssets\_extracted\.
     3. It matches each manifest key's ranked candidates by, in order: LocalAssets\downloads-map.json
-       ({"fed.galaxy": "star-trek-tng-galaxy-class-model.zip"}), a recorded sha256, the Sketchfab model id or the
+       ({"ship.fed.galaxy": "star-trek-tng-galaxy-class-model.zip"}), a recorded sha256, the Sketchfab model id or the
        slugged model title in the archive name, and the expectedFiles patterns.
     4. Models are converted with Blender (Tools\blender_normalize.py): glTF/OBJ/FBX/3DS/blend, and NIF via the
        NifTools add-on, to FBX with +X forward, +Z up, canon length and SOCKET_ placeholders.
@@ -34,9 +34,9 @@
 .EXAMPLE
     .\Import-Assets.ps1 -DownloadsPath "$env:USERPROFILE\Downloads\botf-assets"
 .EXAMPLE
-    .\Import-Assets.ps1 -DownloadsPath D:\trek -Keys fed.*,kli.* -UnrealImport
+    .\Import-Assets.ps1 -DownloadsPath D:\trek -Keys ship.fed.*,ship.kli.* -UnrealImport
 .EXAMPLE
-    .\Import-Assets.ps1 -ListSources -Keys rom.*
+    .\Import-Assets.ps1 -ListSources -Keys ship.rom.*
 #>
 [CmdletBinding()]
 param(
@@ -264,7 +264,9 @@ foreach ($a in Get-Props $manifest.assets) {
     if (-not (Test-KeySelected $key)) { continue }
     $rec = [ordered]@{ kind = $e.kind; displayName = $e.displayName; status = 'missing'; candidate = $null; source = $null
         author = $null; licence = $null; permission = $null; page = $null; files = @(); sha256 = @(); archive = $null
-        archiveSha256 = $null; importFiles = @(); ueFolder = (Get-Opt $e.import 'ueFolder'); fallback = $e.fallback }
+        archiveSha256 = $null; importFiles = @(); ueFolder = (Get-Opt $e.import 'ueFolder'); fallback = $e.fallback
+        faction = (Get-Opt $e 'faction'); botfClasses = @(Get-Opt $e 'botfClasses' | Where-Object { $_ })
+        targetLengthMeters = (Get-Opt $e.import 'targetLengthMeters'); ueAssets = @() }
     $i = 0
     foreach ($c in @($e.candidates)) {
         $i++
@@ -304,6 +306,13 @@ foreach ($a in Get-Props $manifest.assets) {
             $rec.importFiles = $outs
         }
         break
+    }
+    # Predicted UE object paths (<ueFolder>/<Name>.<Name>) for UBotfAssetRegistry. ue_import_local_assets.py replaces
+    # them with the paths Unreal actually created after -UnrealImport.
+    if ($rec.ueFolder -and $rec.importFiles.Count -gt 0) {
+        $rec.ueAssets = @($rec.importFiles | ForEach-Object {
+            $n = ([IO.Path]::GetFileNameWithoutExtension($_)) -replace '[^A-Za-z0-9_]', '_'
+            '{0}/{1}.{1}' -f $rec.ueFolder, $n })
     }
     $resolved[$key] = $rec
 }

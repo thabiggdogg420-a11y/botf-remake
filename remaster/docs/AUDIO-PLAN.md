@@ -1,6 +1,6 @@
 # Audio plan
 
-28 September 2026. This covers voice, sound effects and music for the Unreal client. All third-party and original-game audio is **private and local only**. It lives in the gitignored `remaster/game/LocalAssets/` and `/Game/Local/Audio`, and it is resolved through `remaster/assets/manifest.json` (keys `wpn.*`, `sfx.*`, `vo.*`, `mus.*`). The shipped build must work silently, or with project-original placeholder cues, when nothing local is installed.
+28 September 2026. This covers voice, sound effects and music for the Unreal client. All third-party and original-game audio is **private and local only**. It lives in the gitignored `remaster/game/LocalAssets/` and `/Game/Local/Audio`, and it is resolved through `remaster/assets/manifest.json` (keys `weapon.*`, `sfx.*`, `vo.*`, `mus.*`). The shipped build must work silently, or with project-original placeholder cues, when nothing local is installed.
 
 ## 1. Original BOTF audio files
 
@@ -80,9 +80,9 @@ Rule: a missing expansion cue falls back to the matching original category, then
 | Victory / defeat | – | `vo.victory.*` | 10 | music sting |
 | Encounter window opens (Hail/Auto/Fight) | `sfx.alert.red` | – | 8 | |
 | Tactical order accepted | `sfx.ui.beep` | `vo.combat.ack.<fac>` | 6 | required feedback per COMBAT-REFERENCE |
-| Beam fires (phaser / disruptor / spiral / whip / cutting beam) | `wpn.phaser.fed`, `wpn.disruptor.kli`, `wpn.disruptor.rom`, `wpn.spiral.car`, `wpn.plasma.fer`, `wpn.cutting.borg` | – | 3 | bound by weapon `socketPrefix` |
-| Pulse cannon fires | `wpn.pulse.defiant` | – | 3 | |
-| Torpedo launch | `wpn.torpedo.photon` / `.quantum` / `.plasma` | – | 3 | |
+| Beam fires (phaser / disruptor / spiral / whip / cutting beam) | `weapon.PhaserArray`, `weapon.Disruptor`, `weapon.Disruptor.rom`, `weapon.Disruptor.car` (spiral), `weapon.PhaserArray.fer` (plasma whip), `weapon.CuttingBeam`; generally `weapon.<Type>.<fac>` then `weapon.<Type>` | – | 3 | bound by weapon `socketPrefix` |
+| Pulse cannon fires | `weapon.PulsePhaser` | – | 3 | |
+| Torpedo launch | `weapon.PhotonTorpedo` / `weapon.QuantumTorpedo` / `weapon.PlasmaTorpedo` | – | 3 | |
 | Shield hit | `sfx.shield.hit` | – | 2 | |
 | Hull hit | `sfx.explosion.small` | – | 2 | |
 | Ship destroyed | `sfx.explosion.large` | – | 5 | |
