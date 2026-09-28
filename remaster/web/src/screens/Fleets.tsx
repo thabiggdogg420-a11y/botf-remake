@@ -4,6 +4,7 @@ import type { FleetView, GameView } from '../core/types';
 import { cellActions, plotCourse, replaceIds } from '../state/orders';
 import { dryRun, focusMap, goto, issue, selectFleet, selection, view } from '../state/store';
 import { Badge, Emblem, Empty, fmt, Frame, Meter, Pill, Stat, tip } from '../ui/components';
+import { eraLabel, roleLabel, sourceLabel, weaponSummary } from '../core/roster';
 
 interface Unit { lead: FleetView; members: FleetView[]; tf: GameView['taskForces'][number] | null }
 
@@ -58,7 +59,7 @@ export function FleetsScreen() {
                         ) : <span class="tf-tag" {...tip('Task force')}>TF</span>}
                         <button type="button" class="reg-main" onClick={() => selectFleet(u.lead.id)} data-testid={`fleet-row-${u.lead.id}`}>
                           <Emblem empire={v.meta.player} size={16} />
-                          <span class="reg-name">{u.tf ? u.tf.name : u.lead.name}<small>{u.tf ? `${u.members.length} ships` : `${u.lead.className} #${u.lead.id}`}</small></span>
+                          <span class="reg-name">{u.tf ? u.tf.name : u.lead.name}<small>{u.tf ? `${u.members.length} ships` : `${u.lead.designClass ?? u.lead.className} #${u.lead.id}`}</small></span>
                           <Meter value={hull} max={max} tone="hull" height={4} />
                           <span class="reg-orders">{u.lead.route.length ? `→ ${place(u.lead.targetX, u.lead.targetY)} · ${u.lead.eta}T` : u.lead.hasOrders ? 'ordered' : u.lead.terraforming ? 'terraforming' : 'idle'}</span>
                         </button>
@@ -105,6 +106,13 @@ function UnitDetail({ v, unit }: { v: GameView; unit: Unit }) {
   return (
     <Frame title={tf ? tf.name : lead.name} sub={tf ? `task force · ${members.length} ships` : `${lead.designClass ?? lead.className} · #${lead.id}`} class="fill" testid="unit-detail"
       actions={<Pill small tone="ghost" onClick={() => { selectFleet(lead.id); focusMap(lead.x, lead.y); goto('galaxy'); }}>Show on chart</Pill>}>
+      {!tf && lead.roster ? (
+        <div class="roster-line" data-testid="fleet-roster">
+          <Badge tone="accent">{roleLabel(lead.roster.hullRole)}</Badge><Badge tone="dim">{eraLabel(lead.roster.era)}</Badge>
+          <Badge tone={lead.roster.sourceKind === 'Canon' ? 'good' : 'warn'}>{sourceLabel(lead.roster.sourceKind)}</Badge>
+          <span class="muted small">{weaponSummary(lead.roster.weapons)}</span>
+        </div>
+      ) : null}
       <div class="bars">
         <div class="bar-row"><span>Hull</span><Meter value={hull} max={maxHull} tone="hull" /><b>{hull}/{maxHull}</b></div>
         <div class="bar-row"><span>Shields</span><Meter value={shields} max={maxShields} tone="shield" /><b>{shields}/{maxShields}</b></div>
@@ -143,7 +151,7 @@ function UnitDetail({ v, unit }: { v: GameView; unit: Unit }) {
       </div>
       <div class="member-table">
         {members.map((m) => (
-          <div class="member" key={m.id} {...tip(`${m.designClass ?? ''} ${m.designName ?? m.className}\nHull ${m.hull}/${m.maxHull} · shields ${m.shields}/${m.maxShields} · attack ${m.attack}`)}>
+          <div class="member" key={m.id} {...tip(`${m.designClass ?? ''} ${m.designName ?? m.className}${m.roster ? ` · ${eraLabel(m.roster.era)}\n${weaponSummary(m.roster.weapons)}` : ''}\nHull ${m.hull}/${m.maxHull} · shields ${m.shields}/${m.maxShields} · attack ${m.attack}`)}>
             <span>{m.name} <small>#{m.id}</small></span>
             <Meter value={m.hull} max={m.maxHull} tone="hull" height={4} />
             {m.colonyShip ? <Badge tone="good">colony</Badge> : m.shipClass === 'Transport' ? <Badge tone="warn">troops</Badge> : null}

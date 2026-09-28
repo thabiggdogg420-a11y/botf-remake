@@ -1,5 +1,7 @@
 // Shapes of the JSON produced by bridge/WebBridge.cpp. Kept deliberately structural: the bridge
 // derives these from the core's public structs, so new fields simply appear.
+import type { RosterDetail, RosterWeapon } from './roster';
+export type { RosterDetail, RosterWeapon } from './roster';
 
 export type Severity = 'info' | 'good' | 'warn' | 'alert';
 
@@ -63,7 +65,7 @@ export interface ColonyBrief {
 
 export interface FleetView {
   id: number; owner: number; name: string; shipClass: string; className: string; referenceShipId: number;
-  designClass?: string; designName?: string;
+  designClass?: string; designName?: string; roster?: RosterDetail | null;
   x: number; y: number; targetX: number; targetY: number; committedTargetX?: number; committedTargetY?: number;
   hull: number; maxHull: number; shields: number; maxShields: number; attack: number; range: number; speed: number;
   maintenance: number; colonyShip: boolean; colonize: boolean; taskForceId: number; stance: string; attackTarget: number;
@@ -200,7 +202,7 @@ export interface ConstructionChoice {
   product: string; referenceId: number; name: string; cost: number; upkeep: number; blocker: string; isShip: boolean;
   turns: number; energyCost?: number;
   designClass?: string; designName?: string; hull?: number; shields?: number; attack?: number; range?: number;
-  speed?: number; role?: number; maintenance?: number; description?: string;
+  speed?: number; role?: number; maintenance?: number; description?: string; roster?: RosterDetail | null;
 }
 export interface QueueItem {
   index: number; product: string; referenceId: number; name: string; isShip: boolean; work: number; cost: number;
@@ -308,6 +310,8 @@ export interface TacticalShip {
   /** Outposts and starbases fight as immobile combatants (ids >= 2000000). */
   immobile?: boolean; station?: boolean; stationType?: 'Outpost' | 'Starbase'; stationName?: string;
   maneuver?: string; target?: number; ordered?: boolean;
+  /** Expanded-roster classes only: typed weapon mounts and the local asset key. */
+  weapons?: RosterWeapon[]; assetKey?: string;
   /** What the ship executes next round and who decided it (player order, standing order, tactical AI). */
   next?: { maneuver: string; target: number; source: 'order' | 'standing' | 'ai' };
 }
@@ -321,11 +325,29 @@ export interface TacticalRound {
   index: number; ended: boolean; winner: number; truce: boolean; ships: RoundShip[];
   salvos: Salvo[];
   lost: number[]; retreatedIds: number[];
+  /** Tactical rules 3 presentation stream, ordered by tick (empty under rules 1 and 2). */
+  events?: CombatEventView[];
+}
+/** One `botf::CombatEvent` as the bridge writes it (COMBAT-RULES.md "Event stream for client authors"). */
+export interface CombatEventView {
+  tick: number;
+  kind: 'ManeuverStart' | 'ManeuverEnd' | 'Cloak' | 'Decloak' | 'Fire' | 'Ram' | 'Destroyed' | 'Retreated' | 'Disengage' | 'Truce';
+  fleetId: number; targetFleetId: number;
+  x: number; y: number; facing: number;
+  /** Fire only. */
+  mountIndex?: number; weapon?: string; key?: string; family?: 'beam' | 'pulse' | 'torpedo'; projectiles?: number;
+  hit?: boolean; intercepted?: boolean;
+  /** Fire and Ram. */
+  impactTick?: number; shieldDamage?: number; hullDamage?: number; destroyed?: boolean;
+  /** ManeuverStart / ManeuverEnd. */
+  maneuver?: string; value?: number;
 }
 export interface HailPreview { atWar: boolean; trust: number; ourStrength: number; theirStrength: number; accepts: boolean }
 export interface Encounter {
   arenaWidth: number; arenaHeight: number; round: number; maxRounds: number; finished: boolean; winner: number;
   sectorX: number; sectorY: number; turn: number; controller: number; location: string; rules: number; foe: number;
+  /** Event-stream ticks per round (rules 3). */
+  ticksPerRound?: number;
   hail: HailPreview;
   ships: TacticalShip[]; rounds: TacticalRound[];
 }
@@ -359,6 +381,8 @@ export interface Encyclopedia {
   ships: {
     id: number; race: number; industryCost: number; troops: number; designClass: string; designName: string; hull: number;
     shields: number; attack: number; range: number; speed: number; role: number; maintenance: number; description: string; requires: number[];
+    /** Expanded roster detail (ids >= 1000); null for legacy catalogue records. */
+    roster: RosterDetail | null;
   }[];
   buildings: {
     id: number; name: string; field: number; level: number; industryCost: number; energyCost: number; populationCost: number;

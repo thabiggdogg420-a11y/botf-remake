@@ -85,7 +85,7 @@ Unreal client resolves keys through `UBotfAssetRegistry` (see UNREAL-CLIENT.md).
   - Cloaking follows the class `cloak` flag instead of the owner rule, so a 22nd-century Klingon hull or a D7 cannot cloak and a D12 can.
   - Legacy classes keep the original rules exactly: a 65/35 beam/torpedo split for every warship, and cloaking for every Klingon and Romulan warship.
   - The legacy role-3 "strike cruiser" branch is unreachable, because every reference warship is a `Building::Destroyer`. It was left alone to keep Classic identical.
-- **Web bridge.** Every per-id lookup in `web/bridge/WebBridge.cpp` goes through `roster::findShip`, so expanded ships show their names, speed, upkeep and cost. The legacy-only listings (tech unlocks, catalogue dump, invasion picks) are unchanged. The wasm build was not rebuilt; CMake compiles the bridge natively.
+- **Web bridge.** Every per-id lookup in `web/bridge/WebBridge.cpp` goes through `roster::findShip`, so expanded ships show their names, speed, upkeep and cost. The legacy-only listings (tech unlocks, catalogue dump, invasion picks) are unchanged. Ship records also carry a `roster` object (asset key, faction, role, era, source, typed weapon mounts) and tactical ships their `weapons`; the wasm module is rebuilt with the roster (see web/README.md).
 - **Unreal client.** Its reference-catalogue browser still indexes the legacy array with bounds checks, so it simply does not list expanded classes yet. This is an open item.
 
 ## 4. Save format: no schema bump

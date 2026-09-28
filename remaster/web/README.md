@@ -46,9 +46,11 @@ that break it fail CI.
 ## Test
 
 ```bash
-npm test             # bridge contract: new game, orders, 50 turns, save/load, battle drill, schema-13 layer
+npm test             # bridge contract: new game, orders, 50 turns, save/load, battle drill, schema-13 layer,
+                     # expanded roster, rules 3 combat event stream
 npm run test:e2e     # Playwright: campaign, combat (rules 2), diplomacy inbox, onboarding, settings, remaster layer,
-                     # save export paths, screenshots (1280x720, 2560x1080)
+                     # save export paths, roster Database filters, typed battle VFX + cues (rules 2 derived, rules 3 events),
+                     # screenshots (1280x720, 2560x1080). BOTF_CPU_THROTTLE=N slows the CPU N times.
 ```
 
 Screenshots go to `$BOTF_SHOTS_DIR` (default: the session scratchpad `web-shots/`). Playwright uses
@@ -73,6 +75,29 @@ the Chromium in `PLAYWRIGHT_BROWSERS_PATH` when set.
   Settings). **?** opens help for the current screen.
 - **Settings** (menu or title): interface scale 90–130%, reduced motion, colour-blind-safe owner
   colours (Okabe–Ito), sound, autosave. Stored per browser; everything works without storage.
+
+### Expanded ship roster, battle effects and sound
+
+- The bridge exposes the 98-class expanded roster (docs/SHIP-ROSTER.md): every ship record carries a `roster`
+  object (null for legacy ids) with `assetKey`, faction, hull role, era, tier, source kind/note, buildable, cloak,
+  sensors, torpedo share and typed `weapons` (`type`, `key` = `weapon.<Type>`, `count`, `arc`, `torpedo`). It appears
+  in `encyclopedia` (legacy + expanded), colony build `choices`, own fleets, and tactical ships (`weapons`, `assetKey`).
+- **Database** ship filters: faction (majors, other powers, minors), role, era (plus "Legacy catalogue") and source
+  (Legacy / Canon / Mod-derived / Kelvin). Build options show an era chip and the weapon fit; the fleet views show
+  role, era, source and mounts.
+- **Tactical arena** effects come from a `CombatPresentationSource` (`src/combat/presentation.ts`): continuous
+  beams coloured per faction, pulse bolts, torpedoes as glowing projectiles (photon red-orange, quantum blue, plasma
+  green), shield-bubble flashes vs hull sparks and fire, misses and point-defence intercepts, explosions with
+  shockwaves, and ships that glide along a curve and turn smoothly (strafing keeps the bow). The default `autoSource`
+  uses `eventStreamSource` when a round carries the core's rules 3 event stream (`rounds[].events`, ticks mapped onto
+  the round timeline, one effect per Fire event and mount) and falls back to `roundResultSource`, which derives typed
+  shots from salvo totals and the shooter's mounts, for rules 1 and 2. Tactical ships expose `weapons` (the
+  encounter's own mounts under rules 3, which Fire events' `mountIndex` indexes; roster mounts otherwise) and
+  `assetKey`. The arena canvas reports drawn effects in `data-fx` and the source in `data-fx-source`.
+- **Sound** (`src/audio/cues.ts`): WebAudio cues keyed `weapon.<WeaponType>` and the AUDIO-PLAN `sfx.*` categories,
+  all synthesised at runtime (no recorded audio in the repo). Settings has a volume slider and an optional picker
+  for your own local files named after a cue key (`weapon.PhotonTorpedo.wav`); they are decoded in memory only,
+  never uploaded, stored or bundled.
 
 ### Remastered gameplay (save schema 13)
 

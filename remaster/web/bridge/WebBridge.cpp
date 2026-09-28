@@ -518,6 +518,57 @@ void writeColonyBrief(Writer& w, const botf::GameState& s, const botf::Colony& c
     w.endObject();
 }
 
+// Expanded ship roster (docs/SHIP-ROSTER.md): enum name tables mirror ShipRosterTypes.h.
+namespace rosterNames {
+constexpr std::array<const char*, 28> Faction{"Federation", "Klingon", "Romulan", "Cardassian", "Ferengi", "Dominion", "Borg",
+    "Breen", "Tholian", "Gorn", "Orion", "Hirogen", "Kazon", "Vidiian", "Suliban", "Xindi", "Species8472", "Krenim", "Malon",
+    "SonA", "Maquis", "Reman", "Devore", "Andorian", "Vulcan", "Bajoran", "Nausicaan", "Talarian"};
+constexpr std::array<const char*, 19> HullRole{"Scout", "Science", "Escort", "Frigate", "Destroyer", "Raider", "LightCruiser",
+    "Cruiser", "HeavyCruiser", "StrikeCruiser", "Carrier", "Battlecruiser", "Explorer", "Battleship", "Dreadnought", "Colony",
+    "Transport", "Station", "Special"};
+constexpr std::array<const char*, 8> Era{"Enterprise", "Original", "Movie", "NextGeneration", "DominionWar", "Nemesis", "Kelvin", "Future"};
+constexpr std::array<const char*, 3> Source{"Canon", "ModDerived", "Kelvin"};
+constexpr std::array<const char*, 21> Weapon{"None", "PhaseCannon", "PhaserBank", "PhaserArray", "PulsePhaser", "Disruptor",
+    "DisruptorCannon", "PlasmaCannon", "PolaronBeam", "CuttingBeam", "EnergyDampener", "TholianWeb", "BioEnergy", "TemporalWeapon",
+    "SpatialTorpedo", "PhotonicTorpedo", "PhotonTorpedo", "QuantumTorpedo", "PlasmaTorpedo", "TricobaltDevice", "Torpedo"};
+constexpr std::array<const char*, 5> Arc{"Forward", "ForwardWide", "Broadside", "Aft", "All"};
+} // namespace rosterNames
+
+void writeRosterWeapons(Writer& w, const botf::roster::RosterClass& c) {
+    w.key("weapons").beginArray();
+    for (int i = 0; i < c.weaponCount && i < static_cast<int>(c.weapons.size()); ++i) {
+        const auto& m = c.weapons[static_cast<std::size_t>(i)];
+        if (m.type == botf::roster::WeaponType::None) continue;
+        const std::string type = enumName(static_cast<int>(m.type), rosterNames::Weapon);
+        w.beginObject().field("type", type).field("key", "weapon." + type).field("count", m.count)
+            .field("arc", enumName(static_cast<int>(m.arc), rosterNames::Arc))
+            .field("torpedo", botf::roster::torpedoWeapon(m.type)).endObject();
+    }
+    w.endArray();
+}
+
+// Roster detail for an expanded class id; writes "roster": null for legacy ids.
+void writeRosterDetail(Writer& w, int id) {
+    const auto* c = botf::roster::findRosterClass(id);
+    w.key("roster");
+    if (!c) { w.null(); return; }
+    w.beginObject();
+    w.field("assetKey", c->assetKey);
+    w.field("faction", enumName(static_cast<int>(c->faction), rosterNames::Faction));
+    w.field("raceId", c->raceId); w.field("minorRaceId", c->minorRaceId);
+    w.field("hullRole", enumName(static_cast<int>(c->hullRole), rosterNames::HullRole));
+    w.field("era", enumName(static_cast<int>(c->era), rosterNames::Era));
+    w.field("tier", c->tier);
+    w.field("sourceKind", enumName(static_cast<int>(c->sourceKind), rosterNames::Source));
+    w.field("source", c->source);
+    w.field("buildable", c->buildable);
+    w.field("buildTurns", c->buildTurns);
+    w.field("torpedoSharePercent", c->torpedoSharePercent);
+    w.field("sensors", c->sensors); w.field("cloak", c->cloak);
+    writeRosterWeapons(w, *c);
+    w.endObject();
+}
+
 void writeOwnFleet(Writer& w, const botf::GameState& d, const botf::GameState& committed, const botf::Fleet& f) {
     w.beginObject();
     w.field("id", f.id);
@@ -530,6 +581,7 @@ void writeOwnFleet(Writer& w, const botf::GameState& d, const botf::GameState& c
         const auto& r = *botf::roster::findShip(f.referenceShipId);
         w.field("designClass", r.shipClass); w.field("designName", r.name);
     }
+    writeRosterDetail(w, f.referenceShipId);
     w.field("x", f.x); w.field("y", f.y); w.field("targetX", f.targetX); w.field("targetY", f.targetY);
     const auto* base = fleetById(committed, f.id);
     if (base) { w.field("committedTargetX", base->targetX); w.field("committedTargetY", base->targetY); }
@@ -1117,6 +1169,7 @@ void writeShipRecord(Writer& w, const botf::referenceData::ShipRecord& r) {
     w.field("range", r.range); w.field("speed", r.speed); w.field("role", r.role);
     w.field("maintenance", r.maintenance);
     w.field("description", r.description);
+    writeRosterDetail(w, r.id);
 }
 
 void writeColonyDetail(Writer& w, int systemId) {
@@ -1787,6 +1840,7 @@ void writeEncounter(Writer& w, const tac::Encounter& e, int me) {
     const auto* sys = systemAtCell(B.state, e.sectorX, e.sectorY);
     w.field("location", sys && knownSystem(B.state, *sys) ? sys->name : "Sector " + std::to_string(e.sectorX) + "," + std::to_string(e.sectorY));
     w.field("rules", e.rulesVersion);
+    w.field("ticksPerRound", botf::CombatTicksPerRound);
     int foe = 0;
     for (const auto& ship : e.ships) if (ship.ownerId != me) { foe = ship.ownerId; break; }
     w.field("foe", foe);
@@ -1826,6 +1880,20 @@ void writeEncounter(Writer& w, const tac::Encounter& e, int me) {
         w.field("shields", ship.shields); w.field("maxShields", ship.maxShields); w.field("initialShields", ship.initialShields);
         w.field("beam", ship.beamAttack); w.field("torpedo", ship.torpedoAttack); w.field("speed", ship.speed);
         w.key("position"); writeCoord(w, ship.position);
+        if (const auto* rc = botf::roster::findRosterClass(ship.referenceShipId)) w.field("assetKey", rc->assetKey);
+        if (!ship.mounts.empty()) {
+            // Rules 3: the encounter's own mounts (legacy hulls included); Fire events index into this list.
+            w.key("weapons").beginArray();
+            for (const auto& m : ship.mounts) {
+                const std::string type = botf::roster::weaponTypeName(m.type);
+                w.beginObject().field("type", type).field("key", "weapon." + type).field("count", m.count)
+                    .field("arc", enumName(static_cast<int>(m.arc), rosterNames::Arc))
+                    .field("torpedo", botf::roster::torpedoWeapon(m.type)).endObject();
+            }
+            w.endArray();
+        } else if (const auto* rc = botf::roster::findRosterClass(ship.referenceShipId)) {
+            writeRosterWeapons(w, *rc);
+        }
         w.field("alive", ship.isAlive); w.field("active", ship.activeInCombat); w.field("retreated", ship.retreated);
         w.field("canRetreat", ship.canRetreat); w.field("canCloak", ship.canCloak); w.field("cloaked", ship.isCloaked);
         w.field("groupId", ship.groupId);
@@ -1894,6 +1962,29 @@ void writeEncounter(Writer& w, const tac::Encounter& e, int me) {
         w.endArray();
         w.key("lost").beginArray(); for (int id : r.lostFleetIds) w.value(id); w.endArray();
         w.key("retreatedIds").beginArray(); for (int id : r.retreatedFleetIds) w.value(id); w.endArray();
+        // Tactical rules 3 presentation stream (COMBAT-RULES.md "Event stream for client authors"); empty otherwise.
+        static constexpr std::array<const char*, 10> EventKinds{"ManeuverStart", "ManeuverEnd", "Cloak", "Decloak", "Fire",
+            "Ram", "Destroyed", "Retreated", "Disengage", "Truce"};
+        w.key("events").beginArray();
+        for (const auto& ev : r.events) {
+            w.beginObject().field("tick", ev.tick).field("kind", enumName(static_cast<int>(ev.kind), EventKinds))
+                .field("fleetId", ev.fleetId).field("targetFleetId", ev.targetFleetId);
+            if (ev.kind == botf::CombatEventKind::Fire) {
+                const auto type = static_cast<botf::roster::WeaponType>(ev.weaponType);
+                w.field("mountIndex", ev.mountIndex).field("weapon", botf::roster::weaponTypeName(type))
+                    .field("key", botf::roster::weaponTypeKey(type))
+                    .field("family", botf::roster::weaponFamilyName(static_cast<botf::roster::WeaponFamily>(ev.weaponFamily)))
+                    .field("projectiles", ev.projectiles).field("hit", ev.hit).field("intercepted", ev.intercepted);
+            }
+            if (ev.kind == botf::CombatEventKind::Fire || ev.kind == botf::CombatEventKind::Ram)
+                w.field("impactTick", ev.impactTick).field("shieldDamage", ev.shieldDamage).field("hullDamage", ev.hullDamage)
+                    .field("destroyed", ev.destroyed);
+            w.field("x", ev.x).field("y", ev.y).field("facing", ev.facing);
+            if (ev.kind == botf::CombatEventKind::ManeuverStart || ev.kind == botf::CombatEventKind::ManeuverEnd)
+                w.field("maneuver", enumName(ev.maneuver, ManeuverKeys)).field("value", ev.value);
+            w.endObject();
+        }
+        w.endArray();
         w.endObject();
     }
     w.endArray();
@@ -2567,6 +2658,12 @@ void writeEncyclopedia(Writer& w) {
     w.endArray();
     w.key("ships").beginArray();
     for (const auto& s : botf::referenceData::ShipCatalogue) {
+        w.beginObject().field("id", s.id).field("race", s.raceId).field("industryCost", s.industryCost).field("troops", s.troopCapacity);
+        writeShipRecord(w, s);
+        w.key("requires").beginArray(); for (int r : s.technologyRequirements) w.value(r); w.endArray();
+        w.endObject();
+    }
+    for (const auto& s : botf::roster::ExpandedShipRecords) {   // Expanded roster (ids >= 1000), with "roster" detail.
         w.beginObject().field("id", s.id).field("race", s.raceId).field("industryCost", s.industryCost).field("troops", s.troopCapacity);
         writeShipRecord(w, s);
         w.key("requires").beginArray(); for (int r : s.technologyRequirements) w.value(r); w.endArray();

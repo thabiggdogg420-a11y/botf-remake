@@ -1,5 +1,7 @@
 // Optional synthesized UI sounds (WebAudio). Off by default; toggled from the menu.
-import { signal } from '@preact/signals';
+import { effect, signal } from '@preact/signals';
+import { configureCues } from '../audio/cues';
+import { settings } from '../state/settings';
 
 function readPref(): boolean {
   try { return window.localStorage.getItem('botf.audio') === 'on'; } catch { return false; }
@@ -11,6 +13,9 @@ export function setAudio(on: boolean): void {
   try { window.localStorage.setItem('botf.audio', on ? 'on' : 'off'); } catch { /* ignore */ }
   if (on) blip('confirm');
 }
+
+// Keep the battle cue layer in step with the sound switch and the volume slider.
+effect(() => configureCues(audioEnabled.value, settings.value.volume / 100));
 
 let ctx: AudioContext | null = null;
 type Kind = 'nav' | 'confirm' | 'cancel' | 'error' | 'endturn' | 'start' | 'select' | 'fire';
@@ -31,6 +36,8 @@ export function blip(kind: Kind): void {
   try {
     ctx ??= new AudioContext();
     const tone = TONES[kind];
+    const vol = settings.value.volume / 100;
+    if (vol <= 0) return;
     const start = ctx.currentTime;
     tone.f.forEach((freq, i) => {
       const osc = ctx!.createOscillator();
@@ -39,7 +46,7 @@ export function blip(kind: Kind): void {
       osc.frequency.value = freq;
       const t0 = start + i * tone.d * 0.8;
       gain.gain.setValueAtTime(0, t0);
-      gain.gain.linearRampToValueAtTime(tone.g, t0 + 0.01);
+      gain.gain.linearRampToValueAtTime(tone.g * vol, t0 + 0.01);
       gain.gain.exponentialRampToValueAtTime(0.0001, t0 + tone.d);
       osc.connect(gain).connect(ctx!.destination);
       osc.start(t0);

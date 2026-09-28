@@ -9,6 +9,8 @@ import { useEffect, useMemo, useRef } from 'preact/hooks';
 import type { Coord, Encounter, RoundShip, Salvo, TacticalRound, TacticalShip } from '../core/types';
 import { reducedMotion } from '../state/settings';
 import { palette } from '../ui/theme';
+import { presentationSource, type CombatRoundPresentation, type CombatShot } from '../combat/presentation';
+import { playCue, type CueKey } from '../audio/cues';
 
 export interface ShipFrame {
   pos: Coord | null; hull: number; shields: number; alive: boolean; retreated: boolean; yaw: number;
@@ -95,6 +97,11 @@ function rgba(hex: string, a: number): string {
 }
 
 const ease = (x: number) => x * x * (3 - 2 * x);
+type P = [number, number];
+const bez = (p0: P, c: P, p2: P, u: number): P => [(1 - u) * (1 - u) * p0[0] + 2 * (1 - u) * u * c[0] + u * u * p2[0], (1 - u) * (1 - u) * p0[1] + 2 * (1 - u) * u * c[1] + u * u * p2[1]];
+const bezD = (p0: P, c: P, p2: P, u: number): P => [2 * (1 - u) * (c[0] - p0[0]) + 2 * u * (p2[0] - c[0]), 2 * (1 - u) * (c[1] - p0[1]) + 2 * u * (p2[1] - c[1])];
+/** Shortest-path angle interpolation in degrees. */
+const lerpAngle = (a: number, b: number, u: number) => { const d = ((((b - a) % 360) + 540) % 360) - 180; return a + d * u; };
 const clamp01 = (x: number) => Math.max(0, Math.min(1, x));
 
 export function CombatArena({ encounter, round, selected, target, onPick, animateKey, intent = false }: {
@@ -123,6 +130,8 @@ export function CombatArena({ encounter, round, selected, target, onPick, animat
     let frame = 0;
     let hits: { id: number; x: number; y: number; r: number }[] = [];
     let viewKey = '';
+    const fired = { key: '', ids: new Set<string>(), drawn: new Set<string>() };
+    const totals: Record<string, number> = {};
     let view: View = { x0: 0, y0: 0, cols: 16, rows: 12 };
     const draw = (now: number) => {
       frame = requestAnimationFrame(draw);
@@ -197,18 +206,33 @@ export function CombatArena({ encounter, round, selected, target, onPick, animat
         return [s0, Math.min(0.97, s0 + Math.max(0.16, 0.42 / n + 0.08))];
       };
 
+      const pres: CombatRoundPresentation | null = animating ? presentationSource().round(e, k - 1) : null;
+      // Audio cues fire once per animated round (keyed by shot id) and pan with the shooter.
+      const fireKey = `${st.animateKey}:${k}:${start}`;
+      if (fired.key !== fireKey) { fired.key = fireKey; fired.ids.clear(); fired.drawn.clear(); }
+      const cue = (id: string, key: CueKey, x: number, gain = 1) => {
+        if (fired.ids.has(id)) return;
+        fired.ids.add(id);
+        playCue(key, { pan: (x / Math.max(1, w)) * 2 - 1, gain });
+      };
+
       // --- raw positions (movement phase interpolates from -> via -> to)
       const rawPos = new Map<number, [number, number]>();
+      const heading = new Map<number, number>();
       for (const s of e.ships) {
         const a = before.get(s.id)!, b = after.get(s.id)!;
         if (s.hidden) continue;
         if (!b.pos && !a.pos) continue;
         const stt = roundData ? statusIn(roundData, s.id) : undefined;
         if (!animating || !stt) { if (b.pos) rawPos.set(s.id, center(b.pos)); continue; }
-        const p0 = center(stt.from), p1 = center(stt.via), p2 = center(stt.to);
-        const e2 = ease(tMove < 0.5 ? tMove * 2 : (tMove - 0.5) * 2);
-        const [ax, ay] = tMove < 0.5 ? p0 : p1, [bx, by] = tMove < 0.5 ? p1 : p2;
-        rawPos.set(s.id, [ax + (bx - ax) * e2, ay + (by - ay) * e2]);
+        // One smooth eased curve through from -> via -> to (quadratic Bezier passing through via).
+        const mo = pres?.motions.find((m) => m.id === s.id);
+        const p0 = center(mo?.from ?? stt.from), p1 = center(mo?.via ?? stt.via), p2 = center(mo?.to ?? stt.to);
+        const c1: P = [2 * p1[0] - (p0[0] + p2[0]) / 2, 2 * p1[1] - (p0[1] + p2[1]) / 2];
+        const u = ease(tMove);
+        rawPos.set(s.id, bez(p0, c1, p2, u));
+        const d = bezD(p0, c1, p2, Math.min(0.98, Math.max(0.02, u)));
+        if (!mo?.strafe && Math.hypot(p2[0] - p0[0], p2[1] - p0[1]) > 1) heading.set(s.id, (Math.atan2(d[1], d[0]) * 180) / Math.PI);
       }
       const baseR = Math.max(10, Math.min(24, cell * 0.3));
       const radius = (s: TacticalShip) => baseR * shipScale(s);
@@ -305,6 +329,140 @@ export function CombatArena({ encounter, round, selected, target, onPick, animat
         return l ? [p[0] + l[0], p[1] + l[1]] : p;
       };
 
+      // --- typed weapon effects (CombatPresentationSource shots)
+      const fxCount: Record<string, number> = {};
+      const drawShot = (shot: CombatShot) => {
+        if (t < shot.start || t > shot.impact + 0.16) return;
+        const a = at(shot.from), b = at(shot.to);
+        if (!a || !b) return;
+        const ang = Math.atan2(b[1] - a[1], b[0] - a[0]);
+        const nx = -Math.sin(ang), ny = Math.cos(ang);
+        const muzzle: P = [a[0] + Math.cos(ang) * baseR * 0.8 + nx * shot.spread * baseR * 0.5, a[1] + Math.sin(ang) * baseR * 0.8 + ny * shot.spread * baseR * 0.5];
+        const hitR = baseR * 1.55;
+        const inset = shot.shieldHit ? hitR : baseR * 0.3;
+        const hitP: P = [b[0] - Math.cos(ang) * inset + nx * shot.spread * 4, b[1] - Math.sin(ang) * inset + ny * shot.spread * 4];
+        const col = shot.color;
+        cue(shot.id, shot.key as CueKey, a[0], shot.family === 'pulse' ? 0.7 : 1);
+        if (!fired.drawn.has(shot.id)) { fired.drawn.add(shot.id); fxCount[shot.family] = (fxCount[shot.family] ?? 0) + 1; fxCount[shot.weapon] = (fxCount[shot.weapon] ?? 0) + 1; }
+        if (shot.ambush && t < shot.impact) floatTexts.push({ x: a[0], y: a[1] - baseR * 2.2, text: 'AMBUSH +25%', color: '#bfe6ff', q: clamp01((t - shot.start) / (shot.impact - shot.start)) });
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.lineCap = 'round';
+        if (shot.family === 'ram') {
+          if (t > shot.impact) {
+            const f = clamp01((t - shot.impact) / 0.2);
+            const burst = ctx.createRadialGradient(b[0], b[1], 0, b[0], b[1], baseR * (1.5 + f * 2.5));
+            burst.addColorStop(0, `rgba(255,255,230,${1 - f})`); burst.addColorStop(0.5, `rgba(255,170,80,${0.7 * (1 - f)})`); burst.addColorStop(1, 'rgba(255,80,40,0)');
+            ctx.fillStyle = burst; ctx.beginPath(); ctx.arc(b[0], b[1], baseR * (1.5 + f * 2.5), 0, 6.283); ctx.fill();
+            floatTexts.push({ x: b[0], y: b[1] - baseR * 2.3, text: `RAM −${shot.damage}`, color: '#ff7a5c', q: f });
+            cue(`${shot.id}:hit`, 'sfx.explosion.small', b[0], 1.3);
+          }
+          ctx.restore();
+          return;
+        }
+        if (shot.family === 'beam' || shot.family === 'special') {
+          // Continuous beam: grows from the emitter, holds with a flicker, then fades.
+          const life = shot.impact + 0.12 - shot.start;
+          const q = clamp01((t - shot.start) / life);
+          const reach = clamp01((t - shot.start) / Math.max(0.01, shot.impact - shot.start));
+          const end: P = [muzzle[0] + (hitP[0] - muzzle[0]) * reach, muzzle[1] + (hitP[1] - muzzle[1]) * reach];
+          const fade = q > 0.75 ? Math.max(0, 1 - (q - 0.75) / 0.25) : 1;
+          const flick = motion ? 0.8 + 0.2 * Math.sin(now / 18 + shot.start * 100) : 1;
+          ctx.globalAlpha = fade;
+          ctx.strokeStyle = rgba(col, 0.22); ctx.lineWidth = shot.family === 'special' ? 11 : 8;
+          ctx.beginPath(); ctx.moveTo(muzzle[0], muzzle[1]); ctx.lineTo(end[0], end[1]); ctx.stroke();
+          ctx.globalAlpha = fade * flick;
+          ctx.strokeStyle = col; ctx.lineWidth = shot.family === 'special' ? 3.4 : 2.6;
+          ctx.beginPath();
+          if (shot.family === 'special' && motion) {
+            // Special weapons (dampener, web, bio-energy, temporal) ripple along their length.
+            for (let j = 0; j <= 16; j++) {
+              const u = j / 16, wob = Math.sin(u * 18 + now / 60) * 3;
+              const x = muzzle[0] + (end[0] - muzzle[0]) * u + nx * wob, y = muzzle[1] + (end[1] - muzzle[1]) * u + ny * wob;
+              if (j) ctx.lineTo(x, y); else ctx.moveTo(x, y);
+            }
+          } else { ctx.moveTo(muzzle[0], muzzle[1]); ctx.lineTo(end[0], end[1]); }
+          ctx.stroke();
+          ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 0.9;
+          ctx.beginPath(); ctx.moveTo(muzzle[0], muzzle[1]); ctx.lineTo(end[0], end[1]); ctx.stroke();
+          const eg = ctx.createRadialGradient(muzzle[0], muzzle[1], 0, muzzle[0], muzzle[1], 7);
+          eg.addColorStop(0, 'rgba(255,255,255,0.9)'); eg.addColorStop(1, rgba(col, 0));
+          ctx.fillStyle = eg; ctx.beginPath(); ctx.arc(muzzle[0], muzzle[1], 7, 0, 6.283); ctx.fill();
+          ctx.globalAlpha = 1;
+        } else if (shot.family === 'pulse') {
+          // Pulse bolt: a short bright dash travelling to the target.
+          const q = clamp01((t - shot.start) / Math.max(0.01, shot.impact - shot.start));
+          if (q < 1) {
+            const hx = muzzle[0] + (hitP[0] - muzzle[0]) * q, hy = muzzle[1] + (hitP[1] - muzzle[1]) * q;
+            const len = Math.min(26, cell * 0.4);
+            ctx.strokeStyle = rgba(col, 0.35); ctx.lineWidth = 6;
+            ctx.beginPath(); ctx.moveTo(hx - Math.cos(ang) * len, hy - Math.sin(ang) * len); ctx.lineTo(hx, hy); ctx.stroke();
+            ctx.strokeStyle = col; ctx.lineWidth = 2.6;
+            ctx.beginPath(); ctx.moveTo(hx - Math.cos(ang) * len * 0.8, hy - Math.sin(ang) * len * 0.8); ctx.lineTo(hx, hy); ctx.stroke();
+            ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(hx, hy, 1.6, 0, 6.283); ctx.fill();
+          }
+        } else {
+          // Torpedo: a glowing projectile on a gentle arc with a fading tail.
+          const q = clamp01((t - shot.start) / Math.max(0.01, shot.impact - shot.start));
+          const bend = 0.16 + shot.spread * 0.08;
+          const c: P = [(muzzle[0] + hitP[0]) / 2 + (hitP[1] - muzzle[1]) * bend, (muzzle[1] + hitP[1]) / 2 - (hitP[0] - muzzle[0]) * bend];
+          if (q < 1) {
+            for (let j = 9; j >= 1; j--) {
+              const u = q - j * 0.022;
+              if (u < 0) continue;
+              const [x, y] = bez(muzzle, c, hitP, u);
+              ctx.fillStyle = rgba(col, 0.5 * (1 - j / 10)); ctx.beginPath(); ctx.arc(x, y, Math.max(0.6, 3.4 - j * 0.25), 0, 6.283); ctx.fill();
+            }
+            const [x, y] = bez(muzzle, c, hitP, q);
+            const pulse = motion ? 1 + 0.18 * Math.sin(now / 40 + shot.spread * 3) : 1;
+            const glow = ctx.createRadialGradient(x, y, 0, x, y, 11 * pulse);
+            glow.addColorStop(0, 'rgba(255,255,255,1)'); glow.addColorStop(0.3, rgba(col, 0.95)); glow.addColorStop(1, rgba(col, 0));
+            ctx.fillStyle = glow; ctx.beginPath(); ctx.arc(x, y, 11 * pulse, 0, 6.283); ctx.fill();
+          }
+        }
+        // Impact: shield-bubble flash (shields up) or hull sparks and fire (shields down).
+        if (t >= shot.impact && shot.intercepted) {
+          // Point defence: the volley bursts short of the target.
+          const f = clamp01((t - shot.impact) / 0.16);
+          const px0 = b[0] - Math.cos(ang) * hitR * 1.6, py0 = b[1] - Math.sin(ang) * hitR * 1.6;
+          ctx.fillStyle = `rgba(255,255,220,${0.8 * (1 - f)})`; ctx.beginPath(); ctx.arc(px0, py0, 4 + f * 8, 0, 6.283); ctx.fill();
+          if (!shot.id.match(/:t[1-9]$/)) floatTexts.push({ x: px0, y: py0 - 12, text: 'INTERCEPTED', color: '#e8f4ff', q: f });
+        } else if (t >= shot.impact && shot.miss) {
+          if (!shot.id.match(/:[pt][1-9]$/)) floatTexts.push({ x: b[0], y: b[1] - baseR * 1.9, text: 'MISS', color: 'rgba(200,215,245,0.8)', q: clamp01((t - shot.impact) / 0.16) });
+        } else if (t >= shot.impact) {
+          const f = clamp01((t - shot.impact) / 0.16);
+          const heavy = shot.family === 'torpedo';
+          if (shot.shieldHit) {
+            cue(`${shot.id}:hit`, 'sfx.shield.hit', b[0], heavy ? 1 : 0.6);
+            const back = Math.atan2(a[1] - b[1], a[0] - b[0]);
+            const br = hitR * (heavy ? 1.1 : 0.8);
+            const bubble = ctx.createRadialGradient(hitP[0], hitP[1], 0, hitP[0], hitP[1], br);
+            bubble.addColorStop(0, `rgba(200,240,255,${0.55 * (1 - f)})`); bubble.addColorStop(1, 'rgba(111,211,255,0)');
+            ctx.fillStyle = bubble; ctx.beginPath(); ctx.arc(hitP[0], hitP[1], br, 0, 6.283); ctx.fill();
+            ctx.strokeStyle = `rgba(111,211,255,${0.95 * (1 - f)})`; ctx.lineWidth = heavy ? 3.5 : 2.4;
+            ctx.beginPath(); ctx.arc(b[0], b[1], hitR, back - (heavy ? 1.1 : 0.7), back + (heavy ? 1.1 : 0.7)); ctx.stroke();
+            ctx.strokeStyle = `rgba(111,211,255,${0.3 * (1 - f)})`; ctx.lineWidth = 1;
+            ctx.beginPath(); ctx.arc(b[0], b[1], hitR, 0, 6.283); ctx.stroke();
+          } else {
+            cue(`${shot.id}:hit`, 'sfx.explosion.small', b[0], heavy ? 1 : 0.5);
+            const fr = baseR * (heavy ? 1 : 0.55);
+            const fire = ctx.createRadialGradient(hitP[0], hitP[1], 0, hitP[0], hitP[1], fr);
+            fire.addColorStop(0, `rgba(255,240,200,${1 - f})`); fire.addColorStop(0.5, `rgba(255,140,50,${0.7 * (1 - f)})`); fire.addColorStop(1, 'rgba(255,60,20,0)');
+            ctx.fillStyle = fire; ctx.beginPath(); ctx.arc(hitP[0], hitP[1], fr, 0, 6.283); ctx.fill();
+            ctx.fillStyle = `rgba(255,200,120,${1 - f})`;
+            for (let j = 0; j < 8; j++) {
+              const an = j * 0.785 + shot.start * 50, dd = f * baseR * (heavy ? 1.6 : 1) * (0.5 + ((j * 7) % 5) / 8);
+              ctx.fillRect(hitP[0] + Math.cos(an) * dd, hitP[1] + Math.sin(an) * dd, 2, 2);
+            }
+          }
+          const firstOfVolley = !/:[pt][1-9]$/.test(shot.id);
+          if (shot.damage > 0 && firstOfVolley) {
+            floatTexts.push({ x: b[0] + shot.spread * 10, y: b[1] - baseR * 1.9, text: `−${shot.damage}`, color: shot.shieldHit ? '#8fdcff' : '#ffb36b', q: f });
+          }
+        }
+        ctx.restore();
+      };
+
       // --- trails of the last round (static)
       if (lastRound && !animating) {
         for (const stt of lastRound.ships) {
@@ -372,7 +530,7 @@ export function CombatArena({ encounter, round, selected, target, onPick, animat
         const destroyedNow = animating && !a.alive && b.alive;
         const retreatingNow = animating && a.retreated && !b.retreated;
         let alpha = 1;
-        if (destroyedNow) alpha = t < 0.86 ? 1 : Math.max(0, 1 - (t - 0.86) / 0.1);
+        if (destroyedNow) { const at0 = (pres?.destroyed.find((x) => x.id === s.id)?.at ?? 0.8) + 0.06; alpha = t < at0 ? 1 : Math.max(0, 1 - (t - at0) / 0.1); }
         let [px, py] = p;
         if (retreatingNow) {
           // Warp out toward the ship's own withdrawal edge before this round's fire.
@@ -424,7 +582,17 @@ export function CombatArena({ encounter, round, selected, target, onPick, animat
         }
         // hull glyph
         // Stations never turn to face anything: a slow docking-ring spin instead of the ship's heading.
-        const yaw = s.station ? (motion ? now / 6000 : 0) : (((animating && stt ? stt.yaw : a.yaw) ?? 0) * Math.PI) / 180;
+        // Ships turn smoothly: from the old heading into the direction of travel, then onto the new heading.
+        let yawDeg = a.yaw ?? 0;
+        if (animating && stt) {
+          const mo = pres?.motions.find((m) => m.id === s.id);
+          const y0 = mo?.yawFrom ?? b.yaw ?? 0, y1 = mo?.yawTo ?? stt.yaw, hd = heading.get(s.id);
+          if (hd === undefined) yawDeg = lerpAngle(y0, y1, ease(clamp01(tMove * 1.4)));
+          else if (tMove < 0.25) yawDeg = lerpAngle(y0, hd, ease(tMove / 0.25));
+          else if (tMove < 0.75) yawDeg = hd;
+          else yawDeg = lerpAngle(hd, y1, ease(clamp01((tMove - 0.75) / 0.25)));
+        }
+        const yaw = s.station ? (motion ? now / 6000 : 0) : (yawDeg * Math.PI) / 180;
         ctx.rotate(yaw);
         const glow = ctx.createRadialGradient(0, 0, 0, 0, 0, R * 1.5);
         glow.addColorStop(0, pal.glow); glow.addColorStop(1, 'rgba(0,0,0,0)');
@@ -497,8 +665,13 @@ export function CombatArena({ encounter, round, selected, target, onPick, animat
           ctx.beginPath(); ctx.arc(px, py, R * (1 + q * 1.6), 0, 6.283); ctx.stroke();
         }
         // explosion
-        if (destroyedNow && t > 0.8) {
-          const q = clamp01((t - 0.8) / 0.2);
+        const boomAt = pres?.destroyed.find((x) => x.id === s.id)?.at ?? 0.8;
+        if (destroyedNow && t > boomAt) {
+          const q = clamp01((t - boomAt) / Math.max(0.1, 1 - boomAt));
+          cue(`boom:${s.id}`, 'sfx.explosion.large', px);
+          // shockwave ring
+          ctx.strokeStyle = `rgba(255,220,170,${0.7 * (1 - q)})`; ctx.lineWidth = 2 + 4 * (1 - q);
+          ctx.beginPath(); ctx.arc(px, py, R * (1.2 + q * 5), 0, 6.283); ctx.stroke();
           const fire = ctx.createRadialGradient(px, py, 0, px, py, R * (1 + q * 3));
           fire.addColorStop(0, `rgba(255,245,200,${1 - q})`); fire.addColorStop(0.4, `rgba(255,150,60,${0.8 * (1 - q)})`); fire.addColorStop(1, 'rgba(255,60,30,0)');
           ctx.fillStyle = fire; ctx.beginPath(); ctx.arc(px, py, R * (1 + q * 3), 0, 6.283); ctx.fill();
@@ -546,76 +719,7 @@ export function CombatArena({ encounter, round, selected, target, onPick, animat
 
       // --- weapons fire, salvo by salvo
       if (roundData) {
-        salvos.forEach((sv, i) => {
-          const [s0, s1] = salvoWindow(i);
-          if (t < s0 || t > s1 + 0.12) return;
-          const q = clamp01((t - s0) / (s1 - s0));
-          const a = at(sv.from), b = at(sv.to);
-          if (!a || !b) return;
-          const shooter = e.ships.find((s) => s.id === sv.from);
-          const col = shooter ? palette(shooter.owner).primary : '#ffffff';
-          const tgtStatus = statusIn(roundData, sv.to);
-          const shielded = (tgtStatus?.shieldBefore ?? 0) > 0;
-          if (sv.ram) {
-            // Mutual ram: the impact is drawn once, when the rammer arrives.
-            if (sv.from !== roundData.ships.find((x) => x.id === sv.from && x.maneuver === 'Ram')?.id) {
-              if (q > 0.55) floatTexts.push({ x: b[0], y: b[1] - baseR * 1.6, text: `−${sv.beam} RECOIL`, color: '#ffb36b', q });
-              return;
-            }
-            if (q > 0.5) {
-              const f = clamp01((q - 0.5) / 0.5);
-              const burst = ctx.createRadialGradient(b[0], b[1], 0, b[0], b[1], baseR * (1.5 + f * 2.5));
-              burst.addColorStop(0, `rgba(255,255,230,${1 - f})`); burst.addColorStop(0.5, `rgba(255,170,80,${0.7 * (1 - f)})`); burst.addColorStop(1, 'rgba(255,80,40,0)');
-              ctx.fillStyle = burst; ctx.beginPath(); ctx.arc(b[0], b[1], baseR * (1.5 + f * 2.5), 0, 6.283); ctx.fill();
-              floatTexts.push({ x: b[0], y: b[1] - baseR * 2.3, text: `RAM −${sv.beam}`, color: '#ff7a5c', q: f });
-            }
-            return;
-          }
-          if (sv.ambush && q < 0.6) floatTexts.push({ x: a[0], y: a[1] - baseR * 2.2, text: 'AMBUSH +25%', color: '#bfe6ff', q: q / 0.6 });
-          if (sv.beam > 0) {
-            const flick = motion ? 0.75 + 0.25 * Math.sin(now / 25 + i) : 1;
-            const fade = q < 0.15 ? q / 0.15 : q > 0.7 ? Math.max(0, 1 - (q - 0.7) / 0.3) : 1;
-            ctx.save();
-            ctx.lineCap = 'round';
-            ctx.strokeStyle = rgba(col.startsWith('#') ? col : '#ffffff', 0.25 * fade); ctx.lineWidth = 7;
-            ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke();
-            ctx.globalAlpha = fade * flick;
-            ctx.strokeStyle = col; ctx.lineWidth = 2.4;
-            ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke();
-            ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 0.9;
-            ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke();
-            ctx.restore();
-          }
-          if (sv.torpedo > 0) {
-            // Tracer on a slight arc with a fading tail.
-            const tq = clamp01(q / 0.75);
-            const mx = (a[0] + b[0]) / 2 + (b[1] - a[1]) * 0.18, my = (a[1] + b[1]) / 2 - (b[0] - a[0]) * 0.18;
-            const pt = (u: number): [number, number] => [(1 - u) * (1 - u) * a[0] + 2 * (1 - u) * u * mx + u * u * b[0], (1 - u) * (1 - u) * a[1] + 2 * (1 - u) * u * my + u * u * b[1]];
-            if (tq < 1) {
-              for (let j = 0; j < 8; j++) {
-                const u = tq - j * 0.025;
-                if (u < 0) break;
-                const [x, y] = pt(u);
-                ctx.fillStyle = `rgba(255,${200 - j * 12},${120 - j * 10},${0.9 - j * 0.11})`;
-                ctx.beginPath(); ctx.arc(x, y, 3.2 - j * 0.3, 0, 6.283); ctx.fill();
-              }
-            }
-          }
-          // impact: shield bubble or hull sparks, and the damage number
-          if (q > 0.62) {
-            const f = clamp01((q - 0.62) / 0.38);
-            const tr = baseR * 1.7;
-            if (shielded) {
-              const ang = Math.atan2(a[1] - b[1], a[0] - b[0]);
-              ctx.strokeStyle = `rgba(111,211,255,${0.9 * (1 - f)})`; ctx.lineWidth = 3;
-              ctx.beginPath(); ctx.arc(b[0], b[1], tr, ang - 0.9, ang + 0.9); ctx.stroke();
-            } else {
-              ctx.fillStyle = `rgba(255,190,110,${1 - f})`;
-              for (let j = 0; j < 6; j++) { const an = j * 1.047 + i; ctx.fillRect(b[0] + Math.cos(an) * f * tr, b[1] + Math.sin(an) * f * tr, 2, 2); }
-            }
-            floatTexts.push({ x: b[0], y: b[1] - baseR * 1.9, text: `−${sv.beam + sv.torpedo}`, color: shielded ? '#8fdcff' : '#ffb36b', q: f });
-          }
-        });
+        for (const shot of pres?.shots ?? []) drawShot(shot);
         if (roundData.truce && t > 0.15) {
           const q = clamp01((t - 0.15) / 0.3);
           ctx.fillStyle = `rgba(4,8,18,${0.55 * q})`; ctx.fillRect(0, h / 2 - 26, w, 52);
@@ -635,6 +739,12 @@ export function CombatArena({ encounter, round, selected, target, onPick, animat
           ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke(); ctx.setLineDash([]);
         }
       }
+
+      // Effect counters for tests and diagnostics (data-fx on the canvas).
+      let changed = false;
+      for (const [k2, n] of Object.entries(fxCount)) if (n) { totals[k2] = (totals[k2] ?? 0) + n; changed = true; }
+      if (changed) canvas.dataset.fx = JSON.stringify(totals);
+      if (pres) canvas.dataset.fxSource = pres.source;
 
       // floating texts on top
       ctx.textAlign = 'center'; ctx.textBaseline = 'middle';

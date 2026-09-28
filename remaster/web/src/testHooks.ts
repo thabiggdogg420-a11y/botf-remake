@@ -2,6 +2,7 @@
 // geometry so tests can click precise canvas positions, plus camera focus; orders always go through
 // the UI.
 import { core } from './core/engine';
+import { cueStats } from './audio/cues';
 import { encounter, focusMap, outcomePreview, view } from './state/store';
 
 export interface MapHooks {
@@ -18,6 +19,8 @@ interface BotfHooks {
   focus: (x: number, y: number, zoom?: number) => void;
   /** Shows the end-of-campaign screen for an outcome (screenshots); null hides the preview. */
   previewOutcome: (outcome: 'victory' | 'defeat' | null) => void;
+  /** Battle audio cue counters (requested / voiced, by cue key). */
+  cues: () => typeof cueStats;
   map?: MapHooks;
 }
 
@@ -32,6 +35,7 @@ function base(): BotfHooks {
     fingerprint: () => { try { return core.fingerprint(); } catch { return null; } },
     focus: (x, y, zoom) => focusMap(x, y, zoom),
     previewOutcome: (outcome) => { outcomePreview.value = outcome; },
+    cues: () => cueStats,
   };
 }
 
