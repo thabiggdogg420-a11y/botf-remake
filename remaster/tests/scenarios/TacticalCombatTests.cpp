@@ -987,6 +987,224 @@ void testRepresentativeFedVsKlingonBattle() {
     std::cout << "  PASS: mid-battle save/reload bit-for-bit equivalence verified." << std::endl;
 }
 
+// -----------------------------------------------------------------------------
+// Remaster rules (rules version 2)
+// -----------------------------------------------------------------------------
+Ship testShip(int id, int owner, int hull, int shields, int beam, int torp, TacticalCoord at, int speed = 1) {
+    Ship s{id, owner, "Ship " + std::to_string(id), Building::Destroyer, -1, hull, hull, hull,
+        shields, shields, shields, beam, torp, speed, at, true, true, false, 0};
+    return s;
+}
+
+void testRamIsMutual() {
+    Encounter enc;
+    enc.rngState = 55;
+    enc.controllingOwnerId = 1;
+    enc.ships.push_back(testShip(1, 1, 30, 0, 5, 0, {4, 5}));
+    enc.ships.push_back(testShip(2, 2, 50, 10, 0, 0, {5, 5}));
+    enc.ships[1].canRetreat = false; // Unarmed and pinned: it hails, which the player side does not answer.
+    enc.submitOrder({1, 2, TacticalManeuver::Ram});
+    const auto round = enc.resolveRound();
+    const Ship* rammer = enc.getShip(1);
+    const Ship* victim = enc.getShip(2);
+    // Impact: the rammer's 30 hull, shields first (10) then hull (20).
+    CHECK(victim->shields == 0 && victim->hull == 30);
+    // Recoil: the target's pre-impact hull + shields (60) destroys the 30-hull rammer.
+    CHECK(!rammer->isAlive && rammer->hull == 0);
+    int ramSalvos = 0;
+    for (const auto& salvo : round.salvos) ramSalvos += salvo.ram ? 1 : 0;
+    CHECK(ramSalvos == 2);
+
+    Encounter even;
+    even.controllingOwnerId = 1;
+    even.ships.push_back(testShip(1, 1, 40, 0, 5, 0, {4, 5}));
+    even.ships.push_back(testShip(2, 2, 40, 0, 5, 0, {5, 5}));
+    even.submitOrder({1, 2, TacticalManeuver::Ram});
+    even.resolveRound();
+    CHECK(!even.getShip(1)->isAlive && !even.getShip(2)->isAlive && even.isFinished && even.winnerOwnerId == 0);
+    std::cout << "  Ram: impact and recoil destroyed both evenly matched hulls." << std::endl;
+}
+
+void testCloakedShipsCannotFire() {
+    Encounter enc;
+    enc.rngState = 91;
+    enc.controllingOwnerId = 2;
+    Ship bird = testShip(10, 2, 80, 20, 30, 10, {5, 5}, 2);
+    bird.canCloak = true; bird.isCloaked = true;
+    Ship target = testShip(20, 1, 200, 0, 0, 0, {7, 5});
+    target.canRetreat = false;
+    enc.ships.push_back(target);
+    enc.ships.push_back(bird);
+    for (TacticalManeuver keep : {TacticalManeuver::Circle, TacticalManeuver::Hold, TacticalManeuver::Evade}) {
+        enc.submitOrder({10, 20, keep});
+        const auto round = enc.resolveRound();
+        CHECK(enc.getShip(10)->isCloaked);
+        for (const auto& salvo : round.salvos) CHECK(salvo.attackerFleetId != 10);
+        CHECK(enc.getShip(20)->hull == 200);
+    }
+    enc.submitOrder({10, 20, TacticalManeuver::Engage});
+    const auto strike = enc.resolveRound();
+    CHECK(!enc.getShip(10)->isCloaked && strike.getStatus(10)->decloakedThisRound && enc.getShip(20)->hull < 200);
+    std::cout << "  Cloak: Circle/Hold/Evade kept the cloak and held fire; Engage decloaked with an ambush." << std::endl;
+}
+
+void testRetreatDisengagesUnderFire() {
+    auto make = [] {
+        Encounter enc;
+        enc.rngState = 7;
+        enc.controllingOwnerId = 1;
+        enc.ships.push_back(testShip(1, 1, 100, 0, 10, 0, {3, 5}));
+        enc.ships.push_back(testShip(2, 2, 100, 0, 30, 0, {4, 5}));
+        return enc;
+    };
+    Encounter enc = make();
+    enc.submitOrder({1, 0, TacticalManeuver::Retreat});
+    auto first = enc.resolveRound();
+    const Ship* runner = enc.getShip(1);
+    CHECK(runner->disengaging() && runner->activeInCombat && runner->hull < 100); // Fired upon while disengaging.
+    CHECK(first.getStatus(1)->beamDamageDealt == 0);                            // Weapons offline.
+    const int hullAfterFirst = runner->hull;
+    auto second = enc.resolveRound();                                             // Standing Retreat.
+    CHECK(enc.getShip(1)->retreated && enc.getShip(1)->hull == hullAfterFirst && second.getStatus(1)->retreatedThisRound);
+    CHECK(enc.isFinished && enc.winnerOwnerId == 2);
+
+    Encounter aborted = make();
+    aborted.submitOrder({1, 0, TacticalManeuver::Retreat});
+    aborted.resolveRound();
+    aborted.submitOrder({1, 2, TacticalManeuver::Engage}); // Changing orders cancels the disengage.
+    aborted.resolveRound();
+    CHECK(!aborted.getShip(1)->retreated && !aborted.getShip(1)->disengaging());
+    std::cout << "  Retreat: one round disengaging under fire, then escape; new orders abort." << std::endl;
+}
+
+void testHailTruceNegotiation() {
+    auto make = [](int enemyHull, bool atWar, int trust) {
+        Encounter enc;
+        enc.controllingOwnerId = 1;
+        enc.relationAtWar = atWar;
+        enc.relationTrust = trust;
+        enc.ships.push_back(testShip(1, 1, 100, 20, 20, 10, {2, 5}));
+        enc.ships.push_back(testShip(2, 1, 100, 20, 20, 10, {2, 7}));
+        enc.ships.push_back(testShip(3, 2, enemyHull, 20, 20, 10, {13, 5}));
+        return enc;
+    };
+    // Weaker AI side accepts the player's hail: the battle ends before any fire.
+    Encounter weak = make(100, true, 50);
+    weak.submitOrders({{1, 0, TacticalManeuver::Hail}, {2, 0, TacticalManeuver::Hail}});
+    auto round = weak.resolveRound();
+    CHECK(round.hailedTruce && weak.isFinished && weak.winnerOwnerId == 0 && round.salvos.empty());
+    // A much stronger AI side at war presses the attack.
+    Encounter strong = make(900, true, 50);
+    strong.submitOrders({{1, 0, TacticalManeuver::Hail}, {2, 0, TacticalManeuver::Hail}});
+    round = strong.resolveRound();
+    CHECK(!round.hailedTruce && !strong.isFinished);
+    // Not formally at war: any hail is accepted.
+    Encounter peace = make(900, false, 0);
+    peace.submitOrders({{1, 0, TacticalManeuver::Hail}, {2, 0, TacticalManeuver::Hail}});
+    CHECK(peace.resolveRound().hailedTruce);
+    // A partial hail is not a truce.
+    Encounter partial = make(100, true, 50);
+    partial.submitOrder({1, 0, TacticalManeuver::Hail});
+    CHECK(!partial.resolveRound().hailedTruce);
+    // The player never auto-accepts: an AI hail needs the player's own hail.
+    Encounter aiHails;
+    aiHails.controllingOwnerId = 1;
+    aiHails.ships.push_back(testShip(1, 1, 100, 0, 20, 0, {2, 5}));
+    aiHails.ships.push_back(testShip(2, 2, 100, 0, 0, 0, {13, 5}));
+    aiHails.ships[1].canRetreat = false; // Trapped noncombatant: the AI hails.
+    auto aiRound = aiHails.resolveRound();
+    CHECK(aiRound.getStatus(2)->maneuverExecuted == TacticalManeuver::Hail && aiRound.getStatus(2)->aiControlled);
+    CHECK(!aiRound.hailedTruce);
+    std::cout << "  Hail: accepted by a weaker AI or outside formal war, refused by a stronger one." << std::endl;
+}
+
+void testStandingOrdersSurviveMidBattleSave() {
+    // Bug: standing orders were not saved and reload rebuilt them from the last
+    // round, locking AI-driven player ships into their last AI decision.
+    Encounter enc;
+    enc.initialSeed = enc.rngState = 31337;
+    enc.controllingOwnerId = 1;
+    enc.ships.push_back(testShip(1, 1, 60, 0, 30, 0, {3, 4}, 2));    // AI-driven: Charge until badly hurt.
+    enc.ships.push_back(testShip(2, 1, 80, 10, 10, 10, {3, 6}, 2));  // Player order: Evade.
+    enc.ships.push_back(testShip(3, 2, 300, 40, 40, 20, {12, 5}, 2));
+    enc.ships[2].canRetreat = false;
+    enc.submitOrder({2, 3, TacticalManeuver::Evade});
+    enc.resolveRound();
+    const auto text = serializeEncounter(enc);
+    CHECK(text.find("STANDING 1\n2 3 9\n") != std::string::npos);
+    Encounter loaded = deserializeEncounter(text);
+    CHECK(loaded.standingOrders.size() == 1 && loaded.standingOrders.at(2).maneuver == TacticalManeuver::Evade);
+    CHECK(serializeEncounter(loaded) == text);
+    Encounter live = enc;
+    live.runUntilFinished();
+    loaded.runUntilFinished();
+    CHECK(serializeEncounter(live) == serializeEncounter(loaded));
+    std::cout << "  Mid-battle save: standing orders and AI control survive reload bit-for-bit." << std::endl;
+}
+
+void testEncounterLoadBounds() {
+    Encounter enc;
+    enc.controllingOwnerId = 1;
+    enc.ships.push_back(testShip(1, 1, 50, 5, 5, 5, {1, 1}));
+    enc.ships.push_back(testShip(2, 2, 50, 5, 5, 5, {9, 9}));
+    enc.ships[0].name.clear(); // Empty names must round-trip.
+    const auto text = serializeEncounter(enc);
+    const auto loaded = deserializeEncounter(text);
+    CHECK(loaded.ships[0].name.empty() && serializeEncounter(loaded) == text);
+
+    auto rejectsText = [](const std::string& bad) {
+        bool rejected = false;
+        try { deserializeEncounter(bad); } catch (const std::invalid_argument&) { rejected = true; }
+        return rejected;
+    };
+    auto mutate = [&](const std::string& from, const std::string& to) {
+        auto bad = text;
+        const auto pos = bad.find(from);
+        CHECK(pos != std::string::npos);
+        bad.replace(pos, from.size(), to);
+        return bad;
+    };
+    // Ship record: "1 1 50 50 50 5 5 5 5 5 1 1 1 ..." (speed is the 11th field).
+    CHECK(rejectsText(mutate("1 1 50 50 50 5 5 5 5 5 1 ", "1 1 50 50 50 5 5 5 5 5 0 ")));   // Speed 0.
+    CHECK(rejectsText(mutate("1 1 50 50 50 5 5 5 5 5 1 ", "1 1 50 50 50 5 5 5 5 5 99 ")));  // Speed 99.
+    CHECK(rejectsText(mutate("1 1 50 50 50 5 5 5 5 5 1 ", "1 1 50 50 50 5 5 5 -5 5 1 ")));  // Negative attack.
+    CHECK(rejectsText(mutate("CONTROLLER 1 0", "CONTROLLER 9 0")));
+    CHECK(rejectsText(mutate("CLOAK_STATE 2\n1 0 0 0", "CLOAK_STATE 2\n1 0 2 0")));
+    CHECK(rejectsText(mutate("CLOAK_STATE 2\n1 0 0 0", "CLOAK_STATE 2\n1 0 1 0")));       // Cloaked without device.
+    CHECK(rejectsText(mutate("CLOAK_STATE 2\n1 0 0 0", "CLOAK_STATE 2\n7 0 0 0")));       // Unknown ship.
+    CHECK(rejectsText(mutate("RULES 2", "RULES 7")));
+    CHECK(rejectsText(mutate("STANDING 0", "STANDING 1\n1 2 12")));                        // Maneuver 12.
+    CHECK(rejectsText(mutate("STANDING 0", "STANDING 1\n1 1 0")));                         // Friendly target.
+    CHECK(rejectsText(mutate("TACTICAL_ENCOUNTER_V2", "TACTICAL_ENCOUNTER_V3")));
+    CHECK(rejectsText(mutate("ORDERS 0", "ORDERS 1\n5 0 0")));                             // Unknown ship.
+    CHECK(rejectsText(mutate("SHIPS 2\n1 1 50 50 50 5 5 5 5 5 1 1 1 1 1 0 0 1 9",
+                             "SHIPS 2\n1 1 50 50 50 5 5 5 5 5 1 1 1 1 1 0 0 1 77")));       // Not a ship class.
+    CHECK(rejectsText(mutate("SHIPS 2\n1 1 50 50 50 5 5 5 5 5 1 1 1 1 1 0 0 1 9",
+                             "SHIPS 2\n1 1 50 50 50 5 5 5 5 5 1 1 1 1 1 0 0 1 0")));        // A building, not a ship.
+    std::cout << "  Encounter load: bounds on speed, attack, enums, cloak flags and controller enforced." << std::endl;
+}
+
+void testLegacyV1EncountersStillLoad() {
+    const std::string v1 =
+        "TACTICAL_ENCOUNTER_V1\nARENA 16 12\nROUNDS 1 50 0 0\nSECTOR 1 1 1\nRNG 1 99\nCONTROLLER 1 0\nSHIPS 2\n"
+        "1 1 100 100 100 50 50 50 10 10 1 2 1 1 1 0 0 1 4 -1 Ship\\s1\n"
+        "2 2 90 100 100 50 50 50 10 10 1 5 5 1 1 0 0 1 4 -1 Ship2\n"
+        "ORDERS 0\nROUND_RESULTS 1\nROUND 1 0 0\nSTATUSES 2\n"
+        "1 1 100 100 50 50 10 10 0 1 1 2 1 1 2 0 0\n"
+        "2 2 100 90 50 50 10 0 20 5 5 5 5 0 1 0 0\n"
+        "DAMAGE 1\n2 100 90 50 50\nLOST 0\nRETREATED 0\nCLOAK_STATE 2\n1 0 0 0\n2 0 0 0\nEND\n";
+    Encounter loaded = deserializeEncounter(v1);
+    CHECK(loaded.rulesVersion == LegacyTacticalRules && loaded.ships[0].name == "Ship 1");
+    CHECK(loaded.standingOrders.size() == 1 && loaded.standingOrders.at(1).maneuver == TacticalManeuver::Charge);
+    const auto resaved = serializeEncounter(loaded);
+    CHECK(resaved.starts_with("TACTICAL_ENCOUNTER_V2\nRULES 1\n"));
+    CHECK(serializeEncounter(deserializeEncounter(resaved)) == resaved);
+    CHECK(facingDegrees(1, 0) == 0 && facingDegrees(0, 1) == 90 && facingDegrees(-1, 0) == 180 &&
+          facingDegrees(0, -1) == 270 && facingDegrees(1, 1) == 45 && facingDegrees(2, 1) == 27 &&
+          facingDegrees(-3, -4) == 233);
+    std::cout << "  Legacy V1 encounters load with legacy rules and re-save as V2." << std::endl;
+}
+
 } // namespace botf::tactical::tests
 
 int main() {
@@ -1005,6 +1223,13 @@ int main() {
         {"tactical groups", testTacticalGroups},
         {"cloak lifecycle", testCloakLifecycle},
         {"representative Fed vs Klingon battle", testRepresentativeFedVsKlingonBattle},
+        {"remaster: ram is mutual", testRamIsMutual},
+        {"remaster: cloaked ships cannot fire; attack orders ambush", testCloakedShipsCannotFire},
+        {"remaster: retreat disengages under fire for a round", testRetreatDisengagesUnderFire},
+        {"remaster: hail truce negotiation", testHailTruceNegotiation},
+        {"regression: standing orders survive mid-battle save", testStandingOrdersSurviveMidBattleSave},
+        {"regression: encounter load bounds and empty names", testEncounterLoadBounds},
+        {"legacy V1 encounters still load", testLegacyV1EncountersStillLoad},
     };
     int passed = 0, failed = 0;
     for (const auto& [name, suite] : suites) {

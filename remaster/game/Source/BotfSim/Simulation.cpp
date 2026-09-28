@@ -2002,9 +2002,12 @@ void resolveModernIntelligence(GameState& next, TurnReport& report) {
                     if (op.researchStolen > 0) {
                         auto& def = mutableEmpire(next, op.defenderEmpireId);
                         auto& att = mutableEmpire(next, op.attackerEmpireId);
-                        std::int64_t stolen = std::min(def.researchReserve, op.researchStolen);
-                        def.researchReserve -= stolen;
-                        att.researchReserve = std::min(MaxBalance, att.researchReserve + stolen);
+                        // Keep both research ledgers reconciled (reserve is part of total research).
+                        std::int64_t stolen = std::min({def.researchReserve, op.researchStolen,
+                            MaxBalance - att.researchReserve, MaxBalance - att.research});
+                        stolen = std::max<std::int64_t>(0, stolen);
+                        def.researchReserve -= stolen; def.research -= stolen;
+                        att.researchReserve += stolen; att.research += stolen;
                     }
                     IntelReport rpt;
                     rpt.turn = next.turn;
@@ -3562,10 +3565,20 @@ void validate(const GameState& s) {
         require(!b.firstFleetIds.empty() && !b.secondFleetIds.empty() &&
             (b.winnerOwner == 0 || b.winnerOwner == b.firstOwner || b.winnerOwner == b.secondOwner),
             "Invalid battle result");
+        // Legacy-rules tactical Hold recharges shields, so shields may rise up to the
+        // participant's maximum; hull never rises within a battle.
+        std::map<int, int> shieldCeiling;
+        for (const auto& participant : b.participants)
+            shieldCeiling[participant.fleetId] = participant.referenceShipId < 0 ? 0 :
+                std::max(0, sourceShip(participant.referenceShipId).shields);
+        const auto ceiling = [&](const FleetDamage& d) {
+            const auto found = shieldCeiling.find(d.fleetId);
+            return found == shieldCeiling.end() ? d.shieldBefore : std::max(d.shieldBefore, found->second);
+        };
         std::map<int, FleetDamage> summaries;
         for (const auto& d : b.damage) require(sides.count(d.fleetId) && d.hullBefore > 0 &&
             d.hullAfter >= 0 && d.hullAfter <= d.hullBefore && d.shieldBefore >= 0 &&
-            d.shieldAfter >= 0 && d.shieldAfter <= d.shieldBefore &&
+            d.shieldAfter >= 0 && d.shieldAfter <= ceiling(d) &&
             summaries.emplace(d.fleetId, d).second, "Invalid battle damage record");
         require(summaries.size() == sides.size(), "Incomplete battle damage record");
         std::set<int> losses, retreats;
@@ -3604,8 +3617,8 @@ void validate(const GameState& s) {
                     !roundRetreats.count(d.fleetId) && touched.insert(d.fleetId).second &&
                     d.hullBefore == remaining.at(d.fleetId) && d.hullAfter >= 0 && d.hullAfter <= d.hullBefore &&
                     d.shieldBefore == remainingShields.at(d.fleetId) && d.shieldAfter >= 0 &&
-                    d.shieldAfter <= d.shieldBefore &&
-                    (d.hullAfter < d.hullBefore || d.shieldAfter < d.shieldBefore), "Invalid tactical damage");
+                    d.shieldAfter <= ceiling(d) &&
+                    (d.hullAfter < d.hullBefore || d.shieldAfter != d.shieldBefore), "Invalid tactical damage");
                 remaining[d.fleetId] = d.hullAfter;
                 remainingShields[d.fleetId] = d.shieldAfter;
             }
