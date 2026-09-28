@@ -20,3 +20,5 @@ research/reference-local/
 setup/staging/
 # One-off PowerShell inventory export from the frozen milestone.
 /scratch_milestone_manifest.xml
+# Agent worktrees used during orchestrated development
+/.claude/worktrees/
