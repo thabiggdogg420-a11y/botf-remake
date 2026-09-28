@@ -7,6 +7,8 @@
 namespace botf {
 // Implemented in Simulation.cpp: identical strategic phases, with a supplied combat phase.
 TurnReport advanceWithCombat(GameState&, const std::function<void(GameState&, TurnReport&)>&);
+// resolveTacticalBattles (Simulation.h) is the single battle resolver shared by
+// headless advance() and this session; the session only intercepts player encounters.
 }
 
 namespace botf::session {
@@ -49,7 +51,8 @@ inline void autoResolve(TurnSession& session) {
     session.pending = std::move(next);
 }
 
-inline void verifyReplay(const tactical::Encounter& initial, const tactical::Encounter& recorded, int player) {
+namespace detail {
+inline tactical::Encounter prepareReplay(const tactical::Encounter& initial, const tactical::Encounter& recorded) {
     auto replay = initial;
     if (recorded.groups.empty()) {
         replay.groups.clear();
@@ -65,16 +68,70 @@ inline void verifyReplay(const tactical::Encounter& initial, const tactical::Enc
             s.isCloaked = false;
         }
     }
-    for (const auto& round : recorded.rounds) {
-        for (const auto& status : round.shipStatuses) {
-            const auto* ship = replay.getShip(status.fleetId);
-            if (ship && ship->ownerId == player && ship->isAlive && !ship->retreated)
-                replay.submitOrder({status.fleetId, status.targetFleetId, status.maneuverExecuted});
-        }
-        replay.resolveRound();
+    if (recorded.rulesVersion < tactical::RemasterTacticalRules) {
+        // Schema-11 encounters: legacy rules, no strategic standing orders or relation data.
+        replay.rulesVersion = recorded.rulesVersion;
+        replay.standingOrders.clear();
+        replay.relationAtWar = recorded.relationAtWar;
+        replay.relationTrust = recorded.relationTrust;
     }
-    require(tactical::serializeEncounter(replay) == tactical::serializeEncounter(recorded),
-            "Tactical result does not match deterministic order replay");
+    return replay;
+}
+
+// Group standing orders are UI bookkeeping (member orders carry the effect), so
+// they are taken from the recording once the group structure matches.
+inline void adoptGroupStanding(tactical::Encounter& replay, const tactical::Encounter& recorded) {
+    if (replay.groups.size() != recorded.groups.size()) return;
+    for (std::size_t i = 0; i < replay.groups.size(); ++i) {
+        const auto& g = replay.groups[i];
+        const auto& r = recorded.groups[i];
+        if (g.groupId != r.groupId || g.ownerId != r.ownerId || g.groupClass != r.groupClass ||
+            g.fleetIds != r.fleetIds || g.name != r.name) return;
+    }
+    for (std::size_t i = 0; i < replay.groups.size(); ++i) {
+        replay.groups[i].standingManeuver = recorded.groups[i].standingManeuver;
+        replay.groups[i].standingTargetFleetId = recorded.groups[i].standingTargetFleetId;
+    }
+}
+
+// Replays recorded rounds. inferAi=true (legacy recordings only) treats a player
+// ship as AI-driven until the first round whose recorded order differs from the
+// AI's decision, because V1 recordings did not mark AI decisions.
+inline bool replayMatches(const tactical::Encounter& initial, const tactical::Encounter& recorded, int player, bool inferAi) {
+    const bool remaster = recorded.rulesVersion >= tactical::RemasterTacticalRules;
+    auto replay = prepareReplay(initial, recorded);
+    std::set<int> explicitShips;
+    try {
+        for (const auto& round : recorded.rounds) {
+            if (replay.isFinished) return false;
+            for (const auto& status : round.shipStatuses) {
+                const auto* ship = replay.getShip(status.fleetId);
+                if (!ship || ship->ownerId != player || !tactical::Encounter::shipActive(*ship)) continue;
+                const tactical::Order recordedOrder{status.fleetId, status.targetFleetId, status.maneuverExecuted};
+                if (remaster) {
+                    if (status.aiControlled) continue; // The AI re-derives the same decision.
+                } else if (inferAi && !explicitShips.count(status.fleetId)) {
+                    if (!replay.standingOrders.count(status.fleetId) && replay.aiOrderFor(*ship) == recordedOrder) continue;
+                    explicitShips.insert(status.fleetId);
+                }
+                replay.submitOrder(recordedOrder);
+            }
+            replay.resolveRound();
+        }
+    } catch (const std::exception&) {
+        return false;
+    }
+    adoptGroupStanding(replay, recorded);
+    if (remaster) return tactical::serializeEncounter(replay) == tactical::serializeEncounter(recorded);
+    return tactical::detail::writeEncounter(replay, false) == tactical::detail::writeEncounter(recorded, false);
+}
+} // namespace detail
+
+inline void verifyReplay(const tactical::Encounter& initial, const tactical::Encounter& recorded, int player) {
+    bool matches = detail::replayMatches(initial, recorded, player, false);
+    if (!matches && recorded.rulesVersion < tactical::RemasterTacticalRules)
+        matches = detail::replayMatches(initial, recorded, player, true);
+    require(matches, "Tactical result does not match deterministic order replay");
 }
 
 inline std::optional<TurnReport> resumeWorking(TurnSession& session, GameState& committed) {
@@ -86,69 +143,29 @@ inline std::optional<TurnReport> resumeWorking(TurnSession& session, GameState& 
         session.pending.reset();
     }
     auto working = session.baseline;
+    const int player = working.playerEmpire;
     std::size_t encounterIndex = 0;
-    const auto combat = [&](GameState& state, TurnReport& report) {
-        std::set<int> withdrawn;
-        for (int y = 0; y < state.height; ++y) for (int x = 0; x < state.width; ++x) {
-            for (const auto& relation : state.majorRelations) {
-                if (!relation.atWar) continue;
-                std::vector<int> ids;
-                bool first = false, second = false;
-                for (const auto& fleet : state.fleets) {
-                    if (fleet.hull <= 0 || fleet.x != x || fleet.y != y || withdrawn.count(fleet.id)) continue;
-                    if (fleet.ownerId != relation.first && fleet.ownerId != relation.second) continue;
-                    ids.push_back(fleet.id);
-                    first |= fleet.ownerId == relation.first;
-                    second |= fleet.ownerId == relation.second;
-                }
-                if (!first || !second) continue;
-                const auto seed = state.rngState ^ (static_cast<std::uint64_t>(state.turn) << 32)
-                    ^ static_cast<std::uint64_t>(y * state.width + x + 1)
-                    ^ (static_cast<std::uint64_t>(relation.first * 7 + relation.second) << 16);
-                auto encounter = tactical::constructEncounter(state, ids, seed);
-                const bool playerInvolved = relation.first == state.playerEmpire || relation.second == state.playerEmpire;
-                if (playerInvolved) {
-                    if (encounterIndex == session.completed.size()) {
-                        session.pending = std::move(encounter);
-                        throw AwaitingPlayer{};
-                    }
-                    const auto& recorded = session.completed.at(encounterIndex++);
-                    require(recorded.isFinished && recorded.initialSeed == encounter.initialSeed &&
-                        recorded.strategicTurn == encounter.strategicTurn && recorded.sectorX == x && recorded.sectorY == y &&
-                        recorded.ships.size() == encounter.ships.size(), "Tactical result does not match strategic encounter");
-                    for (const auto& ship : encounter.ships) {
-                        const auto* saved = recorded.getShip(ship.fleetId);
-                        require(saved && saved->ownerId == ship.ownerId, "Tactical result participant mismatch");
-                    }
-                    verifyReplay(encounter, recorded, state.playerEmpire);
-                    encounter = recorded;
-                } else encounter.runUntilFinished();
-                tactical::applyEncounterResults(state, encounter);
-                for (const auto& ship : encounter.ships) if (ship.retreated) {
-                    withdrawn.insert(ship.fleetId);
-                    const auto fleet = std::find_if(state.fleets.begin(), state.fleets.end(), [&](const Fleet& f) { return f.id == ship.fleetId; });
-                    require(fleet != state.fleets.end() && fleet->hull > 0, "Tactical withdrawal removed a surviving ship");
-                    require(fleet->x != x || fleet->y != y, "No safe strategic withdrawal sector exists");
-                }
-                // A destroyed or independently withdrawing ship leaves its task force.
-                for (auto& group : state.taskForces) {
-                    std::erase_if(group.fleetIds, [&](int id) {
-                        return withdrawn.count(id) || std::none_of(state.fleets.begin(), state.fleets.end(),
-                            [&](const Fleet& fleet) { return fleet.id == id; });
-                    });
-                }
-                std::erase_if(state.taskForces, [](const TaskForce& group) { return group.fleetIds.empty(); });
-                for (auto& fleet : state.fleets) if (fleet.taskForceId > 0) {
-                    const auto* group = taskForceAt(state, fleet.taskForceId);
-                    if (!group || std::find(group->fleetIds.begin(), group->fleetIds.end(), fleet.id) == group->fleetIds.end())
-                        fleet.taskForceId = 0;
-                }
-                report.battles.push_back(tactical::toCombatReport(encounter));
-            }
+    // The same resolver as headless advance(); only player encounters are routed here.
+    const auto playerEncounter = [&](tactical::Encounter& encounter) {
+        if (encounterIndex == session.completed.size()) {
+            session.pending = std::move(encounter);
+            throw AwaitingPlayer{};
         }
+        const auto& recorded = session.completed.at(encounterIndex++);
+        require(recorded.isFinished && recorded.initialSeed == encounter.initialSeed &&
+            recorded.strategicTurn == encounter.strategicTurn && recorded.sectorX == encounter.sectorX &&
+            recorded.sectorY == encounter.sectorY && recorded.ships.size() == encounter.ships.size(),
+            "Tactical result does not match strategic encounter");
+        for (const auto& ship : encounter.ships) {
+            const auto* saved = recorded.getShip(ship.fleetId);
+            require(saved && saved->ownerId == ship.ownerId, "Tactical result participant mismatch");
+        }
+        verifyReplay(encounter, recorded, player);
+        encounter = recorded;
+    };
+    const auto combat = [&](GameState& state, TurnReport& report) {
+        resolveTacticalBattles(state, report, playerEncounter);
         require(encounterIndex == session.completed.size(), "Unexpected extra tactical results");
-        state.latestBattles.insert(state.latestBattles.end(), report.battles.begin(), report.battles.end());
-        if (state.latestBattles.size() > 16) state.latestBattles.erase(state.latestBattles.begin(), state.latestBattles.end() - 16);
     };
     try {
         auto report = advanceWithCombat(working, combat);

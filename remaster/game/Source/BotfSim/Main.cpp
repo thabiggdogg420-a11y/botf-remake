@@ -17,6 +17,16 @@ std::uint64_t number(const std::string& text) {
         throw std::runtime_error("Expected a nonnegative integer: " + text);
     return value;
 }
+botf::StartingEra parseEra(const std::string& text) {
+    std::string lower;
+    for (char c : text) lower.push_back(static_cast<char>(c >= 'A' && c <= 'Z' ? c - 'A' + 'a' : c));
+    for (const auto era : botf::availableStartingEras()) {
+        std::string name = botf::eraName(era);
+        for (auto& c : name) c = static_cast<char>(c >= 'A' && c <= 'Z' ? c - 'A' + 'a' : c);
+        if (lower == name || lower == std::to_string(static_cast<int>(era))) return era;
+    }
+    throw std::runtime_error("Unknown era: " + text + " (early, developed, expanded, advanced, supreme)");
+}
 std::string readSave(const std::filesystem::path& path) {
     if (std::filesystem::file_size(path) > 1024 * 1024)
         throw std::runtime_error("Save exceeds prototype size limit");
@@ -52,11 +62,17 @@ int main(int argc, char** argv) {
         int playerEmpire = 1;
         bool seedSet = false;
         bool reference = false;
+        bool eraSet = false;
+        botf::StartingEra era = botf::StartingEra::Early;
         std::string loadPath, savePath, battleFixturePath;
         for (int i = 1; i < argc; ++i) {
             const std::string option = argv[i];
             if (option == "--help") {
-                std::cout << "BotfSim [--seed N | --load FILE] [--empires 2..5] [--player 1..5] [--reference] [--turns N] [--save NEW_FILE]\n"
+                std::cout << "BotfSim [--seed N | --load FILE] [--empires 2..5] [--player 1..5] [--reference]\n"
+                    << "        [--era early|developed|expanded|advanced|supreme] [--turns N] [--save NEW_FILE]\n"
+                    << "--era selects the starting era for a new --empires campaign (default early; also 1..5).\n"
+                    << "New campaigns use save schema " << botf::SaveVersion << " (" << botf::ContentVersion
+                    << "): every battle resolves through the tactical engine. Older saves load and continue.\n"
                     << "BotfSim --battle-fixture NEW_FILE writes a campaign after one structured battle.\n"
                     << "Developer simulation runner; the Unreal game uses this same core. Balance is provisional.\n"
                     << "New games queue Factory, Farm and Laboratory. Saves retain pending orders.\n";
@@ -78,13 +94,14 @@ int main(int argc, char** argv) {
                 const auto n = number(value);
                 if (n < 1 || n > 5) throw std::runtime_error("Player empire must be one through five");
                 playerEmpire = static_cast<int>(n);
-            } else if (option == "--load") loadPath = value;
+            } else if (option == "--era") { era = parseEra(value); eraSet = true; }
+            else if (option == "--load") loadPath = value;
             else if (option == "--save") savePath = value;
             else if (option == "--battle-fixture") battleFixturePath = value;
             else throw std::runtime_error("Unknown option: " + option);
         }
         if (!battleFixturePath.empty()) {
-            if (seedSet || empires || !loadPath.empty() || !savePath.empty() || reference || playerEmpire != 1)
+            if (seedSet || empires || !loadPath.empty() || !savePath.empty() || reference || playerEmpire != 1 || eraSet)
                 throw std::runtime_error("Battle fixture option cannot be combined with a campaign or save option");
             auto fixture = botf::generateReferenceCampaign(1999);
             fixture.eventsEnabled = false; fixture.aiAggressionEnabled = false;
@@ -106,12 +123,13 @@ int main(int argc, char** argv) {
             return 0;
         }
         if (seedSet && !loadPath.empty()) throw std::runtime_error("Choose --seed or --load, not both");
-        if ((empires || reference || playerEmpire != 1) && !loadPath.empty())
+        if ((empires || reference || playerEmpire != 1 || eraSet) && !loadPath.empty())
             throw std::runtime_error("Cannot change campaign setup while loading a save");
         if (playerEmpire != 1 && !empires) throw std::runtime_error("Choose --empires with --player");
+        if (eraSet && !empires) throw std::runtime_error("Choose --empires with --era");
         if (empires && playerEmpire > empires) throw std::runtime_error("Player empire exceeds campaign empire count");
-        auto state = loadPath.empty() ? (empires ? (reference ? botf::generateReferenceCampaign(seed, empires, 16, 12, 28, playerEmpire)
-            : botf::generateCampaign(seed, empires, 16, 12, 28, playerEmpire)) : botf::generate(seed)) : botf::deserialize(readSave(loadPath));
+        auto state = loadPath.empty() ? (empires ? (reference ? botf::generateReferenceCampaign(seed, empires, 16, 12, 28, playerEmpire, era)
+            : botf::generateCampaign(seed, empires, 16, 12, 28, playerEmpire, era)) : botf::generate(seed)) : botf::deserialize(readSave(loadPath));
         if (loadPath.empty()) {
             std::uint64_t id = 0;
             const auto home = std::find_if(state.colonies.begin(), state.colonies.end(), [&](const botf::Colony& colony) {

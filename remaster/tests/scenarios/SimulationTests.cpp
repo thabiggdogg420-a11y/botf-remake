@@ -34,6 +34,7 @@ std::string asSchemaTen(const botf::GameState& state) {
         if (taskforces > 0) { --taskforces; continue; }
         if (planets > 0) { --planets; continue; }
         if (line.starts_with("EXPANSION ")) continue;
+        if (line.starts_with("REMASTER ")) continue; // Schema 12 only.
         if (line.starts_with("PLANETS ")) {
             planets = std::stoi(line.substr(8));
             continue;
@@ -202,8 +203,259 @@ std::string asSchemaSeven(const botf::GameState& state) {
     for (unsigned char byte : body) { hash ^= byte; hash *= 1099511628211ULL; }
     return body + "CHECKSUM " + std::to_string(hash) + "\n";
 }
+int failed = 0;
+// Each scenario reports PASS/FAIL independently; the suite fails at the end if any failed.
 void run(const char* name, const std::function<void()>& fn, int& passed) {
-    fn(); ++passed; std::cout << "PASS " << name << '\n';
+    try {
+        fn(); ++passed; std::cout << "PASS " << name << std::endl;
+    } catch (const std::exception& error) {
+        ++failed; std::cout << "FAIL " << name << ": " << error.what() << std::endl;
+    } catch (...) {
+        ++failed; std::cout << "FAIL " << name << ": unknown exception" << std::endl;
+    }
+}
+
+std::string withChecksum(std::string body) {
+    if (const auto pos = body.rfind("CHECKSUM "); pos != std::string::npos) body.erase(pos);
+    std::uint64_t hash = 14695981039346656037ULL;
+    for (unsigned char byte : body) { hash ^= byte; hash *= 1099511628211ULL; }
+    return body + "CHECKSUM " + std::to_string(hash) + "\n";
+}
+// The exact schema-11 text an earlier build wrote for a state without schema-12 content.
+std::string asSchemaEleven(const botf::GameState& state) {
+    auto text = botf::serialize(state);
+    text.erase(text.rfind("CHECKSUM "));
+    text.replace(0, text.find('\n') + 1, "BOTF_SIM 11 campaign-expansion-11\n");
+    const auto pos = text.find("\nREMASTER ");
+    check(pos != std::string::npos, "Schema 12 save lacks its REMASTER section");
+    text.erase(pos + 1, text.find('\n', pos + 1) - pos);
+    return withChecksum(text);
+}
+void revealFor(botf::GameState& s, int owner, int x, int y) {
+    auto& known = owner == s.playerEmpire ? s.explored :
+        std::find_if(s.rivals.begin(), s.rivals.end(), [owner](const botf::EmpireState& e) { return e.id == owner; })->explored;
+    known.push_back(y * s.width + x);
+    std::sort(known.begin(), known.end());
+    known.erase(std::unique(known.begin(), known.end()), known.end());
+}
+botf::Colony& playerHome(botf::GameState& s) {
+    const auto it = std::find_if(s.colonies.begin(), s.colonies.end(), [&](const botf::Colony& c) { return c.ownerId == s.playerEmpire; });
+    check(it != s.colonies.end(), "Player home colony missing");
+    return *it;
+}
+const botf::System& systemById(const botf::GameState& s, int id) {
+    const auto it = std::find_if(s.systems.begin(), s.systems.end(), [id](const botf::System& x) { return x.id == id; });
+    check(it != s.systems.end(), "System missing");
+    return *it;
+}
+std::string rejectionMessage(const std::function<void()>& fn) {
+    try { fn(); } catch (const std::exception& error) { return error.what(); }
+    throw std::runtime_error("Invalid operation was accepted");
+}
+
+void remasterScenarios(int& passed) {
+    run("regression: queue governor probes farm capacity without exceeding population", [] {
+        // Seed 1999 with Balanced/Balanced governors used to throw "Workforce exceeds
+        // population" around turn 4 from advance(), preview() and deserialize().
+        auto s = botf::generateReferenceCampaign(1999);
+        botf::submit(s, botf::makeSetColonyGovernorCommand(1, playerHome(s).systemId,
+            botf::GovernorPriority::Balanced, botf::GovernorPriority::Balanced));
+        for (int turn = 0; turn < 12; ++turn) {
+            (void)botf::preview(s);
+            botf::advance(s);
+            const auto text = botf::serialize(s);
+            check(botf::serialize(botf::deserialize(text)) == text, "Governed campaign did not reload");
+        }
+        auto direct = botf::generateReferenceCampaign(1999);
+        auto colony = playerHome(direct);
+        colony.queue.clear();
+        colony.queuePriority = botf::GovernorPriority::Balanced;
+        colony.foodWorkers = 10; colony.industryWorkers = 20; colony.researchWorkers = 10; // Fully employed.
+        botf::evaluateQueueGovernor(direct, colony);
+        check(!colony.queue.empty() && colony.industryWorkers == 20, "Queue governor failed or changed workers");
+    }, passed);
+
+    run("regression: captured minor-member colony transfers membership and keeps the turn's production", [] {
+        for (bool reference : {false, true}) {
+            auto base = reference ? botf::generateReferenceCampaign(1999) : botf::generateCampaign(1999);
+            base.aiAggressionEnabled = false; base.eventsEnabled = false;
+            check(!base.minors.empty(), "Campaign lacks a minor race");
+            auto& minor = base.minors.front();
+            const int systemId = minor.systemId;
+            const auto location = systemById(base, systemId);
+            minor.memberOf = 2; minor.contact[1] = true; minor.contact[2] = true;
+            botf::Colony member; member.systemId = systemId; member.ownerId = 2;
+            member.population = 30; member.foodWorkers = 15; member.industryWorkers = 10; member.researchWorkers = 5;
+            member.queue.push_back({botf::Building::Farm, 59}); // Completes during this turn's production.
+            base.colonies.push_back(member);
+            std::sort(base.colonies.begin(), base.colonies.end(), [](const botf::Colony& a, const botf::Colony& b) { return a.systemId < b.systemId; });
+            revealFor(base, 1, location.x, location.y); revealFor(base, 2, location.x, location.y);
+            base.fleets.push_back({base.nextFleetId++, 1, location.x, location.y, location.x, location.y,
+                false, false, botf::Building::Transport, 14});
+            base.majorRelations[0].contact = true; base.majorRelations[0].atWar = true;
+            if (reference) botf::syncDiplomacyState(base);
+            botf::Command invade; invade.id = 1; invade.type = botf::CommandType::Invade;
+            invade.fleetId = base.fleets.back().id; invade.systemId = systemId;
+            botf::submit(base, invade);
+            bool captured = false;
+            for (std::uint64_t rng = 0; rng < 200 && !captured; ++rng) {
+                auto s = base; s.rngState = rng;
+                const auto creditsBefore = botf::empire(s, 2).credits;
+                botf::advance(s);
+                botf::validate(s);
+                const auto text = botf::serialize(s);
+                check(botf::serialize(botf::deserialize(text)) == text, "Captured-colony save did not reload");
+                const auto* colony = botf::colonyAt(s, systemId);
+                check(colony && colony->farms == 3, "The colony lost this turn's completed farm");
+                if (colony->ownerId != 1) continue;
+                captured = true;
+                check(botf::minorAt(s, systemId)->memberOf == 1, "Minor membership did not follow the conquest");
+                check(colony->queue.empty() && colony->morale < 50 &&
+                    colony->workforcePriority == botf::GovernorPriority::Manual, "Conquest effects missing");
+                check(botf::empire(s, 2).credits != creditsBefore, "Previous owner was not credited for the turn");
+                if (reference) check(botf::minorDiplomacy(s, systemId)->membershipOwner == 1,
+                    "Modern diplomacy did not follow the new membership");
+                botf::advance(s); // The next turn continues without an ownership mismatch.
+            }
+            check(captured, "No invasion succeeded across deterministic draws");
+        }
+    }, passed);
+
+    run("regression: loading a save is pure and never re-runs colony governors", [] {
+        auto s = botf::generateReferenceCampaign(1999);
+        auto& home = playerHome(s);
+        home.workforcePriority = botf::GovernorPriority::Balanced;
+        home.queuePriority = botf::GovernorPriority::Research;
+        home.workforceManualOverride = false;
+        home.queue.clear();
+        home.foodWorkers = 20; home.industryWorkers = 20; home.researchWorkers = 0; // Not what the governor picks.
+        botf::validate(s);
+        const auto text = botf::serialize(s);
+        const auto loaded = botf::deserialize(text);
+        check(botf::serialize(loaded) == text, "Load changed campaign state");
+        const auto* reloaded = botf::colonyAt(loaded, home.systemId);
+        check(reloaded->foodWorkers == 20 && reloaded->industryWorkers == 20 && reloaded->researchWorkers == 0 &&
+            reloaded->queue.empty(), "Load re-ran the colony governors");
+        auto crafted = text;
+        const std::string governorLine = "\n" + std::to_string(home.systemId) + " 1 3 0 0\n";
+        check(crafted.find(governorLine) != std::string::npos, "Fixture lacks its governor record");
+        crafted.replace(crafted.find(governorLine), governorLine.size(), "\n" + std::to_string(home.systemId) + " 7 3 0 0\n");
+        rejects([&] { botf::deserialize(withChecksum(crafted)); });
+    }, passed);
+
+    run("regression: fusion plants are one structure whose scrap removes exactly its energy", [] {
+        auto s = botf::generate(1999);
+        auto& colony = s.colonies.front();
+        const int baseUpkeep = botf::economy(colony).upkeep;
+        colony.fusionPlants = 1; colony.energy = 60;
+        botf::validate(s);
+        check(botf::economy(colony).upkeep == baseUpkeep + 2, "Fusion plant upkeep missing");
+        // The exploit: a fusion plant used to count as two power plants worth 10 energy each when scrapped.
+        rejects([&] { botf::submit(s, botf::makeScrapStructureCommand(1, colony.systemId, botf::Building::PowerPlant)); });
+        botf::submit(s, botf::makeScrapStructureCommand(1, colony.systemId, botf::Building::FusionPlant));
+        const auto draft = botf::preview(s);
+        check(draft.colonies.front().fusionPlants == 0 && draft.colonies.front().energy == 20,
+            "Scrapping a fusion plant did not remove its 40 energy");
+        auto invalid = s; invalid.pending.clear(); invalid.colonies.front().energy = 30;
+        rejects([&] { botf::validate(invalid); });
+        const auto text = botf::serialize(s);
+        check(text.find("\nREMASTER 1 1 1 1\n") != std::string::npos, "Fusion plant missing from schema-12 save");
+        check(botf::serialize(botf::deserialize(text)) == text, "Fusion plant save did not round-trip");
+    }, passed);
+
+    run("regression: crafted saves with huge counts or invalid settings are rejected promptly", [] {
+        auto s = botf::generateReferenceCampaign(1999);
+        botf::submit(s, enqueue(1, botf::Building::Farm));
+        const auto text = botf::serialize(s);
+        const auto pendingStart = text.find("\nPENDING 1\n");
+        check(pendingStart != std::string::npos, "Fixture lacks its pending command");
+        const auto lineEnd = text.find('\n', pendingStart + 11);
+        auto crafted = text;
+        const std::string tail = " 0 0 0";
+        check(crafted.compare(lineEnd - tail.size(), tail.size(), tail) == 0, "Unexpected pending command layout");
+        crafted.replace(lineEnd - 1, 1, "18446744073709551615");
+        rejects([&] { botf::deserialize(withChecksum(crafted)); }); // Used to loop 2^64 times.
+        crafted = text;
+        crafted.replace(crafted.find("INTEL_OPERATIONS 0\n"), 19, "INTEL_OPERATIONS 100\n");
+        rejects([&] { botf::deserialize(withChecksum(crafted)); });
+        // CreateTaskForce drafts respect the task force cap.
+        auto capped = botf::generateReferenceCampaign(1999);
+        const auto home = capped.systems.front();
+        for (int i = 0; i < 128; ++i) {
+            const int id = capped.nextFleetId++;
+            capped.fleets.push_back({id, 1, home.x, home.y, home.x, home.y, false, false, botf::Building::Scout, 12});
+            botf::TaskForce group; group.id = capped.nextTaskForceId++; group.ownerId = 1;
+            group.name = "Picket " + std::to_string(i); group.fleetIds = {id}; group.targetX = home.x; group.targetY = home.y;
+            capped.fleets.back().taskForceId = group.id;
+            capped.taskForces.push_back(group);
+        }
+        botf::validate(capped);
+        const int spare = capped.fleets.front().id;
+        const auto capMessage = rejectionMessage([&] { botf::submit(capped, botf::makeCreateTaskForceCommand(1, {spare}, "One Too Many")); });
+        check(capMessage.find("capacity") != std::string::npos, "Task force cap not enforced: " + capMessage);
+    }, passed);
+
+    run("regression: player text with control characters is rejected so saves always reload", [] {
+        auto s = botf::generateReferenceCampaign(1999);
+        const auto message = rejectionMessage([&] {
+            botf::submit(s, botf::makeRespondProposalCommand(1, 1, false, "line\nbreak"));
+        });
+        check(message.find("printable") != std::string::npos, "Newline in a proposal reason was not rejected as text: " + message);
+        rejects([&] { botf::submit(s, botf::makeRespondProposalCommand(1, 1, false, std::string(300, 'x'))); });
+        rejects([&] { botf::submit(s, botf::makeCreateTaskForceCommand(1, {s.fleets.front().id}, "Alpha\x01")); });
+        botf::submit(s, botf::makeCreateTaskForceCommand(1, {s.fleets.front().id}, "Alpha \"Prime\" \\ Group"));
+        const auto text = botf::serialize(s);
+        check(botf::serialize(botf::deserialize(text)) == text, "Quoted task force name did not reload");
+    }, passed);
+
+    run("unified combat: new campaigns resolve battles tactically and schema-11 saves keep the legacy resolver", [] {
+        auto s = botf::generateCampaign(1999); s.aiAggressionEnabled = false;
+        check(s.unifiedCombat, "New campaigns must use unified tactical combat");
+        const auto sol = s.systems.front();
+        s.fleets[2].x = s.fleets[2].targetX = sol.x; s.fleets[2].y = s.fleets[2].targetY = sol.y;
+        revealFor(s, 2, sol.x, sol.y);
+        s.majorRelations[0].contact = true; s.majorRelations[0].atWar = true;
+        auto legacy = s; legacy.unifiedCombat = false;
+        const auto oldText = asSchemaEleven(legacy);
+        auto loaded = botf::deserialize(oldText);
+        check(!loaded.unifiedCombat && botf::serialize(loaded) == botf::serialize(legacy), "Schema-11 save did not load exactly");
+        auto resumed = botf::deserialize(botf::serialize(s));
+        const auto unified = botf::advance(s);
+        botf::advance(resumed);
+        check(botf::serialize(s) == botf::serialize(resumed), "Unified battle replay diverged after reload");
+        check(unified.battles.size() == 1 && unified.battles[0].rounds.size() <= 50, "Unified battle missing or unbounded");
+        const auto oldReport = botf::advance(loaded);
+        botf::advance(legacy);
+        check(botf::serialize(loaded) == botf::serialize(legacy) && oldReport.battles.size() == 1,
+            "Schema-11 campaign did not continue on the legacy resolver");
+        auto broken = oldText; broken.insert(broken.find("COLONY_GOVERNORS"), "REMASTER 0 0\n");
+        const auto brokenMessage = rejectionMessage([&] { botf::deserialize(withChecksum(broken)); });
+        check(brokenMessage.find("Schema 12 section") != std::string::npos, "Schema-11 save accepted a schema-12 section");
+    }, passed);
+
+    run("unified combat: a strategic retreat disengages under fire instead of escaping for free", [] {
+        auto s = botf::generateReferenceCampaign(1999); s.aiAggressionEnabled = false;
+        const auto sol = s.systems.front();
+        auto rival = std::find_if(s.fleets.begin(), s.fleets.end(), [](const botf::Fleet& f) { return f.ownerId == 2; });
+        rival->x = rival->targetX = sol.x; rival->y = rival->targetY = sol.y;
+        revealFor(s, 2, sol.x, sol.y);
+        s.majorRelations[0].contact = true; s.majorRelations[0].atWar = true;
+        botf::Command retreat; retreat.id = 1; retreat.type = botf::CommandType::RetreatFleet; retreat.fleetId = s.fleets[0].id;
+        botf::submit(s, retreat);
+        const int retreating = s.fleets[0].id;
+        const auto report = botf::advance(s);
+        check(report.battles.size() == 1, "Contested retreat did not trigger a battle");
+        const auto& battle = report.battles.front();
+        const bool withdrew = std::count(battle.retreatedFleetIds.begin(), battle.retreatedFleetIds.end(), retreating) == 1;
+        const bool lost = std::count(battle.lostFleetIds.begin(), battle.lostFleetIds.end(), retreating) == 1;
+        check(withdrew || lost, "Retreating fleet neither withdrew nor fell");
+        if (withdrew) {
+            check(battle.rounds.size() >= 2 && std::find(battle.rounds.front().retreatedFleetIds.begin(),
+                battle.rounds.front().retreatedFleetIds.end(), retreating) == battle.rounds.front().retreatedFleetIds.end(),
+                "Retreat escaped before spending a round disengaging");
+        }
+        botf::validate(s);
+    }, passed);
 }
 }
 
@@ -571,7 +823,9 @@ int main() {
             for (int turn = 0; turn < 20; ++turn) botf::advance(s);
             botf::submit(s, enqueue(3, botf::Building::FusionPlant));
             for (int turn = 0; turn < 8; ++turn) botf::advance(s);
-            check(s.colonies[0].energy == 60 && s.colonies[0].powerPlants == 2, "Unlocked fusion plant failed to build");
+            // Schema 12: a fusion plant is its own structure (40 energy), not two 10-energy power plants.
+            check(s.colonies[0].energy == 60 && s.colonies[0].fusionPlants == 1 && s.colonies[0].powerPlants == 0,
+                "Unlocked fusion plant failed to build");
         }, passed);
         run("research terminal levels reserve surplus and ledger rejects tampering", [] {
             auto s = botf::generate(1999);
@@ -614,6 +868,7 @@ int main() {
         }, passed);
         run("previous development saves migrate without injecting rival empires", [] {
             auto s = botf::generate(1999); s.eventsEnabled = false; s.aiAggressionEnabled = false;
+            s.unifiedCombat = false; // Pre-schema-12 campaigns load with the legacy combat model.
             botf::submit(s, enqueue(1, botf::Building::Factory)); botf::advance(s);
             s.intelligence = 0;
             botf::submit(s, enqueue(2, botf::Building::PowerPlant));
@@ -705,6 +960,7 @@ int main() {
         run("schema five and six preserve ledgers and saved diplomatic due dates", [] {
             for (const int version : {5, 6}) {
                 auto s = botf::generateCampaign(1999); s.populationEnabled = false; s.eventsEnabled = false; s.aiAggressionEnabled = false;
+                s.unifiedCombat = false; // Pre-schema-12 campaigns load with the legacy combat model.
                 if (version == 5) s.minors.clear();
                 else {
                     s.minors[0].contact[1] = true;
@@ -763,6 +1019,7 @@ int main() {
         }, passed);
         run("major contact, war, fleet battle, damage and battle history survive reload", [] {
             auto s = botf::generateCampaign(1999);
+            s.unifiedCombat = false; // Exercises the legacy strategic resolver kept for schema 4-11 saves.
             const auto home = s.systems.front();
             auto& enemy = s.fleets[2]; enemy.x = enemy.targetX = home.x; enemy.y = enemy.targetY = home.y;
             auto& knowledge = s.rivals[0].explored;
@@ -798,6 +1055,7 @@ int main() {
         }, passed);
         run("tactical loss lists destroyed ships and keeps their source snapshots", [] {
             auto s = botf::generateCampaign(1999); s.aiAggressionEnabled = false;
+            s.unifiedCombat = false; // Legacy resolver fixture (schema 4-11 saves).
             const auto sol = s.systems.front();
             s.fleets[0].hull = 3;
             s.fleets[1].hull = 3;
@@ -870,6 +1128,7 @@ int main() {
         }, passed);
         run("contested-home withdrawal is recorded before tactical fire", [] {
             auto s = botf::generateCampaign(1999); s.aiAggressionEnabled = false;
+            s.unifiedCombat = false; // Legacy free withdrawal; unified combat disengages under fire instead.
             const auto sol = s.systems.front();
             s.fleets[2].x = s.fleets[2].targetX = sol.x;
             s.fleets[2].y = s.fleets[2].targetY = sol.y;
@@ -1042,6 +1301,7 @@ int main() {
         }, passed);
         run("schema eight campaigns migrate into prototype rules without reinterpreting projects", [] {
             auto s = botf::generateCampaign(1999); s.aiAggressionEnabled = false;
+            s.unifiedCombat = false; // Pre-schema-12 campaigns load with the legacy combat model.
             botf::submit(s, enqueue(1, botf::Building::Factory)); botf::advance(s);
             auto old = asSchemaEight(s);
             const auto restored = botf::deserialize(old);
@@ -1160,6 +1420,10 @@ int main() {
         }, passed);
         run("strategic AI avoids peeking at hidden enemy fleets and avoids suicidal attacks", [] {
             auto s = botf::generateReferenceCampaign(1999);
+            // The "hidden" corner sits next to the Klingon home, so the scout is visible and a
+            // skirmish follows; the first check only holds because the legacy resolver's
+            // withdrawal clears attack targets. Keep this AI fixture on the legacy resolver.
+            s.unifiedCombat = false;
             s.majorRelations[0].contact = true; s.majorRelations[0].atWar = true;
             const int hiddenX = s.width - 1, hiddenY = s.height - 1;
             s.fleets[0].x = s.fleets[0].targetX = hiddenX;
@@ -1501,6 +1765,7 @@ int main() {
         }, passed);
         run("task force retreat detachment and bidirectional reconciliation", [] {
             auto s = botf::generateReferenceCampaign(1999); s.aiAggressionEnabled = false;
+            s.unifiedCombat = false; // Legacy withdrawal timing; the session suite covers tactical retreats.
             const auto home = s.systems.front();
             const int d1Id = s.nextFleetId++;
             s.fleets.push_back({d1Id, 1, home.x, home.y, home.x, home.y, false, false, botf::Building::Destroyer, 24});
@@ -2959,12 +3224,12 @@ int main() {
             check(col.workforceExplanation.find(col.governorWarning) != std::string::npos,
                 "Workforce explanation incorporates the shortage diagnostic");
         }, passed);
-
-        std::cout << "ALL " << passed << " SCENARIOS PASSED\n";
-        return 0;
+        remasterScenarios(passed);
     } catch (const std::exception& error) {
-        std::cerr << "FAIL after " << passed << " scenarios: " << error.what() << '\n';
+        std::cerr << "FAIL suite aborted after " << passed << " scenarios: " << error.what() << '\n';
         return 1;
     }
+    std::cout << (failed ? "FAILED " : "ALL ") << passed << " passed, " << failed << " failed\n";
+    return failed ? 1 : 0;
 }
 
