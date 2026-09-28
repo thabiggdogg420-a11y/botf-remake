@@ -24,7 +24,7 @@ Integration rules: a campaign diplomatic victory needs two-thirds of galactic po
 ## Status when parked
 
 Nothing is in flight. Every lane is merged. The playable browser beta is published at
-https://claude.ai/artifact/TJQpg1jaVSvoWCmnFrALJS.
+https://claude.ai/artifact/3QvMcKGWN9nzVqkZphDnan.
 
 The Unreal client has passed stand-in compile checks: g++/clang against a Slate shim, plus 194 view-model checks against the real core.
 Neither lane E nor lane I has been compiled by UE 5.8. See UNREAL-CLIENT.md for the spots least likely to compile.
@@ -38,7 +38,7 @@ Neither lane E nor lane I has been compiled by UE 5.8. See UNREAL-CLIENT.md for 
    - Use `--clean`: incremental wasm builds can link stale objects.
 5. Republish the web build.
    - Convert `dist/index.html` into an artifact fragment: title, style, body and module script.
-   - Publish it to https://claude.ai/artifact/TJQpg1jaVSvoWCmnFrALJS with `capabilities: {downloads: true}`.
+   - Publish it to https://claude.ai/artifact/3QvMcKGWN9nzVqkZphDnan with `capabilities: {downloads: true}`.
 6. Compile and package the Unreal client on Windows (UE 5.8): run `game/Package-Windows.ps1` from `remaster/`
    (see PACKAGING.md). On failure, paste `game/Build/Logs/<stamp>/FAILURE-SUMMARY.txt` back into the session.
    - Nothing in the Unreal client has been compiled by Unreal yet.
