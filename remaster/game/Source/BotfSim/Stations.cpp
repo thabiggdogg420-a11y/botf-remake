@@ -405,6 +405,7 @@ tactical::Encounter constructStationEncounter(GameState& state, const std::vecto
     for (const auto& s : encounter.ships) firstOwner = std::min(firstOwner, s.ownerId);
     ship->position.x = station.ownerId == firstOwner ? 1 : encounter.arenaWidth - 2;
     ship->position.y = encounter.arenaHeight / 2;
+    if (encounter.flightRules()) tactical::equipFlight(*ship, firstOwner); // Rules 3: immobile platform, all-round mounts
     encounter.standingOrders[proxy.id] = tactical::Order{proxy.id, 0, tactical::TacticalManeuver::Hold};
     // Stations form their own tactical group (group orders never move them).
     int nextGroup = 1;

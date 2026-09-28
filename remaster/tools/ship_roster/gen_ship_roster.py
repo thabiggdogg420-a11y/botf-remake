@@ -84,6 +84,34 @@ ROLES = {
     "Station":       (7, 220, 104, 0, 0, 5, 100),
     "Special":       (8, 200, 150, 2, 2, 4, 100),
 }
+# Tactical flight model (COMBAT-RULES.md, tactical rules 3): turn rate in degrees per round (multiples of 45),
+# acceleration in cells of speed change per round, lateral (sideways) thruster cells per round, size class.
+FLIGHT = {
+    "Scout":         (180, 3, 2, "Small"),
+    "Science":       (135, 2, 1, "Small"),
+    "Escort":        (135, 3, 2, "Small"),
+    "Frigate":       (90, 2, 1, "Medium"),
+    "Destroyer":     (90, 2, 1, "Medium"),
+    "Raider":        (135, 3, 2, "Small"),
+    "LightCruiser":  (90, 2, 1, "Medium"),
+    "Cruiser":       (90, 2, 0, "Large"),
+    "HeavyCruiser":  (45, 1, 0, "Large"),
+    "StrikeCruiser": (90, 2, 1, "Large"),
+    "Carrier":       (45, 1, 0, "Huge"),
+    "Battlecruiser": (45, 2, 0, "Large"),
+    "Explorer":      (45, 1, 1, "Large"),
+    "Battleship":    (45, 1, 0, "Huge"),
+    "Dreadnought":   (45, 1, 0, "Huge"),
+    "Colony":        (45, 1, 0, "Medium"),
+    "Transport":     (45, 1, 0, "Medium"),
+    "Station":       (0, 0, 0, "Station"),
+    "Special":       (90, 2, 1, "Large"),
+}
+# Faction handling adjustments (turn degrees, lateral cells). Borg geometry has no bow; bioships and
+# Tholian hulls are notoriously nimble.
+FLIGHT_FACTION = {"Borg": (180, 2), "Species8472": (45, 1), "Tholian": (45, 0)}
+SIZE_CLASSES = ["Small", "Medium", "Large", "Huge", "Station"]
+
 ROLE_LABEL = {
     "Scout": "Scout", "Science": "Science Vessel", "Escort": "Escort", "Frigate": "Frigate", "Destroyer": "Destroyer",
     "Raider": "Raider", "LightCruiser": "Light Cruiser", "Cruiser": "Cruiser", "HeavyCruiser": "Heavy Cruiser",
@@ -129,7 +157,7 @@ def S(**kw):
 
 # ---------------------------------------------------------------------------------------------------
 # The roster. Fields: id, key, faction, cls (class name), role, era, tier (0..10), weapons [(type, count, arc)],
-# optional: speed, range, sensors, cloak, size (override percent), buildable (default: canon + major empire +
+# optional: speed, range, sensors, cloak, size (override percent), flight (turn, accel, lateral), buildable (default: canon + major empire +
 # campaign role), kind (Canon/ModDerived/Kelvin), source, desc.
 # ---------------------------------------------------------------------------------------------------
 R = []
@@ -281,7 +309,7 @@ ship(id=1201, key="drone", faction="Romulan", cls="Drone Ship", role="Destroyer"
      weapons=[("Disruptor", 4, "All")], speed=3, source="ENT ('Babel One', 'United', 'The Aenar')",
      desc="A remotely piloted warship able to mimic the sensor profile of other vessels. It sows confusion more than it wins battles.")
 ship(id=1202, key="bop_tos", faction="Romulan", cls="Bird-of-Prey", role="StrikeCruiser", era="Original", tier=1, cloak=True,
-     weapons=[("PlasmaTorpedo", 1, "Forward"), ("Disruptor", 2, "Forward")], speed=1, source="TOS ('Balance of Terror')",
+     weapons=[("PlasmaTorpedo", 1, "Forward"), ("Disruptor", 2, "Forward")], speed=1, flight=(45, 1, 0), source="TOS ('Balance of Terror')",
      desc="A slow, cloaked hull built around one enormous plasma weapon. Its first shot can end a fight; if it does not, it rarely gets a second.")
 ship(id=1203, key="scout", faction="Romulan", cls="Scout Ship", role="Scout", era="NextGeneration", tier=3, cloak=True,
      weapons=[("Disruptor", 1, "Forward")], sensors=4, source="TNG ('The Defector')",
@@ -515,6 +543,13 @@ def derive(s):
         off = [-1, 0, 0, 0, 0, 1]
     tech = [clamp(L + o, 1, 10) for o in off]
     kind = s.get("kind", "Canon")
+    turn, accel, lateral, size_class = FLIGHT[s["role"]]
+    if s["faction"] in FLIGHT_FACTION and turn > 0:
+        dt, dl = FLIGHT_FACTION[s["faction"]]
+        turn, lateral = (180, dl) if dt == 180 else (min(180, turn + dt), min(2, lateral + dl))
+    if "flight" in s:
+        turn, accel, lateral = s["flight"]
+    assert turn % 45 == 0 and 0 <= turn <= 180 and 0 <= accel <= 3 and 0 <= lateral <= 2, s["cls"]
     buildable = s.get("buildable", True) and kind == "Canon" and s["faction"] in MAJOR and eng_role in PLAYABLE_ROLES
     return dict(
         id=s["id"], key=f"ship.{prefix}.{s['key']}", faction=s["faction"], raceId=race, minorId=MINOR_ID.get(s["faction"], 0),
@@ -522,7 +557,7 @@ def derive(s):
         tech=tech, cost=cost, buildTurns=max(1, -(-cost // 600)), upkeep=upkeep, hull=max(1, hull), shields=shields,
         attack=attack, torpPct=torp_pct, weapons=s["weapons"], speed=s.get("speed", speed), range=s.get("range", rng),
         sensors=s.get("sensors", sensors), cloak=cloak, kind=kind, source=s["source"], buildable=buildable, desc=s["desc"],
-        factionName=fname, points=points,
+        factionName=fname, points=points, turn=turn, accel=accel, lateral=lateral, sizeClass=size_class,
     )
 
 
@@ -548,7 +583,7 @@ def emit_header(rows):
             f"{cstr(r['cls'])}, HullRole::{r['hullRole']}, {r['engineRole']}, Era::{r['era']}, {r['tier']}, {{{tech}}}, "
             f"{r['cost']}, {r['buildTurns']}, {r['upkeep']}, {r['hull']}, {r['shields']}, {r['attack']}, {r['torpPct']}, "
             f"{{{{{', '.join(w)}}}}}, {len(r['weapons'])}, {r['speed']}, {r['range']}, {r['sensors']}, {str(r['cloak']).lower()}, "
-            f"SourceKind::{r['kind']}, {cstr(r['source'])}, {str(r['buildable']).lower()},\n     {cstr(r['desc'])}}},")
+            f"SourceKind::{r['kind']}, {cstr(r['source'])}, {str(r['buildable']).lower()},\n     {cstr(r['desc'])},\n     {{{r['turn']}, {r['accel']}, {r['lateral']}, SizeClass::{r['sizeClass']}}}}},")
     out.append("}};")
     out.append("} // namespace botf::roster")
     return "\n".join(out) + "\n"
@@ -559,8 +594,8 @@ def weapons_text(ws):
 
 
 def emit_table(rows):
-    lines = ["| Id | Faction | Class | Role | Era | Tier | Tech (Bio/Com/Con/Ene/Pro/Wea) | Cost | Turns | Upkeep | Hull | Shields | Attack | Weapons | Spd/Rng/Sen | Cloak | Build | Source | assetKey |",
-             "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|"]
+    lines = ["| Id | Faction | Class | Role | Era | Tier | Tech (Bio/Com/Con/Ene/Pro/Wea) | Cost | Turns | Upkeep | Hull | Shields | Attack | Weapons | Spd/Rng/Sen | Flight | Cloak | Build | Source | assetKey |",
+             "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|"]
     for r in rows:
         build = "yes" if r["buildable"] else "data"
         src = r["source"] if r["kind"] != "ModDerived" else "mod-derived (see notes)"
@@ -569,7 +604,7 @@ def emit_table(rows):
         lines.append(
             f"| {r['id']} | {r['factionName']} | {r['cls']} | {r['roleName']} | {r['era']} | {r['tier']} | {'/'.join(map(str, r['tech']))} | "
             f"{r['cost']} | {r['buildTurns']} | {r['upkeep']} | {r['hull']} | {r['shields']} | {r['attack']} | {weapons_text(r['weapons'])} | "
-            f"{r['speed']}/{r['range']}/{r['sensors']} | {'yes' if r['cloak'] else '-'} | {build} | {src} | `{r['key']}` |")
+            f"{r['speed']}/{r['range']}/{r['sensors']} | {r['turn']}/{r['accel']}/{r['lateral']} {r['sizeClass']} | {'yes' if r['cloak'] else '-'} | {build} | {src} | `{r['key']}` |")
     counts = {}
     for r in rows:
         c = counts.setdefault(r["factionName"], [0, 0])

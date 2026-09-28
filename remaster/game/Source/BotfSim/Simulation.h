@@ -245,11 +245,50 @@ struct CombatShipOrder {
     bool rammed = false;       // Carried out a ram impact
     bool operator==(const CombatShipOrder&) const = default;
 };
+// Tactical rules 3 presentation event stream (COMBAT-RULES.md, "Flight model and weapon events").
+// One round is CombatTicksPerRound ticks long; events are ordered by tick, then by the order the
+// resolver produced them. Clients animate maneuvers, beams, pulses and torpedoes from this stream.
+inline constexpr int CombatTicksPerRound = 12;
+enum class CombatEventKind : int {
+    ManeuverStart = 0, // fleetId begins its move: x, y, facing = start pose; maneuver = order executed
+    ManeuverEnd = 1,   // fleetId ends its move: x, y, facing = end pose; value = cells slid sideways (strafe)
+    Cloak = 2,         // fleetId is cloaked (emitted at tick 0 of round 1 for ships that start cloaked)
+    Decloak = 3,       // fleetId drops its cloak to attack (ambush volley this round)
+    Fire = 4,          // One weapon discharge: fleetId -> targetFleetId from mount mountIndex (see fields)
+    Ram = 5,           // fleetId rams targetFleetId (impact damage in shieldDamage/hullDamage)
+    Destroyed = 6,     // fleetId destroyed (tick = impact tick of the killing shot)
+    Retreated = 7,     // fleetId jumped clear of the battle
+    Disengage = 8,     // fleetId starts disengaging (Retreat, weapons offline)
+    Truce = 9,         // The battle ends under a hailed truce (fleetId 0)
+};
+inline constexpr int MaxCombatEventKind = 9;
+struct CombatEvent {
+    int tick = 0;              // 0..CombatTicksPerRound-1 within the round
+    CombatEventKind kind = CombatEventKind::Fire;
+    int fleetId = 0;           // Actor: shooter, maneuvering, cloaking, destroyed or retreating ship
+    int targetFleetId = 0;     // Fire/Ram: target (0 otherwise)
+    int mountIndex = -1;       // Fire: index into the shooter's weapon mounts (0..3), else -1
+    int weaponType = 0;        // Fire: roster::WeaponType value; asset key "weapon." + roster::weaponTypeName
+    int weaponFamily = 0;      // Fire: roster::WeaponFamily (0 beam, 1 pulse, 2 torpedo)
+    int impactTick = 0;        // Fire: tick the shot lands (== tick for beams and pulses; later for torpedoes)
+    int projectiles = 0;       // Fire: visual count (beam emitters, pulse bolts or torpedoes in the volley)
+    bool hit = false;          // Fire: the shot connected (false = missed, intercepted or target already gone)
+    bool intercepted = false;  // Fire: torpedo volley shot down by point defence
+    int shieldDamage = 0;      // Fire/Ram: damage absorbed by the target's shields
+    int hullDamage = 0;        // Fire/Ram: damage to the target's hull
+    bool destroyed = false;    // Fire/Ram: this impact destroyed the target
+    int x = 0, y = 0;          // Maneuver events: pose; Fire: shooter position at launch
+    int facing = 0;            // Degrees [0, 359] (multiples of 45 under rules 3)
+    int maneuver = 0;          // Maneuver events: tactical::TacticalManeuver executed
+    int value = 0;             // ManeuverEnd: lateral cells slid; otherwise 0
+    bool operator==(const CombatEvent&) const = default;
+};
 struct CombatRound {
     int index = 0;
     std::vector<FleetDamage> damage;
     std::vector<int> lostFleetIds, retreatedFleetIds;
     std::vector<CombatShipOrder> orders; // Empty for legacy-resolver and pre-schema-14 battles.
+    std::vector<CombatEvent> events;     // Tactical rules 3 only (optional COMBAT_EVENTS save section).
 };
 struct CombatReport {
     int turn = 0, x = 0, y = 0, firstOwner = 0, secondOwner = 0, winnerOwner = 0;
@@ -298,6 +337,9 @@ struct GameplayRules {
     // Remastered only; saved as the optional SHIP_ROSTER section (no schema bump), so Classic games,
     // older saves and Remastered saves made before the roster keep it off and play exactly as before.
     bool expandedRoster = false;
+    // Tactical flight model and typed weapons (tactical rules 3, COMBAT-RULES.md). Remastered only; saved as
+    // the optional TACTICAL_FLIGHT section, so saves without it keep tactical rules 2 exactly.
+    bool flightModel = false;
     bool operator==(const GameplayRules&) const = default;
 };
 
