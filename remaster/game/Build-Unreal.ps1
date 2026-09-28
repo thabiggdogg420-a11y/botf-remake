@@ -1,24 +1,16 @@
 param(
     [switch]$Package,
-    [string]$EngineRoot = 'C:\Program Files\Epic Games\UE_5.8',
+    # Unreal Engine root. Default: $env:UE_ROOT, else the standard install of the project's engine version.
+    [string]$EngineRoot = '',
     [string]$ArchiveDirectory = ''
 )
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'BotfTools.ps1')
+$EngineRoot = Resolve-BotfEngineRoot $EngineRoot
 $taskProject = Join-Path $PSScriptRoot 'BOTFRemake.uproject'
 $taskBuild = Join-Path $PSScriptRoot 'Build'
-function Get-TaskSourceHashes {
-    $taskHashes = [ordered]@{}
-    Get-ChildItem -LiteralPath (Join-Path $PSScriptRoot 'Source') -Recurse -File |
-        Sort-Object FullName | ForEach-Object {
-            $taskHashes[[IO.Path]::GetRelativePath($PSScriptRoot, $_.FullName)] = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash
-        }
-    return $taskHashes
-}
-$taskSourceBefore = if ($Package) { Get-TaskSourceHashes } else { $null }
+$taskInputsBefore = if ($Package) { Get-BotfInputHashes } else { $null }
 New-Item -ItemType Directory -Path $taskBuild -Force | Out-Null
-if (-not (Test-Path -LiteralPath (Join-Path $EngineRoot 'Engine\Build\Build.version'))) {
-    throw 'EngineRoot must point to an installed Unreal Engine.'
-}
 if ($Package) {
     if (-not $ArchiveDirectory) { $ArchiveDirectory = Join-Path $taskBuild 'Packaged' }
     & (Join-Path $EngineRoot 'Engine\Build\BatchFiles\RunUAT.bat') BuildCookRun `
@@ -38,17 +30,21 @@ if ($Package) {
     Copy-Item -LiteralPath (Join-Path $taskCreditSource 'README-original.txt') -Destination $taskCreditDestination -Force
     Copy-Item -LiteralPath (Join-Path $taskCreditSource 'conversion-manifest.json') -Destination $taskCreditDestination -Force
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'ASSET-CREDITS.md') -Destination (Join-Path $ArchiveDirectory 'Windows\Credits') -Force
-    $taskSourceAfter = Get-TaskSourceHashes
-    if (($taskSourceBefore | ConvertTo-Json -Compress) -ne ($taskSourceAfter | ConvertTo-Json -Compress)) {
-        throw 'Source changed during packaging. This package is not verified; rebuild after builders release their files.'
+    $taskInputsAfter = Get-BotfInputHashes
+    if (($taskInputsBefore | ConvertTo-Json -Compress) -ne ($taskInputsAfter | ConvertTo-Json -Compress)) {
+        throw 'Source, Config or Content changed during packaging. This package is not verified; rebuild after builders release their files.'
     }
     $taskRuntime = Join-Path $ArchiveDirectory 'Windows\BOTFRemake\Binaries\Win64\BOTFRemake.exe'
     $taskManifest = [ordered]@{
         buildId = 'BOTF-' + (Get-Date -Format 'yyyyMMdd-HHmmss')
         builtUtc = [DateTime]::UtcNow.ToString('o')
+        engineRoot = $EngineRoot
         executableSha256 = (Get-FileHash -LiteralPath $taskRuntime -Algorithm SHA256).Hash
-        sourceSha256 = $taskSourceAfter
+        # Every build input (Source, Config, Content, project file), keyed by project-relative path.
+        inputSha256 = $taskInputsAfter
         verification = 'Packaged successfully; gameplay and visual acceptance recorded separately.'
     }
+    # Launch-Prototype.ps1 starts the package with the newest manifest by default.
     $taskManifest | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $ArchiveDirectory 'Windows\build-manifest.json') -Encoding utf8
+    Write-Output "Packaged $($taskManifest.buildId): $(Join-Path $ArchiveDirectory 'Windows\BOTFRemake.exe')"
 }

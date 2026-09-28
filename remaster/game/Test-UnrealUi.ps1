@@ -1,8 +1,11 @@
 param(
-    [string]$EngineRoot = 'C:\Program Files\Epic Games\UE_5.8',
+    # Unreal Engine root. Default: $env:UE_ROOT, else the standard install of the project's engine version.
+    [string]$EngineRoot = '',
     [switch]$SkipBuild
 )
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'BotfTools.ps1')
+$EngineRoot = Resolve-BotfEngineRoot $EngineRoot
 if (-not $SkipBuild) { & (Join-Path $PSScriptRoot 'Build-Unreal.ps1') -EngineRoot $EngineRoot }
 $taskStamp = Get-Date -Format 'yyyyMMdd-HHmmss-fff'
 $taskOutput = Join-Path $PSScriptRoot "Build\UiTests\$taskStamp"
