@@ -35,6 +35,10 @@ std::string asSchemaTen(const botf::GameState& state) {
         if (planets > 0) { --planets; continue; }
         if (line.starts_with("EXPANSION ")) continue;
         if (line.starts_with("REMASTER ")) continue; // Schema 12 only.
+        if (line.starts_with("GAMEPLAY_LAYER ")) { // Schema 13 only.
+            while (std::getline(input, line) && line != "END_GAMEPLAY_LAYER") {}
+            continue;
+        }
         if (line.starts_with("PLANETS ")) {
             planets = std::stoi(line.substr(8));
             continue;
@@ -221,9 +225,22 @@ std::string withChecksum(std::string body) {
     for (unsigned char byte : body) { hash ^= byte; hash *= 1099511628211ULL; }
     return body + "CHECKSUM " + std::to_string(hash) + "\n";
 }
+// The exact schema-12 text an earlier build wrote for a state without schema-13 content.
+std::string asSchemaTwelve(const botf::GameState& state) {
+    auto text = botf::serialize(state);
+    text.erase(text.rfind("CHECKSUM "));
+    text.replace(0, text.find('\n') + 1, "BOTF_SIM 12 remaster-12\n");
+    const auto start = text.find("\nGAMEPLAY_LAYER ");
+    check(start != std::string::npos, "Schema 13 save lacks its GAMEPLAY_LAYER section");
+    const std::string endTag = "\nEND_GAMEPLAY_LAYER\n";
+    const auto end = text.find(endTag, start);
+    check(end != std::string::npos, "Schema 13 gameplay section is unterminated");
+    text.erase(start + 1, end + endTag.size() - (start + 1));
+    return withChecksum(text);
+}
 // The exact schema-11 text an earlier build wrote for a state without schema-12 content.
 std::string asSchemaEleven(const botf::GameState& state) {
-    auto text = botf::serialize(state);
+    auto text = asSchemaTwelve(state);
     text.erase(text.rfind("CHECKSUM "));
     text.replace(0, text.find('\n') + 1, "BOTF_SIM 11 campaign-expansion-11\n");
     const auto pos = text.find("\nREMASTER ");
@@ -385,7 +402,7 @@ void remasterScenarios(int& passed) {
             const int id = capped.nextFleetId++;
             capped.fleets.push_back({id, 1, home.x, home.y, home.x, home.y, false, false, botf::Building::Scout, 12});
             botf::TaskForce group; group.id = capped.nextTaskForceId++; group.ownerId = 1;
-            group.name = "Picket " + std::to_string(i); group.fleetIds = {id}; group.targetX = home.x; group.targetY = home.y;
+            group.name = "Picket " + std::to_string(i); group.fleetIds.push_back(id); group.targetX = home.x; group.targetY = home.y;
             capped.fleets.back().taskForceId = group.id;
             capped.taskForces.push_back(group);
         }
