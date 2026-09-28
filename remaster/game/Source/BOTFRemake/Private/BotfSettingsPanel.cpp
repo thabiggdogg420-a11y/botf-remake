@@ -1,5 +1,6 @@
 #include "BotfSettingsPanel.h"
 #include "BotfUiTheme.h"
+#include "CoreGlobals.h"
 #include "GameFramework/GameUserSettings.h"
 #include "Engine/Engine.h"
 #include "Engine/GameViewportClient.h"
@@ -291,7 +292,27 @@ void SBotfSettingsPanel::Construct(const FArguments& InArgs)
 
 SBotfSettingsPanel::~SBotfSettingsPanel()
 {
-	CancelPendingChanges();
+	// Teardown must not drive the display or touch child widgets (they may already be gone, and the engine may be
+	// shutting down). Only an unconfirmed video test is undone, and only in the settings object, so the staged
+	// mode can never be saved by a later SaveSettings. Nothing is applied here: the persisted configuration still
+	// holds the confirmed mode, which the next launch (or the next explicit apply) uses.
+	if (!bIsConfirmationPending)
+	{
+		return;
+	}
+	bIsConfirmationPending = false;
+	if (IsEngineExitRequested() || !GEngine)
+	{
+		return;
+	}
+	if (UGameUserSettings* Settings = GEngine->GetGameUserSettings())
+	{
+		Settings->SetScreenResolution(PreApplyResolution);
+		Settings->SetFullscreenMode(PreApplyWindowMode);
+		Settings->ScalabilityQuality = PreApplyScalabilityQuality;
+		Settings->SetVSyncEnabled(bPreApplyVSync);
+		Settings->SetFrameRateLimit(PreApplyFPSLimit);
+	}
 }
 
 void SBotfSettingsPanel::RefreshFromRuntime()

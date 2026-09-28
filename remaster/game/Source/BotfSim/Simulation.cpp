@@ -1,4 +1,5 @@
 #include "Simulation.h"
+#include "GameplayInternal.h"
 #include "ReferenceCatalogue.h"
 #include "ReferencePlanets.h"
 #include "TacticalCombat.h"
@@ -286,8 +287,11 @@ void checkCommand(const Command& c) {
         c.type == CommandType::AttackFleet || c.type == CommandType::RetreatFleet ||
         c.type == CommandType::Invade || c.type == CommandType::SetTacticalStance || majorCommand(c.type) || campaignExpansionCommand(c.type) ||
         c.type == CommandType::BuyConstruction || c.type == CommandType::ScrapStructure ||
-        modernDiplomaticCommand(c.type) || modernIntelCommand(c.type) || colonyGovernorCommand(c.type),
+        modernDiplomaticCommand(c.type) || modernIntelCommand(c.type) || colonyGovernorCommand(c.type) ||
+        gameplay::isGameplayCommand(c.type),
         "Unknown command type");
+    if (gameplay::isGameplayCommand(c.type)) { gameplay::checkCommand(c); return; }
+    gameplay::checkUnrelatedFields(c);
 
     if (campaignExpansionCommand(c.type)) {
         require(c.foodWorkers == 0 && c.industryWorkers == 0 && c.researchWorkers == 0 && c.building == Building::Farm,
@@ -756,6 +760,10 @@ void applyDraft(GameState& state) {
     }
     std::set<int> orderedFleets;
     for (const auto& command : state.pending) {
+        if (gameplay::isGameplayCommand(command.type)) {
+            gameplay::applyCommand(state, command, orderedFleets);
+            continue;
+        }
         if (modernDiplomaticCommand(command.type)) {
             // Legacy campaigns do not serialize the modern engines: reject rather than lose the order.
             require(modernDiplomacy(state), "Modern diplomacy requires a modern (reference expansion) campaign");
@@ -1409,13 +1417,10 @@ void planRivals(GameState& s) {
                         if (m != s.fleets.end()) minTfRange = std::min(minTfRange, shipRange(*m));
                     }
                     auto tfSupplied = [&](int sx, int sy) {
-                        if (sx < 0 || sy < 0 || sx >= s.width || sy >= s.height) return false;
-                        for (const auto& c : s.colonies) {
-                            if (c.ownerId != owner.id || !economy(s, c).shipyardPowered) continue;
-                            const auto origin = std::find_if(s.systems.begin(), s.systems.end(), [&](const System& sys) { return sys.id == c.systemId; });
-                            if (origin != s.systems.end() && std::max(std::abs(origin->x - sx), std::abs(origin->y - sy)) <= minTfRange + empire(s, owner.id).technologies[4].level / 2) return true;
-                        }
-                        return false;
+                        if (internal::colonySuppliedWithRange(s, owner.id, minTfRange, sx, sy)) return true;
+                        return gameplay::layerActive(s) && gameplay::extendedSupply(s, owner.id, sx, sy, [&](int px, int py) {
+                            return internal::colonySuppliedWithRange(s, owner.id, minTfRange, px, py);
+                        });
                     };
                     if (!tfSupplied(loc->x, loc->y)) continue;
                 }
@@ -2580,17 +2585,18 @@ void resolveFleets(GameState& s, TurnReport& report) {
                 if (m != s.fleets.end()) minRange = std::min(minRange, shipRange(*m));
             }
             auto suppliedWithRange = [&](int x, int y) {
-                if (x < 0 || y < 0 || x >= s.width || y >= s.height) return false;
-                for (const auto& c : s.colonies) {
-                    if (c.ownerId != leader->ownerId || !economy(s, c).shipyardPowered) continue;
-                    const auto origin = std::find_if(s.systems.begin(), s.systems.end(), [&](const System& sys) { return sys.id == c.systemId; });
-                    if (origin != s.systems.end() && std::max(std::abs(origin->x - x), std::abs(origin->y - y)) <= minRange + empire(s, leader->ownerId).technologies[4].level / 2) return true;
-                }
-                return false;
+                if (internal::colonySuppliedWithRange(s, leader->ownerId, minRange, x, y)) return true;
+                // Schema 13: stations and known wormholes extend task-force supply too.
+                return gameplay::layerActive(s) && gameplay::extendedSupply(s, leader->ownerId, x, y, [&](int px, int py) {
+                    return internal::colonySuppliedWithRange(s, leader->ownerId, minRange, px, py);
+                });
             };
             const int start = leader->y * s.width + leader->x, goal = leader->targetY * s.width + leader->targetX;
             if (start == goal) {
                 tfRoutes[tf.id] = {start};
+            } else if (!s.galaxyFeatures.empty() && suppliedWithRange(leader->targetX, leader->targetY)) {
+                auto p = gameplay::findPath(s, leader->ownerId, start, goal, suppliedWithRange);
+                if (!p.empty()) tfRoutes[tf.id] = std::move(p);
             } else if (suppliedWithRange(leader->targetX, leader->targetY)) {
                 std::vector<int> prev(static_cast<std::size_t>(s.width * s.height), -1);
                 std::queue<int> q; q.push(start); prev[start] = start;
@@ -2749,7 +2755,7 @@ void resolveBattles(GameState& s, TurnReport& report) {
             auto withdraw = [&](Fleet* f, CombatRound& round) {
                 auto safe = [&](int px, int py) {
                     if (px < 0 || py < 0 || px >= s.width || py >= s.height ||
-                        !supplied(s, *f, px, py)) return false;
+                        !sectorPassable(s, px, py) || !supplied(s, *f, px, py)) return false;
                     return std::none_of(s.fleets.begin(), s.fleets.end(), [&](const Fleet& other) {
                         const auto enemy = majorRelation(s, f->ownerId, other.ownerId);
                         return other.hull > 0 && other.x == px && other.y == py && enemy && enemy->atWar;
@@ -2910,7 +2916,7 @@ void resolveInvasions(GameState& s, TurnReport& report) {
         if (loc->x != fleet.x || loc->y != fleet.y) { fleet.invadeSystemId = 0; continue; }
         const bool defended = std::any_of(s.fleets.begin(), s.fleets.end(), [&](const Fleet& f) {
             return f.ownerId == target->ownerId && f.x == fleet.x && f.y == fleet.y && fleetAttack(f) > 0;
-        });
+        }) || gameplay::stationDefends(s, target->ownerId, fleet.x, fleet.y); // Schema 13: stations guard the system.
         if (defended) {
             if (fleet.ownerId == s.playerEmpire) report.events.push_back("Invasion of " + loc->name + " blocked by defending ships.");
             report.invasions.push_back({s.turn, target->systemId, fleet.ownerId, target->ownerId, fleet.id,
@@ -3096,6 +3102,7 @@ std::string payload(const GameState& s) {
                 << ' ' << static_cast<int>(c.governorQueue)
                 << ' ' << (c.queuePinned ? 1 : 0);
         }
+        gameplay::writeCommandTail(out, c); // Schema-13 commands only.
         out << '\n';
     }
     out << "TASKFORCES " << s.nextTaskForceId << ' ' << s.taskForces.size() << '\n';
@@ -3139,6 +3146,7 @@ std::string payload(const GameState& s) {
         }
         out << '\n';
     }
+    out << gameplay::serializeSection(s); // Schema 13 (GAMEPLAY_LAYER ... END_GAMEPLAY_LAYER).
     return out.str();
 }
 
@@ -3171,16 +3179,24 @@ void resolveTacticalBattles(GameState& state, TurnReport& report,
                 first |= fleet.ownerId == relation.first;
                 second |= fleet.ownerId == relation.second;
             }
-            if (!first || !second) continue;
+            // Schema 13: an outpost or starbase fights for its owner as an immobile unit.
+            const Station* station = gameplay::combatStation(state, x, y, relation.first, relation.second);
+            if (station) {
+                first |= station->ownerId == relation.first;
+                second |= station->ownerId == relation.second;
+            }
+            if (!first || !second || ids.empty()) continue;
             const auto seed = state.rngState ^ (static_cast<std::uint64_t>(state.turn) << 32)
                 ^ static_cast<std::uint64_t>(y * state.width + x + 1)
                 ^ (static_cast<std::uint64_t>(relation.first * 7 + relation.second) << 16);
-            auto encounter = tactical::constructEncounter(state, ids, seed);
+            auto encounter = station ? gameplay::constructStationEncounter(state, ids, seed, *station)
+                                     : tactical::constructEncounter(state, ids, seed);
             const bool playerInvolved = relation.first == state.playerEmpire || relation.second == state.playerEmpire;
             if (playerInvolved && playerEncounter) playerEncounter(encounter);
             else encounter.runUntilFinished();
             require(encounter.isFinished, "Tactical encounter did not finish");
-            tactical::applyEncounterResults(state, encounter);
+            if (station) gameplay::applyStationEncounter(state, encounter);
+            else tactical::applyEncounterResults(state, encounter);
             for (const auto& ship : encounter.ships) if (ship.retreated) withdrawn.insert(ship.fleetId);
             reconcileTaskForces(state); // Destroyed and independently withdrawing ships leave task forces.
             auto battle = tactical::toCombatReport(encounter);
@@ -3582,6 +3598,8 @@ bool explored(const GameState& s, int x, int y) {
 }
 bool visible(const GameState& s, int owner, int x, int y) {
     if (x < 0 || y < 0 || x >= s.width || y >= s.height) return false;
+    // Schema 13: station sensors and nebulae (sensor-blind) change coverage.
+    if (gameplay::layerActive(s)) return gameplay::extendedVisible(s, owner, x, y);
     for (const auto& f : s.fleets)
         if (f.ownerId == owner && std::max(std::abs(f.x - x), std::abs(f.y - y)) <= 1) return true;
     for (const auto& c : s.colonies) {
@@ -3601,21 +3619,33 @@ int shipRange(const Fleet& f) {
     if (f.referenceShipId >= 0) return 4 + std::clamp(static_cast<int>(sourceShip(f.referenceShipId).range), 0, 2);
     return f.colonyShip || f.shipClass == Building::Transport ? 4 : 6;
 }
-bool supplied(const GameState& s, const Fleet& f, int x, int y) {
+namespace {
+bool colonySuppliedWithRangeImpl(const GameState& s, int owner, int range, int x, int y) {
     if (x < 0 || y < 0 || x >= s.width || y >= s.height) return false;
     for (const auto& c : s.colonies) {
-        if (c.ownerId != f.ownerId || !economy(s, c).shipyardPowered) continue;
+        if (c.ownerId != owner || !economy(s, c).shipyardPowered) continue;
         const auto origin = std::find_if(s.systems.begin(), s.systems.end(),
             [&](const System& system) { return system.id == c.systemId; });
-        if (origin != s.systems.end() && std::max(std::abs(origin->x - x), std::abs(origin->y - y)) <= shipRange(f) + empire(s, f.ownerId).technologies[4].level / 2) return true;
+        if (origin != s.systems.end() && std::max(std::abs(origin->x - x), std::abs(origin->y - y)) <= range + empire(s, owner).technologies[4].level / 2) return true;
     }
     return false;
+}
+} // namespace
+bool supplied(const GameState& s, const Fleet& f, int x, int y) {
+    if (colonySuppliedWithRangeImpl(s, f.ownerId, shipRange(f), x, y)) return true;
+    // Schema 13: stations and known wormholes extend supply.
+    return gameplay::layerActive(s) && gameplay::extendedSupply(s, f.ownerId, x, y, [&](int px, int py) {
+        return colonySuppliedWithRangeImpl(s, f.ownerId, shipRange(f), px, py);
+    });
 }
 std::vector<int> route(const GameState& s, const Fleet& f, int x, int y) {
     if (x < 0 || y < 0 || x >= s.width || y >= s.height) return {};
     const int start = f.y * s.width + f.x, goal = y * s.width + x;
     if (start == goal) return {start};
     if (!supplied(s, f, x, y)) return {};
+    // Schema 13: impassable anomalies, hazard avoidance and wormhole links.
+    if (!s.galaxyFeatures.empty())
+        return gameplay::findPath(s, f.ownerId, start, goal, [&](int px, int py) { return supplied(s, f, px, py); });
     std::vector<int> previous(static_cast<std::size_t>(s.width * s.height), -1);
     std::queue<int> open; open.push(start); previous[start] = start;
     while (!open.empty() && previous[goal] == -1) {
@@ -4075,9 +4105,14 @@ void validate(const GameState& s) {
         empire(s, b.firstOwner); empire(s, b.secondOwner);
         require(b.participants.size() <= 256 && b.rounds.size() <= 65, "Battle timeline out of bounds");
         std::map<int, int> sides;
-        for (int id : b.firstFleetIds) require(id > 0 && id < s.nextFleetId &&
+        // Schema 13: stations fight under StationCombatantBase + station ID.
+        const auto combatantId = [&](int id) {
+            return (id > 0 && id < s.nextFleetId) ||
+                (isStationCombatant(id) && stationIdForCombatant(id) < s.nextStationId);
+        };
+        for (int id : b.firstFleetIds) require(combatantId(id) &&
             sides.emplace(id, b.firstOwner).second, "Invalid first battle side");
-        for (int id : b.secondFleetIds) require(id > 0 && id < s.nextFleetId &&
+        for (int id : b.secondFleetIds) require(combatantId(id) &&
             sides.emplace(id, b.secondOwner).second, "Invalid second battle side");
         require(!b.firstFleetIds.empty() && !b.secondFleetIds.empty() &&
             (b.winnerOwner == 0 || b.winnerOwner == b.firstOwner || b.winnerOwner == b.secondOwner),
@@ -4086,8 +4121,8 @@ void validate(const GameState& s) {
         // participant's maximum; hull never rises within a battle.
         std::map<int, int> shieldCeiling;
         for (const auto& participant : b.participants)
-            shieldCeiling[participant.fleetId] = participant.referenceShipId < 0 ? 0 :
-                std::max(0, sourceShip(participant.referenceShipId).shields);
+            shieldCeiling[participant.fleetId] = isStationCombatant(participant.fleetId) ? participant.initialShields :
+                participant.referenceShipId < 0 ? 0 : std::max(0, sourceShip(participant.referenceShipId).shields);
         const auto ceiling = [&](const FleetDamage& d) {
             const auto found = shieldCeiling.find(d.fleetId);
             return found == shieldCeiling.end() ? d.shieldBefore : std::max(d.shieldBefore, found->second);
@@ -4110,12 +4145,13 @@ void validate(const GameState& s) {
         std::set<int> participantIds;
         std::map<int, int> remaining, remainingShields;
         for (const auto& participant : b.participants) {
+            const bool stationSide = isStationCombatant(participant.fleetId); // Bounded by station maxima, not ship classes.
             require(sides.count(participant.fleetId) && participant.ownerId == sides.at(participant.fleetId) &&
                 isShip(participant.shipClass) && participant.initialHull > 0 &&
-                participant.initialHull <= (participant.referenceShipId < 0 ? shipMaxHull(participant.shipClass) :
+                participant.initialHull <= (stationSide ? 100000 : participant.referenceShipId < 0 ? shipMaxHull(participant.shipClass) :
                     sourceShip(participant.referenceShipId).hull) &&
                 participant.initialShields >= 0 && participant.initialShields <=
-                    (participant.referenceShipId < 0 ? 0 : sourceShip(participant.referenceShipId).shields) &&
+                    (stationSide ? 100000 : participant.referenceShipId < 0 ? 0 : sourceShip(participant.referenceShipId).shields) &&
                 summaries.at(participant.fleetId).hullBefore == participant.initialHull &&
                 summaries.at(participant.fleetId).shieldBefore == participant.initialShields &&
                 participantIds.insert(participant.fleetId).second, "Invalid battle participant");
@@ -4315,6 +4351,7 @@ void validate(const GameState& s) {
             require(op.turn >= 0 && op.turn <= s.turn, "Intel operation turn out of bounds");
         }
     }
+    gameplay::validate(s); // Schema-13 gameplay layer.
     auto draft = s;
     applyDraft(draft);
 }
@@ -4448,6 +4485,7 @@ TurnReport advanceWithCombat(GameState& state, const std::function<void(GameStat
         }
     }
     planRivals(next);
+    gameplay::planTurn(next, report); // Schema 13: AI stations, anomaly surveys, megaprojects.
     for (const auto& relation : next.majorRelations) {
         const auto old = majorRelation(state, relation.first, relation.second);
         if (old && old->atWar != relation.atWar &&
@@ -4471,11 +4509,14 @@ TurnReport advanceWithCombat(GameState& state, const std::function<void(GameStat
         mutableEmpire(next, f.ownerId).credits -= upkeep;
         if (f.ownerId == next.playerEmpire) report.fleetUpkeep += upkeep;
     }
+    gameplay::chargeStationUpkeep(next, report);
     const auto productionSnapshot = next;
     std::vector<Fleet> launched;
     for (auto& c : next.colonies) {
         ColonyReport cr;
         cr.systemId = c.systemId; cr.economy = economy(productionSnapshot, c);
+        // Schema 13: a colony funding a starbase upgrade or megaproject diverts its industry.
+        cr.economy.industry -= gameplay::divertIndustry(next, c, cr.economy.industry, report);
         auto& owner = mutableEmpire(next, c.ownerId);
         owner.credits += cr.economy.income - cr.economy.upkeep;
         owner.research += cr.economy.research;
@@ -4559,6 +4600,8 @@ TurnReport advanceWithCombat(GameState& state, const std::function<void(GameStat
         const int maximum = fleetMaxShields(fleet);
         fleet.shields = std::min(maximum, fleet.shields + std::max(1, maximum / 5));
     }
+    gameplay::TurnEffects layerEffects;
+    gameplay::beforeCombat(moving, report, layerEffects); // Outposts, anomaly surveys, sector hazards.
     if (combatResolver) {
         combatResolver(moving, report);
     } else if (moving.unifiedCombat) {
@@ -4601,6 +4644,7 @@ TurnReport advanceWithCombat(GameState& state, const std::function<void(GameStat
             }
         }
     }
+    gameplay::afterCombat(moving, report); // Station regeneration and starbase repairs.
     resolveInvasions(moving, report);
     next.fleets = std::move(moving.fleets); next.explored = std::move(moving.explored);
     next.majorRelations = std::move(moving.majorRelations);
@@ -4639,6 +4683,7 @@ TurnReport advanceWithCombat(GameState& state, const std::function<void(GameStat
     std::sort(next.colonies.begin(), next.colonies.end(), [](const Colony& a, const Colony& b) { return a.systemId < b.systemId; });
     next.fleets.insert(next.fleets.end(), launched.begin(), launched.end());
     reconcileTaskForces(next);
+    gameplay::carryOver(next, moving, layerEffects, report);
     resolveDiplomacy(next, report);
     if (next.campaignExpansionEnabled && next.modernEnginesActive) {
         resolveModernDiplomacy(next, report);
@@ -4679,7 +4724,9 @@ TurnReport advanceWithCombat(GameState& state, const std::function<void(GameStat
         if (c.morale < 70) ++c.morale;
         else if (c.morale > 70) --c.morale;
     }
-    if (next.eventsEnabled && !next.rivals.empty() && next.turn - next.lastRandomEventTurn >= 10 && !next.colonies.empty()) {
+    if (next.rules.curatedEvents) {
+        gameplay::resolveGalacticEvents(next, report); // Schema-13 event deck (eventsEnabled gates new draws).
+    } else if (next.eventsEnabled && !next.rivals.empty() && next.turn - next.lastRandomEventTurn >= 10 && !next.colonies.empty()) {
         next.lastRandomEventTurn = next.turn;
         const auto index = static_cast<std::size_t>(bounded(next.rngState, next.colonies.size()));
         auto& target = next.colonies[index];
@@ -4706,6 +4753,8 @@ TurnReport advanceWithCombat(GameState& state, const std::function<void(GameStat
         if (next.outcome != CampaignOutcome::Ongoing) report.events.push_back(next.outcome == CampaignOutcome::Victory ?
             std::string(empireName(next.playerEmpire)) + " campaign victory." : std::string(empireName(next.playerEmpire)) + " campaign defeat.");
     }
+    if (next.outcome == CampaignOutcome::Ongoing) gameplay::evaluateVictory(next, report);
+    gameplay::finishTurn(state, next, report); // Upgrades, storms, templates, chronicle.
     report.outcome = next.outcome;
     validate(next);
     report.creditsAfter = next.credits;
@@ -4757,14 +4806,16 @@ GameState deserialize(const std::string& text) {
     const bool legacy10 = version == 10 && content == "reference-campaign-10";
     // Schema 11 differs from 12 only by the header and the REMASTER section.
     const bool legacy11 = version == 11 && content == "campaign-expansion-11";
+    // Schema 12 differs from 13 only by the header and the GAMEPLAY_LAYER section.
+    const bool legacy12 = version == 12 && content == "remaster-12";
     const bool current = version == SaveVersion && content == ContentVersion;
-    require(current || legacy7 || legacy8 || legacy9 || legacy10 || legacy11, "Unsupported save version");
-    require(content == ContentVersion || legacy7 || legacy8 || legacy9 || legacy10 || legacy11, "Incompatible prototype content");
+    require(current || legacy7 || legacy8 || legacy9 || legacy10 || legacy11 || legacy12, "Unsupported save version");
+    require(content == ContentVersion || legacy7 || legacy8 || legacy9 || legacy10 || legacy11 || legacy12, "Incompatible prototype content");
     const auto checksumStart = text.rfind("CHECKSUM ");
     require(checksumStart != std::string::npos, "Missing save checksum");
     const auto rawBody = text.substr(0, checksumStart);
     require(text.substr(checksumStart) == "CHECKSUM " + std::to_string(hashText(rawBody)) + "\n",
-        (legacy7 || legacy8 || legacy9 || legacy10 || legacy11) ? "Legacy save checksum mismatch" : "Save checksum mismatch");
+        (legacy7 || legacy8 || legacy9 || legacy10 || legacy11 || legacy12) ? "Legacy save checksum mismatch" : "Save checksum mismatch");
     GameState s;
     tag(in, "STATE");
     in >> s.seed >> s.rngState >> s.lastAcceptedCommand >> s.width >> s.height >> s.turn >> s.credits >> s.research;
@@ -4962,6 +5013,10 @@ GameState deserialize(const std::string& text) {
                             c.queuePinned = (qPin != 0);
                         }
                     }
+                    if (gameplay::isGameplayCommand(static_cast<CommandType>(type))) {
+                        require(current, "Schema-13 command in an older save");
+                        gameplay::readCommandTail(rem, c);
+                    }
                 }
             }
         }
@@ -5110,7 +5165,7 @@ GameState deserialize(const std::string& text) {
         s.startingEra = StartingEra::Early;
     }
     if (nextTag == "REMASTER") {
-        require(current, "Schema 12 section in an older save");
+        require(current || legacy12, "Schema 12 section in an older save");
         hasRemaster = true;
         parseRemaster();
         nextTag = readTag("Malformed save section after REMASTER");
@@ -5120,6 +5175,13 @@ GameState deserialize(const std::string& text) {
         parseColonyGovernors(in);
         nextTag = readTag("Malformed save section after COLONY_GOVERNORS");
     }
+    bool hasGameplayLayer = false;
+    if (nextTag == "GAMEPLAY_LAYER") {
+        require(current, "Schema 13 section in an older save");
+        hasGameplayLayer = true;
+        gameplay::parseSection(in, s);
+        nextTag = readTag("Malformed save section after GAMEPLAY_LAYER");
+    }
     require(nextTag == "CHECKSUM", ("Unexpected save section: " + nextTag).c_str());
     std::uint64_t checksum = 0;
     require(static_cast<bool>(in >> checksum), "Missing save checksum");
@@ -5127,12 +5189,23 @@ GameState deserialize(const std::string& text) {
     require(in.eof(), "Unexpected trailing save data");
     validate(s);
     if (current) {
+        require(hasStartingEra && hasRemaster && hasColonyGovernors && hasGameplayLayer &&
+            (!s.modernEnginesActive || hasIntelOperations), "Schema 13 save is missing a required section");
+        require(rawBody == payload(s), "Save is not in canonical format");
+    } else if (legacy12) {
+        // Schema 12 text is the schema-13 payload without the gameplay layer.
         require(hasStartingEra && hasRemaster && hasColonyGovernors &&
             (!s.modernEnginesActive || hasIntelOperations), "Schema 12 save is missing a required section");
-        require(rawBody == payload(s), "Save is not in canonical format");
+        std::string expected = payload(s);
+        const std::string header = std::string("BOTF_SIM ") + std::to_string(SaveVersion) + ' ' + ContentVersion + '\n';
+        require(expected.starts_with(header), "Malformed canonical payload header");
+        expected.replace(0, header.size(), "BOTF_SIM 12 remaster-12\n");
+        gameplay::stripSection(expected);
+        require(rawBody == expected, "Save is not in canonical format");
     } else if (legacy11) {
         // Rebuild the schema-11 text this state would have produced and require an exact match.
         std::string expectedOld = payload(s);
+        gameplay::stripSection(expectedOld);
         const std::string header = std::string("BOTF_SIM ") + std::to_string(SaveVersion) + ' ' + ContentVersion + '\n';
         require(expectedOld.starts_with(header), "Malformed canonical payload header");
         expectedOld.replace(0, header.size(), "BOTF_SIM 11 campaign-expansion-11\n");
@@ -5711,5 +5784,40 @@ void evaluateQueueGovernor(const GameState& state, Colony& c) {
 void syncDiplomacyState(GameState& state) {
     syncDiplomacyStateInternal(state);
 }
+
+// Internal helpers exported to the schema-13 gameplay modules (GameplayInternal.h).
+static_assert(internal::QueueLimit == MaxQueue && internal::BuildingLimit == MaxBuildings &&
+    internal::BalanceLimit == MaxBalance, "GameplayInternal.h limits drifted from Simulation.cpp");
+namespace internal {
+std::uint64_t nextRandom(std::uint64_t& state) { return botf::nextRandom(state); }
+std::uint64_t bounded(std::uint64_t& state, std::uint64_t bound) { return botf::bounded(state, bound); }
+EmpireState& mutableEmpire(GameState& state, int id) { return botf::mutableEmpire(state, id); }
+bool known(const GameState& state, int owner, int x, int y) { return botf::known(state, owner, x, y); }
+void reveal(GameState& state, int x, int y, int owner) { botf::reveal(state, x, y, owner); }
+bool queueShip(GameState& state, Colony& colony, Building role) { return queueMilitaryShip(state, colony, role); }
+void detachFromTaskForce(GameState& state, Fleet& fleet) { botf::detachFromTaskForce(state, fleet); }
+void reconcileTaskForces(GameState& state) { botf::reconcileTaskForces(state); }
+int catalogueRace(int owner) { return botf::catalogueRace(owner); }
+bool playableShip(const referenceData::ShipRecord& ship) { return botf::playableShip(ship); }
+Building roleProduct(int role) { return botf::roleProduct(role); }
+const referenceData::ShipRecord& sourceShip(int id) { return botf::sourceShip(id); }
+int constructionCost(const Construction& project) { return botf::constructionCost(project); }
+std::string constructionTechBlocker(const GameState& state, const Construction& project, int owner) {
+    return botf::constructionTechBlocker(state, project, owner);
+}
+void validateColony(const Colony& colony) { botf::validateColony(colony); }
+bool colonySupplied(const GameState& state, const Fleet& fleet, int x, int y) {
+    return colonySuppliedWithRangeImpl(state, fleet.ownerId, shipRange(fleet), x, y);
+}
+bool colonySuppliedWithRange(const GameState& state, int owner, int range, int x, int y) {
+    return colonySuppliedWithRangeImpl(state, owner, range, x, y);
+}
+std::vector<int> activeEmpires(const GameState& state) {
+    std::vector<int> ids{state.playerEmpire};
+    for (const auto& rival : state.rivals) ids.push_back(rival.id);
+    std::sort(ids.begin(), ids.end());
+    return ids;
+}
+} // namespace internal
 } // namespace botf
 
