@@ -14,6 +14,8 @@
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Input/SCheckBox.h"
 #include "Widgets/Input/STextComboBox.h"
+#include "Widgets/Input/SSlider.h"
+#include "BotfAudioSubsystem.h"
 #include "Styling/CoreStyle.h"
 #include "HAL/PlatformTime.h"
 
@@ -81,6 +83,27 @@ void SBotfSettingsPanel::Construct(const FArguments& InArgs)
 			]
 			+ SVerticalBox::Slot().AutoHeight() [ Body ],
 			FMargin(16.0f, 12.0f));
+	};
+	// Audio volume slider bound to UBotfAudioSubsystem (Index -1 = master, else botf::audio::Category). Applies live;
+	// saved to GameUserSettings.ini when the drag ends. Disabled when no game instance exists (editor preview).
+	auto VolumeSlider = [](int32 Index) -> TSharedRef<SWidget>
+	{
+		return SNew(SSlider)
+			.IsEnabled_Lambda([]() { return UBotfAudioSubsystem::Get() != nullptr; })
+			.Value_Lambda([Index]() {
+				const UBotfAudioSubsystem* Audio = UBotfAudioSubsystem::Get();
+				if (!Audio) return 0.0f;
+				return Index < 0 ? Audio->GetMasterVolume() : Audio->GetCategoryVolume(static_cast<botf::audio::Category>(Index));
+			})
+			.OnValueChanged_Lambda([Index](float Value) {
+				if (UBotfAudioSubsystem* Audio = UBotfAudioSubsystem::Get())
+				{
+					if (Index < 0) Audio->SetMasterVolume(Value);
+					else Audio->SetCategoryVolume(static_cast<botf::audio::Category>(Index), Value);
+				}
+			})
+			.OnMouseCaptureEnd_Lambda([]() { if (const UBotfAudioSubsystem* Audio = UBotfAudioSubsystem::Get()) Audio->SaveSettings(); })
+			.OnControllerCaptureEnd_Lambda([]() { if (const UBotfAudioSubsystem* Audio = UBotfAudioSubsystem::Get()) Audio->SaveSettings(); });
 	};
 	auto SettingRow = [Col](const FString& Label, const TSharedRef<SWidget>& Control) -> TSharedRef<SWidget>
 	{
@@ -251,11 +274,20 @@ void SBotfSettingsPanel::Construct(const FArguments& InArgs)
 							.Padding(0.0f, 0.0f, 0.0f, 12.0f)
 							[
 								Section(TEXT("AUDIO"),
-									SNew(STextBlock)
-									.Text(FText::FromString(TEXT("Audio subsystem is not integrated in this prototype build. Volume and mixing channels will be configured in an upcoming milestone.")))
-									.Font(FCoreStyle::GetDefaultFontStyle("Italic", 10))
-									.ColorAndOpacity(Col(&FPalette::Muted))
-									.AutoWrapText(true))
+									SNew(SVerticalBox)
+									+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 4.0f) [ SettingRow(TEXT("Master Volume"), VolumeSlider(-1)) ]
+									+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 4.0f) [ SettingRow(TEXT("Effects"), VolumeSlider(static_cast<int32>(botf::audio::Category::Sfx))) ]
+									+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 4.0f) [ SettingRow(TEXT("Voice"), VolumeSlider(static_cast<int32>(botf::audio::Category::Voice))) ]
+									+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 4.0f) [ SettingRow(TEXT("Interface"), VolumeSlider(static_cast<int32>(botf::audio::Category::Ui))) ]
+									+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 4.0f) [ SettingRow(TEXT("Music"), VolumeSlider(static_cast<int32>(botf::audio::Category::Music))) ]
+									+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 8.0f, 0.0f, 0.0f)
+									[
+										SNew(STextBlock)
+										.Text(FText::FromString(TEXT("Volumes apply immediately and are saved with your settings. Sounds, voices and music come from locally installed assets (Import-Assets.ps1); without them the game is silent. Effects and music dip while a voice line plays.")))
+										.Font(BotfUi::Font(10))
+										.ColorAndOpacity(Col(&FPalette::Muted))
+										.AutoWrapText(true)
+									])
 							]
 						]
 

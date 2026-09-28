@@ -2992,6 +2992,7 @@ int combatOrderFlags(const CombatShipOrder& o) {
         (o.hailed ? OrderHailed : 0) | (o.rammed ? OrderRammed : 0);
 }
 void parseCombatOrders(std::istream& in, GameState& s);
+void parseCombatEvents(std::istream& in, GameState& s);
 std::string payload(const GameState& s) {
     std::ostringstream out;
     out.imbue(std::locale::classic());
@@ -3171,6 +3172,8 @@ std::string payload(const GameState& s) {
     // Expanded ship roster (SHIP-ROSTER.md): optional, written only when the ruleset enables it, so every
     // save without the roster keeps its exact previous text. The number is the roster data revision.
     if (s.rules.expandedRoster) out << "SHIP_ROSTER 1\n";
+    // Tactical rules 3 (COMBAT-RULES.md): optional, like SHIP_ROSTER, so saves without it keep rules 2.
+    if (s.rules.flightModel) out << "TACTICAL_FLIGHT 1\n";
     // Schema 14: per-ship orders of recorded battle rounds. Written only when some
     // round carries orders, so campaigns without them keep the schema-13 layout.
     const bool anyOrders = std::any_of(s.latestBattles.begin(), s.latestBattles.end(), [](const CombatReport& b) {
@@ -3188,7 +3191,48 @@ std::string payload(const GameState& s) {
             out << '\n';
         }
     }
+    // Tactical rules 3 presentation events, written only when some round carries them.
+    const bool anyEvents = std::any_of(s.latestBattles.begin(), s.latestBattles.end(), [](const CombatReport& b) {
+        return std::any_of(b.rounds.begin(), b.rounds.end(), [](const CombatRound& r) { return !r.events.empty(); });
+    });
+    if (anyEvents) {
+        out << "COMBAT_EVENTS " << s.latestBattles.size() << '\n';
+        for (const auto& b : s.latestBattles) {
+            out << b.rounds.size();
+            for (const auto& r : b.rounds) {
+                out << ' ' << r.events.size();
+                for (const auto& e : r.events) {
+                    out << ' ';
+                    tactical::writeCombatEvent(out, e);
+                }
+            }
+            out << '\n';
+        }
+    }
     return out.str();
+}
+
+void parseCombatEvents(std::istream& in, GameState& s) {
+    int battles = -1;
+    require(static_cast<bool>(in >> battles) && battles >= 1 && static_cast<std::size_t>(battles) == s.latestBattles.size(),
+        "COMBAT_EVENTS does not match the recorded battles");
+    std::size_t total = 0;
+    for (auto& b : s.latestBattles) {
+        int rounds = -1;
+        require(static_cast<bool>(in >> rounds) && static_cast<std::size_t>(rounds) == b.rounds.size(),
+            "COMBAT_EVENTS round count does not match its battle");
+        for (auto& r : b.rounds) {
+            int events = -1;
+            require(static_cast<bool>(in >> events) && events >= 0 && events <= 4096, "Invalid COMBAT_EVENTS event count");
+            for (int i = 0; i < events; ++i) {
+                CombatEvent e;
+                require(tactical::readCombatEvent(in, e), "Malformed COMBAT_EVENTS entry");
+                r.events.push_back(e);
+                ++total;
+            }
+        }
+    }
+    require(total > 0, "Non-canonical empty COMBAT_EVENTS section");
 }
 
 void parseCombatOrders(std::istream& in, GameState& s) {
@@ -4308,6 +4352,18 @@ void validate(const GameState& s) {
                 require(participantIds.count(o.fleetId) && !roundLosses.count(o.fleetId) && !roundRetreats.count(o.fleetId) &&
                     ordered.insert(o.fleetId).second && (o.targetFleetId == 0 || participantIds.count(o.targetFleetId)) &&
                     tactical::maneuverValid(o.maneuver), "Invalid recorded combat order");
+            // Tactical rules 3 presentation events: ordered by tick, actors and targets are participants.
+            require(round.events.size() <= 4096, "Invalid tactical round");
+            int priorTick = 0;
+            for (const auto& e : round.events) {
+                require(e.tick >= priorTick && e.tick < CombatTicksPerRound && e.impactTick >= 0 && e.impactTick < CombatTicksPerRound &&
+                    static_cast<int>(e.kind) >= 0 && static_cast<int>(e.kind) <= MaxCombatEventKind &&
+                    (e.fleetId == 0 ? e.kind == CombatEventKind::Truce : participantIds.count(e.fleetId) > 0) &&
+                    (e.targetFleetId == 0 || participantIds.count(e.targetFleetId)) && e.shieldDamage >= 0 && e.hullDamage >= 0 &&
+                    e.mountIndex >= -1 && e.mountIndex < tactical::MaxShipMounts && tactical::maneuverValid(e.maneuver),
+                    "Invalid recorded combat event");
+                priorTick = e.tick;
+            }
             std::set<int> touched;
             for (const auto& d : round.damage) {
                 require(participantIds.count(d.fleetId) && !roundLosses.count(d.fleetId) &&
@@ -5363,10 +5419,22 @@ GameState deserialize(const std::string& text) {
         s.rules.expandedRoster = true;
         nextTag = readTag("Malformed save section after SHIP_ROSTER");
     }
+    if (nextTag == "TACTICAL_FLIGHT") {
+        require(current || legacy13, "Tactical flight section in an older save");
+        int revision = 0;
+        require(static_cast<bool>(in >> revision) && revision == 1, "Unsupported tactical flight revision");
+        s.rules.flightModel = true;
+        nextTag = readTag("Malformed save section after TACTICAL_FLIGHT");
+    }
     if (nextTag == "COMBAT_ORDERS") {
         require(current, "Schema 14 section in an older save");
         parseCombatOrders(in, s);
         nextTag = readTag("Malformed save section after COMBAT_ORDERS");
+    }
+    if (nextTag == "COMBAT_EVENTS") {
+        require(current, "Schema 14 section in an older save");
+        parseCombatEvents(in, s);
+        nextTag = readTag("Malformed save section after COMBAT_EVENTS");
     }
     require(nextTag == "CHECKSUM", ("Unexpected save section: " + nextTag).c_str());
     std::uint64_t checksum = 0;

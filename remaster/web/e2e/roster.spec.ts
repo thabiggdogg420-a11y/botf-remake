@@ -76,9 +76,8 @@ test('Database: the expanded roster filters by faction, role, era and source', a
   expect(errors).toEqual([]);
 });
 
-test('battle: typed weapon VFX from the presentation source, with audio cues', async ({ page }) => {
-  const errors: string[] = [];
-  page.on('pageerror', (e) => errors.push(String(e)));
+/** Opens a drill battle with sound on, then resolves rounds until the arena has drawn the wanted effects. */
+async function fightUntil(page: Page, drill: string, shotName: string, done: (fx: Record<string, number>) => boolean): Promise<Record<string, number>> {
   await throttleCpu(page);
   await page.goto('/');
   await page.evaluate(() => {
@@ -87,38 +86,51 @@ test('battle: typed weapon VFX from the presentation source, with audio cues', a
     localStorage.setItem('botf.audio', 'on');
   });
   await page.goto('/');
-  await page.getByTestId('tactical-drill').click();
+  await page.getByTestId(drill).click();
   await expect(page.getByTestId('screen-galaxy')).toBeVisible();
   await page.getByTestId('end-turn').click();
   await page.getByTestId('confirm-ok').click();
   await expect(page.getByTestId('screen-combat')).toBeVisible();
-  await page.getByTestId('choice-fight').click();
+  const choice = page.getByTestId('choice-fight');
+  if (await choice.isVisible().catch(() => false)) await choice.click();
 
   const arena = page.getByTestId('combat-arena');
-  // Resolve rounds until one exchanges fire (the drill opens out of range), screenshotting mid-volley.
+  const fxNow = async () => JSON.parse((await arena.getAttribute('data-fx')) ?? '{}') as Record<string, number>;
+  // Resolve rounds until fire is exchanged (drills open out of range), screenshotting mid-volley.
   let shot = false;
-  for (let round = 1; round <= 10; round++) {
+  for (let round = 1; round <= 12; round++) {
     await page.getByTestId('resolve-round').click();
     await expect.poll(async () => (await page.evaluate(() => window.__botf!.encounter() as Encounter)).round).toBe(round);
     const e = await page.evaluate(() => window.__botf!.encounter() as Encounter);
-    const fire = e.rounds[e.rounds.length - 1]!.salvos.some((s) => s.beam > 0 && !s.ram);
+    const last = e.rounds[e.rounds.length - 1]!;
+    const fire = last.salvos.some((s) => s.beam + s.torpedo > 0 && !s.ram) || (last.events ?? []).some((ev) => ev.kind === 'Fire');
     if (fire && !shot) {
       await page.waitForTimeout(1250);
       mkdirSync(SHOTS_DIR, { recursive: true });
-      await page.screenshot({ path: `${SHOTS_DIR}/40-combat-typed-vfx.png` });
+      await page.screenshot({ path: `${SHOTS_DIR}/${shotName}.png` });
       shot = true;
     }
     await page.waitForTimeout(fire ? 1500 : 300);
-    const fx = JSON.parse((await arena.getAttribute('data-fx')) ?? '{}') as Record<string, number>;
-    if ((fx.beam ?? 0) > 0 && (fx.torpedo ?? 0) > 0) break;
-    if (e.finished) break;
+    if (done(await fxNow()) || e.finished) break;
   }
+  await expect.poll(async () => done(await fxNow()), { timeout: 15000 }).toBeTruthy();
+  return fxNow();
+}
 
-  // The animated round drew typed effects: continuous beams and torpedo projectiles.
-  await expect.poll(async () => JSON.parse((await arena.getAttribute('data-fx')) ?? '{}'), { timeout: 15000 })
-    .toMatchObject({ beam: expect.any(Number), torpedo: expect.any(Number) });
+async function finishBattle(page: Page): Promise<void> {
+  const e = await page.evaluate(() => window.__botf!.encounter() as Encounter);
+  if (!e.finished) await page.getByTestId('auto-resolve').click();
+  await page.getByTestId('continue-turn').click();
+  await expect(page.getByTestId('briefing')).toBeVisible();
+}
+
+test('battle (rules 2): typed weapon VFX derived from round results, with audio cues', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(String(e)));
+  const fx = await fightUntil(page, 'tactical-drill', '40-combat-typed-vfx', (f) => (f.beam ?? 0) > 0 && (f.torpedo ?? 0) > 0);
+  const arena = page.getByTestId('combat-arena');
+  // Rules 2 rounds carry no event stream: the derived source draws continuous beams and torpedo projectiles.
   await expect(arena).toHaveAttribute('data-fx-source', 'derived');
-  const fx = JSON.parse((await arena.getAttribute('data-fx'))!) as Record<string, number>;
   // Federation phasers (legacy fit: phaser array) and photon torpedoes.
   expect(fx.PhaserArray ?? 0).toBeGreaterThan(0);
   expect(fx.PhotonTorpedo ?? 0).toBeGreaterThan(0);
@@ -128,9 +140,23 @@ test('battle: typed weapon VFX from the presentation source, with audio cues', a
   expect(cues.requested).toBeGreaterThan(0);
   expect(Object.keys(cues.byKey).some((k) => k.startsWith('weapon.'))).toBeTruthy();
   expect(Object.keys(cues.byKey).some((k) => k.startsWith('sfx.'))).toBeTruthy();
+  await finishBattle(page);
+  expect(errors).toEqual([]);
+});
 
-  await page.getByTestId('auto-resolve').click();
-  await page.getByTestId('continue-turn').click();
-  await expect(page.getByTestId('briefing')).toBeVisible();
+test('battle (rules 3): VFX and cues come from the core combat event stream', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(String(e)));
+  const fx = await fightUntil(page, 'starbase-drill', '41-combat-event-stream', (f) => (f.beam ?? 0) + (f.pulse ?? 0) + (f.torpedo ?? 0) > 0);
+  const e = await page.evaluate(() => window.__botf!.encounter() as Encounter);
+  expect(e.rules).toBe(3);
+  expect(e.rounds.some((r) => (r.events ?? []).some((ev) => ev.kind === 'Fire' && ev.key?.startsWith('weapon.')))).toBeTruthy();
+  await expect(page.getByTestId('combat-arena')).toHaveAttribute('data-fx-source', 'events');
+  // Effects are keyed by the event's weapon type.
+  const fired = new Set(e.rounds.flatMap((r) => (r.events ?? []).filter((ev) => ev.kind === 'Fire').map((ev) => ev.weapon!)));
+  expect(Object.keys(fx).some((k) => fired.has(k))).toBeTruthy();
+  const cues = await page.evaluate(() => window.__botf!.cues());
+  expect(Object.keys(cues.byKey).some((k) => fired.has(k.replace('weapon.', '')))).toBeTruthy();
+  await finishBattle(page);
   expect(errors).toEqual([]);
 });

@@ -65,6 +65,20 @@ def sources_doc():
       "**unclear** means an uploader licence or no stated terms; the franchise rights are unresolved. **restricted** means the author's terms forbid reuse or derivatives (NoDerivs, or mod "
       "readmes that deny reuse). The importer skips restricted candidates unless `-AllowRestricted` is passed.")
     w("")
+    w("## Key scheme")
+    w("")
+    w("One scheme is used by the ship roster, this manifest, `Import-Assets.ps1` and the Unreal client (`UBotfAssetRegistry`):")
+    w("")
+    w("- `ship.<fac>.<class>`: ship models. Expanded roster classes use the roster `assetKey` verbatim; legacy catalogue classes use "
+      "`ship.<fac>.<slug of class name>` (for example `ship.kli.vorcha`, `ship.fed.galaxy_x`) plus `ship.<fac>.starbase` / `ship.<fac>.outpost`.")
+    w("- `weapon.<WeaponType>` for roster weapon types (`weapon.PhaserArray`), with optional faction variants `weapon.<WeaponType>.<fac>` "
+      "(`weapon.Disruptor.rom`) and last-resort `weapon.generic.beam` / `weapon.generic.torpedo`.")
+    w("- `study.<fac>`: in-repo placeholder meshes (project art). `sfx.*`, `vo.*`, `mus.*`: audio cues (AUDIO-PLAN.md).")
+    w("")
+    w("Every roster and legacy key has an entry, even with no candidate, so coverage is explicit; the entry's fallback names what is shown instead. "
+      "`python remaster/assets/check_asset_keys.py` fails when a key is missing or a fallback chain is broken. When nothing in a chain resolves, "
+      "the client uses its built-in placeholder for the faction.")
+    w("")
     w("## Per-faction ship coverage")
     w("")
     w("| Faction | Keys | With a downloadable, non-restricted candidate | Only restricted / unresolved | Gaps (fallback) |")

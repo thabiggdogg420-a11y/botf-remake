@@ -125,7 +125,7 @@ void validate(const GameState& s) {
         require(r.stations && r.galaxyFeatures && r.curatedEvents && r.alternativeVictories,
             "Remastered ruleset enables every gameplay layer");
     else
-        require(!r.galaxyFeatures && !r.curatedEvents && !r.alternativeVictories && !r.expandedRoster,
+        require(!r.galaxyFeatures && !r.curatedEvents && !r.alternativeVictories && !r.expandedRoster && !r.flightModel,
             "Classic ruleset has no anomalies, curated events, alternative victories or expanded roster");
     require(!r.stations || s.unifiedCombat, "Stations require the unified tactical combat model");
     validateFeatures(s);
@@ -364,6 +364,7 @@ GameplayRules rulesForPreset(RulesetPreset preset) {
     r.curatedEvents = remastered;
     r.alternativeVictories = remastered;
     r.expandedRoster = remastered;
+    r.flightModel = remastered;
     return r;
 }
 

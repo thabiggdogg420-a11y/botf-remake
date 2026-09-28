@@ -245,6 +245,31 @@ Still unproven, in rough order of likelihood. Each is a single-line fix if it fa
 | `BOTFRemake.uproject` | `EditorScriptingUtilities` plugin: if 5.8 removed or renamed it, the project refuses to open. Drop the entry. |
 | `Content/` | Assets saved by a newer engine than the local one fail to load at cook time (`LogLinker`). |
 | Runtime only | `FCoreStyle::GetDefaultFontStyle("BoldCondensed", ...)` falls back to the default face if the typeface is missing. |
+| `BotfAssetRegistry.h`, `BotfAudioSubsystem.h` | `UCLASS() ... final` subsystems declared in `Private/` with non-UPROPERTY members of plain C++ types (`botf::assets::Catalog`, `CueScheduler`). UHT accepts this; if it objects to `final`, drop it. |
+| `BotfAudioSubsystem.h` | Subsystem that is also an `FTickableGameObject` (`GetTickableTickType` / `IsTickableWhenPaused` overrides). If an override signature changed, adjust or tick from the game mode instead. |
+| `BotfAudioSubsystem.cpp` | `UGameplayStatics::CreateSound2D(World, Sound, Volume, Pitch, StartTime, nullptr, bPersist, bAutoDestroy)` argument order, `UAudioComponent::AdjustVolume`, `FadeOut`, `Collection.InitializeDependency(UClass*)`. |
+| `BotfSettingsPanel.cpp` | `SSlider` `Value_Lambda` / `OnMouseCaptureEnd_Lambda` / `OnControllerCaptureEnd_Lambda` argument names. |
+| `BotfAssetRegistry.cpp` | `FSoftObjectPath(FString).TryLoad()` on `/Game/Local/...` paths that exist only on a PC that ran Import-Assets.ps1; a missing asset logs a warning and falls back. |
+
+## Local assets and audio
+
+- **Asset keys.** Ships use `ship.<fac>.<class>` (roster `assetKey`, or the slug of a legacy class name), weapons
+  `weapon.<WeaponType>[.<fac>]`; see SHIP-ROSTER.md and `../assets/check_asset_keys.py`.
+- **`UBotfAssetRegistry`** (`UGameInstanceSubsystem`) reads `LocalAssets/resolved-manifest.json` at startup
+  (`BOTF_RESOLVED_MANIFEST` overrides the path) and resolves a key to a `/Game` object path by walking the manifest
+  fallback chain; nothing resolved means the built-in `/Game/Presentation/<Faction>` mesh, then an engine shape.
+  Parsing and the walk are in the engine-independent `BotfJson.h` / `BotfAssetCatalog.h`.
+- **Combat scene.** `ABotfCombatScene::ApplyShipMesh` gives every participant with a class id its own mesh, scaled by
+  canon length (`displayRadiusForLength`, square-root compressed between radius 40 and 170). Ships whose chain ends at a
+  placeholder keep the scene's interim art (franger, Ulysses, faction studies).
+- **`UBotfAudioSubsystem`** plays cues from `BotfAudioCues.h` (keys, priority, cooldowns, one voice line at a time with
+  a 0.6 s gap, 24 sfx with the lowest priority culled, voice ducking of sfx and music) and `BotfAudioEvents.h` (turn
+  briefing, tactical round and diplomacy mapping). Hooks: `FinishTurn`, `OpenEncounter`, `TacOrder`, `TacNextRound`,
+  `TacAuto`, `Submit` (war, peace and trade proposals). Volumes (master, effects, voice, interface, music) are sliders
+  in Settings, stored in `GameUserSettings.ini` `[BotfAudio]`.
+- **Object Database.** The ship list shows the legacy catalogue and the 98 expanded roster classes
+  (`BotfShipDatabase.h`, via the core's `findShip` / `findRosterClass`).
+- `game/Tools/client-logic-tests.cpp` checks all of the above without Unreal; `check-unreal-tu.sh` builds and runs it.
 
 ## Core queries the client needs
 

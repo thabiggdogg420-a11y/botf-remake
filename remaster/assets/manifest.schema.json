@@ -15,7 +15,7 @@
     "socketConvention": { "type": "string" },
     "assets": {
       "type": "object",
-      "propertyNames": { "pattern": "^[a-z0-9]+(\\.[a-z0-9_]+)+$" },
+      "propertyNames": { "pattern": "^(ship|weapon|study|sfx|vo|mus)(\\.[A-Za-z0-9_]+)+$", "description": "ship.<fac>.<class> (roster assetKey or legacy slug), weapon.<WeaponType>[.<fac>], study.<fac>, sfx.*, vo.*, mus.*. See check_asset_keys.py." },
       "additionalProperties": { "$ref": "#/$defs/asset" }
     }
   },

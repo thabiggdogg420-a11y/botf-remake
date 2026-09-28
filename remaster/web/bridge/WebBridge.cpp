@@ -1840,6 +1840,7 @@ void writeEncounter(Writer& w, const tac::Encounter& e, int me) {
     const auto* sys = systemAtCell(B.state, e.sectorX, e.sectorY);
     w.field("location", sys && knownSystem(B.state, *sys) ? sys->name : "Sector " + std::to_string(e.sectorX) + "," + std::to_string(e.sectorY));
     w.field("rules", e.rulesVersion);
+    w.field("ticksPerRound", botf::CombatTicksPerRound);
     int foe = 0;
     for (const auto& ship : e.ships) if (ship.ownerId != me) { foe = ship.ownerId; break; }
     w.field("foe", foe);
@@ -1879,8 +1880,18 @@ void writeEncounter(Writer& w, const tac::Encounter& e, int me) {
         w.field("shields", ship.shields); w.field("maxShields", ship.maxShields); w.field("initialShields", ship.initialShields);
         w.field("beam", ship.beamAttack); w.field("torpedo", ship.torpedoAttack); w.field("speed", ship.speed);
         w.key("position"); writeCoord(w, ship.position);
-        if (const auto* rc = botf::roster::findRosterClass(ship.referenceShipId)) {
-            w.field("assetKey", rc->assetKey);
+        if (const auto* rc = botf::roster::findRosterClass(ship.referenceShipId)) w.field("assetKey", rc->assetKey);
+        if (!ship.mounts.empty()) {
+            // Rules 3: the encounter's own mounts (legacy hulls included); Fire events index into this list.
+            w.key("weapons").beginArray();
+            for (const auto& m : ship.mounts) {
+                const std::string type = botf::roster::weaponTypeName(m.type);
+                w.beginObject().field("type", type).field("key", "weapon." + type).field("count", m.count)
+                    .field("arc", enumName(static_cast<int>(m.arc), rosterNames::Arc))
+                    .field("torpedo", botf::roster::torpedoWeapon(m.type)).endObject();
+            }
+            w.endArray();
+        } else if (const auto* rc = botf::roster::findRosterClass(ship.referenceShipId)) {
             writeRosterWeapons(w, *rc);
         }
         w.field("alive", ship.isAlive); w.field("active", ship.activeInCombat); w.field("retreated", ship.retreated);
@@ -1951,6 +1962,29 @@ void writeEncounter(Writer& w, const tac::Encounter& e, int me) {
         w.endArray();
         w.key("lost").beginArray(); for (int id : r.lostFleetIds) w.value(id); w.endArray();
         w.key("retreatedIds").beginArray(); for (int id : r.retreatedFleetIds) w.value(id); w.endArray();
+        // Tactical rules 3 presentation stream (COMBAT-RULES.md "Event stream for client authors"); empty otherwise.
+        static constexpr std::array<const char*, 10> EventKinds{"ManeuverStart", "ManeuverEnd", "Cloak", "Decloak", "Fire",
+            "Ram", "Destroyed", "Retreated", "Disengage", "Truce"};
+        w.key("events").beginArray();
+        for (const auto& ev : r.events) {
+            w.beginObject().field("tick", ev.tick).field("kind", enumName(static_cast<int>(ev.kind), EventKinds))
+                .field("fleetId", ev.fleetId).field("targetFleetId", ev.targetFleetId);
+            if (ev.kind == botf::CombatEventKind::Fire) {
+                const auto type = static_cast<botf::roster::WeaponType>(ev.weaponType);
+                w.field("mountIndex", ev.mountIndex).field("weapon", botf::roster::weaponTypeName(type))
+                    .field("key", botf::roster::weaponTypeKey(type))
+                    .field("family", botf::roster::weaponFamilyName(static_cast<botf::roster::WeaponFamily>(ev.weaponFamily)))
+                    .field("projectiles", ev.projectiles).field("hit", ev.hit).field("intercepted", ev.intercepted);
+            }
+            if (ev.kind == botf::CombatEventKind::Fire || ev.kind == botf::CombatEventKind::Ram)
+                w.field("impactTick", ev.impactTick).field("shieldDamage", ev.shieldDamage).field("hullDamage", ev.hullDamage)
+                    .field("destroyed", ev.destroyed);
+            w.field("x", ev.x).field("y", ev.y).field("facing", ev.facing);
+            if (ev.kind == botf::CombatEventKind::ManeuverStart || ev.kind == botf::CombatEventKind::ManeuverEnd)
+                w.field("maneuver", enumName(ev.maneuver, ManeuverKeys)).field("value", ev.value);
+            w.endObject();
+        }
+        w.endArray();
         w.endObject();
     }
     w.endArray();

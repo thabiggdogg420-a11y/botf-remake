@@ -2,11 +2,13 @@
 //
 // The arena never reads salvos directly any more; it asks a CombatPresentationSource for a
 // CombatRoundPresentation (typed weapon shots with timing, impacts, losses, withdrawals and ship
-// motion). Today the only source is `roundResultSource`, which *derives* that from the round result
-// the bridge already returns (Salvo beam/torpedo totals + the shooter's typed roster mounts). When the
-// core grows a combat event stream, a second source can map those events 1:1 onto the same shapes
-// and the renderer and audio cue layer stay unchanged.
-import type { Coord, Encounter, RoundShip, Salvo, TacticalRound, TacticalShip } from '../core/types';
+// motion). Two sources exist:
+//  * `eventStreamSource` maps the core's tactical rules 3 CombatEvent stream (ticks, per-mount Fire
+//    events, impacts, Destroyed/Retreated) 1:1 onto those shapes;
+//  * `roundResultSource` *derives* them from the round result (Salvo beam/torpedo totals + the
+//    shooter's typed mounts). It is the fallback for rules 1 and 2, whose rounds carry no events.
+// `autoSource` (the default) picks per round, so the renderer and audio cue layer never branch.
+import type { CombatEventView, Coord, Encounter, RoundShip, Salvo, TacticalRound, TacticalShip } from '../core/types';
 import { legacyWeapons, weaponFamily, type RosterWeapon, type WeaponFamily, type WeaponType } from '../core/roster';
 
 /** One visible weapon discharge: a beam, one bolt of a pulse volley, or one torpedo. */
@@ -30,6 +32,10 @@ export interface CombatShot {
   ambush: boolean;
   /** Lateral offset of the muzzle (-1..1) so parallel bolts/torpedoes fan out. */
   spread: number;
+  /** The shot did not connect (missed, or the target was already gone): no impact effect. */
+  miss?: boolean;
+  /** Torpedo volley shot down by point defence short of the target. */
+  intercepted?: boolean;
 }
 
 export interface CombatMotion {
@@ -37,10 +43,14 @@ export interface CombatMotion {
   from: Coord; via: Coord; to: Coord;
   /** Heading in degrees before and after the round. */
   yawFrom: number; yawTo: number;
+  /** Part of the move was sideways thrust (strafe): keep the bow instead of turning into the travel. */
+  strafe?: boolean;
 }
 
 export interface CombatRoundPresentation {
   round: number;
+  /** Which source produced this round. */
+  source: 'derived' | 'events';
   /** Movement phase occupies [0, moveEnd] of the round timeline. */
   moveEnd: number;
   motions: CombatMotion[];
@@ -195,6 +205,7 @@ export const roundResultSource: CombatPresentationSource = {
     const lastImpact = (id: number) => Math.max(0.8, ...shots.filter((s) => s.to === id).map((s) => s.impact));
     return {
       round: roundIndex,
+      source: 'derived',
       moveEnd: MOVE_END,
       motions,
       shots,
@@ -206,7 +217,104 @@ export const roundResultSource: CombatPresentationSource = {
   },
 };
 
-/** The active source. Swap for an event-stream source once the core provides one. */
-let active: CombatPresentationSource = roundResultSource;
+// ---------------------------------------------------------------------------------------------
+// Rules 3: the core's CombatEvent stream.
+
+/** Round time of a tick: ticks 0..4 are the movement phase [0, MOVE_END], the rest spread over the fire phase. */
+function tickTime(tick: number, ticks: number): number {
+  const moveTicks = 4;
+  if (tick <= moveTicks) return (tick / moveTicks) * MOVE_END;
+  return Math.min(0.97, MOVE_END + 0.02 + ((tick - moveTicks) / Math.max(1, ticks - moveTicks)) * 0.58);
+}
+
+function eventShots(e: Encounter, r: TacticalRound, events: CombatEventView[], ticks: number): CombatShot[] {
+  const shots: CombatShot[] = [];
+  const perTick = new Map<number, number>();
+  events.forEach((ev, i) => {
+    if (ev.kind !== 'Fire' && ev.kind !== 'Ram') return;
+    const nth = perTick.get(ev.tick) ?? 0;
+    perTick.set(ev.tick, nth + 1);
+    const jitter = Math.min(0.08, (nth % 6) * 0.013);
+    const start = Math.min(0.95, tickTime(ev.tick, ticks) + jitter);
+    const damage = (ev.shieldDamage ?? 0) + (ev.hullDamage ?? 0);
+    const base = `${r.index}:e${i}`;
+    if (ev.kind === 'Ram') {
+      shots.push({ id: `${base}:ram`, from: ev.fleetId, to: ev.targetFleetId, weapon: 'Ram', key: 'sfx.explosion.small', family: 'ram',
+        color: '#ffb36b', damage, start, impact: Math.min(0.99, start + 0.07), shieldHit: false, ambush: false, spread: 0 });
+      return;
+    }
+    const shooter = e.ships.find((s) => s.id === ev.fleetId);
+    const type = (ev.weapon ?? 'PhaserBank') as WeaponType;
+    const family = ev.family ?? 'beam';
+    const color = weaponColor(type, shooter ? factionOf(shooter) : 'Federation');
+    const key = ev.key ?? `weapon.${type}`;
+    const shieldHit = (ev.shieldDamage ?? 0) > 0 && (ev.shieldDamage ?? 0) >= (ev.hullDamage ?? 0);
+    const ambush = !!r.ships.find((x) => x.id === ev.fleetId)?.decloaked;
+    const miss = ev.hit === false;
+    const intercepted = !!ev.intercepted;
+    const landing = tickTime(ev.impactTick ?? ev.tick, ticks) + jitter;
+    if (family === 'torpedo') {
+      const n = Math.min(3, Math.max(1, ev.projectiles ?? 1));
+      for (let k = 0; k < n; k++) {
+        const s0 = Math.min(0.95, start + k * 0.02);
+        shots.push({ id: `${base}:t${k}`, from: ev.fleetId, to: ev.targetFleetId, weapon: type, key, family, color,
+          damage: Math.round(damage / n), start: s0, impact: Math.min(0.99, Math.max(s0 + 0.08, landing + k * 0.02)),
+          shieldHit, ambush, spread: n === 1 ? 0 : (k / (n - 1)) * 2 - 1, miss, intercepted });
+      }
+    } else if (family === 'pulse') {
+      // One bolt per Fire event (COMBAT-RULES.md), fanned by mount.
+      shots.push({ id: `${base}:p0`, from: ev.fleetId, to: ev.targetFleetId, weapon: type, key, family, color, damage,
+        start, impact: Math.min(0.99, start + 0.07), shieldHit, ambush, spread: (((ev.mountIndex ?? 0) % 3) - 1) * 0.6, miss });
+    } else {
+      // Beam: drawn from tick to tick + 1.
+      shots.push({ id: `${base}:b`, from: ev.fleetId, to: ev.targetFleetId, weapon: type, key, family: weaponFamily(type) === 'special' ? 'special' : 'beam',
+        color, damage, start, impact: Math.min(0.99, Math.max(start + 0.04, tickTime(ev.tick + 1, ticks) - 0.02 + jitter)), shieldHit, ambush, spread: 0, miss });
+    }
+  });
+  return shots;
+}
+
+export const eventStreamSource: CombatPresentationSource = {
+  kind: 'events',
+  round(e, roundIndex) {
+    const r = e.rounds[roundIndex];
+    const events = r?.events;
+    if (!r || !events || !events.length) return null;
+    const ticks = e.ticksPerRound ?? 12;
+    const motions: CombatMotion[] = [];
+    for (const start of events.filter((ev) => ev.kind === 'ManeuverStart')) {
+      const end = events.find((ev) => ev.kind === 'ManeuverEnd' && ev.fleetId === start.fleetId);
+      const st = r.ships.find((x) => x.id === start.fleetId);
+      const from = { x: start.x, y: start.y }, to = end ? { x: end.x, y: end.y } : st?.to ?? from;
+      motions.push({ id: start.fleetId, from, via: st?.via ?? { x: (from.x + to.x) / 2, y: (from.y + to.y) / 2 }, to,
+        yawFrom: start.facing, yawTo: end?.facing ?? start.facing, strafe: (end?.value ?? 0) > 0 });
+    }
+    const at = (ev: CombatEventView) => tickTime(ev.tick, ticks);
+    const shots = eventShots(e, r, events, ticks);
+    const destroyed = events.filter((ev) => ev.kind === 'Destroyed').map((ev) => {
+      const killing = shots.filter((s) => s.to === ev.fleetId && !s.miss).reduce((m, s) => Math.max(m, s.impact), 0);
+      return { id: ev.fleetId, at: Math.min(0.92, Math.max(at(ev), killing) + 0.03) };
+    });
+    return {
+      round: roundIndex,
+      source: 'events',
+      moveEnd: MOVE_END,
+      motions,
+      shots,
+      destroyed,
+      withdrawn: events.filter((ev) => ev.kind === 'Retreated').map((ev) => ({ id: ev.fleetId, at: Math.max(0.2, at(ev)) })),
+      decloaked: events.filter((ev) => ev.kind === 'Decloak').map((ev) => ({ id: ev.fleetId, at: Math.max(0.3, at(ev)) })),
+      truce: r.truce || events.some((ev) => ev.kind === 'Truce'),
+    };
+  },
+};
+
+/** Default: the core's event stream when the round has one (rules 3), otherwise derived from round results. */
+export const autoSource: CombatPresentationSource = {
+  kind: 'events',
+  round: (e, i) => eventStreamSource.round(e, i) ?? roundResultSource.round(e, i),
+};
+
+let active: CombatPresentationSource = autoSource;
 export function presentationSource(): CombatPresentationSource { return active; }
 export function setPresentationSource(source: CombatPresentationSource): void { active = source; }

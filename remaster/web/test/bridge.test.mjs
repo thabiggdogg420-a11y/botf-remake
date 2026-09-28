@@ -467,4 +467,39 @@ test('expanded ship roster: database, build options and typed weapon mounts', ()
   assert.ok(!call('colony', { systemId: c.colonies[0].systemId }).choices.some((x) => x.referenceId >= 1000));
 });
 
+test('tactical rules 3: rounds carry the core combat event stream and ships their mounts', () => {
+  call('newBattleDrill', { station: true });   // Remastered preset -> flight model (rules 3)
+  assert.equal(call('endTurn').status, 'battle');
+  let e = call('tactical');
+  assert.equal(e.rules, 3);
+  assert.equal(e.ticksPerRound, 12);
+  for (const s of e.ships.filter((x) => !x.hidden && !x.station)) {
+    assert.ok(Array.isArray(s.weapons) && s.weapons.length > 0, `mounts for ${s.name}`);
+    for (const m of s.weapons) assert.equal(m.key, `weapon.${m.type}`);
+  }
+  let fire = null;
+  for (let i = 0; i < 12 && !fire && !e.finished; i++) {
+    e = call('tacticalRound');
+    const r = e.rounds[e.rounds.length - 1];
+    assert.ok(r.events.length > 0, 'every rules 3 round has events');
+    let tick = -1;
+    for (const ev of r.events) { assert.ok(ev.tick >= tick && ev.tick < 12, 'ordered by tick'); tick = ev.tick; }
+    assert.ok(r.events.some((ev) => ev.kind === 'ManeuverStart'));
+    fire = r.events.find((ev) => ev.kind === 'Fire') ?? null;
+  }
+  assert.ok(fire, 'weapons fire within a few rounds');
+  assert.equal(fire.key, `weapon.${fire.weapon}`);
+  assert.ok(['beam', 'pulse', 'torpedo'].includes(fire.family));
+  assert.ok(fire.impactTick >= fire.tick && typeof fire.hit === 'boolean' && fire.projectiles >= 1);
+  const shooter = e.ships.find((s) => s.id === fire.fleetId);
+  assert.equal(shooter.weapons[fire.mountIndex].type, fire.weapon, 'mountIndex indexes the tactical mounts');
+
+  // Rules 2 (the classic drill) has no stream: clients fall back to deriving from salvos.
+  call('newBattleDrill', {});
+  call('endTurn');
+  const r2 = call('tacticalRound');
+  assert.equal(r2.rules, 2);
+  assert.deepEqual(r2.rounds[0].events, []);
+});
+
 console.log(`${passed} bridge tests passed`);

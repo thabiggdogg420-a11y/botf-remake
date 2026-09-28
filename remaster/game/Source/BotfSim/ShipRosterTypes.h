@@ -24,6 +24,18 @@ enum class WeaponType : int {
     QuantumTorpedo, PlasmaTorpedo, TricobaltDevice, Torpedo
 };
 enum class FiringArc : int { Forward, ForwardWide, Broadside, Aft, All };
+// Tactical flight model (COMBAT-RULES.md, tactical rules 3). Size affects how easily a hull is hit by
+// pulses and torpedoes; Station is an immobile platform.
+enum class SizeClass : int { Small, Medium, Large, Huge, Station };
+// Weapon behaviour family (tactical rules 3): continuous beams, burst pulses, travelling torpedoes.
+enum class WeaponFamily : int { Beam, Pulse, Torpedo };
+
+struct FlightProfile {
+    int turnRate;      // Degrees per round, a multiple of 45 (0 for stations, 180 = can reverse heading in one round).
+    int acceleration;  // Cells of speed change per round.
+    int lateral;       // Cells of sideways (strafe) thrust per round.
+    SizeClass size;
+};
 
 struct WeaponMount {
     WeaponType type;
@@ -61,6 +73,7 @@ struct RosterClass {
     const char* source;
     bool buildable;                  // Buildable by its major empire when the ruleset enables the expanded roster.
     const char* description;         // Original remaster text.
+    FlightProfile flight;            // Tactical flight model (rules 3).
 };
 
 } // namespace botf::roster

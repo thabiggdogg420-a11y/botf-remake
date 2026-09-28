@@ -493,6 +493,65 @@ void testStrategicOrdersBecomeStandingOrders() {
 }
 
 int failed = 0;
+
+// Tactical rules 3 (Remastered flight model): session and headless agree, player strafe orders
+// replay-verify, mid-battle reload matches, and the event stream survives the campaign save.
+botf::GameState flightBattle(bool grouped = false) {
+    auto state = playerBattle(grouped);
+    botf::applyRulesetPreset(state, botf::RulesetPreset::Remastered);
+    botf::validate(state);
+    return state;
+}
+
+void testFlightModelSessionMatchesHeadless() {
+    for (auto state : {flightBattle(), flightBattle(true), rivalBattle()}) {
+        if (!state.rules.flightModel) botf::applyRulesetPreset(state, botf::RulesetPreset::Remastered);
+        auto headless = state;
+        const auto expected = botf::advance(headless);
+        const auto actual = sessionTurn(state);
+        check(botf::fingerprint(state) == botf::fingerprint(headless) && actual.stateHash == expected.stateHash &&
+            !expected.battles.empty(), "Flight-model headless and session combat diverged");
+        bool fired = false;
+        for (const auto& b : expected.battles) for (const auto& r : b.rounds)
+            for (const auto& e : r.events) fired |= e.kind == botf::CombatEventKind::Fire;
+        check(fired, "Flight-model battle recorded no weapon events");
+        // COMBAT_EVENTS round-trips through the campaign save.
+        const auto text = botf::serialize(state);
+        check(text.find("\nTACTICAL_FLIGHT 1\n") != std::string::npos && text.find("\nCOMBAT_EVENTS ") != std::string::npos,
+            "Flight-model save lacks its sections");
+        const auto loaded = botf::deserialize(text);
+        check(botf::serialize(loaded) == text && loaded.latestBattles.size() == state.latestBattles.size(),
+            "Flight-model save did not round-trip");
+        for (std::size_t i = 0; i < loaded.latestBattles.size(); ++i)
+            for (std::size_t j = 0; j < loaded.latestBattles[i].rounds.size(); ++j)
+                check(loaded.latestBattles[i].rounds[j].events == state.latestBattles[i].rounds[j].events, "Events lost in save");
+    }
+}
+
+void testFlightModelPlayerOrdersReplay() {
+    auto uninterrupted = flightBattle();
+    botf::session::TurnSession live;
+    beginPlayerBattle(live, uninterrupted);
+    check(live.pending->rulesVersion == botf::tactical::FlightTacticalRules, "Remastered battle is not rules 3");
+    const int player = firstShip(*live.pending, 1);
+    const int enemy = firstShip(*live.pending, 2);
+    botf::session::order(live, {player, enemy, botf::tactical::TacticalManeuver::Strafe});
+    botf::session::resolveRound(live);
+    auto reloadedState = botf::deserialize(botf::serialize(uninterrupted));
+    auto reloaded = botf::session::deserialize(botf::session::serialize(live));
+    check(botf::tactical::serializeEncounter(*reloaded.pending) == botf::tactical::serializeEncounter(*live.pending),
+        "Mid-battle save lost flight state");
+    const auto liveReport = finish(live, uninterrupted);
+    const auto loadedReport = finish(reloaded, reloadedState);
+    check(botf::serialize(uninterrupted) == botf::serialize(reloadedState) && liveReport.stateHash == loadedReport.stateHash,
+        "Flight-model mid-battle reload diverged");
+    bool strafed = false;
+    for (const auto& b : liveReport.battles) for (const auto& r : b.rounds) for (const auto& e : r.events)
+        strafed |= e.kind == botf::CombatEventKind::ManeuverStart && e.fleetId == player &&
+            e.maneuver == static_cast<int>(botf::tactical::TacticalManeuver::Strafe);
+    check(strafed, "Player strafe order missing from the event stream");
+}
+
 void run(const char* name, const std::function<void()>& test, int& passed) {
     try {
         test();
@@ -523,6 +582,8 @@ int main() {
         run("regression: session combat clears strategic retreat on arrival", testRetreatClearedAtDestination, passed);
         run("unified combat: three empires in one sector fight pairwise duels in id order", testThreeEmpireBattlesArePairwise, passed);
         run("unified combat: strategic stance, target and retreat become standing orders", testStrategicOrdersBecomeStandingOrders, passed);
+        run("rules 3: flight-model session matches headless advance; events survive the save", testFlightModelSessionMatchesHeadless, passed);
+        run("rules 3: player strafe orders replay and reload mid-battle", testFlightModelPlayerOrdersReplay, passed);
     } catch (const std::exception& error) {
         std::cerr << "FAIL suite aborted after " << passed << " session scenarios: " << error.what() << '\n';
         return 1;

@@ -325,11 +325,29 @@ export interface TacticalRound {
   index: number; ended: boolean; winner: number; truce: boolean; ships: RoundShip[];
   salvos: Salvo[];
   lost: number[]; retreatedIds: number[];
+  /** Tactical rules 3 presentation stream, ordered by tick (empty under rules 1 and 2). */
+  events?: CombatEventView[];
+}
+/** One `botf::CombatEvent` as the bridge writes it (COMBAT-RULES.md "Event stream for client authors"). */
+export interface CombatEventView {
+  tick: number;
+  kind: 'ManeuverStart' | 'ManeuverEnd' | 'Cloak' | 'Decloak' | 'Fire' | 'Ram' | 'Destroyed' | 'Retreated' | 'Disengage' | 'Truce';
+  fleetId: number; targetFleetId: number;
+  x: number; y: number; facing: number;
+  /** Fire only. */
+  mountIndex?: number; weapon?: string; key?: string; family?: 'beam' | 'pulse' | 'torpedo'; projectiles?: number;
+  hit?: boolean; intercepted?: boolean;
+  /** Fire and Ram. */
+  impactTick?: number; shieldDamage?: number; hullDamage?: number; destroyed?: boolean;
+  /** ManeuverStart / ManeuverEnd. */
+  maneuver?: string; value?: number;
 }
 export interface HailPreview { atWar: boolean; trust: number; ourStrength: number; theirStrength: number; accepts: boolean }
 export interface Encounter {
   arenaWidth: number; arenaHeight: number; round: number; maxRounds: number; finished: boolean; winner: number;
   sectorX: number; sectorY: number; turn: number; controller: number; location: string; rules: number; foe: number;
+  /** Event-stream ticks per round (rules 3). */
+  ticksPerRound?: number;
   hail: HailPreview;
   ships: TacticalShip[]; rounds: TacticalRound[];
 }

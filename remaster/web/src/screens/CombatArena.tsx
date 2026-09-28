@@ -226,12 +226,13 @@ export function CombatArena({ encounter, round, selected, target, onPick, animat
         const stt = roundData ? statusIn(roundData, s.id) : undefined;
         if (!animating || !stt) { if (b.pos) rawPos.set(s.id, center(b.pos)); continue; }
         // One smooth eased curve through from -> via -> to (quadratic Bezier passing through via).
-        const p0 = center(stt.from), p1 = center(stt.via), p2 = center(stt.to);
+        const mo = pres?.motions.find((m) => m.id === s.id);
+        const p0 = center(mo?.from ?? stt.from), p1 = center(mo?.via ?? stt.via), p2 = center(mo?.to ?? stt.to);
         const c1: P = [2 * p1[0] - (p0[0] + p2[0]) / 2, 2 * p1[1] - (p0[1] + p2[1]) / 2];
         const u = ease(tMove);
         rawPos.set(s.id, bez(p0, c1, p2, u));
         const d = bezD(p0, c1, p2, Math.min(0.98, Math.max(0.02, u)));
-        if (Math.hypot(p2[0] - p0[0], p2[1] - p0[1]) > 1) heading.set(s.id, (Math.atan2(d[1], d[0]) * 180) / Math.PI);
+        if (!mo?.strafe && Math.hypot(p2[0] - p0[0], p2[1] - p0[1]) > 1) heading.set(s.id, (Math.atan2(d[1], d[0]) * 180) / Math.PI);
       }
       const baseR = Math.max(10, Math.min(24, cell * 0.3));
       const radius = (s: TacticalShip) => baseR * shipScale(s);
@@ -420,7 +421,15 @@ export function CombatArena({ encounter, round, selected, target, onPick, animat
           }
         }
         // Impact: shield-bubble flash (shields up) or hull sparks and fire (shields down).
-        if (t >= shot.impact) {
+        if (t >= shot.impact && shot.intercepted) {
+          // Point defence: the volley bursts short of the target.
+          const f = clamp01((t - shot.impact) / 0.16);
+          const px0 = b[0] - Math.cos(ang) * hitR * 1.6, py0 = b[1] - Math.sin(ang) * hitR * 1.6;
+          ctx.fillStyle = `rgba(255,255,220,${0.8 * (1 - f)})`; ctx.beginPath(); ctx.arc(px0, py0, 4 + f * 8, 0, 6.283); ctx.fill();
+          if (!shot.id.match(/:t[1-9]$/)) floatTexts.push({ x: px0, y: py0 - 12, text: 'INTERCEPTED', color: '#e8f4ff', q: f });
+        } else if (t >= shot.impact && shot.miss) {
+          if (!shot.id.match(/:[pt][1-9]$/)) floatTexts.push({ x: b[0], y: b[1] - baseR * 1.9, text: 'MISS', color: 'rgba(200,215,245,0.8)', q: clamp01((t - shot.impact) / 0.16) });
+        } else if (t >= shot.impact) {
           const f = clamp01((t - shot.impact) / 0.16);
           const heavy = shot.family === 'torpedo';
           if (shot.shieldHit) {
@@ -576,7 +585,8 @@ export function CombatArena({ encounter, round, selected, target, onPick, animat
         // Ships turn smoothly: from the old heading into the direction of travel, then onto the new heading.
         let yawDeg = a.yaw ?? 0;
         if (animating && stt) {
-          const y0 = b.yaw ?? 0, y1 = stt.yaw, hd = heading.get(s.id);
+          const mo = pres?.motions.find((m) => m.id === s.id);
+          const y0 = mo?.yawFrom ?? b.yaw ?? 0, y1 = mo?.yawTo ?? stt.yaw, hd = heading.get(s.id);
           if (hd === undefined) yawDeg = lerpAngle(y0, y1, ease(clamp01(tMove * 1.4)));
           else if (tMove < 0.25) yawDeg = lerpAngle(y0, hd, ease(tMove / 0.25));
           else if (tMove < 0.75) yawDeg = hd;
@@ -734,7 +744,7 @@ export function CombatArena({ encounter, round, selected, target, onPick, animat
       let changed = false;
       for (const [k2, n] of Object.entries(fxCount)) if (n) { totals[k2] = (totals[k2] ?? 0) + n; changed = true; }
       if (changed) canvas.dataset.fx = JSON.stringify(totals);
-      canvas.dataset.fxSource = presentationSource().kind;
+      if (pres) canvas.dataset.fxSource = pres.source;
 
       // floating texts on top
       ctx.textAlign = 'center'; ctx.textBaseline = 'middle';

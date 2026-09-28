@@ -668,7 +668,7 @@ void combatRecordScenarios(int& passed) {
         rejects([&] { botf::validate(twice); }, "Two orders for one ship in a round accepted");
         // A schema-13 save (no orders) loads and re-saves as schema 14.
         auto plain = s;
-        for (auto& b : plain.latestBattles) for (auto& r : b.rounds) r.orders.clear();
+        for (auto& b : plain.latestBattles) for (auto& r : b.rounds) { r.orders.clear(); r.events.clear(); }
         const auto old = asSchemaThirteen(plain);
         const auto migrated = botf::deserialize(old);
         check(botf::serialize(migrated) == botf::serialize(plain), "Schema 13 did not migrate losslessly");
