@@ -10,6 +10,8 @@
 #include "BotfCampaign.h"
 #include "BotfViewModel.h"
 #include "BotfGameplayViewModel.h"
+#include "BotfShipDatabase.h"
+#include "BotfAudioSubsystem.h"
 #include "Simulation.h"
 #include "CampaignSession.h"
 #include "ReferenceCatalogue.h"
@@ -3125,7 +3127,7 @@ private:
     }
     int ReferenceCount() const {
         return ReferenceCategory == 0 ? static_cast<int>(botf::referenceData::TechnologyCatalogue.size())
-            : ReferenceCategory == 1 ? static_cast<int>(botf::referenceData::ShipCatalogue.size())
+            : ReferenceCategory == 1 ? static_cast<int>(botf::view::shipDatabaseIds().size())
             : static_cast<int>(botf::referenceData::BuildingCatalogue.size());
     }
     // Cached by category and search text (the catalogues are static): page labels ask for it every frame.
@@ -3167,8 +3169,8 @@ private:
             return FString::Printf(TEXT("%s  /  L%d"), *Str(T.name), T.level);
         }
         if (ReferenceCategory == 1) {
-            const auto& S = botf::referenceData::ShipCatalogue[Index];
-            return FString::Printf(TEXT("%s  /  %s"), *Str(S.name), *SourceRaceName(S.raceId));
+            // Legacy catalogue then expanded roster (core findShip); see BotfShipDatabase.h.
+            return Str(botf::view::shipDatabaseLabel(botf::view::shipDatabaseIds()[static_cast<std::size_t>(Index)]));
         }
         const auto& B = botf::referenceData::BuildingCatalogue[Index];
         return Str(B.name);
@@ -3193,14 +3195,9 @@ private:
                 *Str(T.name), *SourceFieldName(T.field), T.level, static_cast<long long>(T.cost), *Str(T.description));
         }
         if (ReferenceCategory == 1) {
-            const auto& S = botf::referenceData::ShipCatalogue[ReferenceSelected];
-            FString Requirements;
-            for (int Field = 0; Field < botf::ResearchFields; ++Field)
-                Requirements += FString::Printf(TEXT("%s %d%s"), *Str(botf::researchName(Field)), S.technologyRequirements[Field],
-                    Field == botf::ResearchFields - 1 ? TEXT("") : TEXT("  |  "));
-            return FString::Printf(TEXT("%s  /  %s\n%s\n\nIndustry %d  |  upkeep %d  |  hull %d  |  shields %d  |  attack %d\nRequires: %s\n\n%s\n\nOnly ships listed in a system's Ship List can currently be built."),
-                *Str(S.name), *Str(S.shipClass), *SourceRaceName(S.raceId), S.industryCost, S.maintenance,
-                S.hull, S.shields, S.attack, *Requirements, *Str(S.description));
+            std::vector<std::string> FieldNames;
+            for (int Field = 0; Field < botf::ResearchFields; ++Field) FieldNames.emplace_back(botf::researchName(Field));
+            return Str(botf::view::shipDatabaseDetails(botf::view::shipDatabaseIds()[static_cast<std::size_t>(ReferenceSelected)], FieldNames));
         }
         const auto& B = botf::referenceData::BuildingCatalogue[ReferenceSelected];
         return FString::Printf(TEXT("%s\n\nIndustry %d  |  energy %d  |  population %d\nRequires %s level %d\n\n%s\n\nOnly structures listed in a system's Build List can currently be built."),
