@@ -43,6 +43,13 @@ export const focusRequest = signal<{ x: number; y: number; zoom?: number; frame?
 export const busy = signal(false);
 export const menuOpen = signal(false);
 export const saveName = signal<string>('');
+/** Overlay panels: galactic events (decisions) and victory progress. */
+export const eventsOpen = signal(false);
+export const victoryOpen = signal(false);
+/** The end-of-campaign screen was dismissed for this campaign (it can be reopened from the menu). */
+export const outcomeDismissed = signal(false);
+/** Test/debug hook: previews the end-of-campaign screen for an outcome without ending the campaign. */
+export const outcomePreview = signal<'victory' | 'defeat' | null>(null);
 
 export const player = computed(() => view.value?.meta.player ?? 0);
 export const inGame = computed(() => view.value !== null);
@@ -195,6 +202,9 @@ function enterGame(next: GameView, name: string): void {
     encounter.value = null;
     history.value = [];
     saveName.value = name;
+    eventsOpen.value = false;
+    victoryOpen.value = false;
+    outcomeDismissed.value = false;
     screen.value = 'galaxy';
     const home = next.colonies[0];
     if (home) selectSystem(home.systemId);
@@ -215,12 +225,26 @@ export function startCampaign(options: Parameters<typeof core.newCampaign>[0]): 
   }
 }
 
-export function startDrill(): void {
+export function startDrill(station = false): void {
   try {
-    const next = core.newBattleDrill();
-    enterGame(next, 'Tactical drill');
-    toast('Tactical drill: a Klingon patrol holds Sol and war has been drafted. End the turn to engage.', 'warn', 5000);
+    const next = core.newBattleDrill(station);
+    enterGame(next, station ? 'Starbase drill' : 'Tactical drill');
+    toast(station
+      ? 'Starbase drill: Sol’s starbase and squadron face a Klingon patrol. End the turn to engage.'
+      : 'Tactical drill: a Klingon patrol holds Sol and war has been drafted. End the turn to engage.', 'warn', 5000);
     blip('start');
+  } catch (error) {
+    reportError(error);
+  }
+}
+
+export function startFrontierDrill(): void {
+  try {
+    const next = core.newFrontierDrill();
+    enterGame(next, 'Frontier drill');
+    toast('Frontier drill: a transport waits at Sol to assemble an outpost, an outpost can become a starbase, and two events need a decision.', 'warn', 6000);
+    blip('start');
+    if (next.events.some((e) => e.awaitingChoice)) eventsOpen.value = true;
   } catch (error) {
     reportError(error);
   }
@@ -277,6 +301,11 @@ export function endTurnWarnings(v: GameView): string[] {
   const idleShips = v.fleets.filter((f) => !f.hasOrders && f.x === f.targetX && f.y === f.targetY && !f.terraforming).length;
   if (idleShips) out.push(`${idleShips} ${idleShips === 1 ? 'ship has' : 'ships have'} no orders.`);
   if (v.empire.income.net < 0) out.push(`Treasury falls by ${-v.empire.income.net} credits per turn.`);
+  const undecided = (v.events ?? []).filter((e) => e.awaitingChoice && e.drafted < 0);
+  for (const e of undecided) {
+    const fallback = e.choices.find((c) => c.index === e.defaultChoice);
+    out.push(`${e.name}: no decision yet${e.deadline <= v.meta.turn ? ' — the default applies this turn' : ` (due turn ${e.deadline})`}${fallback ? `; default “${fallback.label}”` : ''}.`);
+  }
   return out;
 }
 
@@ -324,7 +353,7 @@ export function endTurn(): void {
     if (screen.value === 'combat') screen.value = 'galaxy';
     if (result.briefing) {
       briefing.value = result.briefing;
-      briefingOpen.value = result.briefing.events.length > 0 || result.briefing.outcome !== 'ongoing';
+      briefingOpen.value = (result.briefing.events.length > 0 || result.briefing.outcome !== 'ongoing') && result.briefing.outcome === 'ongoing';
     }
     autosave();
     const v = view.value;

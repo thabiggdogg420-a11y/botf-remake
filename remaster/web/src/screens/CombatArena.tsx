@@ -84,6 +84,7 @@ function frameRegion(e: Encounter, aspect: number): View {
 }
 
 function shipScale(s: TacticalShip): number {
+  if (s.station) return s.stationType === 'Starbase' ? 1.55 : 1.3;
   const cls = s.shipClass === 'Scout' ? 0.8 : s.shipClass === 'Transport' || s.shipClass === 'ColonyShip' ? 0.86 : 1;
   return cls * Math.min(1.3, Math.max(0.85, 0.7 + Math.sqrt(Math.max(1, s.maxHull)) / 22));
 }
@@ -422,7 +423,8 @@ export function CombatArena({ encounter, round, selected, target, onPick, animat
           ctx.lineCap = 'butt';
         }
         // hull glyph
-        const yaw = (((animating && stt ? stt.yaw : a.yaw) ?? 0) * Math.PI) / 180;
+        // Stations never turn to face anything: a slow docking-ring spin instead of the ship's heading.
+        const yaw = s.station ? (motion ? now / 6000 : 0) : (((animating && stt ? stt.yaw : a.yaw) ?? 0) * Math.PI) / 180;
         ctx.rotate(yaw);
         const glow = ctx.createRadialGradient(0, 0, 0, 0, 0, R * 1.5);
         glow.addColorStop(0, pal.glow); glow.addColorStop(1, 'rgba(0,0,0,0)');
@@ -430,7 +432,27 @@ export function CombatArena({ encounter, round, selected, target, onPick, animat
         ctx.globalAlpha = alpha * (cloaked ? 0.32 : 1);
         ctx.fillStyle = pal.map; ctx.strokeStyle = 'rgba(255,255,255,0.9)'; ctx.lineWidth = 1.2;
         ctx.beginPath();
-        if (s.shipClass === 'Transport' || s.shipClass === 'ColonyShip') {
+        if (s.station) {
+          // Immobile base: an armoured hexagon (outpost) or a ring with docking spokes (starbase).
+          if (s.stationType === 'Starbase') {
+            ctx.arc(0, 0, R * 0.95, 0, 6.283); ctx.moveTo(R * 0.42, 0); ctx.arc(0, 0, R * 0.42, 0, 6.283, true);
+            ctx.fill('evenodd'); ctx.stroke();
+            ctx.beginPath();
+            for (let i = 0; i < 4; i++) {
+              const an = (i * Math.PI) / 2;
+              ctx.moveTo(Math.cos(an) * R * 0.42, Math.sin(an) * R * 0.42); ctx.lineTo(Math.cos(an) * R * 1.18, Math.sin(an) * R * 1.18);
+            }
+            ctx.lineWidth = 2.2; ctx.strokeStyle = pal.map; ctx.stroke();
+            ctx.lineWidth = 1.2; ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+            ctx.beginPath(); ctx.arc(0, 0, R * 0.22, 0, 6.283);
+          } else {
+            for (let i = 0; i < 6; i++) {
+              const an = (i * Math.PI) / 3;
+              if (i) ctx.lineTo(Math.cos(an) * R * 0.9, Math.sin(an) * R * 0.9); else ctx.moveTo(R * 0.9, 0);
+            }
+            ctx.closePath();
+          }
+        } else if (s.shipClass === 'Transport' || s.shipClass === 'ColonyShip') {
           ctx.ellipse(0, 0, R * 0.95, R * 0.5, 0, 0, 6.283);
         } else if (s.shipClass === 'Scout') {
           ctx.moveTo(R, 0); ctx.lineTo(-R * 0.75, R * 0.45); ctx.lineTo(-R * 0.45, 0); ctx.lineTo(-R * 0.75, -R * 0.45); ctx.closePath();
@@ -501,6 +523,7 @@ export function CombatArena({ encounter, round, selected, target, onPick, animat
           ctx.fillText(name, px, ly);
           let chip = '';
           let chipColor = 'rgba(200,215,245,0.85)';
+          if (s.station && !disengaging && !(st.intent && !animating && !e.finished && s.next)) { chip = `${(s.stationType ?? 'station').toUpperCase()} · IMMOBILE`; chipColor = '#cfe0ff'; }
           if (disengaging) { chip = 'DISENGAGING'; chipColor = '#f5c451'; }
           else if (cloaked && !s.mine) { chip = 'CLOAKED'; chipColor = '#bfe6ff'; }
           else if (st.intent && !animating && !e.finished && s.next) {

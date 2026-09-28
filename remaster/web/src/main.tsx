@@ -2,6 +2,7 @@ import { render } from 'preact';
 import './styles/fonts.css';
 import './styles/main.css';
 import './styles/features.css';
+import './styles/remaster.css';
 import { App } from './App';
 import { loadCore } from './core/engine';
 import { loadMeta } from './state/store';

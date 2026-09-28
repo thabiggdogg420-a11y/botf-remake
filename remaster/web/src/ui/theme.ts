@@ -80,6 +80,10 @@ export const CATEGORY_LABELS: Record<string, string> = {
   diplomacy: 'Diplomacy',
   intel: 'Intelligence',
   combat: 'Combat',
+  colonization: 'Colonization',
+  events: 'Galactic events',
+  stations: 'Stations',
+  victory: 'Victory',
   economy: 'Colonies & economy',
   fleets: 'Fleet operations',
 };

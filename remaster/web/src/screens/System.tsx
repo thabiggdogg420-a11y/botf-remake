@@ -5,6 +5,7 @@ import {
   cancelOrders, confirmDialog, goto, issue, meta, reportError, selectSystem, selection, view,
 } from '../state/store';
 import { Badge, Empty, fmt, Frame, IconButton, Meter, Pill, signed, Slider, Stat, Tabs, tip } from '../ui/components';
+import { FundingNotice, MegaprojectFrame, TemplatesFrame } from '../ui/Remaster';
 
 export function SystemScreen() {
   const v = view.value!;
@@ -72,7 +73,10 @@ export function SystemScreen() {
           <BuildOptions detail={detail} locked={locked} />
         </div>
         <div class="sys-col narrow">
+          <FundingNotice detail={detail} />
           <BuildQueue v={v} detail={detail} locked={locked} />
+          <TemplatesFrame v={v} detail={detail} locked={locked} />
+          <MegaprojectFrame v={v} detail={detail} locked={locked} />
         </div>
       </div>
     </div>

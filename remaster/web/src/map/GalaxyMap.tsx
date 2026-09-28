@@ -200,6 +200,7 @@ export function GalaxyMap() {
       if (moved || !v) return;
       const [sx, sy] = local(e);
       const hit = pick(sx, sy);
+      if (hit && hit.kind === 'station') { selectCell(hit.cell); blip('select'); return; }
       if (hit) { selectFleet(hit.id); blip('select'); return; }
       const cell = renderer.cellAt(cam, v, sx, sy);
       const sel = selection.value;
@@ -224,8 +225,10 @@ export function GalaxyMap() {
       const v = view.value;
       if (!v) return;
       const [sx, sy] = local(e);
-      const hit = pick(sx, sy);
-      const cell = hit ? hit.cell : renderer.cellAt(cam, v, sx, sy);
+      const picked = pick(sx, sy);
+      // A station glyph stands for its sector: the menu offers the sector's orders.
+      const hit = picked && picked.kind !== 'station' ? picked : null;
+      const cell = picked ? picked.cell : renderer.cellAt(cam, v, sx, sy);
       if (cell === null) return;
       const sel = selection.value;
       if (!sel.fleetId || (hit && hit.kind === 'fleet')) {
@@ -296,8 +299,14 @@ export function GalaxyMap() {
         const r = canvas.getBoundingClientRect();
         return { x: r.left + sx, y: r.top + sy };
       },
+      stationMarker: (id) => {
+        const hit = renderer.hits.find((h) => h.kind === 'station' && h.id === id);
+        if (!hit) return null;
+        const r = canvas.getBoundingClientRect();
+        return { x: r.left + hit.x, y: r.top + hit.y };
+      },
       fleetMarker: (id) => {
-        const hit = renderer.hits.find((h) => h.id === id);
+        const hit = renderer.hits.find((h) => h.kind !== 'station' && h.id === id);
         if (!hit) return null;
         const r = canvas.getBoundingClientRect();
         return { x: r.left + hit.x, y: r.top + hit.y };

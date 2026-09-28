@@ -66,6 +66,7 @@ export interface FleetView {
   maintenance: number; colonyShip: boolean; colonize: boolean; taskForceId: number; stance: string; attackTarget: number;
   retreat: boolean; invadeSystemId: number; terraforming: boolean; terraformSystemId: number; terraformPlanetIndex: number;
   route: number[]; eta: number; routeBlocked: boolean; hasOrders: boolean;
+  buildingOutpost?: boolean; outpostProgress?: number;
 }
 
 export interface ContactView {
@@ -95,7 +96,51 @@ export interface PendingCommand {
   building?: string; referenceId?: number; proposalId?: number; proposalAccept?: boolean; memberFleetIds?: number[]; stance?: string;
 }
 
-export interface Alert { kind: string; severity: Severity; text: string; systemId?: number; fleetId?: number; empire?: number }
+export interface Alert { kind: string; severity: Severity; text: string; systemId?: number; fleetId?: number; empire?: number; eventId?: number }
+
+// ---- Schema-13 gameplay layer ----------------------------------------------------------------
+export interface RulesView {
+  preset: 'classic' | 'remastered'; presetName: string;
+  stations: boolean; galaxyFeatures: boolean; curatedEvents: boolean; alternativeVictories: boolean;
+}
+export interface StationStatsView {
+  maxHull: number; maxShields: number; beam: number; torpedo: number;
+  supplyRadius: number; sensorRadius: number; upkeep: number; repairPercent: number;
+}
+export interface StationView extends StationStatsView {
+  id: number; owner: number; ownerName: string; mine: boolean; name: string; type: 'Outpost' | 'Starbase'; typeName: string;
+  x: number; y: number; hull: number; shields: number; builtTurn: number;
+  upgrade?: { fundingSystemId: number; funding: string; work: number; cost: number };
+}
+export interface StationDetail {
+  station: StationView; starbase: StationStatsView; upgradeCredits: number; upgradeIndustry: number;
+  funding: { systemId: number; name: string; distance: number; industry: number; blocker: string }[];
+  upgradeDrafted: boolean; ownShipsHere: number; contactsHere: number;
+}
+export type FeatureType = 'Nebula' | 'Wormhole' | 'BlackHole' | 'NeutronStar' | 'IonStorm' | 'SubspaceRift';
+export interface FeatureView {
+  id: number; type: FeatureType; name: string; x: number; y: number;
+  pairId?: number; exit?: { x: number; y: number }; clusterId?: number;
+  driftX?: number; driftY?: number; cells?: number[]; expiresTurn?: number;
+  surveyed: boolean; effect: string; surveyReward: string; passable: boolean;
+}
+export interface EventChoice { index: number; label: string; effect: string; isDefault: boolean; blocker?: string }
+export interface GalacticEventView {
+  id: number; kind: string; name: string; empire: number; systemId?: number; system?: string; x?: number; y?: number;
+  startTurn: number; endTurn: number; deadline: number; choice: number; choiceApplied: boolean; magnitude: number;
+  description: string; drafted: number; draftIds: number[]; awaitingChoice: boolean; defaultChoice: number; choices: EventChoice[];
+}
+export interface TemplateView {
+  id: number; name: string; isDefault: boolean;
+  items: { product: string; referenceId: number; name: string; isShip: boolean }[];
+}
+export interface VictoryCondition { condition: 'Conquest' | 'Domination' | 'Scientific' | 'Diplomatic'; name: string; enabled: boolean; achieved: boolean; percent: number; explanation: string }
+export interface VictoryView {
+  conditions: VictoryCondition[]; alternative: boolean; threshold: number;
+  megaprojectName: string; megaprojectCost: number; megaprojectCredits: number; megaprojectWorkPerTurn: number;
+  megaproject?: { systemId: number; system: string; work: number; startTurn: number };
+  rivalProjects: { owner: number; ownerName: string; work: number; startTurn: number }[];
+}
 
 export interface BattleSummary {
   index: number; turn: number; x: number; y: number; first: number; second: number; winner: number;
@@ -108,6 +153,7 @@ export interface GameView {
     ruleset: string; era: number; eraName: string; contentVersion: string; saveVersion: number;
     outcome: 'ongoing' | 'victory' | 'defeat'; winner: number; advancedRules: boolean; campaignExpansion: boolean;
     modernEngines: boolean; populationEnabled: boolean; scenario: string; version: number; empireCount: number;
+    rules: RulesView;
   };
   empire: {
     id: number; name: string; credits: number; draftCredits: number; research: number; researchReserve: number;
@@ -127,6 +173,13 @@ export interface GameView {
   battles: BattleSummary[];
   session: { active: boolean; battlePending: boolean; battleFinished: boolean; replays: number };
   alerts: Alert[];
+  stations: StationView[];
+  outpostTurns: number;
+  stationUpgradeCost: { credits: number; industry: number };
+  features: FeatureView[];
+  events: GalacticEventView[];
+  templates: TemplateView[];
+  victory: VictoryView;
 }
 
 export interface ConstructionChoice {
@@ -150,6 +203,13 @@ export interface ColonyDetail {
   queue: QueueItem[];
   queueBlocker: string; overflow: number; rushCost: number; buyBlocker: string; shipyardToggleBlocker: string;
   scrap: { building: string; name: string; count: number; energyCost: number; upkeep: number; blocker: string }[];
+  megaproject: {
+    enabled: boolean; name: string; here: boolean; systemId?: number; system?: string; work?: number;
+    cost: number; credits: number; workPerTurn: number; startBlocker: string; cancelBlocker: string;
+  };
+  templates: { id: number; name: string; blocker: string }[];
+  queueExplanation: string;
+  fundsStation?: { stationId: number; name: string; x: number; y: number; work: number; cost: number };
 }
 export interface WorkforcePreview {
   error: string; economy?: Economy; growth?: Growth;
@@ -228,6 +288,8 @@ export interface TacticalShip {
   hidden: boolean; hull: number; maxHull: number; initialHull: number; shields: number; maxShields: number; initialShields: number;
   beam: number; torpedo: number; speed: number; position: Coord | null; alive: boolean; active: boolean; retreated: boolean;
   canRetreat: boolean; canCloak: boolean; cloaked: boolean; groupId: number; group?: string; disengaging: boolean;
+  /** Outposts and starbases fight as immobile combatants (ids >= 2000000). */
+  immobile?: boolean; station?: boolean; stationType?: 'Outpost' | 'Starbase'; stationName?: string;
   maneuver?: string; target?: number; ordered?: boolean;
   /** What the ship executes next round and who decided it (player order, standing order, tactical AI). */
   next?: { maneuver: string; target: number; source: 'order' | 'standing' | 'ai' };
@@ -254,7 +316,7 @@ export interface Encounter {
 export interface BriefingEvent {
   category: string; severity: Severity; text: string; systemId?: number; fleetId?: number; x?: number; y?: number; battle?: number;
   /** Diplomacy: proposal | tribute | gift | callToArms | betrayal | callRefused | callHonored | eliminated | secession | war | peace | news … */
-  kind?: string; proposalId?: number; dueTurn?: number;
+  kind?: string; proposalId?: number; dueTurn?: number; stationId?: number; eventId?: number;
 }
 export interface Briefing {
   turn: number; creditsBefore: number; creditsAfter: number; researchGained: number; fleetUpkeep: number; tradeIncome: number;

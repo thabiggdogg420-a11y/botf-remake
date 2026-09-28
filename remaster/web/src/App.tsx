@@ -1,8 +1,9 @@
 import { useEffect } from 'preact/hooks';
 import {
-  back, briefing, briefingOpen, busy, confirmDialog, encounter, endTurnWarnings, GAME_SCREENS, goto, menuOpen, quitToTitle,
-  requestEndTurn, screen, selectFleet, selection, view, type Screen, toast, saveName,
+  back, briefing, briefingOpen, busy, confirmDialog, encounter, endTurnWarnings, eventsOpen, GAME_SCREENS, goto, menuOpen, outcomeDismissed,
+  quitToTitle, requestEndTurn, screen, selectFleet, selection, view, victoryOpen, type Screen, toast, saveName,
 } from './state/store';
+import { EventsPanel, OutcomeScreen, pendingEventCount, VictoryPanel } from './ui/Remaster';
 import { saveToSlot } from './state/saves';
 import { audioEnabled, setAudio } from './ui/audio';
 import { ConfirmLayer, Emblem, fmt, Pill, signed, TooltipLayer, Toasts, tip } from './ui/components';
@@ -59,6 +60,10 @@ export function App() {
       }
       if (settingsOpen.value) {
         if (e.key === 'Escape') { settingsOpen.value = false; e.preventDefault(); }
+        return;
+      }
+      if (eventsOpen.value || victoryOpen.value) {
+        if (e.key === 'Escape') { eventsOpen.value = false; victoryOpen.value = false; e.preventDefault(); }
         return;
       }
       const inGame = !!view.value && !['title', 'new', 'saves'].includes(screen.value);
@@ -126,6 +131,9 @@ export function App() {
           </main>
           {briefingOpen.value && briefing.value ? <BriefingPanel /> : null}
           {menuOpen.value ? <GameMenu /> : null}
+          <EventsPanel />
+          <VictoryPanel />
+          <OutcomeScreen />
           <HelpPopover />
           <TutorialOverlay />
         </div>
@@ -201,6 +209,14 @@ function TopBar() {
       <div class="tb-actions">
         <HelpButton />
         {briefing.value ? <Pill small tone="ghost" onClick={() => { briefingOpen.value = true; }} hint="Reopen the last turn briefing">Briefing</Pill> : null}
+        {v.events?.length ? (
+          <Pill small tone={pendingEventCount(v) ? 'warn' : 'ghost'} onClick={() => { eventsOpen.value = true; }} testid="open-events"
+            hint={pendingEventCount(v) ? `${pendingEventCount(v)} galactic event${pendingEventCount(v) === 1 ? '' : 's'} await your decision` : 'Active galactic events'}>
+            Events{pendingEventCount(v) ? ` · ${pendingEventCount(v)}` : ''}
+          </Pill>
+        ) : null}
+        <Pill small tone="ghost" onClick={() => { victoryOpen.value = true; }} testid="open-victory"
+          hint={v.victory?.conditions.map((c) => `${c.name}: ${c.enabled ? `${c.percent}%` : 'off'}`).join('\n')}>Victory</Pill>
         <Pill small tone="tertiary" onClick={() => { menuOpen.value = !menuOpen.value; }} kbd="Esc" testid="menu-button">Menu</Pill>
         <button type="button" class={`end-turn${busy.value ? ' busy' : ''}${pendingBattle ? ' battle' : ''}`} data-testid="end-turn"
           disabled={busy.value || v.meta.outcome !== 'ongoing'}
@@ -258,6 +274,12 @@ function GameMenu() {
           <Pill wide onClick={() => { menuOpen.value = false; }}>Resume</Pill>
           <Pill wide tone="secondary" onClick={quickSave} testid="quick-save">Quick save</Pill>
           <Pill wide tone="secondary" onClick={() => { menuOpen.value = false; goto('saves'); }} testid="open-saves">Save / load…</Pill>
+          {v.meta.outcome !== 'ongoing' ? (
+            <Pill wide tone="secondary" onClick={() => { menuOpen.value = false; outcomeDismissed.value = false; }}>
+              {v.meta.outcome === 'victory' ? 'Victory summary' : 'Defeat summary'}
+            </Pill>
+          ) : null}
+          <Pill wide tone="ghost" onClick={() => { menuOpen.value = false; victoryOpen.value = true; }} testid="menu-victory">Victory progress…</Pill>
           <Pill wide tone="ghost" onClick={() => { menuOpen.value = false; settingsOpen.value = true; }} testid="open-settings"
             hint="Interface scale, reduced motion, colour-blind palette, sound, autosave, tutorial">Settings…</Pill>
           <Pill wide tone="ghost" active={audioEnabled.value} onClick={() => setAudio(!audioEnabled.value)} hint="Synthesised interface sounds">

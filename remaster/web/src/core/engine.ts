@@ -2,7 +2,7 @@
 import createBotfCore from '../generated/botf-core.mjs';
 import type {
   BattleReport, Briefing, ColonyDetail, Command, DiplomacyView, Encounter, Encyclopedia, Forecast, GameView, IntelView,
-  Meta, ResearchView, SaveBlob, TurnResult, WorkforcePreview,
+  Meta, ResearchView, SaveBlob, StationDetail, TurnResult, WorkforcePreview,
 } from './types';
 
 export class CoreError extends Error {
@@ -36,9 +36,11 @@ export const core = {
   encyclopedia: () => call<Encyclopedia>('encyclopedia'),
   newCampaign: (options: {
     faction: number; empires: number; seed: number; era: number; ruleset: 'reference' | 'prototype';
-    width: number; height: number; systems: number; events: boolean; aiAggression: boolean;
+    width: number; height: number; systems: number; events: boolean; aiAggression: boolean; preset?: 'classic' | 'remastered';
   }) => call<GameView>('newCampaign', options),
-  newBattleDrill: () => call<GameView>('newBattleDrill'),
+  newBattleDrill: (station = false) => call<GameView>('newBattleDrill', { station }),
+  newFrontierDrill: () => call<GameView>('newFrontierDrill'),
+  station: (stationId: number) => call<StationDetail>('station', { stationId }),
   newDiplomacyDrill: () => call<GameView>('newDiplomacyDrill'),
   headlessFingerprint: () => call<string | number>('headlessFingerprint'),
   view: () => call<GameView>('view'),

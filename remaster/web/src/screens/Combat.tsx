@@ -142,6 +142,7 @@ function LiveBattle({ e }: { e: Encounter }) {
             {MANEUVERS.map((mv) => {
               const current = scope === 'ship' && selected?.maneuver === mv.key;
               const cannot = e.finished ? 'The battle is over'
+                : scope === 'ship' && selected?.station && ['Retreat', 'Charge', 'Circle', 'Flyby', 'Strafe', 'Evade', 'Ram', 'Harry', 'Assault'].includes(mv.key) ? 'Stations are immobile: they hold position and fire'
                 : mv.key === 'Retreat' && scope === 'ship' && selected && !selected.canRetreat ? 'No safe supplied withdrawal sector'
                 : scope !== 'all' && (!selected || !active(selected)) ? 'Select one of your active ships' : undefined;
               return <Pill key={mv.key} small tone={mv.key === 'Retreat' || mv.key === 'Ram' ? 'alert' : mv.key === 'Hail' ? 'ghost' : 'secondary'} active={current}
@@ -204,6 +205,7 @@ function ShipList({ title, ships, all, selected, onPick, hostile }: {
                 </div>
                 <div class="sc-flags">
                   {s.cloaked && s.alive && !s.retreated ? <span class="sc-flag cloak">Cloaked</span> : null}
+                  {s.station ? <span class="sc-flag station" {...tip('Immobile base: it never moves or retreats, braces for −20% incoming damage and fires at every enemy in range.')}>{s.stationType ?? 'Station'} · immobile</span> : null}
                   {s.disengaging && s.next ? <span class="sc-flag disengage" {...tip('Weapons offline, −25% incoming. Escapes at the next movement phase if still retreating.')}>Disengaging</span> : null}
                   {s.group ? <span class="sc-group">{s.group}</span> : null}
                   {!hostile && s.alive && !s.retreated ? <span class="sc-weap">B{s.beam} · T{s.torpedo}</span> : null}

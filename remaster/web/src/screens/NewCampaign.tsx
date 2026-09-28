@@ -32,6 +32,7 @@ export function NewCampaignScreen() {
   const [seed, setSeed] = useState<number>(randomSeed());
   const [events, setEvents] = useState(true);
   const [aggression, setAggression] = useState(true);
+  const [preset, setPreset] = useState<'remastered' | 'classic'>('remastered');
   const chosen = FACTIONS.find((f) => f.id === faction)!;
   const p = palette(faction);
   const sz = SIZES.find((s) => s.id === size)!;
@@ -39,7 +40,7 @@ export function NewCampaignScreen() {
   const eraInfo = m.eras.find((e) => e.id === era);
   const start = () => {
     startCampaign({
-      faction, empires: effectiveEmpires, seed, era, ruleset, width: sz.width, height: sz.height, systems: sz.systems, events, aiAggression: aggression,
+      faction, empires: effectiveEmpires, seed, era, ruleset, width: sz.width, height: sz.height, systems: sz.systems, events, aiAggression: aggression, preset,
     });
     if (view.value) maybeStartTutorial();
   };
@@ -119,8 +120,18 @@ export function NewCampaignScreen() {
               <Pill tone="ghost" active={ruleset === 'prototype'} onClick={() => setRuleset('prototype')}
                 hint="The original compact prototype ruleset with generic hulls.">Prototype rules</Pill>
             </div>
+            <div class="option-label">Gameplay</div>
+            <div class="option-row" role="radiogroup" aria-label="Ruleset preset">
+              <Pill tone="ghost" active={preset === 'remastered'} onClick={() => setPreset('remastered')} testid="preset-remastered"
+                hint="Every modern layer: outposts and starbases, nebulae, wormholes, black holes, neutron stars and drifting ion storms, curated galactic events with decisions, and scientific and diplomatic victories alongside conquest.">Remastered</Pill>
+              <Pill tone="ghost" active={preset === 'classic'} onClick={() => setPreset('classic')} testid="preset-classic"
+                hint="Original-like: outposts and starbases, the original random events, and conquest or domination victories only. No anomalies.">Classic</Pill>
+            </div>
+            <p class="option-note">{preset === 'remastered'
+              ? 'Anomalies, galactic events with choices, stations and four paths to victory.'
+              : 'Close to the 1999 original: stations, simple random events, conquest or domination.'}</p>
             <div class="option-row toggles">
-              <label class="check"><input type="checkbox" checked={events} onChange={(e) => setEvents((e.target as HTMLInputElement).checked)} /> Random events</label>
+              <label class="check"><input type="checkbox" checked={events} onChange={(e) => setEvents((e.target as HTMLInputElement).checked)} /> {preset === 'remastered' ? 'Galactic events' : 'Random events'}</label>
               <label class="check"><input type="checkbox" checked={aggression} onChange={(e) => setAggression((e.target as HTMLInputElement).checked)} /> Aggressive rivals</label>
             </div>
           </Frame>
@@ -128,7 +139,7 @@ export function NewCampaignScreen() {
             <div class="ss-head"><Emblem empire={faction} size={40} /><div><div class="ss-name">{m.empires.find((e) => e.id === faction)?.name}</div><div class="ss-sub">from {chosen.capital}</div></div></div>
             <ul>
               <li>{effectiveEmpires} major powers · {sz.systems} systems · {sz.width}×{sz.height} sectors</li>
-              <li>{eraInfo?.name ?? ''} era · {ruleset === 'reference' ? 'reference' : 'prototype'} rules</li>
+              <li>{eraInfo?.name ?? ''} era · {ruleset === 'reference' ? 'reference' : 'prototype'} rules · {preset === 'remastered' ? 'Remastered' : 'Classic'} gameplay</li>
               <li>Seed {seed}{events ? ' · events' : ''}{aggression ? ' · aggressive AI' : ''}</li>
             </ul>
             <button type="button" class="launch" data-testid="start-campaign" onClick={start}>

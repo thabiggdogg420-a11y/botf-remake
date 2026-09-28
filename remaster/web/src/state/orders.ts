@@ -1,9 +1,9 @@
 // Contextual actions for a sector, built from the view and validated by dry-running the exact
 // command through the core, so every disabled reason is the core's own message.
 import { core } from '../core/engine';
-import type { Command, FleetView, GameView } from '../core/types';
+import type { Command, FleetView, GameView, StationView } from '../core/types';
 import {
-  cancelOrders, dryRun, focusMap, goto, issue, selectFleet, selectSystem, selection, unitOrderIds, view,
+  cancelOrders, dryRun, focusMap, goto, issue, selectCell, selectFleet, selectSystem, selection, unitOrderIds, view,
 } from './store';
 import { diplomacyTarget, intelTarget } from './navigation';
 
@@ -57,10 +57,40 @@ export function plotCourse(fleet: FleetView, x: number, y: number): boolean {
   return ok;
 }
 
+/** "Upgrade to starbase", funded by the colony with the most industry that the core accepts. */
+export function upgradeAction(v: GameView, station: StationView, battleLock?: string): Action | null {
+  if (!station.mine || station.type !== 'Outpost') return null;
+  const cost = v.stationUpgradeCost;
+  if (station.upgrade) {
+    return {
+      id: 'upgrade', label: `Starbase upgrade ${station.upgrade.work}/${station.upgrade.cost}`, tone: 'good', group: 'orders',
+      detail: `Funded by ${station.upgrade.funding}`, disabled: 'The upgrade is already under way', run: () => undefined,
+    };
+  }
+  let reason: string | undefined = battleLock;
+  let funder: { systemId: number; name: string } | null = null;
+  try {
+    const detail = core.station(station.id);
+    const options = [...detail.funding].sort((a, b) => b.industry - a.industry || a.distance - b.distance);
+    const ok = options.find((o) => !o.blocker);
+    if (ok) funder = ok; else reason ??= options[0]?.blocker || 'No colony within 6 sectors can fund the upgrade';
+  } catch (e) { reason ??= e instanceof Error ? e.message : String(e); }
+  const command: Command | null = funder ? { type: 'UpgradeStation', stationId: station.id, systemId: funder.systemId } : null;
+  return {
+    id: 'upgrade', label: 'Upgrade to starbase', tone: 'good', group: 'orders',
+    detail: `¢${cost.credits} now, then ${cost.industry} industry from ${funder?.name ?? 'a colony within 6 sectors'} (its queue pauses)`,
+    disabled: reason, run: () => {
+      if (command) issue(command, { success: `${station.name}: starbase upgrade funded by ${funder!.name}.` });
+    },
+  };
+}
+
 export function sectorLabel(v: GameView, cell: number): string {
   const x = cell % v.meta.width, y = Math.floor(cell / v.meta.width);
   const system = v.systems.find((s) => s.x === x && s.y === y);
   if (system) return system.name;
+  const station = v.stations?.find((st) => st.x === x && st.y === y);
+  if (station) return station.name;
   return v.fog[cell] === '0' ? `Uncharted sector ${x}.${y}` : `Sector ${x}.${y}`;
 }
 
@@ -121,6 +151,20 @@ export function cellActions(cell: number): Action[] {
           }
         }
       }
+      if (fleet.shipClass === 'Transport' && v.meta.rules?.stations) {
+        const command: Command = { type: 'BuildOutpost', fleetId: fleet.id };
+        const turns = v.outpostTurns || 3;
+        actions.push({
+          id: 'outpost',
+          label: fleet.buildingOutpost ? `Assembling outpost (${fleet.outpostProgress ?? 0}/${turns})` : `Build outpost — ${turns} turns`,
+          detail: 'The transport is consumed and becomes an outpost: supply range 3, sensors 2. Any new order abandons the assembly.',
+          tone: 'good',
+          disabled: battleLock ?? (fleet.buildingOutpost ? 'Assembly under way — any new order for this transport abandons it' : undefined)
+            ?? (dryRun(command, cancelIds) || undefined),
+          group: 'orders',
+          run: () => { issue(command, { cancelIds, success: `Outpost assembly begins — ready in ${turns} turns.` }); },
+        });
+      }
       if (fleet.shipClass === 'Transport' && system) {
         const command: Command = { type: 'Invade', fleetId: fleet.id, systemId: system.id };
         actions.push({
@@ -142,6 +186,19 @@ export function cellActions(cell: number): Action[] {
           },
         });
       }
+    }
+  }
+
+  // A station in this sector: inspect it; own outposts can be upgraded to a starbase.
+  const station = v.stations?.find((st) => st.x === x && st.y === y);
+  if (station) {
+    const upgrade = upgradeAction(v, station, battleLock);
+    if (upgrade) actions.push(upgrade);
+    if (!unit) {
+      actions.push({
+        id: 'station', label: `Inspect ${station.name}`, detail: `${station.ownerName} ${station.typeName.toLowerCase()} — hull ${station.hull}/${station.maxHull}`,
+        group: 'units', tone: 'tertiary', run: () => selectCell(cell),
+      });
     }
   }
 
