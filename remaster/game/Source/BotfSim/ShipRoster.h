@@ -11,6 +11,7 @@
 
 #include <array>
 #include <cstddef>
+#include <string>
 #include <utility>
 
 namespace botf::roster {
@@ -121,6 +122,28 @@ inline const char* weaponTypeName(WeaponType t) {
         "BioEnergy", "TemporalWeapon", "SpatialTorpedo", "PhotonicTorpedo", "PhotonTorpedo", "QuantumTorpedo",
         "PlasmaTorpedo", "TricobaltDevice", "Torpedo"};
     const auto i = static_cast<std::size_t>(t);
+    return i < names.size() ? names[i] : "Unknown";
+}
+// Tactical rules 3 weapon behaviour. Cannons and pulse weapons fire bursts; everything torpedoWeapon() travels.
+inline WeaponFamily weaponFamily(WeaponType t) {
+    if (torpedoWeapon(t)) return WeaponFamily::Torpedo;
+    if (t == WeaponType::PhaseCannon || t == WeaponType::PulsePhaser || t == WeaponType::DisruptorCannon ||
+        t == WeaponType::PlasmaCannon) return WeaponFamily::Pulse;
+    return WeaponFamily::Beam;
+}
+inline const char* weaponFamilyName(WeaponFamily f) {
+    switch (f) {
+    case WeaponFamily::Beam: return "beam";
+    case WeaponFamily::Pulse: return "pulse";
+    case WeaponFamily::Torpedo: return "torpedo";
+    }
+    return "unknown";
+}
+// Asset/audio lookup key shared with the asset manifest template: "weapon.PhaserArray".
+inline std::string weaponTypeKey(WeaponType t) { return std::string("weapon.") + weaponTypeName(t); }
+inline const char* sizeClassName(SizeClass c) {
+    static constexpr std::array<const char*, 5> names{"Small", "Medium", "Large", "Huge", "Station"};
+    const auto i = static_cast<std::size_t>(c);
     return i < names.size() ? names[i] : "Unknown";
 }
 inline const char* eraName(Era e) {

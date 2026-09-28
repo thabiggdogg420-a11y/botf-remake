@@ -51,6 +51,12 @@ namespace botf::tactical {
 //     re-derives them instead of treating them as player orders.
 inline constexpr int LegacyTacticalRules = 1;
 inline constexpr int RemasterTacticalRules = 2;
+// Rules 3 ("flight", Remastered games with GameplayRules::flightModel): rules 2 plus a per-class flight model
+// (persistent 45-degree facing, turn rate, acceleration, lateral strafe thrust, size class), typed weapon
+// mounts with firing arcs, beam/pulse/torpedo behaviour, and the CombatEvent presentation stream.
+// See COMBAT-RULES.md, "Tactical rules 3". Rules 1 and 2 are untouched by it.
+inline constexpr int FlightTacticalRules = 3;
+inline constexpr int MaxShipMounts = 6;
 inline constexpr int MaxManeuverValue = 11;
 
 // -----------------------------------------------------------------------------
@@ -164,6 +170,73 @@ inline int facingDegrees(int dx, int dy) {
     return angle % 360;
 }
 
+// ---- Rules 3 flight geometry (integer, 8 headings) ----------------------------
+inline int normalizeDegrees(int d) { d %= 360; return d < 0 ? d + 360 : d; }
+// Nearest of the eight 45-degree headings toward (dx, dy); 0 when dx == dy == 0.
+inline int headingOctant(int dx, int dy) {
+    if (dx == 0 && dy == 0) return 0;
+    return ((facingDegrees(dx, dy) + 22) / 45) % 8 * 45;
+}
+inline std::pair<int, int> octantStep(int facing) {
+    static constexpr std::array<std::pair<int, int>, 8> Steps{{{1, 0}, {1, 1}, {0, 1}, {-1, 1}, {-1, 0}, {-1, -1}, {0, -1}, {1, -1}}};
+    return Steps[static_cast<std::size_t>(normalizeDegrees(facing) / 45 % 8)];
+}
+// Signed angle from facing to bearing in [-180, 180).
+inline int relativeBearing(int facing, int bearing) { return normalizeDegrees(bearing - facing + 180) - 180; }
+inline int angularDistance(int a, int b) { const int r = relativeBearing(a, b); return r < 0 ? -r : r; }
+// One 45-degree notch toward want (a 180-degree reversal turns clockwise, i.e. +45).
+inline int rotateToward(int facing, int want) {
+    const int r = relativeBearing(facing, want);
+    if (r == 0) return facing;
+    return normalizeDegrees(facing + (r > 0 || r == -180 ? 45 : -45));
+}
+// |relative bearing| inside a mount's arc. Forward 90 degrees wide, ForwardWide 180, Broadside both beams
+// (45..135 each side), Aft the rear 90, All everywhere.
+inline bool inFiringArc(roster::FiringArc arc, int relative) {
+    const int a = relative < 0 ? -relative : relative;
+    switch (arc) {
+    case roster::FiringArc::Forward: return a <= 45;
+    case roster::FiringArc::ForwardWide: return a <= 90;
+    case roster::FiringArc::Broadside: return a >= 45 && a <= 135;
+    case roster::FiringArc::Aft: return a >= 135;
+    case roster::FiringArc::All: return true;
+    }
+    return false;
+}
+// Percent of a mount's attack delivered at a Chebyshev distance.
+inline int weaponRangePercent(roster::WeaponFamily family, int dist) {
+    switch (family) {
+    case roster::WeaponFamily::Beam:
+        return dist <= 1 ? 100 : dist == 2 ? 85 : dist == 3 ? 60 : dist == 4 ? 35 : 0;
+    case roster::WeaponFamily::Pulse:
+        return dist <= 1 ? 100 : dist == 2 ? 90 : dist == 3 ? 60 : 0;
+    case roster::WeaponFamily::Torpedo:
+        return dist <= 1 ? 40 : dist <= 5 ? 100 : dist == 6 ? 80 : dist == 7 ? 50 : 0;
+    }
+    return 0;
+}
+// Damage multipliers against shields and hull (percent): beams strip shields, torpedoes crack hulls.
+inline int shieldEffectPercent(roster::WeaponFamily f) { return f == roster::WeaponFamily::Beam ? 125 : f == roster::WeaponFamily::Torpedo ? 75 : 100; }
+inline int hullEffectPercent(roster::WeaponFamily f) { return f == roster::WeaponFamily::Torpedo ? 125 : 100; }
+inline int sizeHitModifier(roster::SizeClass c) {
+    switch (c) {
+    case roster::SizeClass::Small: return -15;
+    case roster::SizeClass::Medium: return -5;
+    case roster::SizeClass::Large: return 0;
+    case roster::SizeClass::Huge: return 5;
+    case roster::SizeClass::Station: return 15;
+    }
+    return 0;
+}
+
+struct TacticalMount {
+    roster::WeaponType type = roster::WeaponType::PhaserBank;
+    int count = 1;                 // Emitters / tubes (visual and burst size)
+    roster::FiringArc arc = roster::FiringArc::All;
+    int attack = 0;                // Share of the ship's beam or torpedo attack delivered by this mount
+    constexpr bool operator==(const TacticalMount& other) const = default;
+};
+
 // -----------------------------------------------------------------------------
 // Core Structs: Ship, Order, RoundResult, Encounter
 // -----------------------------------------------------------------------------
@@ -193,6 +266,14 @@ struct Ship {
     bool isCloaked = false;        // True if currently in cloaked stealth state
     int groupId = 0;               // Tactical like-class group assignment
     bool immobile = false;         // Schema 13 stations: never move (serialized in the optional FIXED section)
+    // Rules 3 flight model and weapon mounts (serialized in the FLIGHT section; unused by rules 1 and 2).
+    int facing = 0;                // Persistent heading in degrees, a multiple of 45
+    int velocity = 0;              // Cells flown last round (momentum for acceleration limits)
+    int turnRate = 0;              // Degrees per round (multiple of 45)
+    int acceleration = 0;          // Cells of speed change per round
+    int lateral = 0;               // Sideways thruster cells per round (Strafe, Circle, Harry)
+    roster::SizeClass sizeClass = roster::SizeClass::Medium;
+    std::vector<TacticalMount> mounts{};
     bool disengaging() const { return retreatSteps > 0 && !retreated && isAlive; }
 };
 
@@ -244,6 +325,7 @@ struct RoundResult {
     std::vector<int> lostFleetIds;
     std::vector<int> retreatedFleetIds;
     std::vector<WeaponSalvoRecord> salvos;
+    std::vector<CombatEvent> events; // Rules 3 presentation stream, ordered by tick (COMBAT-RULES.md)
     bool encounterEnded = false;
     int winnerOwnerId = 0; // 0 if draw or ongoing
     bool hailedTruce = false;
@@ -307,6 +389,7 @@ struct Encounter {
     std::vector<RoundResult> rounds;
 
     bool remasterRules() const { return rulesVersion >= RemasterTacticalRules; }
+    bool flightRules() const { return rulesVersion >= FlightTacticalRules; }
 
     const Ship* getShip(int fleetId) const {
         for (const auto& s : ships) {
@@ -490,6 +573,10 @@ struct Encounter {
         } else {
             aiOrder.maneuver = TacticalManeuver::Engage;
         }
+        // Rules 3: agile hulls with strong lateral thrusters strafe instead of charging head-on.
+        if (flightRules() && aiOrder.maneuver == TacticalManeuver::Charge && ship.lateral >= 2) {
+            aiOrder.maneuver = TacticalManeuver::Strafe;
+        }
         if (aiOrder.maneuver == TacticalManeuver::Retreat || aiOrder.maneuver == TacticalManeuver::Hail) {
             if (remasterRules()) return aiOrder;
         }
@@ -517,6 +604,436 @@ struct Encounter {
         return aiOrder;
     }
 
+    struct PlannedOrder { Order order; bool ai = false; };
+
+    // Rules 3 movement of one ship: persistent facing, turn budget, acceleration, lateral thrust.
+    void flightMove(Ship& s, const Order& ord, ShipRoundStatus* st, int firstOwner, RoundResult& round,
+                    std::vector<std::pair<int, CombatEvent>>& events, std::map<int, int>& slidCells) {
+        const TacticalCoord start = s.position;
+        const int startFacing = s.facing;
+        int turns = s.turnRate / 45;
+        int moved = 0, slid = 0;
+        auto turnToward = [&](int want) {
+            while (turns > 0 && s.facing != want) { s.facing = rotateToward(s.facing, want); --turns; }
+        };
+        auto inArena = [&](int x, int y) { return x >= 0 && y >= 0 && x < arenaWidth && y < arenaHeight; };
+        auto cheb = [](TacticalCoord a, TacticalCoord b) { return std::max(std::abs(a.x - b.x), std::abs(a.y - b.y)); };
+        auto nearestHostile = [&]() -> const Ship* {
+            const Ship* best = nullptr;
+            int bestD = std::numeric_limits<int>::max();
+            for (const auto& other : ships) {
+                if (!shipActive(other) || other.ownerId == s.ownerId) continue;
+                const int d = cheb(s.position, other.position);
+                if (d < bestD) { bestD = d; best = &other; }
+            }
+            return best;
+        };
+        auto push = [&](int cls, CombatEventKind kind, int tick) {
+            CombatEvent e;
+            e.tick = tick;
+            e.kind = kind;
+            e.fleetId = s.fleetId;
+            e.x = s.position.x; e.y = s.position.y; e.facing = s.facing;
+            e.maneuver = static_cast<int>(ord.maneuver);
+            events.push_back({cls, e});
+        };
+        bool jumped = false;
+        if (ord.maneuver == TacticalManeuver::Retreat) {
+            const int edgeX = (s.ownerId == firstOwner) ? 0 : (arenaWidth - 1);
+            if (s.retreatSteps >= 1) {
+                // Survived a full round disengaging: jump out before fire.
+                jumped = true;
+                s.retreated = true;
+                s.activeInCombat = false;
+                round.retreatedFleetIds.push_back(s.fleetId);
+                if (st) st->retreatedThisRound = true;
+                push(0, CombatEventKind::Retreated, 0);
+            } else {
+                s.retreatSteps = 1;
+                push(0, CombatEventKind::Disengage, 0);
+                turnToward(s.ownerId == firstOwner ? 180 : 0);
+                const int edgeDir = (edgeX > s.position.x) - (edgeX < s.position.x);
+                const int steps = s.immobile ? 0 : std::min(s.speed, s.velocity + s.acceleration);
+                while (moved < steps && edgeDir != 0) {
+                    const auto [dx, dy] = octantStep(s.facing);
+                    if (dx != edgeDir || !inArena(s.position.x + dx, s.position.y + dy)) break;
+                    s.position.x += dx;
+                    s.position.y += dy;
+                    ++moved;
+                }
+            }
+        } else if (ord.maneuver == TacticalManeuver::Hold || ord.maneuver == TacticalManeuver::Hail || s.immobile) {
+            if (const Ship* t = nearestHostile()) {
+                turnToward(headingOctant(t->position.x - s.position.x, t->position.y - s.position.y));
+            }
+        } else {
+            const Ship* target = getShip(ord.targetFleetId);
+            if (!target || !shipActive(*target)) target = nearestHostile();
+            if (target) {
+                int desiredDist = 2;
+                switch (ord.maneuver) {
+                case TacticalManeuver::Charge: case TacticalManeuver::Strafe: case TacticalManeuver::Harry: desiredDist = 1; break;
+                case TacticalManeuver::Circle: desiredDist = 4; break;
+                case TacticalManeuver::Evade: desiredDist = 5; break;
+                case TacticalManeuver::Ram: desiredDist = 0; break;
+                default: desiredDist = 2; break;
+                }
+                const bool passing = ord.maneuver == TacticalManeuver::Flyby || ord.maneuver == TacticalManeuver::Strafe;
+                const bool sliding = ord.maneuver == TacticalManeuver::Strafe || ord.maneuver == TacticalManeuver::Circle ||
+                    ord.maneuver == TacticalManeuver::Harry;
+                const int maxSteps = std::min(s.speed + (passing ? 1 : 0), s.velocity + s.acceleration);
+                int lateralLeft = sliding ? s.lateral : 0;
+                for (int guard = 0; guard < 64; ++guard) {
+                    const int cur = cheb(s.position, target->position);
+                    if (cur > desiredDist) {
+                        if (moved >= maxSteps) break;
+                        const int want = headingOctant(target->position.x - s.position.x, target->position.y - s.position.y);
+                        if (s.facing != want && turns > 0) {
+                            const int before = angularDistance(s.facing, want);
+                            s.facing = rotateToward(s.facing, want);
+                            --turns;
+                            if (before >= 135) { ++moved; continue; } // A hard turn bleeds a step of speed
+                        }
+                        const auto [dx, dy] = octantStep(s.facing);
+                        const TacticalCoord next{s.position.x + dx, s.position.y + dy};
+                        if (!inArena(next.x, next.y) || cheb(next, target->position) >= cur) break; // Cannot close on this heading
+                        s.position = next;
+                        ++moved;
+                    } else if (cur < desiredDist) {
+                        if (moved + 2 > maxSteps) break; // Reverse thrust costs two steps
+                        const int bx = (s.position.x > target->position.x) - (s.position.x < target->position.x);
+                        const int by = (s.position.y > target->position.y) - (s.position.y < target->position.y);
+                        const TacticalCoord next{std::clamp(s.position.x + bx, 0, arenaWidth - 1),
+                                                 std::clamp(s.position.y + by, 0, arenaHeight - 1)};
+                        if (next == s.position) break;
+                        s.position = next;
+                        moved += 2;
+                    } else if (lateralLeft > 0) {
+                        // Sideways thrust: slide across the target's front, keeping the bow on it.
+                        std::optional<TacticalCoord> bestCell;
+                        int bestOff = -1;
+                        for (int side : {90, 270}) {
+                            const auto [dx, dy] = octantStep(s.facing + side);
+                            const TacticalCoord next{s.position.x + dx, s.position.y + dy};
+                            if (!inArena(next.x, next.y)) continue;
+                            const int d = cheb(next, target->position);
+                            if (d < 1 || d > desiredDist + 1) continue;
+                            const int off = angularDistance(target->facing,
+                                facingDegrees(next.x - target->position.x, next.y - target->position.y));
+                            if (off > bestOff) { bestOff = off; bestCell = next; }
+                        }
+                        if (!bestCell) break;
+                        s.position = *bestCell;
+                        --lateralLeft;
+                        ++slid;
+                    } else {
+                        if (passing && slid == 0 && moved < maxSteps) {
+                            const auto [dx, dy] = octantStep(s.facing);
+                            if (inArena(s.position.x + dx, s.position.y + dy)) {
+                                s.position.x += dx;
+                                s.position.y += dy;
+                                ++moved;
+                            }
+                        }
+                        break;
+                    }
+                }
+                // Bring the bow (and forward mounts) to bear with whatever turn budget is left.
+                turnToward(headingOctant(target->position.x - s.position.x, target->position.y - s.position.y));
+            }
+        }
+        s.velocity = moved;
+        slidCells[s.fleetId] = slid;
+        if (st) st->facingYaw = s.facing;
+        if (!jumped) {
+            CombatEvent a;
+            a.kind = CombatEventKind::ManeuverStart;
+            a.fleetId = s.fleetId;
+            a.x = start.x; a.y = start.y; a.facing = startFacing;
+            a.maneuver = static_cast<int>(ord.maneuver);
+            events.push_back({0, a});
+            push(1, CombatEventKind::ManeuverEnd, 4);
+            events.back().second.value = slid;
+        }
+    }
+
+    // Rules 3 fire: per-mount arcs, beam/pulse/torpedo behaviour, resolved on a tick timeline.
+    void flightFire(const std::vector<PlannedOrder>& activeOrders, std::vector<ShipRoundStatus>& statuses,
+                    DeterministicRng& rng, RoundResult& round, std::vector<std::pair<int, CombatEvent>>& events,
+                    const std::map<int, int>& slidCells) {
+        using roster::WeaponFamily;
+        struct Shot {
+            int shooter = 0, target = 0, mount = -1;
+            roster::WeaponType type = roster::WeaponType::None;
+            WeaponFamily family = WeaponFamily::Beam;
+            int fireTick = 0, impactTick = 0, damage = 0, projectiles = 0, recoil = 0;
+            bool hit = false, intercepted = false, ram = false;
+            TacticalCoord from{0, 0};
+            int facing = 0;
+        };
+        auto statusOf = [&](int fid) -> ShipRoundStatus* {
+            for (auto& st : statuses) if (st.fleetId == fid) return &st;
+            return nullptr;
+        };
+        auto maneuverOf = [&](int fid) {
+            for (const auto& p : activeOrders) if (p.order.fleetId == fid) return p.order.maneuver;
+            return TacticalManeuver::Hold;
+        };
+        auto cheb = [](TacticalCoord a, TacticalCoord b) { return std::max(std::abs(a.x - b.x), std::abs(a.y - b.y)); };
+        auto evasion = [&](const Ship& t) {
+            int e = 0;
+            switch (maneuverOf(t.fleetId)) {
+            case TacticalManeuver::Evade: e = 25; break;
+            case TacticalManeuver::Circle: case TacticalManeuver::Harry: e = 15; break;
+            case TacticalManeuver::Flyby: case TacticalManeuver::Strafe: case TacticalManeuver::Retreat: e = 10; break;
+            case TacticalManeuver::Charge: case TacticalManeuver::Hold: e = -10; break;
+            default: break;
+            }
+            const auto it = slidCells.find(t.fleetId);
+            return e + (it != slidCells.end() ? 5 * it->second : 0);
+        };
+        auto pointDefence = [](const Ship& t) {
+            return std::any_of(t.mounts.begin(), t.mounts.end(), [](const TacticalMount& m) {
+                return m.attack > 0 && roster::weaponFamily(m.type) == WeaponFamily::Beam;
+            });
+        };
+
+        std::vector<Shot> shots;
+        for (const auto& planned : activeOrders) {
+            const Order& ord = planned.order;
+            const Ship* attacker = getShip(ord.fleetId);
+            if (!attacker || !shipActive(*attacker) ||
+                ord.maneuver == TacticalManeuver::Retreat || ord.maneuver == TacticalManeuver::Hail) continue;
+            if (attacker->isCloaked) continue; // Cloaked ships cannot fire
+            const Ship* primary = getShip(ord.targetFleetId);
+            if (!primary || !shipActive(*primary)) {
+                primary = nullptr;
+                int minD = std::numeric_limits<int>::max();
+                for (const auto& other : ships) {
+                    if (!shipActive(other) || other.ownerId == attacker->ownerId || other.isCloaked) continue;
+                    const int d = cheb(attacker->position, other.position);
+                    if (d < minD) { minD = d; primary = &other; }
+                }
+            }
+            if (!primary) continue;
+            ShipRoundStatus* ast = statusOf(attacker->fleetId);
+            if (ord.maneuver == TacticalManeuver::Ram && cheb(attacker->position, primary->position) <= 1) {
+                Shot r;
+                r.shooter = attacker->fleetId;
+                r.target = primary->fleetId;
+                r.ram = true;
+                r.fireTick = r.impactTick = 5;
+                r.damage = attacker->hull;
+                r.recoil = primary->hull + primary->shields;
+                r.from = attacker->position;
+                r.facing = attacker->facing;
+                shots.push_back(r);
+                if (ast) ast->beamDamageDealt = r.damage;
+                continue;
+            }
+            const bool ambush = ast && ast->decloakedThisRound;
+            for (std::size_t i = 0; i < attacker->mounts.size(); ++i) {
+                const TacticalMount& mount = attacker->mounts[i];
+                if (mount.attack <= 0) continue;
+                const WeaponFamily family = roster::weaponFamily(mount.type);
+                auto usable = [&](const Ship& t) {
+                    const int d = cheb(attacker->position, t.position);
+                    const int rel = relativeBearing(attacker->facing,
+                        facingDegrees(t.position.x - attacker->position.x, t.position.y - attacker->position.y));
+                    return weaponRangePercent(family, d) > 0 && inFiringArc(mount.arc, rel);
+                };
+                const Ship* pick = usable(*primary) ? primary : nullptr;
+                if (!pick) {
+                    int bestD = std::numeric_limits<int>::max();
+                    for (const auto& other : ships) { // Target of opportunity inside this mount's arc
+                        if (!shipActive(other) || other.ownerId == attacker->ownerId || other.isCloaked || !usable(other)) continue;
+                        const int d = cheb(attacker->position, other.position);
+                        if (d < bestD) { bestD = d; pick = &other; }
+                    }
+                }
+                if (!pick) continue;
+                const int dist = cheb(attacker->position, pick->position);
+                int base = mount.attack * weaponRangePercent(family, dist) / 100;
+                const TacticalManeuver m = ord.maneuver;
+                if (family != WeaponFamily::Torpedo) {
+                    if (m == TacticalManeuver::Charge) base = base * 120 / 100;
+                    else if (m == TacticalManeuver::Strafe) base = base * 125 / 100;
+                    else if (m == TacticalManeuver::Circle) base = base * 85 / 100;
+                    else if (m == TacticalManeuver::Harry) base = base * 90 / 100;
+                    else if (m == TacticalManeuver::Evade) base = base * 70 / 100;
+                } else {
+                    if (m == TacticalManeuver::Strafe) base = base * 80 / 100;
+                    else if (m == TacticalManeuver::Evade) base = base * 70 / 100;
+                }
+                if (ambush) base = base * 125 / 100;
+                if (base <= 0) continue;
+                Shot shot;
+                shot.shooter = attacker->fleetId;
+                shot.target = pick->fleetId;
+                shot.mount = static_cast<int>(i);
+                shot.type = mount.type;
+                shot.family = family;
+                shot.fireTick = std::min(CombatTicksPerRound - 1, 5 + static_cast<int>(i));
+                shot.projectiles = std::max(1, mount.count);
+                shot.from = attacker->position;
+                shot.facing = attacker->facing;
+                const int evade = evasion(*pick) - sizeHitModifier(pick->sizeClass);
+                if (family == WeaponFamily::Beam) {
+                    shot.damage = std::max(1, base * (100 + rng.range(-5, 5)) / 100);
+                    shot.hit = true;
+                    shot.impactTick = shot.fireTick;
+                    shots.push_back(shot);
+                } else if (family == WeaponFamily::Pulse) {
+                    const int total = base * 110 / 100; // Bursts hit harder but can miss
+                    const int chance = std::clamp(95 - 10 * std::max(0, dist - 1) - evade, 5, 95);
+                    const int bolts = std::max(1, std::min(3, total));
+                    shot.projectiles = std::max(1, (mount.count + bolts - 1) / bolts);
+                    for (int k = 0; k < bolts; ++k) {
+                        Shot bolt = shot;
+                        const int part = total / bolts + (k == 0 ? total % bolts : 0);
+                        bolt.damage = std::max(1, part * (100 + rng.range(-5, 5)) / 100);
+                        bolt.hit = rng.range(1, 100) <= chance;
+                        bolt.fireTick = bolt.impactTick = std::min(CombatTicksPerRound - 1, shot.fireTick + k);
+                        shots.push_back(bolt);
+                    }
+                } else {
+                    const int chance = std::clamp(90 - 5 * std::max(0, dist - 1) - evade, 5, 95);
+                    shot.damage = std::max(1, base * (100 + rng.range(-5, 5)) / 100);
+                    shot.hit = rng.range(1, 100) <= chance;
+                    if (shot.hit && pointDefence(*pick) && !pick->isCloaked && rng.range(1, 100) <= 10) {
+                        shot.hit = false;
+                        shot.intercepted = true;
+                    }
+                    shot.impactTick = std::min(CombatTicksPerRound - 1, shot.fireTick + 1 + (dist + 1) / 2);
+                    shots.push_back(shot);
+                }
+            }
+        }
+
+        // Timeline: a shot launches at fireTick unless its shooter was destroyed at an earlier tick, and lands at
+        // impactTick. Within a tick, launches (and same-tick beam/pulse impacts) resolve before torpedo arrivals.
+        std::map<int, int> deathTick, taken;
+        struct Tally { int beam = 0, torpedo = 0, shield = 0, hull = 0; bool ram = false; };
+        std::vector<std::pair<std::pair<int, int>, Tally>> tallies;
+        auto tally = [&](int a, int d) -> Tally& {
+            for (auto& t : tallies) if (t.first == std::pair{a, d} && !t.second.ram) return t.second;
+            tallies.push_back({{a, d}, Tally{}});
+            return tallies.back().second;
+        };
+        auto defenceMul = [&](const Ship& t) {
+            switch (maneuverOf(t.fleetId)) {
+            case TacticalManeuver::Hold: return 80;
+            case TacticalManeuver::Charge: return 115;
+            case TacticalManeuver::Retreat: return 75;
+            case TacticalManeuver::Evade: return 85;
+            case TacticalManeuver::Circle: return 90;
+            default: return 100;
+            }
+        };
+        auto applyHit = [&](Ship& t, int raw, int shieldPct, int hullPct, int& sd, int& hd) {
+            const int effective = static_cast<int>(static_cast<std::int64_t>(raw) * shieldPct / 100);
+            sd = std::min(t.shields, effective);
+            const int used = std::min(raw, static_cast<int>((static_cast<std::int64_t>(sd) * 100 + shieldPct - 1) / shieldPct));
+            t.shields -= sd;
+            hd = std::min(t.hull, static_cast<int>(static_cast<std::int64_t>(raw - used) * hullPct / 100));
+            t.hull -= hd;
+            taken[t.fleetId] += sd + hd;
+        };
+        auto killed = [&](Ship& t, int tick) {
+            if (t.hull > 0 || deathTick.count(t.fleetId)) return false;
+            deathTick[t.fleetId] = tick;
+            CombatEvent d;
+            d.tick = tick;
+            d.kind = CombatEventKind::Destroyed;
+            d.fleetId = t.fleetId;
+            d.x = t.position.x; d.y = t.position.y; d.facing = t.facing;
+            events.push_back({3, d});
+            return true;
+        };
+        auto gone = [&](int fid, int tick) { const auto it = deathTick.find(fid); return it != deathTick.end() && it->second < tick; };
+        auto resolve = [&](const Shot& sh, int tick) {
+            Ship* target = getShip(sh.target);
+            Ship* shooter = getShip(sh.shooter);
+            CombatEvent e;
+            e.tick = sh.fireTick;
+            e.fleetId = sh.shooter;
+            e.targetFleetId = sh.target;
+            e.impactTick = sh.impactTick;
+            e.x = sh.from.x; e.y = sh.from.y; e.facing = sh.facing;
+            if (sh.ram) {
+                e.kind = CombatEventKind::Ram;
+                e.hit = true;
+                auto& forward = tally(sh.shooter, sh.target);
+                forward.ram = true;
+                forward.beam = sh.damage;
+                tallies.push_back({{sh.target, sh.shooter}, Tally{sh.recoil, 0, 0, 0, true}});
+                int sd = 0, hd = 0, rsd = 0, rhd = 0;
+                if (target) applyHit(*target, sh.damage, 100, 100, sd, hd);
+                if (shooter) applyHit(*shooter, sh.recoil, 100, 100, rsd, rhd);
+                e.shieldDamage = sd;
+                e.hullDamage = hd;
+                events.push_back({2, e});
+                const std::size_t at = events.size() - 1;
+                if (target && killed(*target, tick)) events[at].second.destroyed = true;
+                if (shooter) killed(*shooter, tick);
+                return;
+            }
+            e.kind = CombatEventKind::Fire;
+            e.mountIndex = sh.mount;
+            e.weaponType = static_cast<int>(sh.type);
+            e.weaponFamily = static_cast<int>(sh.family);
+            e.projectiles = sh.projectiles;
+            e.intercepted = sh.intercepted;
+            if (target && target->hull > 0 && sh.hit) {
+                int raw = sh.damage * defenceMul(*target) / 100;
+                if (target->isCloaked) raw = raw * 50 / 100;
+                int sd = 0, hd = 0;
+                applyHit(*target, raw, shieldEffectPercent(sh.family), hullEffectPercent(sh.family), sd, hd);
+                e.hit = true;
+                e.shieldDamage = sd;
+                e.hullDamage = hd;
+                if (ShipRoundStatus* ast = statusOf(sh.shooter)) {
+                    if (sh.family == WeaponFamily::Torpedo) ast->torpedoDamageDealt += raw;
+                    else ast->beamDamageDealt += raw;
+                }
+                auto& t = tally(sh.shooter, sh.target);
+                (sh.family == WeaponFamily::Torpedo ? t.torpedo : t.beam) += raw;
+                t.shield += sd;
+                t.hull += hd;
+                events.push_back({2, e});
+                const std::size_t at = events.size() - 1;
+                if (killed(*target, tick)) events[at].second.destroyed = true;
+                return;
+            }
+            events.push_back({2, e}); // Missed, intercepted, or the target was already destroyed
+        };
+        std::vector<char> launched(shots.size(), 0);
+        for (int tick = 0; tick < CombatTicksPerRound; ++tick) {
+            for (std::size_t i = 0; i < shots.size(); ++i) {
+                if (shots[i].fireTick != tick || gone(shots[i].shooter, tick)) continue;
+                launched[i] = 1;
+                if (shots[i].impactTick == tick) resolve(shots[i], tick);
+            }
+            for (std::size_t i = 0; i < shots.size(); ++i) {
+                if (launched[i] && shots[i].impactTick == tick && shots[i].fireTick != tick) resolve(shots[i], tick);
+            }
+        }
+        for (const auto& [pair, t] : tallies) {
+            round.salvos.push_back({pair.first, pair.second, t.beam, t.torpedo, !t.ram && t.hull == 0 && t.shield > 0, t.ram});
+        }
+        for (auto& ship : ships) {
+            if (!shipActive(ship)) continue;
+            ShipRoundStatus* st = statusOf(ship.fleetId);
+            if (st) st->totalDamageTaken = taken[ship.fleetId];
+            if (ship.hull == 0) {
+                ship.isAlive = false;
+                ship.activeInCombat = false;
+                round.lostFleetIds.push_back(ship.fleetId);
+                if (st) st->destroyedThisRound = true;
+            }
+        }
+    }
+
     // -------------------------------------------------------------------------
     // Round Resolution
     // -------------------------------------------------------------------------
@@ -525,6 +1042,9 @@ struct Encounter {
             throw std::runtime_error("Encounter is already finished; cannot resolve further rounds.");
         }
         const bool modern = remasterRules();
+        const bool flight = flightRules();
+        std::vector<std::pair<int, CombatEvent>> events; // (ordering class, event); rules 3 only
+        std::map<int, int> slidCells;
 
         currentRound++;
         DeterministicRng rng(rngState);
@@ -533,7 +1053,7 @@ struct Encounter {
         const int firstOwner = ships.empty() ? 0 : ships[0].ownerId;
 
         // 1. Gather orders for all active combat ships (pending orders, standing orders, or AI decisions)
-        struct Planned { Order order; bool ai = false; };
+        using Planned = PlannedOrder;
         std::vector<Planned> activeOrders;
         for (const auto& ship : ships) {
             if (!shipActive(ship)) continue;
@@ -596,6 +1116,17 @@ struct Encounter {
             }
         }
 
+        if (flight && currentRound == 1) {
+            for (const auto& s : ships) {
+                if (!shipActive(s) || !s.isCloaked) continue;
+                CombatEvent e;
+                e.kind = CombatEventKind::Cloak;
+                e.fleetId = s.fleetId;
+                e.x = s.position.x; e.y = s.position.y; e.facing = s.facing;
+                events.push_back({0, e});
+            }
+        }
+
         // 1b. Hail truce and decloak triggers
         bool truce = false;
         if (!modern) {
@@ -654,6 +1185,11 @@ struct Encounter {
             winnerOwnerId = 0;
             round.encounterEnded = true;
             round.winnerOwnerId = 0;
+            if (flight) {
+                CombatEvent e;
+                e.kind = CombatEventKind::Truce;
+                events.push_back({0, e});
+            }
         }
         const bool combatPhases = !(modern && truce);
 
@@ -666,6 +1202,10 @@ struct Encounter {
 
             ShipRoundStatus* st = getStatus(s->fleetId);
             if (modern && ord.maneuver != TacticalManeuver::Retreat) s->retreatSteps = 0; // Disengage aborted
+            if (flight) {
+                flightMove(*s, ord, st, firstOwner, round, events, slidCells);
+                continue;
+            }
             if (s->immobile) continue; // Stations hold position whatever their order.
 
             if (ord.maneuver == TacticalManeuver::Retreat) {
@@ -786,6 +1326,20 @@ struct Encounter {
             }
         }
 
+        if (flight && combatPhases) {
+            for (const auto& st : statuses) {
+                if (!st.decloakedThisRound) continue;
+                const Ship* s = getShip(st.fleetId);
+                CombatEvent e;
+                e.tick = 4;
+                e.kind = CombatEventKind::Decloak;
+                e.fleetId = st.fleetId;
+                if (s) { e.x = s->position.x; e.y = s->position.y; e.facing = s->facing; }
+                events.push_back({1, e});
+            }
+            flightFire(activeOrders, statuses, rng, round, events, slidCells);
+        }
+        if (!flight) {
         // 3. Firing & Salvo Phase (Simultaneous fire)
         struct Salvo {
             int attackerFleetId = 0;
@@ -1005,6 +1559,8 @@ struct Encounter {
             }
         }
 
+        } // !flight
+
         // 5. Finalize status records & round damages
         for (auto& st : statuses) {
             const Ship* s = getShip(st.fleetId);
@@ -1021,6 +1577,12 @@ struct Encounter {
             }
         }
         round.shipStatuses = statuses;
+        if (flight) {
+            std::stable_sort(events.begin(), events.end(), [](const auto& a, const auto& b) {
+                return a.second.tick != b.second.tick ? a.second.tick < b.second.tick : a.first < b.first;
+            });
+            for (auto& e : events) round.events.push_back(e.second);
+        }
 
         // 6. Check termination conditions
         if (!round.hailedTruce) {
@@ -1111,6 +1673,83 @@ inline void revealSector(GameState& s, int x, int y, int ownerId) {
     }
 }
 
+// Rules 3: flight profile and weapon mounts for a constructed ship. Expanded-roster classes use their generated
+// FlightProfile and typed mounts; legacy catalogue classes, prototypes and stations get a profile from their
+// role and a beam + torpedo fit typed by the owning empire. beamAttack/torpedoAttack are split across the
+// mounts of each pool in proportion to weaponPoints * count * arcPercent (the roster's own attack weighting).
+inline roster::WeaponType ownerBeamType(int ownerId) {
+    switch (ownerId) {
+    case 1: return roster::WeaponType::PhaserArray;
+    case 2: case 3: case 4: return roster::WeaponType::Disruptor;
+    default: return roster::WeaponType::PhaserBank;
+    }
+}
+inline roster::WeaponType ownerTorpedoType(int ownerId) {
+    return ownerId == 3 ? roster::WeaponType::PlasmaTorpedo : roster::WeaponType::PhotonTorpedo;
+}
+inline void equipFlight(Ship& s, int firstOwner) {
+    s.facing = s.ownerId == firstOwner ? 0 : 180;
+    s.velocity = s.immobile ? 0 : s.speed;
+    s.mounts.clear();
+    const auto* rc = roster::findRosterClass(s.referenceShipId);
+    if (s.immobile) {
+        s.turnRate = 0; s.acceleration = 0; s.lateral = 0;
+        s.sizeClass = roster::SizeClass::Station;
+    } else if (rc) {
+        s.turnRate = rc->flight.turnRate;
+        s.acceleration = rc->flight.acceleration;
+        s.lateral = rc->flight.lateral;
+        s.sizeClass = rc->flight.size;
+    } else {
+        int role = s.shipClass == Building::Scout ? 0 : s.shipClass == Building::Destroyer ? 1 :
+            (s.shipClass == Building::Transport || s.shipClass == Building::ColonyShip) ? 9 : 2;
+        if (s.referenceShipId >= 0 && s.referenceShipId < static_cast<int>(referenceData::ShipCatalogue.size()))
+            role = referenceData::ShipCatalogue[static_cast<std::size_t>(s.referenceShipId)].role;
+        struct P { int turn, accel, lateral; roster::SizeClass size; };
+        P p{90, 2, 0, roster::SizeClass::Large};
+        switch (role) {
+        case 0: p = {180, 3, 2, roster::SizeClass::Small}; break;
+        case 1: p = {90, 2, 1, roster::SizeClass::Medium}; break;
+        case 3: p = {90, 2, 1, roster::SizeClass::Large}; break;
+        case 4: p = {45, 1, 0, roster::SizeClass::Huge}; break;
+        case 5: case 9: p = {45, 1, 0, roster::SizeClass::Medium}; break;
+        case 7: p = {0, 0, 0, roster::SizeClass::Station}; break;
+        default: break;
+        }
+        s.turnRate = p.turn; s.acceleration = p.accel; s.lateral = p.lateral; s.sizeClass = p.size;
+    }
+    if (rc && !s.immobile) {
+        for (int i = 0; i < rc->weaponCount && i < 4; ++i) {
+            const auto& w = rc->weapons[static_cast<std::size_t>(i)];
+            if (w.type != roster::WeaponType::None && w.count > 0) s.mounts.push_back({w.type, w.count, w.arc, 0});
+        }
+    }
+    const auto arcFor = [&](bool torpedo) {
+        if (s.immobile) return roster::FiringArc::All;
+        return torpedo ? roster::FiringArc::ForwardWide : roster::FiringArc::All;
+    };
+    for (int pool = 0; pool < 2; ++pool) {
+        const bool torpedo = pool == 1;
+        const int attack = torpedo ? s.torpedoAttack : s.beamAttack;
+        if (attack <= 0) continue;
+        const auto inPool = [&](const TacticalMount& m) { return roster::torpedoWeapon(m.type) == torpedo; };
+        if (std::none_of(s.mounts.begin(), s.mounts.end(), inPool)) {
+            s.mounts.push_back({torpedo ? ownerTorpedoType(s.ownerId) : ownerBeamType(s.ownerId), torpedo ? 1 : 2, arcFor(torpedo), 0});
+        }
+        long long total = 0;
+        for (const auto& m : s.mounts) if (inPool(m)) total += 1LL * roster::weaponPoints(m.type) * m.count * roster::arcPercent(m.arc);
+        int given = 0;
+        TacticalMount* first = nullptr;
+        for (auto& m : s.mounts) {
+            if (!inPool(m)) continue;
+            if (!first) first = &m;
+            m.attack = total > 0 ? static_cast<int>(1LL * attack * roster::weaponPoints(m.type) * m.count * roster::arcPercent(m.arc) / total) : 0;
+            given += m.attack;
+        }
+        if (first) first->attack += attack - given;
+    }
+}
+
 inline Encounter constructEncounter(const GameState& state,
                                     const std::vector<int>& participantFleetIds,
                                     std::uint64_t seed = 0) {
@@ -1192,7 +1831,7 @@ inline Encounter constructEncounter(const GameState& state,
     enc.strategicTurn = state.turn;
     enc.controllingOwnerId = state.playerEmpire;
     enc.resultsApplied = false;
-    enc.rulesVersion = RemasterTacticalRules;
+    enc.rulesVersion = state.rules.flightModel ? FlightTacticalRules : RemasterTacticalRules;
     enc.relationAtWar = relation->atWar;
     enc.relationTrust = std::clamp(relation->trust, 0, 100);
 
@@ -1319,6 +1958,7 @@ inline Encounter constructEncounter(const GameState& state,
         }
         if (standing && *standing != TacticalManeuver::Retreat && targetPresent) standingTarget = f->attackTarget;
         if (standing) enc.standingOrders[f->id] = Order{f->id, standingTarget, *standing};
+        if (enc.flightRules()) equipFlight(s, firstOwner);
 
         enc.ships.push_back(std::move(s));
     }
@@ -1416,6 +2056,7 @@ inline CombatReport toCombatReport(const Encounter& encounter) {
         cr.damage = r.damage;
         cr.lostFleetIds = r.lostFleetIds;
         cr.retreatedFleetIds = r.retreatedFleetIds;
+        cr.events = r.events;
         for (const auto& st : r.shipStatuses) {
             if (gone.count(st.fleetId)) continue;
             CombatShipOrder order;
@@ -1608,6 +2249,35 @@ inline std::string unescapeString(const std::string& str) {
     return out;
 }
 
+// One CombatEvent as 19 space-separated integers (encounter EVENTS lines and the save's COMBAT_EVENTS section).
+inline void writeCombatEvent(std::ostream& out, const CombatEvent& e) {
+    out << e.tick << ' ' << static_cast<int>(e.kind) << ' ' << e.fleetId << ' ' << e.targetFleetId << ' ' << e.mountIndex
+        << ' ' << e.weaponType << ' ' << e.weaponFamily << ' ' << e.impactTick << ' ' << e.projectiles << ' ' << (e.hit ? 1 : 0)
+        << ' ' << (e.intercepted ? 1 : 0) << ' ' << e.shieldDamage << ' ' << e.hullDamage << ' ' << (e.destroyed ? 1 : 0)
+        << ' ' << e.x << ' ' << e.y << ' ' << e.facing << ' ' << e.maneuver << ' ' << e.value;
+}
+// Reads and range-checks one event; false on malformed or out-of-range input.
+inline bool readCombatEvent(std::istream& in, CombatEvent& e) {
+    int kind = -1, hit = -1, intercepted = -1, destroyed = -1;
+    if (!(in >> e.tick >> kind >> e.fleetId >> e.targetFleetId >> e.mountIndex >> e.weaponType >> e.weaponFamily
+             >> e.impactTick >> e.projectiles >> hit >> intercepted >> e.shieldDamage >> e.hullDamage >> destroyed
+             >> e.x >> e.y >> e.facing >> e.maneuver >> e.value)) return false;
+    auto flag = [](int v) { return v == 0 || v == 1; };
+    if (e.tick < 0 || e.tick >= CombatTicksPerRound || e.impactTick < 0 || e.impactTick >= CombatTicksPerRound ||
+        kind < 0 || kind > MaxCombatEventKind || !flag(hit) || !flag(intercepted) || !flag(destroyed) ||
+        e.fleetId < 0 || e.targetFleetId < 0 || e.mountIndex < -1 || e.mountIndex >= MaxShipMounts ||
+        e.weaponType < 0 || e.weaponType > static_cast<int>(roster::WeaponType::Torpedo) ||
+        e.weaponFamily < 0 || e.weaponFamily > 2 || e.projectiles < 0 || e.projectiles > 1000 ||
+        e.shieldDamage < 0 || e.shieldDamage > 1000000 || e.hullDamage < 0 || e.hullDamage > 1000000 ||
+        e.x < 0 || e.x >= 100 || e.y < 0 || e.y >= 100 || e.facing < 0 || e.facing >= 360 ||
+        e.maneuver < 0 || e.maneuver > MaxManeuverValue || e.value < 0 || e.value > 100) return false;
+    e.kind = static_cast<CombatEventKind>(kind);
+    e.hit = hit == 1;
+    e.intercepted = intercepted == 1;
+    e.destroyed = destroyed == 1;
+    return true;
+}
+
 namespace detail {
 // presentation=false omits fields that do not affect outcomes (and standing
 // orders); legacy-rules replay verification compares this projection because
@@ -1712,6 +2382,13 @@ inline std::string writeEncounter(const Encounter& encounter, bool presentation)
                    << v.torpedoDamage << " " << (v.absorbedByShields ? 1 : 0) << " " << (v.ram ? 1 : 0) << "\n";
             }
         }
+        if (encounter.flightRules()) {
+            ss << "EVENTS " << r.events.size() << "\n";
+            for (const auto& e : r.events) {
+                writeCombatEvent(ss, e);
+                ss << "\n";
+            }
+        }
     }
 
     // Extended section: groups and cloak states
@@ -1739,6 +2416,17 @@ inline std::string writeEncounter(const Encounter& encounter, bool presentation)
         ss << "FIXED " << fixedIds.size();
         for (int fid : fixedIds) ss << " " << fid;
         ss << "\n";
+    }
+    // Rules 3: flight state and weapon mounts of every ship.
+    if (encounter.flightRules()) {
+        ss << "FLIGHT " << encounter.ships.size() << "\n";
+        for (const auto& s : encounter.ships) {
+            ss << s.fleetId << " " << s.facing << " " << s.velocity << " " << s.turnRate << " " << s.acceleration << " "
+               << s.lateral << " " << static_cast<int>(s.sizeClass) << " " << s.mounts.size();
+            for (const auto& m : s.mounts)
+                ss << " " << static_cast<int>(m.type) << " " << m.count << " " << static_cast<int>(m.arc) << " " << m.attack;
+            ss << "\n";
+        }
     }
 
     ss << "END\n";
@@ -1774,7 +2462,7 @@ inline Encounter deserializeEncounter(const std::string& text) {
     bool hasArena = false, hasRounds = false, hasSector = false, hasRng = false;
     bool hasController = false, hasShips = false, hasOrders = false, hasRoundResults = false, hasEnd = false;
     bool hasRules = false, hasRelation = false, hasStanding = false;
-    bool hasGroups = false, hasCloakState = false, hasFixed = false;
+    bool hasGroups = false, hasCloakState = false, hasFixed = false, hasFlight = false;
     std::set<int> owners;
 
     auto requireShip = [&](int fleetId, const char* what) -> Ship& {
@@ -1800,7 +2488,7 @@ inline Encounter deserializeEncounter(const std::string& text) {
         if (tag == "RULES") {
             if (!v2 || hasRules) fail("Unexpected RULES section.");
             if (!(ss >> enc.rulesVersion) ||
-                (enc.rulesVersion != LegacyTacticalRules && enc.rulesVersion != RemasterTacticalRules)) {
+                enc.rulesVersion < LegacyTacticalRules || enc.rulesVersion > FlightTacticalRules) {
                 fail("Unknown tactical rules version.");
             }
             hasRules = true;
@@ -2079,6 +2767,19 @@ inline Encounter deserializeEncounter(const std::string& text) {
                         r.salvos.push_back(v);
                     }
                 }
+                if (v2 && enc.flightRules()) {
+                    std::int64_t eventCount = 0;
+                    if (!(ss >> subTag >> eventCount) || subTag != "EVENTS" || eventCount < 0 || eventCount > 4096) {
+                        fail("Malformed EVENTS tag in ROUND_RESULTS.");
+                    }
+                    for (std::int64_t j = 0; j < eventCount; ++j) {
+                        CombatEvent e;
+                        if (!readCombatEvent(ss, e)) fail("Failed to parse EVENTS record.");
+                        if (e.fleetId != 0) requireShip(e.fleetId, "EVENTS");
+                        if (e.targetFleetId != 0) requireShip(e.targetFleetId, "EVENTS target");
+                        r.events.push_back(e);
+                    }
+                }
                 enc.rounds.push_back(r);
             }
             hasRoundResults = true;
@@ -2150,6 +2851,44 @@ inline Encounter deserializeEncounter(const std::string& text) {
                 if (s.canRetreat || s.canCloak) fail("Immobile ship cannot retreat or cloak.");
                 s.immobile = true;
             }
+        } else if (tag == "FLIGHT") {
+            if (!v2 || !hasShips || hasFlight || !enc.flightRules()) fail("FLIGHT section is unexpected or duplicated.");
+            hasFlight = true;
+            std::int64_t count = 0;
+            if (!(ss >> count) || count != static_cast<std::int64_t>(enc.ships.size())) fail("Failed to parse FLIGHT count.");
+            std::set<int> seen;
+            for (std::int64_t i = 0; i < count; ++i) {
+                int fid = 0, size = 0;
+                std::int64_t mountCount = 0;
+                Ship probe;
+                if (!(ss >> fid >> probe.facing >> probe.velocity >> probe.turnRate >> probe.acceleration >> probe.lateral >> size >> mountCount)) {
+                    fail("Failed to parse FLIGHT ship record.");
+                }
+                if (!seen.insert(fid).second) fail("Duplicate FLIGHT ship record.");
+                Ship& s = requireShip(fid, "FLIGHT");
+                if (probe.facing < 0 || probe.facing >= 360 || probe.facing % 45 != 0 || probe.velocity < 0 || probe.velocity > 20 ||
+                    probe.turnRate < 0 || probe.turnRate > 180 || probe.turnRate % 45 != 0 || probe.acceleration < 0 ||
+                    probe.acceleration > 10 || probe.lateral < 0 || probe.lateral > 10 || size < 0 ||
+                    size > static_cast<int>(roster::SizeClass::Station) || mountCount < 0 || mountCount > MaxShipMounts) {
+                    fail("FLIGHT values out of bounds for ship " + std::to_string(fid));
+                }
+                s.facing = probe.facing; s.velocity = probe.velocity; s.turnRate = probe.turnRate;
+                s.acceleration = probe.acceleration; s.lateral = probe.lateral;
+                s.sizeClass = static_cast<roster::SizeClass>(size);
+                s.mounts.clear();
+                for (std::int64_t j = 0; j < mountCount; ++j) {
+                    int type = 0, arc = 0;
+                    TacticalMount m;
+                    if (!(ss >> type >> m.count >> arc >> m.attack)) fail("Failed to parse FLIGHT mount.");
+                    if (type <= 0 || type > static_cast<int>(roster::WeaponType::Torpedo) || m.count < 1 || m.count > 100 ||
+                        arc < 0 || arc > static_cast<int>(roster::FiringArc::All) || m.attack < 0 || m.attack > MaxStat) {
+                        fail("FLIGHT mount out of bounds for ship " + std::to_string(fid));
+                    }
+                    m.type = static_cast<roster::WeaponType>(type);
+                    m.arc = static_cast<roster::FiringArc>(arc);
+                    s.mounts.push_back(m);
+                }
+            }
         } else if (tag == "END") {
             hasEnd = true;
             break;
@@ -2162,6 +2901,7 @@ inline Encounter deserializeEncounter(const std::string& text) {
         (v2 && (!hasRules || !hasRelation || !hasStanding || !hasController || !hasCloakState))) {
         fail("Incomplete tactical encounter serialization: missing required sections.");
     }
+    if (hasFlight != enc.flightRules()) fail("FLIGHT section is required exactly for tactical rules 3.");
     if (static_cast<int>(enc.rounds.size()) != enc.currentRound) {
         fail("ROUND_RESULTS count does not match the current round.");
     }
