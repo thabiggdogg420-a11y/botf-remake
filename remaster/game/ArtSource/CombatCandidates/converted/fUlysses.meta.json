@@ -1,0 +1,63 @@
+{
+  "candidate_name": "fUlysses",
+  "target_class": "Ulysses Dreadnought / Command Cruiser",
+  "canonical_faction": "Federation",
+  "source_file": "fUlysses.ms3d",
+  "source_relative_path": "source/Icewolf132/Completed/ulysses/fUlysses.ms3d",
+  "source_sha256": "19b0977c77427b10f9293ac6abbd943564d01fc739ea6cb5011241bc67402b3c",
+  "output_glb": "fUlysses.glb",
+  "output_glb_sha256": "c6f7247bc903c65861036b3ef39f8c88462a06b1080c8c7edd8e653ec597b91f",
+  "output_size_bytes": 1062720,
+  "author": "Icewolf132 (Original design: Taldren)",
+  "triangles": 1076,
+  "vertices": 884,
+  "mesh_groups": 6,
+  "material_count": 6,
+  "textures": [
+    "SaucerUlysses.tga",
+    "HullUlysses.tga",
+    "NacelleUlysses.tga",
+    "NacelleUlysses.tga",
+    "HullUlysses.tga",
+    "NacelleUlysses.tga"
+  ],
+  "texture_hashes": {
+    "SaucerUlysses.tga": "cd50b07e63bcbe0c0112e383ffd30743faff0d61ec875594de6348c841c830a8",
+    "HullUlysses.tga": "9f2c5965169d1b110ae01d42c2c0f0cd6ce373b8107b90c62d4816e88a167286",
+    "NacelleUlysses.tga": "5d3af186b5a50d568f3b993fa32fe178b7a2a643375d9af74c3ce5d09e51c3be"
+  },
+  "bounds": {
+    "min": [
+      -19.263172149658203,
+      -39.118194580078125,
+      -9.809245109558105
+    ],
+    "max": [
+      19.263172149658203,
+      39.118194580078125,
+      9.809245109558105
+    ],
+    "dimensions_xyz": [
+      38.526344299316406,
+      78.23638916015625,
+      19.61849021911621
+    ],
+    "bounding_sphere_radius": 42.87982709698104,
+    "bounding_box_center_offset": [
+      0.0,
+      -4.495939254760742,
+      5.453829765319824
+    ]
+  },
+  "coordinate_transform": {
+    "source_axes": [
+      "x",
+      "-z",
+      "y"
+    ],
+    "pivot": "bounding_box_center",
+    "gltf_export_y_up": true
+  },
+  "helper_joints": [],
+  "status": "Ready"
+}

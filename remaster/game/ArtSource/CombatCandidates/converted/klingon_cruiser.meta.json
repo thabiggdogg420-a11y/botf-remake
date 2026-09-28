@@ -1,0 +1,52 @@
+{
+  "candidate_name": "klingon_cruiser",
+  "target_class": "Klingon Attack Cruiser Study (Vor'cha / K't'inga archetype)",
+  "canonical_faction": "Klingon",
+  "source_file": "Klingon.glb",
+  "source_relative_path": "game/ArtSource/FleetStudies/Klingon.glb",
+  "source_sha256": "a0f03b6c6af9bf1f8b3564306dd0c279a2c5ac5c63676752bb8f09978a667ffe",
+  "output_glb": "klingon_cruiser.glb",
+  "output_glb_sha256": "6f80594743b63713c910dfbd5a4f7fc1d7b37bbea7c0d7051ad30aaaa914888b",
+  "output_size_bytes": 128880,
+  "author": "BOTF Remake Project",
+  "triangles": 4824,
+  "vertices": 2986,
+  "mesh_groups": 1,
+  "material_count": 4,
+  "textures": [],
+  "texture_hashes": {},
+  "bounds": {
+    "min": [
+      -1.7849998474121094,
+      -2.049999952316284,
+      -0.39750000834465027
+    ],
+    "max": [
+      1.7849998474121094,
+      2.049999952316284,
+      0.39750000834465027
+    ],
+    "dimensions_xyz": [
+      3.5699996948242188,
+      4.099999904632568,
+      0.7950000166893005
+    ],
+    "bounding_sphere_radius": 2.3632564996574037,
+    "bounding_box_center_offset": [
+      0.33500003814697266,
+      0.0,
+      0.002499997615814209
+    ]
+  },
+  "coordinate_transform": {
+    "source_axes": [
+      "x",
+      "y",
+      "z"
+    ],
+    "pivot": "bounding_box_center",
+    "gltf_export_y_up": true
+  },
+  "helper_joints": [],
+  "status": "Ready"
+}

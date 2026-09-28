@@ -1,0 +1,24 @@
+/* Bundled (inlined) fonts so the build works offline and renders identically everywhere.
+   Antonio (SIL OFL) for condensed display type, Inter (SIL OFL) for UI text,
+   Share Tech Mono (SIL OFL) for coordinates and readouts. Latin subsets only. */
+@font-face {
+  font-family: 'Antonio Variable';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 700;
+  src: url('@fontsource-variable/antonio/files/antonio-latin-wght-normal.woff2') format('woff2-variations');
+}
+@font-face {
+  font-family: 'Inter Variable';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url('@fontsource-variable/inter/files/inter-latin-wght-normal.woff2') format('woff2-variations');
+}
+@font-face {
+  font-family: 'Share Tech Mono';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 400;
+  src: url('@fontsource/share-tech-mono/files/share-tech-mono-latin-400-normal.woff2') format('woff2');
+}

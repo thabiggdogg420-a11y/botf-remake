@@ -1,0 +1,67 @@
+name: remaster-ci
+
+on:
+  push:
+    paths: ['remaster/**', '.github/workflows/remaster-ci.yml']
+  pull_request:
+    paths: ['remaster/**', '.github/workflows/remaster-ci.yml']
+
+jobs:
+  simulation:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: gcc
+            cxx: g++
+            sanitize: 'OFF'
+          - name: clang-asan-ubsan
+            cxx: clang++
+            sanitize: 'ON'
+    name: simulation (${{ matrix.name }})
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure
+        run: cmake -S remaster -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_CXX_COMPILER=${{ matrix.cxx }} -DBOTF_SANITIZE=${{ matrix.sanitize }}
+      - name: Build
+        run: cmake --build build -j 4
+      - name: Scenario suites
+        run: ctest --test-dir build --output-on-failure
+      - name: Determinism smoke (200-turn five-empire campaign)
+        run: |
+          ./build/BotfSim --reference --seed 26713 --empires 5 --player 4 --turns 200 | tail -1
+
+  web:
+    name: web client (wasm + browser)
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: remaster/web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mymindstorm/setup-emsdk@v14
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: remaster/web/package-lock.json
+      - name: Rebuild core module from source
+        run: ./build-wasm.sh --clean
+      - name: Install
+        run: npm ci
+      - name: Bridge tests
+        run: npm test
+      - name: Build
+        run: npm run build
+      - name: Browser tests
+        run: |
+          npx playwright install --with-deps chromium
+          npx playwright test e2e/campaign.spec.ts
+      - name: Upload browser traces
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-traces
+          path: remaster/web/test-results/
+          retention-days: 7
