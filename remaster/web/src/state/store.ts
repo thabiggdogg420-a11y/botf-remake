@@ -39,7 +39,7 @@ export const encounter = signal<Encounter | null>(null);
 export const toasts = signal<Toast[]>([]);
 export const confirmDialog = signal<ConfirmDialog | null>(null);
 export const mapLayers = signal<MapLayers>({ territory: true, supply: true, routes: true, grid: true, labels: true, trade: true });
-export const focusRequest = signal<{ x: number; y: number; zoom?: number; seq: number } | null>(null);
+export const focusRequest = signal<{ x: number; y: number; zoom?: number; frame?: boolean; seq: number } | null>(null);
 export const busy = signal(false);
 export const menuOpen = signal(false);
 export const saveName = signal<string>('');
@@ -97,6 +97,11 @@ export function back(): void {
 
 export function focusMap(x: number, y: number, zoom?: number): void {
   focusRequest.value = { x, y, zoom, seq: (focusRequest.value?.seq ?? 0) + 1 };
+}
+
+/** Frames the camera on the charted part of the galaxy (every surveyed or sensed sector). */
+export function frameKnownRegion(): void {
+  focusRequest.value = { x: 0, y: 0, frame: true, seq: (focusRequest.value?.seq ?? 0) + 1 };
 }
 
 export function selectCell(cell: number | null): void {
@@ -195,9 +200,7 @@ function enterGame(next: GameView, name: string): void {
     if (home) selectSystem(home.systemId);
     else selection.value = { cell: null, systemId: null, fleetId: null, taskForceId: null };
   });
-  const home = next.colonies[0];
-  const system = home ? next.systems.find((s) => s.id === home.systemId) : null;
-  if (system) focusMap(system.x, system.y, 1.25);
+  frameKnownRegion();
 }
 
 export function startCampaign(options: Parameters<typeof core.newCampaign>[0]): void {

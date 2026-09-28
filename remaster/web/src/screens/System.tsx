@@ -234,7 +234,9 @@ function Energy({ detail, locked }: { detail: ColonyDetail; locked: boolean }) {
         <span>Power</span><Meter value={e.energyUsed} max={Math.max(1, e.energyAvailable)} segments={20} height={8} tone={e.energyUsed > e.energyAvailable ? 'alert' : 'secondary'} /><b>{e.energyUsed}/{e.energyAvailable}</b>
       </div>
       <div class="energy-lines">
-        <span>{c.structures.powerPlants} power plants</span>
+        <span {...tip('Power plants give 10 energy each (1 credit upkeep); fusion plants give 40 (2 upkeep). Both can be scrapped from the structures list.')}>
+          {c.structures.powerPlants} power plant{c.structures.powerPlants === 1 ? '' : 's'}{c.structures.fusionPlants ? ` · ${c.structures.fusionPlants} fusion plant${c.structures.fusionPlants === 1 ? '' : 's'}` : ''}
+        </span>
         {e.inactiveFactories || e.inactiveLabs ? <span class="warn">{e.inactiveFactories} factories, {e.inactiveLabs} labs idle</span> : <span>All structures powered</span>}
         {c.structures.defenseBatteries ? <span>{e.poweredBatteries}/{c.structures.defenseBatteries} batteries powered</span> : null}
       </div>

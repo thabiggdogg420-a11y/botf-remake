@@ -52,7 +52,7 @@ export interface Governor {
 export interface ColonyBrief {
   systemId: number; name: string; population: number; capacity: number; morale: number;
   workers: { food: number; industry: number; research: number; unassigned: number };
-  structures: { farms: number; factories: number; laboratories: number; shipyards: number; powerPlants: number; defenseBatteries: number };
+  structures: { farms: number; factories: number; laboratories: number; shipyards: number; powerPlants: number; fusionPlants: number; defenseBatteries: number };
   energy: number; shipyardEnabled: boolean; economy: Economy; growth: Growth;
   queueLength: number; building?: { name: string; work: number; cost: number; eta: number };
   queueBlocker: string; governor: Governor;
@@ -79,14 +79,20 @@ export interface TaskForceView {
   speed: number; attack: number; hull: number; shields: number;
 }
 
+export interface RelationMemory {
+  theirGrievances: number; ourGrievances: number; theirBetrayals: number;
+  lastWarTurn?: number; lastPeaceTurn?: number; ourRefusedProposals?: number; theirRefusedProposals?: number; lastProposalFromThem?: number;
+}
 export interface RelationView {
-  empire: number; name: string; contact: boolean; atWar?: boolean; tradeTreaty?: boolean; trust?: number; warStartTurn?: number;
+  empire: number; name: string; contact: boolean; eliminated: boolean;
+  atWar?: boolean; tradeTreaty?: boolean; trust?: number; warStartTurn?: number;
+  personality?: string; allied?: boolean; sensorSharing?: boolean; treatyForbidsAttack?: boolean; memory?: RelationMemory;
 }
 
 export interface PendingCommand {
   id: number; type: string; summary: string; systemId?: number; fleetId?: number; taskForceId?: number;
   targetFleetId?: number; targetSystemId?: number; targetEmpire?: number; targetX?: number; targetY?: number;
-  building?: string; referenceId?: number; proposalId?: number; memberFleetIds?: number[]; stance?: string;
+  building?: string; referenceId?: number; proposalId?: number; proposalAccept?: boolean; memberFleetIds?: number[]; stance?: string;
 }
 
 export interface Alert { kind: string; severity: Severity; text: string; systemId?: number; fleetId?: number; empire?: number }
@@ -171,18 +177,29 @@ export interface Forecast {
 }
 
 export interface Participant { id: number; minor: boolean; name: string }
+export interface DiplomaticEventView { turn: number; type: string; typeKey: number; value: number; text: string; a: Participant; b: Participant }
+export interface ProposalView {
+  id: number; incoming: boolean; proposer: Participant; target: Participant; type: string; typeName: string;
+  duration: string; tone: string; creditOffer: number; creditDemand: number; submittedTurn: number; dueTurn: number;
+  status: string; responseDrafted: boolean; kind: 'treaty' | 'gift' | 'tribute' | 'war'; reason: string;
+}
+export interface CallToArmsView {
+  defender: number; defenderName: string; aggressor: number; aggressorName: string; issuedTurn: number; dueTurn: number;
+  honored: boolean; honorDrafted: boolean; boundByTreaty: boolean; honorBlocker: string;
+}
 export interface DiplomacyView {
-  modern: boolean; advancedRules: boolean;
+  modern: boolean; advancedRules: boolean; turn: number;
   empires: RelationView[];
   minors: { systemId: number; name: string; system: string; memberOf: number; attitude: number; friendship: boolean; offerInFlight: boolean }[];
   eligibility: { target: number; minor: boolean; treaties: { type: string; name: string; ok: boolean; reason: string }[] }[];
-  proposals: {
-    id: number; incoming: boolean; proposer: Participant; target: Participant; type: string; typeName: string;
-    duration: string; tone: string; creditOffer: number; creditDemand: number; submittedTurn: number; dueTurn: number;
-    status: string; responseDrafted: boolean;
-  }[];
+  proposals: ProposalView[];
   treaties: { id: number; counterparty: Participant; type: string; typeName: string; duration: string; turnsRemaining: number; startTurn: number }[];
-  events: { turn: number; type: string; text: string; a: Participant; b: Participant }[];
+  events: DiplomaticEventView[];
+  news: DiplomaticEventView[];
+  standing: { betrayals: number; lastBetrayalTurn: number };
+  callsToArms: CallToArmsView[];
+  treatyHistory: { id: number; counterparty: Participant; type: string; typeName: string; startTurn: number; status: string; statusKey: number }[];
+  victory?: { bloc: number; galaxy: number; achieved: boolean; allies: number[]; memberMinors: string[] };
   majorOffers: { id: number; proposer: number; target: number; dueTurn: number; type: string }[];
   minorOffers: { id: number; systemId: number; system: string; dueTurn: number; type: string }[];
   dossiers: { turn: number; target: number; knownColonies: number; estimatedCredits: number }[];
@@ -190,11 +207,11 @@ export interface DiplomacyView {
 
 export interface IntelBudget { security: number; rivals: { id: number; espionage: number; sabotage: number }[] }
 export interface IntelView {
-  modern: boolean; reserve: number; output: number; securityStockpile: number;
+  modern: boolean; reserve: number; output: number; securityStockpile: number; defenseStrengthMilli?: number;
   budget: IntelBudget; committedBudget: IntelBudget;
   rivals: {
-    id: number; name: string; contact: boolean; atWar: boolean; focus?: string; focusName?: string;
-    espionageStockpile?: number; sabotageStockpile?: number; departmentWeights?: number[];
+    id: number; name: string; contact: boolean; atWar: boolean; eliminated: boolean; focus?: string; focusName?: string;
+    espionageStockpile?: number; sabotageStockpile?: number; departmentWeights?: number[]; attackStrengthMilli?: number;
     visibleColonies: { systemId: number; name: string }[];
   }[];
   reports: { turn: number; target: number; targetName: string; success: boolean; knownColonies: number; estimatedCredits: number; systemId: number; system: string }[];
@@ -210,27 +227,34 @@ export interface TacticalShip {
   id: number; owner: number; ownerName: string; mine: boolean; name: string; shipClass: string; referenceShipId: number;
   hidden: boolean; hull: number; maxHull: number; initialHull: number; shields: number; maxShields: number; initialShields: number;
   beam: number; torpedo: number; speed: number; position: Coord | null; alive: boolean; active: boolean; retreated: boolean;
-  canRetreat: boolean; canCloak: boolean; cloaked: boolean; groupId: number; group?: string;
+  canRetreat: boolean; canCloak: boolean; cloaked: boolean; groupId: number; group?: string; disengaging: boolean;
   maneuver?: string; target?: number; ordered?: boolean;
+  /** What the ship executes next round and who decided it (player order, standing order, tactical AI). */
+  next?: { maneuver: string; target: number; source: 'order' | 'standing' | 'ai' };
 }
 export interface RoundShip {
   id: number; owner: number; hullBefore: number; hullAfter: number; shieldBefore: number; shieldAfter: number;
   beam: number; torpedo: number; taken: number; from: Coord; via: Coord; to: Coord; maneuver: string; target: number;
-  destroyed: boolean; retreated: boolean; decloaked: boolean; hailed: boolean; yaw: number;
+  destroyed: boolean; retreated: boolean; decloaked: boolean; hailed: boolean; ai: boolean; disengaging: boolean; yaw: number;
 }
+export interface Salvo { from: number; to: number; beam: number; torpedo: number; absorbed: boolean; ram: boolean; ambush: boolean }
 export interface TacticalRound {
   index: number; ended: boolean; winner: number; truce: boolean; ships: RoundShip[];
-  salvos: { from: number; to: number; beam: number; torpedo: number; absorbed: boolean }[];
+  salvos: Salvo[];
   lost: number[]; retreatedIds: number[];
 }
+export interface HailPreview { atWar: boolean; trust: number; ourStrength: number; theirStrength: number; accepts: boolean }
 export interface Encounter {
   arenaWidth: number; arenaHeight: number; round: number; maxRounds: number; finished: boolean; winner: number;
-  sectorX: number; sectorY: number; turn: number; controller: number; location: string;
+  sectorX: number; sectorY: number; turn: number; controller: number; location: string; rules: number; foe: number;
+  hail: HailPreview;
   ships: TacticalShip[]; rounds: TacticalRound[];
 }
 
 export interface BriefingEvent {
   category: string; severity: Severity; text: string; systemId?: number; fleetId?: number; x?: number; y?: number; battle?: number;
+  /** Diplomacy: proposal | tribute | gift | callToArms | betrayal | callRefused | callHonored | eliminated | secession | war | peace | news … */
+  kind?: string; proposalId?: number; dueTurn?: number;
 }
 export interface Briefing {
   turn: number; creditsBefore: number; creditsAfter: number; researchGained: number; fleetUpkeep: number; tradeIncome: number;

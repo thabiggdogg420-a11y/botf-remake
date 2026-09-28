@@ -8,7 +8,7 @@ import {
 import { plotCourse, selectedUnit } from '../state/orders';
 import { palette } from '../ui/theme';
 import { blip } from '../ui/audio';
-import { CELL, GalaxyRenderer, type Camera, type Overlay } from './renderer';
+import { CELL, GalaxyRenderer, knownBounds, type Camera, type Overlay } from './renderer';
 import { registerMapHooks } from '../testHooks';
 
 export interface ContextMenuState { cell: number; x: number; y: number }
@@ -16,7 +16,7 @@ export const contextMenu = signal<ContextMenuState | null>(null);
 export const hoverInfo = signal<{ cell: number; x: number; y: number; eta: number | null; ok: boolean } | null>(null);
 export const cameraZoom = signal(1);
 
-const reduceMotion = typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+import { reducedMotion } from '../state/settings';
 
 export function GalaxyMap() {
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -100,7 +100,7 @@ export function GalaxyMap() {
       } else if (preview) { preview = null; previewKey = ''; }
       return {
         selectedCell: sel.cell, selectedFleetId: sel.fleetId, selectedTaskForceId: sel.taskForceId,
-        hoverCell, supply: supplyGrid, preview, layers: mapLayers.value, reduceMotion: !!reduceMotion,
+        hoverCell, supply: supplyGrid, preview, layers: mapLayers.value, reduceMotion: reducedMotion.value,
         accent: palette(v.meta.player).primary,
       };
     };
@@ -113,10 +113,25 @@ export function GalaxyMap() {
       const fr = focusRequest.value;
       if (fr && fr.seq !== lastFocusSeq) {
         lastFocusSeq = fr.seq;
-        const zoom = fr.zoom ?? Math.max(target.zoom, 1.2);
-        // Centre within the part of the chart not covered by the inspector panel.
-        target = { cx: (fr.x + 0.5) * CELL + covered() / 2 / zoom, cy: (fr.y + 0.5) * CELL, zoom };
-        clampCam(v, target);
+        if (fr.frame) {
+          // Frame the charted region (plus a margin of uncharted space) in the visible part of the chart.
+          const b = knownBounds(v);
+          if (b) {
+            const { width, height } = renderer.size;
+            const pad = 1.4;
+            const bw = (b.x1 - b.x0 + 1 + pad * 2) * CELL, bh = (b.y1 - b.y0 + 1 + pad * 2) * CELL;
+            const { min, max } = limits(v);
+            const zoom = Math.min(Math.min(max, 1.7), Math.max(min, Math.min((width - covered()) / bw, height / bh)));
+            target = { cx: ((b.x0 + b.x1 + 1) / 2) * CELL + covered() / 2 / zoom, cy: ((b.y0 + b.y1 + 1) / 2) * CELL, zoom };
+          } else target = fitTarget(v);
+          clampCam(v, target);
+          if (reducedMotion.value || !fitted) Object.assign(cam, target);
+        } else {
+          const zoom = fr.zoom ?? Math.max(target.zoom, 1.2);
+          // Centre within the part of the chart not covered by the inspector panel.
+          target = { cx: (fr.x + 0.5) * CELL + covered() / 2 / zoom, cy: (fr.y + 0.5) * CELL, zoom };
+          clampCam(v, target);
+        }
       }
       // keyboard panning
       const pan = 9 / cam.zoom;
@@ -125,7 +140,7 @@ export function GalaxyMap() {
       if (keys.has('ArrowUp') || keys.has('w')) target.cy -= pan;
       if (keys.has('ArrowDown') || keys.has('s')) target.cy += pan;
       clampCam(v, target);
-      const k = reduceMotion ? 1 : 0.22;
+      const k = reducedMotion.value ? 1 : 0.22;
       cam.cx += (target.cx - cam.cx) * k; cam.cy += (target.cy - cam.cy) * k;
       cam.zoom += (target.zoom - cam.zoom) * k;
       if (Math.abs(cameraZoom.value - cam.zoom) > 0.01) cameraZoom.value = cam.zoom;

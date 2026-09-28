@@ -1,10 +1,23 @@
 // Canvas 2D galaxy renderer: nebula + parallax starfield, fog of war, territory, supply range,
 // routes, systems and fleet markers. Pure presentation — all numbers come from the view JSON.
 import type { ContactView, FleetView, GameView, SystemView } from '../core/types';
-import { EMBLEMS, palette } from '../ui/theme';
+import { colorblindPaletteActive, EMBLEMS, palette } from '../ui/theme';
 
 export const CELL = 64;
-const FOG_UNKNOWN_ALPHA = 178;
+// Unknown space is veiled, but lightly enough that the nebula fields read through; the
+// "uncharted" survey texture, faint grid crosses and the sensor horizon line carry the meaning.
+const FOG_UNKNOWN_ALPHA = 150;
+
+/** Bounding box (in cells) of every surveyed or sensed sector, or null when nothing is known. */
+export function knownBounds(view: GameView): { x0: number; y0: number; x1: number; y1: number } | null {
+  const W = view.meta.width, H = view.meta.height;
+  let x0 = W, y0 = H, x1 = -1, y1 = -1;
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    if (view.fog[y * W + x] === '0') continue;
+    x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y);
+  }
+  return x1 < 0 ? null : { x0, y0, x1, y1 };
+}
 
 export interface Camera { cx: number; cy: number; zoom: number }
 export interface HitTarget { kind: 'fleet' | 'contact'; id: number; x: number; y: number; r: number; cell: number }
@@ -70,6 +83,10 @@ export class GalaxyRenderer {
   private territoryCanvas: HTMLCanvasElement | null = null;
   private layerKey = '';
   private territoryOwner: Int8Array = new Int8Array(0);
+  private unknown: Uint8Array = new Uint8Array(0);
+  private frontier: [number, number, number, number][] = [];   // world-space segments of the sensor horizon
+  private uncharted: { x: number; y: number }[] = [];            // cells deep in unknown space (labels)
+  private surveyPattern: CanvasPattern | null = null;
   hits: HitTarget[] = [];
 
   constructor(private canvas: HTMLCanvasElement) {
@@ -156,11 +173,62 @@ export class GalaxyRenderer {
     this.nebula = c;
   }
 
+  /** Fine diagonal "survey" hatching with sparse specks: the texture of uncharted space. */
+  private ensureSurveyPattern(): CanvasPattern | null {
+    if (this.surveyPattern) return this.surveyPattern;
+    const c = document.createElement('canvas');
+    c.width = c.height = 96;
+    const g = c.getContext('2d')!;
+    g.strokeStyle = 'rgba(150,175,230,0.10)';
+    g.lineWidth = 1;
+    for (let i = -96; i < 192; i += 12) { g.beginPath(); g.moveTo(i, 0); g.lineTo(i + 96, 96); g.stroke(); }
+    const rand = mulberry(42);
+    for (let i = 0; i < 26; i++) {
+      g.fillStyle = `rgba(190,205,240,${0.08 + rand() * 0.16})`;
+      g.fillRect(Math.floor(rand() * 96), Math.floor(rand() * 96), 1, 1);
+    }
+    this.surveyPattern = this.ctx.createPattern(c, 'repeat');
+    return this.surveyPattern;
+  }
+
   private ensureLayers(view: GameView): void {
-    const key = `${view.meta.version}:${view.fog}`;
+    const key = `${view.meta.version}:${view.fog}:${colorblindPaletteActive() ? 'cb' : 'std'}`;
     if (key === this.layerKey && this.fogCanvas && this.territoryCanvas) return;
     this.layerKey = key;
     const { width: W, height: H } = view.meta;
+    // Unknown cells, the sensor horizon between charted and uncharted space, and label anchors
+    // placed deepest inside large uncharted regions.
+    const unknown = new Uint8Array(W * H);
+    for (let i = 0; i < W * H; i++) unknown[i] = view.fog[i] === '0' ? 1 : 0;
+    this.unknown = unknown;
+    const frontier: [number, number, number, number][] = [];
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      if (unknown[y * W + x]) continue;
+      if (x > 0 && unknown[y * W + x - 1]) frontier.push([x * CELL, y * CELL, x * CELL, (y + 1) * CELL]);
+      if (x < W - 1 && unknown[y * W + x + 1]) frontier.push([(x + 1) * CELL, y * CELL, (x + 1) * CELL, (y + 1) * CELL]);
+      if (y > 0 && unknown[(y - 1) * W + x]) frontier.push([x * CELL, y * CELL, (x + 1) * CELL, y * CELL]);
+      if (y < H - 1 && unknown[(y + 1) * W + x]) frontier.push([x * CELL, (y + 1) * CELL, (x + 1) * CELL, (y + 1) * CELL]);
+    }
+    this.frontier = frontier;
+    const dist = new Int16Array(W * H).fill(999);
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      if (!unknown[y * W + x]) continue;
+      let best = 999;
+      for (let yy = 0; yy < H; yy++) for (let xx = 0; xx < W; xx++) {
+        if (unknown[yy * W + xx]) continue;
+        best = Math.min(best, Math.max(Math.abs(xx - x), Math.abs(yy - y)));
+      }
+      dist[y * W + x] = best;
+    }
+    const candidates: { x: number; y: number; d: number }[] = [];
+    for (let y = 1; y < H - 1; y++) for (let x = 1; x < W - 1; x++) if (unknown[y * W + x] && dist[y * W + x]! >= 3) candidates.push({ x, y, d: dist[y * W + x]! });
+    candidates.sort((a, b) => b.d - a.d || a.y - b.y || a.x - b.x);
+    const labels: { x: number; y: number }[] = [];
+    for (const c of candidates) {
+      if (labels.length >= 4) break;
+      if (labels.every((l) => Math.max(Math.abs(l.x - c.x), Math.abs(l.y - c.y)) >= 5)) labels.push({ x: c.x, y: c.y });
+    }
+    this.uncharted = labels;
     // Fog: one pixel per sector, alpha by knowledge; smoothed when scaled → soft edges.
     const fog = this.fogCanvas ?? document.createElement('canvas');
     fog.width = W + 2; fog.height = H + 2;
@@ -315,6 +383,7 @@ export class GalaxyRenderer {
       ctx.rect(fx, fy, fw, fh);
       ctx.fill('evenodd');
       ctx.drawImage(this.fogCanvas, fx, fy, fw, fh);
+      this.drawUncharted(view, cam, overlay, t);
     }
 
     // routes of own units
@@ -348,6 +417,80 @@ export class GalaxyRenderer {
     ctx.strokeStyle = 'rgba(140,170,230,0.22)';
     ctx.lineWidth = 1;
     ctx.strokeRect(Math.round(ox) + 0.5, Math.round(oy) + 0.5, Math.round(worldW * z), Math.round(worldH * z));
+  }
+
+  /** Uncharted space: survey hatching, faint grid crosses, "uncharted" labels and the sensor horizon. */
+  private drawUncharted(view: GameView, cam: Camera, overlay: Overlay, t: number): void {
+    const { ctx } = this;
+    const { width: W, height: H } = view.meta;
+    const z = cam.zoom, s = CELL * z;
+    const [ox, oy] = this.worldToScreen(cam, 0, 0);
+    const unknownPath = new Path2D();
+    let any = false;
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      if (!this.unknown[y * W + x]) continue;
+      const sx = ox + x * s, sy = oy + y * s;
+      if (sx > this.width || sy > this.height || sx + s < 0 || sy + s < 0) continue;
+      unknownPath.rect(sx, sy, s + 0.5, s + 0.5);
+      any = true;
+    }
+    if (any) {
+      ctx.save();
+      ctx.clip(unknownPath);
+      const pattern = this.ensureSurveyPattern();
+      if (pattern) {
+        // Anchor the texture to the chart so it pans and zooms with the sectors.
+        pattern.setTransform(new DOMMatrix().translateSelf(ox, oy).scaleSelf(Math.max(0.5, z * 0.75)));
+        ctx.fillStyle = pattern;
+        ctx.fillRect(0, 0, this.width, this.height);
+      }
+      if (overlay.layers.grid) {
+        ctx.strokeStyle = 'rgba(160,185,235,0.20)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        const arm = Math.max(2, Math.min(5, 3.5 * z));
+        for (let y = 0; y <= H; y++) for (let x = 0; x <= W; x++) {
+          const sx = Math.round(ox + x * s) + 0.5, sy = Math.round(oy + y * s) + 0.5;
+          if (sx < -8 || sy < -8 || sx > this.width + 8 || sy > this.height + 8) continue;
+          ctx.moveTo(sx - arm, sy); ctx.lineTo(sx + arm, sy); ctx.moveTo(sx, sy - arm); ctx.lineTo(sx, sy + arm);
+        }
+        ctx.stroke();
+      }
+      ctx.restore();
+      if (z > 0.5) {
+        ctx.save();
+        const size = Math.round(Math.max(10, Math.min(15, 11 * z)));
+        ctx.font = `600 ${size}px "Antonio Variable", Antonio, "Arial Narrow", sans-serif`;
+        (ctx as CanvasRenderingContext2D & { letterSpacing?: string }).letterSpacing = `${Math.round(size * 0.45)}px`;
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        for (const l of this.uncharted) {
+          const [cx, cy] = this.worldToScreen(cam, (l.x + 0.5) * CELL, (l.y + 0.5) * CELL);
+          ctx.fillStyle = 'rgba(170,190,235,0.30)';
+          ctx.fillText('UNCHARTED', cx, cy);
+          ctx.font = `500 ${Math.max(9, size - 3)}px "Share Tech Mono", monospace`;
+          ctx.fillStyle = 'rgba(170,190,235,0.22)';
+          ctx.fillText(`SECTOR ${l.x}.${l.y}`, cx, cy + size + 2);
+          ctx.font = `600 ${size}px "Antonio Variable", Antonio, "Arial Narrow", sans-serif`;
+        }
+        ctx.restore();
+      }
+    }
+    // Sensor horizon: where charted space ends.
+    if (this.frontier.length) {
+      ctx.save();
+      ctx.lineCap = 'round';
+      const glow = new Path2D(), line = new Path2D();
+      for (const [x1, y1, x2, y2] of this.frontier) {
+        const [a, b] = this.worldToScreen(cam, x1, y1), [c, d] = this.worldToScreen(cam, x2, y2);
+        glow.moveTo(a, b); glow.lineTo(c, d);
+        line.moveTo(a, b); line.lineTo(c, d);
+      }
+      ctx.strokeStyle = rgba(overlay.accent, 0.07); ctx.lineWidth = 7; ctx.stroke(glow);
+      ctx.strokeStyle = rgba(overlay.accent, 0.38); ctx.lineWidth = 1.2;
+      ctx.setLineDash([5, 7]); ctx.lineDashOffset = -t * 6;
+      ctx.stroke(line);
+      ctx.restore();
+    }
   }
 
   private drawBorders(view: GameView, cam: Camera): void {

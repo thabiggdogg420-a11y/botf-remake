@@ -1,6 +1,12 @@
 // Named save slots in localStorage, autosave, and .botfsave export/import.
+// Storage access is always guarded: when localStorage is missing or throws (private mode, sandboxed
+// or artifact viewers, quota) slots live in memory for this session so saving and continuing still
+// work, just without persistence across reloads.
 import { signal } from '@preact/signals';
 import { core } from '../core/engine';
+import { exportSaveText, safeFileName, type ExportOutcome } from '../platform/fileExport';
+import { readJson, readText, removeKey, writeJson, writeText } from '../platform/storage';
+import { settings } from './settings';
 
 export interface SaveEnvelope {
   format: 'botf-web-save';
@@ -24,26 +30,24 @@ const INDEX_KEY = 'botf.saves.index';
 const SLOT_PREFIX = 'botf.save.';
 export const AUTOSAVE_ID = 'autosave';
 
-export const saveIndex = signal<SaveSummary[]>(readIndex());
+// Session-only fallback when the browser refuses to store a slot.
+const memorySlots = new Map<string, string>();
+let memoryIndex: SaveSummary[] | null = null;
 
-function storage(): Storage | null {
-  try { return window.localStorage; } catch { return null; }
-}
+export const saveIndex = signal<SaveSummary[]>(readIndex());
+/** True once a slot could only be kept in memory (shown as a hint on the save screen). */
+export const storageDegraded = signal(false);
 
 function readIndex(): SaveSummary[] {
-  try {
-    const raw = storage()?.getItem(INDEX_KEY);
-    const list = raw ? (JSON.parse(raw) as SaveSummary[]) : [];
-    return Array.isArray(list) ? list : [];
-  } catch {
-    return [];
-  }
+  if (memoryIndex) return memoryIndex;
+  const list = readJson<SaveSummary[]>(INDEX_KEY, []);
+  return Array.isArray(list) ? list : [];
 }
 
 function writeIndex(list: SaveSummary[]): void {
   list.sort((a, b) => (a.savedAt < b.savedAt ? 1 : -1));
-  storage()?.setItem(INDEX_KEY, JSON.stringify(list));
-  saveIndex.value = list;
+  if (memoryIndex || !writeJson(INDEX_KEY, list)) memoryIndex = list;
+  saveIndex.value = [...list];
 }
 
 // Lazy import avoids a static cycle with the store (store imports saves for autosave).
@@ -73,21 +77,20 @@ export function captureEnvelope(name: string, id: string): SaveEnvelope {
 }
 
 export function writeSlot(envelope: SaveEnvelope): void {
-  const store = storage();
-  if (!store) throw new Error('Browser storage is unavailable (private mode?). Use Export instead.');
   const text = JSON.stringify(envelope);
-  try {
-    store.setItem(SLOT_PREFIX + envelope.id, text);
-  } catch {
-    throw new Error('Browser storage is full. Delete old saves or export this one to a file.');
-  }
+  if (!writeText(SLOT_PREFIX + envelope.id, text)) {
+    // Storage full or unavailable: keep the slot for this session and say so.
+    memorySlots.set(envelope.id, text);
+    if (!memoryIndex) memoryIndex = readIndex();
+    storageDegraded.value = true;
+  } else memorySlots.delete(envelope.id);
   const { data: _data, briefing: _briefing, ...summary } = envelope;
   writeIndex([...readIndex().filter((s) => s.id !== envelope.id), { ...summary, bytes: text.length }]);
 }
 
 export function readSlot(id: string): SaveEnvelope | null {
   try {
-    const text = storage()?.getItem(SLOT_PREFIX + id);
+    const text = memorySlots.get(id) ?? readText(SLOT_PREFIX + id);
     return text ? parseEnvelope(text) : null;
   } catch {
     return null;
@@ -95,7 +98,8 @@ export function readSlot(id: string): SaveEnvelope | null {
 }
 
 export function deleteSlot(id: string): void {
-  storage()?.removeItem(SLOT_PREFIX + id);
+  memorySlots.delete(id);
+  removeKey(SLOT_PREFIX + id);
   writeIndex(readIndex().filter((s) => s.id !== id));
 }
 
@@ -108,8 +112,9 @@ export function saveToSlot(name: string, id?: string): SaveEnvelope {
 
 export function autosave(): void {
   try {
+    if (!settings.value.autosave) return;
     const v = core.view();
-    if (v.meta.scenario === 'drill') return;
+    if (v.meta.scenario === 'drill' || v.meta.scenario === 'diplomacy') return;
     saveToSlot(`Autosave — ${v.meta.playerName}, turn ${v.meta.turn}`, AUTOSAVE_ID);
   } catch (error) {
     void storeModule().then((m) => m.toast(`Autosave failed: ${error instanceof Error ? error.message : String(error)}`, 'warn'));
@@ -123,17 +128,9 @@ export function parseEnvelope(text: string): SaveEnvelope {
   return parsed as SaveEnvelope;
 }
 
-export function exportEnvelope(envelope: SaveEnvelope): void {
-  const blob = new Blob([JSON.stringify(envelope, null, 1)], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  const safe = envelope.name.replace(/[^\w\- ]+/g, '').trim().replace(/\s+/g, '-').slice(0, 60) || 'campaign';
-  a.href = url;
-  a.download = `${safe}-t${envelope.turn}.botfsave`;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 2000);
+/** Exports a save through the host viewer's downloads capability or a plain download (see fileExport). */
+export function exportEnvelope(envelope: SaveEnvelope): Promise<ExportOutcome> {
+  return exportSaveText(`${safeFileName(envelope.name)}-t${envelope.turn}`, JSON.stringify(envelope, null, 1));
 }
 
 export async function importFile(file: File): Promise<SaveEnvelope> {

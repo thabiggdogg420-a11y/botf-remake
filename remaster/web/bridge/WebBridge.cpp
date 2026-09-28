@@ -432,7 +432,8 @@ void writeColonyBrief(Writer& w, const botf::GameState& s, const botf::Colony& c
     w.key("workers").beginObject().field("food", c.foodWorkers).field("industry", c.industryWorkers).field("research", c.researchWorkers)
         .field("unassigned", c.population - c.foodWorkers - c.industryWorkers - c.researchWorkers).endObject();
     w.key("structures").beginObject().field("farms", c.farms).field("factories", c.factories).field("laboratories", c.laboratories)
-        .field("shipyards", c.shipyards).field("powerPlants", c.powerPlants).field("defenseBatteries", c.defenseBatteries).endObject();
+        .field("shipyards", c.shipyards).field("powerPlants", c.powerPlants).field("fusionPlants", c.fusionPlants)
+        .field("defenseBatteries", c.defenseBatteries).endObject();
     w.field("energy", c.energy);
     w.field("shipyardEnabled", c.shipyardEnabled);
     w.key("economy"); writeEconomy(w, e);
@@ -503,15 +504,40 @@ void writeOwnFleet(Writer& w, const botf::GameState& d, const botf::GameState& c
     w.endObject();
 }
 
+bool listHas(const std::vector<int>& list, int id) { return std::find(list.begin(), list.end(), id) != list.end(); }
+
 void writeRelation(Writer& w, const botf::GameState& s, int other) {
-    const auto* r = botf::majorRelation(s, s.playerEmpire, other);
+    const int me = s.playerEmpire;
+    const auto* r = botf::majorRelation(s, me, other);
     w.beginObject();
     w.field("empire", other);
     w.field("name", empireLabel(other));
     w.field("contact", r && r->contact);
+    bool eliminated = false;
+    try { eliminated = botf::empireEliminated(s, other); } catch (...) {}
+    w.field("eliminated", eliminated);
     if (r && r->contact) {
         w.field("atWar", r->atWar); w.field("tradeTreaty", r->tradeTreaty); w.field("trust", r->trust);
         w.field("warStartTurn", r->warStartTurn);
+        w.field("personality", dip::personalityName(dip::personalityForEmpire(other)));
+        try {
+            w.field("allied", listHas(botf::alliedEmpires(s, me), other));
+            w.field("sensorSharing", listHas(botf::sensorSharingEmpires(s, me), other));
+            w.field("treatyForbidsAttack", botf::treatyForbidsAttack(s, me, other));
+        } catch (...) {}
+        // Relation memory and galaxy-wide standing (modern diplomacy, see DIPLOMACY.md §3.3, §5).
+        const auto& ds = s.diplomacyEngineState;
+        w.key("memory").beginObject();
+        w.field("theirGrievances", ds.grievances(other, me));
+        w.field("ourGrievances", ds.grievances(me, other));
+        w.field("theirBetrayals", ds.betrayals(other));
+        if (const auto* m = ds.findMemory(me, other)) {
+            w.field("lastWarTurn", m->lastWarTurn); w.field("lastPeaceTurn", m->lastPeaceTurn);
+            w.field("ourRefusedProposals", m->refusalsFrom(me));
+            w.field("theirRefusedProposals", m->refusalsFrom(other));
+            w.field("lastProposalFromThem", m->lastProposalFrom(other));
+        }
+        w.endObject();
     }
     w.endObject();
 }
@@ -752,8 +778,19 @@ void writeView(Writer& w) {
     try {
         for (const auto& p : botf::incomingProposals(s, me))
             w.beginObject().field("kind", "proposal").field("severity", "info").field("empire", p.proposer.isMinor ? 0 : p.proposer.id)
-                .field("text", (p.proposer.isMinor ? systemLabel(s, p.proposer.id) : empireLabel(p.proposer.id)) + " proposes " +
-                    dip::treatyTypeName(p.treatyType)).endObject();
+                .field("text", (p.proposer.isMinor ? systemLabel(s, p.proposer.id) : empireLabel(p.proposer.id)) +
+                    (p.treatyType == dip::TreatyType::None
+                        ? (p.creditDemand > 0 ? " demands " + std::to_string(p.creditDemand) + " credits in tribute"
+                                              : " offers a gift of " + std::to_string(p.creditOffer) + " credits")
+                        : std::string(" proposes a ") + dip::treatyTypeName(p.treatyType)) +
+                    " — answer by turn " + std::to_string(p.dueTurn)).endObject();
+        for (const auto& call : botf::openCallsToArms(s, me)) {
+            const auto* rel = botf::majorRelation(s, me, call.aggressor);
+            if (rel && rel->atWar) continue;
+            w.beginObject().field("kind", "callToArms").field("severity", "alert").field("empire", call.defender)
+                .field("text", empireLabel(call.defender) + " calls us to arms against " + empireLabel(call.aggressor) +
+                    " — declare war by turn " + std::to_string(call.dueTurn)).endObject();
+        }
     } catch (...) {}
     for (const auto& f : d.fleets)
         if (f.ownerId == me && (f.x != f.targetX || f.y != f.targetY) && botf::route(d, f, f.targetX, f.targetY).empty())
@@ -857,9 +894,10 @@ void writeColonyDetail(Writer& w, int systemId) {
         w.field("shipyardToggleBlocker", dryRunError(s, toggle));
     }
     w.key("scrap").beginArray();
-    const std::array<std::pair<botf::Building, int>, 6> kinds{{
+    const std::array<std::pair<botf::Building, int>, 7> kinds{{
         {botf::Building::Farm, c->farms}, {botf::Building::Factory, c->factories}, {botf::Building::Laboratory, c->laboratories},
-        {botf::Building::PowerPlant, c->powerPlants}, {botf::Building::Shipyard, c->shipyards}, {botf::Building::DefenseBattery, c->defenseBatteries}}};
+        {botf::Building::PowerPlant, c->powerPlants}, {botf::Building::FusionPlant, c->fusionPlants},
+        {botf::Building::Shipyard, c->shipyards}, {botf::Building::DefenseBattery, c->defenseBatteries}}};
     for (const auto& [kind, count] : kinds) {
         const auto& def = botf::definition(kind);
         w.beginObject();
@@ -1096,6 +1134,9 @@ void writeDiplomacy(Writer& w) {
             w.field("creditOffer", p.creditOffer); w.field("creditDemand", p.creditDemand);
             w.field("submittedTurn", p.submittedTurn); w.field("dueTurn", p.dueTurn);
             w.field("status", dip::proposalStatusName(p.status));
+            w.field("kind", p.treatyType == dip::TreatyType::None ? (p.creditDemand > 0 ? "tribute" : "gift")
+                : p.treatyType == dip::TreatyType::War ? "war" : "treaty");
+            w.field("reason", p.rejectionReason);
             const bool responded = std::any_of(s.pending.begin(), s.pending.end(), [&](const botf::Command& c) {
                 return c.type == botf::CommandType::RespondDiplomaticProposal && c.proposalId == p.id; });
             w.field("responseDrafted", responded);
@@ -1124,7 +1165,37 @@ void writeDiplomacy(Writer& w) {
         for (auto it = events.rbegin(); it != events.rend() && count < 60; ++it) {
             if (it->partyA != self && it->partyB != self) continue;
             ++count;
-            w.beginObject().field("turn", it->turn).field("type", dip::eventTypeName(it->type)).field("text", it->description);
+            w.beginObject().field("turn", it->turn).field("type", dip::eventTypeName(it->type)).field("text", it->description)
+                .field("typeKey", static_cast<int>(it->type)).field("value", it->numericValue);
+            w.key("a"); writeParticipant(w, s, it->partyA);
+            w.key("b"); writeParticipant(w, s, it->partyB);
+            w.endObject();
+        }
+    } catch (...) {}
+    w.endArray();
+    // Galactic news: newsworthy engine events between powers we have met (betrayals, wars, calls
+    // to arms, eliminations, secessions) — the memory the AI empires act on.
+    w.key("news").beginArray();
+    try {
+        using T = dip::DiplomaticEventType;
+        const auto knows = [&](dip::ParticipantId p) {
+            if (p == self) return true;
+            if (p.isMinor) { const auto* m = botf::minorAt(s, p.id); return m && m->contact[static_cast<std::size_t>(me)]; }
+            const auto* rel = botf::majorRelation(s, me, p.id);
+            return rel && rel->contact;
+        };
+        const auto events = botf::diplomaticEvents(s);
+        int count = 0;
+        for (auto it = events.rbegin(); it != events.rend() && count < 40; ++it) {
+            if (it->partyA == self || it->partyB == self) continue;
+            const auto t = it->type;
+            if (!(t == T::WarDeclared || t == T::PeaceEstablished || t == T::TreatyBetrayed || t == T::AllianceHonored ||
+                  t == T::AllianceRefused || t == T::AllianceCalledToArms || t == T::ParticipantEliminated || t == T::MinorSeceded ||
+                  t == T::MinorMembershipJoined)) continue;
+            if (!knows(it->partyA) && !knows(it->partyB)) continue;
+            ++count;
+            w.beginObject().field("turn", it->turn).field("type", dip::eventTypeName(t)).field("typeKey", static_cast<int>(t))
+                .field("text", it->description).field("value", it->numericValue);
             w.key("a"); writeParticipant(w, s, it->partyA);
             w.key("b"); writeParticipant(w, s, it->partyB);
             w.endObject();
@@ -1153,6 +1224,63 @@ void writeDiplomacy(Writer& w) {
             .field("estimatedCredits", it->estimatedCredits).endObject();
     }
     w.endArray();
+
+    const auto& ds = s.diplomacyEngineState;
+    // Our own galaxy-wide reputation: wars declared while bound by a treaty.
+    w.key("standing").beginObject().field("betrayals", ds.betrayals(me))
+        .field("lastBetrayalTurn", ds.findStanding(me) ? ds.findStanding(me)->lastBetrayalTurn : -1).endObject();
+
+    // Calls to arms addressed to us (the player honours one by declaring war on the aggressor).
+    w.key("callsToArms").beginArray();
+    try {
+        for (const auto& call : botf::openCallsToArms(s, me)) {
+            const auto* rel = botf::majorRelation(s, me, call.aggressor);
+            const bool drafted = std::any_of(s.pending.begin(), s.pending.end(), [&](const botf::Command& c) {
+                return c.type == botf::CommandType::DeclareWar && c.targetEmpire == call.aggressor; });
+            botf::Command war; war.type = botf::CommandType::DeclareWar; war.targetEmpire = call.aggressor;
+            w.beginObject();
+            w.field("defender", call.defender); w.field("defenderName", empireLabel(call.defender));
+            w.field("aggressor", call.aggressor); w.field("aggressorName", empireLabel(call.aggressor));
+            w.field("issuedTurn", call.issuedTurn); w.field("dueTurn", call.dueTurn);
+            w.field("honored", rel && rel->atWar);
+            w.field("honorDrafted", drafted);
+            w.field("boundByTreaty", botf::treatyForbidsAttack(s, me, call.aggressor));
+            w.field("honorBlocker", B.session.active ? std::string("Finish the battle in progress first") : drafted ? std::string() : dryRunError(s, war));
+            w.endObject();
+        }
+    } catch (...) {}
+    w.endArray();
+
+    // Treaty history: ended treaties (expired, broken by war, superseded, dissolved) involving us.
+    w.key("treatyHistory").beginArray();
+    {
+        int count = 0;
+        for (auto it = ds.treatyHistory.rbegin(); it != ds.treatyHistory.rend() && count < 60; ++it) {
+            if (!it->involves(self)) continue;
+            ++count;
+            w.beginObject();
+            w.field("id", it->id);
+            w.key("counterparty"); writeParticipant(w, s, it->getCounterparty(self));
+            w.field("type", enumName(static_cast<int>(it->type), TreatyKeys));
+            w.field("typeName", dip::treatyTypeName(it->type));
+            w.field("startTurn", it->startTurn);
+            w.field("status", dip::treatyStatusName(it->status));
+            w.field("statusKey", static_cast<int>(it->status));
+            w.endObject();
+        }
+    }
+    w.endArray();
+
+    // Diplomatic victory predicate (DIPLOMACY.md §8).
+    try {
+        const auto v = botf::diplomaticVictoryStatus(s, me);
+        w.key("victory").beginObject().field("bloc", v.blocPopulation).field("galaxy", v.galaxyPopulation)
+            .field("achieved", v.achieved);
+        w.key("allies").beginArray(); for (int id : v.allies) w.value(id); w.endArray();
+        w.key("memberMinors").beginArray(); for (int id : v.memberMinors) w.value(systemLabel(s, id)); w.endArray();
+        w.endObject();
+    } catch (...) {}
+    w.field("turn", s.turn);
     w.endObject();
 }
 
@@ -1179,6 +1307,10 @@ void writeIntel(Writer& w) {
     };
     w.key("budget"); writeBudget(draftIntel);
     w.key("committedBudget"); writeBudget(committedIntel);
+    // Our counter-intelligence strength in milli-points (at the rules' default 100% morale).
+    if (committedIntel)
+        w.field("defenseStrengthMilli", intel::calculateDefenseStrength(committedIntel->getRollingSecuritySum(),
+            committedIntel->internalSecurityStockpile, 100, intel::IntelligenceRules{}));
     w.key("rivals").beginArray();
     for (const auto& r : s.rivals) {
         const auto* rel = botf::majorRelation(s, me, r.id);
@@ -1191,7 +1323,11 @@ void writeIntel(Writer& w) {
             w.field("focusName", intel::departmentName(rs->focusDepartment));
             w.field("espionageStockpile", rs->espionageStockpile); w.field("sabotageStockpile", rs->sabotageStockpile);
             w.key("departmentWeights").beginArray(); for (int v : rs->departmentWeights) w.value(v); w.endArray();
+            // Integer milli-point attack strength against this rival (20-turn average x concentration).
+            if (const auto* crs = committedIntel ? committedIntel->getRivalState(r.id) : nullptr)
+                w.field("attackStrengthMilli", intel::concentratedAttackStrength(*crs, intel::IntelligenceRules{}));
         }
+        w.field("eliminated", botf::empireEliminated(s, r.id));
         // Colonies of this rival currently within sensor range (sabotage targets).
         w.key("visibleColonies").beginArray();
         for (const auto& c : s.colonies) {
@@ -1242,6 +1378,20 @@ void writeIntel(Writer& w) {
 // ------------------------------------------------------------------------------------------------
 // Tactical
 // ------------------------------------------------------------------------------------------------
+// Mirrors the order-gathering step of Encounter::resolveRound: pending order, else standing
+// order (a destroyed target is cleared; an impossible standing Retreat falls back to the AI), else
+// the tactical AI's decision. Presentation only: resolution always happens in the core.
+struct PlannedOrder { tac::Order order; const char* source = "ai"; };
+PlannedOrder plannedOrder(const tac::Encounter& e, const tac::Ship& ship) {
+    for (const auto& o : e.pendingOrders) if (o.fleetId == ship.fleetId) return {o, "order"};
+    if (const auto it = e.standingOrders.find(ship.fleetId); it != e.standingOrders.end()) {
+        auto stand = it->second;
+        if (const auto* t = e.getShip(stand.targetFleetId); t && !tac::Encounter::shipActive(*t)) stand.targetFleetId = 0;
+        if (!(e.remasterRules() && stand.maneuver == tac::TacticalManeuver::Retreat && !ship.canRetreat)) return {stand, "standing"};
+    }
+    return {e.aiOrderFor(ship), "ai"};
+}
+
 void writeCoord(Writer& w, const tac::TacticalCoord& c) { w.beginObject().field("x", c.x).field("y", c.y).endObject(); }
 
 void writeEncounter(Writer& w, const tac::Encounter& e, int me) {
@@ -1253,6 +1403,17 @@ void writeEncounter(Writer& w, const tac::Encounter& e, int me) {
     w.field("controller", e.controllingOwnerId);
     const auto* sys = systemAtCell(B.state, e.sectorX, e.sectorY);
     w.field("location", sys && knownSystem(B.state, *sys) ? sys->name : "Sector " + std::to_string(e.sectorX) + "," + std::to_string(e.sectorY));
+    w.field("rules", e.rulesVersion);
+    int foe = 0;
+    for (const auto& ship : e.ships) if (ship.ownerId != me) { foe = ship.ownerId; break; }
+    w.field("foe", foe);
+    // Hail truce preview (tactical rules 2): the AI side accepts when not formally at war, or when
+    // its strength is small enough relative to ours (Encounter::aiAcceptsHail).
+    w.key("hail").beginObject()
+        .field("atWar", e.relationAtWar).field("trust", e.relationTrust)
+        .field("ourStrength", static_cast<std::int64_t>(e.sideStrength(me)))
+        .field("theirStrength", static_cast<std::int64_t>(foe ? e.sideStrength(foe) : 0))
+        .field("accepts", foe && e.remasterRules() && e.aiAcceptsHail(foe, me)).endObject();
     w.key("ships").beginArray();
     for (const auto& ship : e.ships) {
         const bool mine = ship.ownerId == me;
@@ -1274,6 +1435,7 @@ void writeEncounter(Writer& w, const tac::Encounter& e, int me) {
             w.field("alive", true); w.field("active", true); w.field("retreated", false);
             w.field("canRetreat", false); w.field("canCloak", true); w.field("cloaked", true);
             w.field("groupId", ship.groupId);
+            w.field("disengaging", false);
             w.endObject();
             continue;
         }
@@ -1285,10 +1447,20 @@ void writeEncounter(Writer& w, const tac::Encounter& e, int me) {
         w.field("canRetreat", ship.canRetreat); w.field("canCloak", ship.canCloak); w.field("cloaked", ship.isCloaked);
         w.field("groupId", ship.groupId);
         if (const auto* g = e.getGroupForShip(ship.fleetId)) w.field("group", tac::tacticalGroupClassName(g->groupClass));
+        w.field("disengaging", ship.disengaging());
         if (mine) {
             w.field("maneuver", enumName(static_cast<int>(order.maneuver), ManeuverKeys));
             w.field("target", order.targetFleetId);
             w.field("ordered", hasPending);
+        }
+        // What the ship will execute next round: the player's order, a standing order (strategic
+        // stance or an earlier tactical order) or the tactical AI's own decision (Encounter::aiOrderFor).
+        if (!e.isFinished && tac::Encounter::shipActive(ship)) {
+            const auto next = plannedOrder(e, ship);
+            w.key("next").beginObject()
+                .field("maneuver", enumName(static_cast<int>(next.order.maneuver), ManeuverKeys))
+                .field("target", next.order.targetFleetId)
+                .field("source", next.source).endObject();
         }
         w.endObject();
     }
@@ -1312,14 +1484,21 @@ void writeEncounter(Writer& w, const tac::Encounter& e, int me) {
             w.field("target", st.targetFleetId);
             w.field("destroyed", st.destroyedThisRound); w.field("retreated", st.retreatedThisRound);
             w.field("decloaked", st.decloakedThisRound); w.field("hailed", st.hailedThisRound);
+            w.field("ai", st.aiControlled);
+            // Rules 2: the first round of Retreat keeps the ship on the field, disengaging under fire.
+            w.field("disengaging", e.remasterRules() && st.maneuverExecuted == tac::TacticalManeuver::Retreat &&
+                !st.retreatedThisRound && !st.destroyedThisRound && st.hullBefore > 0);
             w.field("yaw", st.facingYaw);
             w.endObject();
         }
         w.endArray();
         w.key("salvos").beginArray();
-        for (const auto& sv : r.salvos)
+        for (const auto& sv : r.salvos) {
+            const auto* shooter = r.getStatus(sv.attackerFleetId);
             w.beginObject().field("from", sv.attackerFleetId).field("to", sv.defenderFleetId).field("beam", sv.beamDamage)
-                .field("torpedo", sv.torpedoDamage).field("absorbed", sv.absorbedByShields).endObject();
+                .field("torpedo", sv.torpedoDamage).field("absorbed", sv.absorbedByShields).field("ram", sv.ram)
+                .field("ambush", !sv.ram && shooter && shooter->decloakedThisRound).endObject();
+        }
         w.endArray();
         w.key("lost").beginArray(); for (int id : r.lostFleetIds) w.value(id); w.endArray();
         w.key("retreatedIds").beginArray(); for (int id : r.retreatedFleetIds) w.value(id); w.endArray();
@@ -1329,31 +1508,11 @@ void writeEncounter(Writer& w, const tac::Encounter& e, int me) {
     w.endObject();
 }
 
-// session::resume verifies a finished encounter by replaying it with each player ship's executed
-// maneuver/target submitted as an explicit order. Rounds resolved with implicit (automatic) orders
-// can diverge from that replay, so before each round the bridge resolves a trial copy and pins the
-// engine's own choices as explicit orders; the real round then matches the verification replay.
-void resolveCanonicalRound() {
-    auto& s = B.session;
-    if (!s.active || !s.pending) fail("No tactical encounter awaits orders");
-    const int player = B.state.playerEmpire;
-    for (int iteration = 0; iteration < 4; ++iteration) {
-        auto trial = *s.pending;
-        const auto result = trial.resolveRound();
-        bool changed = false;
-        for (const auto& st : result.shipStatuses) {
-            const auto* ship = s.pending->getShip(st.fleetId);
-            if (!ship || ship->ownerId != player || !ship->isAlive || ship->retreated || !ship->activeInCombat) continue;
-            const auto current = s.pending->getOrder(st.fleetId);
-            const bool explicitOrder = std::any_of(s.pending->pendingOrders.begin(), s.pending->pendingOrders.end(),
-                [&](const tac::Order& o) { return o.fleetId == st.fleetId; });
-            if (explicitOrder && current.maneuver == st.maneuverExecuted && current.targetFleetId == st.targetFleetId) continue;
-            try { botf::session::order(s, {st.fleetId, st.targetFleetId, st.maneuverExecuted}); changed = true; }
-            catch (const std::exception&) {}
-        }
-        if (!changed) break;
-    }
-    botf::session::resolveRound(s);
+// Rounds resolve through the plain session API. session::resume re-derives AI decisions during
+// replay verification (ShipRoundStatus::aiControlled), so implicit orders need no pinning: an
+// auto-resolved battle here is exactly session::autoResolve (see the bridge regression test).
+void requireEncounter() {
+    if (!B.session.active || !B.session.pending) fail("No tactical encounter awaits orders");
 }
 
 void writeManeuvers(Writer& w) {
@@ -1368,8 +1527,9 @@ void writeManeuvers(Writer& w) {
 // Turn briefing: structured, categorised events from the TurnReport and a before/after diff.
 // ------------------------------------------------------------------------------------------------
 struct BriefEvent {
-    std::string category, severity, text;
-    int systemId = 0, fleetId = 0, x = -1, y = -1, battle = -1;
+    std::string category, severity, text, kind;
+    int systemId = 0, fleetId = 0, x = -1, y = -1, battle = -1, dueTurn = -1;
+    std::uint64_t proposalId = 0;
 };
 
 bool startsWith(const std::string& s, const std::string& p) { return s.rfind(p, 0) == 0; }
@@ -1484,6 +1644,33 @@ std::string writeBriefing(const botf::GameState& before, const botf::GameState& 
                 }
                 e.severity = "good";
             }
+        } else if (startsWith(raw, "Diplomacy") || startsWith(raw, "Galactic news") || contains(raw, "seceded") ||
+                   contains(raw, "honored its alliance") || contains(raw, "was conquered by")) {
+            // Modern diplomacy: the core's own player-facing sentences (Simulation.cpp reportDiplomaticEvent,
+            // submitAiProposals), tagged so the UI can link them to the inbox and treaty history.
+            e.category = "diplomacy";
+            const bool news = startsWith(raw, "Galactic news");
+            if (news) e.kind = "news";
+            if (contains(raw, "calls on us to honor")) { e.kind = "callToArms"; e.severity = "alert"; }
+            else if (contains(raw, "respond by turn")) {
+                e.kind = contains(raw, "demands") ? "tribute" : contains(raw, "gift") ? "gift" : "proposal";
+                e.severity = e.kind == "tribute" ? "warn" : "info";
+                if (const auto at = raw.find("(proposal "); at != std::string::npos) {
+                    try { e.proposalId = std::stoull(raw.substr(at + 10)); } catch (...) {}
+                }
+                if (const auto at = raw.find("respond by turn "); at != std::string::npos) {
+                    try { e.dueTurn = std::stoi(raw.substr(at + 16)); } catch (...) {}
+                }
+            } else if (contains(raw, "broke its treaty")) { e.kind = "betrayal"; e.severity = news ? "warn" : "alert"; }
+            else if (contains(raw, "refused") && contains(raw, "call to arms")) { e.kind = "callRefused"; e.severity = "warn"; }
+            else if (contains(raw, "joined the war") || contains(raw, "honored its alliance")) { e.kind = "callHonored"; e.severity = news ? "info" : "good"; }
+            else if (contains(raw, "eliminated")) { e.kind = "eliminated"; e.severity = "info"; }
+            else if (contains(raw, "seceded")) { e.kind = "secession"; e.severity = contains(raw, "our empire") ? "alert" : "info"; }
+            else if (contains(raw, "declared war")) { e.kind = "war"; e.severity = news ? "info" : "alert"; }
+            else if (contains(raw, "made peace")) { e.kind = "peace"; e.severity = news ? "info" : "good"; }
+            else if (contains(raw, "Dissolved") || contains(raw, "dissolved")) { e.kind = "dissolved"; e.severity = "warn"; }
+            else if (contains(raw, "Rejected") || contains(raw, "Ignored")) e.severity = "warn";
+            else if (contains(raw, "Accepted") || contains(raw, "Established")) e.severity = "good";
         } else if (contains(raw, "First contact") || contains(raw, "at war") || contains(raw, "peace") || contains(raw, "treaty") ||
                    contains(raw, "joined") || contains(raw, "friendship") || contains(raw, "membership") || contains(raw, "proposal") ||
                    contains(raw, "gift") || contains(raw, "Gift") || contains(raw, "accepted") || contains(raw, "declined")) {
@@ -1516,19 +1703,16 @@ std::string writeBriefing(const botf::GameState& before, const botf::GameState& 
             : "Counter-intelligence detected a " + std::string(intel::intelAreaName(op.area)) + " operation by " + empireLabel(op.attackerEmpireId) + ".";
         add(e);
     }
-    // Diplomatic engine events from this turn involving the player.
+    // Diplomatic engine events reach the player through the core's own report sentences above
+    // (reportDiplomaticEvent covers every event involving the player), so they are not repeated.
+    // Calls to arms still open after this turn get an explicit reminder with their deadline.
     try {
-        const auto self = dip::ParticipantId::major(me);
-        const auto beforeCount = botf::diplomaticEvents(before).size();
-        const auto all = botf::diplomaticEvents(after);
-        for (std::size_t i = std::min(beforeCount, all.size()); i < all.size(); ++i) {
-            const auto& ev = all[i];
-            if (ev.partyA != self && ev.partyB != self) continue;
-            if (ev.type == dip::DiplomaticEventType::ProposalSubmitted && ev.partyA == self) continue;
-            BriefEvent e; e.category = "diplomacy";
-            e.severity = ev.type == dip::DiplomaticEventType::WarDeclared || ev.type == dip::DiplomaticEventType::TreatyBrokenByWar ? "alert"
-                : ev.type == dip::DiplomaticEventType::ProposalRejected ? "warn" : "info";
-            e.text = std::string(dip::eventTypeName(ev.type)) + (ev.description.empty() ? "" : ": " + ev.description);
+        for (const auto& call : botf::openCallsToArms(after, me)) {
+            const auto* rel = botf::majorRelation(after, me, call.aggressor);
+            if ((rel && rel->atWar) || call.issuedTurn >= after.turn) continue;   // honoured, or announced this turn
+            BriefEvent e; e.category = "diplomacy"; e.severity = "warn"; e.kind = "callToArms"; e.dueTurn = call.dueTurn;
+            e.text = empireLabel(call.defender) + " still awaits our answer to its call to arms against " + empireLabel(call.aggressor) +
+                " (declare war by turn " + std::to_string(call.dueTurn) + ").";
             add(e);
         }
     } catch (...) {}
@@ -1560,6 +1744,9 @@ std::string writeBriefing(const botf::GameState& before, const botf::GameState& 
         if (e.fleetId) w.field("fleetId", e.fleetId);
         if (e.x >= 0) { w.field("x", e.x); w.field("y", e.y); }
         if (e.battle >= 0) w.field("battle", e.battle);
+        if (!e.kind.empty()) w.field("kind", e.kind);
+        if (e.proposalId) w.field("proposalId", e.proposalId);
+        if (e.dueTurn >= 0) w.field("dueTurn", e.dueTurn);
         w.endObject();
     }
     w.endArray();
@@ -1695,6 +1882,114 @@ void newBattleDrill() {
     startGame(std::move(s), "drill");
 }
 
+// A diplomacy training scenario (also the e2e fixture for the incoming-proposal inbox and calls to
+// arms). Every step goes through the core's diplomacy engine (DiplomacyEngine::establishTreaty,
+// declareWar, submitProposal) with a context built from the campaign, then the state is validated:
+//   * the Cardassian Union has lost its colonies, so it is eliminated and its treaty with us dissolves;
+//   * we hold a Full Alliance with the Romulan Star Empire;
+//   * the Klingon Empire betrays its non-aggression pact with the Romulans and declares war on them,
+//     which calls us to arms;
+//   * the Ferengi propose a trade pact and the Klingons demand tribute, both awaiting our answer.
+dip::SimpleDiplomacyContext campaignContext(const botf::GameState& s) {
+    dip::SimpleDiplomacyContext ctx;
+    ctx.setHuman(dip::ParticipantId::major(s.playerEmpire));
+    std::vector<int> majors{s.playerEmpire};
+    for (const auto& r : s.rivals) majors.push_back(r.id);
+    std::sort(majors.begin(), majors.end());
+    for (int id : majors) {
+        const auto p = dip::ParticipantId::major(id);
+        if (botf::empireEliminated(s, id)) ctx.setEliminated(p, true); else ctx.majors.push_back(id);
+        std::int64_t power = 0;
+        for (const auto& f : s.fleets) if (f.ownerId == id) power += botf::fleetAttack(f);
+        ctx.setPower(p, power, 100);
+        ctx.setBalance(p, botf::empire(s, id).credits);
+    }
+    for (const auto& r : s.majorRelations) {
+        const auto a = dip::ParticipantId::major(r.first), b = dip::ParticipantId::major(r.second);
+        ctx.setContact(a, b, r.contact); ctx.setWar(a, b, r.atWar); ctx.setTrust(a, b, r.trust);
+    }
+    for (const auto& m : s.minors) ctx.setMinorOwner(m.systemId, m.memberOf);
+    return ctx;
+}
+
+botf::MajorRelation& mutableRelation(botf::GameState& s, int a, int b) {
+    for (auto& r : s.majorRelations)
+        if ((r.first == a && r.second == b) || (r.first == b && r.second == a)) return r;
+    fail("No relation between those empires");
+}
+
+void applyEngineDelta(botf::GameState& s, const dip::TurnResolutionDelta& delta) {
+    for (const auto& op : delta.operations) {
+        if (op.partyA.isMinor || op.partyB.isMinor || op.partyA == op.partyB) continue;
+        if (op.opType == dip::DiplomaticOpType::SetWarState) {
+            auto& rel = mutableRelation(s, op.partyA.id, op.partyB.id);
+            rel.atWar = op.setAtWar;
+            rel.warStartTurn = s.turn;
+            if (op.setAtWar) rel.tradeTreaty = false;
+        } else if (op.opType == dip::DiplomaticOpType::AdjustTrust) {
+            auto& rel = mutableRelation(s, op.partyA.id, op.partyB.id);
+            rel.trust = std::clamp(rel.trust + op.attitudeDelta, 0, 100);
+        }
+    }
+}
+
+void newDiplomacyDrill() {
+    auto s = botf::generateReferenceCampaign(2024, 5);
+    s.eventsEnabled = false;
+    s.aiAggressionEnabled = false;
+    const int me = s.playerEmpire;
+    const int klingon = 2, romulan = 3, cardassian = 4, ferengi = 5;
+    for (auto& r : s.majorRelations) { r.contact = true; r.trust = 55; }
+    auto P = [](int id) { return dip::ParticipantId::major(id); };
+    auto& ds = s.diplomacyEngineState;
+    botf::syncDiplomacyState(s);
+    {
+        dip::TurnResolutionDelta delta;
+        ds.currentTurn = s.turn;
+        dip::DiplomacyEngine::establishTreaty(ds, P(me), P(cardassian), dip::TreatyType::Friendship, dip::TreatyDuration::Turns50, delta);
+    }
+    // The Cardassian Union falls: no colonies (its fleets and task forces are gone too).
+    std::erase_if(s.colonies, [&](const botf::Colony& c) { return c.ownerId == cardassian; });
+    std::erase_if(s.fleets, [&](const botf::Fleet& f) { return f.ownerId == cardassian; });
+    std::erase_if(s.taskForces, [&](const botf::TaskForce& t) { return t.ownerId == cardassian; });
+    std::erase_if(s.tradeRoutes, [&](const botf::TradeRoute& t) { return t.ownerId == cardassian; });
+    for (auto& m : s.minors) if (m.memberOf == cardassian) m.memberOf = 0;
+    botf::validate(s);
+    botf::advance(s);   // the engine dissolves the eliminated empire's treaties
+    ds.currentTurn = s.turn;
+
+    mutableRelation(s, me, romulan).trust = 80;
+    mutableRelation(s, me, ferengi).trust = 70;
+    mutableRelation(s, klingon, romulan).trust = 45;
+    {
+        dip::TurnResolutionDelta delta;
+        dip::DiplomacyEngine::establishTreaty(ds, P(me), P(romulan), dip::TreatyType::Alliance, dip::TreatyDuration::Indefinite, delta);
+        dip::DiplomacyEngine::establishTreaty(ds, P(klingon), P(romulan), dip::TreatyType::NonAggression, dip::TreatyDuration::Turns25, delta);
+    }
+    {
+        const auto ctx = campaignContext(s);
+        dip::TurnResolutionDelta delta;
+        dip::DiplomacyEngine::declareWar(ds, P(klingon), P(romulan), delta, &ctx);
+        applyEngineDelta(s, delta);
+    }
+    {
+        const auto ctx = campaignContext(s);
+        const auto pendingFrom = [&](int proposer) {
+            for (const auto& p : botf::incomingProposals(s, me)) if (!p.proposer.isMinor && p.proposer.id == proposer) return true;
+            return false;
+        };
+        std::string why;
+        // The Ferengi planner may already have proposed a trade pact on its own during the first turn.
+        if (!pendingFrom(ferengi) && !dip::DiplomacyEngine::submitProposal(ds, ctx, P(ferengi), P(me), dip::TreatyType::Trade,
+                dip::TreatyDuration::Turns25, dip::DiplomaticTone::Cordial, 0, 0, nullptr, &why, 2)) fail("Drill proposal rejected: " + why);
+        if (!pendingFrom(klingon) && !dip::DiplomacyEngine::submitProposal(ds, ctx, P(klingon), P(me), dip::TreatyType::None,
+                dip::TreatyDuration::Indefinite, dip::DiplomaticTone::Demanding, 0, 150, nullptr, &why, 2)) fail("Drill tribute rejected: " + why);
+    }
+    botf::validate(s);
+    queueStarterProjects(s);
+    startGame(std::move(s), "diplomacy");
+}
+
 // ------------------------------------------------------------------------------------------------
 // Static reference data
 // ------------------------------------------------------------------------------------------------
@@ -1788,6 +2083,15 @@ std::string dispatch(const std::string& method, const Value& a) {
     else if (method == "encyclopedia") writeEncyclopedia(w);
     else if (method == "newCampaign") { newCampaign(a); writeView(w); }
     else if (method == "newBattleDrill") { newBattleDrill(); writeView(w); }
+    else if (method == "newDiplomacyDrill") { newDiplomacyDrill(); writeView(w); }
+    else if (method == "headlessFingerprint") {
+        // Fingerprint of the drafted turn advanced headlessly by botf::advance (auto-resolving every
+        // battle): an auto-resolved session turn must commit exactly this state.
+        requireGame(); requireNoSession();
+        auto copy = B.state;
+        botf::advance(copy);
+        w.value(botf::fingerprint(copy));
+    }
     else if (method == "hasGame") w.value(B.active);
     else if (method == "view") writeView(w);
     else if (method == "submit") {
@@ -1874,6 +2178,23 @@ std::string dispatch(const std::string& method, const Value& a) {
         const auto maneuver = static_cast<tac::TacticalManeuver>(enumIndex(a["maneuver"], ManeuverKeys, "maneuver", 0));
         const int target = a.getInt("targetFleetId");
         std::vector<int> ids;
+        if (a.has("groupId")) {
+            // Like-class group order: Encounter::submitGroupOrder validates every member atomically.
+            auto trial = B.session;
+            const int groupId = a.getInt("groupId");
+            const auto* g = trial.pending->getGroup(groupId);
+            if (!g) fail("No such tactical group");
+            int count = 0;
+            for (int fid : g->fleetIds)
+                if (const auto* s = trial.pending->getShip(fid); s && tac::Encounter::shipActive(*s) &&
+                    (maneuver != tac::TacticalManeuver::Retreat || s->canRetreat)) ++count;
+            if (!count) fail(maneuver == tac::TacticalManeuver::Retreat ? "No ship in this group has a safe withdrawal sector" : "No active ships in this group");
+            trial.pending->submitGroupOrder(groupId, maneuver, maneuver == tac::TacticalManeuver::Retreat ? 0 : target);
+            B.session = std::move(trial);
+            touch();
+            w.value(count);
+            return w.out;
+        }
         if (a.getBool("all")) {
             for (const auto& ship : B.session.pending->ships)
                 if (ship.ownerId == B.state.playerEmpire && ship.isAlive && ship.activeInCombat && !ship.retreated &&
@@ -1893,14 +2214,14 @@ std::string dispatch(const std::string& method, const Value& a) {
         w.value(static_cast<int>(ids.size()));
     } else if (method == "tacticalRound") {
         requireGame();
-        resolveCanonicalRound();
+        requireEncounter();
+        botf::session::resolveRound(B.session);
         touch();
         writeEncounter(w, *B.session.pending, B.state.playerEmpire);
     } else if (method == "tacticalAuto") {
         requireGame();
-        if (!B.session.active || !B.session.pending) fail("No tactical encounter awaits resolution");
-        // Equivalent to session::autoResolve, one verified round at a time (see resolveCanonicalRound).
-        for (int guard = 0; !B.session.pending->isFinished && guard <= B.session.pending->maxRounds + 1; ++guard) resolveCanonicalRound();
+        requireEncounter();
+        botf::session::autoResolve(B.session);
         touch();
         writeEncounter(w, *B.session.pending, B.state.playerEmpire);
     } else if (method == "replays") {

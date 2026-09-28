@@ -2,6 +2,7 @@ import type { ComponentChildren, JSX } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { EMBLEMS, palette } from './theme';
 import { confirmDialog, toasts } from '../state/store';
+import { uiScale } from '../state/settings';
 
 // ---------------------------------------------------------------------------------------------
 // Emblem: owner glyph (shape = non-colour cue; fill = faction colour)
@@ -31,9 +32,11 @@ export function TooltipLayer() {
     const show = (target: Element) => {
       const text = target.getAttribute('data-tip');
       if (!text) return;
+      // Rects are in screen pixels; the tooltip is laid out inside the zoomed interface.
+      const k = uiScale.value;
       const r = target.getBoundingClientRect();
       const below = r.top < 120;
-      setState({ text, title: target.getAttribute('data-tip-title') ?? undefined, x: r.left + r.width / 2, y: below ? r.bottom + 8 : r.top - 8, below });
+      setState({ text, title: target.getAttribute('data-tip-title') ?? undefined, x: (r.left + r.width / 2) / k, y: (below ? r.bottom + 8 : r.top - 8) / k, below });
     };
     const over = (e: PointerEvent) => {
       const el = (e.target as Element | null)?.closest?.('[data-tip]') ?? null;
@@ -65,9 +68,9 @@ export function TooltipLayer() {
   useEffect(() => {
     if (!ref.current || !state) return;
     const r = ref.current.getBoundingClientRect();
-    const pad = 8;
-    if (r.left < pad) setShift(pad - r.left);
-    else if (r.right > window.innerWidth - pad) setShift(window.innerWidth - pad - r.right);
+    const pad = 8, k = uiScale.value;
+    if (r.left < pad) setShift((pad - r.left) / k);
+    else if (r.right > window.innerWidth - pad) setShift((window.innerWidth - pad - r.right) / k);
     else setShift(0);
   }, [state]);
   if (!state) return null;

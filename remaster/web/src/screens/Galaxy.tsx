@@ -7,6 +7,7 @@ import {
 import { cellActions, replaceIds, sectorLabel, selectedUnit, type Action } from '../state/orders';
 import { Badge, Emblem, Empty, fmt, IconButton, Meter, Pill, signed, Stat, tip } from '../ui/components';
 import { palette } from '../ui/theme';
+import { uiScale } from '../state/settings';
 
 export function GalaxyScreen() {
   const v = view.value!;
@@ -43,7 +44,7 @@ function MapHud({ v }: { v: GameView }) {
                   <button type="button" onClick={() => {
                     if (a.systemId) { selectSystem(a.systemId); const s = v.systems.find((x) => x.id === a.systemId); if (s) focusMap(s.x, s.y); }
                     else if (a.fleetId) { selectFleet(a.fleetId); const f = v.fleets.find((x) => x.id === a.fleetId); if (f) focusMap(f.x, f.y); }
-                    else if (a.kind === 'proposal' || a.kind === 'offer') goto('diplomacy');
+                    else if (a.kind === 'proposal' || a.kind === 'offer' || a.kind === 'callToArms') goto('diplomacy');
                   }}>{a.text}</button>
                 </li>
               ))}
@@ -107,7 +108,7 @@ function HoverTip({ v }: { v: GameView }) {
     order = h.eta === null ? (h.ok ? '' : 'Out of supply range') : `Right-click: set course — ${h.eta} turn${h.eta === 1 ? '' : 's'}`;
   }
   return (
-    <div class="hover-tip" style={{ left: `${h.x + 18}px`, top: `${h.y + 14}px` }} aria-hidden="true">
+    <div class="hover-tip" style={{ left: `${h.x / uiScale.value + 18}px`, top: `${h.y / uiScale.value + 14}px` }} aria-hidden="true">
       <div class="ht-title">{system ? system.name : fog === '0' ? 'Uncharted space' : 'Open space'} <span class="ht-coord">{x}.{y}</span></div>
       {system?.owner ? <div class="ht-line"><Emblem empire={system.owner} size={12} /> {system.owner === v.meta.player ? 'Your colony' : v.empires.find((e) => e.empire === system.owner)?.name ?? 'Colony'}</div> : null}
       {system?.minor ? <div class="ht-line">◇ {system.minor.name}</div> : null}
@@ -128,8 +129,10 @@ function ContextMenu({ v }: { v: GameView }) {
     if (!menu || !ref.current) { setPos(null); return; }
     const parent = ref.current.parentElement!.getBoundingClientRect();
     const r = ref.current.getBoundingClientRect();
-    const left = Math.min(Math.max(8, menu.x + 6), parent.width - r.width - 8);
-    const top = Math.min(Math.max(8, menu.y + 6), parent.height - r.height - 8);
+    // Rects and pointer offsets are in screen pixels; the menu is laid out in (zoomed) interface pixels.
+    const k = uiScale.value;
+    const left = Math.min(Math.max(8, menu.x / k + 6), (parent.width - r.width) / k - 8);
+    const top = Math.min(Math.max(8, menu.y / k + 6), (parent.height - r.height) / k - 8);
     setPos({ left, top });
     ref.current.querySelector<HTMLButtonElement>('button:not([aria-disabled="true"])')?.focus();
   }, [menu, actions.length]);

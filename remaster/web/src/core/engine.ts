@@ -39,6 +39,8 @@ export const core = {
     width: number; height: number; systems: number; events: boolean; aiAggression: boolean;
   }) => call<GameView>('newCampaign', options),
   newBattleDrill: () => call<GameView>('newBattleDrill'),
+  newDiplomacyDrill: () => call<GameView>('newDiplomacyDrill'),
+  headlessFingerprint: () => call<string | number>('headlessFingerprint'),
   view: () => call<GameView>('view'),
   submit: (command: Command, options: OrderOptions = {}) => call<{ id: number }>('submit', { command, ...options }),
   dryRun: (command: Command | null, options: OrderOptions = {}) =>
@@ -58,7 +60,8 @@ export const core = {
   endTurn: () => call<TurnResult>('endTurn'),
   briefing: () => call<Briefing | null>('briefing'),
   tactical: () => call<Encounter | null>('tactical'),
-  tacticalOrder: (order: { fleetId?: number; targetFleetId?: number; maneuver: string; all?: boolean }) => call<number>('tacticalOrder', order),
+  tacticalOrder: (order: { fleetId?: number; groupId?: number; targetFleetId?: number; maneuver: string; all?: boolean }) =>
+    call<number>('tacticalOrder', order),
   tacticalRound: () => call<Encounter>('tacticalRound'),
   tacticalAuto: () => call<Encounter>('tacticalAuto'),
   replays: () => call<{ index: number; turn: number; x: number; y: number; rounds: number; winner: number }[]>('replays'),

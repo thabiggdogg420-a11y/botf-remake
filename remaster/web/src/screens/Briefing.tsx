@@ -61,12 +61,15 @@ export function BriefingPanel() {
               <ul>
                 {shown.filter((e) => e.category === c).map((e, i) => {
                   const actionable = e.systemId !== undefined || e.fleetId !== undefined || e.x !== undefined || ['research', 'diplomacy', 'intel', 'combat'].includes(e.category);
+                  const answer = e.kind === 'proposal' || e.kind === 'tribute' || e.kind === 'gift' || e.kind === 'callToArms';
+                  const go = e.category === 'combat' && e.battle !== undefined ? 'Replay' : e.category === 'research' ? 'Research'
+                    : answer ? (e.kind === 'callToArms' ? 'Answer' : 'Respond') : e.category === 'diplomacy' && e.x === undefined ? 'Diplomacy' : 'Show';
                   return (
-                    <li key={i} class={`brief-event sev-${e.severity}`}>
+                    <li key={i} class={`brief-event sev-${e.severity}${e.kind ? ` kind-${e.kind}` : ''}`}>
                       <button type="button" onClick={() => open(e)} disabled={!actionable} data-testid="briefing-event">
                         <span class="be-sev" aria-hidden="true" />
-                        <span class="be-text">{e.text}</span>
-                        {actionable ? <span class="be-go">{e.category === 'combat' && e.battle !== undefined ? 'Replay' : e.category === 'research' ? 'Research' : 'Show'} ›</span> : null}
+                        <span class="be-text">{e.text}{e.dueTurn !== undefined && answer ? <span class="be-due">due turn {e.dueTurn}</span> : null}</span>
+                        {actionable ? <span class="be-go">{go} ›</span> : null}
                       </button>
                     </li>
                   );
