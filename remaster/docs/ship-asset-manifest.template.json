@@ -1,0 +1,690 @@
+{
+  "comment": "Template for the local HD asset manifest. Paths are placeholders; models and audio are not in the repo.",
+  "ships": {
+    "ship.fed.nx": {
+      "model": "",
+      "hullTexture": "",
+      "engineAudio": "",
+      "ambientAudio": ""
+    },
+    "ship.fed.daedalus": {
+      "model": "",
+      "hullTexture": "",
+      "engineAudio": "",
+      "ambientAudio": ""
+    },
+    "ship.fed.yclass": {
+      "model": "",
+      "hullTexture": "",
+      "engineAudio": "",
+      "ambientAudio": ""
+    },
+    "ship.fed.constitution": {
+      "model": "",
+      "hullTexture": "",
+      "engineAudio": "",
+      "ambientAudio": ""
+    },
+    "ship.fed.constitution_refit": {
+      "model": "",
+      "hullTexture": "",
+      "engineAudio": "",
+      "ambientAudio": ""
+    },
+    "ship.fed.soyuz": {
+      "model": "",
+      "hullTexture": "",
+      "engineAudio": "",
+      "ambientAudio": ""
+    },
+    "ship.fed.sydney": {
+      "model": "",
+      "hullTexture": "",
+      "engineAudio": "",
+      "ambientAudio": ""
+    },
+    "ship.fed.excelsior": {
+      "model": "",
+      "hullTexture": "",
+      "engineAudio": "",
+      "ambientAudio": ""
+    },
+    "ship.fed.raven": {
+      "model": "",
+      "hullTexture": "",
+      "engineAudio": "",
+      "ambientAudio": ""
+    },
+    "ship.fed.challenger": {
+      "model": "",
+      "hullTexture": "",
+      "engineAudio": "",
+      "ambientAudio": ""
+    },
+    "ship.fed.cheyenne": {
+      "model": "",
+      "hullTexture": "",
+      "engineAudio": "",
+      "ambientAudio": ""
+    },
+    "ship.fed.springfield": {
+      "model": "",
+      "hullTexture": "",
+      "engineAudio": "",
+      "ambientAudio": ""
+    },
+    "ship.fed.freedom": {
+      "model": "",
+      "hullTexture": "",
+      "engineAudio": "",
+      "ambientAudio": ""
+    },
+    "ship.fed.niagara": {
+      "model": "",
+      "hullTexture": "",
+      "engineAudio": "",
+      "ambientAudio": ""
+    },
+    "ship.fed.new_orleans": {
+      "model": "",
+      "hullTexture": "",
+      "engineAudio": "",
+      "ambientAudio": ""
+    },
+    "ship.fed.olympic": {
+      "model": "",
+      "hullTexture": "",
+      "engineAudio": "",
+      "ambientAudio": ""
+    },
+    "ship.fed.centaur": {
+      "model": "",
+      "hullTexture": "",
+      "engineAudio": "",
+      "ambientAudio": ""
+    },
+    "ship.fed.danube": {
+      "model": "",
+      "hullTexture": "",
+      "engineAudio": "",
+      "ambientAudio": ""
+    },
+    "ship.fed.nova": {
+      "model": "",
+      "hullTexture": "",
+      "engineAudio": "",
+      "ambientAudio": ""
+    },
+    "ship.fed.intrepid": {
+      "model": "",
+      "hullTexture": "",
+      "engineAudio": "",
+      "ambientAudio": ""
+    },
+    "ship.fed.yeager": {
+      "model": "",
+      "hullTexture": "",
+      "engineAudio": "",
+      "ambientAudio": ""
+    },
+    "ship.fed.curry": {
+      "model": "",
+      "hullTexture": "",
+      "engineAudio": "",
+      "ambientAudio": ""
+    },
+    "ship.fed.akira": {
+      "model": "",
+      "hullTexture": "",
+      "engineAudio": "",
+      "ambientAudio": ""
+    },
+    "ship.fed.steamrunner": {
+      "model": "",
+      "hullTexture": "",
+      "engineAudio": "",
+      "ambientAudio": ""
+    },
+    "ship.fed.saber": {
+      "model": "",
+      "hullTexture": "",
+      "engineAudio": "",
+      "ambientAudio": ""
+    },
+    "ship.fed.norway": {
+      "model": "",
+      "hullTexture": "",
+      "engineAudio": "",
+      "ambientAudio": ""
+    },
+    "ship.fed.prometheus": {
+      "model": "",
+      "hullTexture": "",
+      "engineAudio": "",
+      "ambientAudio": ""
+    },
+    "ship.fed.rhode_island": {
+      "model": "",
+      "hullTexture": "",
+      "engineAudio": "",
+      "ambientAudio": ""
+    },
+    "ship.fed.peregrine": {
+      "model": "",
+      "hullTexture": "",
+      "engineAudio": "",
+      "ambientAudio": ""
+    },
+    "ship.fed.wells": {
+      "model": "",
+      "hullTexture": "",
+      "engineAudio": "",
+      "ambientAudio": ""
+    },
+    "ship.fed.luna": {
+      "model": "",
+      "hullTexture": "",
+      "engineAudio": "",
+      "ambientAudio": ""
+    },
+    "ship.fed.spacedock": {
+      "model": "",
+      "hullTexture": "",
+      "engineAudio": "",
+      "ambientAudio": ""
+    },
+    "ship.fed.k7": {
+      "model": "",
+      "hullTexture": "",
+      "engineAudio": "",
+      "ambientAudio": ""
+    },
+    "ship.kli.d5": {
+      "model": "",
+      "hullTexture": "",
+      "engineAudio": "",
+      "ambientAudio": ""
+    },
+    "ship.kli.raptor": {
+      "model": "",
+      "hullTexture": "",
+      "engineAudio": "",
+      "ambientAudio": ""
+    },
+    "ship.kli.bop_ent": {
+      "model": "",
+      "hullTexture": "",
+      "engineAudio": "",
+      "ambientAudio": ""
+    },
+    "ship.kli.d7": {
+      "model": "",
+      "hullTexture": "",
+      "engineAudio": "",
+      "ambientAudio": ""
+    },
+    "ship.kli.d12": {
+      "model": "",
+      "hullTexture": "",
+      "engineAudio": "",
+      "ambientAudio": ""
+    },
+    "ship.kli.qang": {
+      "model": "",
+      "hullTexture": "",
+      "engineAudio": "",
+      "ambientAudio": ""
+    },
+    "ship.kli.neghtev": {
+      "model": "",
+      "hullTexture": "",
+      "engineAudio": "",
+      "ambientAudio": ""
+    },
+    "ship.rom.bop_ent": {
+      "model": "",
+      "hullTexture": "",
+      "engineAudio": "",
+      "ambientAudio": ""
+    },
+    "ship.rom.drone": {
+      "model": "",
+      "hullTexture": "",
+      "engineAudio": "",
+      "ambientAudio": ""
+    },
+    "ship.rom.bop_tos": {
+      "model": "",
+      "hullTexture": "",
+      "engineAudio": "",
+      "ambientAudio": ""
+    },
+    "ship.rom.scout": {
+      "model": "",
+      "hullTexture": "",
+      "engineAudio": "",
+      "ambientAudio": ""
+    },
+    "ship.rom.science": {
+      "model": "",
+      "hullTexture": "",
+      "engineAudio": "",
+      "ambientAudio": ""
+    },
+    "ship.rom.valdore": {
+      "model": "",
+      "hullTexture": "",
+      "engineAudio": "",
+      "ambientAudio": ""
+    },
+    "ship.rom.norexan": {
+      "model": "",
+      "hullTexture": "",
+      "engineAudio": "",
+      "ambientAudio": ""
+    },
+    "ship.rom.mogai": {
+      "model": "",
+      "hullTexture": "",
+      "engineAudio": "",
+      "ambientAudio": ""
+    },
+    "ship.car.hideki": {
+      "model": "",
+      "hullTexture": "",
+      "engineAudio": "",
+      "ambientAudio": ""
+    },
+    "ship.car.groumall": {
+      "model": "",
+      "hullTexture": "",
+      "engineAudio": "",
+      "ambientAudio": ""
+    },
+    "ship.car.atr4107": {
+      "model": "",
+      "hullTexture": "",
+      "engineAudio": "",
+      "ambientAudio": ""
+    },
+    "ship.car.nor": {
+      "model": "",
+      "hullTexture": "",
+      "engineAudio": "",
+      "ambientAudio": ""
+    },
+    "ship.car.kraxon": {
+      "model": "",
+      "hullTexture": "",
+      "engineAudio": "",
+      "ambientAudio": ""
+    },
+    "ship.fer.pod": {
+      "model": "",
+      "hullTexture": "",
+      "engineAudio": "",
+      "ambientAudio": ""
+    },
+    "ship.fer.nagus": {
+      "model": "",
+      "hullTexture": "",
+      "engineAudio": "",
+      "ambientAudio": ""
+    },
+    "ship.dom.attack_ship": {
+      "model": "",
+      "hullTexture": "",
+      "engineAudio": "",
+      "ambientAudio": ""
+    },
+    "ship.dom.battlecruiser": {
+      "model": "",
+      "hullTexture": "",
+      "engineAudio": "",
+      "ambientAudio": ""
+    },
+    "ship.dom.battleship": {
+      "model": "",
+      "hullTexture": "",
+      "engineAudio": "",
+      "ambientAudio": ""
+    },
+    "ship.breen.breen_warship": {
+      "model": "",
+      "hullTexture": "",
+      "engineAudio": "",
+      "ambientAudio": ""
+    },
+    "ship.borg.sphere": {
+      "model": "",
+      "hullTexture": "",
+      "engineAudio": "",
+      "ambientAudio": ""
+    },
+    "ship.borg.probe": {
+      "model": "",
+      "hullTexture": "",
+      "engineAudio": "",
+      "ambientAudio": ""
+    },
+    "ship.borg.tactical_cube": {
+      "model": "",
+      "hullTexture": "",
+      "engineAudio": "",
+      "ambientAudio": ""
+    },
+    "ship.borg.diamond": {
+      "model": "",
+      "hullTexture": "",
+      "engineAudio": "",
+      "ambientAudio": ""
+    },
+    "ship.borg.scout": {
+      "model": "",
+      "hullTexture": "",
+      "engineAudio": "",
+      "ambientAudio": ""
+    },
+    "ship.thol.web_spinner": {
+      "model": "",
+      "hullTexture": "",
+      "engineAudio": "",
+      "ambientAudio": ""
+    },
+    "ship.gorn.cruiser": {
+      "model": "",
+      "hullTexture": "",
+      "engineAudio": "",
+      "ambientAudio": ""
+    },
+    "ship.orion.interceptor": {
+      "model": "",
+      "hullTexture": "",
+      "engineAudio": "",
+      "ambientAudio": ""
+    },
+    "ship.hiro.hunter": {
+      "model": "",
+      "hullTexture": "",
+      "engineAudio": "",
+      "ambientAudio": ""
+    },
+    "ship.hiro.warship": {
+      "model": "",
+      "hullTexture": "",
+      "engineAudio": "",
+      "ambientAudio": ""
+    },
+    "ship.kazon.raider": {
+      "model": "",
+      "hullTexture": "",
+      "engineAudio": "",
+      "ambientAudio": ""
+    },
+    "ship.kazon.carrier": {
+      "model": "",
+      "hullTexture": "",
+      "engineAudio": "",
+      "ambientAudio": ""
+    },
+    "ship.vid.warship": {
+      "model": "",
+      "hullTexture": "",
+      "engineAudio": "",
+      "ambientAudio": ""
+    },
+    "ship.sul.cell_ship": {
+      "model": "",
+      "hullTexture": "",
+      "engineAudio": "",
+      "ambientAudio": ""
+    },
+    "ship.xindi.reptilian": {
+      "model": "",
+      "hullTexture": "",
+      "engineAudio": "",
+      "ambientAudio": ""
+    },
+    "ship.xindi.insectoid": {
+      "model": "",
+      "hullTexture": "",
+      "engineAudio": "",
+      "ambientAudio": ""
+    },
+    "ship.xindi.aquatic": {
+      "model": "",
+      "hullTexture": "",
+      "engineAudio": "",
+      "ambientAudio": ""
+    },
+    "ship.xindi.primate": {
+      "model": "",
+      "hullTexture": "",
+      "engineAudio": "",
+      "ambientAudio": ""
+    },
+    "ship.xindi.weapon": {
+      "model": "",
+      "hullTexture": "",
+      "engineAudio": "",
+      "ambientAudio": ""
+    },
+    "ship.s8472.bioship": {
+      "model": "",
+      "hullTexture": "",
+      "engineAudio": "",
+      "ambientAudio": ""
+    },
+    "ship.krenim.timeship": {
+      "model": "",
+      "hullTexture": "",
+      "engineAudio": "",
+      "ambientAudio": ""
+    },
+    "ship.krenim.warship": {
+      "model": "",
+      "hullTexture": "",
+      "engineAudio": "",
+      "ambientAudio": ""
+    },
+    "ship.malon.freighter": {
+      "model": "",
+      "hullTexture": "",
+      "engineAudio": "",
+      "ambientAudio": ""
+    },
+    "ship.sona.battleship": {
+      "model": "",
+      "hullTexture": "",
+      "engineAudio": "",
+      "ambientAudio": ""
+    },
+    "ship.maquis.raider": {
+      "model": "",
+      "hullTexture": "",
+      "engineAudio": "",
+      "ambientAudio": ""
+    },
+    "ship.reman.scimitar": {
+      "model": "",
+      "hullTexture": "",
+      "engineAudio": "",
+      "ambientAudio": ""
+    },
+    "ship.devore.warship": {
+      "model": "",
+      "hullTexture": "",
+      "engineAudio": "",
+      "ambientAudio": ""
+    },
+    "ship.and.kumari": {
+      "model": "",
+      "hullTexture": "",
+      "engineAudio": "",
+      "ambientAudio": ""
+    },
+    "ship.vul.dkyr": {
+      "model": "",
+      "hullTexture": "",
+      "engineAudio": "",
+      "ambientAudio": ""
+    },
+    "ship.vul.suurok": {
+      "model": "",
+      "hullTexture": "",
+      "engineAudio": "",
+      "ambientAudio": ""
+    },
+    "ship.baj.assault": {
+      "model": "",
+      "hullTexture": "",
+      "engineAudio": "",
+      "ambientAudio": ""
+    },
+    "ship.baj.lightship": {
+      "model": "",
+      "hullTexture": "",
+      "engineAudio": "",
+      "ambientAudio": ""
+    },
+    "ship.nau.raider": {
+      "model": "",
+      "hullTexture": "",
+      "engineAudio": "",
+      "ambientAudio": ""
+    },
+    "ship.tal.observer": {
+      "model": "",
+      "hullTexture": "",
+      "engineAudio": "",
+      "ambientAudio": ""
+    },
+    "ship.fed.kelvin_type": {
+      "model": "",
+      "hullTexture": "",
+      "engineAudio": "",
+      "ambientAudio": ""
+    },
+    "ship.fed.constitution_kelvin": {
+      "model": "",
+      "hullTexture": "",
+      "engineAudio": "",
+      "ambientAudio": ""
+    },
+    "ship.fed.vengeance": {
+      "model": "",
+      "hullTexture": "",
+      "engineAudio": "",
+      "ambientAudio": ""
+    },
+    "ship.kli.d4": {
+      "model": "",
+      "hullTexture": "",
+      "engineAudio": "",
+      "ambientAudio": ""
+    },
+    "ship.rom.narada": {
+      "model": "",
+      "hullTexture": "",
+      "engineAudio": "",
+      "ambientAudio": ""
+    }
+  },
+  "weapons": {
+    "weapon.BioEnergy": {
+      "vfx": "",
+      "fireAudio": "",
+      "impactAudio": ""
+    },
+    "weapon.CuttingBeam": {
+      "vfx": "",
+      "fireAudio": "",
+      "impactAudio": ""
+    },
+    "weapon.Disruptor": {
+      "vfx": "",
+      "fireAudio": "",
+      "impactAudio": ""
+    },
+    "weapon.DisruptorCannon": {
+      "vfx": "",
+      "fireAudio": "",
+      "impactAudio": ""
+    },
+    "weapon.EnergyDampener": {
+      "vfx": "",
+      "fireAudio": "",
+      "impactAudio": ""
+    },
+    "weapon.PhaseCannon": {
+      "vfx": "",
+      "fireAudio": "",
+      "impactAudio": ""
+    },
+    "weapon.PhaserArray": {
+      "vfx": "",
+      "fireAudio": "",
+      "impactAudio": ""
+    },
+    "weapon.PhaserBank": {
+      "vfx": "",
+      "fireAudio": "",
+      "impactAudio": ""
+    },
+    "weapon.PhotonTorpedo": {
+      "vfx": "",
+      "fireAudio": "",
+      "impactAudio": ""
+    },
+    "weapon.PhotonicTorpedo": {
+      "vfx": "",
+      "fireAudio": "",
+      "impactAudio": ""
+    },
+    "weapon.PlasmaCannon": {
+      "vfx": "",
+      "fireAudio": "",
+      "impactAudio": ""
+    },
+    "weapon.PlasmaTorpedo": {
+      "vfx": "",
+      "fireAudio": "",
+      "impactAudio": ""
+    },
+    "weapon.PolaronBeam": {
+      "vfx": "",
+      "fireAudio": "",
+      "impactAudio": ""
+    },
+    "weapon.QuantumTorpedo": {
+      "vfx": "",
+      "fireAudio": "",
+      "impactAudio": ""
+    },
+    "weapon.SpatialTorpedo": {
+      "vfx": "",
+      "fireAudio": "",
+      "impactAudio": ""
+    },
+    "weapon.TemporalWeapon": {
+      "vfx": "",
+      "fireAudio": "",
+      "impactAudio": ""
+    },
+    "weapon.TholianWeb": {
+      "vfx": "",
+      "fireAudio": "",
+      "impactAudio": ""
+    },
+    "weapon.Torpedo": {
+      "vfx": "",
+      "fireAudio": "",
+      "impactAudio": ""
+    },
+    "weapon.TricobaltDevice": {
+      "vfx": "",
+      "fireAudio": "",
+      "impactAudio": ""
+    }
+  }
+}

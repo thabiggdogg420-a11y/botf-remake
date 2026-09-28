@@ -51,8 +51,12 @@ Neither lane E nor lane I has been compiled by UE 5.8. See UNREAL-CLIENT.md for 
 - Balance is provisional. AI alliances usually win diplomatically at turn 150; rival AIs are too weak to capture stations.
   - Supreme-era games end by scientific victory around turn 150.
   - An idle player is sometimes conquered before turn 200.
-- Art, audio and the 3D battle scene are still interim. The ship roster and tech tree have not been expanded.
+- Art, audio and the 3D battle scene are still interim. The tech tree has not been expanded.
+- Ship roster: 98 expanded classes (43 buildable in Remastered; Classic unchanged) with asset keys for a local HD
+  manifest. See SHIP-ROSTER.md. The Unreal catalogue browser does not list expanded classes yet, and the wasm build
+  has not been rebuilt with them.
 - Local-only asset pipeline (lane J): `../assets/manifest.json` lists candidate HD ships, weapon, sfx and voice sources, with their terms. It is documented in ASSET-SOURCES.md and AUDIO-PLAN.md.
   - `../game/Import-Assets.ps1` resolves and converts manually downloaded archives into the gitignored `game/LocalAssets/`. Blender and ffmpeg handle conversion, and the output is imported into `/Game/Local`.
   - Not yet run on Windows or against a real BOTF `.snd` bank.
   - No Unreal code consumes `resolved-manifest.json` yet; `UBotfAudioSubsystem` and ship mesh lookup by key are the next step.
+- Asset keys differ: the roster uses `ship.<faction>.<class>` / `weapon.<Type>`, the asset manifest uses `fed.galaxy` / `wpn.*`. Unify before wiring Unreal lookups.

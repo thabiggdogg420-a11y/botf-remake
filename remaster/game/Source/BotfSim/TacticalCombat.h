@@ -2,6 +2,7 @@
 
 #include "Simulation.h"
 #include "ReferenceCatalogue.h"
+#include "ShipRoster.h"
 
 #include <algorithm>
 #include <array>
@@ -1234,9 +1235,14 @@ inline Encounter constructEncounter(const GameState& state,
         totalAtk += emp.technologies[5].level;
         totalAtk = std::max(0, totalAtk);
 
+        const auto* extendedClass = roster::findRosterClass(f->referenceShipId);
         if (f->shipClass == Building::Transport || f->shipClass == Building::ColonyShip) {
             s.beamAttack = totalAtk;
             s.torpedoAttack = 0;
+        } else if (extendedClass) {
+            // Expanded roster: the typed weapon fit decides the beam/torpedo split.
+            s.torpedoAttack = (totalAtk * extendedClass->torpedoSharePercent) / 100;
+            s.beamAttack = totalAtk - s.torpedoAttack;
         } else if (f->shipClass == Building::Scout) {
             s.beamAttack = (totalAtk * 75) / 100;
             s.torpedoAttack = totalAtk - s.beamAttack;
@@ -1262,9 +1268,8 @@ inline Encounter constructEncounter(const GameState& state,
         else if (f->shipClass == Building::Transport || f->shipClass == Building::ColonyShip) s.speed = 1;
         else s.speed = 2;
 
-        if (f->referenceShipId >= 0 &&
-            f->referenceShipId < static_cast<int>(referenceData::ShipCatalogue.size())) {
-            const double catSpd = referenceData::ShipCatalogue[f->referenceShipId].speed;
+        if (const auto* record = roster::findShip(f->referenceShipId)) {
+            const double catSpd = record->speed;
             if (catSpd >= 3.0) s.speed = 3;
             else if (catSpd >= 2.0) s.speed = 2;
             else s.speed = 1;
@@ -1287,7 +1292,10 @@ inline Encounter constructEncounter(const GameState& state,
         s.retreatSteps = 0;
 
         // Cloak capability: Klingon (ownerId == 2) and Romulan (ownerId == 3) combat vessels start cloaked
-        if ((f->ownerId == 2 || f->ownerId == 3) &&
+        // Expanded-roster classes carry their own cloak flag (a Defiant-style treaty cloak, a pre-cloak
+        // Klingon D7); legacy classes keep the original owner rule.
+        const auto* rosterClass = roster::findRosterClass(f->referenceShipId);
+        if ((rosterClass ? rosterClass->cloak : (f->ownerId == 2 || f->ownerId == 3)) &&
             f->shipClass != Building::Transport && f->shipClass != Building::ColonyShip) {
             s.canCloak = true;
             s.isCloaked = true;
@@ -1917,8 +1925,7 @@ inline Encounter deserializeEncounter(const std::string& text) {
                         std::to_string(s.position.x) + "," + std::to_string(s.position.y) + ")");
                 }
                 if (!isShip(static_cast<Building>(sc))) fail("Invalid ship class for ship " + std::to_string(s.fleetId));
-                if (s.referenceShipId < -1 ||
-                    s.referenceShipId >= static_cast<int>(referenceData::ShipCatalogue.size())) {
+                if (s.referenceShipId < -1 || (s.referenceShipId >= 0 && !roster::validShipId(s.referenceShipId))) {
                     fail("Invalid reference ship for ship " + std::to_string(s.fleetId));
                 }
 

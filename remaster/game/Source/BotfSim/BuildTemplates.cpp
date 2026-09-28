@@ -3,6 +3,7 @@
 // newly acquired colonies whose queues are empty. Deterministic: items that are
 // illegal when applied are skipped with a reason, never reordered.
 #include "GameplayInternal.h"
+#include "ShipRoster.h"
 
 #include <algorithm>
 #include <map>
@@ -18,8 +19,8 @@ void checkTemplateItems(const Command& c) {
     for (const auto& item : c.templateItems) {
         require(static_cast<int>(item.product) >= 0 && static_cast<int>(item.product) <= static_cast<int>(Building::DefenseBattery),
             "Unknown template project");
-        require(item.work == 0 && !item.pinned && item.referenceId >= -1 &&
-            item.referenceId < static_cast<int>(referenceData::ShipCatalogue.size()), "Invalid template project fields");
+        require(item.work == 0 && !item.pinned && (item.referenceId == -1 || roster::validShipId(item.referenceId)),
+            "Invalid template project fields");
     }
 }
 
@@ -28,7 +29,8 @@ std::string templateItemProblem(const GameState& s, int owner, const Constructio
         return "Unknown project";
     if (item.referenceId >= 0) {
         if (s.ruleset != Ruleset::Reference) return "Named ship classes need a reference campaign";
-        if (item.referenceId >= static_cast<int>(referenceData::ShipCatalogue.size())) return "Unknown ship class";
+        if (!roster::validShipId(item.referenceId)) return "Unknown ship class";
+        if (roster::isExpandedId(item.referenceId) && !s.rules.expandedRoster) return "Expanded ship roster is off in this ruleset";
         const auto& ship = internal::sourceShip(item.referenceId);
         if (!internal::playableShip(ship) || ship.raceId != internal::catalogueRace(owner) ||
             internal::roleProduct(ship.role) != item.product) return "Ship class does not belong to this empire or role";

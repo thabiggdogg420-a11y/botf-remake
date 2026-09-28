@@ -294,6 +294,10 @@ struct GameplayRules {
     bool galaxyFeatures = false;       // Nebulae, wormholes, black holes, neutron stars, ion storms.
     bool curatedEvents = false;        // Event deck (replaces the original random events).
     bool alternativeVictories = false; // Scientific megaproject and diplomatic victory.
+    // Expanded ship roster (docs/SHIP-ROSTER.md): canon classes with ids >= 1000 become buildable.
+    // Remastered only; saved as the optional SHIP_ROSTER section (no schema bump), so Classic games,
+    // older saves and Remastered saves made before the roster keep it off and play exactly as before.
+    bool expandedRoster = false;
     bool operator==(const GameplayRules&) const = default;
 };
 
