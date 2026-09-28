@@ -400,6 +400,7 @@ GameState newCampaign(const CampaignSetup& setup) {
     auto state = setup.reference
         ? generateReferenceCampaign(setup.seed, setup.empires, setup.width, setup.height, setup.systems, setup.playerEmpire, setup.era)
         : generateCampaign(setup.seed, setup.empires, setup.width, setup.height, setup.systems, setup.playerEmpire, setup.era);
+    placeMinorRaceRoster(state); // Lane G: minor-race roster (MinorRaces.h)
     applyRulesetPreset(state, setup.preset);
     return state;
 }

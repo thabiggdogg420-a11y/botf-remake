@@ -247,6 +247,10 @@ struct Minor {
     std::array<bool, 6> contact{};
     std::array<int, 6> attitude{0,60,60,60,60,60};
     std::array<int, 6> friendshipTurn{-1,-1,-1,-1,-1,-1};
+    // Minor-race roster (Lane G, MinorRaces.h; optional MINOR_RACES save section).
+    // raceId 0 = legacy minor without roster progression; the other three are then 0.
+    int raceId = 0;
+    int techLevel = 0, population = 0, progress = 0;
 };
 struct DiplomaticOffer {
     std::uint64_t id = 0;
@@ -597,6 +601,10 @@ struct CampaignSetup {
     RulesetPreset preset = RulesetPreset::Remastered;
 };
 GameState newCampaign(const CampaignSetup& setup);
+// Lane G: places a deterministic, galaxy-size-scaled subset of the minor-race roster (MinorRaces.h)
+// on a turn-0 campaign and adopts roster-named starter minors. newCampaign() calls it for every preset;
+// generateCampaign()/generateReferenceCampaign() stay on the legacy baseline.
+void placeMinorRaceRoster(GameState& state);
 GameplayRules rulesForPreset(RulesetPreset preset);
 const char* rulesetPresetName(RulesetPreset preset);
 bool parseRulesetPreset(const std::string& text, RulesetPreset& preset); // "classic" / "remastered" (case-insensitive)

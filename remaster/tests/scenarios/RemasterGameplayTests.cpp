@@ -460,6 +460,11 @@ void stationScenarios(int& passed) {
 
     run("stations: reference campaigns use catalogue hulls and the rival AI builds and upgrades outposts", [] {
         auto s = campaign(botf::RulesetPreset::Classic, 1999, 5, true);
+        // Keep this long AI run on its pre-roster fixture: the idle player otherwise falls before a rival
+        // starbase appears. Roster minors are covered by ContentTests (MINOR-RACES.md).
+        std::erase_if(s.minors, [](const botf::Minor& m) { return m.name != "Bynars"; });
+        std::erase_if(s.diplomacyEngineState.minorStates, [&](const auto& ms) { return !botf::minorAt(s, ms.minorId); });
+        botf::validate(s);
         const auto stats = botf::stationStats(s, 1, botf::StationType::Outpost);
         check(stats.maxHull == 127 && stats.maxShields == 330 && stats.upkeep == 12, "Federation outpost not from the catalogue");
         const auto starbase = botf::stationStats(s, 1, botf::StationType::Starbase);

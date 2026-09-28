@@ -73,3 +73,4 @@ botf_suite(BotfRemasterGameplayTests RemasterGameplayTests.cpp)
 botf_suite(BotfSoakTests SoakTests.cpp)
 set_tests_properties(BotfSoakTests PROPERTIES TIMEOUT 1800)
 botf_suite(BotfCampaignDiplomacyTests CampaignDiplomacyTests.cpp)
+botf_suite(BotfContentTests ContentTests.cpp) # Lane G: original text + minor-race roster
