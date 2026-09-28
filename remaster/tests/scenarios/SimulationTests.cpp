@@ -2154,9 +2154,14 @@ int main() {
             // System converted into a player colony
             const auto col = botf::colonyAt(s, minorSystemId);
             check(col != nullptr && col->ownerId == 1, "Minor system converted to player colony");
-            check(col->population == 30, "Annexed colony has starting population");
-            check(col->foodWorkers == 15 && col->industryWorkers == 10 && col->researchWorkers == 5,
-                "Annexed colony has starting workforce");
+            // Roster minors (MinorRaces.h) bring their own population; legacy minors bring 30.
+            const int broughtPopulation = s.minors.front().raceId != 0 ? std::max(10, s.minors.front().population) : 30;
+            check(col->population == broughtPopulation, "Annexed colony has starting population");
+            const int food = std::min(20, broughtPopulation / 2), industry = std::min(20, broughtPopulation / 3);
+            const bool legacyWorkforce = col->foodWorkers == 15 && col->industryWorkers == 10 && col->researchWorkers == 5;
+            const bool rosterWorkforce = col->foodWorkers == food && col->industryWorkers == industry &&
+                col->researchWorkers == std::min(10, broughtPopulation - food - industry);
+            check(s.minors.front().raceId != 0 ? rosterWorkforce : legacyWorkforce, "Annexed colony has starting workforce");
         }, passed);
         run("Modern campaign intelligence: budget allocation, department focus, bounded advance and operations", [] {
             auto s = botf::generateReferenceCampaign(77);

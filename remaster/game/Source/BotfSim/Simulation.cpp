@@ -1,4 +1,5 @@
 #include "Simulation.h"
+#include "MinorRaces.h"
 #include "ReferenceCatalogue.h"
 #include "ReferencePlanets.h"
 #include "TacticalCombat.h"
@@ -1736,6 +1737,7 @@ void resolveDiplomacy(GameState& s, TurnReport& report) {
         m.memberOf = winner->empireId;
         Colony colony; colony.systemId = m.systemId; colony.ownerId = m.memberOf;
         colony.population = 30; colony.foodWorkers = 15; colony.industryWorkers = 10; colony.researchWorkers = 5;
+        minors::configureJoinedColony(m, colony); // Lane G
         s.colonies.push_back(colony); reveal(s, system->x, system->y, m.memberOf);
         for (const auto& offer : s.diplomacy)
             if (offer.systemId == m.systemId && offer.dueTurn <= s.turn && offer.type == CommandType::OfferMembership
@@ -1877,6 +1879,7 @@ void applyDiplomacyOps(GameState& next, const diplomacy::TurnResolutionDelta& de
                     colony.foodWorkers = 15;
                     colony.industryWorkers = 10;
                     colony.researchWorkers = 5;
+                    minors::configureJoinedColony(*mIt, colony); // Lane G
                     next.colonies.push_back(colony);
                     const auto sys = std::find_if(next.systems.begin(), next.systems.end(), [minorId](const System& s) { return s.id == minorId; });
                     if (sys != next.systems.end()) {
@@ -2919,7 +2922,7 @@ void resolveInvasions(GameState& s, TurnReport& report) {
         }
         const int attacker = 8 + fleet.hull + 2 * empire(s, fleet.ownerId).technologies[5].level;
         const int defenderBatteries = s.advancedRulesEnabled ? economy(s, *target).poweredBatteries : 0;
-        const int defender = 8 + target->population / 3 + target->morale / 10 + defenderBatteries * 12;
+        const int defender = minors::invasionDefense(s, *target, 8 + target->population / 3 + target->morale / 10 + defenderBatteries * 12);
         const std::uint64_t a2 = static_cast<std::uint64_t>(attacker) * attacker;
         const std::uint64_t d2 = static_cast<std::uint64_t>(defender) * defender;
         const bool won = bounded(s.rngState, a2 + d2) < a2;
@@ -3139,6 +3142,7 @@ std::string payload(const GameState& s) {
         }
         out << '\n';
     }
+    minors::writeMinorRacesSection(out, s); // Lane G: optional MINOR_RACES section
     return out.str();
 }
 
@@ -3900,6 +3904,8 @@ GameState generateCampaign(std::uint64_t seed, int empires, int width, int heigh
         minorSystem->planets = generateSystemPlanets(seed, minorSystem->id, minorSystem->name, false);
         Minor minor; minor.systemId = minorSystem->id; minor.name = "Bynars"; s.minors.push_back(minor);
     }
+    // Lane G: seeded minor-race roster, scaled to galaxy size (MinorRaces.h).
+    minors::placeRosterMinors(s, seed, era, [&](System& sys) { sys.planets = generateSystemPlanets(seed, sys.id, sys.name, false); });
     for (int first = 1; first <= empires; ++first)
         for (int second = first + 1; second <= empires; ++second)
             s.majorRelations.push_back({first, second, false, false, false});
@@ -4016,6 +4022,7 @@ void validate(const GameState& s) {
         for (int i = 0; i < 6; ++i) require(m.attitude[i] >= 0 && m.attitude[i] <= 100 && m.friendshipTurn[i] >= -1 &&
             m.friendshipTurn[i] <= s.turn && (m.friendshipTurn[i] < 0 || m.contact[i]), "Invalid minor relations");
     }
+    minors::validateMinorRaces(s); // Lane G: roster identity and progression bounds
     require(s.diplomacy.size() <= MaxPending, "Too many diplomatic offers");
     std::uint64_t priorOffer = 0; std::set<std::pair<int,int>> offerTargets;
     for (const auto& offer : s.diplomacy) {
@@ -4375,15 +4382,15 @@ Economy economy(const GameState& s, const Colony& c) {
     auto powered = c;
     powered.energy = std::min(100000, c.energy * (100 + 5 * owner.technologies[3].level) / 100);
     auto e = economy(powered);
-    e.food = e.food * (100 + 5 * owner.technologies[0].level) / 100;
+    const auto minorBonus = minors::memberBonuses(s, c.ownerId); // Lane G: member-minor join bonuses
+    e.food = e.food * (100 + 5 * owner.technologies[0].level + minorBonus.foodPct) / 100;
     e.foodDeficit = std::max(0, c.population - e.food);
-    e.industry = e.industry * (100 + 5 * owner.technologies[2].level) / 100;
+    e.industry = e.industry * (100 + 5 * owner.technologies[2].level + minorBonus.industryPct) / 100;
     if (c.morale < 50) e.industry = e.industry * 75 / 100;
-    int minorBonus = 0;
-    for (const auto& m : s.minors) if (m.memberOf == c.ownerId) minorBonus += 10;
-    e.research = e.research * (100 + 5 * owner.technologies[1].level + minorBonus) / 100;
+    e.research = e.research * (100 + 5 * owner.technologies[1].level + minorBonus.researchPct) / 100;
     if (c.morale < 50) e.research = e.research * 75 / 100;
     if (s.ruleset == Ruleset::Reference) e.income += c.population * 2;
+    e.income = e.income * (100 + minorBonus.creditsPct) / 100;
     return e;
 }
 
@@ -4639,6 +4646,7 @@ TurnReport advanceWithCombat(GameState& state, const std::function<void(GameStat
     std::sort(next.colonies.begin(), next.colonies.end(), [](const Colony& a, const Colony& b) { return a.systemId < b.systemId; });
     next.fleets.insert(next.fleets.end(), launched.begin(), launched.end());
     reconcileTaskForces(next);
+    minors::reviewMinorRaces(next, report.events); // Lane G: minor growth, tech and temperament
     resolveDiplomacy(next, report);
     if (next.campaignExpansionEnabled && next.modernEnginesActive) {
         resolveModernDiplomacy(next, report);
@@ -4676,8 +4684,9 @@ TurnReport advanceWithCombat(GameState& state, const std::function<void(GameStat
         }
     }
     for (auto& c : next.colonies) {
-        if (c.morale < 70) ++c.morale;
-        else if (c.morale > 70) --c.morale;
+        const int moraleTarget = minors::moraleTarget(next, c.ownerId); // Lane G: 70 plus member-minor morale
+        if (c.morale < moraleTarget) ++c.morale;
+        else if (c.morale > moraleTarget) --c.morale;
     }
     if (next.eventsEnabled && !next.rivals.empty() && next.turn - next.lastRandomEventTurn >= 10 && !next.colonies.empty()) {
         next.lastRandomEventTurn = next.turn;
@@ -5119,6 +5128,10 @@ GameState deserialize(const std::string& text) {
         hasColonyGovernors = true;
         parseColonyGovernors(in);
         nextTag = readTag("Malformed save section after COLONY_GOVERNORS");
+    }
+    if (nextTag == "MINOR_RACES") { // Lane G: optional, written only for managed minors
+        minors::readMinorRacesSection(in, s);
+        nextTag = readTag("Malformed save section after MINOR_RACES");
     }
     require(nextTag == "CHECKSUM", ("Unexpected save section: " + nextTag).c_str());
     std::uint64_t checksum = 0;
