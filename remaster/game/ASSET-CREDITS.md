@@ -44,50 +44,50 @@ The assets below are **not in this repository**. They are candidates the user ma
 
 | Key | First non-restricted candidate | Author | Stated terms |
 |---|---|---|---|
-| fed.galaxy | [Sketchfab: Star Trek TNG Galaxy Class Model](https://sketchfab.com/models/6029fefcfbd44908b2dfa9938cafecf5) | CrustyBread | CC-BY-4.0 (uploader-declared on Sketchfab) |
-| fed.sovereign | [Sketchfab: Star Trek Sovereign Class with Shuttlebay](https://sketchfab.com/models/f57fa908f23d498daf3d43d17d1b5f22) | CrustyBread | CC-BY-4.0 (uploader-declared on Sketchfab) |
-| fed.defiant | [Sketchfab: U.S.S. Defiant](https://sketchfab.com/models/8e875133c49240699d3b19de324826cf) | Feltman_Langer | CC-BY-4.0 (uploader-declared on Sketchfab) |
-| fed.nebula | [Sketchfab: Nebula-class cruiser](https://sketchfab.com/models/4fa2e93de1ba48ad9425c1e4228d7abf) | nestor_d | CC-BY-4.0 (uploader-declared on Sketchfab) |
-| fed.miranda | [Sketchfab: Star Trek Miranda Class](https://sketchfab.com/models/08b835fb9b8743cc8d22aec03ea05756) | CrustyBread | CC-BY-4.0 (uploader-declared on Sketchfab) |
-| fed.oberth | [Sketchfab: Star Trek - Oberth Class](https://sketchfab.com/models/c1a3bd9d678f4189a9d0ef65ce0591b5) | wholock | CC-BY-4.0 (uploader-declared on Sketchfab) |
-| fed.ambassador | [Sketchfab: Star Trek - Ambassador class](https://sketchfab.com/models/25ed1463b2d14ad98dae8985a223f663) | octave767 | CC-BY-4.0 (uploader-declared on Sketchfab) |
-| fed.excelsior | [Sketchfab: U.S.S. Excelsior](https://sketchfab.com/models/e55ae4071bf840b085ae430cd0149198) | ejlabarbera | CC-BY-4.0 (uploader-declared on Sketchfab) |
-| fed.akira | [Sketchfab: Star Trek - Akira Class](https://sketchfab.com/models/84b459f462ec437b9e4a165ab98cee51) | wholock | CC-BY-4.0 (uploader-declared on Sketchfab) |
-| fed.intrepid | [Sketchfab: Intrepid Class Starship](https://sketchfab.com/models/da7580cbd73a4a9b832c23366b5ceb65) | Feltman_Langer | CC-BY-NC-4.0 (uploader-declared on Sketchfab) |
-| fed.steamrunner | [Sketchfab: Star Trek - Steamrunner class](https://sketchfab.com/models/6baf9770699f4677a9112b3b44248720) | octave767 | CC-BY-4.0 (uploader-declared on Sketchfab) |
-| fed.norway | [Sketchfab: Star Trek - Norway class](https://sketchfab.com/models/9e3196504fb047219cd01e33c7f2a949) | octave767 | CC-BY-4.0 (uploader-declared on Sketchfab) |
-| fed.saber | [Sketchfab: Star Trek - Saber class](https://sketchfab.com/models/b0a899f2a9cc422f8d0d49182953611e) | octave767 | CC-BY-4.0 (uploader-declared on Sketchfab) |
-| fed.nova | [BlendSwap: Star Trek Nova Class by ask13freak](https://blendswap.com/blend/9497) | ask13freak | CC-BY-SA (uploader-declared) |
-| fed.prometheus | [Sketchfab: Prometheus Class Starship (Star Trek)](https://sketchfab.com/models/1a597521c37649e0af1aa9f9a5fb3255) | giacar25 | CC-BY-4.0 (uploader-declared on Sketchfab) |
-| fed.danube | [Sketchfab: Star Trek - Danube Class](https://sketchfab.com/models/efc194b3d5f14a2e8718fe5bb7baee7a) | wholock | CC-BY-4.0 (uploader-declared on Sketchfab) |
-| fed.starbase | [Sketchfab: Star Trek - Starbase 375](https://sketchfab.com/models/a1f79e463bbe44948f8594ebf6c8fe96) | octave767 | CC-BY-4.0 (uploader-declared on Sketchfab) |
-| kli.vorcha | [Trekmeshes: Vor'cha battlecruiser (resolve individual entry)](https://trekmeshes.eu/download/all) | unresolved (catalogue index) | No licence stated on page |
-| kli.neghvar | [Sketchfab: Negh Var - Enterprise](https://sketchfab.com/models/26ec3eaa4f754c08bbc4e203b90d4816) | rossrobotics | CC-BY-4.0 (uploader-declared on Sketchfab) |
-| kli.bop | [Sketchfab: Star Trek B'rel Class Klingon Bird of Prey](https://sketchfab.com/models/5bfb6bb66fc3479c9d626af57f66897c) | CrustyBread | CC-BY-4.0 (uploader-declared on Sketchfab) |
-| kli.ktinga | [Sketchfab: klingon D7](https://sketchfab.com/models/20d4a380c9814ea297aef8d523446dde) | CaptainJamesKirk | CC-BY-4.0 (uploader-declared on Sketchfab) |
-| rom.dderidex | [Sketchfab: Star Trek - D'Deridex Class Warbird](https://sketchfab.com/models/4cd1e185eaa645b2ad3eeae31d0c5d0d) | wholock | CC-BY-4.0 (uploader-declared on Sketchfab) |
-| rom.valdore | [Sketchfab: Star Trek Online \| Romulan Valdore](https://sketchfab.com/models/b895da5d0f14435cb867407a21cb86df) | LoganRolphh | CC-BY-4.0 (uploader-declared on Sketchfab) |
-| rom.bop | [Sketchfab: Picard Romulan variant of Bird Of Prey](https://sketchfab.com/models/34fe048bc7554b738b34ba1c2f415d1a) | morenostefanuto | Sketchfab Free Standard licence (uploader-declared) |
-| car.galor | [Sketchfab: Star Trek - Cardassian Galor](https://sketchfab.com/models/d9305d314e154639a5769747fd94b85f) | octave767 | CC-BY-4.0 (uploader-declared on Sketchfab) |
-| car.groumall | [Sketchfab: Star Trek - Cardassian freighter Groumall](https://sketchfab.com/models/133e314850a945a3ad7e03f9aff99213) | octave767 | CC-BY-4.0 (uploader-declared on Sketchfab) |
-| car.platform | [Sketchfab: Star Trek - Cardassian Weapon Platform](https://sketchfab.com/models/fbf1ab33d9fd4b6e876b9e91dcab9e93) | wholock | CC-BY-4.0 (uploader-declared on Sketchfab) |
-| fer.dkora | [Trekmeshes: Ferengi Marauder](https://trekmeshes.eu/download/dl215/FerengiMarauder) | Raul Mamoru | No licence stated on page |
-| fer.shuttle | [Sketchfab: Star Trek - Ferengi shuttle](https://sketchfab.com/models/361d3431d7374559bc288efe505f1172) | octave767 | CC-BY-4.0 (uploader-declared on Sketchfab) |
-| bor.cube | [Sketchfab: Borg Cube - Star Trek TNG](https://sketchfab.com/models/22cdad6bb86c48cca74f1721b535bce9) | rossrobotics | CC-BY-4.0 (uploader-declared on Sketchfab) |
-| bor.sphere | [Sketchfab: Borg Sphere Variant 1](https://sketchfab.com/models/4c087e15af4b463aa515ae7feff4332f) | CrustyBread | CC-BY-4.0 (uploader-declared on Sketchfab) |
-| brn.cruiser | [Sketchfab: Star Trek - Breen cruiser](https://sketchfab.com/models/feb010c966a94285948ab56d23a1cbaf) | octave767 | CC-BY-4.0 (uploader-declared on Sketchfab) |
-| wpn.phaser.fed | [TrekCore: TNG Phaser 1](https://www.trekcore.com/audio/) | Paramount/CBS (ripped by TrekCore) | No terms stated; show audio |
-| wpn.disruptor.kli | [TrekCore: TNG Disruptor](https://www.trekcore.com/audio/) | Paramount/CBS (ripped by TrekCore) | No terms stated; show audio |
-| wpn.disruptor.rom | [TrekCore: TNG Disruptor](https://www.trekcore.com/audio/) | Paramount/CBS (ripped by TrekCore) | No terms stated; show audio |
-| wpn.spiral.car | [TrekCore: TNG Phaser 9 (stand-in)](https://www.trekcore.com/audio/) | Paramount/CBS (ripped by TrekCore) | No terms stated; show audio |
-| wpn.plasma.fer | [TrekCore: TNG Weapons 1 (stand-in)](https://www.trekcore.com/audio/) | Paramount/CBS (ripped by TrekCore) | No terms stated; show audio |
-| wpn.pulse.defiant | [TrekCore: TNG Weapons 2 (stand-in)](https://www.trekcore.com/audio/) | Paramount/CBS (ripped by TrekCore) | No terms stated; show audio |
-| wpn.torpedo.photon | [TrekCore: TNG Torpedo 1](https://www.trekcore.com/audio/) | Paramount/CBS (ripped by TrekCore) | No terms stated; show audio |
-| wpn.torpedo.quantum | [TrekCore: Quantum Torpedoes 1](https://www.trekcore.com/audio/) | Paramount/CBS (ripped by TrekCore) | No terms stated; show audio |
-| wpn.torpedo.plasma | [TrekCore: TNG Torpedo 3 (stand-in)](https://www.trekcore.com/audio/) | Paramount/CBS (ripped by TrekCore) | No terms stated; show audio |
-| wpn.cutting.borg | [TrekCore: Deflector Enterprise B (stand-in)](https://www.trekcore.com/audio/) | Paramount/CBS (ripped by TrekCore) | No terms stated; show audio |
-| wpn.beam.generic | Original BOTF sfx.snd: beam weapon (`local:<BOTF>/sfx.snd`) | MicroProse (1999) | Owned game copy; personal use |
-| wpn.torpedo.generic | Original BOTF sfx.snd: torpedo (`local:<BOTF>/sfx.snd`) | MicroProse (1999) | Owned game copy; personal use |
+| ship.fed.galaxy | [Sketchfab: Star Trek TNG Galaxy Class Model](https://sketchfab.com/models/6029fefcfbd44908b2dfa9938cafecf5) | CrustyBread | CC-BY-4.0 (uploader-declared on Sketchfab) |
+| ship.fed.sovereign | [Sketchfab: Star Trek Sovereign Class with Shuttlebay](https://sketchfab.com/models/f57fa908f23d498daf3d43d17d1b5f22) | CrustyBread | CC-BY-4.0 (uploader-declared on Sketchfab) |
+| ship.fed.defiant | [Sketchfab: U.S.S. Defiant](https://sketchfab.com/models/8e875133c49240699d3b19de324826cf) | Feltman_Langer | CC-BY-4.0 (uploader-declared on Sketchfab) |
+| ship.fed.nebula | [Sketchfab: Nebula-class cruiser](https://sketchfab.com/models/4fa2e93de1ba48ad9425c1e4228d7abf) | nestor_d | CC-BY-4.0 (uploader-declared on Sketchfab) |
+| ship.fed.miranda | [Sketchfab: Star Trek Miranda Class](https://sketchfab.com/models/08b835fb9b8743cc8d22aec03ea05756) | CrustyBread | CC-BY-4.0 (uploader-declared on Sketchfab) |
+| ship.fed.oberth | [Sketchfab: Star Trek - Oberth Class](https://sketchfab.com/models/c1a3bd9d678f4189a9d0ef65ce0591b5) | wholock | CC-BY-4.0 (uploader-declared on Sketchfab) |
+| ship.fed.ambassador | [Sketchfab: Star Trek - Ambassador class](https://sketchfab.com/models/25ed1463b2d14ad98dae8985a223f663) | octave767 | CC-BY-4.0 (uploader-declared on Sketchfab) |
+| ship.fed.excelsior | [Sketchfab: U.S.S. Excelsior](https://sketchfab.com/models/e55ae4071bf840b085ae430cd0149198) | ejlabarbera | CC-BY-4.0 (uploader-declared on Sketchfab) |
+| ship.fed.akira | [Sketchfab: Star Trek - Akira Class](https://sketchfab.com/models/84b459f462ec437b9e4a165ab98cee51) | wholock | CC-BY-4.0 (uploader-declared on Sketchfab) |
+| ship.fed.intrepid | [Sketchfab: Intrepid Class Starship](https://sketchfab.com/models/da7580cbd73a4a9b832c23366b5ceb65) | Feltman_Langer | CC-BY-NC-4.0 (uploader-declared on Sketchfab) |
+| ship.fed.steamrunner | [Sketchfab: Star Trek - Steamrunner class](https://sketchfab.com/models/6baf9770699f4677a9112b3b44248720) | octave767 | CC-BY-4.0 (uploader-declared on Sketchfab) |
+| ship.fed.norway | [Sketchfab: Star Trek - Norway class](https://sketchfab.com/models/9e3196504fb047219cd01e33c7f2a949) | octave767 | CC-BY-4.0 (uploader-declared on Sketchfab) |
+| ship.fed.saber | [Sketchfab: Star Trek - Saber class](https://sketchfab.com/models/b0a899f2a9cc422f8d0d49182953611e) | octave767 | CC-BY-4.0 (uploader-declared on Sketchfab) |
+| ship.fed.nova | [BlendSwap: Star Trek Nova Class by ask13freak](https://blendswap.com/blend/9497) | ask13freak | CC-BY-SA (uploader-declared) |
+| ship.fed.prometheus | [Sketchfab: Prometheus Class Starship (Star Trek)](https://sketchfab.com/models/1a597521c37649e0af1aa9f9a5fb3255) | giacar25 | CC-BY-4.0 (uploader-declared on Sketchfab) |
+| ship.fed.danube | [Sketchfab: Star Trek - Danube Class](https://sketchfab.com/models/efc194b3d5f14a2e8718fe5bb7baee7a) | wholock | CC-BY-4.0 (uploader-declared on Sketchfab) |
+| ship.fed.starbase | [Sketchfab: Star Trek - Starbase 375](https://sketchfab.com/models/a1f79e463bbe44948f8594ebf6c8fe96) | octave767 | CC-BY-4.0 (uploader-declared on Sketchfab) |
+| ship.kli.vorcha | [Trekmeshes: Vor'cha battlecruiser (resolve individual entry)](https://trekmeshes.eu/download/all) | unresolved (catalogue index) | No licence stated on page |
+| ship.kli.neghvar | [Sketchfab: Negh Var - Enterprise](https://sketchfab.com/models/26ec3eaa4f754c08bbc4e203b90d4816) | rossrobotics | CC-BY-4.0 (uploader-declared on Sketchfab) |
+| ship.kli.bop | [Sketchfab: Star Trek B'rel Class Klingon Bird of Prey](https://sketchfab.com/models/5bfb6bb66fc3479c9d626af57f66897c) | CrustyBread | CC-BY-4.0 (uploader-declared on Sketchfab) |
+| ship.kli.ktinga | [Sketchfab: klingon D7](https://sketchfab.com/models/20d4a380c9814ea297aef8d523446dde) | CaptainJamesKirk | CC-BY-4.0 (uploader-declared on Sketchfab) |
+| ship.rom.dderidex | [Sketchfab: Star Trek - D'Deridex Class Warbird](https://sketchfab.com/models/4cd1e185eaa645b2ad3eeae31d0c5d0d) | wholock | CC-BY-4.0 (uploader-declared on Sketchfab) |
+| ship.rom.valdore | [Sketchfab: Star Trek Online \| Romulan Valdore](https://sketchfab.com/models/b895da5d0f14435cb867407a21cb86df) | LoganRolphh | CC-BY-4.0 (uploader-declared on Sketchfab) |
+| ship.rom.bop | [Sketchfab: Picard Romulan variant of Bird Of Prey](https://sketchfab.com/models/34fe048bc7554b738b34ba1c2f415d1a) | morenostefanuto | Sketchfab Free Standard licence (uploader-declared) |
+| ship.car.galor | [Sketchfab: Star Trek - Cardassian Galor](https://sketchfab.com/models/d9305d314e154639a5769747fd94b85f) | octave767 | CC-BY-4.0 (uploader-declared on Sketchfab) |
+| ship.car.groumall | [Sketchfab: Star Trek - Cardassian freighter Groumall](https://sketchfab.com/models/133e314850a945a3ad7e03f9aff99213) | octave767 | CC-BY-4.0 (uploader-declared on Sketchfab) |
+| ship.car.platform | [Sketchfab: Star Trek - Cardassian Weapon Platform](https://sketchfab.com/models/fbf1ab33d9fd4b6e876b9e91dcab9e93) | wholock | CC-BY-4.0 (uploader-declared on Sketchfab) |
+| ship.fer.dkora | [Trekmeshes: Ferengi Marauder](https://trekmeshes.eu/download/dl215/FerengiMarauder) | Raul Mamoru | No licence stated on page |
+| ship.fer.shuttle | [Sketchfab: Star Trek - Ferengi shuttle](https://sketchfab.com/models/361d3431d7374559bc288efe505f1172) | octave767 | CC-BY-4.0 (uploader-declared on Sketchfab) |
+| ship.borg.cube | [Sketchfab: Borg Cube - Star Trek TNG](https://sketchfab.com/models/22cdad6bb86c48cca74f1721b535bce9) | rossrobotics | CC-BY-4.0 (uploader-declared on Sketchfab) |
+| ship.borg.sphere | [Sketchfab: Borg Sphere Variant 1](https://sketchfab.com/models/4c087e15af4b463aa515ae7feff4332f) | CrustyBread | CC-BY-4.0 (uploader-declared on Sketchfab) |
+| ship.breen.breen_warship | [Sketchfab: Star Trek - Breen cruiser](https://sketchfab.com/models/feb010c966a94285948ab56d23a1cbaf) | octave767 | CC-BY-4.0 (uploader-declared on Sketchfab) |
+| weapon.PhaserArray | [TrekCore: TNG Phaser 1](https://www.trekcore.com/audio/) | Paramount/CBS (ripped by TrekCore) | No terms stated; show audio |
+| weapon.Disruptor | [TrekCore: TNG Disruptor](https://www.trekcore.com/audio/) | Paramount/CBS (ripped by TrekCore) | No terms stated; show audio |
+| weapon.Disruptor.rom | [TrekCore: TNG Disruptor](https://www.trekcore.com/audio/) | Paramount/CBS (ripped by TrekCore) | No terms stated; show audio |
+| weapon.Disruptor.car | [TrekCore: TNG Phaser 9 (stand-in)](https://www.trekcore.com/audio/) | Paramount/CBS (ripped by TrekCore) | No terms stated; show audio |
+| weapon.PhaserArray.fer | [TrekCore: TNG Weapons 1 (stand-in)](https://www.trekcore.com/audio/) | Paramount/CBS (ripped by TrekCore) | No terms stated; show audio |
+| weapon.PulsePhaser | [TrekCore: TNG Weapons 2 (stand-in)](https://www.trekcore.com/audio/) | Paramount/CBS (ripped by TrekCore) | No terms stated; show audio |
+| weapon.PhotonTorpedo | [TrekCore: TNG Torpedo 1](https://www.trekcore.com/audio/) | Paramount/CBS (ripped by TrekCore) | No terms stated; show audio |
+| weapon.QuantumTorpedo | [TrekCore: Quantum Torpedoes 1](https://www.trekcore.com/audio/) | Paramount/CBS (ripped by TrekCore) | No terms stated; show audio |
+| weapon.PlasmaTorpedo | [TrekCore: TNG Torpedo 3 (stand-in)](https://www.trekcore.com/audio/) | Paramount/CBS (ripped by TrekCore) | No terms stated; show audio |
+| weapon.CuttingBeam | [TrekCore: Deflector Enterprise B (stand-in)](https://www.trekcore.com/audio/) | Paramount/CBS (ripped by TrekCore) | No terms stated; show audio |
+| weapon.generic.beam | Original BOTF sfx.snd: beam weapon (`local:<BOTF>/sfx.snd`) | MicroProse (1999) | Owned game copy; personal use |
+| weapon.generic.torpedo | Original BOTF sfx.snd: torpedo (`local:<BOTF>/sfx.snd`) | MicroProse (1999) | Owned game copy; personal use |
 | sfx.explosion.large | [TrekCore: Large Explosion 1](https://www.trekcore.com/audio/) | Paramount/CBS (ripped by TrekCore) | No terms stated; show audio |
 | sfx.explosion.small | [TrekCore: Small Explosion 1](https://www.trekcore.com/audio/) | Paramount/CBS (ripped by TrekCore) | No terms stated; show audio |
 | sfx.explosion.botf | Original BOTF sfx.snd: explosion (`local:<BOTF>/sfx.snd`) | MicroProse (1999) | Owned game copy; personal use |

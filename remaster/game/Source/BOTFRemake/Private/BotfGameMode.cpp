@@ -10,6 +10,9 @@
 #include "BotfCampaign.h"
 #include "BotfViewModel.h"
 #include "BotfGameplayViewModel.h"
+#include "BotfShipDatabase.h"
+#include "BotfAudioSubsystem.h"
+#include "BotfAssetCatalog.h"
 #include "Simulation.h"
 #include "CampaignSession.h"
 #include "ReferenceCatalogue.h"
@@ -543,7 +546,15 @@ private:
     // Exact envelope of the open turn transaction; empty when none. Only serialized while a turn is open.
     FString SessionText() const { return Campaign.SessionText(); }
     // Every strategic order goes through here: no new orders while a turn transaction is open.
-    void Submit(const botf::Command& Cmd) { Campaign.Submit(Cmd); }
+    void Submit(const botf::Command& Cmd) {
+        Campaign.Submit(Cmd);
+        // Audio feedback for diplomatic orders (AUDIO-PLAN: the other empire's voice set, or the alert for war).
+        if (auto* Audio = UBotfAudioSubsystem::Get()) {
+            if (Cmd.type == botf::CommandType::DeclareWar) Audio->OnDiplomacySent(Cmd.targetEmpire, true);
+            else if (Cmd.type == botf::CommandType::OfferPeace || Cmd.type == botf::CommandType::ProposeTradeTreaty)
+                Audio->OnDiplomacySent(Cmd.targetEmpire, false);
+        }
+    }
     void CancelLast() { Campaign.CancelLast(); }
     std::uint64_t NextId() const { return Campaign.NextId(); }
 
@@ -3125,7 +3136,7 @@ private:
     }
     int ReferenceCount() const {
         return ReferenceCategory == 0 ? static_cast<int>(botf::referenceData::TechnologyCatalogue.size())
-            : ReferenceCategory == 1 ? static_cast<int>(botf::referenceData::ShipCatalogue.size())
+            : ReferenceCategory == 1 ? static_cast<int>(botf::view::shipDatabaseIds().size())
             : static_cast<int>(botf::referenceData::BuildingCatalogue.size());
     }
     // Cached by category and search text (the catalogues are static): page labels ask for it every frame.
@@ -3167,8 +3178,8 @@ private:
             return FString::Printf(TEXT("%s  /  L%d"), *Str(T.name), T.level);
         }
         if (ReferenceCategory == 1) {
-            const auto& S = botf::referenceData::ShipCatalogue[Index];
-            return FString::Printf(TEXT("%s  /  %s"), *Str(S.name), *SourceRaceName(S.raceId));
+            // Legacy catalogue then expanded roster (core findShip); see BotfShipDatabase.h.
+            return Str(botf::view::shipDatabaseLabel(botf::view::shipDatabaseIds()[static_cast<std::size_t>(Index)]));
         }
         const auto& B = botf::referenceData::BuildingCatalogue[Index];
         return Str(B.name);
@@ -3193,14 +3204,9 @@ private:
                 *Str(T.name), *SourceFieldName(T.field), T.level, static_cast<long long>(T.cost), *Str(T.description));
         }
         if (ReferenceCategory == 1) {
-            const auto& S = botf::referenceData::ShipCatalogue[ReferenceSelected];
-            FString Requirements;
-            for (int Field = 0; Field < botf::ResearchFields; ++Field)
-                Requirements += FString::Printf(TEXT("%s %d%s"), *Str(botf::researchName(Field)), S.technologyRequirements[Field],
-                    Field == botf::ResearchFields - 1 ? TEXT("") : TEXT("  |  "));
-            return FString::Printf(TEXT("%s  /  %s\n%s\n\nIndustry %d  |  upkeep %d  |  hull %d  |  shields %d  |  attack %d\nRequires: %s\n\n%s\n\nOnly ships listed in a system's Ship List can currently be built."),
-                *Str(S.name), *Str(S.shipClass), *SourceRaceName(S.raceId), S.industryCost, S.maintenance,
-                S.hull, S.shields, S.attack, *Requirements, *Str(S.description));
+            std::vector<std::string> FieldNames;
+            for (int Field = 0; Field < botf::ResearchFields; ++Field) FieldNames.emplace_back(botf::researchName(Field));
+            return Str(botf::view::shipDatabaseDetails(botf::view::shipDatabaseIds()[static_cast<std::size_t>(ReferenceSelected)], FieldNames));
         }
         const auto& B = botf::referenceData::BuildingCatalogue[ReferenceSelected];
         return FString::Printf(TEXT("%s\n\nIndustry %d  |  energy %d  |  population %d\nRequires %s level %d\n\n%s\n\nOnly structures listed in a system's Build List can currently be built."),
@@ -4629,6 +4635,7 @@ private:
         bSummaryOpen = bMenuOpen = bEndTurnCheck = false;
         ActivePanel = PanelCombat;
         UpdateScene();
+        if (auto* Audio = bFresh ? UBotfAudioSubsystem::Get() : nullptr) { Audio->SetPlayerEmpire(State.playerEmpire); Audio->OnEncounterOpened(); }
         Status = TEXT("Enemy contact. Choose Fight to command your ships or Auto to let them fight.");
     }
     const botf::tactical::Ship* TacShipPtr(int Id) const { return Session.pending ? Session.pending->getShip(Id) : nullptr; }
@@ -4693,6 +4700,8 @@ private:
         Campaign.Notify(EBotfCampaignChange::Session);
         const int Given = static_cast<int>(Orders.size());
         Status = TEXT("Tactical order accepted.");
+        if (auto* Audio = UBotfAudioSubsystem::Get())
+            Audio->OnOrderAccepted(Str(botf::assets::slug(botf::tactical::maneuverName(Maneuver))));
         TacLog = FString::Printf(TEXT("%s ordered for %d ship%s%s."), *Str(botf::tactical::maneuverName(Maneuver)), Given, Given == 1 ? TEXT("") : TEXT("s"),
             Target && Maneuver != botf::tactical::TacticalManeuver::Retreat ? *(TEXT(", target #") + FString::FromInt(Target)) : TEXT(""));
         if (Scene.IsValid()) Scene->SetFocusedShips(TacShip, TacTarget);
@@ -4706,12 +4715,14 @@ private:
         if (!TacActive(TacShipPtr(TacTarget))) for (const auto& S : E.ships) if (S.ownerId != State.playerEmpire && TacActive(&S)) { TacTarget = S.fleetId; break; }
         if (Scene.IsValid()) Scene->SetFocusedShips(TacShip, TacTarget);
         UpdateScene();
+        if (auto* Audio = UBotfAudioSubsystem::Get()) Audio->OnRoundResolved(E, E.rounds.back());
     }
     void TacAuto() {
         botf::session::autoResolve(Session);
         TacLog = TEXT("Ships fought under automatic command.\n") + TacRoundText(Session.pending->rounds.back());
         bEncounterChoice = false;
         UpdateScene();
+        if (auto* Audio = UBotfAudioSubsystem::Get()) Audio->OnRoundResolved(*Session.pending, Session.pending->rounds.back());
     }
     // After an encounter finishes the turn resumes; further encounters or the final report follow.
     void TacContinue() {
@@ -4792,6 +4803,8 @@ private:
         }
         if (ActivePanel == PanelCombat) ShowBattle();
         UpdateScene();
+        // Turn briefing audio: one cue per kind, highest priority first (BotfAudioEvents.h turnCues).
+        if (auto* Audio = UBotfAudioSubsystem::Get()) Audio->OnTurnFinished(State, R);
         UE_LOG(LogTemp, Display, TEXT("BOTF_TURN %d HASH %llu"), State.turn, static_cast<unsigned long long>(R.stateHash));
     }
     void RefreshAll() {

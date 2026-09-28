@@ -172,7 +172,7 @@
       },
       "fallback": null
     },
-    "fed.galaxy": {
+    "ship.fed.galaxy": {
       "kind": "model",
       "faction": "Federation",
       "displayName": "Galaxy class",
@@ -347,7 +347,7 @@
       },
       "fallback": "study.fed"
     },
-    "fed.sovereign": {
+    "ship.fed.sovereign": {
       "kind": "model",
       "faction": "Federation",
       "displayName": "Sovereign class",
@@ -516,9 +516,9 @@
         ],
         "ueFolder": "/Game/Local/Ships/fed/sovereign"
       },
-      "fallback": "fed.galaxy"
+      "fallback": "ship.fed.galaxy"
     },
-    "fed.defiant": {
+    "ship.fed.defiant": {
       "kind": "model",
       "faction": "Federation",
       "displayName": "Defiant class",
@@ -695,9 +695,9 @@
         ],
         "ueFolder": "/Game/Local/Ships/fed/defiant"
       },
-      "fallback": "fed.akira"
+      "fallback": "ship.fed.akira"
     },
-    "fed.nebula": {
+    "ship.fed.nebula": {
       "kind": "model",
       "faction": "Federation",
       "displayName": "Nebula class",
@@ -811,9 +811,9 @@
         ],
         "ueFolder": "/Game/Local/Ships/fed/nebula"
       },
-      "fallback": "fed.galaxy"
+      "fallback": "ship.fed.galaxy"
     },
-    "fed.miranda": {
+    "ship.fed.miranda": {
       "kind": "model",
       "faction": "Federation",
       "displayName": "Miranda class",
@@ -963,9 +963,9 @@
         ],
         "ueFolder": "/Game/Local/Ships/fed/miranda"
       },
-      "fallback": "fed.excelsior"
+      "fallback": "ship.fed.excelsior"
     },
-    "fed.constellation": {
+    "ship.fed.constellation": {
       "kind": "model",
       "faction": "Federation",
       "displayName": "Constellation class",
@@ -1022,9 +1022,9 @@
         ],
         "ueFolder": "/Game/Local/Ships/fed/constellation"
       },
-      "fallback": "fed.excelsior"
+      "fallback": "ship.fed.excelsior"
     },
-    "fed.oberth": {
+    "ship.fed.oberth": {
       "kind": "model",
       "faction": "Federation",
       "displayName": "Oberth class",
@@ -1142,7 +1142,7 @@
       },
       "fallback": "study.fed"
     },
-    "fed.ambassador": {
+    "ship.fed.ambassador": {
       "kind": "model",
       "faction": "Federation",
       "displayName": "Ambassador class",
@@ -1230,9 +1230,9 @@
         ],
         "ueFolder": "/Game/Local/Ships/fed/ambassador"
       },
-      "fallback": "fed.galaxy"
+      "fallback": "ship.fed.galaxy"
     },
-    "fed.excelsior": {
+    "ship.fed.excelsior": {
       "kind": "model",
       "faction": "Federation",
       "displayName": "Excelsior class",
@@ -1385,7 +1385,7 @@
       },
       "fallback": "study.fed"
     },
-    "fed.akira": {
+    "ship.fed.akira": {
       "kind": "model",
       "faction": "Federation",
       "displayName": "Akira class",
@@ -1497,9 +1497,9 @@
         ],
         "ueFolder": "/Game/Local/Ships/fed/akira"
       },
-      "fallback": "fed.excelsior"
+      "fallback": "ship.fed.excelsior"
     },
-    "fed.intrepid": {
+    "ship.fed.intrepid": {
       "kind": "model",
       "faction": "Federation",
       "displayName": "Intrepid class",
@@ -1616,9 +1616,9 @@
         ],
         "ueFolder": "/Game/Local/Ships/fed/intrepid"
       },
-      "fallback": "fed.nebula"
+      "fallback": "ship.fed.nebula"
     },
-    "fed.steamrunner": {
+    "ship.fed.steamrunner": {
       "kind": "model",
       "faction": "Federation",
       "displayName": "Steamrunner class",
@@ -1673,9 +1673,9 @@
         ],
         "ueFolder": "/Game/Local/Ships/fed/steamrunner"
       },
-      "fallback": "fed.akira"
+      "fallback": "ship.fed.akira"
     },
-    "fed.norway": {
+    "ship.fed.norway": {
       "kind": "model",
       "faction": "Federation",
       "displayName": "Norway class",
@@ -1730,9 +1730,9 @@
         ],
         "ueFolder": "/Game/Local/Ships/fed/norway"
       },
-      "fallback": "fed.akira"
+      "fallback": "ship.fed.akira"
     },
-    "fed.saber": {
+    "ship.fed.saber": {
       "kind": "model",
       "faction": "Federation",
       "displayName": "Saber class",
@@ -1849,9 +1849,9 @@
         ],
         "ueFolder": "/Game/Local/Ships/fed/saber"
       },
-      "fallback": "fed.defiant"
+      "fallback": "ship.fed.defiant"
     },
-    "fed.nova": {
+    "ship.fed.nova": {
       "kind": "model",
       "faction": "Federation",
       "displayName": "Nova class",
@@ -1931,9 +1931,9 @@
         ],
         "ueFolder": "/Game/Local/Ships/fed/nova"
       },
-      "fallback": "fed.oberth"
+      "fallback": "ship.fed.oberth"
     },
-    "fed.prometheus": {
+    "ship.fed.prometheus": {
       "kind": "model",
       "faction": "Federation",
       "displayName": "Prometheus class",
@@ -1988,9 +1988,9 @@
         ],
         "ueFolder": "/Game/Local/Ships/fed/prometheus"
       },
-      "fallback": "fed.sovereign"
+      "fallback": "ship.fed.sovereign"
     },
-    "fed.danube": {
+    "ship.fed.danube": {
       "kind": "model",
       "faction": "Federation",
       "displayName": "Danube class runabout",
@@ -2041,9 +2041,9 @@
         ],
         "ueFolder": "/Game/Local/Ships/fed/danube"
       },
-      "fallback": "fed.oberth"
+      "fallback": "ship.fed.oberth"
     },
-    "fed.ranger": {
+    "ship.fed.ranger": {
       "kind": "model",
       "faction": "Federation",
       "displayName": "Ranger (Icewolf132, in-repo)",
@@ -2090,7 +2090,7 @@
       },
       "fallback": "study.fed"
     },
-    "fed.starbase": {
+    "ship.fed.starbase": {
       "kind": "model",
       "faction": "Federation",
       "displayName": "Federation starbase",
@@ -2180,7 +2180,728 @@
       },
       "fallback": "study.fed"
     },
-    "kli.vorcha": {
+    "ship.fed.nx": {
+      "kind": "model",
+      "faction": "Federation",
+      "displayName": "NX (Light Cruiser, roster)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "targetLengthMeters": null,
+        "scale": null,
+        "forwardAxis": "+X",
+        "upAxis": "+Z",
+        "sourceForwardAxis": "auto",
+        "maxTriangles": 150000,
+        "sockets": [
+          "WPN_Beam_01",
+          "WPN_Torp_Fwd_01",
+          "FX_Engine_01",
+          "FX_Shield_Center"
+        ],
+        "ueFolder": "/Game/Local/Ships/fed/nx"
+      },
+      "fallback": "ship.fed.excelsior"
+    },
+    "ship.fed.daedalus": {
+      "kind": "model",
+      "faction": "Federation",
+      "displayName": "Daedalus (Cruiser, roster)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "targetLengthMeters": null,
+        "scale": null,
+        "forwardAxis": "+X",
+        "upAxis": "+Z",
+        "sourceForwardAxis": "auto",
+        "maxTriangles": 150000,
+        "sockets": [
+          "WPN_Beam_01",
+          "WPN_Torp_Fwd_01",
+          "FX_Engine_01",
+          "FX_Shield_Center"
+        ],
+        "ueFolder": "/Game/Local/Ships/fed/daedalus"
+      },
+      "fallback": "ship.fed.excelsior"
+    },
+    "ship.fed.yclass": {
+      "kind": "model",
+      "faction": "Federation",
+      "displayName": "Y-class (Transport, roster)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "targetLengthMeters": null,
+        "scale": null,
+        "forwardAxis": "+X",
+        "upAxis": "+Z",
+        "sourceForwardAxis": "auto",
+        "maxTriangles": 150000,
+        "sockets": [
+          "WPN_Beam_01",
+          "WPN_Torp_Fwd_01",
+          "FX_Engine_01",
+          "FX_Shield_Center"
+        ],
+        "ueFolder": "/Game/Local/Ships/fed/yclass"
+      },
+      "fallback": "ship.fed.miranda"
+    },
+    "ship.fed.constitution": {
+      "kind": "model",
+      "faction": "Federation",
+      "displayName": "Constitution (Heavy Cruiser, roster)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "targetLengthMeters": null,
+        "scale": null,
+        "forwardAxis": "+X",
+        "upAxis": "+Z",
+        "sourceForwardAxis": "auto",
+        "maxTriangles": 150000,
+        "sockets": [
+          "WPN_Beam_01",
+          "WPN_Torp_Fwd_01",
+          "FX_Engine_01",
+          "FX_Shield_Center"
+        ],
+        "ueFolder": "/Game/Local/Ships/fed/constitution"
+      },
+      "fallback": "ship.fed.excelsior"
+    },
+    "ship.fed.constitution_refit": {
+      "kind": "model",
+      "faction": "Federation",
+      "displayName": "Constitution (refit) (Heavy Cruiser, roster)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "targetLengthMeters": null,
+        "scale": null,
+        "forwardAxis": "+X",
+        "upAxis": "+Z",
+        "sourceForwardAxis": "auto",
+        "maxTriangles": 150000,
+        "sockets": [
+          "WPN_Beam_01",
+          "WPN_Torp_Fwd_01",
+          "FX_Engine_01",
+          "FX_Shield_Center"
+        ],
+        "ueFolder": "/Game/Local/Ships/fed/constitution_refit"
+      },
+      "fallback": "ship.fed.excelsior"
+    },
+    "ship.fed.soyuz": {
+      "kind": "model",
+      "faction": "Federation",
+      "displayName": "Soyuz (Frigate, roster)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "targetLengthMeters": null,
+        "scale": null,
+        "forwardAxis": "+X",
+        "upAxis": "+Z",
+        "sourceForwardAxis": "auto",
+        "maxTriangles": 150000,
+        "sockets": [
+          "WPN_Beam_01",
+          "WPN_Torp_Fwd_01",
+          "FX_Engine_01",
+          "FX_Shield_Center"
+        ],
+        "ueFolder": "/Game/Local/Ships/fed/soyuz"
+      },
+      "fallback": "ship.fed.miranda"
+    },
+    "ship.fed.sydney": {
+      "kind": "model",
+      "faction": "Federation",
+      "displayName": "Sydney (Transport, roster)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "targetLengthMeters": null,
+        "scale": null,
+        "forwardAxis": "+X",
+        "upAxis": "+Z",
+        "sourceForwardAxis": "auto",
+        "maxTriangles": 150000,
+        "sockets": [
+          "WPN_Beam_01",
+          "WPN_Torp_Fwd_01",
+          "FX_Engine_01",
+          "FX_Shield_Center"
+        ],
+        "ueFolder": "/Game/Local/Ships/fed/sydney"
+      },
+      "fallback": "ship.fed.miranda"
+    },
+    "ship.fed.raven": {
+      "kind": "model",
+      "faction": "Federation",
+      "displayName": "Raven (Scout, roster)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "targetLengthMeters": null,
+        "scale": null,
+        "forwardAxis": "+X",
+        "upAxis": "+Z",
+        "sourceForwardAxis": "auto",
+        "maxTriangles": 150000,
+        "sockets": [
+          "WPN_Beam_01",
+          "WPN_Torp_Fwd_01",
+          "FX_Engine_01",
+          "FX_Shield_Center"
+        ],
+        "ueFolder": "/Game/Local/Ships/fed/raven"
+      },
+      "fallback": "ship.fed.miranda"
+    },
+    "ship.fed.challenger": {
+      "kind": "model",
+      "faction": "Federation",
+      "displayName": "Challenger (Cruiser, roster)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "targetLengthMeters": null,
+        "scale": null,
+        "forwardAxis": "+X",
+        "upAxis": "+Z",
+        "sourceForwardAxis": "auto",
+        "maxTriangles": 150000,
+        "sockets": [
+          "WPN_Beam_01",
+          "WPN_Torp_Fwd_01",
+          "FX_Engine_01",
+          "FX_Shield_Center"
+        ],
+        "ueFolder": "/Game/Local/Ships/fed/challenger"
+      },
+      "fallback": "ship.fed.excelsior"
+    },
+    "ship.fed.cheyenne": {
+      "kind": "model",
+      "faction": "Federation",
+      "displayName": "Cheyenne (Cruiser, roster)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "targetLengthMeters": null,
+        "scale": null,
+        "forwardAxis": "+X",
+        "upAxis": "+Z",
+        "sourceForwardAxis": "auto",
+        "maxTriangles": 150000,
+        "sockets": [
+          "WPN_Beam_01",
+          "WPN_Torp_Fwd_01",
+          "FX_Engine_01",
+          "FX_Shield_Center"
+        ],
+        "ueFolder": "/Game/Local/Ships/fed/cheyenne"
+      },
+      "fallback": "ship.fed.excelsior"
+    },
+    "ship.fed.springfield": {
+      "kind": "model",
+      "faction": "Federation",
+      "displayName": "Springfield (Light Cruiser, roster)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "targetLengthMeters": null,
+        "scale": null,
+        "forwardAxis": "+X",
+        "upAxis": "+Z",
+        "sourceForwardAxis": "auto",
+        "maxTriangles": 150000,
+        "sockets": [
+          "WPN_Beam_01",
+          "WPN_Torp_Fwd_01",
+          "FX_Engine_01",
+          "FX_Shield_Center"
+        ],
+        "ueFolder": "/Game/Local/Ships/fed/springfield"
+      },
+      "fallback": "ship.fed.excelsior"
+    },
+    "ship.fed.freedom": {
+      "kind": "model",
+      "faction": "Federation",
+      "displayName": "Freedom (Frigate, roster)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "targetLengthMeters": null,
+        "scale": null,
+        "forwardAxis": "+X",
+        "upAxis": "+Z",
+        "sourceForwardAxis": "auto",
+        "maxTriangles": 150000,
+        "sockets": [
+          "WPN_Beam_01",
+          "WPN_Torp_Fwd_01",
+          "FX_Engine_01",
+          "FX_Shield_Center"
+        ],
+        "ueFolder": "/Game/Local/Ships/fed/freedom"
+      },
+      "fallback": "ship.fed.miranda"
+    },
+    "ship.fed.niagara": {
+      "kind": "model",
+      "faction": "Federation",
+      "displayName": "Niagara (Heavy Cruiser, roster)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "targetLengthMeters": null,
+        "scale": null,
+        "forwardAxis": "+X",
+        "upAxis": "+Z",
+        "sourceForwardAxis": "auto",
+        "maxTriangles": 150000,
+        "sockets": [
+          "WPN_Beam_01",
+          "WPN_Torp_Fwd_01",
+          "FX_Engine_01",
+          "FX_Shield_Center"
+        ],
+        "ueFolder": "/Game/Local/Ships/fed/niagara"
+      },
+      "fallback": "ship.fed.excelsior"
+    },
+    "ship.fed.new_orleans": {
+      "kind": "model",
+      "faction": "Federation",
+      "displayName": "New Orleans (Frigate, roster)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "targetLengthMeters": null,
+        "scale": null,
+        "forwardAxis": "+X",
+        "upAxis": "+Z",
+        "sourceForwardAxis": "auto",
+        "maxTriangles": 150000,
+        "sockets": [
+          "WPN_Beam_01",
+          "WPN_Torp_Fwd_01",
+          "FX_Engine_01",
+          "FX_Shield_Center"
+        ],
+        "ueFolder": "/Game/Local/Ships/fed/new_orleans"
+      },
+      "fallback": "ship.fed.miranda"
+    },
+    "ship.fed.olympic": {
+      "kind": "model",
+      "faction": "Federation",
+      "displayName": "Olympic (Science Vessel, roster)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "targetLengthMeters": null,
+        "scale": null,
+        "forwardAxis": "+X",
+        "upAxis": "+Z",
+        "sourceForwardAxis": "auto",
+        "maxTriangles": 150000,
+        "sockets": [
+          "WPN_Beam_01",
+          "WPN_Torp_Fwd_01",
+          "FX_Engine_01",
+          "FX_Shield_Center"
+        ],
+        "ueFolder": "/Game/Local/Ships/fed/olympic"
+      },
+      "fallback": "ship.fed.miranda"
+    },
+    "ship.fed.centaur": {
+      "kind": "model",
+      "faction": "Federation",
+      "displayName": "Centaur (Destroyer, roster)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "targetLengthMeters": null,
+        "scale": null,
+        "forwardAxis": "+X",
+        "upAxis": "+Z",
+        "sourceForwardAxis": "auto",
+        "maxTriangles": 150000,
+        "sockets": [
+          "WPN_Beam_01",
+          "WPN_Torp_Fwd_01",
+          "FX_Engine_01",
+          "FX_Shield_Center"
+        ],
+        "ueFolder": "/Game/Local/Ships/fed/centaur"
+      },
+      "fallback": "ship.fed.miranda"
+    },
+    "ship.fed.yeager": {
+      "kind": "model",
+      "faction": "Federation",
+      "displayName": "Yeager (Escort, roster)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "targetLengthMeters": null,
+        "scale": null,
+        "forwardAxis": "+X",
+        "upAxis": "+Z",
+        "sourceForwardAxis": "auto",
+        "maxTriangles": 150000,
+        "sockets": [
+          "WPN_Beam_01",
+          "WPN_Torp_Fwd_01",
+          "FX_Engine_01",
+          "FX_Shield_Center"
+        ],
+        "ueFolder": "/Game/Local/Ships/fed/yeager"
+      },
+      "fallback": "ship.fed.miranda"
+    },
+    "ship.fed.curry": {
+      "kind": "model",
+      "faction": "Federation",
+      "displayName": "Curry (Frigate, roster)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "targetLengthMeters": null,
+        "scale": null,
+        "forwardAxis": "+X",
+        "upAxis": "+Z",
+        "sourceForwardAxis": "auto",
+        "maxTriangles": 150000,
+        "sockets": [
+          "WPN_Beam_01",
+          "WPN_Torp_Fwd_01",
+          "FX_Engine_01",
+          "FX_Shield_Center"
+        ],
+        "ueFolder": "/Game/Local/Ships/fed/curry"
+      },
+      "fallback": "ship.fed.miranda"
+    },
+    "ship.fed.rhode_island": {
+      "kind": "model",
+      "faction": "Federation",
+      "displayName": "Rhode Island (Frigate, roster)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "targetLengthMeters": null,
+        "scale": null,
+        "forwardAxis": "+X",
+        "upAxis": "+Z",
+        "sourceForwardAxis": "auto",
+        "maxTriangles": 150000,
+        "sockets": [
+          "WPN_Beam_01",
+          "WPN_Torp_Fwd_01",
+          "FX_Engine_01",
+          "FX_Shield_Center"
+        ],
+        "ueFolder": "/Game/Local/Ships/fed/rhode_island"
+      },
+      "fallback": "ship.fed.miranda"
+    },
+    "ship.fed.peregrine": {
+      "kind": "model",
+      "faction": "Federation",
+      "displayName": "Peregrine (Raider, roster)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "targetLengthMeters": null,
+        "scale": null,
+        "forwardAxis": "+X",
+        "upAxis": "+Z",
+        "sourceForwardAxis": "auto",
+        "maxTriangles": 150000,
+        "sockets": [
+          "WPN_Beam_01",
+          "WPN_Torp_Fwd_01",
+          "FX_Engine_01",
+          "FX_Shield_Center"
+        ],
+        "ueFolder": "/Game/Local/Ships/fed/peregrine"
+      },
+      "fallback": "ship.fed.miranda"
+    },
+    "ship.fed.wells": {
+      "kind": "model",
+      "faction": "Federation",
+      "displayName": "Wells (Special, roster)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "targetLengthMeters": null,
+        "scale": null,
+        "forwardAxis": "+X",
+        "upAxis": "+Z",
+        "sourceForwardAxis": "auto",
+        "maxTriangles": 150000,
+        "sockets": [
+          "WPN_Beam_01",
+          "WPN_Torp_Fwd_01",
+          "FX_Engine_01",
+          "FX_Shield_Center"
+        ],
+        "ueFolder": "/Game/Local/Ships/fed/wells"
+      },
+      "fallback": "study.fed"
+    },
+    "ship.fed.luna": {
+      "kind": "model",
+      "faction": "Federation",
+      "displayName": "Luna (Explorer, roster)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "targetLengthMeters": null,
+        "scale": null,
+        "forwardAxis": "+X",
+        "upAxis": "+Z",
+        "sourceForwardAxis": "auto",
+        "maxTriangles": 150000,
+        "sockets": [
+          "WPN_Beam_01",
+          "WPN_Torp_Fwd_01",
+          "FX_Engine_01",
+          "FX_Shield_Center"
+        ],
+        "ueFolder": "/Game/Local/Ships/fed/luna"
+      },
+      "fallback": "ship.fed.galaxy"
+    },
+    "ship.fed.spacedock": {
+      "kind": "model",
+      "faction": "Federation",
+      "displayName": "Spacedock (Station, roster)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "targetLengthMeters": null,
+        "scale": null,
+        "forwardAxis": "+X",
+        "upAxis": "+Z",
+        "sourceForwardAxis": "auto",
+        "maxTriangles": 150000,
+        "sockets": [
+          "WPN_Beam_01",
+          "WPN_Torp_Fwd_01",
+          "FX_Engine_01",
+          "FX_Shield_Center"
+        ],
+        "ueFolder": "/Game/Local/Ships/fed/spacedock"
+      },
+      "fallback": "ship.fed.starbase"
+    },
+    "ship.fed.k7": {
+      "kind": "model",
+      "faction": "Federation",
+      "displayName": "K-7 (Station, roster)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "targetLengthMeters": null,
+        "scale": null,
+        "forwardAxis": "+X",
+        "upAxis": "+Z",
+        "sourceForwardAxis": "auto",
+        "maxTriangles": 150000,
+        "sockets": [
+          "WPN_Beam_01",
+          "WPN_Torp_Fwd_01",
+          "FX_Engine_01",
+          "FX_Shield_Center"
+        ],
+        "ueFolder": "/Game/Local/Ships/fed/k7"
+      },
+      "fallback": "ship.fed.starbase"
+    },
+    "ship.fed.kelvin_type": {
+      "kind": "model",
+      "faction": "Federation",
+      "displayName": "Kelvin (Explorer, roster)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "targetLengthMeters": null,
+        "scale": null,
+        "forwardAxis": "+X",
+        "upAxis": "+Z",
+        "sourceForwardAxis": "auto",
+        "maxTriangles": 150000,
+        "sockets": [
+          "WPN_Beam_01",
+          "WPN_Torp_Fwd_01",
+          "FX_Engine_01",
+          "FX_Shield_Center"
+        ],
+        "ueFolder": "/Game/Local/Ships/fed/kelvin_type"
+      },
+      "fallback": "ship.fed.galaxy"
+    },
+    "ship.fed.constitution_kelvin": {
+      "kind": "model",
+      "faction": "Federation",
+      "displayName": "Constitution (Kelvin) (Heavy Cruiser, roster)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "targetLengthMeters": null,
+        "scale": null,
+        "forwardAxis": "+X",
+        "upAxis": "+Z",
+        "sourceForwardAxis": "auto",
+        "maxTriangles": 150000,
+        "sockets": [
+          "WPN_Beam_01",
+          "WPN_Torp_Fwd_01",
+          "FX_Engine_01",
+          "FX_Shield_Center"
+        ],
+        "ueFolder": "/Game/Local/Ships/fed/constitution_kelvin"
+      },
+      "fallback": "ship.fed.excelsior"
+    },
+    "ship.fed.vengeance": {
+      "kind": "model",
+      "faction": "Federation",
+      "displayName": "Dreadnought (Vengeance) (Dreadnought, roster)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "targetLengthMeters": null,
+        "scale": null,
+        "forwardAxis": "+X",
+        "upAxis": "+Z",
+        "sourceForwardAxis": "auto",
+        "maxTriangles": 150000,
+        "sockets": [
+          "WPN_Beam_01",
+          "WPN_Torp_Fwd_01",
+          "FX_Engine_01",
+          "FX_Shield_Center"
+        ],
+        "ueFolder": "/Game/Local/Ships/fed/vengeance"
+      },
+      "fallback": "ship.fed.galaxy"
+    },
+    "ship.fed.edward": {
+      "kind": "model",
+      "faction": "Federation",
+      "displayName": "Edward (legacy catalogue)",
+      "botfClasses": [
+        "Edward"
+      ],
+      "candidates": [],
+      "import": {
+        "targetLengthMeters": null,
+        "scale": null,
+        "forwardAxis": "+X",
+        "upAxis": "+Z",
+        "sourceForwardAxis": "auto",
+        "maxTriangles": 150000,
+        "sockets": [
+          "WPN_Beam_01",
+          "WPN_Torp_Fwd_01",
+          "FX_Engine_01",
+          "FX_Shield_Center"
+        ],
+        "ueFolder": "/Game/Local/Ships/fed/edward"
+      },
+      "fallback": "ship.fed.miranda"
+    },
+    "ship.fed.outpost": {
+      "kind": "model",
+      "faction": "Federation",
+      "displayName": "Outpost (legacy catalogue)",
+      "botfClasses": [
+        "Outpost"
+      ],
+      "candidates": [],
+      "import": {
+        "targetLengthMeters": null,
+        "scale": null,
+        "forwardAxis": "+X",
+        "upAxis": "+Z",
+        "sourceForwardAxis": "auto",
+        "maxTriangles": 150000,
+        "sockets": [
+          "WPN_Beam_01",
+          "WPN_Torp_Fwd_01",
+          "FX_Engine_01",
+          "FX_Shield_Center"
+        ],
+        "ueFolder": "/Game/Local/Ships/fed/outpost"
+      },
+      "fallback": "ship.fed.starbase"
+    },
+    "ship.fed.london": {
+      "kind": "model",
+      "faction": "Federation",
+      "displayName": "London (legacy catalogue)",
+      "botfClasses": [
+        "London"
+      ],
+      "candidates": [],
+      "import": {
+        "targetLengthMeters": null,
+        "scale": null,
+        "forwardAxis": "+X",
+        "upAxis": "+Z",
+        "sourceForwardAxis": "auto",
+        "maxTriangles": 150000,
+        "sockets": [
+          "WPN_Beam_01",
+          "WPN_Torp_Fwd_01",
+          "FX_Engine_01",
+          "FX_Shield_Center"
+        ],
+        "ueFolder": "/Game/Local/Ships/fed/london"
+      },
+      "fallback": "ship.fed.miranda"
+    },
+    "ship.fed.galaxy_x": {
+      "kind": "model",
+      "faction": "Federation",
+      "displayName": "Galaxy-X (legacy catalogue)",
+      "botfClasses": [
+        "Galaxy-X"
+      ],
+      "candidates": [],
+      "import": {
+        "targetLengthMeters": null,
+        "scale": null,
+        "forwardAxis": "+X",
+        "upAxis": "+Z",
+        "sourceForwardAxis": "auto",
+        "maxTriangles": 150000,
+        "sockets": [
+          "WPN_Beam_01",
+          "WPN_Torp_Fwd_01",
+          "FX_Engine_01",
+          "FX_Shield_Center"
+        ],
+        "ueFolder": "/Game/Local/Ships/fed/galaxy_x"
+      },
+      "fallback": "ship.fed.galaxy"
+    },
+    "ship.kli.vorcha": {
       "kind": "model",
       "faction": "Klingon",
       "displayName": "Vor'cha class",
@@ -2302,9 +3023,9 @@
         ],
         "ueFolder": "/Game/Local/Ships/kli/vorcha"
       },
-      "fallback": "kli.neghvar"
+      "fallback": "ship.kli.neghvar"
     },
-    "kli.neghvar": {
+    "ship.kli.neghvar": {
       "kind": "model",
       "faction": "Klingon",
       "displayName": "Negh'Var class",
@@ -2419,9 +3140,9 @@
         ],
         "ueFolder": "/Game/Local/Ships/kli/neghvar"
       },
-      "fallback": "kli.ktinga"
+      "fallback": "ship.kli.ktinga"
     },
-    "kli.bop": {
+    "ship.kli.bop": {
       "kind": "model",
       "faction": "Klingon",
       "displayName": "B'rel / K'Vort Bird-of-Prey",
@@ -2575,7 +3296,7 @@
       },
       "fallback": "study.kli"
     },
-    "kli.ktinga": {
+    "ship.kli.ktinga": {
       "kind": "model",
       "faction": "Klingon",
       "displayName": "K't'inga / D7 class",
@@ -2727,9 +3448,9 @@
         ],
         "ueFolder": "/Game/Local/Ships/kli/ktinga"
       },
-      "fallback": "kli.bop"
+      "fallback": "ship.kli.bop"
     },
-    "kli.starbase": {
+    "ship.kli.starbase": {
       "kind": "model",
       "faction": "Klingon",
       "displayName": "Klingon starbase",
@@ -2752,9 +3473,343 @@
         ],
         "ueFolder": "/Game/Local/Ships/kli/starbase"
       },
-      "fallback": "fed.starbase"
+      "fallback": "ship.fed.starbase"
     },
-    "rom.dderidex": {
+    "ship.kli.d5": {
+      "kind": "model",
+      "faction": "Klingon",
+      "displayName": "D5 (Cruiser, roster)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "targetLengthMeters": null,
+        "scale": null,
+        "forwardAxis": "+X",
+        "upAxis": "+Z",
+        "sourceForwardAxis": "auto",
+        "maxTriangles": 150000,
+        "sockets": [
+          "WPN_Beam_01",
+          "WPN_Torp_Fwd_01",
+          "FX_Engine_01",
+          "FX_Shield_Center"
+        ],
+        "ueFolder": "/Game/Local/Ships/kli/d5"
+      },
+      "fallback": "ship.kli.ktinga"
+    },
+    "ship.kli.raptor": {
+      "kind": "model",
+      "faction": "Klingon",
+      "displayName": "Raptor (Escort, roster)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "targetLengthMeters": null,
+        "scale": null,
+        "forwardAxis": "+X",
+        "upAxis": "+Z",
+        "sourceForwardAxis": "auto",
+        "maxTriangles": 150000,
+        "sockets": [
+          "WPN_Beam_01",
+          "WPN_Torp_Fwd_01",
+          "FX_Engine_01",
+          "FX_Shield_Center"
+        ],
+        "ueFolder": "/Game/Local/Ships/kli/raptor"
+      },
+      "fallback": "ship.kli.bop"
+    },
+    "ship.kli.bop_ent": {
+      "kind": "model",
+      "faction": "Klingon",
+      "displayName": "Bird-of-Prey (22nd c.) (Destroyer, roster)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "targetLengthMeters": null,
+        "scale": null,
+        "forwardAxis": "+X",
+        "upAxis": "+Z",
+        "sourceForwardAxis": "auto",
+        "maxTriangles": 150000,
+        "sockets": [
+          "WPN_Beam_01",
+          "WPN_Torp_Fwd_01",
+          "FX_Engine_01",
+          "FX_Shield_Center"
+        ],
+        "ueFolder": "/Game/Local/Ships/kli/bop_ent"
+      },
+      "fallback": "ship.kli.bop"
+    },
+    "ship.kli.d7": {
+      "kind": "model",
+      "faction": "Klingon",
+      "displayName": "D7 (Cruiser, roster)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "targetLengthMeters": null,
+        "scale": null,
+        "forwardAxis": "+X",
+        "upAxis": "+Z",
+        "sourceForwardAxis": "auto",
+        "maxTriangles": 150000,
+        "sockets": [
+          "WPN_Beam_01",
+          "WPN_Torp_Fwd_01",
+          "FX_Engine_01",
+          "FX_Shield_Center"
+        ],
+        "ueFolder": "/Game/Local/Ships/kli/d7"
+      },
+      "fallback": "ship.kli.ktinga"
+    },
+    "ship.kli.d12": {
+      "kind": "model",
+      "faction": "Klingon",
+      "displayName": "D12 (Destroyer, roster)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "targetLengthMeters": null,
+        "scale": null,
+        "forwardAxis": "+X",
+        "upAxis": "+Z",
+        "sourceForwardAxis": "auto",
+        "maxTriangles": 150000,
+        "sockets": [
+          "WPN_Beam_01",
+          "WPN_Torp_Fwd_01",
+          "FX_Engine_01",
+          "FX_Shield_Center"
+        ],
+        "ueFolder": "/Game/Local/Ships/kli/d12"
+      },
+      "fallback": "ship.kli.bop"
+    },
+    "ship.kli.qang": {
+      "kind": "model",
+      "faction": "Klingon",
+      "displayName": "Qang (Heavy Cruiser, roster)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "targetLengthMeters": null,
+        "scale": null,
+        "forwardAxis": "+X",
+        "upAxis": "+Z",
+        "sourceForwardAxis": "auto",
+        "maxTriangles": 150000,
+        "sockets": [
+          "WPN_Beam_01",
+          "WPN_Torp_Fwd_01",
+          "FX_Engine_01",
+          "FX_Shield_Center"
+        ],
+        "ueFolder": "/Game/Local/Ships/kli/qang"
+      },
+      "fallback": "ship.kli.ktinga"
+    },
+    "ship.kli.neghtev": {
+      "kind": "model",
+      "faction": "Klingon",
+      "displayName": "Negh'Tev (Battleship, roster)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "targetLengthMeters": null,
+        "scale": null,
+        "forwardAxis": "+X",
+        "upAxis": "+Z",
+        "sourceForwardAxis": "auto",
+        "maxTriangles": 150000,
+        "sockets": [
+          "WPN_Beam_01",
+          "WPN_Torp_Fwd_01",
+          "FX_Engine_01",
+          "FX_Shield_Center"
+        ],
+        "ueFolder": "/Game/Local/Ships/kli/neghtev"
+      },
+      "fallback": "ship.kli.neghvar"
+    },
+    "ship.kli.d4": {
+      "kind": "model",
+      "faction": "Klingon",
+      "displayName": "D4 (Destroyer, roster)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "targetLengthMeters": null,
+        "scale": null,
+        "forwardAxis": "+X",
+        "upAxis": "+Z",
+        "sourceForwardAxis": "auto",
+        "maxTriangles": 150000,
+        "sockets": [
+          "WPN_Beam_01",
+          "WPN_Torp_Fwd_01",
+          "FX_Engine_01",
+          "FX_Shield_Center"
+        ],
+        "ueFolder": "/Game/Local/Ships/kli/d4"
+      },
+      "fallback": "ship.kli.bop"
+    },
+    "ship.kli.liwi": {
+      "kind": "model",
+      "faction": "Klingon",
+      "displayName": "LI'wI' (legacy catalogue)",
+      "botfClasses": [
+        "LI'wI'"
+      ],
+      "candidates": [],
+      "import": {
+        "targetLengthMeters": null,
+        "scale": null,
+        "forwardAxis": "+X",
+        "upAxis": "+Z",
+        "sourceForwardAxis": "auto",
+        "maxTriangles": 150000,
+        "sockets": [
+          "WPN_Beam_01",
+          "WPN_Torp_Fwd_01",
+          "FX_Engine_01",
+          "FX_Shield_Center"
+        ],
+        "ueFolder": "/Game/Local/Ships/kli/liwi"
+      },
+      "fallback": "ship.kli.bop"
+    },
+    "ship.kli.outpost": {
+      "kind": "model",
+      "faction": "Klingon",
+      "displayName": "Outpost (legacy catalogue)",
+      "botfClasses": [
+        "Outpost"
+      ],
+      "candidates": [],
+      "import": {
+        "targetLengthMeters": null,
+        "scale": null,
+        "forwardAxis": "+X",
+        "upAxis": "+Z",
+        "sourceForwardAxis": "auto",
+        "maxTriangles": 150000,
+        "sockets": [
+          "WPN_Beam_01",
+          "WPN_Torp_Fwd_01",
+          "FX_Engine_01",
+          "FX_Shield_Center"
+        ],
+        "ueFolder": "/Game/Local/Ships/kli/outpost"
+      },
+      "fallback": "ship.kli.starbase"
+    },
+    "ship.kli.mayduj": {
+      "kind": "model",
+      "faction": "Klingon",
+      "displayName": "May'Duj (legacy catalogue)",
+      "botfClasses": [
+        "May'Duj"
+      ],
+      "candidates": [],
+      "import": {
+        "targetLengthMeters": null,
+        "scale": null,
+        "forwardAxis": "+X",
+        "upAxis": "+Z",
+        "sourceForwardAxis": "auto",
+        "maxTriangles": 150000,
+        "sockets": [
+          "WPN_Beam_01",
+          "WPN_Torp_Fwd_01",
+          "FX_Engine_01",
+          "FX_Shield_Center"
+        ],
+        "ueFolder": "/Game/Local/Ships/kli/mayduj"
+      },
+      "fallback": "ship.kli.bop"
+    },
+    "ship.kli.brel": {
+      "kind": "model",
+      "faction": "Klingon",
+      "displayName": "B'rel (legacy catalogue)",
+      "botfClasses": [
+        "B'rel"
+      ],
+      "candidates": [],
+      "import": {
+        "targetLengthMeters": null,
+        "scale": null,
+        "forwardAxis": "+X",
+        "upAxis": "+Z",
+        "sourceForwardAxis": "auto",
+        "maxTriangles": 150000,
+        "sockets": [
+          "WPN_Beam_01",
+          "WPN_Torp_Fwd_01",
+          "FX_Engine_01",
+          "FX_Shield_Center"
+        ],
+        "ueFolder": "/Game/Local/Ships/kli/brel"
+      },
+      "fallback": "ship.kli.bop"
+    },
+    "ship.kli.charghwi": {
+      "kind": "model",
+      "faction": "Klingon",
+      "displayName": "CharghwI' (legacy catalogue)",
+      "botfClasses": [
+        "CharghwI'"
+      ],
+      "candidates": [],
+      "import": {
+        "targetLengthMeters": null,
+        "scale": null,
+        "forwardAxis": "+X",
+        "upAxis": "+Z",
+        "sourceForwardAxis": "auto",
+        "maxTriangles": 150000,
+        "sockets": [
+          "WPN_Beam_01",
+          "WPN_Torp_Fwd_01",
+          "FX_Engine_01",
+          "FX_Shield_Center"
+        ],
+        "ueFolder": "/Game/Local/Ships/kli/charghwi"
+      },
+      "fallback": "ship.kli.bop"
+    },
+    "ship.kli.kvort": {
+      "kind": "model",
+      "faction": "Klingon",
+      "displayName": "K'Vort (legacy catalogue)",
+      "botfClasses": [
+        "K'Vort"
+      ],
+      "candidates": [],
+      "import": {
+        "targetLengthMeters": null,
+        "scale": null,
+        "forwardAxis": "+X",
+        "upAxis": "+Z",
+        "sourceForwardAxis": "auto",
+        "maxTriangles": 150000,
+        "sockets": [
+          "WPN_Beam_01",
+          "WPN_Torp_Fwd_01",
+          "FX_Engine_01",
+          "FX_Shield_Center"
+        ],
+        "ueFolder": "/Game/Local/Ships/kli/kvort"
+      },
+      "fallback": "ship.kli.ktinga"
+    },
+    "ship.rom.dderidex": {
       "kind": "model",
       "faction": "Romulan",
       "displayName": "D'deridex Warbird",
@@ -2866,7 +3921,7 @@
       },
       "fallback": "study.rom"
     },
-    "rom.valdore": {
+    "ship.rom.valdore": {
       "kind": "model",
       "faction": "Romulan",
       "displayName": "Valdore type (late)",
@@ -2921,9 +3976,9 @@
         ],
         "ueFolder": "/Game/Local/Ships/rom/valdore"
       },
-      "fallback": "rom.dderidex"
+      "fallback": "ship.rom.dderidex"
     },
-    "rom.scout": {
+    "ship.rom.scout": {
       "kind": "model",
       "faction": "Romulan",
       "displayName": "Romulan scout",
@@ -2977,9 +4032,9 @@
         ],
         "ueFolder": "/Game/Local/Ships/rom/scout"
       },
-      "fallback": "rom.bop"
+      "fallback": "ship.rom.bop"
     },
-    "rom.bop": {
+    "ship.rom.bop": {
       "kind": "model",
       "faction": "Romulan",
       "displayName": "Romulan light warbird / Bird-of-Prey",
@@ -3093,9 +4148,9 @@
         ],
         "ueFolder": "/Game/Local/Ships/rom/bop"
       },
-      "fallback": "rom.dderidex"
+      "fallback": "ship.rom.dderidex"
     },
-    "rom.starbase": {
+    "ship.rom.starbase": {
       "kind": "model",
       "faction": "Romulan",
       "displayName": "Romulan starbase",
@@ -3118,9 +4173,370 @@
         ],
         "ueFolder": "/Game/Local/Ships/rom/starbase"
       },
-      "fallback": "fed.starbase"
+      "fallback": "ship.fed.starbase"
     },
-    "car.galor": {
+    "ship.rom.bop_ent": {
+      "kind": "model",
+      "faction": "Romulan",
+      "displayName": "Bird-of-Prey (22nd c.) (Cruiser, roster)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "targetLengthMeters": null,
+        "scale": null,
+        "forwardAxis": "+X",
+        "upAxis": "+Z",
+        "sourceForwardAxis": "auto",
+        "maxTriangles": 150000,
+        "sockets": [
+          "WPN_Beam_01",
+          "WPN_Torp_Fwd_01",
+          "FX_Engine_01",
+          "FX_Shield_Center"
+        ],
+        "ueFolder": "/Game/Local/Ships/rom/bop_ent"
+      },
+      "fallback": "ship.rom.dderidex"
+    },
+    "ship.rom.drone": {
+      "kind": "model",
+      "faction": "Romulan",
+      "displayName": "Drone Ship (Destroyer, roster)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "targetLengthMeters": null,
+        "scale": null,
+        "forwardAxis": "+X",
+        "upAxis": "+Z",
+        "sourceForwardAxis": "auto",
+        "maxTriangles": 150000,
+        "sockets": [
+          "WPN_Beam_01",
+          "WPN_Torp_Fwd_01",
+          "FX_Engine_01",
+          "FX_Shield_Center"
+        ],
+        "ueFolder": "/Game/Local/Ships/rom/drone"
+      },
+      "fallback": "ship.rom.bop"
+    },
+    "ship.rom.bop_tos": {
+      "kind": "model",
+      "faction": "Romulan",
+      "displayName": "Bird-of-Prey (Strike Cruiser, roster)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "targetLengthMeters": null,
+        "scale": null,
+        "forwardAxis": "+X",
+        "upAxis": "+Z",
+        "sourceForwardAxis": "auto",
+        "maxTriangles": 150000,
+        "sockets": [
+          "WPN_Beam_01",
+          "WPN_Torp_Fwd_01",
+          "FX_Engine_01",
+          "FX_Shield_Center"
+        ],
+        "ueFolder": "/Game/Local/Ships/rom/bop_tos"
+      },
+      "fallback": "ship.rom.dderidex"
+    },
+    "ship.rom.science": {
+      "kind": "model",
+      "faction": "Romulan",
+      "displayName": "Science Vessel (Science Vessel, roster)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "targetLengthMeters": null,
+        "scale": null,
+        "forwardAxis": "+X",
+        "upAxis": "+Z",
+        "sourceForwardAxis": "auto",
+        "maxTriangles": 150000,
+        "sockets": [
+          "WPN_Beam_01",
+          "WPN_Torp_Fwd_01",
+          "FX_Engine_01",
+          "FX_Shield_Center"
+        ],
+        "ueFolder": "/Game/Local/Ships/rom/science"
+      },
+      "fallback": "ship.rom.bop"
+    },
+    "ship.rom.norexan": {
+      "kind": "model",
+      "faction": "Romulan",
+      "displayName": "Norexan (Destroyer, roster)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "targetLengthMeters": null,
+        "scale": null,
+        "forwardAxis": "+X",
+        "upAxis": "+Z",
+        "sourceForwardAxis": "auto",
+        "maxTriangles": 150000,
+        "sockets": [
+          "WPN_Beam_01",
+          "WPN_Torp_Fwd_01",
+          "FX_Engine_01",
+          "FX_Shield_Center"
+        ],
+        "ueFolder": "/Game/Local/Ships/rom/norexan"
+      },
+      "fallback": "ship.rom.bop"
+    },
+    "ship.rom.mogai": {
+      "kind": "model",
+      "faction": "Romulan",
+      "displayName": "Mogai (Heavy Cruiser, roster)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "targetLengthMeters": null,
+        "scale": null,
+        "forwardAxis": "+X",
+        "upAxis": "+Z",
+        "sourceForwardAxis": "auto",
+        "maxTriangles": 150000,
+        "sockets": [
+          "WPN_Beam_01",
+          "WPN_Torp_Fwd_01",
+          "FX_Engine_01",
+          "FX_Shield_Center"
+        ],
+        "ueFolder": "/Game/Local/Ships/rom/mogai"
+      },
+      "fallback": "ship.rom.dderidex"
+    },
+    "ship.rom.narada": {
+      "kind": "model",
+      "faction": "Romulan",
+      "displayName": "Narada (Special, roster)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "targetLengthMeters": null,
+        "scale": null,
+        "forwardAxis": "+X",
+        "upAxis": "+Z",
+        "sourceForwardAxis": "auto",
+        "maxTriangles": 150000,
+        "sockets": [
+          "WPN_Beam_01",
+          "WPN_Torp_Fwd_01",
+          "FX_Engine_01",
+          "FX_Shield_Center"
+        ],
+        "ueFolder": "/Game/Local/Ships/rom/narada"
+      },
+      "fallback": "study.rom"
+    },
+    "ship.rom.rtan": {
+      "kind": "model",
+      "faction": "Romulan",
+      "displayName": "R'tan (legacy catalogue)",
+      "botfClasses": [
+        "R'tan"
+      ],
+      "candidates": [],
+      "import": {
+        "targetLengthMeters": null,
+        "scale": null,
+        "forwardAxis": "+X",
+        "upAxis": "+Z",
+        "sourceForwardAxis": "auto",
+        "maxTriangles": 150000,
+        "sockets": [
+          "WPN_Beam_01",
+          "WPN_Torp_Fwd_01",
+          "FX_Engine_01",
+          "FX_Shield_Center"
+        ],
+        "ueFolder": "/Game/Local/Ships/rom/rtan"
+      },
+      "fallback": "ship.rom.dderidex"
+    },
+    "ship.rom.dretex": {
+      "kind": "model",
+      "faction": "Romulan",
+      "displayName": "D'retex (legacy catalogue)",
+      "botfClasses": [
+        "D'retex"
+      ],
+      "candidates": [],
+      "import": {
+        "targetLengthMeters": null,
+        "scale": null,
+        "forwardAxis": "+X",
+        "upAxis": "+Z",
+        "sourceForwardAxis": "auto",
+        "maxTriangles": 150000,
+        "sockets": [
+          "WPN_Beam_01",
+          "WPN_Torp_Fwd_01",
+          "FX_Engine_01",
+          "FX_Shield_Center"
+        ],
+        "ueFolder": "/Game/Local/Ships/rom/dretex"
+      },
+      "fallback": "ship.rom.bop"
+    },
+    "ship.rom.outpost": {
+      "kind": "model",
+      "faction": "Romulan",
+      "displayName": "Outpost (legacy catalogue)",
+      "botfClasses": [
+        "Outpost"
+      ],
+      "candidates": [],
+      "import": {
+        "targetLengthMeters": null,
+        "scale": null,
+        "forwardAxis": "+X",
+        "upAxis": "+Z",
+        "sourceForwardAxis": "auto",
+        "maxTriangles": 150000,
+        "sockets": [
+          "WPN_Beam_01",
+          "WPN_Torp_Fwd_01",
+          "FX_Engine_01",
+          "FX_Shield_Center"
+        ],
+        "ueFolder": "/Game/Local/Ships/rom/outpost"
+      },
+      "fallback": "ship.rom.starbase"
+    },
+    "ship.rom.dridren": {
+      "kind": "model",
+      "faction": "Romulan",
+      "displayName": "D'ridren (legacy catalogue)",
+      "botfClasses": [
+        "D'ridren"
+      ],
+      "candidates": [],
+      "import": {
+        "targetLengthMeters": null,
+        "scale": null,
+        "forwardAxis": "+X",
+        "upAxis": "+Z",
+        "sourceForwardAxis": "auto",
+        "maxTriangles": 150000,
+        "sockets": [
+          "WPN_Beam_01",
+          "WPN_Torp_Fwd_01",
+          "FX_Engine_01",
+          "FX_Shield_Center"
+        ],
+        "ueFolder": "/Game/Local/Ships/rom/dridren"
+      },
+      "fallback": "ship.rom.bop"
+    },
+    "ship.rom.drenet": {
+      "kind": "model",
+      "faction": "Romulan",
+      "displayName": "D'renet (legacy catalogue)",
+      "botfClasses": [
+        "D'renet"
+      ],
+      "candidates": [],
+      "import": {
+        "targetLengthMeters": null,
+        "scale": null,
+        "forwardAxis": "+X",
+        "upAxis": "+Z",
+        "sourceForwardAxis": "auto",
+        "maxTriangles": 150000,
+        "sockets": [
+          "WPN_Beam_01",
+          "WPN_Torp_Fwd_01",
+          "FX_Engine_01",
+          "FX_Shield_Center"
+        ],
+        "ueFolder": "/Game/Local/Ships/rom/drenet"
+      },
+      "fallback": "ship.rom.bop"
+    },
+    "ship.rom.rdaran": {
+      "kind": "model",
+      "faction": "Romulan",
+      "displayName": "R'daran (legacy catalogue)",
+      "botfClasses": [
+        "R'daran"
+      ],
+      "candidates": [],
+      "import": {
+        "targetLengthMeters": null,
+        "scale": null,
+        "forwardAxis": "+X",
+        "upAxis": "+Z",
+        "sourceForwardAxis": "auto",
+        "maxTriangles": 150000,
+        "sockets": [
+          "WPN_Beam_01",
+          "WPN_Torp_Fwd_01",
+          "FX_Engine_01",
+          "FX_Shield_Center"
+        ],
+        "ueFolder": "/Game/Local/Ships/rom/rdaran"
+      },
+      "fallback": "ship.rom.bop"
+    },
+    "ship.rom.ddredar": {
+      "kind": "model",
+      "faction": "Romulan",
+      "displayName": "D'dredar (legacy catalogue)",
+      "botfClasses": [
+        "D'dredar"
+      ],
+      "candidates": [],
+      "import": {
+        "targetLengthMeters": null,
+        "scale": null,
+        "forwardAxis": "+X",
+        "upAxis": "+Z",
+        "sourceForwardAxis": "auto",
+        "maxTriangles": 150000,
+        "sockets": [
+          "WPN_Beam_01",
+          "WPN_Torp_Fwd_01",
+          "FX_Engine_01",
+          "FX_Shield_Center"
+        ],
+        "ueFolder": "/Game/Local/Ships/rom/ddredar"
+      },
+      "fallback": "ship.rom.dderidex"
+    },
+    "ship.rom.rderex": {
+      "kind": "model",
+      "faction": "Romulan",
+      "displayName": "R'derex (legacy catalogue)",
+      "botfClasses": [
+        "R'derex"
+      ],
+      "candidates": [],
+      "import": {
+        "targetLengthMeters": null,
+        "scale": null,
+        "forwardAxis": "+X",
+        "upAxis": "+Z",
+        "sourceForwardAxis": "auto",
+        "maxTriangles": 150000,
+        "sockets": [
+          "WPN_Beam_01",
+          "WPN_Torp_Fwd_01",
+          "FX_Engine_01",
+          "FX_Shield_Center"
+        ],
+        "ueFolder": "/Game/Local/Ships/rom/rderex"
+      },
+      "fallback": "ship.rom.dderidex"
+    },
+    "ship.car.galor": {
       "kind": "model",
       "faction": "Cardassian",
       "displayName": "Galor class",
@@ -3264,7 +4680,7 @@
       },
       "fallback": "study.car"
     },
-    "car.keldon": {
+    "ship.car.keldon": {
       "kind": "model",
       "faction": "Cardassian",
       "displayName": "Keldon class",
@@ -3342,9 +4758,9 @@
         ],
         "ueFolder": "/Game/Local/Ships/car/keldon"
       },
-      "fallback": "car.galor"
+      "fallback": "ship.car.galor"
     },
-    "car.hideki": {
+    "ship.car.hideki": {
       "kind": "model",
       "faction": "Cardassian",
       "displayName": "Hideki class",
@@ -3395,9 +4811,9 @@
         ],
         "ueFolder": "/Game/Local/Ships/car/hideki"
       },
-      "fallback": "car.galor"
+      "fallback": "ship.car.galor"
     },
-    "car.groumall": {
+    "ship.car.groumall": {
       "kind": "model",
       "faction": "Cardassian",
       "displayName": "Groumall freighter",
@@ -3450,9 +4866,9 @@
         ],
         "ueFolder": "/Game/Local/Ships/car/groumall"
       },
-      "fallback": "car.galor"
+      "fallback": "ship.car.galor"
     },
-    "car.platform": {
+    "ship.car.platform": {
       "kind": "model",
       "faction": "Cardassian",
       "displayName": "Cardassian weapon platform",
@@ -3505,9 +4921,9 @@
         ],
         "ueFolder": "/Game/Local/Ships/car/platform"
       },
-      "fallback": "car.galor"
+      "fallback": "ship.car.galor"
     },
-    "car.scout": {
+    "ship.car.scout": {
       "kind": "model",
       "faction": "Cardassian",
       "displayName": "Cardassian scout",
@@ -3562,9 +4978,278 @@
         ],
         "ueFolder": "/Game/Local/Ships/car/scout"
       },
-      "fallback": "car.galor"
+      "fallback": "ship.car.galor"
     },
-    "fer.dkora": {
+    "ship.car.atr4107": {
+      "kind": "model",
+      "faction": "Cardassian",
+      "displayName": "ATR-4107 (Special, roster)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "targetLengthMeters": null,
+        "scale": null,
+        "forwardAxis": "+X",
+        "upAxis": "+Z",
+        "sourceForwardAxis": "auto",
+        "maxTriangles": 150000,
+        "sockets": [
+          "WPN_Beam_01",
+          "WPN_Torp_Fwd_01",
+          "FX_Engine_01",
+          "FX_Shield_Center"
+        ],
+        "ueFolder": "/Game/Local/Ships/car/atr4107"
+      },
+      "fallback": "study.car"
+    },
+    "ship.car.nor": {
+      "kind": "model",
+      "faction": "Cardassian",
+      "displayName": "Nor (Station, roster)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "targetLengthMeters": null,
+        "scale": null,
+        "forwardAxis": "+X",
+        "upAxis": "+Z",
+        "sourceForwardAxis": "auto",
+        "maxTriangles": 150000,
+        "sockets": [
+          "WPN_Beam_01",
+          "WPN_Torp_Fwd_01",
+          "FX_Engine_01",
+          "FX_Shield_Center"
+        ],
+        "ueFolder": "/Game/Local/Ships/car/nor"
+      },
+      "fallback": "ship.car.platform"
+    },
+    "ship.car.kraxon": {
+      "kind": "model",
+      "faction": "Cardassian",
+      "displayName": "Kraxon (Light Cruiser, roster)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "targetLengthMeters": null,
+        "scale": null,
+        "forwardAxis": "+X",
+        "upAxis": "+Z",
+        "sourceForwardAxis": "auto",
+        "maxTriangles": 150000,
+        "sockets": [
+          "WPN_Beam_01",
+          "WPN_Torp_Fwd_01",
+          "FX_Engine_01",
+          "FX_Shield_Center"
+        ],
+        "ueFolder": "/Game/Local/Ships/car/kraxon"
+      },
+      "fallback": "ship.car.galor"
+    },
+    "ship.car.ranol": {
+      "kind": "model",
+      "faction": "Cardassian",
+      "displayName": "Ranol (legacy catalogue)",
+      "botfClasses": [
+        "Ranol"
+      ],
+      "candidates": [],
+      "import": {
+        "targetLengthMeters": null,
+        "scale": null,
+        "forwardAxis": "+X",
+        "upAxis": "+Z",
+        "sourceForwardAxis": "auto",
+        "maxTriangles": 150000,
+        "sockets": [
+          "WPN_Beam_01",
+          "WPN_Torp_Fwd_01",
+          "FX_Engine_01",
+          "FX_Shield_Center"
+        ],
+        "ueFolder": "/Game/Local/Ships/car/ranol"
+      },
+      "fallback": "ship.car.hideki"
+    },
+    "ship.car.outpost": {
+      "kind": "model",
+      "faction": "Cardassian",
+      "displayName": "Outpost (legacy catalogue)",
+      "botfClasses": [
+        "Outpost"
+      ],
+      "candidates": [],
+      "import": {
+        "targetLengthMeters": null,
+        "scale": null,
+        "forwardAxis": "+X",
+        "upAxis": "+Z",
+        "sourceForwardAxis": "auto",
+        "maxTriangles": 150000,
+        "sockets": [
+          "WPN_Beam_01",
+          "WPN_Torp_Fwd_01",
+          "FX_Engine_01",
+          "FX_Shield_Center"
+        ],
+        "ueFolder": "/Game/Local/Ships/car/outpost"
+      },
+      "fallback": "ship.car.starbase"
+    },
+    "ship.car.netel": {
+      "kind": "model",
+      "faction": "Cardassian",
+      "displayName": "Netel (legacy catalogue)",
+      "botfClasses": [
+        "Netel"
+      ],
+      "candidates": [],
+      "import": {
+        "targetLengthMeters": null,
+        "scale": null,
+        "forwardAxis": "+X",
+        "upAxis": "+Z",
+        "sourceForwardAxis": "auto",
+        "maxTriangles": 150000,
+        "sockets": [
+          "WPN_Beam_01",
+          "WPN_Torp_Fwd_01",
+          "FX_Engine_01",
+          "FX_Shield_Center"
+        ],
+        "ueFolder": "/Game/Local/Ships/car/netel"
+      },
+      "fallback": "ship.car.hideki"
+    },
+    "ship.car.nerok": {
+      "kind": "model",
+      "faction": "Cardassian",
+      "displayName": "Nerok (legacy catalogue)",
+      "botfClasses": [
+        "Nerok"
+      ],
+      "candidates": [],
+      "import": {
+        "targetLengthMeters": null,
+        "scale": null,
+        "forwardAxis": "+X",
+        "upAxis": "+Z",
+        "sourceForwardAxis": "auto",
+        "maxTriangles": 150000,
+        "sockets": [
+          "WPN_Beam_01",
+          "WPN_Torp_Fwd_01",
+          "FX_Engine_01",
+          "FX_Shield_Center"
+        ],
+        "ueFolder": "/Game/Local/Ships/car/nerok"
+      },
+      "fallback": "ship.car.hideki"
+    },
+    "ship.car.starbase": {
+      "kind": "model",
+      "faction": "Cardassian",
+      "displayName": "Starbase (legacy catalogue)",
+      "botfClasses": [
+        "Starbase"
+      ],
+      "candidates": [],
+      "import": {
+        "targetLengthMeters": null,
+        "scale": null,
+        "forwardAxis": "+X",
+        "upAxis": "+Z",
+        "sourceForwardAxis": "auto",
+        "maxTriangles": 150000,
+        "sockets": [
+          "WPN_Beam_01",
+          "WPN_Torp_Fwd_01",
+          "FX_Engine_01",
+          "FX_Shield_Center"
+        ],
+        "ueFolder": "/Game/Local/Ships/car/starbase"
+      },
+      "fallback": "ship.car.platform"
+    },
+    "ship.car.toran": {
+      "kind": "model",
+      "faction": "Cardassian",
+      "displayName": "Toran (legacy catalogue)",
+      "botfClasses": [
+        "Toran"
+      ],
+      "candidates": [],
+      "import": {
+        "targetLengthMeters": null,
+        "scale": null,
+        "forwardAxis": "+X",
+        "upAxis": "+Z",
+        "sourceForwardAxis": "auto",
+        "maxTriangles": 150000,
+        "sockets": [
+          "WPN_Beam_01",
+          "WPN_Torp_Fwd_01",
+          "FX_Engine_01",
+          "FX_Shield_Center"
+        ],
+        "ueFolder": "/Game/Local/Ships/car/toran"
+      },
+      "fallback": "ship.car.hideki"
+    },
+    "ship.car.neterok": {
+      "kind": "model",
+      "faction": "Cardassian",
+      "displayName": "Neterok (legacy catalogue)",
+      "botfClasses": [
+        "Neterok"
+      ],
+      "candidates": [],
+      "import": {
+        "targetLengthMeters": null,
+        "scale": null,
+        "forwardAxis": "+X",
+        "upAxis": "+Z",
+        "sourceForwardAxis": "auto",
+        "maxTriangles": 150000,
+        "sockets": [
+          "WPN_Beam_01",
+          "WPN_Torp_Fwd_01",
+          "FX_Engine_01",
+          "FX_Shield_Center"
+        ],
+        "ueFolder": "/Game/Local/Ships/car/neterok"
+      },
+      "fallback": "ship.car.galor"
+    },
+    "ship.car.telok": {
+      "kind": "model",
+      "faction": "Cardassian",
+      "displayName": "Telok (legacy catalogue)",
+      "botfClasses": [
+        "Telok"
+      ],
+      "candidates": [],
+      "import": {
+        "targetLengthMeters": null,
+        "scale": null,
+        "forwardAxis": "+X",
+        "upAxis": "+Z",
+        "sourceForwardAxis": "auto",
+        "maxTriangles": 150000,
+        "sockets": [
+          "WPN_Beam_01",
+          "WPN_Torp_Fwd_01",
+          "FX_Engine_01",
+          "FX_Shield_Center"
+        ],
+        "ueFolder": "/Game/Local/Ships/car/telok"
+      },
+      "fallback": "ship.car.galor"
+    },
+    "ship.fer.dkora": {
       "kind": "model",
       "faction": "Ferengi",
       "displayName": "D'Kora Marauder",
@@ -3645,7 +5330,7 @@
       },
       "fallback": "study.fer"
     },
-    "fer.shuttle": {
+    "ship.fer.shuttle": {
       "kind": "model",
       "faction": "Ferengi",
       "displayName": "Ferengi shuttle",
@@ -3695,9 +5380,9 @@
         ],
         "ueFolder": "/Game/Local/Ships/fer/shuttle"
       },
-      "fallback": "fer.dkora"
+      "fallback": "ship.fer.dkora"
     },
-    "fer.scout": {
+    "ship.fer.scout": {
       "kind": "model",
       "faction": "Ferengi",
       "displayName": "Ferengi scout",
@@ -3752,9 +5437,9 @@
         ],
         "ueFolder": "/Game/Local/Ships/fer/scout"
       },
-      "fallback": "fer.dkora"
+      "fallback": "ship.fer.dkora"
     },
-    "fer.starbase": {
+    "ship.fer.starbase": {
       "kind": "model",
       "faction": "Ferengi",
       "displayName": "Ferengi starbase",
@@ -3809,9 +5494,255 @@
         ],
         "ueFolder": "/Game/Local/Ships/fer/starbase"
       },
-      "fallback": "fed.starbase"
+      "fallback": "ship.fed.starbase"
     },
-    "dom.attackship": {
+    "ship.fer.pod": {
+      "kind": "model",
+      "faction": "Ferengi",
+      "displayName": "Pod Ship (Raider, roster)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "targetLengthMeters": null,
+        "scale": null,
+        "forwardAxis": "+X",
+        "upAxis": "+Z",
+        "sourceForwardAxis": "auto",
+        "maxTriangles": 150000,
+        "sockets": [
+          "WPN_Beam_01",
+          "WPN_Torp_Fwd_01",
+          "FX_Engine_01",
+          "FX_Shield_Center"
+        ],
+        "ueFolder": "/Game/Local/Ships/fer/pod"
+      },
+      "fallback": "ship.fer.scout"
+    },
+    "ship.fer.nagus": {
+      "kind": "model",
+      "faction": "Ferengi",
+      "displayName": "Nagus (Battleship, roster)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "targetLengthMeters": null,
+        "scale": null,
+        "forwardAxis": "+X",
+        "upAxis": "+Z",
+        "sourceForwardAxis": "auto",
+        "maxTriangles": 150000,
+        "sockets": [
+          "WPN_Beam_01",
+          "WPN_Torp_Fwd_01",
+          "FX_Engine_01",
+          "FX_Shield_Center"
+        ],
+        "ueFolder": "/Game/Local/Ships/fer/nagus"
+      },
+      "fallback": "ship.fer.dkora"
+    },
+    "ship.fer.ooron": {
+      "kind": "model",
+      "faction": "Ferengi",
+      "displayName": "Ooron (legacy catalogue)",
+      "botfClasses": [
+        "Ooron"
+      ],
+      "candidates": [],
+      "import": {
+        "targetLengthMeters": null,
+        "scale": null,
+        "forwardAxis": "+X",
+        "upAxis": "+Z",
+        "sourceForwardAxis": "auto",
+        "maxTriangles": 150000,
+        "sockets": [
+          "WPN_Beam_01",
+          "WPN_Torp_Fwd_01",
+          "FX_Engine_01",
+          "FX_Shield_Center"
+        ],
+        "ueFolder": "/Game/Local/Ships/fer/ooron"
+      },
+      "fallback": "ship.fer.dkora"
+    },
+    "ship.fer.tomax": {
+      "kind": "model",
+      "faction": "Ferengi",
+      "displayName": "Tomax (legacy catalogue)",
+      "botfClasses": [
+        "Tomax"
+      ],
+      "candidates": [],
+      "import": {
+        "targetLengthMeters": null,
+        "scale": null,
+        "forwardAxis": "+X",
+        "upAxis": "+Z",
+        "sourceForwardAxis": "auto",
+        "maxTriangles": 150000,
+        "sockets": [
+          "WPN_Beam_01",
+          "WPN_Torp_Fwd_01",
+          "FX_Engine_01",
+          "FX_Shield_Center"
+        ],
+        "ueFolder": "/Game/Local/Ships/fer/tomax"
+      },
+      "fallback": "ship.fer.scout"
+    },
+    "ship.fer.outpost": {
+      "kind": "model",
+      "faction": "Ferengi",
+      "displayName": "Outpost (legacy catalogue)",
+      "botfClasses": [
+        "Outpost"
+      ],
+      "candidates": [],
+      "import": {
+        "targetLengthMeters": null,
+        "scale": null,
+        "forwardAxis": "+X",
+        "upAxis": "+Z",
+        "sourceForwardAxis": "auto",
+        "maxTriangles": 150000,
+        "sockets": [
+          "WPN_Beam_01",
+          "WPN_Torp_Fwd_01",
+          "FX_Engine_01",
+          "FX_Shield_Center"
+        ],
+        "ueFolder": "/Game/Local/Ships/fer/outpost"
+      },
+      "fallback": "ship.fer.starbase"
+    },
+    "ship.fer.ngort": {
+      "kind": "model",
+      "faction": "Ferengi",
+      "displayName": "Ngort (legacy catalogue)",
+      "botfClasses": [
+        "Ngort"
+      ],
+      "candidates": [],
+      "import": {
+        "targetLengthMeters": null,
+        "scale": null,
+        "forwardAxis": "+X",
+        "upAxis": "+Z",
+        "sourceForwardAxis": "auto",
+        "maxTriangles": 150000,
+        "sockets": [
+          "WPN_Beam_01",
+          "WPN_Torp_Fwd_01",
+          "FX_Engine_01",
+          "FX_Shield_Center"
+        ],
+        "ueFolder": "/Game/Local/Ships/fer/ngort"
+      },
+      "fallback": "ship.fer.scout"
+    },
+    "ship.fer.tokorn": {
+      "kind": "model",
+      "faction": "Ferengi",
+      "displayName": "Tokorn (legacy catalogue)",
+      "botfClasses": [
+        "Tokorn"
+      ],
+      "candidates": [],
+      "import": {
+        "targetLengthMeters": null,
+        "scale": null,
+        "forwardAxis": "+X",
+        "upAxis": "+Z",
+        "sourceForwardAxis": "auto",
+        "maxTriangles": 150000,
+        "sockets": [
+          "WPN_Beam_01",
+          "WPN_Torp_Fwd_01",
+          "FX_Engine_01",
+          "FX_Shield_Center"
+        ],
+        "ueFolder": "/Game/Local/Ships/fer/tokorn"
+      },
+      "fallback": "ship.fer.scout"
+    },
+    "ship.fer.bronta": {
+      "kind": "model",
+      "faction": "Ferengi",
+      "displayName": "Bronta (legacy catalogue)",
+      "botfClasses": [
+        "Bronta"
+      ],
+      "candidates": [],
+      "import": {
+        "targetLengthMeters": null,
+        "scale": null,
+        "forwardAxis": "+X",
+        "upAxis": "+Z",
+        "sourceForwardAxis": "auto",
+        "maxTriangles": 150000,
+        "sockets": [
+          "WPN_Beam_01",
+          "WPN_Torp_Fwd_01",
+          "FX_Engine_01",
+          "FX_Shield_Center"
+        ],
+        "ueFolder": "/Game/Local/Ships/fer/bronta"
+      },
+      "fallback": "ship.fer.dkora"
+    },
+    "ship.fer.glantor": {
+      "kind": "model",
+      "faction": "Ferengi",
+      "displayName": "Glantor (legacy catalogue)",
+      "botfClasses": [
+        "Glantor"
+      ],
+      "candidates": [],
+      "import": {
+        "targetLengthMeters": null,
+        "scale": null,
+        "forwardAxis": "+X",
+        "upAxis": "+Z",
+        "sourceForwardAxis": "auto",
+        "maxTriangles": 150000,
+        "sockets": [
+          "WPN_Beam_01",
+          "WPN_Torp_Fwd_01",
+          "FX_Engine_01",
+          "FX_Shield_Center"
+        ],
+        "ueFolder": "/Game/Local/Ships/fer/glantor"
+      },
+      "fallback": "ship.fer.scout"
+    },
+    "ship.fer.goront": {
+      "kind": "model",
+      "faction": "Ferengi",
+      "displayName": "Goront (legacy catalogue)",
+      "botfClasses": [
+        "Goront"
+      ],
+      "candidates": [],
+      "import": {
+        "targetLengthMeters": null,
+        "scale": null,
+        "forwardAxis": "+X",
+        "upAxis": "+Z",
+        "sourceForwardAxis": "auto",
+        "maxTriangles": 150000,
+        "sockets": [
+          "WPN_Beam_01",
+          "WPN_Torp_Fwd_01",
+          "FX_Engine_01",
+          "FX_Shield_Center"
+        ],
+        "ueFolder": "/Game/Local/Ships/fer/goront"
+      },
+      "fallback": "ship.fer.dkora"
+    },
+    "ship.dom.attack_ship": {
       "kind": "model",
       "faction": "Dominion",
       "displayName": "Jem'Hadar attack ship",
@@ -3864,11 +5795,57 @@
           "FX_Engine_01",
           "FX_Shield_Center"
         ],
-        "ueFolder": "/Game/Local/Ships/dom/attackship"
+        "ueFolder": "/Game/Local/Ships/dom/attack_ship"
       },
-      "fallback": "fer.scout"
+      "fallback": "ship.fer.scout"
     },
-    "bor.cube": {
+    "ship.dom.battlecruiser": {
+      "kind": "model",
+      "faction": "Dominion",
+      "displayName": "Jem'Hadar Battle Cruiser (Battlecruiser, roster)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "targetLengthMeters": null,
+        "scale": null,
+        "forwardAxis": "+X",
+        "upAxis": "+Z",
+        "sourceForwardAxis": "auto",
+        "maxTriangles": 150000,
+        "sockets": [
+          "WPN_Beam_01",
+          "WPN_Torp_Fwd_01",
+          "FX_Engine_01",
+          "FX_Shield_Center"
+        ],
+        "ueFolder": "/Game/Local/Ships/dom/battlecruiser"
+      },
+      "fallback": "ship.dom.attack_ship"
+    },
+    "ship.dom.battleship": {
+      "kind": "model",
+      "faction": "Dominion",
+      "displayName": "Jem'Hadar Battleship (Dreadnought, roster)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "targetLengthMeters": null,
+        "scale": null,
+        "forwardAxis": "+X",
+        "upAxis": "+Z",
+        "sourceForwardAxis": "auto",
+        "maxTriangles": 150000,
+        "sockets": [
+          "WPN_Beam_01",
+          "WPN_Torp_Fwd_01",
+          "FX_Engine_01",
+          "FX_Shield_Center"
+        ],
+        "ueFolder": "/Game/Local/Ships/dom/battleship"
+      },
+      "fallback": "ship.dom.attack_ship"
+    },
+    "ship.borg.cube": {
       "kind": "model",
       "faction": "Borg",
       "displayName": "Borg cube",
@@ -3949,11 +5926,11 @@
           "WPN_Tractor_01",
           "FX_Shield_Center"
         ],
-        "ueFolder": "/Game/Local/Ships/bor/cube"
+        "ueFolder": "/Game/Local/Ships/borg/cube"
       },
       "fallback": null
     },
-    "bor.sphere": {
+    "ship.borg.sphere": {
       "kind": "model",
       "faction": "Borg",
       "displayName": "Borg sphere",
@@ -4037,11 +6014,103 @@
           "FX_Engine_01",
           "FX_Shield_Center"
         ],
-        "ueFolder": "/Game/Local/Ships/bor/sphere"
+        "ueFolder": "/Game/Local/Ships/borg/sphere"
       },
-      "fallback": "bor.cube"
+      "fallback": "ship.borg.cube"
     },
-    "brn.cruiser": {
+    "ship.borg.probe": {
+      "kind": "model",
+      "faction": "Borg",
+      "displayName": "Probe (Scout, roster)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "targetLengthMeters": null,
+        "scale": null,
+        "forwardAxis": "+X",
+        "upAxis": "+Z",
+        "sourceForwardAxis": "auto",
+        "maxTriangles": 150000,
+        "sockets": [
+          "WPN_Beam_01",
+          "WPN_Torp_Fwd_01",
+          "FX_Engine_01",
+          "FX_Shield_Center"
+        ],
+        "ueFolder": "/Game/Local/Ships/borg/probe"
+      },
+      "fallback": "ship.borg.cube"
+    },
+    "ship.borg.tactical_cube": {
+      "kind": "model",
+      "faction": "Borg",
+      "displayName": "Tactical Cube (Dreadnought, roster)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "targetLengthMeters": null,
+        "scale": null,
+        "forwardAxis": "+X",
+        "upAxis": "+Z",
+        "sourceForwardAxis": "auto",
+        "maxTriangles": 150000,
+        "sockets": [
+          "WPN_Beam_01",
+          "WPN_Torp_Fwd_01",
+          "FX_Engine_01",
+          "FX_Shield_Center"
+        ],
+        "ueFolder": "/Game/Local/Ships/borg/tactical_cube"
+      },
+      "fallback": "ship.borg.cube"
+    },
+    "ship.borg.diamond": {
+      "kind": "model",
+      "faction": "Borg",
+      "displayName": "Queen's Diamond (Special, roster)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "targetLengthMeters": null,
+        "scale": null,
+        "forwardAxis": "+X",
+        "upAxis": "+Z",
+        "sourceForwardAxis": "auto",
+        "maxTriangles": 150000,
+        "sockets": [
+          "WPN_Beam_01",
+          "WPN_Torp_Fwd_01",
+          "FX_Engine_01",
+          "FX_Shield_Center"
+        ],
+        "ueFolder": "/Game/Local/Ships/borg/diamond"
+      },
+      "fallback": "ship.borg.cube"
+    },
+    "ship.borg.scout": {
+      "kind": "model",
+      "faction": "Borg",
+      "displayName": "Scout Vessel (Scout, roster)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "targetLengthMeters": null,
+        "scale": null,
+        "forwardAxis": "+X",
+        "upAxis": "+Z",
+        "sourceForwardAxis": "auto",
+        "maxTriangles": 150000,
+        "sockets": [
+          "WPN_Beam_01",
+          "WPN_Torp_Fwd_01",
+          "FX_Engine_01",
+          "FX_Shield_Center"
+        ],
+        "ueFolder": "/Game/Local/Ships/borg/scout"
+      },
+      "fallback": "ship.borg.cube"
+    },
+    "ship.breen.breen_warship": {
       "kind": "model",
       "faction": "Breen",
       "displayName": "Breen cruiser",
@@ -4094,11 +6163,678 @@
           "FX_Engine_01",
           "FX_Shield_Center"
         ],
-        "ueFolder": "/Game/Local/Ships/brn/cruiser"
+        "ueFolder": "/Game/Local/Ships/breen/breen_warship"
       },
       "fallback": "study.car"
     },
-    "wpn.phaser.fed": {
+    "ship.thol.web_spinner": {
+      "kind": "model",
+      "faction": "Tholian",
+      "displayName": "Web Spinner (Destroyer, roster)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "targetLengthMeters": null,
+        "scale": null,
+        "forwardAxis": "+X",
+        "upAxis": "+Z",
+        "sourceForwardAxis": "auto",
+        "maxTriangles": 150000,
+        "sockets": [
+          "WPN_Beam_01",
+          "WPN_Torp_Fwd_01",
+          "FX_Engine_01",
+          "FX_Shield_Center"
+        ],
+        "ueFolder": "/Game/Local/Ships/thol/web_spinner"
+      },
+      "fallback": null
+    },
+    "ship.gorn.cruiser": {
+      "kind": "model",
+      "faction": "Gorn",
+      "displayName": "Gorn Cruiser (Cruiser, roster)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "targetLengthMeters": null,
+        "scale": null,
+        "forwardAxis": "+X",
+        "upAxis": "+Z",
+        "sourceForwardAxis": "auto",
+        "maxTriangles": 150000,
+        "sockets": [
+          "WPN_Beam_01",
+          "WPN_Torp_Fwd_01",
+          "FX_Engine_01",
+          "FX_Shield_Center"
+        ],
+        "ueFolder": "/Game/Local/Ships/gorn/cruiser"
+      },
+      "fallback": null
+    },
+    "ship.orion.interceptor": {
+      "kind": "model",
+      "faction": "Orion",
+      "displayName": "Orion Interceptor (Raider, roster)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "targetLengthMeters": null,
+        "scale": null,
+        "forwardAxis": "+X",
+        "upAxis": "+Z",
+        "sourceForwardAxis": "auto",
+        "maxTriangles": 150000,
+        "sockets": [
+          "WPN_Beam_01",
+          "WPN_Torp_Fwd_01",
+          "FX_Engine_01",
+          "FX_Shield_Center"
+        ],
+        "ueFolder": "/Game/Local/Ships/orion/interceptor"
+      },
+      "fallback": null
+    },
+    "ship.hiro.hunter": {
+      "kind": "model",
+      "faction": "Hirogen",
+      "displayName": "Hunting Vessel (Destroyer, roster)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "targetLengthMeters": null,
+        "scale": null,
+        "forwardAxis": "+X",
+        "upAxis": "+Z",
+        "sourceForwardAxis": "auto",
+        "maxTriangles": 150000,
+        "sockets": [
+          "WPN_Beam_01",
+          "WPN_Torp_Fwd_01",
+          "FX_Engine_01",
+          "FX_Shield_Center"
+        ],
+        "ueFolder": "/Game/Local/Ships/hiro/hunter"
+      },
+      "fallback": null
+    },
+    "ship.hiro.warship": {
+      "kind": "model",
+      "faction": "Hirogen",
+      "displayName": "Hirogen Warship (Heavy Cruiser, roster)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "targetLengthMeters": null,
+        "scale": null,
+        "forwardAxis": "+X",
+        "upAxis": "+Z",
+        "sourceForwardAxis": "auto",
+        "maxTriangles": 150000,
+        "sockets": [
+          "WPN_Beam_01",
+          "WPN_Torp_Fwd_01",
+          "FX_Engine_01",
+          "FX_Shield_Center"
+        ],
+        "ueFolder": "/Game/Local/Ships/hiro/warship"
+      },
+      "fallback": null
+    },
+    "ship.kazon.raider": {
+      "kind": "model",
+      "faction": "Kazon",
+      "displayName": "Kazon Raider (Raider, roster)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "targetLengthMeters": null,
+        "scale": null,
+        "forwardAxis": "+X",
+        "upAxis": "+Z",
+        "sourceForwardAxis": "auto",
+        "maxTriangles": 150000,
+        "sockets": [
+          "WPN_Beam_01",
+          "WPN_Torp_Fwd_01",
+          "FX_Engine_01",
+          "FX_Shield_Center"
+        ],
+        "ueFolder": "/Game/Local/Ships/kazon/raider"
+      },
+      "fallback": null
+    },
+    "ship.kazon.carrier": {
+      "kind": "model",
+      "faction": "Kazon",
+      "displayName": "Predator (Carrier, roster)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "targetLengthMeters": null,
+        "scale": null,
+        "forwardAxis": "+X",
+        "upAxis": "+Z",
+        "sourceForwardAxis": "auto",
+        "maxTriangles": 150000,
+        "sockets": [
+          "WPN_Beam_01",
+          "WPN_Torp_Fwd_01",
+          "FX_Engine_01",
+          "FX_Shield_Center"
+        ],
+        "ueFolder": "/Game/Local/Ships/kazon/carrier"
+      },
+      "fallback": null
+    },
+    "ship.vid.warship": {
+      "kind": "model",
+      "faction": "Vidiian",
+      "displayName": "Vidiian Warship (Cruiser, roster)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "targetLengthMeters": null,
+        "scale": null,
+        "forwardAxis": "+X",
+        "upAxis": "+Z",
+        "sourceForwardAxis": "auto",
+        "maxTriangles": 150000,
+        "sockets": [
+          "WPN_Beam_01",
+          "WPN_Torp_Fwd_01",
+          "FX_Engine_01",
+          "FX_Shield_Center"
+        ],
+        "ueFolder": "/Game/Local/Ships/vid/warship"
+      },
+      "fallback": null
+    },
+    "ship.sul.cell_ship": {
+      "kind": "model",
+      "faction": "Suliban",
+      "displayName": "Cell Ship (Escort, roster)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "targetLengthMeters": null,
+        "scale": null,
+        "forwardAxis": "+X",
+        "upAxis": "+Z",
+        "sourceForwardAxis": "auto",
+        "maxTriangles": 150000,
+        "sockets": [
+          "WPN_Beam_01",
+          "WPN_Torp_Fwd_01",
+          "FX_Engine_01",
+          "FX_Shield_Center"
+        ],
+        "ueFolder": "/Game/Local/Ships/sul/cell_ship"
+      },
+      "fallback": null
+    },
+    "ship.xindi.reptilian": {
+      "kind": "model",
+      "faction": "Xindi",
+      "displayName": "Reptilian Warship (Cruiser, roster)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "targetLengthMeters": null,
+        "scale": null,
+        "forwardAxis": "+X",
+        "upAxis": "+Z",
+        "sourceForwardAxis": "auto",
+        "maxTriangles": 150000,
+        "sockets": [
+          "WPN_Beam_01",
+          "WPN_Torp_Fwd_01",
+          "FX_Engine_01",
+          "FX_Shield_Center"
+        ],
+        "ueFolder": "/Game/Local/Ships/xindi/reptilian"
+      },
+      "fallback": null
+    },
+    "ship.xindi.insectoid": {
+      "kind": "model",
+      "faction": "Xindi",
+      "displayName": "Insectoid Warship (Destroyer, roster)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "targetLengthMeters": null,
+        "scale": null,
+        "forwardAxis": "+X",
+        "upAxis": "+Z",
+        "sourceForwardAxis": "auto",
+        "maxTriangles": 150000,
+        "sockets": [
+          "WPN_Beam_01",
+          "WPN_Torp_Fwd_01",
+          "FX_Engine_01",
+          "FX_Shield_Center"
+        ],
+        "ueFolder": "/Game/Local/Ships/xindi/insectoid"
+      },
+      "fallback": null
+    },
+    "ship.xindi.aquatic": {
+      "kind": "model",
+      "faction": "Xindi",
+      "displayName": "Aquatic Cruiser (Battleship, roster)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "targetLengthMeters": null,
+        "scale": null,
+        "forwardAxis": "+X",
+        "upAxis": "+Z",
+        "sourceForwardAxis": "auto",
+        "maxTriangles": 150000,
+        "sockets": [
+          "WPN_Beam_01",
+          "WPN_Torp_Fwd_01",
+          "FX_Engine_01",
+          "FX_Shield_Center"
+        ],
+        "ueFolder": "/Game/Local/Ships/xindi/aquatic"
+      },
+      "fallback": null
+    },
+    "ship.xindi.primate": {
+      "kind": "model",
+      "faction": "Xindi",
+      "displayName": "Primate Ship (Frigate, roster)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "targetLengthMeters": null,
+        "scale": null,
+        "forwardAxis": "+X",
+        "upAxis": "+Z",
+        "sourceForwardAxis": "auto",
+        "maxTriangles": 150000,
+        "sockets": [
+          "WPN_Beam_01",
+          "WPN_Torp_Fwd_01",
+          "FX_Engine_01",
+          "FX_Shield_Center"
+        ],
+        "ueFolder": "/Game/Local/Ships/xindi/primate"
+      },
+      "fallback": null
+    },
+    "ship.xindi.weapon": {
+      "kind": "model",
+      "faction": "Xindi",
+      "displayName": "Xindi Weapon (Special, roster)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "targetLengthMeters": null,
+        "scale": null,
+        "forwardAxis": "+X",
+        "upAxis": "+Z",
+        "sourceForwardAxis": "auto",
+        "maxTriangles": 150000,
+        "sockets": [
+          "WPN_Beam_01",
+          "WPN_Torp_Fwd_01",
+          "FX_Engine_01",
+          "FX_Shield_Center"
+        ],
+        "ueFolder": "/Game/Local/Ships/xindi/weapon"
+      },
+      "fallback": null
+    },
+    "ship.s8472.bioship": {
+      "kind": "model",
+      "faction": "Species 8472",
+      "displayName": "Bioship (Cruiser, roster)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "targetLengthMeters": null,
+        "scale": null,
+        "forwardAxis": "+X",
+        "upAxis": "+Z",
+        "sourceForwardAxis": "auto",
+        "maxTriangles": 150000,
+        "sockets": [
+          "WPN_Beam_01",
+          "WPN_Torp_Fwd_01",
+          "FX_Engine_01",
+          "FX_Shield_Center"
+        ],
+        "ueFolder": "/Game/Local/Ships/s8472/bioship"
+      },
+      "fallback": null
+    },
+    "ship.krenim.timeship": {
+      "kind": "model",
+      "faction": "Krenim",
+      "displayName": "Temporal Weapon Ship (Special, roster)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "targetLengthMeters": null,
+        "scale": null,
+        "forwardAxis": "+X",
+        "upAxis": "+Z",
+        "sourceForwardAxis": "auto",
+        "maxTriangles": 150000,
+        "sockets": [
+          "WPN_Beam_01",
+          "WPN_Torp_Fwd_01",
+          "FX_Engine_01",
+          "FX_Shield_Center"
+        ],
+        "ueFolder": "/Game/Local/Ships/krenim/timeship"
+      },
+      "fallback": null
+    },
+    "ship.krenim.warship": {
+      "kind": "model",
+      "faction": "Krenim",
+      "displayName": "Krenim Warship (Destroyer, roster)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "targetLengthMeters": null,
+        "scale": null,
+        "forwardAxis": "+X",
+        "upAxis": "+Z",
+        "sourceForwardAxis": "auto",
+        "maxTriangles": 150000,
+        "sockets": [
+          "WPN_Beam_01",
+          "WPN_Torp_Fwd_01",
+          "FX_Engine_01",
+          "FX_Shield_Center"
+        ],
+        "ueFolder": "/Game/Local/Ships/krenim/warship"
+      },
+      "fallback": null
+    },
+    "ship.malon.freighter": {
+      "kind": "model",
+      "faction": "Malon",
+      "displayName": "Export Vessel (Transport, roster)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "targetLengthMeters": null,
+        "scale": null,
+        "forwardAxis": "+X",
+        "upAxis": "+Z",
+        "sourceForwardAxis": "auto",
+        "maxTriangles": 150000,
+        "sockets": [
+          "WPN_Beam_01",
+          "WPN_Torp_Fwd_01",
+          "FX_Engine_01",
+          "FX_Shield_Center"
+        ],
+        "ueFolder": "/Game/Local/Ships/malon/freighter"
+      },
+      "fallback": null
+    },
+    "ship.sona.battleship": {
+      "kind": "model",
+      "faction": "Son'a",
+      "displayName": "Son'a Battleship (Battleship, roster)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "targetLengthMeters": null,
+        "scale": null,
+        "forwardAxis": "+X",
+        "upAxis": "+Z",
+        "sourceForwardAxis": "auto",
+        "maxTriangles": 150000,
+        "sockets": [
+          "WPN_Beam_01",
+          "WPN_Torp_Fwd_01",
+          "FX_Engine_01",
+          "FX_Shield_Center"
+        ],
+        "ueFolder": "/Game/Local/Ships/sona/battleship"
+      },
+      "fallback": null
+    },
+    "ship.maquis.raider": {
+      "kind": "model",
+      "faction": "Maquis",
+      "displayName": "Maquis Raider (Raider, roster)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "targetLengthMeters": null,
+        "scale": null,
+        "forwardAxis": "+X",
+        "upAxis": "+Z",
+        "sourceForwardAxis": "auto",
+        "maxTriangles": 150000,
+        "sockets": [
+          "WPN_Beam_01",
+          "WPN_Torp_Fwd_01",
+          "FX_Engine_01",
+          "FX_Shield_Center"
+        ],
+        "ueFolder": "/Game/Local/Ships/maquis/raider"
+      },
+      "fallback": null
+    },
+    "ship.reman.scimitar": {
+      "kind": "model",
+      "faction": "Reman",
+      "displayName": "Scimitar (Dreadnought, roster)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "targetLengthMeters": null,
+        "scale": null,
+        "forwardAxis": "+X",
+        "upAxis": "+Z",
+        "sourceForwardAxis": "auto",
+        "maxTriangles": 150000,
+        "sockets": [
+          "WPN_Beam_01",
+          "WPN_Torp_Fwd_01",
+          "FX_Engine_01",
+          "FX_Shield_Center"
+        ],
+        "ueFolder": "/Game/Local/Ships/reman/scimitar"
+      },
+      "fallback": null
+    },
+    "ship.devore.warship": {
+      "kind": "model",
+      "faction": "Devore",
+      "displayName": "Devore Warship (Cruiser, roster)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "targetLengthMeters": null,
+        "scale": null,
+        "forwardAxis": "+X",
+        "upAxis": "+Z",
+        "sourceForwardAxis": "auto",
+        "maxTriangles": 150000,
+        "sockets": [
+          "WPN_Beam_01",
+          "WPN_Torp_Fwd_01",
+          "FX_Engine_01",
+          "FX_Shield_Center"
+        ],
+        "ueFolder": "/Game/Local/Ships/devore/warship"
+      },
+      "fallback": null
+    },
+    "ship.and.kumari": {
+      "kind": "model",
+      "faction": "Andorian",
+      "displayName": "Kumari (Cruiser, roster)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "targetLengthMeters": null,
+        "scale": null,
+        "forwardAxis": "+X",
+        "upAxis": "+Z",
+        "sourceForwardAxis": "auto",
+        "maxTriangles": 150000,
+        "sockets": [
+          "WPN_Beam_01",
+          "WPN_Torp_Fwd_01",
+          "FX_Engine_01",
+          "FX_Shield_Center"
+        ],
+        "ueFolder": "/Game/Local/Ships/and/kumari"
+      },
+      "fallback": null
+    },
+    "ship.vul.dkyr": {
+      "kind": "model",
+      "faction": "Vulcan",
+      "displayName": "D'Kyr (Cruiser, roster)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "targetLengthMeters": null,
+        "scale": null,
+        "forwardAxis": "+X",
+        "upAxis": "+Z",
+        "sourceForwardAxis": "auto",
+        "maxTriangles": 150000,
+        "sockets": [
+          "WPN_Beam_01",
+          "WPN_Torp_Fwd_01",
+          "FX_Engine_01",
+          "FX_Shield_Center"
+        ],
+        "ueFolder": "/Game/Local/Ships/vul/dkyr"
+      },
+      "fallback": null
+    },
+    "ship.vul.suurok": {
+      "kind": "model",
+      "faction": "Vulcan",
+      "displayName": "Suurok (Science Vessel, roster)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "targetLengthMeters": null,
+        "scale": null,
+        "forwardAxis": "+X",
+        "upAxis": "+Z",
+        "sourceForwardAxis": "auto",
+        "maxTriangles": 150000,
+        "sockets": [
+          "WPN_Beam_01",
+          "WPN_Torp_Fwd_01",
+          "FX_Engine_01",
+          "FX_Shield_Center"
+        ],
+        "ueFolder": "/Game/Local/Ships/vul/suurok"
+      },
+      "fallback": null
+    },
+    "ship.baj.assault": {
+      "kind": "model",
+      "faction": "Bajoran",
+      "displayName": "Bajoran Assault Vessel (Destroyer, roster)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "targetLengthMeters": null,
+        "scale": null,
+        "forwardAxis": "+X",
+        "upAxis": "+Z",
+        "sourceForwardAxis": "auto",
+        "maxTriangles": 150000,
+        "sockets": [
+          "WPN_Beam_01",
+          "WPN_Torp_Fwd_01",
+          "FX_Engine_01",
+          "FX_Shield_Center"
+        ],
+        "ueFolder": "/Game/Local/Ships/baj/assault"
+      },
+      "fallback": null
+    },
+    "ship.baj.lightship": {
+      "kind": "model",
+      "faction": "Bajoran",
+      "displayName": "Lightship (Scout, roster)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "targetLengthMeters": null,
+        "scale": null,
+        "forwardAxis": "+X",
+        "upAxis": "+Z",
+        "sourceForwardAxis": "auto",
+        "maxTriangles": 150000,
+        "sockets": [
+          "WPN_Beam_01",
+          "WPN_Torp_Fwd_01",
+          "FX_Engine_01",
+          "FX_Shield_Center"
+        ],
+        "ueFolder": "/Game/Local/Ships/baj/lightship"
+      },
+      "fallback": null
+    },
+    "ship.nau.raider": {
+      "kind": "model",
+      "faction": "Nausicaan",
+      "displayName": "Nausicaan Raider (Raider, roster)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "targetLengthMeters": null,
+        "scale": null,
+        "forwardAxis": "+X",
+        "upAxis": "+Z",
+        "sourceForwardAxis": "auto",
+        "maxTriangles": 150000,
+        "sockets": [
+          "WPN_Beam_01",
+          "WPN_Torp_Fwd_01",
+          "FX_Engine_01",
+          "FX_Shield_Center"
+        ],
+        "ueFolder": "/Game/Local/Ships/nau/raider"
+      },
+      "fallback": null
+    },
+    "ship.tal.observer": {
+      "kind": "model",
+      "faction": "Talarian",
+      "displayName": "Observation Craft (Scout, roster)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "targetLengthMeters": null,
+        "scale": null,
+        "forwardAxis": "+X",
+        "upAxis": "+Z",
+        "sourceForwardAxis": "auto",
+        "maxTriangles": 150000,
+        "sockets": [
+          "WPN_Beam_01",
+          "WPN_Torp_Fwd_01",
+          "FX_Engine_01",
+          "FX_Shield_Center"
+        ],
+        "ueFolder": "/Game/Local/Ships/tal/observer"
+      },
+      "fallback": null
+    },
+    "weapon.PhaserArray": {
       "kind": "sfx",
       "faction": null,
       "displayName": "Federation phaser array",
@@ -4199,11 +6935,11 @@
         "socketPrefix": "WPN_Beam",
         "vfx": "beam",
         "beamColor": "#FF8A1E",
-        "ueFolder": "/Game/Local/Audio/Weapons/phaser_fed"
+        "ueFolder": "/Game/Local/Audio/Weapons/PhaserArray"
       },
-      "fallback": "wpn.beam.generic"
+      "fallback": "weapon.generic.beam"
     },
-    "wpn.disruptor.kli": {
+    "weapon.Disruptor": {
       "kind": "sfx",
       "faction": null,
       "displayName": "Klingon disruptor",
@@ -4262,11 +6998,11 @@
         "socketPrefix": "WPN_Disruptor",
         "vfx": "bolt",
         "beamColor": "#3CFF4E",
-        "ueFolder": "/Game/Local/Audio/Weapons/disruptor_kli"
+        "ueFolder": "/Game/Local/Audio/Weapons/Disruptor"
       },
-      "fallback": "wpn.beam.generic"
+      "fallback": "weapon.generic.beam"
     },
-    "wpn.disruptor.rom": {
+    "weapon.Disruptor.rom": {
       "kind": "sfx",
       "faction": null,
       "displayName": "Romulan disruptor",
@@ -4303,11 +7039,11 @@
         "socketPrefix": "WPN_Disruptor",
         "vfx": "beam",
         "beamColor": "#3CFF6A",
-        "ueFolder": "/Game/Local/Audio/Weapons/disruptor_rom"
+        "ueFolder": "/Game/Local/Audio/Weapons/Disruptor_rom"
       },
-      "fallback": "wpn.disruptor.kli"
+      "fallback": "weapon.Disruptor"
     },
-    "wpn.spiral.car": {
+    "weapon.Disruptor.car": {
       "kind": "sfx",
       "faction": null,
       "displayName": "Cardassian spiral-wave disruptor",
@@ -4344,11 +7080,11 @@
         "socketPrefix": "WPN_Spiral",
         "vfx": "beam",
         "beamColor": "#FFB030",
-        "ueFolder": "/Game/Local/Audio/Weapons/spiral_car"
+        "ueFolder": "/Game/Local/Audio/Weapons/Disruptor_car"
       },
-      "fallback": "wpn.phaser.fed"
+      "fallback": "weapon.PhaserArray"
     },
-    "wpn.plasma.fer": {
+    "weapon.PhaserArray.fer": {
       "kind": "sfx",
       "faction": null,
       "displayName": "Ferengi plasma energy whip",
@@ -4385,11 +7121,11 @@
         "socketPrefix": "WPN_Plasma_Whip",
         "vfx": "beam",
         "beamColor": "#39D0FF",
-        "ueFolder": "/Game/Local/Audio/Weapons/plasma_fer"
+        "ueFolder": "/Game/Local/Audio/Weapons/PhaserArray_fer"
       },
-      "fallback": "wpn.phaser.fed"
+      "fallback": "weapon.PhaserArray"
     },
-    "wpn.pulse.defiant": {
+    "weapon.PulsePhaser": {
       "kind": "sfx",
       "faction": null,
       "displayName": "Pulse phaser cannon",
@@ -4426,11 +7162,11 @@
         "socketPrefix": "WPN_Pulse",
         "vfx": "bolt",
         "beamColor": "#FF7A1A",
-        "ueFolder": "/Game/Local/Audio/Weapons/pulse_defiant"
+        "ueFolder": "/Game/Local/Audio/Weapons/PulsePhaser"
       },
-      "fallback": "wpn.phaser.fed"
+      "fallback": "weapon.PhaserArray"
     },
-    "wpn.torpedo.photon": {
+    "weapon.PhotonTorpedo": {
       "kind": "sfx",
       "faction": null,
       "displayName": "Photon torpedo",
@@ -4511,11 +7247,11 @@
         "socketPrefix": "WPN_Torp",
         "vfx": "projectile",
         "beamColor": "#FF3A20",
-        "ueFolder": "/Game/Local/Audio/Weapons/torpedo_photon"
+        "ueFolder": "/Game/Local/Audio/Weapons/PhotonTorpedo"
       },
-      "fallback": "wpn.torpedo.generic"
+      "fallback": "weapon.generic.torpedo"
     },
-    "wpn.torpedo.quantum": {
+    "weapon.QuantumTorpedo": {
       "kind": "sfx",
       "faction": null,
       "displayName": "Quantum torpedo",
@@ -4574,11 +7310,11 @@
         "socketPrefix": "WPN_Torp",
         "vfx": "projectile",
         "beamColor": "#6EA8FF",
-        "ueFolder": "/Game/Local/Audio/Weapons/torpedo_quantum"
+        "ueFolder": "/Game/Local/Audio/Weapons/QuantumTorpedo"
       },
-      "fallback": "wpn.torpedo.photon"
+      "fallback": "weapon.PhotonTorpedo"
     },
-    "wpn.torpedo.plasma": {
+    "weapon.PlasmaTorpedo": {
       "kind": "sfx",
       "faction": null,
       "displayName": "Romulan plasma torpedo",
@@ -4615,11 +7351,11 @@
         "socketPrefix": "WPN_Plasma_Torp",
         "vfx": "projectile",
         "beamColor": "#3CFF4E",
-        "ueFolder": "/Game/Local/Audio/Weapons/torpedo_plasma"
+        "ueFolder": "/Game/Local/Audio/Weapons/PlasmaTorpedo"
       },
-      "fallback": "wpn.torpedo.photon"
+      "fallback": "weapon.PhotonTorpedo"
     },
-    "wpn.cutting.borg": {
+    "weapon.CuttingBeam": {
       "kind": "sfx",
       "faction": null,
       "displayName": "Borg cutting beam",
@@ -4656,11 +7392,11 @@
         "socketPrefix": "WPN_Cutting_Beam",
         "vfx": "beam",
         "beamColor": "#3CFF4E",
-        "ueFolder": "/Game/Local/Audio/Weapons/cutting_borg"
+        "ueFolder": "/Game/Local/Audio/Weapons/CuttingBeam"
       },
-      "fallback": "wpn.phaser.fed"
+      "fallback": "weapon.PhaserArray"
     },
-    "wpn.beam.generic": {
+    "weapon.generic.beam": {
       "kind": "sfx",
       "faction": null,
       "displayName": "Generic beam (BOTF original)",
@@ -4695,11 +7431,11 @@
         "socketPrefix": "WPN_Beam",
         "vfx": "beam",
         "beamColor": "#FF8A1E",
-        "ueFolder": "/Game/Local/Audio/Weapons/beam_generic"
+        "ueFolder": "/Game/Local/Audio/Weapons/generic_beam"
       },
       "fallback": null
     },
-    "wpn.torpedo.generic": {
+    "weapon.generic.torpedo": {
       "kind": "sfx",
       "faction": null,
       "displayName": "Generic torpedo (BOTF original)",
@@ -4734,9 +7470,217 @@
         "socketPrefix": "WPN_Torp",
         "vfx": "projectile",
         "beamColor": "#FF3A20",
-        "ueFolder": "/Game/Local/Audio/Weapons/torpedo_generic"
+        "ueFolder": "/Game/Local/Audio/Weapons/generic_torpedo"
       },
       "fallback": null
+    },
+    "weapon.BioEnergy": {
+      "kind": "sfx",
+      "faction": null,
+      "displayName": "BioEnergy (roster weapon type)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "targetSampleRate": 48000,
+        "channels": 1,
+        "normalizeLufs": -16,
+        "trimSilence": true,
+        "vfx": "beam",
+        "ueFolder": "/Game/Local/Audio/Weapons/BioEnergy"
+      },
+      "fallback": "weapon.generic.beam"
+    },
+    "weapon.DisruptorCannon": {
+      "kind": "sfx",
+      "faction": null,
+      "displayName": "DisruptorCannon (roster weapon type)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "targetSampleRate": 48000,
+        "channels": 1,
+        "normalizeLufs": -16,
+        "trimSilence": true,
+        "vfx": "beam",
+        "ueFolder": "/Game/Local/Audio/Weapons/DisruptorCannon"
+      },
+      "fallback": "weapon.Disruptor"
+    },
+    "weapon.EnergyDampener": {
+      "kind": "sfx",
+      "faction": null,
+      "displayName": "EnergyDampener (roster weapon type)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "targetSampleRate": 48000,
+        "channels": 1,
+        "normalizeLufs": -16,
+        "trimSilence": true,
+        "vfx": "beam",
+        "ueFolder": "/Game/Local/Audio/Weapons/EnergyDampener"
+      },
+      "fallback": "weapon.generic.beam"
+    },
+    "weapon.PhaseCannon": {
+      "kind": "sfx",
+      "faction": null,
+      "displayName": "PhaseCannon (roster weapon type)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "targetSampleRate": 48000,
+        "channels": 1,
+        "normalizeLufs": -16,
+        "trimSilence": true,
+        "vfx": "beam",
+        "ueFolder": "/Game/Local/Audio/Weapons/PhaseCannon"
+      },
+      "fallback": "weapon.PhaserBank"
+    },
+    "weapon.PhaserBank": {
+      "kind": "sfx",
+      "faction": null,
+      "displayName": "PhaserBank (roster weapon type)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "targetSampleRate": 48000,
+        "channels": 1,
+        "normalizeLufs": -16,
+        "trimSilence": true,
+        "vfx": "beam",
+        "ueFolder": "/Game/Local/Audio/Weapons/PhaserBank"
+      },
+      "fallback": "weapon.PhaserArray"
+    },
+    "weapon.PhotonicTorpedo": {
+      "kind": "sfx",
+      "faction": null,
+      "displayName": "PhotonicTorpedo (roster weapon type)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "targetSampleRate": 48000,
+        "channels": 1,
+        "normalizeLufs": -16,
+        "trimSilence": true,
+        "vfx": "projectile",
+        "ueFolder": "/Game/Local/Audio/Weapons/PhotonicTorpedo"
+      },
+      "fallback": "weapon.PhotonTorpedo"
+    },
+    "weapon.PlasmaCannon": {
+      "kind": "sfx",
+      "faction": null,
+      "displayName": "PlasmaCannon (roster weapon type)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "targetSampleRate": 48000,
+        "channels": 1,
+        "normalizeLufs": -16,
+        "trimSilence": true,
+        "vfx": "beam",
+        "ueFolder": "/Game/Local/Audio/Weapons/PlasmaCannon"
+      },
+      "fallback": "weapon.PhaserArray.fer"
+    },
+    "weapon.PolaronBeam": {
+      "kind": "sfx",
+      "faction": null,
+      "displayName": "PolaronBeam (roster weapon type)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "targetSampleRate": 48000,
+        "channels": 1,
+        "normalizeLufs": -16,
+        "trimSilence": true,
+        "vfx": "beam",
+        "ueFolder": "/Game/Local/Audio/Weapons/PolaronBeam"
+      },
+      "fallback": "weapon.generic.beam"
+    },
+    "weapon.SpatialTorpedo": {
+      "kind": "sfx",
+      "faction": null,
+      "displayName": "SpatialTorpedo (roster weapon type)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "targetSampleRate": 48000,
+        "channels": 1,
+        "normalizeLufs": -16,
+        "trimSilence": true,
+        "vfx": "projectile",
+        "ueFolder": "/Game/Local/Audio/Weapons/SpatialTorpedo"
+      },
+      "fallback": "weapon.PhotonTorpedo"
+    },
+    "weapon.TemporalWeapon": {
+      "kind": "sfx",
+      "faction": null,
+      "displayName": "TemporalWeapon (roster weapon type)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "targetSampleRate": 48000,
+        "channels": 1,
+        "normalizeLufs": -16,
+        "trimSilence": true,
+        "vfx": "beam",
+        "ueFolder": "/Game/Local/Audio/Weapons/TemporalWeapon"
+      },
+      "fallback": "weapon.generic.beam"
+    },
+    "weapon.TholianWeb": {
+      "kind": "sfx",
+      "faction": null,
+      "displayName": "TholianWeb (roster weapon type)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "targetSampleRate": 48000,
+        "channels": 1,
+        "normalizeLufs": -16,
+        "trimSilence": true,
+        "vfx": "beam",
+        "ueFolder": "/Game/Local/Audio/Weapons/TholianWeb"
+      },
+      "fallback": "weapon.generic.beam"
+    },
+    "weapon.Torpedo": {
+      "kind": "sfx",
+      "faction": null,
+      "displayName": "Torpedo (roster weapon type)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "targetSampleRate": 48000,
+        "channels": 1,
+        "normalizeLufs": -16,
+        "trimSilence": true,
+        "vfx": "projectile",
+        "ueFolder": "/Game/Local/Audio/Weapons/Torpedo"
+      },
+      "fallback": "weapon.generic.torpedo"
+    },
+    "weapon.TricobaltDevice": {
+      "kind": "sfx",
+      "faction": null,
+      "displayName": "TricobaltDevice (roster weapon type)",
+      "botfClasses": [],
+      "candidates": [],
+      "import": {
+        "targetSampleRate": 48000,
+        "channels": 1,
+        "normalizeLufs": -16,
+        "trimSilence": true,
+        "vfx": "projectile",
+        "ueFolder": "/Game/Local/Audio/Weapons/TricobaltDevice"
+      },
+      "fallback": "weapon.PhotonTorpedo"
     },
     "sfx.explosion.large": {
       "kind": "sfx",

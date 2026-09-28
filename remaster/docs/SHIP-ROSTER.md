@@ -61,6 +61,12 @@ like `docs/ship-asset-manifest.template.json`:
 
 Models and audio are not in the repository. A missing key should fall back to the interim art.
 
+The same keys are used by the asset manifest `../assets/manifest.json` (candidate sources and fallback chains; see
+ASSET-SOURCES.md), which has an entry for every roster `assetKey` and weapon key, even when no candidate exists yet.
+Legacy catalogue classes use `ship.<fac>.<slug of class name>` (`ship.kli.vorcha`, `ship.fed.galaxy_x`), plus
+`ship.<fac>.starbase` / `ship.<fac>.outpost`. `python remaster/assets/check_asset_keys.py` verifies coverage. The
+Unreal client resolves keys through `UBotfAssetRegistry` (see UNREAL-CLIENT.md).
+
 ## 3. Campaign integration
 
 - **Ruleset flag.** `GameplayRules::expandedRoster`:

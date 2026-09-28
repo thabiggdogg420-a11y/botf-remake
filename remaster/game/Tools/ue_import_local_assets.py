@@ -73,6 +73,24 @@ def main():
     report = {t.filename: list(t.imported_object_paths) for t in tasks}
     with open(os.path.join(os.path.dirname(MANIFEST), "ue-import-report.json"), "w", encoding="utf-8") as f:
         json.dump(report, f, indent=1)
+    # Write the object paths Unreal really created back into the resolved manifest, so UBotfAssetRegistry loads
+    # exactly those (the importer only predicted them). Only the primary asset per file is kept (materials and
+    # textures created alongside a mesh are skipped by class name).
+    changed = False
+    for key, entry in resolved.get("assets", {}).items():
+        paths = []
+        for src in entry.get("importFiles", []):
+            for obj in report.get(src, []):
+                name = obj.rsplit("/", 1)[-1].split(".")[0]
+                stem = os.path.splitext(os.path.basename(src))[0]
+                if name.replace("_", "").lower() == stem.replace("_", "").replace(".", "").replace(" ", "").lower():
+                    paths.append(obj)
+        if paths:
+            entry["ueAssets"] = paths
+            changed = True
+    if changed:
+        with open(MANIFEST, "w", encoding="utf-8") as f:
+            json.dump(resolved, f, indent=1)
 
 
 main()

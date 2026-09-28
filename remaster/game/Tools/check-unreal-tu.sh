@@ -37,7 +37,13 @@ trap 'rm -rf "$scratch"' EXIT
 cat > "$scratch/viewmodels.cpp" <<EOF
 #include "$client/BotfViewModel.h"
 #include "$client/BotfGameplayViewModel.h"
+#include "$client/BotfJson.h"
+#include "$client/BotfAssetCatalog.h"
+#include "$client/BotfAudioCues.h"
+#include "$client/BotfAudioEvents.h"
+#include "$client/BotfShipDatabase.h"
 EOF
+manifest="$here/../assets/manifest.json"
 
 status=0
 for cxx in "${compilers[@]}"; do
@@ -47,6 +53,18 @@ for cxx in "${compilers[@]}"; do
   "$cxx" "${flags[@]}" "${hostile[@]}" "$client/SimulationBridge.cpp" || status=1
   echo "== $cxx: client view models with engine/Windows macro names predefined"
   "$cxx" "${flags[@]}" "${hostile[@]}" "$scratch/viewmodels.cpp" || status=1
+  echo "== $cxx: client logic unit tests (asset registry, audio cues, ship database)"
+  "$cxx" "${flags[@]}" "${hostile[@]}" -I"$client" -DBOTF_MANIFEST_PATH="\"$manifest\"" "$here/Tools/client-logic-tests.cpp" || status=1
+  if "$cxx" -std=c++20 -O1 -Wall -Wextra -Wshadow -Werror -I"$core" -I"$client" -DBOTF_MANIFEST_PATH="\"$manifest\"" \
+      "$here/Tools/client-logic-tests.cpp" -o "$scratch/client-logic-tests"; then
+    "$scratch/client-logic-tests" || status=1
+  else
+    status=1
+  fi
 done
+if command -v python3 >/dev/null 2>&1; then
+  echo "== asset manifest key coverage"
+  python3 "$here/../assets/check_asset_keys.py" || status=1
+fi
 [ $status -eq 0 ] && echo "Unreal translation-unit stand-in checks passed."
 exit $status

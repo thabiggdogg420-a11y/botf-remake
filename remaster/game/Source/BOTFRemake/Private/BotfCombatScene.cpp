@@ -1,6 +1,7 @@
 #include "BotfCombatScene.h"
 #include "Simulation.h"
 #include "TacticalCombat.h"
+#include "BotfAssetRegistry.h"
 #include "Components/SceneCaptureComponent2D.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/PointLightComponent.h"
@@ -272,7 +273,8 @@ void ABotfCombatScene::ConfigureBattle(int AttackerFaction, int DefenderFaction,
             Ship->SetCollisionEnabled(ECollisionEnabled::NoCollision);
             Ship->RegisterComponent();
             const float Radius = FMath::Max(1.f, SlotMesh->GetBounds().SphereRadius);
-            Ship->SetRelativeScale3D(bStation ? FVector(170.f / Radius, 170.f / Radius, 40.f / Radius) : FVector(80.f / Radius));
+            const FVector BaseScale = bStation ? FVector(170.f / Radius, 170.f / Radius, 40.f / Radius) : FVector(80.f / Radius);
+            Ship->SetRelativeScale3D(BaseScale);
             const int Row = Index / 2;
             const int Column = Index % 2;
             const FVector Position((Side == 0 ? -1.f : 1.f) * (Count == 1 ? 445.f : 335.f + Column * 235.f),
@@ -292,6 +294,7 @@ void ABotfCombatScene::ConfigureBattle(int AttackerFaction, int DefenderFaction,
             Kin.StartRotation = Rotation;
             Kin.TargetRotation = Rotation;
             Kin.CurrentRotation = Rotation;
+            Kin.BaseScale = BaseScale;
             Kinematics.Add(Kin);
 
             UStaticMeshComponent* Shell = nullptr;
@@ -319,6 +322,33 @@ void ABotfCombatScene::ConfigureBattle(int AttackerFaction, int DefenderFaction,
     RoundAnimElapsed = 0.f;
     bIsRoundAnimating = false;
     if (!Capture->bCaptureEveryFrame) Capture->CaptureScene();
+}
+
+void ABotfCombatScene::ApplyShipMesh(int VisualIndex, int ReferenceShipId, int OwnerFaction, bool bLegacyDestroyer)
+{
+    if (!Ships.IsValidIndex(VisualIndex) || !Ships[VisualIndex]) return;
+    UStaticMesh* Mesh = nullptr;
+    double LengthMeters = 0.0;
+    FString Key;
+    const UBotfAssetRegistry* Registry = UBotfAssetRegistry::Get();
+    if (Registry && ReferenceShipId >= 0)
+    {
+        // Without a local model the chain ends at a generic faction placeholder (study.<fac> or built-in); keep the
+        // scene's own placeholder then (it may be a better community mesh, e.g. the Federation franger).
+        const auto Resolution = Registry->GetCatalog().resolveShip(ReferenceShipId, OwnerFaction);
+        if (!Resolution.placeholder && Resolution.resolvedKey.rfind("study.", 0) != 0)
+            Mesh = Registry->LoadShipMesh(ReferenceShipId, OwnerFaction, LengthMeters, Key);
+    }
+    // Interim art kept from the prototype: Federation destroyers without a local model use the community Ulysses mesh.
+    if (!Mesh && bLegacyDestroyer && OwnerFaction == 1)
+        Mesh = LoadObject<UStaticMesh>(nullptr, TEXT("/Game/Presentation/Community/fUlysses/StaticMeshes/fUlysses.fUlysses"));
+    if (!Mesh) return;
+    auto* Ship = Ships[VisualIndex].Get();
+    Ship->SetStaticMesh(Mesh);
+    const FVector BaseScale(static_cast<float>(botf::assets::uniformScaleFor(LengthMeters, Mesh->GetBounds().SphereRadius)));
+    Ship->SetRelativeScale3D(BaseScale);
+    if (Kinematics.IsValidIndex(VisualIndex)) Kinematics[VisualIndex].BaseScale = BaseScale;
+    if (!Key.IsEmpty()) UE_LOG(LogTemp, Verbose, TEXT("BOTF battle: ship %d uses %s"), ReferenceShipId, *Key);
 }
 
 void ABotfCombatScene::SetPresentationActive(bool bActive)
@@ -492,16 +522,10 @@ void ABotfCombatScene::ConfigureBattleReport(const botf::CombatReport& Report, i
                 ShipOwners[VisualIndex] != FactionId) continue;
 
             auto* Ship = Ships[VisualIndex].Get();
-            // Stations are recorded as Destroyer-class participants: never give them a destroyer model.
-            if (FactionId == 1 && Participant.shipClass == botf::Building::Destroyer && !botf::isStationCombatant(Participant.fleetId))
-            {
-                if (auto* Mesh = LoadObject<UStaticMesh>(nullptr,
-                    TEXT("/Game/Presentation/Community/fUlysses/StaticMeshes/fUlysses.fUlysses")))
-                {
-                    Ship->SetStaticMesh(Mesh);
-                    Ship->SetRelativeScale3D(FVector(80.f / FMath::Max(1.f, Mesh->GetBounds().SphereRadius)));
-                }
-            }
+            // Per-class mesh by asset key (UBotfAssetRegistry: local HD model -> fallback chain -> built-in faction
+            // mesh). Stations keep their disc; participants without a class id keep the faction placeholder.
+            if (!botf::isStationCombatant(Participant.fleetId))
+                ApplyShipMesh(VisualIndex, Participant.referenceShipId, FactionId, Participant.shipClass == botf::Building::Destroyer);
 
             int Hull = Participant.initialHull;
             int Shields = Participant.initialShields;
@@ -704,7 +728,7 @@ void ABotfCombatScene::AnimateShieldsAndDamage(float DeltaSeconds, float NormTim
                 // Violent tumble and scale contraction
                 Ships[Index]->AddRelativeRotation(FRotator(DeltaSeconds * 220.f, DeltaSeconds * 160.f, DeltaSeconds * 280.f));
                 const float ShrinkScale = FMath::Max(0.01f, 1.0f - K.DestructionProgress);
-                Ships[Index]->SetRelativeScale3D(FVector(ShrinkScale));
+                Ships[Index]->SetRelativeScale3D(K.BaseScale * ShrinkScale);
 
                 if (NormTime >= 0.98f)
                 {

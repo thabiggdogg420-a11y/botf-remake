@@ -24,6 +24,14 @@ Status markers: `[ ]` pending, `[x]` done (paste the result or log into the PR/s
 5. [ ] **Model orientation check.**
    - After import, open a few ships in the editor and fix any `forwardAxis` override the automatic guess got wrong.
 
+6. [ ] **Asset registry and audio in the real build** (after 1, and 4 for real assets).
+   - Compile risks for the new subsystems are in UNREAL-CLIENT.md ("First real compile: risk list", last rows).
+   - After `Import-Assets.ps1 -UnrealImport`, check `LocalAssets/resolved-manifest.json` has `ueAssets` paths that open in the editor (the UE import script rewrites them with the real object paths).
+   - Start a battle: the log line `BOTF assets: N keys from ...` should appear, and a resolved class (for example `ship.fed.galaxy`) should show its own mesh at a sensible size. Report any ship that is huge, tiny or rotated.
+   - Settings, Audio: move each slider and confirm the level changes and survives a restart (`Saved/Config/Windows/GameUserSettings.ini` `[BotfAudio]`).
+   - End a turn with research or a battle and listen for the beep/alert and advisor voice; say whether ducking (effects dipping under voice) feels right.
+7. [ ] **Editor-side audio setup (optional polish).** If imported WAVs play too loud or too quiet relative to each other, create Sound Classes (Voice, SFX, UI, Music) and a Sound Mix under `/Game/Audio` and report their paths; the subsystem currently sets per-component volume only.
+
 ## Blocked cloud work (waiting on the items above)
 
 - Verifying the Unreal client compiles (needs 1).

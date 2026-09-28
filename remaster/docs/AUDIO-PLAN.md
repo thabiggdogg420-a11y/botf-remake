@@ -1,6 +1,6 @@
 # Audio plan
 
-28 September 2026. This covers voice, sound effects and music for the Unreal client. All third-party and original-game audio is **private and local only**. It lives in the gitignored `remaster/game/LocalAssets/` and `/Game/Local/Audio`, and it is resolved through `remaster/assets/manifest.json` (keys `wpn.*`, `sfx.*`, `vo.*`, `mus.*`). The shipped build must work silently, or with project-original placeholder cues, when nothing local is installed.
+28 September 2026. This covers voice, sound effects and music for the Unreal client. All third-party and original-game audio is **private and local only**. It lives in the gitignored `remaster/game/LocalAssets/` and `/Game/Local/Audio`, and it is resolved through `remaster/assets/manifest.json` (keys `weapon.*`, `sfx.*`, `vo.*`, `mus.*`). The shipped build must work silently, or with project-original placeholder cues, when nothing local is installed.
 
 ## 1. Original BOTF audio files
 
@@ -80,9 +80,9 @@ Rule: a missing expansion cue falls back to the matching original category, then
 | Victory / defeat | – | `vo.victory.*` | 10 | music sting |
 | Encounter window opens (Hail/Auto/Fight) | `sfx.alert.red` | – | 8 | |
 | Tactical order accepted | `sfx.ui.beep` | `vo.combat.ack.<fac>` | 6 | required feedback per COMBAT-REFERENCE |
-| Beam fires (phaser / disruptor / spiral / whip / cutting beam) | `wpn.phaser.fed`, `wpn.disruptor.kli`, `wpn.disruptor.rom`, `wpn.spiral.car`, `wpn.plasma.fer`, `wpn.cutting.borg` | – | 3 | bound by weapon `socketPrefix` |
-| Pulse cannon fires | `wpn.pulse.defiant` | – | 3 | |
-| Torpedo launch | `wpn.torpedo.photon` / `.quantum` / `.plasma` | – | 3 | |
+| Beam fires (phaser / disruptor / spiral / whip / cutting beam) | `weapon.PhaserArray`, `weapon.Disruptor`, `weapon.Disruptor.rom`, `weapon.Disruptor.car` (spiral), `weapon.PhaserArray.fer` (plasma whip), `weapon.CuttingBeam`; generally `weapon.<Type>.<fac>` then `weapon.<Type>` | – | 3 | bound by weapon `socketPrefix` |
+| Pulse cannon fires | `weapon.PulsePhaser` | – | 3 | |
+| Torpedo launch | `weapon.PhotonTorpedo` / `weapon.QuantumTorpedo` / `weapon.PlasmaTorpedo` | – | 3 | |
 | Shield hit | `sfx.shield.hit` | – | 2 | |
 | Hull hit | `sfx.explosion.small` | – | 2 | |
 | Ship destroyed | `sfx.explosion.large` | – | 5 | |
@@ -91,11 +91,13 @@ Rule: a missing expansion cue falls back to the matching original category, then
 | Fleet arrives (strategic map) | `sfx.warp.in` | – | 2 | |
 | Background | – | – | – | `mus.botf.all` by context (galaxy, combat, diplomacy); silent if missing |
 
-## 4. Unreal integration (next lane)
+## 4. Unreal integration
 
-- The importer puts WAVs under `/Game/Local/Audio/<Weapons|Combat|UI|Voice|Music>/<key>`.
-- A `UBotfAudioSubsystem` (not yet written) should load `LocalAssets/resolved-manifest.json`, map each key to its `effectiveKey` (the fallback chain is already resolved there), and soft-load `USoundWave` assets by path. A missing asset yields a null cue and silence, never a crash.
-- Sound classes are Voice, SFX, UI and Music, each with its own volume slider in Settings. Concurrency is one voice line, and at most 24 weapon sfx with the quietest culled.
+- The importer puts WAVs under `/Game/Local/Audio/<Weapons|Combat|UI|Voice|Music>/<key>` and records their object paths (`ueAssets`) in `LocalAssets/resolved-manifest.json`; `ue_import_local_assets.py` rewrites them with the paths Unreal actually created.
+- `UBotfAssetRegistry` reads that file and walks each key's fallback chain (`BotfAssetCatalog.h`). A missing asset yields silence, never a crash.
+- `UBotfAudioSubsystem` (`BotfAudioSubsystem.cpp`) plays cues chosen by `BotfAudioCues.h` / `BotfAudioEvents.h`: the table in section 3 (keys and priority), per-key cooldowns (weapons 0.08 s, UI 0.12 s, other sfx 0.15 s, alerts 3 s, a repeated voice line 4 s), one voice line at a time with a 0.6 s gap and a queue of 4 ordered by priority (lines older than 6 s are dropped), at most 24 sfx with the lowest priority culled, and ducking of sfx and music to 45 % while a voice line plays. Voice keys with several files rotate through them.
+- Categories are SFX, Voice, UI and Music plus a master level, each a slider in Settings, stored in `GameUserSettings.ini` `[BotfAudio]`.
+- Hooks: turn briefing (`FinishTurn`: one cue per kind from the chronicle, battles and outcome), encounter start, tactical orders (`vo.combat.<order>.<fac>` then `vo.combat.ack.<fac>`), each resolved round (weapon fire by the attacker's dominant roster weapon, hits, losses, decloaks), and diplomatic orders (war, peace, trade treaty). Music uses `mus.botf.<galaxy|combat>` then `mus.botf.all`.
 - The simulation must not depend on audio, and replays must play the same cues from the event log.
 
 ## 5. Tools

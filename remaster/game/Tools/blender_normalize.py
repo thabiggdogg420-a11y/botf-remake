@@ -4,7 +4,7 @@ Run headless (Blender 4.x):
   blender --background --factory-startup --python blender_normalize.py -- --jobs jobs.json
 
 jobs.json is written by Import-Assets.ps1:
-  [{"key": "fed.galaxy", "input": "C:/.../scene.gltf", "output": "C:/.../fed_galaxy.fbx",
+  [{"key": "ship.fed.galaxy", "input": "C:/.../scene.gltf", "output": "C:/.../ship_fed_galaxy.fbx",
     "targetLengthMeters": 642, "scale": null, "sourceForwardAxis": "auto",
     "maxTriangles": 150000, "sockets": ["WPN_Beam_01", ...]}]
 
