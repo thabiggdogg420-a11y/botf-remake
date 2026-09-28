@@ -1,0 +1,52 @@
+{
+  "candidate_name": "kqultoq",
+  "target_class": "K'qultoq Fighter Concept Mesh (Unfinished author concept; synthetic PBR armor)",
+  "canonical_faction": "Klingon",
+  "source_file": "kqultoq.ms3d",
+  "source_relative_path": "source/Icewolf132/Unfinished/kqultoq.ms3d",
+  "source_sha256": "07f6acf5248bf5def0ffec3eccfb9367087b2dffe44f5bba21b7deda7a5ad476",
+  "output_glb": "kqultoq.glb",
+  "output_glb_sha256": "2e537a3924c892eeea72a1ca33965f591f2b0644b28d1e3cda12d74368a8fc3c",
+  "output_size_bytes": 24568,
+  "author": "Icewolf132",
+  "triangles": 660,
+  "vertices": 399,
+  "mesh_groups": 15,
+  "material_count": 1,
+  "textures": [],
+  "texture_hashes": {},
+  "bounds": {
+    "min": [
+      -49.60844421386719,
+      -34.49320983886719,
+      -7.015103340148926
+    ],
+    "max": [
+      49.60844421386719,
+      34.49320983886719,
+      7.015103340148926
+    ],
+    "dimensions_xyz": [
+      99.21688842773438,
+      68.98641967773438,
+      14.030206680297852
+    ],
+    "bounding_sphere_radius": 50.15571106237904,
+    "bounding_box_center_offset": [
+      0.0,
+      -0.7731857299804688,
+      3.039700746536255
+    ]
+  },
+  "coordinate_transform": {
+    "source_axes": [
+      "x",
+      "-z",
+      "y"
+    ],
+    "pivot": "bounding_box_center",
+    "gltf_export_y_up": true
+  },
+  "helper_joints": [],
+  "status": "Experimental"
+}

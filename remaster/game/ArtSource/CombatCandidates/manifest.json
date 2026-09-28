@@ -1,0 +1,1738 @@
+{
+  "manifest_version": "1.1.0",
+  "description": "BOTF 3D Combat Ship Asset Pipeline - Candidate Manifest",
+  "date_generated": "2026-09-27",
+  "provenance_archive": {
+    "archive_file": "iwmeshpack1.zip",
+    "archive_sha256": "214cedf43cc9ee5f891b588872b058b00d55d928543262da03f7b49292baafe9",
+    "archive_size_bytes": 2557756,
+    "license_terms_file": "source/Icewolf132/README.txt",
+    "license_grant": "All are free to complete, edit, rip, kitbash, or convert the models and files within the pack without seeking permission first, under the condition that credit is given where it is due. This is not limited to the Armada community; feel free to use for another game or purpose.",
+    "franchise_rights_notice": "Author terms apply strictly to the 3D model files created by Icewolf132. Star Trek designs, faction names, and likenesses remain the intellectual property of Paramount/CBS. Community author terms do not transfer franchise rights."
+  },
+  "initial_candidates": [
+    {
+      "candidate_name": "franger",
+      "target_class": "Ranger Scout / Light Escort (Provisional Illustration)",
+      "canonical_faction": "Federation",
+      "source_file": "franger.ms3d",
+      "source_relative_path": "source/Icewolf132/Completed/ranger/franger.ms3d",
+      "source_sha256": "9537c99db7e331eeb6b1ec5acf5c67fa97a8b2c519c6d9152c5c9be6055e6c1b",
+      "output_glb": "franger.glb",
+      "output_glb_sha256": "882b2ed4b5b9b4b889eca0bbcf9f0cf621cd4a2b5b6c75e575edf55b3e9cd504",
+      "output_size_bytes": 335352,
+      "author": "Icewolf132",
+      "triangles": 677,
+      "vertices": 581,
+      "mesh_groups": 36,
+      "material_count": 6,
+      "textures": [
+        "franger.tga",
+        "franger.tga",
+        "franger.tga",
+        "franger.tga",
+        "franger.tga",
+        "franger.tga"
+      ],
+      "texture_hashes": {
+        "franger.tga": "1d0c8bde8a37dce5dadcb97f327d0d5b7ccfdcda9aebe75596cc39339ae92060"
+      },
+      "bounds": {
+        "min": [
+          -5.436755180358887,
+          -8.794388771057129,
+          -1.5501397848129272
+        ],
+        "max": [
+          5.436755180358887,
+          8.794388771057129,
+          1.5501397848129272
+        ],
+        "dimensions_xyz": [
+          10.873510360717773,
+          17.588777542114258,
+          3.1002795696258545
+        ],
+        "bounding_sphere_radius": 10.28821903209657,
+        "bounding_box_center_offset": [
+          0.0,
+          0.8461258411407471,
+          0.05454528331756592
+        ]
+      },
+      "coordinate_transform": {
+        "source_axes": [
+          "x",
+          "-z",
+          "y"
+        ],
+        "pivot": "bounding_box_center",
+        "gltf_export_y_up": true
+      },
+      "helper_joints": [],
+      "status": "Ready"
+    },
+    {
+      "candidate_name": "freaver1",
+      "target_class": "Reaver Fast Destroyer (Variant 1)",
+      "canonical_faction": "Federation",
+      "source_file": "freaver1.ms3d",
+      "source_relative_path": "source/Icewolf132/Completed/reaver/freaver1.ms3d",
+      "source_sha256": "9653ea67d527946f43addb5fa02466eb0162c4e94fbb433bcf75bc3f7ecb144a",
+      "output_glb": "freaver1.glb",
+      "output_glb_sha256": "b14d5f2e8aab654849ef90b5ce5e541bd9c75b1f6947add5b21f53745bf95bec",
+      "output_size_bytes": 345140,
+      "author": "Icewolf132",
+      "triangles": 647,
+      "vertices": 560,
+      "mesh_groups": 1,
+      "material_count": 1,
+      "textures": [
+        "freaver.tga"
+      ],
+      "texture_hashes": {
+        "freaver.tga": "52961734c74ed39b7ceffc3eeeb8d034f9e7436efdfd0816f614facb3f845fb7"
+      },
+      "bounds": {
+        "min": [
+          -4.7697343826293945,
+          -7.339951515197754,
+          -2.153984308242798
+        ],
+        "max": [
+          4.7697343826293945,
+          7.339951515197754,
+          2.153984308242798
+        ],
+        "dimensions_xyz": [
+          9.539468765258789,
+          14.679903030395508,
+          4.307968616485596
+        ],
+        "bounding_sphere_radius": 7.644572670638702,
+        "bounding_box_center_offset": [
+          0.0014510154724121094,
+          1.3108785152435303,
+          -0.644244909286499
+        ]
+      },
+      "coordinate_transform": {
+        "source_axes": [
+          "x",
+          "-z",
+          "y"
+        ],
+        "pivot": "bounding_box_center",
+        "gltf_export_y_up": true
+      },
+      "helper_joints": [
+        {
+          "name": "h_root",
+          "parent": "",
+          "rotation": [
+            0.0,
+            -0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0714285746216774
+          ]
+        },
+        {
+          "name": "h_geomtery",
+          "parent": "h_root",
+          "rotation": [
+            0.0,
+            -0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "name": "m_freaver",
+          "parent": "h_geomtery",
+          "rotation": [
+            0.0,
+            -0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "name": "h_hardpoints",
+          "parent": "h_root",
+          "rotation": [
+            0.0,
+            -0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            -0.010822512209415436
+          ]
+        },
+        {
+          "name": "h_hp01",
+          "parent": "h_hardpoints",
+          "rotation": [
+            0.0,
+            -0.0,
+            0.0
+          ],
+          "position": [
+            0.018037647008895874,
+            -0.1303909718990326,
+            5.739692211151123
+          ]
+        },
+        {
+          "name": "h_hp02",
+          "parent": "h_hardpoints",
+          "rotation": [
+            0.0,
+            -0.0,
+            0.0
+          ],
+          "position": [
+            -1.65486741065979,
+            -0.08858107030391693,
+            -3.3150084018707275
+          ]
+        },
+        {
+          "name": "h_hp03",
+          "parent": "h_hardpoints",
+          "rotation": [
+            0.0,
+            -0.0,
+            0.0
+          ],
+          "position": [
+            1.7946568727493286,
+            -0.08748318254947662,
+            -3.3143715858459473
+          ]
+        },
+        {
+          "name": "h_hp04",
+          "parent": "h_hardpoints",
+          "rotation": [
+            0.0,
+            0.02990971878170967,
+            0.0
+          ],
+          "position": [
+            -3.7206931114196777,
+            -0.0038609951734542847,
+            2.0956315994262695
+          ]
+        },
+        {
+          "name": "h_hp05",
+          "parent": "h_hardpoints",
+          "rotation": [
+            0.0,
+            0.017569808289408684,
+            0.0
+          ],
+          "position": [
+            3.707174301147461,
+            -0.010554082691669464,
+            2.1054141521453857
+          ]
+        },
+        {
+          "name": "h_hp06",
+          "parent": "h_hardpoints",
+          "rotation": [
+            0.0,
+            -0.0,
+            0.0
+          ],
+          "position": [
+            -0.10561278462409973,
+            -2.112147808074951,
+            -7.306283950805664
+          ]
+        },
+        {
+          "name": "h_hp07",
+          "parent": "h_hardpoints",
+          "rotation": [
+            0.0,
+            -0.0,
+            0.0
+          ],
+          "position": [
+            -0.6028749346733093,
+            -0.07417125999927521,
+            -3.7390666007995605
+          ]
+        },
+        {
+          "name": "h_hp08",
+          "parent": "h_hardpoints",
+          "rotation": [
+            0.0,
+            -0.0,
+            0.0
+          ],
+          "position": [
+            0.12187755107879639,
+            -2.424656629562378,
+            -2.9323205947875977
+          ]
+        },
+        {
+          "name": "h_hp09",
+          "parent": "h_hardpoints",
+          "rotation": [
+            0.0,
+            -0.0,
+            0.0
+          ],
+          "position": [
+            0.0026121139526367188,
+            -0.6240813732147217,
+            4.9528069496154785
+          ]
+        },
+        {
+          "name": "h_hp10",
+          "parent": "h_hardpoints",
+          "rotation": [
+            0.0,
+            -0.0,
+            0.0
+          ],
+          "position": [
+            0.33690130710601807,
+            1.2413790225982666,
+            0.6407998204231262
+          ]
+        },
+        {
+          "name": "h_hp11",
+          "parent": "h_hardpoints",
+          "rotation": [
+            0.0,
+            -0.0,
+            0.0
+          ],
+          "position": [
+            -3.2450737953186035,
+            0.3793103098869324,
+            -0.47154325246810913
+          ]
+        },
+        {
+          "name": "h_hp12",
+          "parent": "h_hardpoints",
+          "rotation": [
+            0.0,
+            -0.0,
+            0.0
+          ],
+          "position": [
+            -1.4220378398895264,
+            -0.3793103098869324,
+            3.2379908561706543
+          ]
+        },
+        {
+          "name": "h_hp13",
+          "parent": "h_hardpoints",
+          "rotation": [
+            0.0,
+            -0.0,
+            0.0
+          ],
+          "position": [
+            4.432818412780762,
+            -0.1551724076271057,
+            -0.7708794474601746
+          ]
+        },
+        {
+          "name": "h_hp14",
+          "parent": "h_hardpoints",
+          "rotation": [
+            0.0,
+            -0.0,
+            0.0
+          ],
+          "position": [
+            -4.413727760314941,
+            0.08620690554380417,
+            1.4833714962005615
+          ]
+        },
+        {
+          "name": "h_hp15",
+          "parent": "h_hardpoints",
+          "rotation": [
+            0.0,
+            -0.0,
+            0.0
+          ],
+          "position": [
+            -0.0724535584449768,
+            -1.049180507659912,
+            -3.221541404724121
+          ]
+        },
+        {
+          "name": "h_hp16",
+          "parent": "h_hardpoints",
+          "rotation": [
+            0.0,
+            -0.0,
+            0.0
+          ],
+          "position": [
+            1.3070300817489624,
+            0.7213113307952881,
+            3.326050281524658
+          ]
+        },
+        {
+          "name": "h_hp17",
+          "parent": "h_hardpoints",
+          "rotation": [
+            0.0,
+            -0.0,
+            0.0
+          ],
+          "position": [
+            -0.30218642950057983,
+            -1.13567054271698,
+            1.1307563781738281
+          ]
+        },
+        {
+          "name": "h_hp18",
+          "parent": "h_hardpoints",
+          "rotation": [
+            0.0,
+            -0.0,
+            0.0
+          ],
+          "position": [
+            1.5467450618743896,
+            -0.3281514048576355,
+            -0.8959228992462158
+          ]
+        },
+        {
+          "name": "h_hp19",
+          "parent": "h_hardpoints",
+          "rotation": [
+            0.0,
+            -0.0,
+            0.0
+          ],
+          "position": [
+            -2.1004858016967773,
+            0.0,
+            3.999882221221924
+          ]
+        },
+        {
+          "name": "h_hp20",
+          "parent": "h_hardpoints",
+          "rotation": [
+            0.0,
+            -0.0,
+            0.0
+          ],
+          "position": [
+            -0.04126298427581787,
+            -0.6611074805259705,
+            2.466607093811035
+          ]
+        },
+        {
+          "name": "hp04_dir",
+          "parent": "h_hp04",
+          "rotation": [
+            0.0,
+            -0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            1.0234792232513428
+          ]
+        },
+        {
+          "name": "hp05_dir",
+          "parent": "h_hp05",
+          "rotation": [
+            0.0,
+            -0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.9890010952949524
+          ]
+        }
+      ],
+      "status": "Ready"
+    },
+    {
+      "candidate_name": "freaver2",
+      "target_class": "Reaver Mainline Destroyer (Variant 2)",
+      "canonical_faction": "Federation",
+      "source_file": "freaver2.ms3d",
+      "source_relative_path": "source/Icewolf132/Completed/reaver/freaver2.ms3d",
+      "source_sha256": "2fae0561beeb21a29c6fe51e44f798126a9f0cfaecbb75dceac1ccd116e0ca40",
+      "output_glb": "freaver2.glb",
+      "output_glb_sha256": "b5246d4d53148ade20dc96383886f0813c0d987a95e91a8e5ca09b6098f09523",
+      "output_size_bytes": 350808,
+      "author": "Icewolf132",
+      "triangles": 759,
+      "vertices": 680,
+      "mesh_groups": 1,
+      "material_count": 1,
+      "textures": [
+        "freaver.tga"
+      ],
+      "texture_hashes": {
+        "freaver.tga": "52961734c74ed39b7ceffc3eeeb8d034f9e7436efdfd0816f614facb3f845fb7"
+      },
+      "bounds": {
+        "min": [
+          -4.7697343826293945,
+          -7.397093772888184,
+          -2.9982292652130127
+        ],
+        "max": [
+          4.7697343826293945,
+          7.397093772888184,
+          2.9982292652130127
+        ],
+        "dimensions_xyz": [
+          9.539468765258789,
+          14.794187545776367,
+          5.996458530426025
+        ],
+        "bounding_sphere_radius": 7.974516307241957,
+        "bounding_box_center_offset": [
+          0.0014510154724121094,
+          1.36802077293396,
+          0.0
+        ]
+      },
+      "coordinate_transform": {
+        "source_axes": [
+          "x",
+          "-z",
+          "y"
+        ],
+        "pivot": "bounding_box_center",
+        "gltf_export_y_up": true
+      },
+      "helper_joints": [
+        {
+          "name": "h_root",
+          "parent": "",
+          "rotation": [
+            0.0,
+            -0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0714285746216774
+          ]
+        },
+        {
+          "name": "h_geomtery",
+          "parent": "h_root",
+          "rotation": [
+            0.0,
+            -0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "name": "m_freaver",
+          "parent": "h_geomtery",
+          "rotation": [
+            0.0,
+            -0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "name": "h_hardpoints",
+          "parent": "h_root",
+          "rotation": [
+            0.0,
+            -0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            -0.010822512209415436
+          ]
+        },
+        {
+          "name": "h_hp01",
+          "parent": "h_hardpoints",
+          "rotation": [
+            0.0,
+            -0.0,
+            0.0
+          ],
+          "position": [
+            0.018037647008895874,
+            -0.1303909718990326,
+            5.739692211151123
+          ]
+        },
+        {
+          "name": "h_hp02",
+          "parent": "h_hardpoints",
+          "rotation": [
+            0.0,
+            -0.0,
+            0.0
+          ],
+          "position": [
+            -1.65486741065979,
+            -0.08858107030391693,
+            -3.3150084018707275
+          ]
+        },
+        {
+          "name": "h_hp03",
+          "parent": "h_hardpoints",
+          "rotation": [
+            0.0,
+            -0.0,
+            0.0
+          ],
+          "position": [
+            1.7946568727493286,
+            -0.08748318254947662,
+            -3.3143715858459473
+          ]
+        },
+        {
+          "name": "h_hp04",
+          "parent": "h_hardpoints",
+          "rotation": [
+            0.0,
+            0.02990971878170967,
+            0.0
+          ],
+          "position": [
+            -3.7206931114196777,
+            -0.0038609951734542847,
+            2.0956315994262695
+          ]
+        },
+        {
+          "name": "h_hp05",
+          "parent": "h_hardpoints",
+          "rotation": [
+            0.0,
+            0.017569808289408684,
+            0.0
+          ],
+          "position": [
+            3.707174301147461,
+            -0.010554082691669464,
+            2.1054141521453857
+          ]
+        },
+        {
+          "name": "h_hp06",
+          "parent": "h_hardpoints",
+          "rotation": [
+            0.0,
+            -0.0,
+            0.0
+          ],
+          "position": [
+            -0.10561278462409973,
+            2.544994831085205,
+            -3.220569133758545
+          ]
+        },
+        {
+          "name": "h_hp07",
+          "parent": "h_hardpoints",
+          "rotation": [
+            0.0,
+            -0.0,
+            0.0
+          ],
+          "position": [
+            -0.6028749346733093,
+            -0.07417125999927521,
+            -3.7390666007995605
+          ]
+        },
+        {
+          "name": "h_hp08",
+          "parent": "h_hardpoints",
+          "rotation": [
+            0.0,
+            -0.0,
+            0.0
+          ],
+          "position": [
+            0.12187755107879639,
+            -2.6532280445098877,
+            -6.018034934997559
+          ]
+        },
+        {
+          "name": "h_hp09",
+          "parent": "h_hardpoints",
+          "rotation": [
+            0.0,
+            -0.0,
+            0.0
+          ],
+          "position": [
+            0.0026121139526367188,
+            -0.6240813732147217,
+            4.9528069496154785
+          ]
+        },
+        {
+          "name": "h_hp10",
+          "parent": "h_hardpoints",
+          "rotation": [
+            0.0,
+            -0.0,
+            0.0
+          ],
+          "position": [
+            0.33690130710601807,
+            1.2413790225982666,
+            0.6407998204231262
+          ]
+        },
+        {
+          "name": "h_hp11",
+          "parent": "h_hardpoints",
+          "rotation": [
+            0.0,
+            -0.0,
+            0.0
+          ],
+          "position": [
+            -3.2450737953186035,
+            0.3793103098869324,
+            -0.47154325246810913
+          ]
+        },
+        {
+          "name": "h_hp12",
+          "parent": "h_hardpoints",
+          "rotation": [
+            0.0,
+            -0.0,
+            0.0
+          ],
+          "position": [
+            -1.4220378398895264,
+            -0.3793103098869324,
+            3.2379908561706543
+          ]
+        },
+        {
+          "name": "h_hp13",
+          "parent": "h_hardpoints",
+          "rotation": [
+            0.0,
+            -0.0,
+            0.0
+          ],
+          "position": [
+            4.432818412780762,
+            -0.1551724076271057,
+            -0.7708794474601746
+          ]
+        },
+        {
+          "name": "h_hp14",
+          "parent": "h_hardpoints",
+          "rotation": [
+            0.0,
+            -0.0,
+            0.0
+          ],
+          "position": [
+            -4.413727760314941,
+            0.08620690554380417,
+            1.4833714962005615
+          ]
+        },
+        {
+          "name": "h_hp15",
+          "parent": "h_hardpoints",
+          "rotation": [
+            0.0,
+            -0.0,
+            0.0
+          ],
+          "position": [
+            -0.0724535584449768,
+            -1.049180507659912,
+            -3.221541404724121
+          ]
+        },
+        {
+          "name": "h_hp16",
+          "parent": "h_hardpoints",
+          "rotation": [
+            0.0,
+            -0.0,
+            0.0
+          ],
+          "position": [
+            1.3070300817489624,
+            0.7213113307952881,
+            3.326050281524658
+          ]
+        },
+        {
+          "name": "h_hp17",
+          "parent": "h_hardpoints",
+          "rotation": [
+            0.0,
+            -0.0,
+            0.0
+          ],
+          "position": [
+            -0.30218642950057983,
+            -1.13567054271698,
+            1.1307563781738281
+          ]
+        },
+        {
+          "name": "h_hp18",
+          "parent": "h_hardpoints",
+          "rotation": [
+            0.0,
+            -0.0,
+            0.0
+          ],
+          "position": [
+            1.5467450618743896,
+            -0.3281514048576355,
+            -0.8959228992462158
+          ]
+        },
+        {
+          "name": "h_hp19",
+          "parent": "h_hardpoints",
+          "rotation": [
+            0.0,
+            -0.0,
+            0.0
+          ],
+          "position": [
+            -2.1004858016967773,
+            0.0,
+            3.999882221221924
+          ]
+        },
+        {
+          "name": "h_hp20",
+          "parent": "h_hardpoints",
+          "rotation": [
+            0.0,
+            -0.0,
+            0.0
+          ],
+          "position": [
+            -0.04126298427581787,
+            -0.6611074805259705,
+            2.466607093811035
+          ]
+        },
+        {
+          "name": "hp04_dir",
+          "parent": "h_hp04",
+          "rotation": [
+            0.0,
+            -0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            1.0234792232513428
+          ]
+        },
+        {
+          "name": "hp05_dir",
+          "parent": "h_hp05",
+          "rotation": [
+            0.0,
+            -0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.9890010952949524
+          ]
+        }
+      ],
+      "status": "Ready"
+    },
+    {
+      "candidate_name": "freaver3",
+      "target_class": "Reaver Heavy Destroyer (Variant 3)",
+      "canonical_faction": "Federation",
+      "source_file": "freaver3.ms3d",
+      "source_relative_path": "source/Icewolf132/Completed/reaver/freaver3.ms3d",
+      "source_sha256": "dd795a453abef639aae14e41c109acb2d919c3a1bcf9aecdd17c742d0f340d20",
+      "output_glb": "freaver3.glb",
+      "output_glb_sha256": "a546b6a1f556a92d19c819898bd80a22427059ae939aaaaba1375e04acdc1b96",
+      "output_size_bytes": 357300,
+      "author": "Icewolf132",
+      "triangles": 891,
+      "vertices": 822,
+      "mesh_groups": 1,
+      "material_count": 1,
+      "textures": [
+        "freaver.tga"
+      ],
+      "texture_hashes": {
+        "freaver.tga": "52961734c74ed39b7ceffc3eeeb8d034f9e7436efdfd0816f614facb3f845fb7"
+      },
+      "bounds": {
+        "min": [
+          -4.7697343826293945,
+          -5.683403015136719,
+          -2.1396987438201904
+        ],
+        "max": [
+          4.7697343826293945,
+          5.683403015136719,
+          2.1396987438201904
+        ],
+        "dimensions_xyz": [
+          9.539468765258789,
+          11.366806030273438,
+          4.279397487640381
+        ],
+        "bounding_sphere_radius": 6.76455468572251,
+        "bounding_box_center_offset": [
+          0.0014510154724121094,
+          -0.345670223236084,
+          -0.6299593448638916
+        ]
+      },
+      "coordinate_transform": {
+        "source_axes": [
+          "x",
+          "-z",
+          "y"
+        ],
+        "pivot": "bounding_box_center",
+        "gltf_export_y_up": true
+      },
+      "helper_joints": [
+        {
+          "name": "h_root",
+          "parent": "",
+          "rotation": [
+            0.0,
+            -0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0714285746216774
+          ]
+        },
+        {
+          "name": "h_geomtery",
+          "parent": "h_root",
+          "rotation": [
+            0.0,
+            -0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "name": "m_freaver",
+          "parent": "h_geomtery",
+          "rotation": [
+            0.0,
+            -0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "name": "h_hardpoints",
+          "parent": "h_root",
+          "rotation": [
+            0.0,
+            -0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            -0.010822512209415436
+          ]
+        },
+        {
+          "name": "h_hp01",
+          "parent": "h_hardpoints",
+          "rotation": [
+            0.0,
+            -0.0,
+            0.0
+          ],
+          "position": [
+            0.018037647008895874,
+            -0.1303909718990326,
+            5.739692211151123
+          ]
+        },
+        {
+          "name": "h_hp02",
+          "parent": "h_hardpoints",
+          "rotation": [
+            0.0,
+            -0.0,
+            0.0
+          ],
+          "position": [
+            -1.65486741065979,
+            -0.08858107030391693,
+            -3.3150084018707275
+          ]
+        },
+        {
+          "name": "h_hp03",
+          "parent": "h_hardpoints",
+          "rotation": [
+            0.0,
+            -0.0,
+            0.0
+          ],
+          "position": [
+            1.7946568727493286,
+            -0.08748318254947662,
+            -3.3143715858459473
+          ]
+        },
+        {
+          "name": "h_hp04",
+          "parent": "h_hardpoints",
+          "rotation": [
+            0.0,
+            0.02990971878170967,
+            0.0
+          ],
+          "position": [
+            -3.7206931114196777,
+            -0.0038609951734542847,
+            2.0956315994262695
+          ]
+        },
+        {
+          "name": "h_hp05",
+          "parent": "h_hardpoints",
+          "rotation": [
+            0.0,
+            0.017569808289408684,
+            0.0
+          ],
+          "position": [
+            3.707174301147461,
+            -0.010554082691669464,
+            2.1054141521453857
+          ]
+        },
+        {
+          "name": "h_hp06",
+          "parent": "h_hardpoints",
+          "rotation": [
+            0.0,
+            -0.0,
+            0.0
+          ],
+          "position": [
+            -2.9818027019500732,
+            -2.255845308303833,
+            -4.306283950805664
+          ]
+        },
+        {
+          "name": "h_hp07",
+          "parent": "h_hardpoints",
+          "rotation": [
+            0.0,
+            -0.0,
+            0.0
+          ],
+          "position": [
+            -0.6028749346733093,
+            -0.07417125999927521,
+            -3.7390666007995605
+          ]
+        },
+        {
+          "name": "h_hp08",
+          "parent": "h_hardpoints",
+          "rotation": [
+            0.0,
+            -0.0,
+            0.0
+          ],
+          "position": [
+            2.969496965408325,
+            -1.7624714374542236,
+            1.3872876167297363
+          ]
+        },
+        {
+          "name": "h_hp09",
+          "parent": "h_hardpoints",
+          "rotation": [
+            0.0,
+            -0.0,
+            0.0
+          ],
+          "position": [
+            0.0026121139526367188,
+            -0.6240813732147217,
+            4.9528069496154785
+          ]
+        },
+        {
+          "name": "h_hp10",
+          "parent": "h_hardpoints",
+          "rotation": [
+            0.0,
+            -0.0,
+            0.0
+          ],
+          "position": [
+            0.33690130710601807,
+            1.2413790225982666,
+            0.6407998204231262
+          ]
+        },
+        {
+          "name": "h_hp11",
+          "parent": "h_hardpoints",
+          "rotation": [
+            0.0,
+            -0.0,
+            0.0
+          ],
+          "position": [
+            -3.2450737953186035,
+            0.3793103098869324,
+            -0.47154325246810913
+          ]
+        },
+        {
+          "name": "h_hp12",
+          "parent": "h_hardpoints",
+          "rotation": [
+            0.0,
+            -0.0,
+            0.0
+          ],
+          "position": [
+            -1.4220378398895264,
+            -0.3793103098869324,
+            3.2379908561706543
+          ]
+        },
+        {
+          "name": "h_hp13",
+          "parent": "h_hardpoints",
+          "rotation": [
+            0.0,
+            -0.0,
+            0.0
+          ],
+          "position": [
+            4.432818412780762,
+            -0.1551724076271057,
+            -0.7708794474601746
+          ]
+        },
+        {
+          "name": "h_hp14",
+          "parent": "h_hardpoints",
+          "rotation": [
+            0.0,
+            -0.0,
+            0.0
+          ],
+          "position": [
+            -4.413727760314941,
+            0.08620690554380417,
+            1.4833714962005615
+          ]
+        },
+        {
+          "name": "h_hp15",
+          "parent": "h_hardpoints",
+          "rotation": [
+            0.0,
+            -0.0,
+            0.0
+          ],
+          "position": [
+            -2.64388108253479,
+            -1.275231122970581,
+            -1.162717580795288
+          ]
+        },
+        {
+          "name": "h_hp16",
+          "parent": "h_hardpoints",
+          "rotation": [
+            0.0,
+            -0.0,
+            0.0
+          ],
+          "position": [
+            1.3070300817489624,
+            0.7213113307952881,
+            3.326050281524658
+          ]
+        },
+        {
+          "name": "h_hp17",
+          "parent": "h_hardpoints",
+          "rotation": [
+            0.0,
+            -0.0,
+            0.0
+          ],
+          "position": [
+            -0.30218642950057983,
+            -1.13567054271698,
+            1.1307563781738281
+          ]
+        },
+        {
+          "name": "h_hp18",
+          "parent": "h_hardpoints",
+          "rotation": [
+            0.0,
+            -0.0,
+            0.0
+          ],
+          "position": [
+            1.5467450618743896,
+            -0.3281514048576355,
+            -0.8959228992462158
+          ]
+        },
+        {
+          "name": "h_hp19",
+          "parent": "h_hardpoints",
+          "rotation": [
+            0.0,
+            -0.0,
+            0.0
+          ],
+          "position": [
+            -2.1004858016967773,
+            0.0,
+            3.999882221221924
+          ]
+        },
+        {
+          "name": "h_hp20",
+          "parent": "h_hardpoints",
+          "rotation": [
+            0.0,
+            -0.0,
+            0.0
+          ],
+          "position": [
+            -0.04126298427581787,
+            -0.6611074805259705,
+            2.466607093811035
+          ]
+        },
+        {
+          "name": "hp04_dir",
+          "parent": "h_hp04",
+          "rotation": [
+            0.0,
+            -0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            1.0234792232513428
+          ]
+        },
+        {
+          "name": "hp05_dir",
+          "parent": "h_hp05",
+          "rotation": [
+            0.0,
+            -0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.9890010952949524
+          ]
+        }
+      ],
+      "status": "Ready"
+    },
+    {
+      "candidate_name": "fUlysses",
+      "target_class": "Ulysses Dreadnought / Command Cruiser",
+      "canonical_faction": "Federation",
+      "source_file": "fUlysses.ms3d",
+      "source_relative_path": "source/Icewolf132/Completed/ulysses/fUlysses.ms3d",
+      "source_sha256": "19b0977c77427b10f9293ac6abbd943564d01fc739ea6cb5011241bc67402b3c",
+      "output_glb": "fUlysses.glb",
+      "output_glb_sha256": "c6f7247bc903c65861036b3ef39f8c88462a06b1080c8c7edd8e653ec597b91f",
+      "output_size_bytes": 1062720,
+      "author": "Icewolf132 (Original design: Taldren)",
+      "triangles": 1076,
+      "vertices": 884,
+      "mesh_groups": 6,
+      "material_count": 6,
+      "textures": [
+        "SaucerUlysses.tga",
+        "HullUlysses.tga",
+        "NacelleUlysses.tga",
+        "NacelleUlysses.tga",
+        "HullUlysses.tga",
+        "NacelleUlysses.tga"
+      ],
+      "texture_hashes": {
+        "SaucerUlysses.tga": "cd50b07e63bcbe0c0112e383ffd30743faff0d61ec875594de6348c841c830a8",
+        "HullUlysses.tga": "9f2c5965169d1b110ae01d42c2c0f0cd6ce373b8107b90c62d4816e88a167286",
+        "NacelleUlysses.tga": "5d3af186b5a50d568f3b993fa32fe178b7a2a643375d9af74c3ce5d09e51c3be"
+      },
+      "bounds": {
+        "min": [
+          -19.263172149658203,
+          -39.118194580078125,
+          -9.809245109558105
+        ],
+        "max": [
+          19.263172149658203,
+          39.118194580078125,
+          9.809245109558105
+        ],
+        "dimensions_xyz": [
+          38.526344299316406,
+          78.23638916015625,
+          19.61849021911621
+        ],
+        "bounding_sphere_radius": 42.87982709698104,
+        "bounding_box_center_offset": [
+          0.0,
+          -4.495939254760742,
+          5.453829765319824
+        ]
+      },
+      "coordinate_transform": {
+        "source_axes": [
+          "x",
+          "-z",
+          "y"
+        ],
+        "pivot": "bounding_box_center",
+        "gltf_export_y_up": true
+      },
+      "helper_joints": [],
+      "status": "Ready"
+    },
+    {
+      "candidate_name": "klingon_cruiser",
+      "target_class": "Klingon Attack Cruiser Study (Vor'cha / K't'inga archetype)",
+      "canonical_faction": "Klingon",
+      "source_file": "Klingon.glb",
+      "source_relative_path": "game/ArtSource/FleetStudies/Klingon.glb",
+      "source_sha256": "a0f03b6c6af9bf1f8b3564306dd0c279a2c5ac5c63676752bb8f09978a667ffe",
+      "output_glb": "klingon_cruiser.glb",
+      "output_glb_sha256": "6f80594743b63713c910dfbd5a4f7fc1d7b37bbea7c0d7051ad30aaaa914888b",
+      "output_size_bytes": 128880,
+      "author": "BOTF Remake Project",
+      "triangles": 4824,
+      "vertices": 2986,
+      "mesh_groups": 1,
+      "material_count": 4,
+      "textures": [],
+      "texture_hashes": {},
+      "bounds": {
+        "min": [
+          -1.7849998474121094,
+          -2.049999952316284,
+          -0.39750000834465027
+        ],
+        "max": [
+          1.7849998474121094,
+          2.049999952316284,
+          0.39750000834465027
+        ],
+        "dimensions_xyz": [
+          3.5699996948242188,
+          4.099999904632568,
+          0.7950000166893005
+        ],
+        "bounding_sphere_radius": 2.3632564996574037,
+        "bounding_box_center_offset": [
+          0.33500003814697266,
+          0.0,
+          0.002499997615814209
+        ]
+      },
+      "coordinate_transform": {
+        "source_axes": [
+          "x",
+          "y",
+          "z"
+        ],
+        "pivot": "bounding_box_center",
+        "gltf_export_y_up": true
+      },
+      "helper_joints": [],
+      "status": "Ready"
+    },
+    {
+      "candidate_name": "lcruise1",
+      "target_class": "Lyran Tiger Cruiser",
+      "canonical_faction": "Independent",
+      "source_file": "lcruise1.ms3d",
+      "source_relative_path": "source/Icewolf132/Completed/lca/lcruise1.ms3d",
+      "source_sha256": "919b0b6121b1ff5fe454b3cbaba05024835582be227b49fa6ad0093987c07cd5",
+      "output_glb": "lcruise1.glb",
+      "output_glb_sha256": "8afcfd743f5db99ab9d105ae6058c104cfb95b3588c84d635b8b18cbc1a8dbeb",
+      "output_size_bytes": 192436,
+      "author": "Icewolf132 (Original design: Taldren)",
+      "triangles": 1130,
+      "vertices": 1023,
+      "mesh_groups": 43,
+      "material_count": 1,
+      "textures": [
+        "lca.tga"
+      ],
+      "texture_hashes": {
+        "lca.tga": "36a7e3b00f7c7f968497d98921958d7e556106508dbeb92d88af8c3b6157a188"
+      },
+      "bounds": {
+        "min": [
+          -7.701176166534424,
+          -11.00117015838623,
+          -3.287980556488037
+        ],
+        "max": [
+          7.701176166534424,
+          11.001171112060547,
+          3.287980556488037
+        ],
+        "dimensions_xyz": [
+          15.402352333068848,
+          22.002341270446777,
+          6.575961112976074
+        ],
+        "bounding_sphere_radius": 11.766054478693222,
+        "bounding_box_center_offset": [
+          0.1995372772216797,
+          -4.291317939758301,
+          0.25367283821105957
+        ]
+      },
+      "coordinate_transform": {
+        "source_axes": [
+          "x",
+          "-z",
+          "y"
+        ],
+        "pivot": "bounding_box_center",
+        "gltf_export_y_up": true
+      },
+      "helper_joints": [],
+      "status": "Ready"
+    },
+    {
+      "candidate_name": "kqultoq",
+      "target_class": "K'qultoq Fighter Concept Mesh (Unfinished author concept; synthetic PBR armor)",
+      "canonical_faction": "Klingon",
+      "source_file": "kqultoq.ms3d",
+      "source_relative_path": "source/Icewolf132/Unfinished/kqultoq.ms3d",
+      "source_sha256": "07f6acf5248bf5def0ffec3eccfb9367087b2dffe44f5bba21b7deda7a5ad476",
+      "output_glb": "kqultoq.glb",
+      "output_glb_sha256": "2e537a3924c892eeea72a1ca33965f591f2b0644b28d1e3cda12d74368a8fc3c",
+      "output_size_bytes": 24568,
+      "author": "Icewolf132",
+      "triangles": 660,
+      "vertices": 399,
+      "mesh_groups": 15,
+      "material_count": 1,
+      "textures": [],
+      "texture_hashes": {},
+      "bounds": {
+        "min": [
+          -49.60844421386719,
+          -34.49320983886719,
+          -7.015103340148926
+        ],
+        "max": [
+          49.60844421386719,
+          34.49320983886719,
+          7.015103340148926
+        ],
+        "dimensions_xyz": [
+          99.21688842773438,
+          68.98641967773438,
+          14.030206680297852
+        ],
+        "bounding_sphere_radius": 50.15571106237904,
+        "bounding_box_center_offset": [
+          0.0,
+          -0.7731857299804688,
+          3.039700746536255
+        ]
+      },
+      "coordinate_transform": {
+        "source_axes": [
+          "x",
+          "-z",
+          "y"
+        ],
+        "pivot": "bounding_box_center",
+        "gltf_export_y_up": true
+      },
+      "helper_joints": [],
+      "status": "Experimental"
+    },
+    {
+      "candidate_name": "RemanBoP",
+      "target_class": "Reman Bird of Prey Study (Abandoned author project; distinct from Romulan BOTF classes)",
+      "canonical_faction": "Reman",
+      "source_file": "RemanBoP.ms3d",
+      "source_relative_path": "source/Icewolf132/Unfinished/RemanBoP/RemanBoP.ms3d",
+      "source_sha256": "091cf9879932edac88ba91fd9ff8236504e5552d660315a49b03009fa8ece5a8",
+      "output_glb": "RemanBoP.glb",
+      "output_glb_sha256": "456b607ea6f0701be203ff7d456c28c4a116dd5b35e732f07cf6d2a08b7dda6c",
+      "output_size_bytes": 95456,
+      "author": "Icewolf132",
+      "triangles": 371,
+      "vertices": 575,
+      "mesh_groups": 21,
+      "material_count": 1,
+      "textures": [
+        "remanbop.bmp"
+      ],
+      "texture_hashes": {
+        "remanbop.bmp": "808da8164d17dac00e8d021569aa2d0990bef7b36e2daeb7086cc15d8a1d65b8"
+      },
+      "bounds": {
+        "min": [
+          -7.555807113647461,
+          -5.271625995635986,
+          -1.5081021785736084
+        ],
+        "max": [
+          7.555807113647461,
+          5.271625995635986,
+          1.5081021785736084
+        ],
+        "dimensions_xyz": [
+          15.111614227294922,
+          10.543251991271973,
+          3.016204357147217
+        ],
+        "bounding_sphere_radius": 7.704230780478284,
+        "bounding_box_center_offset": [
+          0.0,
+          -0.2414698600769043,
+          -0.3739338517189026
+        ]
+      },
+      "coordinate_transform": {
+        "source_axes": [
+          "x",
+          "-z",
+          "y"
+        ],
+        "pivot": "bounding_box_center",
+        "gltf_export_y_up": true
+      },
+      "helper_joints": [],
+      "status": "Experimental"
+    },
+    {
+      "candidate_name": "rhhawk_TMP",
+      "target_class": "Romulan Hellhawk TMP Study (Unfinished author concept)",
+      "canonical_faction": "Romulan",
+      "source_file": "rhhawk_TMP.ms3d",
+      "source_relative_path": "source/Icewolf132/Unfinished/Romulan Hellhawk/rhhawk_TMP.ms3d",
+      "source_sha256": "0f542b1e2f34785ec19c26cf6518901bd00cd0d73207d87883825f72a5083f1c",
+      "output_glb": "rhhawk_TMP.glb",
+      "output_glb_sha256": "4ac2e0d7f80ff318923981d7872c5a2314e9d8a537ee9578af8fecac0aaba5f0",
+      "output_size_bytes": 302968,
+      "author": "Icewolf132",
+      "triangles": 263,
+      "vertices": 276,
+      "mesh_groups": 17,
+      "material_count": 2,
+      "textures": [
+        "hhawktmp1.tga"
+      ],
+      "texture_hashes": {
+        "hhawktmp1.tga": "6d8f21a475ed3bab6e9f334fdedbfd9a08f17cbc3c0493b7405c634b213fc1df"
+      },
+      "bounds": {
+        "min": [
+          -7.175384521484375,
+          -5.0467376708984375,
+          -0.9336727857589722
+        ],
+        "max": [
+          7.175384521484375,
+          5.0467376708984375,
+          0.9336727857589722
+        ],
+        "dimensions_xyz": [
+          14.35076904296875,
+          10.093475341796875,
+          1.8673455715179443
+        ],
+        "bounding_sphere_radius": 8.249033752124253,
+        "bounding_box_center_offset": [
+          -0.3750419616699219,
+          -0.9806065559387207,
+          -0.14446985721588135
+        ]
+      },
+      "coordinate_transform": {
+        "source_axes": [
+          "x",
+          "-z",
+          "y"
+        ],
+        "pivot": "bounding_box_center",
+        "gltf_export_y_up": true
+      },
+      "helper_joints": [],
+      "status": "Experimental"
+    }
+  ],
+  "external_shortlist_evaluations": [
+    {
+      "candidate": "U.S.S. Defiant NX-74205 (FatManInABox)",
+      "source_portal": "BlendSwap (blend/22476)",
+      "botf_fit": "Federation Heavy Escort (Defiant, Race 1, ID 34)",
+      "declared_terms": "CC-BY (declared by uploader); description asks for non-commercial credit",
+      "status": "Candidate - Gated",
+      "acquisition_blocker": "BlendSwap downloads require authenticated user account login; platform developer documentation explicitly disclaims license verification; franchise rights unestablished",
+      "work_required_when_acquired": "Cycles procedural material conversion to PBR textures; pivot/scale normalization; LOD generation"
+    },
+    {
+      "candidate": "Star Trek Sovereign Class (woki)",
+      "source_portal": "BlendSwap (blend/10430)",
+      "botf_fit": "Federation Sovereign Dreadnought (Race 1, ID 26/27)",
+      "declared_terms": "CC-BY (declared by uploader)",
+      "status": "Candidate - Gated / Unfinished",
+      "acquisition_blocker": "BlendSwap user account login required; author notes model is unfinished and shader work remains",
+      "work_required_when_acquired": "Mesh completion, UV mapping, material creation, engine conversion"
+    },
+    {
+      "candidate": "Vor'cha Battlecruiser",
+      "source_portal": "Trekmeshes (download/all)",
+      "botf_fit": "Klingon Vor'cha Attack Cruiser (Race 3, ID 69/70)",
+      "declared_terms": "Unresolved; no general game reuse grant on catalogue",
+      "status": "Candidate - Unresolved",
+      "acquisition_blocker": "Trekmeshes has no general redistribution grant; site pending closure; author contact barred by hard rules / personal-use boundary",
+      "work_required_when_acquired": "Author clearance; MAX/3DS legacy mesh import; material rebuilding; scale normalization"
+    },
+    {
+      "candidate": "Klingon Bird of Prey (B'rel / K'Vort)",
+      "source_portal": "Trekmeshes (download/all)",
+      "botf_fit": "Klingon B'rel Scout (ID 75) / K'Vort Heavy Cruiser (ID 83)",
+      "declared_terms": "Unresolved; multiple distinct designs listed under same name",
+      "status": "Candidate - Unresolved",
+      "acquisition_blocker": "Author terms unresolved; ambiguity across variants; download redirection",
+      "work_required_when_acquired": "Variant identification, author clearance, LWO/3DS conversion"
+    },
+    {
+      "candidate": "Negh'Var Flagship",
+      "source_portal": "Trekmeshes (download/all)",
+      "botf_fit": "Klingon Negh'Var Strike Cruiser (Race 3, ID 65/66)",
+      "declared_terms": "Unresolved (Knightrider release)",
+      "status": "Candidate - Unresolved",
+      "acquisition_blocker": "Author reuse terms unverified; no external messaging permitted",
+      "work_required_when_acquired": "Author verification, MAX/3DS conversion, PBR texture creation"
+    }
+  ],
+  "class_mapping_policy": {
+    "rule": "Strict Class Identity: Do not silently equate one hull with every class or tech tier. Unfinished concept meshes must remain experimental studies, not asserted canonical classes.",
+    "production_candidates": {
+      "franger.glb": "Permitted Scout / Escort illustration (provisional stand-in; not an Oberth or Defiant).",
+      "freaver1.glb": "Permitted Fast Destroyer variant.",
+      "freaver2.glb": "Permitted Mainline Destroyer variant (Miranda-tier destroyer illustration).",
+      "freaver3.glb": "Permitted Heavy Destroyer variant (Constellation-tier destroyer illustration).",
+      "fUlysses.glb": "Permitted Dreadnought illustration (3-nacelle dreadnought; Sovereign/Galaxy-X counterpart; not an Enterprise-D/Galaxy).",
+      "klingon_cruiser.glb": "Project-authored Vor'cha / K't'inga Attack Cruiser study (interim battlecruiser silhouette).",
+      "lcruise1.glb": "Permitted Independent Lyran Tiger Cruiser."
+    },
+    "experimental_studies": {
+      "kqultoq.glb": "Experimental visual study: K'qultoq Klingon fighter concept mesh from Icewolf132; unfinished concept mesh with synthetic tactical PBR armor; excluded from default batch import.",
+      "RemanBoP.glb": "Experimental visual study: Reman Bird of Prey concept from Icewolf132; abandoned author project; Reman identity distinct from Romulan BOTF classes; excluded from default batch import.",
+      "rhhawk_TMP.glb": "Experimental visual study: Romulan Hellhawk TMP from Icewolf132; unfinished author concept; excluded from default batch import."
+    }
+  }
+}

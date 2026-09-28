@@ -1,0 +1,56 @@
+{
+  "candidate_name": "lcruise1",
+  "target_class": "Lyran Tiger Cruiser",
+  "canonical_faction": "Independent",
+  "source_file": "lcruise1.ms3d",
+  "source_relative_path": "source/Icewolf132/Completed/lca/lcruise1.ms3d",
+  "source_sha256": "919b0b6121b1ff5fe454b3cbaba05024835582be227b49fa6ad0093987c07cd5",
+  "output_glb": "lcruise1.glb",
+  "output_glb_sha256": "8afcfd743f5db99ab9d105ae6058c104cfb95b3588c84d635b8b18cbc1a8dbeb",
+  "output_size_bytes": 192436,
+  "author": "Icewolf132 (Original design: Taldren)",
+  "triangles": 1130,
+  "vertices": 1023,
+  "mesh_groups": 43,
+  "material_count": 1,
+  "textures": [
+    "lca.tga"
+  ],
+  "texture_hashes": {
+    "lca.tga": "36a7e3b00f7c7f968497d98921958d7e556106508dbeb92d88af8c3b6157a188"
+  },
+  "bounds": {
+    "min": [
+      -7.701176166534424,
+      -11.00117015838623,
+      -3.287980556488037
+    ],
+    "max": [
+      7.701176166534424,
+      11.001171112060547,
+      3.287980556488037
+    ],
+    "dimensions_xyz": [
+      15.402352333068848,
+      22.002341270446777,
+      6.575961112976074
+    ],
+    "bounding_sphere_radius": 11.766054478693222,
+    "bounding_box_center_offset": [
+      0.1995372772216797,
+      -4.291317939758301,
+      0.25367283821105957
+    ]
+  },
+  "coordinate_transform": {
+    "source_axes": [
+      "x",
+      "-z",
+      "y"
+    ],
+    "pivot": "bounding_box_center",
+    "gltf_export_y_up": true
+  },
+  "helper_joints": [],
+  "status": "Ready"
+}
