@@ -2,7 +2,7 @@
 import createBotfCore from '../generated/botf-core.mjs';
 import type {
   BattleReport, Briefing, ColonyDetail, Command, DiplomacyView, Encounter, Encyclopedia, Forecast, GameView, IntelView,
-  Meta, ResearchView, SaveBlob, TurnResult, WorkforcePreview,
+  Meta, ResearchView, SaveBlob, StationDetail, TurnResult, WorkforcePreview,
 } from './types';
 
 export class CoreError extends Error {
@@ -36,9 +36,13 @@ export const core = {
   encyclopedia: () => call<Encyclopedia>('encyclopedia'),
   newCampaign: (options: {
     faction: number; empires: number; seed: number; era: number; ruleset: 'reference' | 'prototype';
-    width: number; height: number; systems: number; events: boolean; aiAggression: boolean;
+    width: number; height: number; systems: number; events: boolean; aiAggression: boolean; preset?: 'classic' | 'remastered';
   }) => call<GameView>('newCampaign', options),
-  newBattleDrill: () => call<GameView>('newBattleDrill'),
+  newBattleDrill: (station = false) => call<GameView>('newBattleDrill', { station }),
+  newFrontierDrill: () => call<GameView>('newFrontierDrill'),
+  station: (stationId: number) => call<StationDetail>('station', { stationId }),
+  newDiplomacyDrill: () => call<GameView>('newDiplomacyDrill'),
+  headlessFingerprint: () => call<string | number>('headlessFingerprint'),
   view: () => call<GameView>('view'),
   submit: (command: Command, options: OrderOptions = {}) => call<{ id: number }>('submit', { command, ...options }),
   dryRun: (command: Command | null, options: OrderOptions = {}) =>
@@ -58,7 +62,8 @@ export const core = {
   endTurn: () => call<TurnResult>('endTurn'),
   briefing: () => call<Briefing | null>('briefing'),
   tactical: () => call<Encounter | null>('tactical'),
-  tacticalOrder: (order: { fleetId?: number; targetFleetId?: number; maneuver: string; all?: boolean }) => call<number>('tacticalOrder', order),
+  tacticalOrder: (order: { fleetId?: number; groupId?: number; targetFleetId?: number; maneuver: string; all?: boolean }) =>
+    call<number>('tacticalOrder', order),
   tacticalRound: () => call<Encounter>('tacticalRound'),
   tacticalAuto: () => call<Encounter>('tacticalAuto'),
   replays: () => call<{ index: number; turn: number; x: number; y: number; rounds: number; winner: number }[]>('replays'),

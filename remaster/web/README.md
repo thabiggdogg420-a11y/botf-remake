@@ -46,8 +46,9 @@ that break it fail CI.
 ## Test
 
 ```bash
-npm test             # bridge contract: new game, orders, 50 turns, save/load fingerprint, battle drill
-npm run test:e2e     # Playwright: campaign workflow, commanded battle, screenshots (1280x720, 2560x1080)
+npm test             # bridge contract: new game, orders, 50 turns, save/load, battle drill, schema-13 layer
+npm run test:e2e     # Playwright: campaign, combat (rules 2), diplomacy inbox, onboarding, settings, remaster layer,
+                     # save export paths, screenshots (1280x720, 2560x1080)
 ```
 
 Screenshots go to `$BOTF_SHOTS_DIR` (default: the session scratchpad `web-shots/`). Playwright uses
@@ -65,6 +66,67 @@ the Chromium in `PLAYWRIGHT_BROWSERS_PATH` when set.
 - Saves: quick save from the menu, named slots on the Save/Load screen, autosave every turn, and
   `.botfsave` export/import. A save made mid-battle resumes the open turn.
 - **Tactical drill** (title screen) sets up a war with a Klingon squadron at Sol to try combat.
+- **Diplomacy drill** (title screen) sets up, through the core's diplomacy engine, a Ferengi trade
+  proposal and a Klingon tribute demand awaiting your answer, a Klingon betrayal of the Romulans that
+  calls you (their ally) to arms, and an eliminated Cardassia whose treaty with you dissolved.
+- **First Contact** tutorial starts with a new campaign (skippable, remembered; replay it from
+  Settings). **?** opens help for the current screen.
+- **Settings** (menu or title): interface scale 90–130%, reduced motion, colour-blind-safe owner
+  colours (Okabe–Ito), sound, autosave. Stored per browser; everything works without storage.
+
+### Remastered gameplay (save schema 13)
+
+New campaigns go through `botf::newCampaign` with a **Classic / Remastered** choice (Remastered by
+default), which also places the minor-race roster (docs/GAMEPLAY-REMASTER.md, docs/MINOR-RACES.md).
+
+- **Stations.** A troop transport's sector menu offers *Build outpost* (the core's `outpostBlocker`
+  explains refusals; `outpostBuildTurns` sets the ETA, shown as a ring on the transport). Click a station
+  for its inspector: hull, shields, weapons, supply and sensor squares on the chart, and *Upgrade to
+  starbase* with every colony in range dry-run as a funding option. Stations fight as immobile bases
+  (fleet ids ≥ 2000000) in the tactical arena.
+- **Anomalies.** Nebulae, black holes, neutron stars, drifting ion storms (with drift arrows), subspace
+  rifts and wormhole pairs are drawn on the chart; hover for the effect and survey reward. Routes that
+  transit a wormhole draw a jump arc between the mouths.
+- **Galactic events.** Event cards (Events button, the card under the alerts, or the briefing) show the
+  situation, each option's effect, the default and the deadline; choices are `ResolveEventChoice` orders.
+- **Victory.** The Victory panel shows `victoryProgress` for conquest, domination, scientific and
+  diplomatic victory; the System screen starts or abandons the era megaproject. The campaign ends on a
+  Victory/Defeat screen with a summary (`window.__botf.previewOutcome()` previews it).
+- **Turn briefing** is built from `TurnReport::chronicle`: entries keep the core's category and link to
+  the system, fleet, station, event or battle they mention.
+- **Build templates** (System screen): save the queue, apply it, make it the default for new colonies,
+  update or delete it.
+- **Minor races.** Minor systems show race and temperament; the diplomacy dossier shows homeworld,
+  temperament, join bonus, tech level and population; the Empire screen lists member bonuses; the
+  Database has a Minor races section.
+- **Frontier drill** (title screen): a Developed-era Remastered campaign with charted anomalies, a
+  transport ready to build an outpost, an outpost to upgrade and two events to decide. **Starbase drill**:
+  the tactical drill with Sol's starbase in the fight.
+
+### Tactical combat (rules 2)
+
+Dashed lines and chips preview what every ship does next round, including AI-controlled ships
+(`Encounter::aiOrderFor`, marked "AI"). Orders apply to all ships, a like-class group
+(`submitGroupOrder`) or one ship. The arena animates each round: beams, torpedo tracers, cloak
+ambushes (+25%), mutual rams, hails and truces, ships disengaging under fire and withdrawing. The hail
+panel previews whether the enemy would accept a truce (`aiAcceptsHail`). Rounds resolve through the
+plain `session::resolveRound` / `session::autoResolve`; the bridge test proves they verify in
+`session::resume` and match headless `advance()`.
+
+### Diplomacy
+
+The Diplomacy screen opens on **Incoming** while anything awaits an answer: AI proposals and tribute
+demands with deadlines and consequences, and calls to arms (honour = declare war; refusing lets the
+call lapse with its penalties). Dossiers show relation memory (grievances, betrayals, refusals); the
+treaty ledger lists ended treaties (expired, broken by war, superseded, dissolved); galactic news
+tracks betrayals, wars and eliminations between known powers. Eliminated empires are greyed out.
+
+### Save export inside the claude.ai artifact viewer
+
+`src/platform/fileExport.ts`: when `window.claude.use('downloads')` offers a downloads capability,
+exports go through it as `<name>.botfsave.txt`; a declined save is a no-op, and `unavailable`,
+`not_granted`, unknown errors or no viewer fall back to the plain `.botfsave` download. Import accepts
+both.
 
 ## Design rules
 

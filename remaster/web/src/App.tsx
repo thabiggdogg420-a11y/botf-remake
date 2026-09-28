@@ -1,8 +1,9 @@
 import { useEffect } from 'preact/hooks';
 import {
-  back, briefing, briefingOpen, busy, confirmDialog, encounter, endTurnWarnings, GAME_SCREENS, goto, menuOpen, quitToTitle,
-  requestEndTurn, screen, selectFleet, selection, view, type Screen, toast, saveName,
+  back, briefing, briefingOpen, busy, confirmDialog, encounter, endTurnWarnings, eventsOpen, GAME_SCREENS, goto, menuOpen, outcomeDismissed,
+  quitToTitle, requestEndTurn, screen, selectFleet, selection, view, victoryOpen, type Screen, toast, saveName,
 } from './state/store';
+import { EventsPanel, OutcomeScreen, pendingEventCount, VictoryPanel } from './ui/Remaster';
 import { saveToSlot } from './state/saves';
 import { audioEnabled, setAudio } from './ui/audio';
 import { ConfirmLayer, Emblem, fmt, Pill, signed, TooltipLayer, Toasts, tip } from './ui/components';
@@ -21,6 +22,10 @@ import { IntelScreen } from './screens/Intel';
 import { EncyclopediaScreen } from './screens/Encyclopedia';
 import { CombatScreen } from './screens/Combat';
 import { BriefingPanel } from './screens/Briefing';
+import { settings } from './state/settings';
+import { HelpButton, helpOpen, HelpPopover } from './ui/Help';
+import { SettingsModal, settingsOpen } from './ui/SettingsPanel';
+import { TutorialOverlay } from './ui/Tutorial';
 
 const TEXT_INPUTS = new Set(['text', 'number', 'search', 'email', 'password', 'url', 'tel', '']);
 /** True while the user is entering text: shortcuts must not fire. Sliders/checkboxes do not count. */
@@ -39,6 +44,8 @@ export function App() {
   const current = screen.value;
   const v = view.value;
   const empire = v ? v.meta.player : 1;
+  // Reading the settings re-renders the tree when the owner palette or scale changes.
+  const prefs = settings.value;
 
   useEffect(() => {
     document.documentElement.dataset.faction = palette(empire).key;
@@ -51,7 +58,17 @@ export function App() {
         if (e.key === 'Escape') { confirmDialog.value = null; e.preventDefault(); }
         return;
       }
+      if (settingsOpen.value) {
+        if (e.key === 'Escape') { settingsOpen.value = false; e.preventDefault(); }
+        return;
+      }
+      if (eventsOpen.value || victoryOpen.value) {
+        if (e.key === 'Escape') { eventsOpen.value = false; victoryOpen.value = false; e.preventDefault(); }
+        return;
+      }
       const inGame = !!view.value && !['title', 'new', 'saves'].includes(screen.value);
+      if (e.key === '?' && inGame && !e.ctrlKey && !e.metaKey) { e.preventDefault(); helpOpen.value = !helpOpen.value; return; }
+      if (e.key === 'Escape' && helpOpen.value) { helpOpen.value = false; return; }
       const fkey = /^F([1-8])$/.exec(e.key);
       if (fkey && inGame) {
         e.preventDefault();
@@ -99,7 +116,7 @@ export function App() {
 
   const outside = current === 'title' || current === 'new' || current === 'saves';
   return (
-    <div class={`app ${outside ? 'app-outside' : 'app-ingame'}`}>
+    <div class={`app ${outside ? 'app-outside' : 'app-ingame'}${prefs.reducedMotion ? ' reduce-motion' : ''}`} data-scale={prefs.uiScale}>
       {outside || !v ? (
         <main class="outside" id="main">
           {current === 'title' ? <TitleScreen /> : current === 'new' ? <NewCampaignScreen /> : <SavesScreen />}
@@ -114,8 +131,14 @@ export function App() {
           </main>
           {briefingOpen.value && briefing.value ? <BriefingPanel /> : null}
           {menuOpen.value ? <GameMenu /> : null}
+          <EventsPanel />
+          <VictoryPanel />
+          <OutcomeScreen />
+          <HelpPopover />
+          <TutorialOverlay />
         </div>
       )}
+      <SettingsModal />
       <TooltipLayer />
       <ConfirmLayer />
       <Toasts />
@@ -184,7 +207,16 @@ function TopBar() {
         </button>
       </div>
       <div class="tb-actions">
+        <HelpButton />
         {briefing.value ? <Pill small tone="ghost" onClick={() => { briefingOpen.value = true; }} hint="Reopen the last turn briefing">Briefing</Pill> : null}
+        {v.events?.length ? (
+          <Pill small tone={pendingEventCount(v) ? 'warn' : 'ghost'} onClick={() => { eventsOpen.value = true; }} testid="open-events"
+            hint={pendingEventCount(v) ? `${pendingEventCount(v)} galactic event${pendingEventCount(v) === 1 ? '' : 's'} await your decision` : 'Active galactic events'}>
+            Events{pendingEventCount(v) ? ` · ${pendingEventCount(v)}` : ''}
+          </Pill>
+        ) : null}
+        <Pill small tone="ghost" onClick={() => { victoryOpen.value = true; }} testid="open-victory"
+          hint={v.victory?.conditions.map((c) => `${c.name}: ${c.enabled ? `${c.percent}%` : 'off'}`).join('\n')}>Victory</Pill>
         <Pill small tone="tertiary" onClick={() => { menuOpen.value = !menuOpen.value; }} kbd="Esc" testid="menu-button">Menu</Pill>
         <button type="button" class={`end-turn${busy.value ? ' busy' : ''}${pendingBattle ? ' battle' : ''}`} data-testid="end-turn"
           disabled={busy.value || v.meta.outcome !== 'ongoing'}
@@ -242,6 +274,14 @@ function GameMenu() {
           <Pill wide onClick={() => { menuOpen.value = false; }}>Resume</Pill>
           <Pill wide tone="secondary" onClick={quickSave} testid="quick-save">Quick save</Pill>
           <Pill wide tone="secondary" onClick={() => { menuOpen.value = false; goto('saves'); }} testid="open-saves">Save / load…</Pill>
+          {v.meta.outcome !== 'ongoing' ? (
+            <Pill wide tone="secondary" onClick={() => { menuOpen.value = false; outcomeDismissed.value = false; }}>
+              {v.meta.outcome === 'victory' ? 'Victory summary' : 'Defeat summary'}
+            </Pill>
+          ) : null}
+          <Pill wide tone="ghost" onClick={() => { menuOpen.value = false; victoryOpen.value = true; }} testid="menu-victory">Victory progress…</Pill>
+          <Pill wide tone="ghost" onClick={() => { menuOpen.value = false; settingsOpen.value = true; }} testid="open-settings"
+            hint="Interface scale, reduced motion, colour-blind palette, sound, autosave, tutorial">Settings…</Pill>
           <Pill wide tone="ghost" active={audioEnabled.value} onClick={() => setAudio(!audioEnabled.value)} hint="Synthesised interface sounds">
             Sound {audioEnabled.value ? 'on' : 'off'}
           </Pill>

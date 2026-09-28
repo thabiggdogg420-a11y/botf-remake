@@ -293,7 +293,7 @@ select.text-input { padding-right: 24px; }
 .tooltip-indent { padding-left: 10px; color: var(--text-3); }
 @keyframes tipIn { from { opacity: 0; } to { opacity: 1; } }
 
-.toasts { position: fixed; right: 18px; top: 84px; display: flex; flex-direction: column; gap: 6px; z-index: 900; pointer-events: none; align-items: flex-end; width: min(440px, calc(100vw - 32px)); }
+.toasts { position: fixed; right: 18px; top: 84px; display: flex; flex-direction: column; gap: 6px; z-index: 900; pointer-events: none; align-items: flex-end; width: min(440px, calc(100vw / var(--ui-scale, 1) - 32px)); }
 .app-outside .toasts { top: 18px; }
 .toast { pointer-events: auto; padding: 9px 16px 9px 22px; border-radius: 16px 99px 99px 16px; background: rgba(8, 13, 28, 0.96); border: 1px solid var(--line-2); box-shadow: 0 10px 30px -8px #000; font-size: 12.5px; position: relative; animation: toastIn 0.25s cubic-bezier(.2,.8,.2,1); max-width: 100%; }
 .toast::before { content: ''; position: absolute; left: 8px; top: 50%; width: 6px; height: 6px; border-radius: 50%; transform: translateY(-50%); background: var(--info); box-shadow: 0 0 8px currentColor; }
@@ -326,8 +326,7 @@ select.text-input { padding-right: 24px; }
   display: grid;
   grid-template-columns: var(--rail-w) minmax(0, 1fr);
   grid-template-rows: var(--top-h) minmax(0, 1fr);
-  height: 100vh;
-  height: 100dvh;
+  height: 100%;
   background: radial-gradient(1200px 600px at 70% -10%, rgba(40, 60, 120, 0.18), transparent 60%), var(--bg);
 }
 .shell-elbow {
@@ -901,7 +900,7 @@ button.tb-stat { cursor: pointer; }
 /* ============================================================================================
    Briefing
    ============================================================================================ */
-.briefing { width: min(920px, 100%); max-height: min(86vh, 900px); display: flex; flex-direction: column; background: linear-gradient(180deg, #0f1836, #070b18); border: 1px solid var(--line-2); border-radius: 28px 14px 14px 14px; box-shadow: 0 30px 80px -20px #000, 0 0 50px -30px var(--accent); overflow: hidden; animation: modalIn 0.25s cubic-bezier(.2,.8,.2,1); }
+.briefing { width: min(920px, 100%); max-height: min(calc(86vh / var(--ui-scale, 1)), 900px); display: flex; flex-direction: column; background: linear-gradient(180deg, #0f1836, #070b18); border: 1px solid var(--line-2); border-radius: 28px 14px 14px 14px; box-shadow: 0 30px 80px -20px #000, 0 0 50px -30px var(--accent); overflow: hidden; animation: modalIn 0.25s cubic-bezier(.2,.8,.2,1); }
 .briefing-head { display: flex; align-items: center; gap: 18px; padding: 0 16px 0 0; flex-wrap: wrap; }
 .bh-title { background: var(--accent); color: var(--accent-ink); padding: 14px 26px 12px 22px; border-radius: 0 0 28px 0; }
 .bh-kicker { font-family: var(--font-display); text-transform: uppercase; letter-spacing: 0.2em; font-size: 11px; opacity: 0.8; }
@@ -939,7 +938,7 @@ button.tb-stat { cursor: pointer; }
 .title-nebula { position: fixed; inset: -20%; background: radial-gradient(40% 35% at 70% 30%, rgba(80, 60, 170, 0.35), transparent 70%), radial-gradient(35% 30% at 20% 70%, rgba(20, 110, 150, 0.28), transparent 70%), radial-gradient(30% 25% at 85% 80%, rgba(170, 60, 110, 0.18), transparent 70%); filter: blur(10px); animation: drift 60s ease-in-out infinite alternate; z-index: 0; }
 @keyframes drift { to { transform: translate(-3%, 2%) scale(1.05); } }
 .title-planet { position: fixed; right: -12vw; bottom: -38vw; width: 70vw; height: 70vw; border-radius: 50%; background: radial-gradient(circle at 30% 25%, #6da0ff 0%, #1b3c86 30%, #081536 60%, #02040c 75%); box-shadow: inset -40px -60px 120px rgba(0, 0, 0, 0.9), 0 0 120px 20px rgba(80, 140, 255, 0.18); opacity: 0.85; z-index: 0; }
-.title-content { position: relative; z-index: 1; display: flex; flex-direction: column; align-items: flex-start; width: min(560px, calc(100% - 32px)); margin-right: 30vw; padding: 40px 0; }
+.title-content { position: relative; z-index: 1; display: flex; flex-direction: column; align-items: flex-start; width: min(560px, calc(100% - 32px)); margin-right: calc(30vw / var(--ui-scale, 1)); padding: 40px 0; }
 .title-emblems { display: flex; gap: 12px; margin-bottom: 18px; opacity: 0.9; }
 .title-logo { display: flex; flex-direction: column; line-height: 0.95; margin: 0; }
 .tl-small { font-size: 18px; letter-spacing: 0.42em; color: #f2b45a; font-weight: 500; }

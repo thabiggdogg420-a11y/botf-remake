@@ -2,7 +2,7 @@ import type { ComponentChildren } from 'preact';
 import { useState } from 'preact/hooks';
 import type { GameView } from '../core/types';
 import { focusMap, goto, selectFleet, selectSystem, view } from '../state/store';
-import { Badge, Emblem, fmt, Frame, Meter, signed, Stat, Tabs } from '../ui/components';
+import { Badge, Emblem, fmt, Frame, Meter, signed, Stat, Tabs, tip } from '../ui/components';
 
 interface Column<T> { key: string; label: string; value: (row: T) => number | string; render?: (row: T) => ComponentChildren; num?: boolean; tip?: string }
 
@@ -65,6 +65,7 @@ export function EmpireScreen() {
           <Stat label="Intelligence" value={fmt(e.intelligence)} sub="reserve" />
         </div>
       </div>
+      <MemberStrip v={v} />
       <Frame title={tab === 'colonies' ? 'Colonies' : 'Fleets'} class="fill"
         actions={<Tabs value={tab} onChange={setTab} testid="empire-tabs" options={[
           { id: 'colonies', label: 'Colonies', count: v.colonies.length },
@@ -87,6 +88,29 @@ export function EmpireScreen() {
             ]} />
         )}
       </Frame>
+    </div>
+  );
+}
+
+/** Member minor races and the bonuses they grant every colony (MinorRaces.h memberBonuses). */
+function MemberStrip({ v }: { v: GameView }) {
+  const b = v.empire.memberBonuses;
+  if (!b) return null;
+  const parts = [
+    b.research ? `+${b.research}% research` : '', b.industry ? `+${b.industry}% industry` : '', b.food ? `+${b.food}% food` : '',
+    b.credits ? `+${b.credits}% credit income` : '', b.morale ? `+${b.morale} morale` : '', b.groundDefense ? `+${b.groundDefense}% ground defense` : '',
+  ].filter(Boolean);
+  const stations = v.stations?.filter((s) => s.mine) ?? [];
+  return (
+    <div class="member-strip" data-testid="member-bonuses">
+      <span class="ms-label" {...tip('Minor races that joined your empire. Each adds its join bonus to every colony; the bonus ends if the member secedes or is conquered.', 'Member worlds')}>Member worlds</span>
+      {b.members ? (
+        <>
+          <span class="ms-bonus">{parts.join(' · ') || 'no bonus'}</span>
+          <span class="ms-list">{b.minors.map((m) => <Badge key={m.systemId} tone="accent" tipText={m.bonus}>◇ {m.name}</Badge>)}</span>
+        </>
+      ) : <span class="muted">None yet — befriend minor races in Diplomacy and invite them to join for their bonuses.</span>}
+      {stations.length ? <span class="ms-stations">{stations.filter((s) => s.type === 'Starbase').length} starbases · {stations.filter((s) => s.type === 'Outpost').length} outposts</span> : null}
     </div>
   );
 }

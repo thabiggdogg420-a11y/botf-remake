@@ -1,25 +1,29 @@
 import { useEffect, useMemo, useState } from 'preact/hooks';
 import { core } from '../core/engine';
-import type { BattleReport, Encounter, TacticalRound, TacticalShip } from '../core/types';
+import type { BattleReport, Encounter, HailPreview, TacticalShip } from '../core/types';
 import { encounter, endTurn, goto, reportError, toast, view } from '../state/store';
+import { reducedMotion } from '../state/settings';
 import { blip } from '../ui/audio';
 import { Badge, Emblem, Empty, Frame, Meter, Pill, tip } from '../ui/components';
-import { CombatArena, frameAt } from './CombatArena';
+import { CombatArena, frameAt, roundLog } from './CombatArena';
 
-const MANEUVERS: { key: string; name: string; hint: string }[] = [
-  { key: 'Engage', name: 'Engage', hint: 'Advance to optimal weapon range and fire.' },
-  { key: 'Assault', name: 'Assault', hint: 'Disciplined advance to the medium beam/torpedo envelope.' },
-  { key: 'Charge', name: 'Charge', hint: 'Close at speed to point-blank range: heavier beam fire, but more exposed.' },
-  { key: 'Strafe', name: 'Strafe', hint: 'High-speed passing run at close range.' },
-  { key: 'Flyby', name: 'Flyby', hint: 'High-speed passing run at medium range.' },
-  { key: 'Harry', name: 'Harry', hint: 'Close-range evasive circling and harassment.' },
-  { key: 'Circle', name: 'Circle', hint: 'Stand-off evasive orbit: harder to hit, less accurate.' },
-  { key: 'Evade', name: 'Evade', hint: 'Defensive evasion, firing only at targets of opportunity.' },
-  { key: 'Hold', name: 'Hold', hint: 'Stay put and reinforce shields.' },
-  { key: 'Ram', name: 'Ram', hint: 'Desperate collision attack.' },
-  { key: 'Hail', name: 'Hail', hint: 'Offer mutual disengagement.' },
-  { key: 'Retreat', name: 'Retreat', hint: 'Disengage toward the arena edge with weapons offline. Needs a safe supplied sector.' },
+// Tactical rules 2 (remaster/docs/COMBAT-RULES.md). Percentages are the core's; these hints only explain them.
+const ATTACK = 'Attack order: a cloaked ship decloaks and fires a +25% ambush volley.';
+export const MANEUVERS: { key: string; name: string; hint: string }[] = [
+  { key: 'Engage', name: 'Engage', hint: `Advance to optimal weapon range and fire.\n${ATTACK}` },
+  { key: 'Assault', name: 'Assault', hint: `Disciplined advance to the medium beam/torpedo envelope.\n${ATTACK}` },
+  { key: 'Charge', name: 'Charge', hint: `Close to point-blank range: +20% beam damage, but +15% incoming.\n${ATTACK}` },
+  { key: 'Strafe', name: 'Strafe', hint: `Fast close pass: +25% beam, −20% torpedo, +10% incoming.\n${ATTACK}` },
+  { key: 'Flyby', name: 'Flyby', hint: `Fast pass at medium range: −15% incoming.\n${ATTACK}` },
+  { key: 'Harry', name: 'Harry', hint: `Close evasive circling: −10% beam, −20% incoming.\n${ATTACK}` },
+  { key: 'Circle', name: 'Circle', hint: 'Stand-off orbit: −15% beam, −25% incoming. Keeps a cloak (cloaked ships cannot fire).' },
+  { key: 'Evade', name: 'Evade', hint: 'Long-range evasion: −30% fire, −35% incoming. Keeps a cloak.' },
+  { key: 'Hold', name: 'Hold', hint: 'Brace in place: −20% incoming damage. Shields do not recharge. Keeps a cloak.' },
+  { key: 'Ram', name: 'Ram', hint: 'Collision: the target takes the rammer’s hull as damage and the rammer takes the target’s hull + shields as recoil. Usually both ships die.' },
+  { key: 'Hail', name: 'Hail', hint: 'Offer a truce. If every one of our active ships hails and the enemy accepts, the battle ends before any fire.' },
+  { key: 'Retreat', name: 'Retreat', hint: 'Disengage: one round at −25% incoming with weapons offline, then escape if still retreating. Needs a safe supplied sector; any other order aborts it.' },
 ];
+const MANEUVER_NAME: Record<string, string> = Object.fromEntries(MANEUVERS.map((m) => [m.key, m.name]));
 
 export function CombatScreen() {
   const v = view.value!;
@@ -28,148 +32,189 @@ export function CombatScreen() {
   return <BattleArchive />;
 }
 
-function roundLog(e: Encounter, r: TacticalRound): string[] {
-  const name = (id: number) => { const s = e.ships.find((x) => x.id === id); return s ? `${s.hidden ? 'Cloaked contact' : s.name.split(' — ')[0]} #${id}` : `#${id}`; };
-  const lines: string[] = [];
-  for (const st of r.ships) {
-    if (st.beam + st.torpedo > 0) lines.push(`${name(st.id)} — ${st.maneuver}: ${st.beam} beam + ${st.torpedo} torpedo at ${st.target ? name(st.target) : 'nearest enemy'}`);
-    if (st.decloaked) lines.push(`${name(st.id)} decloaks.`);
-    if (st.hailed) lines.push(`${name(st.id)} hails the enemy.`);
-  }
-  for (const id of r.lost) lines.push(`${name(id)} destroyed.`);
-  for (const id of r.retreatedIds) lines.push(`${name(id)} withdrew.`);
-  if (r.truce) lines.push('A truce ends the engagement.');
-  if (r.ended) lines.push(r.winner ? `Battle over: ${e.ships.find((s) => s.owner === r.winner)?.ownerName ?? 'victor'} hold the field.` : 'Battle over: no victor.');
-  if (!lines.length) lines.push('Ships manoeuvre for position.');
-  return lines;
+const active = (s: TacticalShip) => s.alive && s.active && !s.retreated;
+const shortName = (s: TacticalShip | undefined) => (s ? (s.hidden ? 'Cloaked contact' : s.name.split(' — ')[0]!) : 'nearest enemy');
+
+function sourceLabel(src: string | undefined): string {
+  return src === 'ai' ? 'AI' : src === 'standing' ? 'standing' : src === 'order' ? 'ordered' : '';
+}
+
+/** "If all our ships hail…" from the core's Encounter::aiAcceptsHail. */
+function hailOutlook(e: Encounter, foeName: string): { text: string; tone: 'good' | 'alert' } {
+  const h: HailPreview = e.hail;
+  const why = h.atWar
+    ? `formally at war · trust ${h.trust} · their strength ${h.theirStrength} vs ours ${h.ourStrength}`
+    : 'not formally at war';
+  return h.accepts
+    ? { text: `If every one of our ships hails, the ${foeName} would accept a truce (${why}).`, tone: 'good' }
+    : { text: `The ${foeName} would refuse a truce unless they hail too (${why}). They accept when strength × 100 ≤ ours × (100 + trust).`, tone: 'alert' };
 }
 
 function LiveBattle({ e }: { e: Encounter }) {
-  const v = view.value!;
   const mine = e.ships.filter((s) => s.mine);
   const foes = e.ships.filter((s) => !s.mine);
-  const active = (s: TacticalShip) => s.alive && s.active && !s.retreated;
   const [ship, setShip] = useState<number | null>(mine.find(active)?.id ?? null);
   const [target, setTarget] = useState<number | null>(foes.find((s) => active(s) && !s.hidden)?.id ?? null);
-  const [all, setAll] = useState(true);
+  const [scope, setScope] = useState<'all' | 'group' | 'ship'>('all');
   const [choice, setChoice] = useState(e.round === 0);
   useEffect(() => {
     if (ship !== null && !mine.find((s) => s.id === ship && active(s))) setShip(mine.find(active)?.id ?? null);
     if (target !== null && !foes.find((s) => s.id === target && active(s) && !s.hidden)) setTarget(foes.find((s) => active(s) && !s.hidden)?.id ?? null);
   }, [e]);
-  const locationName = e.location;
-  const pick = (id: number) => { const s = e.ships.find((x) => x.id === id); if (!s || s.hidden) return; if (s.mine) setShip(id); else setTarget(id); blip('select'); };
+  const foeName = foes[0]?.ownerName ?? 'enemy';
+  const pick = (id: number) => { const s = e.ships.find((x) => x.id === id); if (!s || s.hidden) return; if (s.mine) { setShip(id); if (scope === 'all') setScope('ship'); } else setTarget(id); blip('select'); };
+  const selected = e.ships.find((s) => s.id === ship);
   const order = (maneuver: string) => {
     try {
-      const n = core.tacticalOrder(all ? { all: true, maneuver, targetFleetId: target ?? 0 } : { fleetId: ship ?? 0, maneuver, targetFleetId: target ?? 0 });
+      const t = maneuver === 'Retreat' || maneuver === 'Hail' ? 0 : target ?? 0;
+      const n = core.tacticalOrder(scope === 'all' ? { all: true, maneuver, targetFleetId: t }
+        : scope === 'group' ? { groupId: selected?.groupId ?? 0, maneuver, targetFleetId: t }
+        : { fleetId: ship ?? 0, maneuver, targetFleetId: t });
       encounter.value = core.tactical();
-      toast(`${maneuver} ordered for ${n} ship${n === 1 ? '' : 's'}${target && maneuver !== 'Retreat' ? `, target #${target}` : ''}.`, 'info', 1800);
+      toast(`${MANEUVER_NAME[maneuver] ?? maneuver} ordered for ${n} ship${n === 1 ? '' : 's'}${t ? `, target #${t}` : ''}.`, 'info', 1800);
       blip('confirm');
     } catch (error) { reportError(error); }
   };
-  const round = () => { try { encounter.value = core.tacticalRound(); blip('fire'); } catch (error) { reportError(error); } };
+  const round = () => { try { encounter.value = core.tacticalRound(); setChoice(false); blip('fire'); } catch (error) { reportError(error); } };
   const auto = () => { try { encounter.value = core.tacticalAuto(); setChoice(false); blip('fire'); } catch (error) { reportError(error); } };
   const hail = () => { try { core.tacticalOrder({ all: true, maneuver: 'Hail' }); encounter.value = core.tacticalRound(); setChoice(false); } catch (error) { reportError(error); } };
-  const selected = e.ships.find((s) => s.id === ship);
   const lastRound = e.rounds[e.rounds.length - 1];
+  const outlook = hailOutlook(e, foeName);
+  const scopeLabel = scope === 'all' ? 'all active ships' : scope === 'group' ? (selected?.group ? `${selected.group} group` : 'group') : selected ? shortName(selected) : 'select a ship';
   return (
     <div class="screen combat-screen" data-testid="screen-combat">
       <header class="combat-head">
         <div class="ch-title"><span class="red-alert" aria-hidden="true" />
-          <div><h1>{e.finished ? 'Engagement concluded' : 'Red alert'}</h1><div class="sub">{locationName} · sector {e.sectorX}.{e.sectorY} · round {e.round}{e.finished ? '' : ` of up to ${e.maxRounds}`}</div></div>
+          <div><h1>{e.finished ? (lastRound?.truce ? 'Truce agreed' : 'Engagement concluded') : 'Red alert'}</h1>
+            <div class="sub">{e.location} · sector {e.sectorX}.{e.sectorY} · round {e.round}{e.finished ? '' : ` of up to ${e.maxRounds}`}</div></div>
         </div>
         <div class="ch-forces">
           <Force ships={mine} label="Our forces" />
           <span class="vs">VS</span>
-          <Force ships={foes} label={foes[0]?.ownerName ?? 'Enemy'} />
+          <Force ships={foes} label={foeName} />
         </div>
         <div class="ch-actions">
           {e.finished ? (
             <Pill tone="primary" onClick={() => endTurn()} testid="continue-turn" kbd="Enter">Continue turn</Pill>
           ) : (
             <>
-              <Pill tone="secondary" onClick={round} testid="resolve-round">Resolve round</Pill>
+              <Pill tone="secondary" onClick={round} testid="resolve-round" hint="Resolve one round: every ship executes its order (or the AI decides)">Resolve round</Pill>
               <Pill tone="alert" onClick={auto} testid="auto-resolve" hint="Let your captains fight the battle to its end">Auto-resolve</Pill>
             </>
           )}
         </div>
       </header>
       <div class="combat-grid">
-        <ShipList title="Our ships" ships={mine} selected={ship} onPick={pick} />
+        <ShipList title="Our ships" ships={mine} all={e.ships} selected={ship} onPick={pick} />
         <div class="arena-wrap">
-          <CombatArena encounter={e} round={e.rounds.length} selected={ship} target={target} onPick={pick} animateKey={`live-${e.turn}`} />
+          <CombatArena encounter={e} round={e.rounds.length} selected={ship} target={target} onPick={pick} animateKey={`live-${e.turn}-${e.sectorX}.${e.sectorY}`} intent />
           {choice && !e.finished ? (
             <div class="encounter-choice" data-testid="encounter-choice">
               <Frame title="Enemy contact" tone="alert">
-                <p>{mine.length} of our ships meet {foes.length} {foes[0]?.ownerName ?? 'enemy'} ship{foes.length === 1 ? '' : 's'} at {locationName}. The strategic turn is paused until the battle is decided.</p>
+                <p>{mine.length} of our ships meet {foes.length} {foeName} ship{foes.length === 1 ? '' : 's'} at {e.location}. The strategic turn is paused until the battle is decided.</p>
+                {foes.some((s) => s.hidden) ? <p class="hint">Sensors read {foes.filter((s) => s.hidden).length} cloaked contact{foes.filter((s) => s.hidden).length === 1 ? '' : 's'}: they must decloak to fire, and their first volley gains a +25% ambush bonus.</p> : null}
+                <p class={`hail-outlook tone-${outlook.tone}`} data-testid="hail-outlook">{outlook.text}</p>
                 <div class="modal-actions">
                   <Pill tone="alert" onClick={() => setChoice(false)} testid="choice-fight" hint="Command your ships round by round">Take command</Pill>
                   <Pill tone="secondary" onClick={auto} testid="choice-auto" hint="Your ships fight under automatic command">Auto-resolve</Pill>
-                  <Pill tone="ghost" onClick={hail} hint="Attempt a mutual disengagement">Hail</Pill>
+                  <Pill tone="ghost" onClick={hail} testid="choice-hail" hint="Every ship hails and one round resolves">Hail</Pill>
                 </div>
               </Frame>
             </div>
           ) : null}
+          <div class="arena-legend" aria-hidden="true">
+            <span><i class="al al-ring" />hull / shields</span><span><i class="al al-intent" />next order</span><span><i class="al al-ai" />AI decision</span>
+          </div>
         </div>
-        <ShipList title="Hostiles" ships={foes} selected={target} onPick={pick} hostile />
+        <ShipList title="Hostiles" ships={foes} all={e.ships} selected={target} onPick={pick} hostile />
       </div>
       <div class="combat-bottom">
-        <Frame title="Orders" sub={all ? 'all ships' : selected ? selected.name.split(' — ')[0] : 'select a ship'} class="orders-frame" testid="tactical-orders"
-          actions={<Pill small tone="ghost" active={all} onClick={() => setAll(!all)} hint="Apply the manoeuvre to every active ship">All ships</Pill>}>
+        <Frame title="Orders" sub={scopeLabel} class="orders-frame" testid="tactical-orders"
+          actions={
+            <div class="scope-toggle" role="radiogroup" aria-label="Order scope">
+              {([['all', 'All ships', 'Every active ship'], ['group', 'Group', 'The selected ship’s like-class tactical group'], ['ship', 'Ship', 'Only the selected ship']] as const).map(([k, label, hint]) => (
+                <Pill key={k} small tone="ghost" active={scope === k} onClick={() => setScope(k)} hint={hint} testid={`scope-${k}`}
+                  disabled={k !== 'all' && (!selected || !active(selected))} reason="Select one of your active ships">{label}</Pill>
+              ))}
+            </div>
+          }>
           <div class="maneuvers">
             {MANEUVERS.map((mv) => {
-              const current = !all && selected?.maneuver === mv.key;
-              const cannot = e.finished ? 'The battle is over' : mv.key === 'Retreat' && !all && selected && !selected.canRetreat ? 'No safe supplied withdrawal sector' : !all && (!selected || !active(selected)) ? 'Select one of your active ships' : undefined;
+              const current = scope === 'ship' && selected?.maneuver === mv.key;
+              const cannot = e.finished ? 'The battle is over'
+                : scope === 'ship' && selected?.station && ['Retreat', 'Charge', 'Circle', 'Flyby', 'Strafe', 'Evade', 'Ram', 'Harry', 'Assault'].includes(mv.key) ? 'Stations are immobile: they hold position and fire'
+                : mv.key === 'Retreat' && scope === 'ship' && selected && !selected.canRetreat ? 'No safe supplied withdrawal sector'
+                : scope !== 'all' && (!selected || !active(selected)) ? 'Select one of your active ships' : undefined;
               return <Pill key={mv.key} small tone={mv.key === 'Retreat' || mv.key === 'Ram' ? 'alert' : mv.key === 'Hail' ? 'ghost' : 'secondary'} active={current}
-                disabled={!!cannot} reason={cannot} hint={`${mv.hint}${target && mv.key !== 'Retreat' && mv.key !== 'Hail' ? `\nTarget: #${target}` : ''}`} testid={`maneuver-${mv.key}`} onClick={() => order(mv.key)}>{mv.name}</Pill>;
+                disabled={!!cannot} reason={cannot} hint={`${mv.hint}${target && mv.key !== 'Retreat' && mv.key !== 'Hail' ? `\nTarget: ${shortName(e.ships.find((s) => s.id === target))} #${target}` : ''}`}
+                testid={`maneuver-${mv.key}`} onClick={() => order(mv.key)}>{mv.name}</Pill>;
             })}
           </div>
-          <p class="hint">Click ships in the arena or lists: yours to command, theirs to target. Orders persist until changed.</p>
+          <p class={`hail-outlook small tone-${outlook.tone}`}>{outlook.text}</p>
+          {selected?.cloaked && scope !== 'all' ? <p class="hint">{shortName(selected)} is cloaked: it cannot fire while cloaked. An attack order decloaks it with a +25% ambush volley.</p> : null}
         </Frame>
         <Frame title="Combat log" sub={lastRound ? `round ${lastRound.index}` : 'awaiting first round'} class="log-frame">
           <ul class="combat-log" data-testid="combat-log">
-            {lastRound ? roundLog(e, lastRound).map((l, i) => <li key={i}>{l}</li>) : <li class="muted">Ships deploy at opposite edges of the arena.</li>}
+            {lastRound ? roundLog(e, lastRound).map((l, i) => <li key={i} class={`log-${l.kind}`}>{l.text}</li>) : <li class="muted">Ships deploy at opposite edges of the arena. Dashed lines show what each ship will do next round.</li>}
           </ul>
         </Frame>
       </div>
-      {v.session.battleFinished || e.finished ? null : null}
     </div>
   );
 }
 
 function Force({ ships, label }: { ships: TacticalShip[]; label: string }) {
   const alive = ships.filter((s) => s.alive && !s.retreated).length;
-  const hull = ships.reduce((s, x) => s + Math.max(0, x.hull), 0), max = ships.reduce((s, x) => s + x.maxHull, 0);
+  const known = ships.filter((s) => !s.hidden);
+  const hull = known.reduce((s, x) => s + Math.max(0, x.hull), 0), max = known.reduce((s, x) => s + x.maxHull, 0);
   return (
-    <div class="force" {...tip(`${alive} of ${ships.length} ships still fighting`)}>
+    <div class="force" {...tip(`${alive} of ${ships.length} ships still fighting${ships.some((s) => s.hidden) ? ' (cloaked contacts not shown in the hull total)' : ''}`)}>
       <Emblem empire={ships[0]?.owner ?? 0} size={26} />
       <div><div class="force-name">{label}</div><Meter value={hull} max={max} tone="hull" height={5} /><div class="force-count">{alive}/{ships.length} ships</div></div>
     </div>
   );
 }
 
-function ShipList({ title, ships, selected, onPick, hostile }: { title: string; ships: TacticalShip[]; selected: number | null; onPick: (id: number) => void; hostile?: boolean }) {
+function ShipList({ title, ships, all, selected, onPick, hostile }: {
+  title: string; ships: TacticalShip[]; all: TacticalShip[]; selected: number | null; onPick: (id: number) => void; hostile?: boolean;
+}) {
+  const nameOf = (id: number) => { const s = all.find((x) => x.id === id); return s ? `${shortName(s)} #${id}` : `#${id}`; };
   return (
     <div class={`ship-list${hostile ? ' hostile' : ''}`}>
       <h3>{title}</h3>
-      {ships.map((s) => (
-        <button type="button" key={s.id} class={`ship-card${selected === s.id ? ' active' : ''}${!s.alive ? ' dead' : s.retreated ? ' gone' : ''}`}
-          onClick={() => onPick(s.id)} disabled={s.hidden} data-testid={`ship-${s.id}`}>
-          <div class="sc-head"><Emblem empire={s.owner} size={14} /><span class="sc-name">{s.hidden ? 'Cloaked contact' : s.name.split(' — ')[0]}</span><span class="sc-id">#{s.id}</span></div>
-          {s.hidden ? <div class="sc-state">Sensor ghost — decloaks to fire</div> : (
-            <>
-              <div class="sc-bars">
-                <Meter value={s.shields} max={s.maxShields} tone="shield" height={3} />
-                <Meter value={s.hull} max={s.maxHull} tone="hull" height={4} />
-              </div>
-              <div class="sc-state">
-                {!s.alive ? 'DESTROYED' : s.retreated ? 'WITHDRAWN' : s.mine ? `${s.maneuver ?? 'Engage'}${s.target ? ` → #${s.target}` : ''}` : `beam ${s.beam} · torp ${s.torpedo}`}
-                {s.group ? <span class="sc-group">{s.group}</span> : null}
-              </div>
-            </>
-          )}
-        </button>
-      ))}
+      {ships.map((s) => {
+        const next = s.next;
+        const status = !s.alive ? 'DESTROYED' : s.retreated ? 'WITHDRAWN' : null;
+        return (
+          <button type="button" key={s.id} class={`ship-card${selected === s.id ? ' active' : ''}${!s.alive ? ' dead' : s.retreated ? ' gone' : ''}`}
+            onClick={() => onPick(s.id)} disabled={s.hidden} data-testid={`ship-${s.id}`}>
+            <div class="sc-head"><Emblem empire={s.owner} size={14} /><span class="sc-name">{shortName(s)}</span><span class="sc-id">#{s.id}</span></div>
+            {s.hidden ? <div class="sc-state"><span class="sc-flag cloak">Cloaked</span><span>decloaks to fire</span></div> : (
+              <>
+                <div class="sc-bars">
+                  <Meter value={s.shields} max={s.maxShields} tone="shield" height={3} />
+                  <Meter value={s.hull} max={s.maxHull} tone="hull" height={4} />
+                </div>
+                <div class="sc-state">
+                  {status ? <span>{status}</span> : next ? (
+                    <span class="sc-next" data-testid={`next-${s.id}`}>
+                      {hostile ? 'will ' : 'next: '}<b>{MANEUVER_NAME[next.maneuver] ?? next.maneuver}</b>{next.target ? ` → ${nameOf(next.target)}` : ''}
+                    </span>
+                  ) : <span>beam {s.beam} · torp {s.torpedo}</span>}
+                  {next && !status ? <span class={`sc-src src-${next.source}`}>{sourceLabel(next.source)}</span> : null}
+                </div>
+                <div class="sc-flags">
+                  {s.cloaked && s.alive && !s.retreated ? <span class="sc-flag cloak">Cloaked</span> : null}
+                  {s.station ? <span class="sc-flag station" {...tip('Immobile base: it never moves or retreats, braces for −20% incoming damage and fires at every enemy in range.')}>{s.stationType ?? 'Station'} · immobile</span> : null}
+                  {s.disengaging && s.next ? <span class="sc-flag disengage" {...tip('Weapons offline, −25% incoming. Escapes at the next movement phase if still retreating.')}>Disengaging</span> : null}
+                  {s.group ? <span class="sc-group">{s.group}</span> : null}
+                  {!hostile && s.alive && !s.retreated ? <span class="sc-weap">B{s.beam} · T{s.torpedo}</span> : null}
+                </div>
+              </>
+            )}
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -212,7 +257,7 @@ function Replay({ index }: { index: number }) {
   const [playing, setPlaying] = useState(false);
   useEffect(() => {
     if (!playing || !e) return;
-    const id = setInterval(() => setK((x) => { if (x >= e.rounds.length) { setPlaying(false); return x; } return x + 1; }), 1250);
+    const id = setInterval(() => setK((x) => { if (x >= e.rounds.length) { setPlaying(false); return x; } return x + 1; }), reducedMotion.value ? 900 : 2500);
     return () => clearInterval(id);
   }, [playing, e]);
   if (!e) return <Frame title="Replay"><Empty>Replay unavailable.</Empty></Frame>;
@@ -222,18 +267,22 @@ function Replay({ index }: { index: number }) {
     <Frame title={`Replay — ${e.location}`} sub={`round ${k} of ${e.rounds.length}`} class="fill replay-frame" testid="replay">
       <div class="replay-arena"><CombatArena encounter={e} round={k} selected={null} target={null} onPick={() => undefined} animateKey={`replay-${index}`} /></div>
       <div class="replay-controls">
-        <Pill small tone="ghost" onClick={() => { setPlaying(false); setK(0); }}>⏮</Pill>
-        <Pill small tone="ghost" onClick={() => { setPlaying(false); setK(Math.max(0, k - 1)); }} disabled={k === 0}>◀</Pill>
+        <Pill small tone="ghost" onClick={() => { setPlaying(false); setK(0); }} ariaLabel="First round">⏮</Pill>
+        <Pill small tone="ghost" onClick={() => { setPlaying(false); setK(Math.max(0, k - 1)); }} disabled={k === 0} ariaLabel="Previous round">◀</Pill>
         <Pill small onClick={() => { if (k >= e.rounds.length) setK(0); setPlaying(!playing); }} testid="replay-play">{playing ? 'Pause' : 'Play'}</Pill>
-        <Pill small tone="ghost" onClick={() => { setPlaying(false); setK(Math.min(e.rounds.length, k + 1)); }} disabled={k >= e.rounds.length} testid="replay-next">▶</Pill>
+        <Pill small tone="ghost" onClick={() => { setPlaying(false); setK(Math.min(e.rounds.length, k + 1)); }} disabled={k >= e.rounds.length} testid="replay-next" ariaLabel="Next round">▶</Pill>
         <input type="range" class="slider grow" min={0} max={e.rounds.length} value={k} aria-label="Replay round" onInput={(ev) => { setPlaying(false); setK(Number((ev.target as HTMLInputElement).value)); }} />
       </div>
       <div class="replay-status">
         {e.ships.map((s) => { const f = frame.get(s.id)!; return (
-          <span key={s.id} class={`rs-ship${!f.alive ? ' dead' : f.retreated ? ' gone' : ''}`}><Emblem empire={s.owner} size={11} /> {s.name.split(' — ')[0]} <Meter value={Math.max(0, f.hull)} max={s.maxHull} tone="hull" height={3} /></span>
+          <span key={s.id} class={`rs-ship${!f.alive ? ' dead' : f.retreated ? ' gone' : ''}`}>
+            <Emblem empire={s.owner} size={11} /> {shortName(s)} <Meter value={Math.max(0, f.hull)} max={s.maxHull} tone="hull" height={3} />
+            {f.cloaked && f.alive && !f.retreated ? <Badge tone="dim">cloaked</Badge> : null}
+            {f.disengaging ? <Badge tone="warn">disengaging</Badge> : null}
+          </span>
         ); })}
       </div>
-      <ul class="combat-log">{r ? roundLog(e, r).map((l, i) => <li key={i}>{l}</li>) : <li class="muted">Deployment.</li>}</ul>
+      <ul class="combat-log">{r ? roundLog(e, r).map((l, i) => <li key={i} class={`log-${l.kind}`}>{l.text}</li>) : <li class="muted">Deployment.</li>}</ul>
     </Frame>
   );
 }
@@ -248,20 +297,21 @@ function Report({ index }: { index: number }) {
   return (
     <Frame title={`Battle at sector ${b.x}.${b.y}`} sub={`turn ${b.turn} · ${b.rounds.length} rounds`} class="fill" testid="battle-report">
       <div class="replay-controls">
-        <Pill small tone="ghost" onClick={() => setK(Math.max(0, k - 1))} disabled={k === 0}>◀</Pill>
+        <Pill small tone="ghost" onClick={() => setK(Math.max(0, k - 1))} disabled={k === 0} ariaLabel="Previous round">◀</Pill>
         <input type="range" class="slider grow" min={0} max={b.rounds.length} value={k} aria-label="Round" onInput={(ev) => setK(Number((ev.target as HTMLInputElement).value))} />
-        <Pill small tone="ghost" onClick={() => setK(Math.min(b.rounds.length, k + 1))} disabled={k >= b.rounds.length}>▶</Pill>
+        <Pill small tone="ghost" onClick={() => setK(Math.min(b.rounds.length, k + 1))} disabled={k >= b.rounds.length} ariaLabel="Next round">▶</Pill>
         <Badge tone="accent">round {k}</Badge>
       </div>
       <div class="report-ships">
         {b.participants.map((p) => {
           const h = hull.get(p.id) ?? 0;
           const lost = b.rounds.slice(0, k).some((r) => r.lost.includes(p.id));
+          const withdrew = b.rounds.slice(0, k).some((r) => r.retreated.includes(p.id));
           return (
             <div class={`rs-row${lost ? ' dead' : ''}`} key={p.id}>
               <Emblem empire={p.owner} size={16} /><span>{p.name} #{p.id}</span>
               <Meter value={h} max={p.hull} tone="hull" height={5} /><b>{h}/{p.hull}</b>
-              {lost ? <Badge tone="alert">lost</Badge> : null}
+              {lost ? <Badge tone="alert">lost</Badge> : withdrew ? <Badge tone="warn">withdrew</Badge> : null}
             </div>
           );
         })}

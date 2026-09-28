@@ -2,11 +2,13 @@ import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { ContactView, FleetView, GameView, SystemView } from '../core/types';
 import { contextMenu, GalaxyMap, hoverInfo } from '../map/GalaxyMap';
 import {
-  cancelOrders, dryRun, focusMap, goto, issue, mapLayers, selectFleet, selectSystem, selection, view,
+  cancelOrders, dryRun, eventsOpen, focusMap, goto, issue, mapLayers, selectCell, selectFleet, selectSystem, selection, view,
 } from '../state/store';
 import { cellActions, replaceIds, sectorLabel, selectedUnit, type Action } from '../state/orders';
 import { Badge, Emblem, Empty, fmt, IconButton, Meter, Pill, signed, Stat, tip } from '../ui/components';
 import { palette } from '../ui/theme';
+import { FeatureCard, featuresAtCell, pendingEventCount, StationCard } from '../ui/Remaster';
+import { uiScale } from '../state/settings';
 
 export function GalaxyScreen() {
   const v = view.value!;
@@ -43,13 +45,15 @@ function MapHud({ v }: { v: GameView }) {
                   <button type="button" onClick={() => {
                     if (a.systemId) { selectSystem(a.systemId); const s = v.systems.find((x) => x.id === a.systemId); if (s) focusMap(s.x, s.y); }
                     else if (a.fleetId) { selectFleet(a.fleetId); const f = v.fleets.find((x) => x.id === a.fleetId); if (f) focusMap(f.x, f.y); }
-                    else if (a.kind === 'proposal' || a.kind === 'offer') goto('diplomacy');
+                    else if (a.kind === 'proposal' || a.kind === 'offer' || a.kind === 'callToArms') goto('diplomacy');
+                    else if (a.kind === 'event') eventsOpen.value = true;
                   }}>{a.text}</button>
                 </li>
               ))}
             </ul>
           ) : null}
         </div>
+        {v.events?.length ? <EventsHud v={v} /> : null}
       </div>
       <div class="map-hud-bottom">
         <div class="layer-toggles" role="group" aria-label="Map layers">
@@ -86,9 +90,26 @@ function MapHud({ v }: { v: GameView }) {
           <span><i class="lg lg-foreign" />Contacts</span>
           <span><i class="lg lg-tf" />Task force</span>
           <span><i class="lg lg-fog" />Unexplored</span>
+          {v.meta.rules?.stations ? <span><i class="lg lg-station" />Station</span> : null}
+          {v.features?.length ? <span><i class="lg lg-anomaly" />Anomaly</span> : null}
         </div>
       </div>
     </>
+  );
+}
+
+function EventsHud({ v }: { v: GameView }) {
+  const open = pendingEventCount(v);
+  const active = v.events.length - open;
+  return (
+    <button type="button" class={`hud-card events-hud${open ? ' urgent' : ''}`} data-testid="events-hud" onClick={() => { eventsOpen.value = true; }}>
+      <span class="eh-glyph" aria-hidden="true" />
+      <span class="eh-text">
+        <b>{open ? `${open} decision${open === 1 ? '' : 's'} needed` : 'Galactic events'}</b>
+        <span>{v.events.slice(0, 2).map((e) => e.name).join(' · ')}{v.events.length > 2 ? ` +${v.events.length - 2}` : ''}{!open && active ? '' : ''}</span>
+      </span>
+      <span class="chev">›</span>
+    </button>
   );
 }
 
@@ -102,16 +123,22 @@ function HoverTip({ v }: { v: GameView }) {
   const fog = v.fog[h.cell];
   const own = v.fleets.filter((f) => f.x === x && f.y === y).length;
   const foreign = v.contacts.filter((f) => f.x === x && f.y === y);
+  const station = v.stations?.find((st) => st.x === x && st.y === y);
+  const features = featuresAtCell(v, h.cell);
   let order = '';
   if (unit && !(unit.fleet.x === x && unit.fleet.y === y)) {
     order = h.eta === null ? (h.ok ? '' : 'Out of supply range') : `Right-click: set course — ${h.eta} turn${h.eta === 1 ? '' : 's'}`;
   }
   return (
-    <div class="hover-tip" style={{ left: `${h.x + 18}px`, top: `${h.y + 14}px` }} aria-hidden="true">
+    <div class="hover-tip" style={{ left: `${h.x / uiScale.value + 18}px`, top: `${h.y / uiScale.value + 14}px` }} aria-hidden="true">
       <div class="ht-title">{system ? system.name : fog === '0' ? 'Uncharted space' : 'Open space'} <span class="ht-coord">{x}.{y}</span></div>
       {system?.owner ? <div class="ht-line"><Emblem empire={system.owner} size={12} /> {system.owner === v.meta.player ? 'Your colony' : v.empires.find((e) => e.empire === system.owner)?.name ?? 'Colony'}</div> : null}
-      {system?.minor ? <div class="ht-line">◇ {system.minor.name}</div> : null}
+      {system?.minor ? <div class="ht-line">◇ {system.minor.name}{system.minor.temperament ? ` · ${system.minor.temperament}` : ''}{system.minor.bonus ? ` · joins with ${system.minor.bonus}` : ''}</div> : null}
       {fog === '1' ? <div class="ht-line muted">Surveyed — outside sensor range</div> : null}
+      {station ? <div class="ht-line"><Emblem empire={station.owner} size={12} /> {station.name} · {station.mine ? 'yours' : station.ownerName} · supply {station.supplyRadius}, sensors {station.sensorRadius}</div> : null}
+      {features.map((f) => (
+        <div class={`ht-feature ft-${f.type}`} key={f.id}><b>{f.name}{f.passable ? '' : ' — impassable'}</b><span>{f.effect}</span></div>
+      ))}
       {own ? <div class="ht-line">{own} of your ship{own === 1 ? '' : 's'}</div> : null}
       {foreign.length ? <div class="ht-line warn">{foreign.length} contact{foreign.length === 1 ? '' : 's'}{foreign.some((f) => f.atWar) ? ' — hostile' : ''}</div> : null}
       {order ? <div class={`ht-order ${h.eta === null ? 'bad' : ''}`}>{order}</div> : null}
@@ -128,8 +155,10 @@ function ContextMenu({ v }: { v: GameView }) {
     if (!menu || !ref.current) { setPos(null); return; }
     const parent = ref.current.parentElement!.getBoundingClientRect();
     const r = ref.current.getBoundingClientRect();
-    const left = Math.min(Math.max(8, menu.x + 6), parent.width - r.width - 8);
-    const top = Math.min(Math.max(8, menu.y + 6), parent.height - r.height - 8);
+    // Rects and pointer offsets are in screen pixels; the menu is laid out in (zoomed) interface pixels.
+    const k = uiScale.value;
+    const left = Math.min(Math.max(8, menu.x / k + 6), (parent.width - r.width) / k - 8);
+    const top = Math.min(Math.max(8, menu.y / k + 6), (parent.height - r.height) / k - 8);
     setPos({ left, top });
     ref.current.querySelector<HTMLButtonElement>('button:not([aria-disabled="true"])')?.focus();
   }, [menu, actions.length]);
@@ -182,6 +211,7 @@ function Inspector({ v }: { v: GameView }) {
   const contact = sel.fleetId && !fleet ? v.contacts.find((c) => c.id === sel.fleetId) ?? null : null;
   const cell = sel.cell;
   const system = cell !== null ? v.systems.find((s) => s.y * v.meta.width + s.x === cell) ?? null : null;
+  const station = cell !== null ? v.stations?.find((st) => st.y * v.meta.width + st.x === cell) ?? null : null;
   return (
     <aside class={`inspector${collapsed ? ' collapsed' : ''}`} aria-label="Inspector" data-testid="inspector">
       <button type="button" class="inspector-toggle" onClick={() => setCollapsed(!collapsed)} aria-label={collapsed ? 'Show inspector' : 'Hide inspector'}>
@@ -190,6 +220,7 @@ function Inspector({ v }: { v: GameView }) {
       <div class="inspector-body">
         {fleet ? <UnitCard v={v} fleet={fleet} /> : null}
         {contact ? <ContactCard contact={contact} /> : null}
+        {station && !fleet && !contact ? <StationCard v={v} station={station} /> : null}
         {cell !== null ? <SectorCard v={v} cell={cell} system={system} /> : (
           <div class="inspector-empty">
             <h3>Star chart</h3>
@@ -209,6 +240,7 @@ function orderText(v: GameView, fleet: FleetView): string {
   const drafted = v.pending.filter((p) => p.fleetId === fleet.id || (fleet.taskForceId && p.taskForceId === fleet.taskForceId && p.type === 'SetTaskForceOrder'));
   if (drafted.length) return drafted.map((d) => d.summary.replace(/^.*?: /, '')).join('; ');
   if (fleet.colonize) return 'Colonizing at turn end';
+  if (fleet.buildingOutpost) return `Assembling an outpost (${fleet.outpostProgress ?? 0}/${v.outpostTurns || 3} turns)`;
   if (fleet.terraforming) {
     const s = v.systems.find((x) => x.id === fleet.terraformSystemId);
     const p = s?.planets[fleet.terraformPlanetIndex];
@@ -333,6 +365,14 @@ function ContactCard({ contact }: { contact: ContactView }) {
   );
 }
 
+function fleetSelected(v: GameView): boolean {
+  const id = selection.value.fleetId;
+  return !!id && (v.fleets.some((f) => f.id === id) || v.contacts.some((c) => c.id === id));
+}
+function contactsHere(v: GameView, x: number, y: number): boolean {
+  return v.contacts.some((c) => c.x === x && c.y === y);
+}
+
 function SectorCard({ v, cell, system }: { v: GameView; cell: number; system: SystemView | null }) {
   const W = v.meta.width;
   const x = cell % W, y = Math.floor(cell / W);
@@ -341,6 +381,7 @@ function SectorCard({ v, cell, system }: { v: GameView; cell: number; system: Sy
   const contacts = v.contacts.filter((f) => f.x === x && f.y === y);
   const fog = v.fog[cell];
   const ownerRel = system?.owner && system.owner !== v.meta.player ? v.empires.find((e) => e.empire === system.owner) : null;
+  const station = v.stations?.find((st) => st.x === x && st.y === y);
   return (
     <div class="card sector-card" data-testid="sector-card">
       <div class="card-head">
@@ -353,6 +394,10 @@ function SectorCard({ v, cell, system }: { v: GameView; cell: number; system: Sy
           </div>
         </div>
       </div>
+      {featuresAtCell(v, cell).map((f) => <FeatureCard key={f.id} feature={f} />)}
+      {station && (fleetSelected(v) || contactsHere(v, x, y)) ? (
+        <button type="button" class="unit-row station-row" onClick={() => selectCell(cell)}><Emblem empire={station.owner} size={14} /><span>{station.name}</span><Badge tone="accent">{station.typeName}</Badge></button>
+      ) : null}
       {colony ? (
         <div class="colony-brief">
           <div class="stat-grid four">
@@ -384,7 +429,8 @@ function SectorCard({ v, cell, system }: { v: GameView; cell: number; system: Sy
       ) : system ? null : <p class="hint">{fog === '0' ? 'Send a scout to survey this region.' : 'No star system in this sector.'}</p>}
       {system?.minor ? (
         <div class="minor-line">
-          {system.minor.unknown ? 'An inhabited world. Make contact to learn more.' : <>◇ <b>{system.minor.name}</b> · {system.minor.memberOf ? `member of ${v.empires.find((e) => e.empire === system.minor!.memberOf)?.name ?? 'an empire'}` : 'independent'}{system.minor.attitude !== undefined ? ` · relations ${system.minor.attitude}` : ''}</>}
+          {system.minor.unknown ? 'An inhabited world. Make contact to learn more.' : <>◇ <b>{system.minor.name}</b> · {system.minor.memberOf ? `member of ${v.empires.find((e) => e.empire === system.minor!.memberOf)?.name ?? 'an empire'}` : 'independent'}{system.minor.attitude !== undefined ? ` · relations ${system.minor.attitude}` : ''}
+            {system.minor.temperament ? <div class="muted small">{system.minor.temperament}{system.minor.techLevel !== undefined ? ` · tech ${system.minor.techLevel}` : ''}{system.minor.population !== undefined ? ` · pop ${system.minor.population}` : ''}{system.minor.bonus ? ` · members give ${system.minor.bonus}` : ''}</div> : null}</>}
         </div>
       ) : null}
       {units.length || contacts.length ? (

@@ -183,4 +183,254 @@ test('battle drill pauses the turn for tactical orders; mid-battle save round-tr
   assert.ok(report.participants.length >= 2);
 });
 
+// Regression for the removed order-pinning workaround: rounds now resolve through plain
+// session::resolveRound / session::autoResolve and must still verify in session::resume
+// (Lane A made replay verification re-derive AI decisions). Each pattern mixes implicit
+// (AI-decided) player ships with explicit orders in a multi-ship battle.
+test('multi-ship battles resolved with implicit AI orders verify through session::resume', () => {
+  const patterns = {
+    'auto at once': () => call('tacticalAuto'),
+    'implicit rounds then auto': () => { call('tacticalRound'); call('tacticalRound'); call('tacticalAuto'); },
+    'one explicit ship, rest AI': (e) => {
+      const mine = e.ships.filter((s) => s.mine && s.active);
+      call('tacticalOrder', { fleetId: mine[0].id, maneuver: 'Charge' });
+      call('tacticalRound');
+      call('tacticalAuto');
+    },
+    'retreat all (disengage), then AI': () => {
+      const n = attempt('tacticalOrder', { all: true, maneuver: 'Retreat' });
+      const after = call('tacticalRound');
+      if (n.ok) assert.ok(after.ships.some((s) => s.mine && (s.disengaging || s.retreated)) || after.finished, 'retreat disengages first');
+      call('tacticalAuto');
+    },
+    'hail everyone': () => { call('tacticalOrder', { all: true, maneuver: 'Hail' }); call('tacticalRound'); if (!call('tactical').finished) call('tacticalAuto'); },
+    'ram and hold': (e) => {
+      const mine = e.ships.filter((s) => s.mine && s.active);
+      call('tacticalOrder', { all: true, maneuver: 'Hold' });
+      call('tacticalOrder', { fleetId: mine[mine.length - 1].id, maneuver: 'Ram' });
+      for (let i = 0; i < 4 && !call('tactical').finished; i++) call('tacticalRound');
+      if (!call('tactical').finished) call('tacticalAuto');
+    },
+    'group order then auto': (e) => {
+      const g = e.ships.find((s) => s.mine && s.active && s.groupId).groupId;
+      call('tacticalOrder', { groupId: g, maneuver: 'Circle' });
+      call('tacticalRound');
+      call('tacticalAuto');
+    },
+  };
+  for (const [name, run] of Object.entries(patterns)) {
+    call('newBattleDrill');
+    assert.equal(call('endTurn').status, 'battle', name);
+    const e = call('tactical');
+    assert.ok(e.ships.filter((s) => s.mine).length >= 3, 'multi-ship battle');
+    run(e);
+    assert.equal(call('tactical').finished, true, `${name}: battle finished`);
+    const done = call('endTurn');
+    assert.equal(done.status, 'complete', `${name}: turn completes (replay verified)`);
+    // Mid-battle save/load with AI-decided rounds also resumes.
+  }
+  call('newBattleDrill');
+  call('endTurn');
+  call('tacticalRound');
+  const save = call('save');
+  call('load', { data: save.data });
+  call('tacticalAuto');
+  assert.equal(call('endTurn').status, 'complete', 'mid-battle save of an implicit round verifies');
+});
+
+test('tactical view: AI order previews, hail acceptance, cloak/ambush and ram records', () => {
+  call('newBattleDrill');
+  call('endTurn');
+  const e = call('tactical');
+  assert.equal(e.rules, 2);
+  assert.ok(e.hail && typeof e.hail.accepts === 'boolean' && e.hail.ourStrength > 0);
+  for (const s of e.ships.filter((x) => x.active && !x.hidden)) {
+    assert.ok(s.next && s.next.maneuver && ['order', 'standing', 'ai'].includes(s.next.source), 'every active ship has a next-order preview');
+  }
+  // Klingon ships start cloaked: hidden from us until they decloak to fire.
+  assert.ok(e.ships.some((s) => !s.mine && s.cloaked), 'cloaked enemy present');
+  const mine = e.ships.filter((s) => s.mine && s.active);
+  call('tacticalOrder', { fleetId: mine[0].id, maneuver: 'Ram' });
+  let r;
+  for (let i = 0; i < 12; i++) { r = call('tacticalRound'); if (r.finished) break; }
+  const rounds = r.rounds;
+  assert.ok(rounds.some((x) => x.ships.some((st) => st.decloaked)), 'cloaked AI ships decloak to attack');
+  assert.ok(rounds.some((x) => x.salvos.some((sv) => sv.ambush)), 'decloak volley is marked as an ambush');
+  assert.ok(rounds.some((x) => x.ships.some((st) => st.ai)), 'AI decisions are marked');
+  if (rounds.some((x) => x.salvos.some((sv) => sv.ram))) {
+    const ramRound = rounds.find((x) => x.salvos.some((sv) => sv.ram));
+    assert.ok(ramRound.salvos.filter((sv) => sv.ram).length >= 2, 'ram impact and recoil are both recorded');
+  }
+  const alive = r.ships.find((s) => s.mine && s.active);
+  if (!r.finished && alive) {
+    assert.ok(call('tacticalOrder', { groupId: alive.groupId, maneuver: 'Engage' }) >= 1);
+    call('tacticalAuto');
+  }
+  assert.equal(call('endTurn').status, 'complete');
+});
+
+test('an auto-resolved session battle commits the same state as headless advance()', () => {
+  call('newBattleDrill');
+  const headless = call('headlessFingerprint');
+  assert.equal(call('endTurn').status, 'battle');
+  call('tacticalAuto');
+  assert.equal(call('endTurn').status, 'complete');
+  assert.equal(call('fingerprint'), headless);
+});
+
+test('diplomacy drill: incoming AI proposals, call to arms, betrayal, dissolved treaty, eliminated empire', () => {
+  const v = call('newDiplomacyDrill');
+  assert.equal(v.meta.scenario, 'diplomacy');
+  const card = v.empires.find((e) => e.empire === 4);
+  assert.equal(card.eliminated, true, 'Cardassia is eliminated');
+  const d = call('diplomacy');
+  const incoming = d.proposals.filter((p) => p.incoming);
+  assert.ok(incoming.some((p) => p.kind === 'treaty' && p.proposer.id === 5), 'Ferengi trade proposal');
+  const tribute = incoming.find((p) => p.kind === 'tribute');
+  assert.ok(tribute && tribute.creditDemand === 150, 'Klingon tribute demand');
+  assert.ok(incoming.every((p) => p.dueTurn === v.meta.turn + 2), 'AI proposals to the player allow two turns');
+  assert.equal(d.callsToArms.length, 1);
+  assert.equal(d.callsToArms[0].aggressor, 2);
+  assert.equal(d.callsToArms[0].defender, 3);
+  assert.ok(d.treatyHistory.some((t) => t.status === 'Dissolved' && t.counterparty.id === 4), 'dissolved treaty in history');
+  assert.ok(d.news.some((n) => n.typeKey === 12), 'betrayal is galactic news');
+  assert.equal(d.empires.find((e) => e.empire === 2).memory.theirBetrayals, 1, 'Klingon standing records the betrayal');
+  assert.equal(d.empires.find((e) => e.empire === 3).allied, true);
+  assert.ok(v.alerts.some((a) => a.kind === 'callToArms'));
+
+  // Accept the trade pact, reject the tribute, honour the call to arms.
+  const trade = incoming.find((p) => p.proposer.id === 5);
+  call('submit', { command: { type: 'RespondDiplomaticProposal', proposalId: trade.id, proposalAccept: true } });
+  call('submit', { command: { type: 'RespondDiplomaticProposal', proposalId: tribute.id, proposalAccept: false } });
+  assert.equal(call('diplomacy').proposals.filter((p) => p.responseDrafted).length, 2);
+  assert.equal(call('diplomacy').callsToArms[0].honorBlocker, '');
+  call('submit', { command: { type: 'DeclareWar', targetEmpire: 2 } });
+  assert.equal(call('diplomacy').callsToArms[0].honorDrafted, true);
+  const b = endTurn();
+  const after = call('diplomacy');
+  assert.ok(after.treaties.some((t) => t.type === 'Trade' && t.counterparty.id === 5), 'trade pact signed');
+  assert.ok(after.empires.find((e) => e.empire === 2).atWar, 'at war with the aggressor');
+  assert.ok(b.events.some((e) => e.category === 'diplomacy'), 'briefing reports diplomacy');
+  assert.ok(!b.events.some((e) => e.category === 'economy' && /Diplomacy|Galactic news/.test(e.text)), 'diplomacy is not misfiled');
+});
+
+test('diplomacy drill: an unanswered call to arms lapses with consequences', () => {
+  call('newDiplomacyDrill');
+  const trustBefore = call('diplomacy').empires.find((e) => e.empire === 3).trust;
+  for (let i = 0; i < 4; i++) endTurn();
+  const d = call('diplomacy');
+  assert.equal(d.callsToArms.length, 0, 'call lapsed');
+  assert.ok(d.empires.find((e) => e.empire === 3).trust < trustBefore, 'refusal costs trust');
+  assert.ok(d.events.some((e) => e.typeKey === 15), 'AllianceRefused recorded');
+});
+
+// ---- Schema-13 gameplay layer -----------------------------------------------------------------
+test('new campaigns default to the Remastered preset; Classic is selectable', () => {
+  const remastered = call('newCampaign', { faction: 1, seed: 5150, era: 1, ruleset: 'reference' });
+  assert.equal(remastered.meta.rules.preset, 'remastered');
+  assert.ok(remastered.meta.rules.galaxyFeatures && remastered.meta.rules.curatedEvents && remastered.meta.rules.alternativeVictories);
+  assert.equal(remastered.victory.conditions.length, 4);
+  const classic = call('newCampaign', { faction: 1, seed: 5150, era: 1, ruleset: 'reference', preset: 'classic' });
+  assert.equal(classic.meta.rules.preset, 'classic');
+  assert.equal(classic.meta.rules.galaxyFeatures, false);
+  assert.equal(classic.features.length, 0);
+  assert.equal(attempt('newCampaign', { preset: 'modern' }).ok, false);
+});
+
+test('minor-race roster: new campaigns place roster minors; profiles reach diplomacy, empire and the database', () => {
+  const enc = call('encyclopedia');
+  assert.equal(enc.minorRaces.length, 30);
+  assert.ok(enc.minorRaces.every((r) => r.temperament && r.bonus && r.description && r.homeworld));
+  const v = call('newCampaign', { faction: 1, seed: 424242, era: 1, ruleset: 'reference' });
+  assert.ok(v.empire.memberBonuses && v.empire.memberBonuses.members === 0);
+  // Play until a minor is contacted, then its roster profile is in the diplomacy view.
+  let d = call('diplomacy');
+  for (let i = 0; i < 30 && !d.minors.length; i++) { endTurn(); d = call('diplomacy'); }
+  if (d.minors.length) {
+    const m = d.minors[0];
+    assert.ok(m.race && m.race.temperament && m.race.bonus, 'contacted minors carry their roster profile');
+    const sys = call('view').systems.find((s) => s.id === m.systemId);
+    assert.ok(sys.minor.temperament);
+  }
+});
+
+test('frontier drill: build an outpost, upgrade a station, resolve an event, chronicle briefing', () => {
+  let v = call('newFrontierDrill');
+  assert.equal(v.meta.scenario, 'frontier');
+  assert.ok(v.features.length > 0, 'charted anomalies are visible');
+  assert.ok(v.features.every((f) => f.effect.length > 0));
+  const wormhole = v.features.find((f) => f.type === 'Wormhole');
+  if (wormhole) assert.ok(wormhole.exit, 'charted wormholes expose their exit');
+  const storm = v.features.find((f) => f.type === 'IonStorm');
+  if (storm) assert.equal(storm.cells.length >= 1, true);
+  // Stations: an existing outpost with funding options dry-run through the core.
+  const outpost = v.stations.find((s) => s.mine);
+  assert.ok(outpost && outpost.type === 'Outpost' && outpost.supplyRadius === 3);
+  const detail = call('station', { stationId: outpost.id });
+  assert.ok(detail.funding.length >= 1);
+  const funder = detail.funding.find((f) => !f.blocker);
+  assert.ok(funder, 'a colony can fund the starbase');
+  call('submit', { command: { type: 'UpgradeStation', stationId: outpost.id, systemId: funder.systemId } });
+  // Outpost assembly by the troop transport.
+  const transport = v.fleets.find((f) => f.shipClass === 'Transport');
+  assert.equal(call('dryRun', { command: { type: 'BuildOutpost', fleetId: transport.id } }).ok, true);
+  call('submit', { command: { type: 'BuildOutpost', fleetId: transport.id } });
+  // A pending decision on a galactic event.
+  const event = v.events.find((e) => e.awaitingChoice);
+  assert.ok(event && event.choices.length >= 2 && event.deadline >= v.meta.turn);
+  call('submit', { command: { type: 'ResolveEventChoice', eventId: event.id, eventOption: 0 } });
+  v = call('view');
+  assert.ok(v.fleets.find((f) => f.id === transport.id).buildingOutpost);
+  assert.equal(v.events.find((e) => e.id === event.id).drafted, 0);
+  assert.ok(v.stations.find((s) => s.id === outpost.id).upgrade, 'upgrade drafted');
+  for (const kind of ['BuildOutpost', 'UpgradeStation', 'ResolveEventChoice'])
+    assert.ok(v.pending.some((p) => p.type === kind && !/^[A-Z][a-zA-Z]+$/.test(p.summary)), `${kind} has a readable summary`);
+  const briefings = [];
+  for (let i = 0; i < v.outpostTurns + 1; i++) briefings.push(endTurn());
+  v = call('view');
+  assert.ok(v.stations.filter((s) => s.mine).length >= 2, 'the outpost was assembled');
+  assert.ok(!v.fleets.some((f) => f.id === transport.id), 'the transport was consumed');
+  assert.ok(v.events.find((e) => e.id === event.id)?.choice !== -1 || !v.events.some((e) => e.id === event.id));
+  const all = briefings.flatMap((b) => b.events);
+  assert.ok(all.some((e) => e.category === 'stations' && e.stationId), 'chronicle files stations with a reference');
+  assert.ok(all.some((e) => e.category === 'events' && e.eventId), 'chronicle files galactic events');
+  // Save/load keeps the gameplay layer.
+  const save = call('save');
+  const reloaded = call('load', { data: save.data });
+  assert.equal(reloaded.stations.length, v.stations.length);
+});
+
+test('build templates: define, apply, set default, delete', () => {
+  let v = call('newCampaign', { faction: 1, seed: 424242, era: 1, ruleset: 'reference' });
+  const home = v.colonies[0].systemId;
+  call('submit', { command: { type: 'DefineBuildTemplate', templateId: 0, templateName: 'Core worlds', templateItems: [{ product: 'Farm' }, { product: 'Factory' }] } });
+  v = call('view');
+  const t = v.templates.find((x) => x.name === 'Core worlds');
+  assert.ok(t && t.items.length === 2);
+  const detail = call('colony', { systemId: home });
+  assert.ok(detail.templates.some((x) => x.id === t.id));
+  const queued = detail.queue.length;
+  call('submit', { command: { type: 'ApplyBuildTemplate', templateId: t.id, systemId: home } });
+  assert.ok(call('colony', { systemId: home }).queue.length > queued, 'template items queued');
+  call('submit', { command: { type: 'SetDefaultBuildTemplate', templateId: t.id } });
+  assert.ok(call('view').templates.find((x) => x.id === t.id).isDefault);
+  call('submit', { command: { type: 'DeleteBuildTemplate', templateId: t.id } });
+  assert.ok(!call('view').templates.some((x) => x.id === t.id));
+  const mega = call('colony', { systemId: home }).megaproject;
+  assert.match(mega.startBlocker, /turn|level/);
+});
+
+test('station drill: the starbase fights as an immobile combatant', () => {
+  call('newBattleDrill', { station: true });
+  const status = call('endTurn');
+  assert.equal(status.status, 'battle');
+  const e = call('tactical');
+  const base = e.ships.find((s) => s.station);
+  assert.ok(base && base.immobile && base.id >= 2000000 && base.mine);
+  const at = { ...base.position };
+  call('tacticalRound');
+  const after = call('tactical').ships.find((s) => s.id === base.id);
+  if (after.alive) assert.deepEqual(after.position, at, 'stations never move');
+});
+
 console.log(`${passed} bridge tests passed`);

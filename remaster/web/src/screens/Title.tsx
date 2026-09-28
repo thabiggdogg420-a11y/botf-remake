@@ -1,5 +1,6 @@
 import { AUTOSAVE_ID, readSlot, saveIndex } from '../state/saves';
-import { goto, loadEnvelope, meta, startDrill } from '../state/store';
+import { goto, loadEnvelope, meta, startDiplomacyDrill, startDrill, startFrontierDrill } from '../state/store';
+import { settingsOpen } from '../ui/SettingsPanel';
 import { audioEnabled, setAudio } from '../ui/audio';
 import { Emblem, Pill } from '../ui/components';
 import { Starfield } from '../ui/Starfield';
@@ -33,7 +34,17 @@ export function TitleScreen() {
           <Pill tone={resume ? 'secondary' : 'primary'} wide testid="new-campaign" onClick={() => goto('new')}>New campaign</Pill>
           <Pill tone="secondary" wide testid="load-campaign" onClick={() => goto('saves')} hint="Saved campaigns and .botfsave files">Load campaign</Pill>
           <Pill tone="tertiary" wide testid="tactical-drill" onClick={() => startDrill()} hint="A ready-made skirmish at Sol to practise tactical command">Tactical drill</Pill>
-          <Pill tone="ghost" wide active={audioEnabled.value} onClick={() => setAudio(!audioEnabled.value)}>Interface sound: {audioEnabled.value ? 'on' : 'off'}</Pill>
+          <Pill tone="tertiary" wide testid="diplomacy-drill" onClick={() => startDiplomacyDrill()} hint="A ready-made diplomatic crisis: incoming proposals, a tribute demand and an ally's call to arms">Diplomacy drill</Pill>
+          <div class="title-row">
+            <Pill tone="tertiary" wide testid="frontier-drill" onClick={() => startFrontierDrill()}
+              hint="Remastered gameplay: build an outpost with a troop transport, upgrade a starbase, chart anomalies and decide galactic events">Frontier drill</Pill>
+            <Pill tone="tertiary" wide testid="starbase-drill" onClick={() => startDrill(true)}
+              hint="The tactical drill with Sol's starbase fighting as an immobile base">Starbase drill</Pill>
+          </div>
+          <div class="title-row">
+            <Pill tone="ghost" wide active={audioEnabled.value} onClick={() => setAudio(!audioEnabled.value)}>Sound: {audioEnabled.value ? 'on' : 'off'}</Pill>
+            <Pill tone="ghost" wide onClick={() => { settingsOpen.value = true; }} testid="title-settings">Settings</Pill>
+          </div>
         </div>
       </div>
       <footer class="title-foot">

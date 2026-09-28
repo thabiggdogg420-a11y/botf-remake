@@ -8,6 +8,7 @@ for (const [width, height] of [[1280, 720], [2560, 1080]] as const) {
     test.use({ viewport: { width, height } });
 
     test(`capture ${width}x${height}`, async ({ page }) => {
+      test.setTimeout(360_000);   // a long visual tour: every screen, both drills, onboarding and settings
       const dir = `${SHOTS_DIR}/${width}x${height}`;
       fs.mkdirSync(dir, { recursive: true });
       const shot = async (name: string) => {
@@ -103,6 +104,76 @@ for (const [width, height] of [[1280, 720], [2560, 1080]] as const) {
       await shot('23-diplomacy-war');
       await page.keyboard.press('F7');
       await shot('24-intel-contact');
+
+      // Diplomacy drill: inbox with deadlines, call to arms, ledger with a dissolved treaty, news.
+      await page.goto('/');
+      await page.getByTestId('diplomacy-drill').click();
+      await page.getByTestId('nav-diplomacy').click();
+      await expect(page.getByTestId('diplomacy-inbox')).toBeVisible();
+      await shot('25-diplomacy-inbox');
+      await page.getByTestId('race-3').click();
+      await shot('26-diplomacy-ally-dossier');
+      await page.getByTestId('dip-panes').getByText('Treaty ledger').click();
+      await shot('27-diplomacy-ledger');
+      await page.getByTestId('dip-panes').getByText('Galactic news').click();
+      await shot('28-diplomacy-news');
+
+      // Tactical rules 2: intent previews, salvos in flight, a disengaging ship, a hail truce.
+      await page.goto('/');
+      await page.getByTestId('tactical-drill').click();
+      await page.getByTestId('end-turn').click();
+      await page.getByTestId('confirm-ok').click();
+      await page.getByTestId('choice-fight').click();
+      await page.waitForTimeout(400);
+      await shot('29-combat-intent');
+      await page.getByTestId('ship-5').click();
+      await page.getByTestId('maneuver-Retreat').click();
+      await page.getByTestId('resolve-round').click();
+      await page.waitForTimeout(1250);
+      await page.screenshot({ path: `${dir}/30-combat-salvos.png` });
+      await page.waitForTimeout(1500);
+      await shot('31-combat-disengaging');
+      await page.getByTestId('scope-all').click();
+      await page.getByTestId('maneuver-Hail').click();
+      await page.getByTestId('resolve-round').click();
+      await page.waitForTimeout(1100);
+      await page.screenshot({ path: `${dir}/32-combat-hail.png` });
+      await page.waitForTimeout(1500);
+      await shot('33-combat-truce');
+
+      // Onboarding, help and settings.
+      await newCampaign(page, 1, '424242', { tutorial: true });
+      await shot('34-tutorial-welcome');
+      await page.getByTestId('tutorial-next').click();
+      await shot('35-tutorial-select-home');
+      await page.getByTestId('tutorial-skip').click();
+      await page.getByTestId('help-button').click();
+      await shot('36-help-galaxy');
+      await page.keyboard.press('Escape');
+      await page.getByTestId('menu-button').click();
+      await page.getByTestId('open-settings').click();
+      await shot('37-settings');
+      const scale = page.getByTestId('setting-scale');
+      await scale.focus();
+      for (let i = 0; i < 6; i++) await page.keyboard.press('ArrowRight');
+      await page.getByTestId('setting-colorblind').click();
+      await page.getByTestId('settings-close').click();
+      await page.waitForTimeout(500);
+      await shot('38-scale130-colorblind-galaxy');
+      await page.keyboard.press('F2');
+      await shot('39-scale130-system');
+      await page.keyboard.press('F6');
+      await shot('40-scale130-diplomacy');
+      await page.keyboard.press('F4');
+      await shot('41-scale130-research');
+      await page.goto('/');
+      await page.getByTestId('tactical-drill').click();
+      await page.getByTestId('end-turn').click();
+      await page.getByTestId('confirm-ok').click();
+      await page.getByTestId('choice-fight').click();
+      await page.getByTestId('resolve-round').click();
+      await page.waitForTimeout(2600);
+      await shot('42-scale130-combat');
       expect(errors).toEqual([]);
     });
   });

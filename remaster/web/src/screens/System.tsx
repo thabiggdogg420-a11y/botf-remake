@@ -5,6 +5,7 @@ import {
   cancelOrders, confirmDialog, goto, issue, meta, reportError, selectSystem, selection, view,
 } from '../state/store';
 import { Badge, Empty, fmt, Frame, IconButton, Meter, Pill, signed, Slider, Stat, Tabs, tip } from '../ui/components';
+import { FundingNotice, MegaprojectFrame, TemplatesFrame } from '../ui/Remaster';
 
 export function SystemScreen() {
   const v = view.value!;
@@ -72,7 +73,10 @@ export function SystemScreen() {
           <BuildOptions detail={detail} locked={locked} />
         </div>
         <div class="sys-col narrow">
+          <FundingNotice detail={detail} />
           <BuildQueue v={v} detail={detail} locked={locked} />
+          <TemplatesFrame v={v} detail={detail} locked={locked} />
+          <MegaprojectFrame v={v} detail={detail} locked={locked} />
         </div>
       </div>
     </div>
@@ -234,7 +238,9 @@ function Energy({ detail, locked }: { detail: ColonyDetail; locked: boolean }) {
         <span>Power</span><Meter value={e.energyUsed} max={Math.max(1, e.energyAvailable)} segments={20} height={8} tone={e.energyUsed > e.energyAvailable ? 'alert' : 'secondary'} /><b>{e.energyUsed}/{e.energyAvailable}</b>
       </div>
       <div class="energy-lines">
-        <span>{c.structures.powerPlants} power plants</span>
+        <span {...tip('Power plants give 10 energy each (1 credit upkeep); fusion plants give 40 (2 upkeep). Both can be scrapped from the structures list.')}>
+          {c.structures.powerPlants} power plant{c.structures.powerPlants === 1 ? '' : 's'}{c.structures.fusionPlants ? ` · ${c.structures.fusionPlants} fusion plant${c.structures.fusionPlants === 1 ? '' : 's'}` : ''}
+        </span>
         {e.inactiveFactories || e.inactiveLabs ? <span class="warn">{e.inactiveFactories} factories, {e.inactiveLabs} labs idle</span> : <span>All structures powered</span>}
         {c.structures.defenseBatteries ? <span>{e.poweredBatteries}/{c.structures.defenseBatteries} batteries powered</span> : null}
       </div>

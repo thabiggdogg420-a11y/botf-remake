@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { BriefingEvent } from '../core/types';
-import { briefing, briefingOpen, focusMap, goto, selectFleet, selectSystem, view } from '../state/store';
+import { briefing, briefingOpen, eventsOpen, focusMap, goto, selectCell, selectFleet, selectSystem, victoryOpen, view } from '../state/store';
 import { Badge, fmt, Pill, signed } from '../ui/components';
 import { CATEGORY_LABELS } from '../ui/theme';
 
-const ORDER = ['combat', 'diplomacy', 'intel', 'construction', 'research', 'exploration', 'fleets', 'economy'];
+// Turn chronicle categories (TurnReport::chronicle), most urgent first.
+const ORDER = ['victory', 'combat', 'events', 'diplomacy', 'stations', 'intel', 'construction', 'research', 'colonization', 'exploration', 'fleets', 'economy'];
 
 export function BriefingPanel() {
   const b = briefing.value!;
@@ -18,6 +19,14 @@ export function BriefingPanel() {
   const open = (e: BriefingEvent) => {
     close();
     if (e.category === 'combat' && e.battle !== undefined) { goto('combat'); return; }
+    // Galactic events with a decision (or still running) open the event cards.
+    if (e.eventId && v.events.some((x) => x.id === e.eventId)) { eventsOpen.value = true; return; }
+    if (e.category === 'victory' && e.x === undefined) { victoryOpen.value = true; return; }
+    if (e.stationId || e.category === 'stations') {
+      const st = v.stations.find((x) => x.id === e.stationId);
+      const x = st?.x ?? e.x, y = st?.y ?? e.y;
+      if (x !== undefined && y !== undefined) { goto('galaxy'); selectCell(y * v.meta.width + x); focusMap(x, y, 1.7); return; }
+    }
     if (e.systemId) {
       const own = v.colonies.some((c) => c.systemId === e.systemId);
       selectSystem(e.systemId);
@@ -60,13 +69,18 @@ export function BriefingPanel() {
               <h3><i class={`cat-dot cat-${c}`} />{CATEGORY_LABELS[c] ?? c}</h3>
               <ul>
                 {shown.filter((e) => e.category === c).map((e, i) => {
-                  const actionable = e.systemId !== undefined || e.fleetId !== undefined || e.x !== undefined || ['research', 'diplomacy', 'intel', 'combat'].includes(e.category);
+                  const eventOpen = !!e.eventId && v.events.some((x) => x.id === e.eventId);
+                  const actionable = eventOpen || e.systemId !== undefined || e.fleetId !== undefined || e.x !== undefined || ['research', 'diplomacy', 'intel', 'combat', 'victory'].includes(e.category);
+                  const answer = e.kind === 'proposal' || e.kind === 'tribute' || e.kind === 'gift' || e.kind === 'callToArms';
+                  const go = e.category === 'combat' && e.battle !== undefined ? 'Replay' : e.category === 'research' ? 'Research'
+                    : answer ? (e.kind === 'callToArms' ? 'Answer' : 'Respond') : e.category === 'diplomacy' && e.x === undefined ? 'Diplomacy'
+                    : eventOpen ? (e.kind === 'eventChoice' ? 'Decide' : 'Event') : e.category === 'victory' && e.x === undefined ? 'Progress' : 'Show';
                   return (
-                    <li key={i} class={`brief-event sev-${e.severity}`}>
+                    <li key={i} class={`brief-event sev-${e.severity}${e.kind ? ` kind-${e.kind}` : ''}`}>
                       <button type="button" onClick={() => open(e)} disabled={!actionable} data-testid="briefing-event">
                         <span class="be-sev" aria-hidden="true" />
-                        <span class="be-text">{e.text}</span>
-                        {actionable ? <span class="be-go">{e.category === 'combat' && e.battle !== undefined ? 'Replay' : e.category === 'research' ? 'Research' : 'Show'} ›</span> : null}
+                        <span class="be-text">{e.text}{e.dueTurn !== undefined && (answer || e.kind === 'eventChoice') ? <span class="be-due">due turn {e.dueTurn}</span> : null}</span>
+                        {actionable ? <span class="be-go">{go} ›</span> : null}
                       </button>
                     </li>
                   );

@@ -1,13 +1,26 @@
 // Canvas 2D galaxy renderer: nebula + parallax starfield, fog of war, territory, supply range,
 // routes, systems and fleet markers. Pure presentation — all numbers come from the view JSON.
-import type { ContactView, FleetView, GameView, SystemView } from '../core/types';
-import { EMBLEMS, palette } from '../ui/theme';
+import type { ContactView, FleetView, GameView, StationView, SystemView } from '../core/types';
+import { colorblindPaletteActive, EMBLEMS, palette } from '../ui/theme';
 
 export const CELL = 64;
-const FOG_UNKNOWN_ALPHA = 178;
+// Unknown space is veiled, but lightly enough that the nebula fields read through; the
+// "uncharted" survey texture, faint grid crosses and the sensor horizon line carry the meaning.
+const FOG_UNKNOWN_ALPHA = 150;
+
+/** Bounding box (in cells) of every surveyed or sensed sector, or null when nothing is known. */
+export function knownBounds(view: GameView): { x0: number; y0: number; x1: number; y1: number } | null {
+  const W = view.meta.width, H = view.meta.height;
+  let x0 = W, y0 = H, x1 = -1, y1 = -1;
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    if (view.fog[y * W + x] === '0') continue;
+    x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y);
+  }
+  return x1 < 0 ? null : { x0, y0, x1, y1 };
+}
 
 export interface Camera { cx: number; cy: number; zoom: number }
-export interface HitTarget { kind: 'fleet' | 'contact'; id: number; x: number; y: number; r: number; cell: number }
+export interface HitTarget { kind: 'fleet' | 'contact' | 'station'; id: number; x: number; y: number; r: number; cell: number }
 export interface Overlay {
   selectedCell: number | null;
   selectedFleetId: number | null;
@@ -70,6 +83,11 @@ export class GalaxyRenderer {
   private territoryCanvas: HTMLCanvasElement | null = null;
   private layerKey = '';
   private territoryOwner: Int8Array = new Int8Array(0);
+  private unknown: Uint8Array = new Uint8Array(0);
+  private frontier: [number, number, number, number][] = [];   // world-space segments of the sensor horizon
+  private uncharted: { x: number; y: number }[] = [];            // cells deep in unknown space (labels)
+  private surveyPattern: CanvasPattern | null = null;
+  private nebulaRect: [number, number, number, number] = [0, 0, 0, 0];
   hits: HitTarget[] = [];
 
   constructor(private canvas: HTMLCanvasElement) {
@@ -156,11 +174,61 @@ export class GalaxyRenderer {
     this.nebula = c;
   }
 
+  /** Fine diagonal "survey" hatching with sparse specks: the texture of uncharted space. */
+  private ensureSurveyPattern(): CanvasPattern | null {
+    if (this.surveyPattern) return this.surveyPattern;
+    const c = document.createElement('canvas');
+    c.width = c.height = 96;
+    const g = c.getContext('2d')!;
+    g.strokeStyle = 'rgba(150,175,230,0.10)';
+    g.lineWidth = 1;
+    for (let i = -96; i < 192; i += 12) { g.beginPath(); g.moveTo(i, 0); g.lineTo(i + 96, 96); g.stroke(); }
+    const rand = mulberry(42);
+    for (let i = 0; i < 26; i++) {
+      g.fillStyle = `rgba(190,205,240,${0.08 + rand() * 0.16})`;
+      g.fillRect(Math.floor(rand() * 96), Math.floor(rand() * 96), 1, 1);
+    }
+    this.surveyPattern = this.ctx.createPattern(c, 'repeat');
+    return this.surveyPattern;
+  }
+
   private ensureLayers(view: GameView): void {
-    const key = `${view.meta.version}:${view.fog}`;
+    const key = `${view.meta.version}:${view.fog}:${colorblindPaletteActive() ? 'cb' : 'std'}`;
     if (key === this.layerKey && this.fogCanvas && this.territoryCanvas) return;
     this.layerKey = key;
     const { width: W, height: H } = view.meta;
+    // Unknown cells, the sensor horizon between charted and uncharted space, and label anchors
+    // placed deepest inside large uncharted regions.
+    const unknown = new Uint8Array(W * H);
+    for (let i = 0; i < W * H; i++) unknown[i] = view.fog[i] === '0' ? 1 : 0;
+    this.unknown = unknown;
+    const frontier: [number, number, number, number][] = [];
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      if (unknown[y * W + x]) continue;
+      if (x > 0 && unknown[y * W + x - 1]) frontier.push([x * CELL, y * CELL, x * CELL, (y + 1) * CELL]);
+      if (x < W - 1 && unknown[y * W + x + 1]) frontier.push([(x + 1) * CELL, y * CELL, (x + 1) * CELL, (y + 1) * CELL]);
+      if (y > 0 && unknown[(y - 1) * W + x]) frontier.push([x * CELL, y * CELL, (x + 1) * CELL, y * CELL]);
+      if (y < H - 1 && unknown[(y + 1) * W + x]) frontier.push([x * CELL, (y + 1) * CELL, (x + 1) * CELL, (y + 1) * CELL]);
+    }
+    this.frontier = frontier;
+    const dist = new Int16Array(W * H).fill(999);
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      if (!unknown[y * W + x]) continue;
+      let best = 999;
+      for (let yy = 0; yy < H; yy++) for (let xx = 0; xx < W; xx++) {
+        if (unknown[yy * W + xx]) continue;
+        best = Math.min(best, Math.max(Math.abs(xx - x), Math.abs(yy - y)));
+      }
+      dist[y * W + x] = best;
+    }
+    // Labels on a loose lattice (so some are in view wherever the chart is panned), only where the
+    // uncharted region is at least two sectors deep.
+    const labels: { x: number; y: number }[] = [];
+    for (let y = 1; y < H - 1; y++) for (let x = 1; x < W - 1; x++) {
+      if (!unknown[y * W + x] || dist[y * W + x]! < 2) continue;
+      if ((x + 2 * y) % 5 === 0) labels.push({ x, y });   // thinned in screen space when drawn
+    }
+    this.uncharted = labels;
     // Fog: one pixel per sector, alpha by knowledge; smoothed when scaled → soft edges.
     const fog = this.fogCanvas ?? document.createElement('canvas');
     fog.width = W + 2; fog.height = H + 2;
@@ -252,7 +320,8 @@ export class GalaxyRenderer {
       const n = this.nebula;
       const px = cam.cx * z * 0.18, py = cam.cy * z * 0.18;
       ctx.globalAlpha = 0.95;
-      ctx.drawImage(n, ox - 6 * CELL * z + px * 0.2, oy - 6 * CELL * z + py * 0.2, n.width / 0.25 * z, n.height / 0.25 * z);
+      this.nebulaRect = [ox - 6 * CELL * z + px * 0.2, oy - 6 * CELL * z + py * 0.2, n.width / 0.25 * z, n.height / 0.25 * z];
+      ctx.drawImage(n, ...this.nebulaRect);
       ctx.globalAlpha = 1;
     }
 
@@ -306,6 +375,10 @@ export class GalaxyRenderer {
       }
     }
 
+    // anomalies (charted sectors only), then station supply/sensor coverage
+    if (view.features?.length) this.drawFeatures(view, cam, overlay, t);
+    if (view.stations?.length) this.drawStationCoverage(view, cam, overlay);
+
     // fog of war (soft): the sector grid, plus the same veil over the space around the galaxy
     if (this.fogCanvas) {
       const fx = ox - CELL * z, fy = oy - CELL * z, fw = (W + 2) * CELL * z, fh = (H + 2) * CELL * z;
@@ -315,7 +388,10 @@ export class GalaxyRenderer {
       ctx.rect(fx, fy, fw, fh);
       ctx.fill('evenodd');
       ctx.drawImage(this.fogCanvas, fx, fy, fw, fh);
+      this.drawUncharted(view, cam, overlay, t);
     }
+
+    if (view.features?.length) this.drawWormholeLinks(view, cam, t);
 
     // routes of own units
     if (overlay.layers.routes) {
@@ -338,8 +414,9 @@ export class GalaxyRenderer {
     // systems
     for (const s of view.systems) this.drawSystem(view, cam, s, overlay, t);
 
-    // fleets
+    // stations and fleets
     this.hits = [];
+    if (view.stations?.length) this.drawStations(view, cam, overlay, t);
     this.drawFleets(view, cam, overlay, t);
 
     if (overlay.selectedCell !== null) this.drawSelection(view, cam, overlay.selectedCell, overlay.accent, t);
@@ -348,6 +425,92 @@ export class GalaxyRenderer {
     ctx.strokeStyle = 'rgba(140,170,230,0.22)';
     ctx.lineWidth = 1;
     ctx.strokeRect(Math.round(ox) + 0.5, Math.round(oy) + 0.5, Math.round(worldW * z), Math.round(worldH * z));
+  }
+
+  /** Uncharted space: survey hatching, faint grid crosses, "uncharted" labels and the sensor horizon. */
+  private drawUncharted(view: GameView, cam: Camera, overlay: Overlay, t: number): void {
+    const { ctx } = this;
+    const { width: W, height: H } = view.meta;
+    const z = cam.zoom, s = CELL * z;
+    const [ox, oy] = this.worldToScreen(cam, 0, 0);
+    const unknownPath = new Path2D();
+    let any = false;
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      if (!this.unknown[y * W + x]) continue;
+      const sx = ox + x * s, sy = oy + y * s;
+      if (sx > this.width || sy > this.height || sx + s < 0 || sy + s < 0) continue;
+      unknownPath.rect(sx, sy, s + 0.5, s + 0.5);
+      any = true;
+    }
+    if (any) {
+      ctx.save();
+      ctx.clip(unknownPath);
+      // Nebula fields glow faintly through the veil: uncharted, not empty.
+      if (this.nebula) {
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = 0.55;
+        ctx.drawImage(this.nebula, ...this.nebulaRect);
+        ctx.globalAlpha = 1;
+        ctx.globalCompositeOperation = 'source-over';
+      }
+      const pattern = this.ensureSurveyPattern();
+      if (pattern) {
+        // Anchor the texture to the chart so it pans and zooms with the sectors.
+        pattern.setTransform(new DOMMatrix().translateSelf(ox, oy).scaleSelf(Math.max(0.5, z * 0.75)));
+        ctx.fillStyle = pattern;
+        ctx.fillRect(0, 0, this.width, this.height);
+      }
+      if (overlay.layers.grid) {
+        ctx.strokeStyle = 'rgba(160,185,235,0.20)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        const arm = Math.max(2, Math.min(5, 3.5 * z));
+        for (let y = 0; y <= H; y++) for (let x = 0; x <= W; x++) {
+          const sx = Math.round(ox + x * s) + 0.5, sy = Math.round(oy + y * s) + 0.5;
+          if (sx < -8 || sy < -8 || sx > this.width + 8 || sy > this.height + 8) continue;
+          ctx.moveTo(sx - arm, sy); ctx.lineTo(sx + arm, sy); ctx.moveTo(sx, sy - arm); ctx.lineTo(sx, sy + arm);
+        }
+        ctx.stroke();
+      }
+      ctx.restore();
+      if (z > 0.5) {
+        ctx.save();
+        const size = Math.round(Math.max(10, Math.min(15, 11 * z)));
+        ctx.font = `600 ${size}px "Antonio Variable", Antonio, "Arial Narrow", sans-serif`;
+        (ctx as CanvasRenderingContext2D & { letterSpacing?: string }).letterSpacing = `${Math.round(size * 0.45)}px`;
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        const placed: [number, number][] = [];
+        for (const l of this.uncharted) {
+          const [cx, cy] = this.worldToScreen(cam, (l.x + 0.5) * CELL, (l.y + 0.5) * CELL);
+          if (cx < 80 || cy < 20 || cx > this.width - 80 || cy > this.height - 30) continue;
+          if (placed.some(([px, py]) => Math.abs(px - cx) < 190 && Math.abs(py - cy) < 110)) continue;
+          placed.push([cx, cy]);
+          ctx.fillStyle = 'rgba(170,190,235,0.30)';
+          ctx.fillText('UNCHARTED', cx, cy);
+          ctx.font = `500 ${Math.max(9, size - 3)}px "Share Tech Mono", monospace`;
+          ctx.fillStyle = 'rgba(170,190,235,0.22)';
+          ctx.fillText(`SECTOR ${l.x}.${l.y}`, cx, cy + size + 2);
+          ctx.font = `600 ${size}px "Antonio Variable", Antonio, "Arial Narrow", sans-serif`;
+        }
+        ctx.restore();
+      }
+    }
+    // Sensor horizon: where charted space ends.
+    if (this.frontier.length) {
+      ctx.save();
+      ctx.lineCap = 'round';
+      const glow = new Path2D(), line = new Path2D();
+      for (const [x1, y1, x2, y2] of this.frontier) {
+        const [a, b] = this.worldToScreen(cam, x1, y1), [c, d] = this.worldToScreen(cam, x2, y2);
+        glow.moveTo(a, b); glow.lineTo(c, d);
+        line.moveTo(a, b); line.lineTo(c, d);
+      }
+      ctx.strokeStyle = rgba(overlay.accent, 0.07); ctx.lineWidth = 7; ctx.stroke(glow);
+      ctx.strokeStyle = rgba(overlay.accent, 0.38); ctx.lineWidth = 1.2;
+      ctx.setLineDash([5, 7]); ctx.lineDashOffset = -t * 6;
+      ctx.stroke(line);
+      ctx.restore();
+    }
   }
 
   private drawBorders(view: GameView, cam: Camera): void {
@@ -399,19 +562,51 @@ export class GalaxyRenderer {
     const W = view.meta.width;
     const pts = cells.map((c) => this.worldToScreen(cam, ((c % W) + 0.5) * CELL, (Math.floor(c / W) + 0.5) * CELL));
     if (pts.length < 2) return;
+    // Consecutive cells more than one sector apart are wormhole transits: drawn as a jump arc.
+    const jump = cells.map((c, i) => i > 0 && Math.max(Math.abs((c % W) - (cells[i - 1]! % W)), Math.abs(Math.floor(c / W) - Math.floor(cells[i - 1]! / W))) > 1);
+    const trace = () => {
+      ctx.beginPath();
+      pts.forEach(([x, y], i) => (i && !jump[i] ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
+    };
     ctx.save();
     ctx.lineCap = 'round'; ctx.lineJoin = 'round';
     if (strong) {
       ctx.strokeStyle = rgba(color.startsWith('#') ? color : '#ffffff', 0.18);
       ctx.lineWidth = 7;
-      ctx.beginPath(); pts.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y))); ctx.stroke();
+      trace(); ctx.stroke();
     }
     ctx.strokeStyle = color;
     ctx.lineWidth = strong ? 2.2 : 1.4;
     ctx.setLineDash(ghost ? [3, 5] : [8, 6]);
     ctx.lineDashOffset = -t * 18;
-    ctx.beginPath(); pts.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y))); ctx.stroke();
+    trace(); ctx.stroke();
     ctx.setLineDash([]);
+    // Wormhole transits: a bright arc between the two mouths.
+    for (let i = 1; i < pts.length; i++) {
+      if (!jump[i]) continue;
+      const [ax, ay] = pts[i - 1]!, [bx, by] = pts[i]!;
+      const mx = (ax + bx) / 2, my = (ay + by) / 2, len = Math.hypot(bx - ax, by - ay);
+      const nx = -(by - ay) / (len || 1), ny = (bx - ax) / (len || 1);
+      const cx = mx + nx * len * 0.22, cy = my + ny * len * 0.22;
+      ctx.strokeStyle = 'rgba(94,240,214,0.9)';
+      ctx.lineWidth = strong ? 2.6 : 1.8;
+      ctx.setLineDash([2, 5]);
+      ctx.lineDashOffset = -t * 30;
+      ctx.beginPath(); ctx.moveTo(ax, ay); ctx.quadraticCurveTo(cx, cy, bx, by); ctx.stroke();
+      ctx.setLineDash([]);
+      if (strong) {
+        ctx.font = '600 10px "Antonio Variable", Antonio, sans-serif';
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillStyle = 'rgba(4,7,14,0.85)';
+        const label = 'WORMHOLE';
+        const w = ctx.measureText(label).width + 10;
+        // On the arc itself: the quadratic curve's midpoint.
+        const lx = (ax + 2 * cx + bx) / 4, ly = (ay + 2 * cy + by) / 4;
+        roundRect(ctx, lx - w / 2, ly - 8, w, 15, 7); ctx.fill();
+        ctx.fillStyle = '#9ff7e8';
+        ctx.fillText(label, lx, ly);
+      }
+    }
     // waypoint ticks
     ctx.fillStyle = color;
     for (let i = 1; i < pts.length - 1; i++) { ctx.beginPath(); ctx.arc(pts[i]![0], pts[i]![1], strong ? 2.2 : 1.5, 0, Math.PI * 2); ctx.fill(); }
@@ -534,9 +729,377 @@ export class GalaxyRenderer {
       if (s.minor && z > 0.7) {
         ctx.font = `500 ${Math.max(9, fontSize - 3)}px "Inter Variable", Inter, sans-serif`;
         ctx.fillStyle = 'rgba(200,210,235,0.75)';
-        ctx.strokeText(s.minor.name, cx, ly + fontSize + 1);
-        ctx.fillText(s.minor.name, cx, ly + fontSize + 1);
+        const minorLabel = s.minor.temperament && z > 1.05 ? `${s.minor.name} · ${s.minor.temperament}` : s.minor.name;
+        ctx.strokeText(minorLabel, cx, ly + fontSize + 1);
+        ctx.fillText(minorLabel, cx, ly + fontSize + 1);
       }
+    }
+  }
+
+  // ---------------------------------------------------------------------------------------------
+  // Schema-13 layer: anomalies, wormhole links, stations and their coverage
+  // ---------------------------------------------------------------------------------------------
+  private drawFeatures(view: GameView, cam: Camera, overlay: Overlay, t: number): void {
+    const { ctx } = this;
+    const W = view.meta.width;
+    const z = cam.zoom, s = CELL * z;
+    const labelled = new Set<number>();
+    const visible = (cx: number, cy: number) => cx > -s && cy > -s && cx < this.width + s && cy < this.height + s;
+    ctx.save();
+    for (const f of view.features) {
+      const [cx, cy] = this.worldToScreen(cam, (f.x + 0.5) * CELL, (f.y + 0.5) * CELL);
+      const h = hash(f.id * 31 + 7);
+      switch (f.type) {
+        case 'Nebula': {
+          if (!visible(cx, cy)) break;
+          // A soft gas cloud: overlapping blobs that bleed into neighbouring cloud cells.
+          ctx.globalCompositeOperation = 'lighter';
+          for (let k = 0; k < 4; k++) {
+            const hk = hash(h + k * 977);
+            const drift = overlay.reduceMotion ? 0 : Math.sin(t * 0.25 + k + f.id) * 0.04;
+            const bx = cx + (((hk & 255) / 255) - 0.5 + drift) * s * 0.55;
+            const by = cy + ((((hk >> 8) & 255) / 255) - 0.5 - drift) * s * 0.55;
+            const r = s * (0.45 + ((hk >> 16) & 255) / 255 * 0.35);
+            const hue = k % 2 ? '#c257ff' : '#ff5fa8';
+            const g = ctx.createRadialGradient(bx, by, 0, bx, by, r);
+            g.addColorStop(0, rgba(hue, 0.30));
+            g.addColorStop(0.55, rgba(hue, 0.10));
+            g.addColorStop(1, rgba(hue, 0));
+            ctx.fillStyle = g;
+            ctx.beginPath(); ctx.arc(bx, by, r, 0, Math.PI * 2); ctx.fill();
+          }
+          ctx.globalCompositeOperation = 'source-over';
+          // Faint dust specks
+          ctx.fillStyle = 'rgba(255,210,245,0.35)';
+          for (let k = 0; k < 6; k++) {
+            const hk = hash(h + k * 131);
+            ctx.fillRect(cx + (((hk & 255) / 255) - 0.5) * s * 0.9, cy + ((((hk >> 8) & 255) / 255) - 0.5) * s * 0.9, 1.2, 1.2);
+          }
+          const key = f.clusterId ?? f.id;
+          if (overlay.layers.labels && z > 0.7 && !labelled.has(key)) {
+            labelled.add(key);
+            this.featureLabel(cx, cy + s * 0.34, f.surveyed ? 'NEBULA' : 'NEBULA ?', '#f0a8ff', z);
+          }
+          break;
+        }
+        case 'BlackHole': {
+          if (!visible(cx, cy)) break;
+          const r = s * 0.16;
+          const spin = overlay.reduceMotion ? 0 : t * 0.6;
+          // Lensing halo
+          const halo = ctx.createRadialGradient(cx, cy, r * 0.8, cx, cy, s * 0.48);
+          halo.addColorStop(0, 'rgba(255,170,90,0.35)');
+          halo.addColorStop(0.4, 'rgba(160,90,255,0.10)');
+          halo.addColorStop(1, 'rgba(0,0,0,0)');
+          ctx.fillStyle = halo;
+          ctx.beginPath(); ctx.arc(cx, cy, s * 0.48, 0, Math.PI * 2); ctx.fill();
+          // Accretion disc (tilted ellipse, rotating hot spots)
+          ctx.save();
+          ctx.translate(cx, cy); ctx.scale(1, 0.38);
+          for (let k = 0; k < 3; k++) {
+            ctx.strokeStyle = k === 0 ? 'rgba(255,196,110,0.85)' : k === 1 ? 'rgba(255,120,60,0.55)' : 'rgba(255,230,180,0.35)';
+            ctx.lineWidth = Math.max(1, (3 - k) * z);
+            ctx.beginPath(); ctx.arc(0, 0, r * (1.7 + k * 0.45), spin + k, spin + k + Math.PI * 1.6); ctx.stroke();
+          }
+          ctx.restore();
+          ctx.fillStyle = '#000';
+          ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
+          ctx.strokeStyle = 'rgba(255,220,170,0.8)'; ctx.lineWidth = 1;
+          ctx.beginPath(); ctx.arc(cx, cy, r * 1.08, 0, Math.PI * 2); ctx.stroke();
+          this.impassable(cx, cy, s);
+          if (overlay.layers.labels && z > 0.7) this.featureLabel(cx, cy + s * 0.34, 'BLACK HOLE', '#ffc27a', z);
+          break;
+        }
+        case 'NeutronStar': {
+          if (!visible(cx, cy)) break;
+          const pulse = overlay.reduceMotion ? 1 : 0.8 + 0.2 * Math.sin(t * 6 + f.id);
+          const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, s * 0.3);
+          glow.addColorStop(0, `rgba(200,230,255,${0.9 * pulse})`);
+          glow.addColorStop(0.25, 'rgba(120,180,255,0.35)');
+          glow.addColorStop(1, 'rgba(120,180,255,0)');
+          ctx.fillStyle = glow;
+          ctx.beginPath(); ctx.arc(cx, cy, s * 0.3, 0, Math.PI * 2); ctx.fill();
+          // Rotating pulsar beams
+          const a = overlay.reduceMotion ? 0.6 : t * 2.2 + f.id;
+          for (const dir of [0, Math.PI]) {
+            const ex = cx + Math.cos(a + dir) * s * 0.46, ey = cy + Math.sin(a + dir) * s * 0.46;
+            const beam = ctx.createLinearGradient(cx, cy, ex, ey);
+            beam.addColorStop(0, 'rgba(210,235,255,0.85)'); beam.addColorStop(1, 'rgba(210,235,255,0)');
+            ctx.strokeStyle = beam; ctx.lineWidth = Math.max(1.2, 2.2 * z);
+            ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(ex, ey); ctx.stroke();
+          }
+          ctx.fillStyle = '#ffffff';
+          ctx.beginPath(); ctx.arc(cx, cy, Math.max(2, s * 0.05), 0, Math.PI * 2); ctx.fill();
+          this.hazard(cx, cy, s, t);
+          if (overlay.layers.labels && z > 0.7) this.featureLabel(cx, cy + s * 0.34, 'NEUTRON STAR', '#bfe0ff', z);
+          break;
+        }
+        case 'Wormhole': {
+          if (!visible(cx, cy)) break;
+          const r = s * 0.24;
+          const spin = overlay.reduceMotion ? 0 : t * 1.6;
+          const core = ctx.createRadialGradient(cx, cy, 0, cx, cy, r * 1.5);
+          core.addColorStop(0, 'rgba(10,20,30,0.95)');
+          core.addColorStop(0.45, 'rgba(40,200,190,0.35)');
+          core.addColorStop(1, 'rgba(40,200,190,0)');
+          ctx.fillStyle = core;
+          ctx.beginPath(); ctx.arc(cx, cy, r * 1.5, 0, Math.PI * 2); ctx.fill();
+          ctx.lineCap = 'round';
+          for (let k = 0; k < 4; k++) {
+            ctx.strokeStyle = k % 2 ? 'rgba(160,255,240,0.75)' : 'rgba(94,240,214,0.9)';
+            ctx.lineWidth = Math.max(1, 1.8 * z);
+            const rr = r * (0.45 + k * 0.2);
+            ctx.beginPath(); ctx.arc(cx, cy, rr, spin * (1 + k * 0.3) + k * 1.7, spin * (1 + k * 0.3) + k * 1.7 + Math.PI * 1.1); ctx.stroke();
+          }
+          ctx.lineCap = 'butt';
+          if (overlay.layers.labels && z > 0.7) this.featureLabel(cx, cy + s * 0.34, f.exit ? 'WORMHOLE' : 'WORMHOLE ?', '#9ff7e8', z);
+          break;
+        }
+        case 'IonStorm': {
+          const cells = f.cells?.length ? f.cells : [f.y * W + f.x];
+          for (const cell of cells) {
+            const [sx, sy] = this.worldToScreen(cam, ((cell % W) + 0.5) * CELL, (Math.floor(cell / W) + 0.5) * CELL);
+            if (!visible(sx, sy)) continue;
+            const g = ctx.createRadialGradient(sx, sy, 0, sx, sy, s * 0.62);
+            g.addColorStop(0, 'rgba(120,220,255,0.30)');
+            g.addColorStop(0.6, 'rgba(90,160,255,0.12)');
+            g.addColorStop(1, 'rgba(90,160,255,0)');
+            ctx.fillStyle = g;
+            ctx.fillRect(sx - s * 0.62, sy - s * 0.62, s * 1.24, s * 1.24);
+            // Lightning: a flickering zig-zag, re-rolled a few times a second.
+            const frame = overlay.reduceMotion ? 0 : Math.floor(t * 3);
+            const hk = hash(cell * 7919 + frame);
+            if (overlay.reduceMotion || hk % 3 !== 0) {
+              ctx.strokeStyle = 'rgba(255,245,160,0.85)'; ctx.lineWidth = Math.max(1, 1.4 * z);
+              ctx.beginPath();
+              let lx = sx + (((hk & 255) / 255) - 0.5) * s * 0.5, ly = sy - s * 0.3;
+              ctx.moveTo(lx, ly);
+              for (let k = 0; k < 4; k++) { lx += (((hk >> (k * 4)) & 15) / 15 - 0.5) * s * 0.22; ly += s * 0.15; ctx.lineTo(lx, ly); }
+              ctx.stroke();
+            }
+          }
+          if (visible(cx, cy)) {
+            this.hazard(cx, cy, s, t);
+            // Drift direction
+            if (f.driftX || f.driftY) {
+              const len = Math.hypot(f.driftX ?? 0, f.driftY ?? 0) || 1;
+              const dx = (f.driftX ?? 0) / len, dy = (f.driftY ?? 0) / len;
+              const ax = cx + dx * s * 0.75, ay = cy + dy * s * 0.75;
+              ctx.strokeStyle = 'rgba(160,230,255,0.85)'; ctx.fillStyle = 'rgba(160,230,255,0.85)'; ctx.lineWidth = 1.5;
+              ctx.setLineDash([4, 3]);
+              ctx.beginPath(); ctx.moveTo(cx + dx * s * 0.3, cy + dy * s * 0.3); ctx.lineTo(ax, ay); ctx.stroke();
+              ctx.setLineDash([]);
+              const ang = Math.atan2(dy, dx);
+              ctx.beginPath();
+              ctx.moveTo(ax + Math.cos(ang) * 6, ay + Math.sin(ang) * 6);
+              ctx.lineTo(ax + Math.cos(ang + 2.4) * 6, ay + Math.sin(ang + 2.4) * 6);
+              ctx.lineTo(ax + Math.cos(ang - 2.4) * 6, ay + Math.sin(ang - 2.4) * 6);
+              ctx.closePath(); ctx.fill();
+            }
+            if (overlay.layers.labels && z > 0.7) this.featureLabel(cx, cy + s * 0.34, 'ION STORM', '#a8e6ff', z);
+          }
+          break;
+        }
+        case 'SubspaceRift': {
+          if (!visible(cx, cy)) break;
+          const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, s * 0.45);
+          glow.addColorStop(0, 'rgba(255,60,90,0.45)'); glow.addColorStop(1, 'rgba(255,60,90,0)');
+          ctx.fillStyle = glow;
+          ctx.beginPath(); ctx.arc(cx, cy, s * 0.45, 0, Math.PI * 2); ctx.fill();
+          ctx.strokeStyle = '#ff8aa0'; ctx.lineWidth = Math.max(1.5, 2.5 * z); ctx.lineJoin = 'miter';
+          ctx.beginPath();
+          const pts = 7;
+          for (let k = 0; k <= pts; k++) {
+            const px = cx - s * 0.36 + (s * 0.72 * k) / pts;
+            const py = cy + (k % 2 ? -1 : 1) * s * (0.06 + ((h >> k) & 3) * 0.03);
+            if (k) ctx.lineTo(px, py); else ctx.moveTo(px, py);
+          }
+          ctx.stroke();
+          this.impassable(cx, cy, s);
+          if (overlay.layers.labels && z > 0.7) this.featureLabel(cx, cy + s * 0.34, 'SUBSPACE RIFT', '#ff9fb2', z);
+          break;
+        }
+      }
+    }
+    ctx.restore();
+  }
+
+  private featureLabel(x: number, y: number, text: string, color: string, z: number): void {
+    const { ctx } = this;
+    const size = Math.round(Math.max(8, Math.min(11, 8.5 * z)));
+    ctx.save();
+    ctx.font = `600 ${size}px "Antonio Variable", Antonio, "Arial Narrow", sans-serif`;
+    (ctx as CanvasRenderingContext2D & { letterSpacing?: string }).letterSpacing = '1.5px';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(3,5,11,0.85)';
+    ctx.strokeText(text, x, y);
+    ctx.fillStyle = color;
+    ctx.globalAlpha = 0.85;
+    ctx.fillText(text, x, y);
+    ctx.restore();
+  }
+
+  /** Red hatched border: the sector cannot be entered. */
+  private impassable(cx: number, cy: number, s: number): void {
+    const { ctx } = this;
+    ctx.save();
+    ctx.strokeStyle = 'rgba(255,90,90,0.55)'; ctx.lineWidth = 1.2; ctx.setLineDash([3, 4]);
+    ctx.strokeRect(cx - s / 2 + 3, cy - s / 2 + 3, s - 6, s - 6);
+    ctx.restore();
+  }
+
+  /** Amber warning ring: ships here take damage every turn. */
+  private hazard(cx: number, cy: number, s: number, t: number): void {
+    const { ctx } = this;
+    ctx.save();
+    ctx.strokeStyle = 'rgba(255,190,80,0.6)'; ctx.lineWidth = 1.2;
+    ctx.setLineDash([2, 5]); ctx.lineDashOffset = -t * 8;
+    ctx.beginPath(); ctx.arc(cx, cy, s * 0.42, 0, Math.PI * 2); ctx.stroke();
+    ctx.restore();
+  }
+
+  private drawWormholeLinks(view: GameView, cam: Camera, t: number): void {
+    const { ctx } = this;
+    ctx.save();
+    for (const f of view.features) {
+      if (f.type !== 'Wormhole' || !f.exit || (f.pairId !== undefined && f.pairId < f.id && view.features.some((o) => o.id === f.pairId))) continue;
+      const [ax, ay] = this.worldToScreen(cam, (f.x + 0.5) * CELL, (f.y + 0.5) * CELL);
+      const [bx, by] = this.worldToScreen(cam, (f.exit.x + 0.5) * CELL, (f.exit.y + 0.5) * CELL);
+      const len = Math.hypot(bx - ax, by - ay) || 1;
+      const nx = -(by - ay) / len, ny = (bx - ax) / len;
+      const cx = (ax + bx) / 2 + nx * len * 0.22, cy = (ay + by) / 2 + ny * len * 0.22;
+      ctx.strokeStyle = 'rgba(94,240,214,0.10)'; ctx.lineWidth = 8;
+      ctx.beginPath(); ctx.moveTo(ax, ay); ctx.quadraticCurveTo(cx, cy, bx, by); ctx.stroke();
+      ctx.strokeStyle = 'rgba(94,240,214,0.42)'; ctx.lineWidth = 1.2;
+      ctx.setLineDash([1, 7]); ctx.lineDashOffset = -t * 10;
+      ctx.beginPath(); ctx.moveTo(ax, ay); ctx.quadraticCurveTo(cx, cy, bx, by); ctx.stroke();
+      ctx.setLineDash([]);
+    }
+    ctx.restore();
+  }
+
+  /** Supply (dashed) and sensor (dotted) coverage: always for the selected station, faintly for your others. */
+  private drawStationCoverage(view: GameView, cam: Camera, overlay: Overlay): void {
+    const { ctx } = this;
+    const W = view.meta.width, H = view.meta.height;
+    const focus = overlay.selectedCell !== null
+      ? view.stations.find((st) => st.y * W + st.x === overlay.selectedCell) ?? null : null;
+    const square = (st: StationView, radius: number) => {
+      const x0 = Math.max(0, st.x - radius), y0 = Math.max(0, st.y - radius);
+      const x1 = Math.min(W - 1, st.x + radius), y1 = Math.min(H - 1, st.y + radius);
+      const [sx, sy] = this.worldToScreen(cam, x0 * CELL, y0 * CELL);
+      const [ex, ey] = this.worldToScreen(cam, (x1 + 1) * CELL, (y1 + 1) * CELL);
+      return [sx, sy, ex - sx, ey - sy] as const;
+    };
+    ctx.save();
+    for (const st of view.stations) {
+      const isFocus = st === focus;
+      if (!isFocus && (!st.mine || !overlay.layers.supply || overlay.selectedFleetId !== null)) continue;
+      const colour = palette(st.owner).map;
+      const [sx, sy, sw, sh] = square(st, st.supplyRadius);
+      if (isFocus) { ctx.fillStyle = rgba(colour, 0.06); ctx.fillRect(sx, sy, sw, sh); }
+      ctx.strokeStyle = rgba(colour, isFocus ? 0.75 : 0.22);
+      ctx.lineWidth = isFocus ? 1.6 : 1;
+      ctx.setLineDash([7, 5]);
+      ctx.strokeRect(sx + 0.5, sy + 0.5, sw - 1, sh - 1);
+      if (isFocus) {
+        const [qx, qy, qw, qh] = square(st, st.sensorRadius);
+        ctx.strokeStyle = 'rgba(220,235,255,0.6)';
+        ctx.setLineDash([1.5, 4]);
+        ctx.strokeRect(qx + 2.5, qy + 2.5, qw - 5, qh - 5);
+        ctx.setLineDash([]);
+        ctx.font = '600 10px "Antonio Variable", Antonio, sans-serif';
+        (ctx as CanvasRenderingContext2D & { letterSpacing?: string }).letterSpacing = '1px';
+        ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+        ctx.fillStyle = rgba(colour, 0.95);
+        ctx.fillText(`SUPPLY ${st.supplyRadius}`, sx + 6, sy + 5);
+        ctx.fillStyle = 'rgba(220,235,255,0.85)';
+        ctx.fillText(`SENSORS ${st.sensorRadius}`, qx + 6, qy + 5);
+      }
+    }
+    ctx.restore();
+  }
+
+  private stationPoint(view: GameView, cam: Camera, st: StationView): [number, number] {
+    const hasSystem = view.systems.some((sys) => sys.x === st.x && sys.y === st.y);
+    return this.worldToScreen(cam, (st.x + 0.5) * CELL, (st.y + (hasSystem ? 0.17 : 0.5)) * CELL);
+  }
+
+  private drawStations(view: GameView, cam: Camera, overlay: Overlay, t: number): void {
+    const { ctx } = this;
+    const W = view.meta.width;
+    const z = cam.zoom;
+    for (const st of view.stations) {
+      const [x, y] = this.stationPoint(view, cam, st);
+      if (x < -40 || y < -40 || x > this.width + 40 || y > this.height + 40) continue;
+      const starbase = st.type === 'Starbase';
+      const size = Math.max(7, Math.min(16, (starbase ? 11.5 : 9) * z));
+      const p = palette(st.owner);
+      const selected = overlay.selectedCell === st.y * W + st.x;
+      const spin = overlay.reduceMotion ? 0 : t * (starbase ? 0.35 : 0.6);
+      ctx.save();
+      ctx.translate(x, y);
+      if (selected) {
+        ctx.strokeStyle = p.map; ctx.globalAlpha = 0.9; ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.arc(0, 0, size * 1.75 + Math.sin(t * 4) * 1.2, 0, Math.PI * 2); ctx.stroke();
+        ctx.globalAlpha = 1;
+      }
+      // backing disc
+      ctx.fillStyle = 'rgba(3,6,12,0.92)';
+      ctx.beginPath(); ctx.arc(0, 0, size * 1.2, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = p.map; ctx.fillStyle = p.map;
+      if (starbase) {
+        // Ring station: outer ring, four docking spokes, hub.
+        ctx.lineWidth = Math.max(1.6, size * 0.2);
+        ctx.beginPath(); ctx.arc(0, 0, size * 0.85, 0, Math.PI * 2); ctx.stroke();
+        ctx.lineWidth = Math.max(1, size * 0.12);
+        ctx.beginPath();
+        for (let k = 0; k < 4; k++) {
+          const a = spin + (k * Math.PI) / 2;
+          ctx.moveTo(Math.cos(a) * size * 0.3, Math.sin(a) * size * 0.3);
+          ctx.lineTo(Math.cos(a) * size * 1.08, Math.sin(a) * size * 1.08);
+        }
+        ctx.stroke();
+        ctx.beginPath(); ctx.arc(0, 0, size * 0.32, 0, Math.PI * 2); ctx.fill();
+      } else {
+        // Outpost: a diamond hull with a slowly turning sensor ring.
+        ctx.beginPath();
+        ctx.moveTo(0, -size * 0.8); ctx.lineTo(size * 0.62, 0); ctx.lineTo(0, size * 0.8); ctx.lineTo(-size * 0.62, 0); ctx.closePath();
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(255,255,255,0.85)'; ctx.lineWidth = 0.8; ctx.stroke();
+        ctx.strokeStyle = rgba(p.map, 0.8); ctx.lineWidth = 1.2;
+        ctx.beginPath(); ctx.arc(0, 0, size * 1.02, spin, spin + Math.PI * 1.2); ctx.stroke();
+      }
+      // Hull readout when damaged
+      if (st.hull < st.maxHull) {
+        const frac = Math.max(0, st.hull / Math.max(1, st.maxHull));
+        ctx.fillStyle = 'rgba(0,0,0,0.7)'; ctx.fillRect(-size, size * 1.35, size * 2, 3);
+        ctx.fillStyle = frac > 0.5 ? '#5fe08a' : frac > 0.25 ? '#ffc04a' : '#ff5a4e';
+        ctx.fillRect(-size, size * 1.35, size * 2 * frac, 3);
+      }
+      // Starbase upgrade under way
+      if (st.upgrade) {
+        const frac = Math.min(1, st.upgrade.work / Math.max(1, st.upgrade.cost));
+        ctx.strokeStyle = 'rgba(255,255,255,0.18)'; ctx.lineWidth = 2.5;
+        ctx.beginPath(); ctx.arc(0, 0, size * 1.45, 0, Math.PI * 2); ctx.stroke();
+        ctx.strokeStyle = '#ffd36b'; ctx.lineCap = 'round';
+        ctx.beginPath(); ctx.arc(0, 0, size * 1.45, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.max(0.04, frac)); ctx.stroke();
+        ctx.lineCap = 'butt';
+      }
+      ctx.restore();
+      const hasSystem = view.systems.some((sys) => sys.x === st.x && sys.y === st.y);
+      if (overlay.layers.labels && z > 0.85 && !hasSystem) {
+        ctx.save();
+        ctx.font = `600 ${Math.round(Math.max(9, Math.min(12, 9.5 * z)))}px "Antonio Variable", Antonio, sans-serif`;
+        ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+        ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(3,5,11,0.85)';
+        const label = st.name.toUpperCase();
+        ctx.strokeText(label, x, y + size * 1.55);
+        ctx.fillStyle = lighten(p.map);
+        ctx.fillText(label, x, y + size * 1.55);
+        ctx.restore();
+      }
+      this.hits.push({ kind: 'station', id: st.id, x, y, r: size + 4, cell: st.y * W + st.x });
     }
   }
 
@@ -558,15 +1121,19 @@ export class GalaxyRenderer {
     for (const [cell, fleets] of ownByCell) {
       const x = cell % W, y = Math.floor(cell / W);
       // one marker per unit (task force or ship), laid out left-to-right along the top edge
-      const units: { id: number; tf: number; count: number; colony: boolean; ids: number[] }[] = [];
+      const units: { id: number; tf: number; count: number; colony: boolean; ids: number[]; progress: number }[] = [];
       const seenTf = new Set<number>();
       for (const f of fleets) {
         if (f.taskForceId) {
           if (seenTf.has(f.taskForceId)) continue;
           seenTf.add(f.taskForceId);
           const members = fleets.filter((m) => m.taskForceId === f.taskForceId);
-          units.push({ id: f.id, tf: f.taskForceId, count: members.length, colony: false, ids: members.map((m) => m.id) });
-        } else units.push({ id: f.id, tf: 0, count: 1, colony: f.colonyShip, ids: [f.id] });
+          units.push({ id: f.id, tf: f.taskForceId, count: members.length, colony: false, ids: members.map((m) => m.id), progress: -1 });
+        } else {
+          // A transport assembling an outpost shows its progress as a ring (turns done / turns needed).
+          const progress = f.buildingOutpost ? Math.min(1, ((f.outpostProgress ?? 0) + 0.35) / Math.max(1, view.outpostTurns || 3)) : -1;
+          units.push({ id: f.id, tf: 0, count: 1, colony: f.colonyShip, ids: [f.id], progress });
+        }
       }
       const max = z < 0.8 ? 1 : 3;
       units.slice(0, max).forEach((u, i) => {
@@ -575,7 +1142,7 @@ export class GalaxyRenderer {
         const selected = u.ids.includes(overlay.selectedFleetId ?? -1) || (!!u.tf && u.tf === overlay.selectedTaskForceId);
         const moving = fleets.some((f) => u.ids.includes(f.id) && f.route.length > 0);
         this.drawMarker(sx, sy, size, view.meta.player, true, u.tf ? u.count : 0, selected, moving, u.colony, t,
-          z < 0.8 && units.length > 1 ? units.length : 0);
+          z < 0.8 && units.length > 1 ? units.length : 0, false, u.progress);
         this.hits.push({ kind: 'fleet', id: u.id, x: sx, y: sy, r: size + 5, cell });
       });
     }
@@ -595,7 +1162,7 @@ export class GalaxyRenderer {
   }
 
   private drawMarker(x: number, y: number, s: number, owner: number, own: boolean, count: number, selected: boolean,
-    moving: boolean, colony: boolean, t: number, stackCount: number, hostile = false): void {
+    moving: boolean, colony: boolean, t: number, stackCount: number, hostile = false, progress = -1): void {
     const { ctx } = this;
     const p = palette(owner);
     ctx.save();
@@ -634,6 +1201,13 @@ export class GalaxyRenderer {
       ctx.font = `700 ${Math.round(s * 0.95)}px "Antonio Variable", Antonio, sans-serif`;
       ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
       ctx.fillText(String(count || stackCount), 0, 0.5);
+    }
+    if (progress >= 0) {
+      ctx.strokeStyle = 'rgba(255,255,255,0.18)'; ctx.lineWidth = 2.5;
+      ctx.beginPath(); ctx.arc(0, 0, s * 1.35, 0, Math.PI * 2); ctx.stroke();
+      ctx.strokeStyle = '#ffd36b'; ctx.lineWidth = 2.5; ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.arc(0, 0, s * 1.35, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * progress); ctx.stroke();
+      ctx.lineCap = 'butt';
     }
     if (moving) {
       ctx.fillStyle = '#eaf1ff';

@@ -20,8 +20,26 @@ export const PALETTES: Record<number, Palette> = {
   5: { key: 'ferengi', primary: '#f08a2c', secondary: '#c8743d', tertiary: '#f5c16c', glow: 'rgba(240,138,44,0.38)', map: '#f28c28', ink: '#130902' },
 };
 
+// Colour-blind-safe owner colours (Okabe–Ito): sky blue, vermillion, bluish green, yellow,
+// reddish purple. Distinguishable under protanopia, deuteranopia and tritanopia; emblem
+// silhouettes remain the primary, colour-independent owner cue.
+export const COLORBLIND_PALETTES: Record<number, Palette> = {
+  0: PALETTES[0]!,
+  1: { key: 'federation', primary: '#56b4e9', secondary: '#e69f00', tertiary: '#9fd3f2', glow: 'rgba(86,180,233,0.38)', map: '#56b4e9', ink: '#03101a' },
+  2: { key: 'klingon', primary: '#e0662a', secondary: '#f0b27a', tertiary: '#b3521f', glow: 'rgba(213,94,0,0.4)', map: '#d55e00', ink: '#140700' },
+  3: { key: 'romulan', primary: '#16b38a', secondary: '#8fe0c8', tertiary: '#0b7a5e', glow: 'rgba(0,158,115,0.38)', map: '#009e73', ink: '#00130d' },
+  4: { key: 'cardassian', primary: '#f0e442', secondary: '#faf3a8', tertiary: '#b8ad2a', glow: 'rgba(240,228,66,0.34)', map: '#f0e442', ink: '#141200' },
+  5: { key: 'ferengi', primary: '#d98cbb', secondary: '#f0c6df', tertiary: '#a8628e', glow: 'rgba(204,121,167,0.38)', map: '#cc79a7', ink: '#14060e' },
+};
+
+let colorblind = false;
+/** Switches owner colours between the standard and colour-blind-safe palettes. */
+export function setColorblindPalette(on: boolean): void { colorblind = on; }
+export function colorblindPaletteActive(): boolean { return colorblind; }
+
 export function palette(empire: number): Palette {
-  return PALETTES[empire] ?? PALETTES[0]!;
+  const table = colorblind ? COLORBLIND_PALETTES : PALETTES;
+  return table[empire] ?? table[0]!;
 }
 
 export interface FactionInfo {
@@ -62,6 +80,10 @@ export const CATEGORY_LABELS: Record<string, string> = {
   diplomacy: 'Diplomacy',
   intel: 'Intelligence',
   combat: 'Combat',
+  colonization: 'Colonization',
+  events: 'Galactic events',
+  stations: 'Stations',
+  victory: 'Victory',
   economy: 'Colonies & economy',
   fleets: 'Fleet operations',
 };
