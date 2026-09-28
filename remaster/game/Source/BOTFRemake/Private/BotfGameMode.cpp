@@ -12,6 +12,7 @@
 #include "BotfGameplayViewModel.h"
 #include "BotfShipDatabase.h"
 #include "BotfAudioSubsystem.h"
+#include "BotfAssetCatalog.h"
 #include "Simulation.h"
 #include "CampaignSession.h"
 #include "ReferenceCatalogue.h"
@@ -545,7 +546,15 @@ private:
     // Exact envelope of the open turn transaction; empty when none. Only serialized while a turn is open.
     FString SessionText() const { return Campaign.SessionText(); }
     // Every strategic order goes through here: no new orders while a turn transaction is open.
-    void Submit(const botf::Command& Cmd) { Campaign.Submit(Cmd); }
+    void Submit(const botf::Command& Cmd) {
+        Campaign.Submit(Cmd);
+        // Audio feedback for diplomatic orders (AUDIO-PLAN: the other empire's voice set, or the alert for war).
+        if (auto* Audio = UBotfAudioSubsystem::Get()) {
+            if (Cmd.type == botf::CommandType::DeclareWar) Audio->OnDiplomacySent(Cmd.targetEmpire, true);
+            else if (Cmd.type == botf::CommandType::OfferPeace || Cmd.type == botf::CommandType::ProposeTradeTreaty)
+                Audio->OnDiplomacySent(Cmd.targetEmpire, false);
+        }
+    }
     void CancelLast() { Campaign.CancelLast(); }
     std::uint64_t NextId() const { return Campaign.NextId(); }
 
@@ -4626,6 +4635,7 @@ private:
         bSummaryOpen = bMenuOpen = bEndTurnCheck = false;
         ActivePanel = PanelCombat;
         UpdateScene();
+        if (auto* Audio = bFresh ? UBotfAudioSubsystem::Get() : nullptr) { Audio->SetPlayerEmpire(State.playerEmpire); Audio->OnEncounterOpened(); }
         Status = TEXT("Enemy contact. Choose Fight to command your ships or Auto to let them fight.");
     }
     const botf::tactical::Ship* TacShipPtr(int Id) const { return Session.pending ? Session.pending->getShip(Id) : nullptr; }
@@ -4690,6 +4700,8 @@ private:
         Campaign.Notify(EBotfCampaignChange::Session);
         const int Given = static_cast<int>(Orders.size());
         Status = TEXT("Tactical order accepted.");
+        if (auto* Audio = UBotfAudioSubsystem::Get())
+            Audio->OnOrderAccepted(Str(botf::assets::slug(botf::tactical::maneuverName(Maneuver))));
         TacLog = FString::Printf(TEXT("%s ordered for %d ship%s%s."), *Str(botf::tactical::maneuverName(Maneuver)), Given, Given == 1 ? TEXT("") : TEXT("s"),
             Target && Maneuver != botf::tactical::TacticalManeuver::Retreat ? *(TEXT(", target #") + FString::FromInt(Target)) : TEXT(""));
         if (Scene.IsValid()) Scene->SetFocusedShips(TacShip, TacTarget);
@@ -4703,12 +4715,14 @@ private:
         if (!TacActive(TacShipPtr(TacTarget))) for (const auto& S : E.ships) if (S.ownerId != State.playerEmpire && TacActive(&S)) { TacTarget = S.fleetId; break; }
         if (Scene.IsValid()) Scene->SetFocusedShips(TacShip, TacTarget);
         UpdateScene();
+        if (auto* Audio = UBotfAudioSubsystem::Get()) Audio->OnRoundResolved(E, E.rounds.back());
     }
     void TacAuto() {
         botf::session::autoResolve(Session);
         TacLog = TEXT("Ships fought under automatic command.\n") + TacRoundText(Session.pending->rounds.back());
         bEncounterChoice = false;
         UpdateScene();
+        if (auto* Audio = UBotfAudioSubsystem::Get()) Audio->OnRoundResolved(*Session.pending, Session.pending->rounds.back());
     }
     // After an encounter finishes the turn resumes; further encounters or the final report follow.
     void TacContinue() {
@@ -4789,6 +4803,8 @@ private:
         }
         if (ActivePanel == PanelCombat) ShowBattle();
         UpdateScene();
+        // Turn briefing audio: one cue per kind, highest priority first (BotfAudioEvents.h turnCues).
+        if (auto* Audio = UBotfAudioSubsystem::Get()) Audio->OnTurnFinished(State, R);
         UE_LOG(LogTemp, Display, TEXT("BOTF_TURN %d HASH %llu"), State.turn, static_cast<unsigned long long>(R.stateHash));
     }
     void RefreshAll() {

@@ -32,6 +32,7 @@ struct FShipKinematicState
     bool bDestroyedThisRound = false;
     float FlareStrength = 0.f;
     float DestructionProgress = 0.f;
+    FVector BaseScale = FVector::OneVector; // Scale-normalised mesh scale; the destruction shrink multiplies it.
 };
 
 struct FSalvoVisualItem
@@ -112,6 +113,8 @@ private:
     float ZoomOffset = 0.f;
 
     void SetupEffectPools();
+    // Swaps a slot to its class mesh by asset key (UBotfAssetRegistry), scale-normalised by canon length.
+    void ApplyShipMesh(int VisualIndex, int ReferenceShipId, int OwnerFaction, bool bLegacyDestroyer);
     void AnimateRoundKinematics(float DeltaSeconds, float NormTime);
     void AnimateWeaponSalvos(float NormTime);
     void AnimateShieldsAndDamage(float DeltaSeconds, float NormTime);
