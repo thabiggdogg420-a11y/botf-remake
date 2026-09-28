@@ -1,2 +1,5 @@
 /build/
 /out/
+# Private, local-only third-party and original-game assets (see docs/ASSET-SOURCES.md). Never commit.
+/game/LocalAssets/
+/game/Content/Local/

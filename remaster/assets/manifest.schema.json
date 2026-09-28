@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "botf-remaster/assets/manifest.schema.json",
+  "title": "BOTF Remastered local asset manifest",
+  "description": "Candidate third-party sources and import settings. Binaries are never committed; they live in the gitignored remaster/game/LocalAssets/ folder on the user's PC.",
+  "type": "object",
+  "required": ["schemaVersion", "policy", "localRoot", "ueContentRoot", "assets"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "schemaVersion": { "const": 1 },
+    "policy": { "type": "string" },
+    "researchDate": { "type": "string" },
+    "localRoot": { "type": "string" },
+    "ueContentRoot": { "type": "string", "pattern": "^/Game/" },
+    "socketConvention": { "type": "string" },
+    "assets": {
+      "type": "object",
+      "propertyNames": { "pattern": "^[a-z0-9]+(\\.[a-z0-9_]+)+$" },
+      "additionalProperties": { "$ref": "#/$defs/asset" }
+    }
+  },
+  "$defs": {
+    "asset": {
+      "type": "object",
+      "required": ["kind", "displayName", "candidates", "import", "fallback"],
+      "properties": {
+        "kind": { "enum": ["model", "texture", "sfx", "voice", "music"] },
+        "faction": { "type": ["string", "null"] },
+        "displayName": { "type": "string" },
+        "botfClasses": { "type": "array", "items": { "type": "string" } },
+        "candidates": {
+          "description": "Ranked; the importer uses the first candidate whose files are found locally.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/source" }
+        },
+        "import": { "$ref": "#/$defs/importSettings" },
+        "fallback": { "description": "assetKey used when no candidate resolves.", "type": ["string", "null"] }
+      }
+    },
+    "source": {
+      "type": "object",
+      "required": ["sourceName", "sourceSite", "page", "author", "licence", "permission", "format", "expectedFiles", "sha256"],
+      "properties": {
+        "sourceName": { "type": "string" },
+        "sourceSite": { "type": "string" },
+        "page": { "type": "string" },
+        "downloadUrl": { "type": ["string", "null"] },
+        "author": { "type": "string" },
+        "licence": { "type": "string", "description": "Terms as stated by the author/uploader, recorded verbatim-ish." },
+        "permission": {
+          "enum": ["clear", "clear-personal", "unclear", "restricted"],
+          "description": "clear: redistributable with credit; clear-personal: user's own copy, private use; unclear: no or unverifiable grant; restricted: terms forbid reuse/derivatives."
+        },
+        "termsNote": { "type": "string" },
+        "format": { "enum": ["fbx", "obj", "nif", "dds", "wav", "ogg", "mp3", "gltf", "glb", "blend", "3ds", "max", "mesh", "flac"] },
+        "altFormats": { "type": "array", "items": { "type": "string" } },
+        "expectedFiles": { "type": "array", "items": { "type": "string" }, "description": "Wildcard patterns of files inside the downloaded archive." },
+        "archivePatterns": { "type": "array", "items": { "type": "string" }, "description": "Wildcard patterns for the downloaded archive filename." },
+        "sourceId": { "type": ["string", "null"] },
+        "faceCount": { "type": ["integer", "null"] },
+        "sha256": { "type": ["string", "null"], "pattern": "^[0-9a-fA-F]{64}$" },
+        "archiveSha256": { "type": ["string", "null"], "pattern": "^[0-9a-fA-F]{64}$" }
+      }
+    },
+    "importSettings": {
+      "type": "object",
+      "properties": {
+        "targetLengthMeters": { "type": ["number", "null"], "description": "Longest-axis length after normalisation (canon length)." },
+        "scale": { "type": ["number", "null"], "description": "Explicit uniform scale; overrides targetLengthMeters when set." },
+        "forwardAxis": { "enum": ["+X", "-X", "+Y", "-Y", "+Z", "-Z"] },
+        "upAxis": { "enum": ["+X", "-X", "+Y", "-Y", "+Z", "-Z"] },
+        "sourceForwardAxis": { "type": "string", "description": "auto = longest horizontal axis, nose picked by bounding-box heuristic; else an axis like -Y." },
+        "maxTriangles": { "type": "integer" },
+        "sockets": { "type": "array", "items": { "type": "string" } },
+        "socketPrefix": { "type": "string" },
+        "vfx": { "enum": ["beam", "bolt", "projectile"] },
+        "beamColor": { "type": "string" },
+        "targetSampleRate": { "type": "integer" },
+        "channels": { "type": "integer" },
+        "normalizeLufs": { "type": "number" },
+        "trimSilence": { "type": "boolean" },
+        "ueFolder": { "type": ["string", "null"] },
+        "ueAsset": { "type": "string" }
+      }
+    }
+  }
+}
