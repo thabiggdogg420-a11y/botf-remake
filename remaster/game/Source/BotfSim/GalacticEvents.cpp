@@ -23,6 +23,9 @@ bool eventHasChoice(GalacticEventKind kind) {
 std::int64_t plagueCureCost(const GameState& s) { return s.ruleset == Ruleset::Reference ? 150 : 60; }
 std::int64_t stellarShieldCost(const GameState& s) { return s.ruleset == Ruleset::Reference ? 400 : 150; }
 std::int64_t derelictSalvageCredits(const GameState& s) { return s.ruleset == Ruleset::Reference ? 250 : 100; }
+std::int64_t tradeBoomBonus(const GalacticEvent& e, int colonies) {
+    return std::min<std::int64_t>(150, static_cast<std::int64_t>(e.magnitude) * colonies);
+}
 
 void shuffleDeck(std::vector<int>& deck, std::uint64_t& rng) {
     for (std::size_t i = deck.size(); i > 1; --i) {
@@ -265,6 +268,7 @@ bool applyEventChoice(GameState& next, GalacticEvent& e, TurnReport& report) {
     case GalacticEventKind::Plague:
         if (e.choice == 1 && owner.credits >= plagueCureCost(next)) {
             owner.credits -= plagueCureCost(next);
+            if (e.empireId == next.playerEmpire) report.ledger.eventCosts += plagueCureCost(next);
             say("Plague at system " + std::to_string(e.systemId) + ": the emergency cure worked; the outbreak is over.");
             return false;
         }
@@ -281,6 +285,7 @@ bool applyEventChoice(GameState& next, GalacticEvent& e, TurnReport& report) {
         if (choice == 1) {
             if (owner.credits >= stellarShieldCost(next)) {
                 owner.credits -= stellarShieldCost(next);
+                if (e.empireId == next.playerEmpire) report.ledger.eventCosts += stellarShieldCost(next);
                 e.magnitude = 30;
                 say("Supernova warning: stellar shielding is under construction; losses will be limited to 30%.");
                 return true;
@@ -321,6 +326,7 @@ bool applyEventChoice(GameState& next, GalacticEvent& e, TurnReport& report) {
             say("Derelict vessel salvaged: +" + std::to_string(amount) + " " + researchName(field) + " research.");
         } else if (e.choice == 1) {
             owner.credits = std::min(internal::BalanceLimit, owner.credits + derelictSalvageCredits(next));
+            if (e.empireId == next.playerEmpire) report.ledger.eventIncome += derelictSalvageCredits(next);
             say("Derelict vessel stripped: +" + std::to_string(derelictSalvageCredits(next)) + " credits.");
         } else {
             owner.intelligence = std::min(internal::BalanceLimit, owner.intelligence + 60);
@@ -335,6 +341,7 @@ bool applyEventChoice(GameState& next, GalacticEvent& e, TurnReport& report) {
             const std::int64_t cost = 20 + (colony ? colony->population : 0);
             if (owner.credits >= cost) {
                 owner.credits -= cost;
+                if (e.empireId == next.playerEmpire) report.ledger.eventCosts += cost;
                 if (colony) colony->morale = std::min(100, colony->morale + 15);
                 say("Labor unrest at system " + std::to_string(e.systemId) + ": demands met for " + std::to_string(cost) + " credits (+15 morale).");
                 return false;
@@ -408,9 +415,10 @@ bool progressEvent(GameState& next, GalacticEvent& e, TurnReport& report) {
     case GalacticEventKind::TradeBoom: {
         int colonies = 0;
         for (const auto& c : next.colonies) if (c.ownerId == e.empireId) ++colonies;
-        const std::int64_t bonus = std::min<std::int64_t>(150, static_cast<std::int64_t>(e.magnitude) * colonies);
+        const std::int64_t bonus = tradeBoomBonus(e, colonies);
         auto& owner = internal::mutableEmpire(next, e.empireId);
         owner.credits = std::min(internal::BalanceLimit, owner.credits + bonus);
+        if (e.empireId == next.playerEmpire) report.ledger.eventIncome += bonus;
         say("Trade boom: +" + std::to_string(bonus) + " credits from booming interstellar commerce.");
         if (next.turn >= e.endTurn) { say("The trade boom has cooled."); return false; }
         return true;
@@ -428,6 +436,29 @@ bool progressEvent(GameState& next, GalacticEvent& e, TurnReport& report) {
         return next.turn < e.endTurn;
     }
     return false;
+}
+
+// Credits one event moves at the next event phase (creditForecast()). Mirrors the
+// money paths of applyEventChoice and progressEvent: `balance` is the owner's
+// projected treasury at that phase and `colonies` its projected colony count.
+EventCredit eventCredits(const GameState& s, const GalacticEvent& ev, int turn, std::int64_t balance, int colonies) {
+    EventCredit out;
+    int choice = ev.choice;
+    if (ev.choiceDeadline > 0 && choice < 0 && turn > ev.choiceDeadline) choice = eventDefaultChoice(ev.kind);
+    if (choice >= 0 && !ev.choiceApplied) {
+        if (ev.kind == GalacticEventKind::Plague && choice == 1 && balance >= plagueCureCost(s)) out.cost = plagueCureCost(s);
+        else if (ev.kind == GalacticEventKind::SupernovaWarning && choice == 1 && balance >= stellarShieldCost(s)) out.cost = stellarShieldCost(s);
+        else if (ev.kind == GalacticEventKind::DerelictVessel && choice == 1) out.income = derelictSalvageCredits(s);
+        else if (ev.kind == GalacticEventKind::LaborUnrest && choice == 0) {
+            // The colony's population after this turn's growth decides the price; the
+            // forecast uses today's population.
+            const auto colony = colonyAt(s, ev.systemId);
+            const std::int64_t cost = 20 + (colony ? colony->population : 0);
+            if (balance >= cost) out.cost = cost;
+        }
+    }
+    if (ev.kind == GalacticEventKind::TradeBoom) out.income += tradeBoomBonus(ev, colonies);
+    return out;
 }
 
 void resolveGalacticEvents(GameState& next, TurnReport& report) {

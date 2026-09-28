@@ -167,19 +167,20 @@ client logic in `BotfViewModel.h`-style headers so it can be checked the same wa
 
 ## Core queries the client needs
 
-These formulas are mirrored in `BotfViewModel.h` until the core exposes them.
+`BotfViewModel.h` mirrors these formulas. Schema 14 (GAMEPLAY-REMASTER.md section 13) adds the core queries, so the
+mirrors can be deleted when the client is next updated:
 
-| Wanted query | Mirrors | Used for |
+| Mirror in the client | Core query (schema 14) | Used for |
 |---|---|---|
-| `fleetUpkeep(fleet)` | fleet maintenance in `advance()` | treasury forecast |
-| `tradeRouteIncome(state, route)` | trade route revenue in `advance()` | forecast, trade panel |
-| `treatyDividend(state, empire)` | `applyTreatyConsequences` dividend | forecast (core reports it as trade income) |
-| `creditForecast(state, empire)` | all of the above plus colony income | would replace the whole forecast |
-| `supplyRange(state, fleet)` | the distance test in `supplied()` | range readout |
-| `taskForceRoute(state, id, x, y)` / `taskForceSupplied` | per-member `route()` checks in `SetTaskForceOrder` | group courses and range |
-| per-round orders and flags in `CombatRound` (maneuver, AI flag, decloak, hail, ram salvos) | only in `tactical::Encounter` | replay of battles from saves and older turns (today only this session's last turn) |
-| a refuse-call-to-arms order | the call simply lapses today | an explicit REFUSE that applies at once |
+| `shipMaintenance(fleet)` | `botf::fleetUpkeep(fleet)` | treasury forecast |
+| `view::tradeRouteIncome(state, route)` | `botf::tradeRouteRevenue(state, route)` (a different name, because the unqualified mirror call would otherwise be ambiguous) | forecast, trade panel |
+| `view::treatyDividend(state, empire)` | `creditForecast(...).treatyDividends` | forecast |
+| `forecastIncome(committed, draft, empire)` | `botf::creditForecast(state, empire)`, and `TurnReport::ledger` for what the turn actually did | the whole forecast; it now also itemises station upkeep, events and pending orders |
+| `view::supplyRange(state, fleet)` | `botf::supplyRange(state, fleet)` (allied yards count, schema 14) | range readout |
+| per-member `route()` checks for group courses | `botf::taskForceRoute(state, id, x, y)` and `botf::taskForceRange(state, id)` | group courses and range |
+| web bridge `shipSpeed` / `unitSpeed` | `botf::shipSpeed(state, fleet)` | ETA |
+| orders read from `tactical::Encounter` only | `CombatRound::orders` (maneuver, target, AI, decloak/ambush, disengaging, hail, ram) | replays of battles from saves and older turns |
+| the call to arms could only lapse | `botf::makeRefuseCallToArmsCommand(id, defenderId, aggressorId)` | an explicit REFUSE that applies at once |
 
-A save-size note: `botf::deserialize` rejects campaigns over 1 MiB, and a turn-session envelope embeds the
-baseline through the same function. A large late-game campaign could hit this limit. The client no longer adds a
-limit of its own.
+Save size: `botf::MaxSaveBytes` (8 MiB) is the campaign cap in `botf::deserialize`, which also loads a turn-session
+envelope's baseline. The largest soak save is about 51 KiB. The client no longer adds a limit of its own.

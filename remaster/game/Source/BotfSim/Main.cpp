@@ -28,8 +28,8 @@ botf::StartingEra parseEra(const std::string& text) {
     throw std::runtime_error("Unknown era: " + text + " (early, developed, expanded, advanced, supreme)");
 }
 std::string readSave(const std::filesystem::path& path) {
-    if (std::filesystem::file_size(path) > 1024 * 1024)
-        throw std::runtime_error("Save exceeds prototype size limit");
+    if (std::filesystem::file_size(path) > botf::MaxSaveBytes)
+        throw std::runtime_error("Save exceeds the " + std::to_string(botf::MaxSaveBytes / (1024 * 1024)) + " MiB save size limit");
     std::ifstream file(path, std::ios::binary);
     if (!file) throw std::runtime_error("Cannot open save");
     return {std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>()};

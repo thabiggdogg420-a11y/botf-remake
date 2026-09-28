@@ -73,3 +73,6 @@ botf_suite(BotfRemasterGameplayTests RemasterGameplayTests.cpp)
 botf_suite(BotfSoakTests SoakTests.cpp)
 set_tests_properties(BotfSoakTests PROPERTIES TIMEOUT 1800)
 botf_suite(BotfCampaignDiplomacyTests CampaignDiplomacyTests.cpp)
+# Schema-14 treaty integration, client queries and battle records (Lane H).
+botf_suite(BotfIntegrationTests IntegrationTests.cpp)
+set_tests_properties(BotfIntegrationTests PROPERTIES TIMEOUT 900)

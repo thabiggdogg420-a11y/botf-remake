@@ -2720,6 +2720,38 @@ public:
         return delta;
     }
 
+    // An ally explicitly refuses an open call to arms (the player's RefuseCallToArms
+    // order) instead of letting it lapse. The consequences are those of a call that
+    // falls due unanswered (resolveTurn step 5), applied at once: -20 trust with the
+    // defender, +2 grievances for the defender, an AllianceRefused event, and an AI
+    // defender whose trust would fall below 40 cancels the alliance. Returns false
+    // (and changes nothing) when no such call is open.
+    static bool refuseDefenseCall(DiplomacyState& state, const DiplomacyContext& ctx, int ally, int defender,
+                                  int aggressor, TurnResolutionDelta& delta) {
+        const auto call = std::find_if(state.defenseCalls.begin(), state.defenseCalls.end(), [&](const DefenseCall& c) {
+            return c.ally == ally && c.defender == defender && c.aggressor == aggressor;
+        });
+        if (call == state.defenseCalls.end()) return false;
+        state.defenseCalls.erase(call);
+        const ParticipantId allyP = ParticipantId::major(ally);
+        const ParticipantId defenderP = ParticipantId::major(defender);
+        DiplomaticEvent evt;
+        evt.turn = state.currentTurn;
+        evt.type = DiplomaticEventType::AllianceRefused;
+        evt.partyA = allyP;
+        evt.partyB = defenderP;
+        evt.numericValue = aggressor;
+        evt.description = "Refused the call to arms against empire " + std::to_string(aggressor) + " (-20 trust).";
+        pushTrust(delta, allyP, defenderP, -20, "Alliance obligation refused");
+        state.addGrievance(defender, ally, 2);
+        recordEvent(state, evt);
+        delta.events.push_back(evt);
+        if (!ctx.isHuman(defenderP) && ctx.trust(defenderP, allyP) - 20 < 40) {
+            dissolveTreaty(state, defenderP, allyP, TreatyType::Alliance, "Alliance cancelled after a refused call to arms", delta);
+        }
+        return true;
+    }
+
     // Appends to the bounded event history (oldest entries drop first).
     static void recordEvent(DiplomacyState& state, const DiplomaticEvent& evt) {
         if (state.eventHistory.size() >= DiplomacyState::MaxEventHistory) {

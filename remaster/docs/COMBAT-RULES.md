@@ -21,9 +21,21 @@ tactical engine and still does.
 ## Which ships fight
 
 Battles are pairwise. The resolver scans sectors in row-major order. Within each sector it takes every
-`MajorRelation` at war, in empire-id order: (1,2), (1,3), ... (4,5). For each relation, the two empires' surviving
+`MajorRelation` at war, in empire-id order: (1,2), (1,3), ... (4,5). Schema 14 skips a pair while a non-aggression
+pact or stronger, or a timed Peace, is in force (`combatAllowed`, DIPLOMACY.md section 4); declaring war breaks those
+treaties first. For each relation, the two empires' surviving
 ships fight one encounter. A ship that withdrew this turn takes part in no further duels. A meeting of three or more
 empires therefore resolves as a deterministic sequence of duels, and each duel produces a two-owner `CombatReport`.
+
+## Battle records (schema 14)
+
+`toCombatReport` turns each finished encounter into the `CombatReport` kept in `TurnReport::battles` and
+`GameState::latestBattles`. Since schema 14 every `CombatRound` also carries `orders`: one `CombatShipOrder` per ship
+still in the battle at the start of the round, with the maneuver and target it executed and the flags
+`aiControlled`, `decloaked` (ambush volley), `disengaging` (rules 2 retreat not yet complete), `hailed` and `rammed`.
+They are saved in the `COMBAT_ORDERS` section (GAMEPLAY-REMASTER.md section 13), so a client can replay a battle
+from a save or an older turn with the orders shown, not only the damage. Battles resolved by the legacy strategic
+resolver (schema 4-11 campaigns) record no orders.
 
 ## Strategic orders become standing tactical orders
 

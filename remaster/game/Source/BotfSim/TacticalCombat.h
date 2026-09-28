@@ -1399,12 +1399,34 @@ inline CombatReport toCombatReport(const Encounter& encounter) {
         });
     }
 
+    // Schema 14: every ship still in the battle at the start of a round had an order;
+    // record it with its flags so replays from saves show what each ship did.
+    std::set<int> gone;
     for (const auto& r : encounter.rounds) {
         CombatRound cr;
         cr.index = r.roundIndex;
         cr.damage = r.damage;
         cr.lostFleetIds = r.lostFleetIds;
         cr.retreatedFleetIds = r.retreatedFleetIds;
+        for (const auto& st : r.shipStatuses) {
+            if (gone.count(st.fleetId)) continue;
+            CombatShipOrder order;
+            order.fleetId = st.fleetId;
+            order.targetFleetId = st.targetFleetId;
+            order.maneuver = static_cast<int>(st.maneuverExecuted);
+            order.aiControlled = st.aiControlled;
+            order.decloaked = st.decloakedThisRound;
+            order.hailed = st.hailedThisRound;
+            order.disengaging = encounter.remasterRules() && st.maneuverExecuted == TacticalManeuver::Retreat &&
+                !st.retreatedThisRound && !st.destroyedThisRound;
+            order.rammed = st.maneuverExecuted == TacticalManeuver::Ram &&
+                std::any_of(r.salvos.begin(), r.salvos.end(), [&](const WeaponSalvoRecord& v) {
+                    return v.ram && v.attackerFleetId == st.fleetId;
+                });
+            cr.orders.push_back(order);
+        }
+        for (int id : r.lostFleetIds) gone.insert(id);
+        for (int id : r.retreatedFleetIds) gone.insert(id);
         report.rounds.push_back(std::move(cr));
     }
 

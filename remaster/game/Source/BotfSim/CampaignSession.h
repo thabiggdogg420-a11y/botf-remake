@@ -211,6 +211,7 @@ inline TurnSession deserialize(const std::string& text) {
         return block;
     };
     TurnSession session;
+    // The baseline is a campaign save: botf::deserialize enforces botf::MaxSaveBytes on it.
     session.baseline = botf::deserialize(read()); session.active = true;
     std::size_t count = 0;
     require(static_cast<bool>(in >> count) && count <= 1024, "Invalid encounter count");

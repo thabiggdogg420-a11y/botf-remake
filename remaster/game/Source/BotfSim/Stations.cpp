@@ -145,7 +145,10 @@ void chargeStationUpkeep(GameState& next, TurnReport& report) {
     for (const auto& st : next.stations) {
         const int upkeep = stationStats(next, st).upkeep;
         internal::mutableEmpire(next, st.ownerId).credits -= upkeep;
-        if (st.ownerId == next.playerEmpire) report.fleetUpkeep += upkeep; // Military upkeep includes stations.
+        if (st.ownerId == next.playerEmpire) {
+            report.fleetUpkeep += upkeep; // Military upkeep includes stations.
+            report.ledger.stationUpkeep += upkeep;
+        }
     }
 }
 

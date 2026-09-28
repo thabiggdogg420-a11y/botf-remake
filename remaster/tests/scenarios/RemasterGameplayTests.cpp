@@ -888,13 +888,14 @@ void templateScenarios(int& passed) {
 }
 
 void persistenceScenarios(int& passed) {
-    run("saves: schema 13 round-trips a live Remastered campaign and reloads continue identically", [] {
+    run("saves: the current schema round-trips a live Remastered campaign and reloads continue identically", [] {
         auto s = campaign(botf::RulesetPreset::Remastered, 26713, 5, true);
         s.eventsEnabled = true; s.aiAggressionEnabled = true;
         for (int turn = 0; turn < 160; ++turn) botf::advance(s);
         check(!s.stations.empty() && !s.galaxyFeatures.empty(), "Campaign lacks gameplay-layer content");
         const auto text = roundTrip(s);
-        check(text.starts_with("BOTF_SIM 13 remaster-13\n") && contains(text, "\nGAMEPLAY_LAYER 1 1 1 1 1\n"), "Schema 13 header or section");
+        check(text.starts_with("BOTF_SIM " + std::to_string(botf::SaveVersion) + " " + botf::ContentVersion + "\n") &&
+            contains(text, "\nGAMEPLAY_LAYER 1 1 1 1 1\n"), "Current schema header or gameplay section");
         auto reloaded = botf::deserialize(text);
         for (int turn = 0; turn < 10; ++turn) { botf::advance(s); botf::advance(reloaded); }
         check(botf::fingerprint(s) == botf::fingerprint(reloaded), "Reloaded campaign diverged");

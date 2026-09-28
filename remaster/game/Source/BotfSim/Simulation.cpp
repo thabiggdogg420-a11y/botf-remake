@@ -288,10 +288,23 @@ void checkCommand(const Command& c) {
         c.type == CommandType::Invade || c.type == CommandType::SetTacticalStance || majorCommand(c.type) || campaignExpansionCommand(c.type) ||
         c.type == CommandType::BuyConstruction || c.type == CommandType::ScrapStructure ||
         modernDiplomaticCommand(c.type) || modernIntelCommand(c.type) || colonyGovernorCommand(c.type) ||
-        gameplay::isGameplayCommand(c.type),
+        gameplay::isGameplayCommand(c.type) || c.type == CommandType::RefuseCallToArms,
         "Unknown command type");
+    require(c.type == CommandType::RefuseCallToArms || c.callAggressor == 0, "Command contains an unrelated call-to-arms field");
     if (gameplay::isGameplayCommand(c.type)) { gameplay::checkCommand(c); return; }
     gameplay::checkUnrelatedFields(c);
+    if (c.type == CommandType::RefuseCallToArms) {
+        require(c.targetEmpire >= 1 && c.targetEmpire <= 5 && c.callAggressor >= 1 && c.callAggressor <= 5 &&
+            c.targetEmpire != c.callAggressor, "Refusing a call to arms names a defender and a different aggressor");
+        require(c.systemId == 0 && c.foodWorkers == 0 && c.industryWorkers == 0 && c.researchWorkers == 0 &&
+            c.building == Building::Farm && c.fleetId == 0 && c.targetX == 0 && c.targetY == 0 &&
+            c.queueIndex == 0 && c.queueDestination == 0 && c.targetFleetId == 0 && c.targetSystemId == 0 &&
+            c.taskForceId == 0 && c.planetIndex == 0 && c.memberFleetIds.empty() && c.taskForceName.empty() &&
+            c.referenceId == -1 && c.proposalId == 0 && c.proposalCreditOffer == 0 && c.proposalCreditDemand == 0 &&
+            c.proposalReason.empty() && c.intelRivalIds.empty(), "Refusing a call to arms contains unrelated fields");
+        for (int amount : c.researchAllocation) require(amount == 0, "Refusing a call to arms contains research fields");
+        return;
+    }
 
     if (campaignExpansionCommand(c.type)) {
         require(c.foodWorkers == 0 && c.industryWorkers == 0 && c.researchWorkers == 0 && c.building == Building::Farm,
@@ -593,6 +606,8 @@ std::vector<int> survivingEmpires(const GameState& s) {
 bool modernDiplomacy(const GameState& s) { return s.campaignExpansionEnabled && s.modernEnginesActive; }
 void enactWar(GameState& s, int aggressor, int defender);
 void planAiWarDeclarations(GameState& s, int ownerId);
+std::vector<int> taskForcePath(const GameState& s, const TaskForce& tf, int x, int y); // With route(), below.
+void applyDiplomacyOps(GameState& next, const diplomacy::TurnResolutionDelta& delta, TurnReport* report, bool skipWarState);
 
 class CampaignDiplomacyContext : public diplomacy::DiplomacyContext {
 public:
@@ -814,6 +829,17 @@ void applyDraft(GameState& state) {
             }
             continue;
         }
+        if (command.type == CommandType::RefuseCallToArms) {
+            require(modernDiplomacy(state), "Calls to arms exist only in modern diplomacy campaigns");
+            auto& ds = state.diplomacyEngineState;
+            ds.currentTurn = state.turn;
+            const CampaignDiplomacyContext ctx(state);
+            diplomacy::TurnResolutionDelta delta;
+            require(diplomacy::DiplomacyEngine::refuseDefenseCall(ds, ctx, state.playerEmpire, command.targetEmpire,
+                command.callAggressor, delta), "No open call to arms from that ally against that empire");
+            applyDiplomacyOps(state, delta, nullptr, /*skipWarState=*/true); // Trust falls now; the alliance may end.
+            continue;
+        }
         if (modernIntelCommand(command.type)) {
             require(modernDiplomacy(state), "Modern intelligence requires a modern (reference expansion) campaign");
             if (command.type == CommandType::SetIntelBudget) {
@@ -920,8 +946,10 @@ void applyDraft(GameState& state) {
                     for (int fid : tfIt->fleetIds) {
                         auto f = std::find_if(state.fleets.begin(), state.fleets.end(), [fid](const Fleet& x) { return x.id == fid; });
                         require(f != state.fleets.end(), "Missing member ship");
-                        require(!route(state, *f, command.targetX, command.targetY).empty(), "Task force destination outside supplied range");
                     }
+                    // Schema 14: the same test taskForceRoute() answers for clients.
+                    require(!taskForceRoute(state, tfIt->id, command.targetX, command.targetY).empty(),
+                        "Task force destination outside supplied range");
                     tfIt->targetX = command.targetX; tfIt->targetY = command.targetY;
                     for (int fid : tfIt->fleetIds) {
                         auto f = std::find_if(state.fleets.begin(), state.fleets.end(), [fid](const Fleet& x) { return x.id == fid; });
@@ -1030,6 +1058,8 @@ void applyDraft(GameState& state) {
                 require(target != state.fleets.end() && target->ownerId != f->ownerId && visible(state, f->ownerId, target->x, target->y),
                     "Enemy fleet is not visible");
                 require(mutableRelation(state, f->ownerId, target->ownerId).atWar, "Declare war before attacking");
+                require(!treatyForbidsAttack(state, f->ownerId, target->ownerId),
+                    "A treaty with that empire forbids attacks; declare war first");
                 require(!route(state, *f, target->x, target->y).empty(), "Target is outside supplied range");
                 f->attackTarget = target->id; f->targetX = target->x; f->targetY = target->y; f->retreat = false;
             } else if (command.type == CommandType::RetreatFleet) {
@@ -1060,6 +1090,8 @@ void applyDraft(GameState& state) {
                 const auto system = std::find_if(state.systems.begin(), state.systems.end(), [&](const System& x) { return x.id == c->systemId; });
                 require(system->x == f->x && system->y == f->y && mutableRelation(state, f->ownerId, c->ownerId).atWar,
                     "Transport must be at a colony of an empire at war");
+                require(!treatyForbidsAttack(state, f->ownerId, c->ownerId),
+                    "A treaty with that empire forbids invasion; declare war first");
                 f->invadeSystemId = c->systemId;
             }
             continue;
@@ -1339,8 +1371,7 @@ void planRivals(GameState& s) {
             int enemyCombatShips = 0;
             for (const auto& other : s.fleets) {
                 if (other.hull > 0 && other.x == tx && other.y == ty) {
-                    const auto enemyRel = majorRelation(s, owner.id, other.ownerId);
-                    if (enemyRel && enemyRel->atWar) {
+                    if (combatAllowed(s, owner.id, other.ownerId)) {
                         const int atk = fleetAttack(other);
                         if (atk > 0 && other.shipClass != Building::Transport) ++enemyCombatShips;
                         enemyPower += atk + empire(s, other.ownerId).technologies[5].level;
@@ -1404,8 +1435,7 @@ void planRivals(GameState& s) {
             const Colony* targetColony = nullptr;
             int bestDist = std::numeric_limits<int>::max();
             for (const auto& candidate : s.colonies) {
-                const auto rel = majorRelation(s, owner.id, candidate.ownerId);
-                if (!rel || !rel->atWar) continue;
+                if (!combatAllowed(s, owner.id, candidate.ownerId)) continue;
                 const auto loc = std::find_if(s.systems.begin(), s.systems.end(), [&](const System& x) { return x.id == candidate.systemId; });
                 if (loc == s.systems.end() || !known(s, owner.id, loc->x, loc->y)) continue;
                 if (!evaluateSectorSafety(loc->x, loc->y, false, &*leaderIt)) continue;
@@ -1416,13 +1446,7 @@ void planRivals(GameState& s) {
                         auto m = std::find_if(s.fleets.begin(), s.fleets.end(), [fid](const Fleet& x) { return x.id == fid; });
                         if (m != s.fleets.end()) minTfRange = std::min(minTfRange, shipRange(*m));
                     }
-                    auto tfSupplied = [&](int sx, int sy) {
-                        if (internal::colonySuppliedWithRange(s, owner.id, minTfRange, sx, sy)) return true;
-                        return gameplay::layerActive(s) && gameplay::extendedSupply(s, owner.id, sx, sy, [&](int px, int py) {
-                            return internal::colonySuppliedWithRange(s, owner.id, minTfRange, px, py);
-                        });
-                    };
-                    if (!tfSupplied(loc->x, loc->y)) continue;
+                    if (!internal::supplyReaches(s, owner.id, minTfRange, loc->x, loc->y)) continue;
                 }
 
                 bool canReach = true;
@@ -1478,8 +1502,7 @@ void planRivals(GameState& s) {
                         bool hostilePresent = false;
                         for (const auto& other : s.fleets) {
                             if (other.hull > 0 && other.x == f.x && other.y == f.y) {
-                                const auto rel = majorRelation(s, owner.id, other.ownerId);
-                                if (rel && rel->atWar) { hostilePresent = true; break; }
+                                if (combatAllowed(s, owner.id, other.ownerId)) { hostilePresent = true; break; }
                             }
                         }
                         if (!hostilePresent) { atSafePoweredYard = true; break; }
@@ -1518,8 +1541,7 @@ void planRivals(GameState& s) {
                         f.attackTarget = 0;
                         const Colony* atHostileColony = nullptr;
                         for (const auto& candidate : s.colonies) {
-                            const auto relation = majorRelation(s, owner.id, candidate.ownerId);
-                            if (!relation || !relation->atWar) continue;
+                            if (!combatAllowed(s, owner.id, candidate.ownerId)) continue;
                             const auto loc = std::find_if(s.systems.begin(), s.systems.end(), [&](const System& x) { return x.id == candidate.systemId; });
                             if (loc != s.systems.end() && loc->x == f.x && loc->y == f.y) {
                                 atHostileColony = &candidate; break;
@@ -1540,8 +1562,7 @@ void planRivals(GameState& s) {
                         }
                         const Colony* enemyColony = nullptr; int shortest = std::numeric_limits<int>::max();
                         for (const auto& candidate : s.colonies) {
-                            const auto relation = majorRelation(s, owner.id, candidate.ownerId);
-                            if (!relation || !relation->atWar) continue;
+                            if (!combatAllowed(s, owner.id, candidate.ownerId)) continue;
                             const auto loc = std::find_if(s.systems.begin(), s.systems.end(), [&](const System& x) { return x.id == candidate.systemId; });
                             if (loc == s.systems.end() || !known(s, owner.id, loc->x, loc->y)) continue;
                             if (!evaluateSectorSafety(loc->x, loc->y, true, &f)) continue;
@@ -1562,8 +1583,7 @@ void planRivals(GameState& s) {
                     } else {
                         const Fleet* enemy = nullptr; int shortest = std::numeric_limits<int>::max();
                         for (const auto& candidate : s.fleets) {
-                            const auto relation = majorRelation(s, owner.id, candidate.ownerId);
-                            if (!relation || !relation->atWar || !visible(s, owner.id, candidate.x, candidate.y)) continue;
+                            if (!combatAllowed(s, owner.id, candidate.ownerId) || !visible(s, owner.id, candidate.x, candidate.y)) continue;
                             if (!evaluateSectorSafety(candidate.x, candidate.y, false, &f)) continue;
                             const auto path = route(s, f, candidate.x, candidate.y);
                             if (!path.empty() && path.size() > 1 && !evaluateSectorSafety(path[1] % s.width, path[1] / s.width, false, &f)) continue;
@@ -1577,8 +1597,7 @@ void planRivals(GameState& s) {
                         }
                         const Colony* enemyColony = nullptr; shortest = std::numeric_limits<int>::max();
                         for (const auto& candidate : s.colonies) {
-                            const auto relation = majorRelation(s, owner.id, candidate.ownerId);
-                            if (!relation || !relation->atWar) continue;
+                            if (!combatAllowed(s, owner.id, candidate.ownerId)) continue;
                             const auto loc = std::find_if(s.systems.begin(), s.systems.end(), [&](const System& x) { return x.id == candidate.systemId; });
                             if (loc == s.systems.end() || !known(s, owner.id, loc->x, loc->y)) continue;
                             if (!evaluateSectorSafety(loc->x, loc->y, false, &f)) continue;
@@ -1602,8 +1621,7 @@ void planRivals(GameState& s) {
                 if (atWar && !f.colonyShip) {
                     const Fleet* enemy = nullptr; int shortest = std::numeric_limits<int>::max();
                     for (const auto& candidate : s.fleets) {
-                        const auto relation = majorRelation(s, owner.id, candidate.ownerId);
-                        if (!relation || !relation->atWar || !visible(s, owner.id, candidate.x, candidate.y)) continue;
+                        if (!combatAllowed(s, owner.id, candidate.ownerId) || !visible(s, owner.id, candidate.x, candidate.y)) continue;
                         const auto path = route(s, f, candidate.x, candidate.y);
                         if (!path.empty() && static_cast<int>(path.size()) < shortest) { shortest = static_cast<int>(path.size()); enemy = &candidate; }
                     }
@@ -1612,8 +1630,7 @@ void planRivals(GameState& s) {
                     }
                     const Colony* enemyColony = nullptr; shortest = std::numeric_limits<int>::max();
                     for (const auto& candidate : s.colonies) {
-                        const auto relation = majorRelation(s, owner.id, candidate.ownerId);
-                        if (!relation || !relation->atWar) continue;
+                        if (!combatAllowed(s, owner.id, candidate.ownerId)) continue;
                         const auto loc = std::find_if(s.systems.begin(), s.systems.end(), [&](const System& x) { return x.id == candidate.systemId; });
                         if (!known(s, owner.id, loc->x, loc->y)) continue;
                         const auto path = route(s, f, loc->x, loc->y);
@@ -2068,6 +2085,7 @@ void answerCallsToArms(GameState& next, TurnReport& report) {
 // Friendship/Affiliation/Alliance pay a treaty dividend and grow trust, peaceful
 // relations without treaties drift toward the personalities' baselines, long wars
 // breed weariness, and Affiliation/Alliance partners share their star charts.
+int treatyDividendForRank(int rank) { return rank == 4 ? 8 : rank == 3 ? 5 : rank == 2 ? 3 : 0; }
 void applyTreatyConsequences(GameState& next, TurnReport& report) {
     const auto& ds = next.diplomacyEngineState;
     for (auto& rel : next.majorRelations) {
@@ -2078,15 +2096,19 @@ void applyTreatyConsequences(GameState& next, TurnReport& report) {
             if (next.turn - rel.warStartTurn >= 10 && rel.trust < 30 && next.turn % 2 == 0) ++rel.trust;
             continue;
         }
-        int dividend = 0, cap = 0, every = 0;
-        if (rank == 4) { dividend = 8; cap = 100; every = 1; }
-        else if (rank == 3) { dividend = 5; cap = 85; every = 1; }
-        else if (rank == 2) { dividend = 3; cap = 75; every = 2; }
+        const int dividend = treatyDividendForRank(rank);
+        int cap = 0, every = 0;
+        if (rank == 4) { cap = 100; every = 1; }
+        else if (rank == 3) { cap = 85; every = 1; }
+        else if (rank == 2) { cap = 75; every = 2; }
         else if (rank == 1) { cap = 60; every = 4; }
         if (dividend > 0) {
             creditEmpire(next, rel.first, dividend);
             creditEmpire(next, rel.second, dividend);
-            if (rel.first == next.playerEmpire || rel.second == next.playerEmpire) report.tradeIncome += dividend;
+            if (rel.first == next.playerEmpire || rel.second == next.playerEmpire) {
+                report.tradeIncome += dividend;
+                report.ledger.treatyDividends += dividend;
+            }
         }
         if (rank > 0) {
             if (rel.trust < cap && next.turn % every == 0) ++rel.trust;
@@ -2261,10 +2283,14 @@ void reportDiplomaticEvent(const GameState& next, TurnReport& report, const dipl
     if (evt.description.empty() || evt.type == T::ProposalSubmitted) return;
     if (involvesPlayer) {
         if (!includePlayerWars && (evt.type == T::WarDeclared)) return; // Already reported by the relation diff
-        if (evt.type == T::AllianceCalledToArms && evt.partyB == player) {
+        if (evt.type == T::AllianceRefused && evt.partyA == player) {
+            report.events.push_back("Diplomacy: We refused " + participantName(next, evt.partyB) + "'s call to arms against " +
+                (evt.numericValue >= 1 && evt.numericValue <= 5 ? std::string(empireName(static_cast<int>(evt.numericValue))) : std::string("its enemy")) +
+                ". " + participantName(next, evt.partyB) + "'s trust in us fell by 20.");
+        } else if (evt.type == T::AllianceCalledToArms && evt.partyB == player) {
             report.events.push_back("Diplomacy: " + participantName(next, evt.partyA) + " calls on us to honor our alliance against " +
                 (evt.numericValue >= 1 && evt.numericValue <= 5 ? std::string(empireName(static_cast<int>(evt.numericValue))) : std::string("its enemy")) +
-                ". Declare war before the call falls due or lose their trust. " + evt.description);
+                ". Declare war before the call falls due, or refuse it now; either way a refusal costs 20 trust. " + evt.description);
         } else {
             const std::string text = describeDiplomaticEvent(next, evt);
             report.events.push_back("Diplomacy" + std::string(text.front() == '(' ? " " : ": ") + text);
@@ -2578,55 +2604,17 @@ void resolveFleets(GameState& s, TurnReport& report) {
     for (const auto& tf : s.taskForces) {
         if (tf.fleetIds.empty()) continue;
         const auto leader = std::find_if(s.fleets.begin(), s.fleets.end(), [&](const Fleet& f) { return f.id == tf.fleetIds.front(); });
-        if (leader != s.fleets.end()) {
-            int minRange = 999;
-            for (int fid : tf.fleetIds) {
-                const auto m = std::find_if(s.fleets.begin(), s.fleets.end(), [fid](const Fleet& x) { return x.id == fid; });
-                if (m != s.fleets.end()) minRange = std::min(minRange, shipRange(*m));
-            }
-            auto suppliedWithRange = [&](int x, int y) {
-                if (internal::colonySuppliedWithRange(s, leader->ownerId, minRange, x, y)) return true;
-                // Schema 13: stations and known wormholes extend task-force supply too.
-                return gameplay::layerActive(s) && gameplay::extendedSupply(s, leader->ownerId, x, y, [&](int px, int py) {
-                    return internal::colonySuppliedWithRange(s, leader->ownerId, minRange, px, py);
-                });
-            };
-            const int start = leader->y * s.width + leader->x, goal = leader->targetY * s.width + leader->targetX;
-            if (start == goal) {
-                tfRoutes[tf.id] = {start};
-            } else if (!s.galaxyFeatures.empty() && suppliedWithRange(leader->targetX, leader->targetY)) {
-                auto p = gameplay::findPath(s, leader->ownerId, start, goal, suppliedWithRange);
-                if (!p.empty()) tfRoutes[tf.id] = std::move(p);
-            } else if (suppliedWithRange(leader->targetX, leader->targetY)) {
-                std::vector<int> prev(static_cast<std::size_t>(s.width * s.height), -1);
-                std::queue<int> q; q.push(start); prev[start] = start;
-                while (!q.empty() && prev[goal] == -1) {
-                    int cell = q.front(); q.pop();
-                    for (int dy = -1; dy <= 1; ++dy) for (int dx = -1; dx <= 1; ++dx) {
-                        if (!dx && !dy) continue;
-                        int nx = cell % s.width + dx, ny = cell / s.width + dy;
-                        if (!suppliedWithRange(nx, ny)) continue;
-                        int next = ny * s.width + nx;
-                        if (prev[next] != -1) continue;
-                        prev[next] = cell; q.push(next);
-                    }
-                }
-                if (prev[goal] != -1) {
-                    std::vector<int> p;
-                    for (int c = goal; c != start; c = prev[c]) p.push_back(c);
-                    p.push_back(start);
-                    std::reverse(p.begin(), p.end());
-                    tfRoutes[tf.id] = std::move(p);
-                }
-            }
-        }
+        if (leader == s.fleets.end()) continue;
+        // Shared with taskForceRoute(): own/allied yards, stations and wormholes, shortest member range.
+        auto path = taskForcePath(s, tf, leader->targetX, leader->targetY);
+        if (!path.empty()) tfRoutes[tf.id] = std::move(path);
     }
 
     for (auto& f : s.fleets) {
         if (f.attackTarget) {
             const auto target = std::find_if(s.fleets.begin(), s.fleets.end(), [&](const Fleet& other) { return other.id == f.attackTarget; });
-            const auto relation = target == s.fleets.end() ? nullptr : majorRelation(s, f.ownerId, target->ownerId);
-            if (target == s.fleets.end() || !relation || !relation->atWar) f.attackTarget = 0;
+            // Schema 14: a treaty in force (or peace) cancels pursuit.
+            if (target == s.fleets.end() || !combatAllowed(s, f.ownerId, target->ownerId)) f.attackTarget = 0;
             else if (visible(s, f.ownerId, target->x, target->y)) { f.targetX = target->x; f.targetY = target->y; }
         }
         std::vector<int> path;
@@ -2638,9 +2626,7 @@ void resolveFleets(GameState& s, TurnReport& report) {
             path = route(s, f, f.targetX, f.targetY);
         }
         if (path.size() > 1) {
-            int speed = 1;
-            if (f.taskForceId > 0) speed = taskForceSpeed(s, f.taskForceId);
-            else if (f.referenceShipId >= 0) speed = std::clamp(static_cast<int>(sourceShip(f.referenceShipId).speed), 1, 3);
+            const int speed = shipSpeed(s, f);
             for (int step = 1; step <= speed && static_cast<std::size_t>(step) < path.size(); ++step) {
                 f.x = path[step] % s.width; f.y = path[step] / s.width;
                 reveal(s, f.x, f.y, f.ownerId);
@@ -2731,7 +2717,7 @@ void resolveBattles(GameState& s, TurnReport& report) {
     for (int y = 0; y < s.height; ++y) for (int x = 0; x < s.width; ++x) {
         for (std::size_t index = 0; index < s.majorRelations.size(); ++index) {
             const auto& relation = s.majorRelations[index];
-            if (!relation.atWar) continue;
+            if (!relation.atWar || treatyForbidsAttack(s, relation.first, relation.second)) continue;
             const int first = relation.first, second = relation.second;
             std::vector<Fleet*> a, b;
             for (auto& fleet : s.fleets) if (fleet.x == x && fleet.y == y && fleet.hull > 0 && !withdrawnThisTurn.count(fleet.id)) {
@@ -2911,7 +2897,8 @@ void resolveInvasions(GameState& s, TurnReport& report) {
     for (auto& fleet : s.fleets) {
         if (!fleet.invadeSystemId) continue;
         auto target = std::find_if(s.colonies.begin(), s.colonies.end(), [&](const Colony& c) { return c.systemId == fleet.invadeSystemId; });
-        if (target == s.colonies.end() || target->ownerId == fleet.ownerId) { fleet.invadeSystemId = 0; continue; }
+        if (target == s.colonies.end() || target->ownerId == fleet.ownerId ||
+            !combatAllowed(s, fleet.ownerId, target->ownerId)) { fleet.invadeSystemId = 0; continue; }
         const auto loc = std::find_if(s.systems.begin(), s.systems.end(), [&](const System& x) { return x.id == target->systemId; });
         if (loc->x != fleet.x || loc->y != fleet.y) { fleet.invadeSystemId = 0; continue; }
         const bool defended = std::any_of(s.fleets.begin(), s.fleets.end(), [&](const Fleet& f) {
@@ -2973,6 +2960,13 @@ std::string constructionTechBlocker(const GameState& state, const Construction& 
     return {};
 }
 
+// Schema 14 COMBAT_ORDERS flag bits.
+constexpr int OrderAi = 1, OrderDecloaked = 2, OrderDisengaging = 4, OrderHailed = 8, OrderRammed = 16, OrderFlagMask = 31;
+int combatOrderFlags(const CombatShipOrder& o) {
+    return (o.aiControlled ? OrderAi : 0) | (o.decloaked ? OrderDecloaked : 0) | (o.disengaging ? OrderDisengaging : 0) |
+        (o.hailed ? OrderHailed : 0) | (o.rammed ? OrderRammed : 0);
+}
+void parseCombatOrders(std::istream& in, GameState& s);
 std::string payload(const GameState& s) {
     std::ostringstream out;
     out.imbue(std::locale::classic());
@@ -3103,6 +3097,7 @@ std::string payload(const GameState& s) {
                 << ' ' << (c.queuePinned ? 1 : 0);
         }
         gameplay::writeCommandTail(out, c); // Schema-13 commands only.
+        if (c.type == CommandType::RefuseCallToArms) out << ' ' << c.callAggressor; // Schema 14.
         out << '\n';
     }
     out << "TASKFORCES " << s.nextTaskForceId << ' ' << s.taskForces.size() << '\n';
@@ -3147,9 +3142,49 @@ std::string payload(const GameState& s) {
         out << '\n';
     }
     out << gameplay::serializeSection(s); // Schema 13 (GAMEPLAY_LAYER ... END_GAMEPLAY_LAYER).
+    // Schema 14: per-ship orders of recorded battle rounds. Written only when some
+    // round carries orders, so campaigns without them keep the schema-13 layout.
+    const bool anyOrders = std::any_of(s.latestBattles.begin(), s.latestBattles.end(), [](const CombatReport& b) {
+        return std::any_of(b.rounds.begin(), b.rounds.end(), [](const CombatRound& r) { return !r.orders.empty(); });
+    });
+    if (anyOrders) {
+        out << "COMBAT_ORDERS " << s.latestBattles.size() << '\n';
+        for (const auto& b : s.latestBattles) {
+            out << b.rounds.size();
+            for (const auto& r : b.rounds) {
+                out << ' ' << r.orders.size();
+                for (const auto& o : r.orders)
+                    out << ' ' << o.fleetId << ' ' << o.targetFleetId << ' ' << o.maneuver << ' ' << combatOrderFlags(o);
+            }
+            out << '\n';
+        }
+    }
     return out.str();
 }
 
+void parseCombatOrders(std::istream& in, GameState& s) {
+    int battles = -1;
+    require(static_cast<bool>(in >> battles) && battles >= 1 && static_cast<std::size_t>(battles) == s.latestBattles.size(),
+        "COMBAT_ORDERS does not match the recorded battles");
+    for (auto& b : s.latestBattles) {
+        int rounds = -1;
+        require(static_cast<bool>(in >> rounds) && static_cast<std::size_t>(rounds) == b.rounds.size(),
+            "COMBAT_ORDERS round count does not match its battle");
+        for (auto& r : b.rounds) {
+            int orders = -1;
+            require(static_cast<bool>(in >> orders) && orders >= 0 && orders <= 256, "Invalid COMBAT_ORDERS order count");
+            for (int i = 0; i < orders; ++i) {
+                CombatShipOrder o;
+                int flags = -1;
+                require(static_cast<bool>(in >> o.fleetId >> o.targetFleetId >> o.maneuver >> flags) &&
+                    flags >= 0 && flags <= OrderFlagMask, "Malformed COMBAT_ORDERS entry");
+                o.aiControlled = flags & OrderAi; o.decloaked = flags & OrderDecloaked;
+                o.disengaging = flags & OrderDisengaging; o.hailed = flags & OrderHailed; o.rammed = flags & OrderRammed;
+                r.orders.push_back(o);
+            }
+        }
+    }
+}
 void tag(std::istream& in, const char* expected) {
     std::string actual;
     require(static_cast<bool>(in >> actual) && actual == expected, "Malformed save section");
@@ -3169,7 +3204,8 @@ void resolveTacticalBattles(GameState& state, TurnReport& report,
     for (int y = 0; y < state.height; ++y) for (int x = 0; x < state.width; ++x) {
         for (std::size_t index = 0; index < state.majorRelations.size(); ++index) {
             const MajorRelation relation = state.majorRelations[index];
-            if (!relation.atWar) continue;
+            // Schema 14: a non-aggression pact or stronger (or a timed peace) forbids battle.
+            if (!relation.atWar || treatyForbidsAttack(state, relation.first, relation.second)) continue;
             std::vector<int> ids;
             bool first = false, second = false;
             for (const auto& fleet : state.fleets) {
@@ -3596,8 +3632,9 @@ bool explored(const GameState& s, int x, int y) {
     return x >= 0 && y >= 0 && x < s.width && y < s.height &&
         std::binary_search(s.explored.begin(), s.explored.end(), y * s.width + x);
 }
-bool visible(const GameState& s, int owner, int x, int y) {
-    if (x < 0 || y < 0 || x >= s.width || y >= s.height) return false;
+namespace {
+// One empire's own sensor coverage (ships, colonies, stations).
+bool ownSensorCoverage(const GameState& s, int owner, int x, int y) {
     // Schema 13: station sensors and nebulae (sensor-blind) change coverage.
     if (gameplay::layerActive(s)) return gameplay::extendedVisible(s, owner, x, y);
     for (const auto& f : s.fleets)
@@ -3607,6 +3644,15 @@ bool visible(const GameState& s, int owner, int x, int y) {
         const auto system = std::find_if(s.systems.begin(), s.systems.end(), [&](const System& a) { return a.id == c.systemId; });
         if (system != s.systems.end() && std::max(std::abs(system->x - x), std::abs(system->y - y)) <= 1) return true;
     }
+    return false;
+}
+} // namespace
+bool visible(const GameState& s, int owner, int x, int y) {
+    if (x < 0 || y < 0 || x >= s.width || y >= s.height) return false;
+    if (ownSensorCoverage(s, owner, x, y)) return true;
+    // Schema 14: Affiliation and Alliance partners share sensor coverage, stations included.
+    for (int partner : sensorSharingEmpires(s, owner))
+        if (ownSensorCoverage(s, partner, x, y)) return true;
     return false;
 }
 const Colony* colonyAt(const GameState& s, int id) {
@@ -3620,32 +3666,48 @@ int shipRange(const Fleet& f) {
     return f.colonyShip || f.shipClass == Building::Transport ? 4 : 6;
 }
 namespace {
-bool colonySuppliedWithRangeImpl(const GameState& s, int owner, int range, int x, int y) {
+// A powered shipyard of `yardOwner` within `reach` sectors (Chebyshev).
+bool poweredYardWithin(const GameState& s, int yardOwner, int reach, int x, int y) {
     if (x < 0 || y < 0 || x >= s.width || y >= s.height) return false;
     for (const auto& c : s.colonies) {
-        if (c.ownerId != owner || !economy(s, c).shipyardPowered) continue;
+        if (c.ownerId != yardOwner || !economy(s, c).shipyardPowered) continue;
         const auto origin = std::find_if(s.systems.begin(), s.systems.end(),
             [&](const System& system) { return system.id == c.systemId; });
-        if (origin != s.systems.end() && std::max(std::abs(origin->x - x), std::abs(origin->y - y)) <= range + empire(s, owner).technologies[4].level / 2) return true;
+        if (origin != s.systems.end() && std::max(std::abs(origin->x - x), std::abs(origin->y - y)) <= reach) return true;
     }
     return false;
 }
-} // namespace
-bool supplied(const GameState& s, const Fleet& f, int x, int y) {
-    if (colonySuppliedWithRangeImpl(s, f.ownerId, shipRange(f), x, y)) return true;
+int supplyReach(const GameState& s, int owner, int range) { return range + empire(s, owner).technologies[4].level / 2; }
+bool colonySuppliedWithRangeImpl(const GameState& s, int owner, int range, int x, int y) {
+    return poweredYardWithin(s, owner, supplyReach(s, owner, range), x, y);
+}
+// Everything that supplies a ship of `owner` with base range `range`: its own and
+// (schema 14) its Full Alliance partners' powered shipyards within range +
+// Propulsion/2 of the ship's owner, its own and allied stations, and the exits of
+// known wormholes whose entry is supplied that way.
+bool supplyReachesImpl(const GameState& s, int owner, int range, int x, int y) {
+    if (x < 0 || y < 0 || x >= s.width || y >= s.height) return false;
+    const int reach = supplyReach(s, owner, range);
+    if (poweredYardWithin(s, owner, reach, x, y)) return true;
+    const auto allies = alliedEmpires(s, owner);
+    for (int ally : allies) if (poweredYardWithin(s, ally, reach, x, y)) return true;
+    if (!gameplay::layerActive(s)) return false;
+    for (int ally : allies) if (gameplay::stationSupplies(s, ally, x, y)) return true;
     // Schema 13: stations and known wormholes extend supply.
-    return gameplay::layerActive(s) && gameplay::extendedSupply(s, f.ownerId, x, y, [&](int px, int py) {
-        return colonySuppliedWithRangeImpl(s, f.ownerId, shipRange(f), px, py);
+    return gameplay::extendedSupply(s, owner, x, y, [&](int px, int py) {
+        if (poweredYardWithin(s, owner, reach, px, py)) return true;
+        for (int ally : allies)
+            if (poweredYardWithin(s, ally, reach, px, py) || gameplay::stationSupplies(s, ally, px, py)) return true;
+        return false;
     });
 }
-std::vector<int> route(const GameState& s, const Fleet& f, int x, int y) {
-    if (x < 0 || y < 0 || x >= s.width || y >= s.height) return {};
-    const int start = f.y * s.width + f.x, goal = y * s.width + x;
+// Shortest supplied path between two cells (start and goal included); empty when
+// the goal is unsupplied or unreachable. route() and task forces share it.
+std::vector<int> suppliedPath(const GameState& s, int owner, int start, int goal, const std::function<bool(int, int)>& isSupplied) {
     if (start == goal) return {start};
-    if (!supplied(s, f, x, y)) return {};
+    if (!isSupplied(goal % s.width, goal / s.width)) return {};
     // Schema 13: impassable anomalies, hazard avoidance and wormhole links.
-    if (!s.galaxyFeatures.empty())
-        return gameplay::findPath(s, f.ownerId, start, goal, [&](int px, int py) { return supplied(s, f, px, py); });
+    if (!s.galaxyFeatures.empty()) return gameplay::findPath(s, owner, start, goal, isSupplied);
     std::vector<int> previous(static_cast<std::size_t>(s.width * s.height), -1);
     std::queue<int> open; open.push(start); previous[start] = start;
     while (!open.empty() && previous[goal] == -1) {
@@ -3653,7 +3715,7 @@ std::vector<int> route(const GameState& s, const Fleet& f, int x, int y) {
         for (int dy = -1; dy <= 1; ++dy) for (int dx = -1; dx <= 1; ++dx) {
             if (!dx && !dy) continue;
             const int nx = cell % s.width + dx, ny = cell / s.width + dy;
-            if (!supplied(s, f, nx, ny)) continue;
+            if (!isSupplied(nx, ny)) continue;
             const int next = ny * s.width + nx;
             if (previous[next] != -1) continue;
             previous[next] = cell; open.push(next);
@@ -3663,6 +3725,30 @@ std::vector<int> route(const GameState& s, const Fleet& f, int x, int y) {
     std::vector<int> path;
     for (int cell = goal; cell != start; cell = previous[cell]) path.push_back(cell);
     path.push_back(start); std::reverse(path.begin(), path.end()); return path;
+}
+// The path a task force takes: its first member leads, within the supply of its
+// shortest-ranged member (every member moves at the task force's pace).
+std::vector<int> taskForcePath(const GameState& s, const TaskForce& tf, int x, int y) {
+    if (tf.fleetIds.empty() || x < 0 || y < 0 || x >= s.width || y >= s.height) return {};
+    const auto leader = std::find_if(s.fleets.begin(), s.fleets.end(), [&](const Fleet& f) { return f.id == tf.fleetIds.front(); });
+    if (leader == s.fleets.end()) return {};
+    int minRange = 999;
+    for (int fid : tf.fleetIds) {
+        const auto m = std::find_if(s.fleets.begin(), s.fleets.end(), [fid](const Fleet& f) { return f.id == fid; });
+        if (m != s.fleets.end()) minRange = std::min(minRange, shipRange(*m));
+    }
+    const int owner = leader->ownerId;
+    return suppliedPath(s, owner, leader->y * s.width + leader->x, y * s.width + x,
+        [&](int px, int py) { return supplyReachesImpl(s, owner, minRange, px, py); });
+}
+} // namespace
+bool supplied(const GameState& s, const Fleet& f, int x, int y) {
+    return supplyReachesImpl(s, f.ownerId, shipRange(f), x, y);
+}
+std::vector<int> route(const GameState& s, const Fleet& f, int x, int y) {
+    if (x < 0 || y < 0 || x >= s.width || y >= s.height) return {};
+    return suppliedPath(s, f.ownerId, f.y * s.width + f.x, y * s.width + x,
+        [&](int px, int py) { return supplied(s, f, px, py); });
 }
 std::string constructionBlocker(const GameState& s, const Colony& c) {
     if (c.queue.empty()) return {};
@@ -4164,6 +4250,13 @@ void validate(const GameState& s) {
             require(round.index == priorRound + 1 && round.index <= 65 && round.damage.size() <= 256 &&
                 round.lostFleetIds.size() <= 256 && round.retreatedFleetIds.size() <= 256, "Invalid tactical round");
             priorRound = round.index;
+            // Schema 14: at most one recorded order per ship still in the battle this round.
+            std::set<int> ordered;
+            require(round.orders.size() <= 256, "Invalid tactical round");
+            for (const auto& o : round.orders)
+                require(participantIds.count(o.fleetId) && !roundLosses.count(o.fleetId) && !roundRetreats.count(o.fleetId) &&
+                    ordered.insert(o.fleetId).second && (o.targetFleetId == 0 || participantIds.count(o.targetFleetId)) &&
+                    tactical::maneuverValid(o.maneuver), "Invalid recorded combat order");
             std::set<int> touched;
             for (const auto& d : round.damage) {
                 require(participantIds.count(d.fleetId) && !roundLosses.count(d.fleetId) &&
@@ -4472,6 +4565,10 @@ TurnReport advanceWithCombat(GameState& state, const std::function<void(GameStat
     report.turn = ++next.turn;
     report.creditsBefore = next.credits;
     applyDraft(next);
+    // Schema 14 treasury ledger (the player's credits by source; see creditForecast()).
+    report.ledger.empireId = next.playerEmpire;
+    report.ledger.treasury = report.creditsBefore;
+    report.ledger.orders = next.credits - report.creditsBefore;
     for (const auto& c : next.pending) report.appliedCommands.push_back(c.id);
     next.pending.clear();
     for (auto& c : next.colonies) {
@@ -4504,10 +4601,9 @@ TurnReport advanceWithCombat(GameState& state, const std::function<void(GameStat
     }
     std::array<std::int64_t, 6> researchGained{};
     for (const auto& f : next.fleets) {
-        const int upkeep = f.referenceShipId >= 0 ? sourceShip(f.referenceShipId).maintenance :
-            f.colonyShip ? 2 : f.shipClass == Building::Destroyer ? 4 : f.shipClass == Building::Transport ? 3 : 1;
+        const int upkeep = fleetUpkeep(f);
         mutableEmpire(next, f.ownerId).credits -= upkeep;
-        if (f.ownerId == next.playerEmpire) report.fleetUpkeep += upkeep;
+        if (f.ownerId == next.playerEmpire) { report.fleetUpkeep += upkeep; report.ledger.fleetUpkeep += upkeep; }
     }
     gameplay::chargeStationUpkeep(next, report);
     const auto productionSnapshot = next;
@@ -4519,6 +4615,10 @@ TurnReport advanceWithCombat(GameState& state, const std::function<void(GameStat
         cr.economy.industry -= gameplay::divertIndustry(next, c, cr.economy.industry, report);
         auto& owner = mutableEmpire(next, c.ownerId);
         owner.credits += cr.economy.income - cr.economy.upkeep;
+        if (c.ownerId == next.playerEmpire) {
+            report.ledger.colonyIncome += cr.economy.income;
+            report.ledger.buildingUpkeep += cr.economy.upkeep;
+        }
         owner.research += cr.economy.research;
         owner.intelligence = std::min(MaxBalance, owner.intelligence + cr.economy.research / 2);
         researchGained[c.ownerId] += cr.economy.research;
@@ -4559,14 +4659,10 @@ TurnReport advanceWithCombat(GameState& state, const std::function<void(GameStat
         if (c.ownerId == next.playerEmpire) report.colonies.push_back(cr);
     }
     for (const auto& route : productionSnapshot.tradeRoutes) {
-        const auto source = colonyAt(productionSnapshot, route.fromSystemId);
-        const auto target = colonyAt(productionSnapshot, route.toSystemId);
-        if (!source || !target || source->ownerId != route.ownerId || target->ownerId == route.ownerId) continue;
-        const auto relation = majorRelation(productionSnapshot, route.ownerId, target->ownerId);
-        if (!relation || relation->atWar || !relation->tradeTreaty) continue;
-        const int income = 5 + std::min(source->population, target->population) / 10;
+        const int income = tradeRouteRevenue(productionSnapshot, route);
+        if (income <= 0) continue;
         mutableEmpire(next, route.ownerId).credits += income;
-        if (route.ownerId == next.playerEmpire) report.tradeIncome += income;
+        if (route.ownerId == next.playerEmpire) { report.tradeIncome += income; report.ledger.tradeRouteIncome += income; }
     }
     auto settleResearch = [&](EmpireState& owner) {
         std::array<std::int64_t, ResearchFields> awards{}, remainders{};
@@ -4621,10 +4717,8 @@ TurnReport advanceWithCombat(GameState& state, const std::function<void(GameStat
             if (fleet.hull >= maxHull) continue;
             bool hostilePresent = false;
             for (const auto& other : moving.fleets) {
-                if (other.hull > 0 && other.x == fleet.x && other.y == fleet.y) {
-                    const auto rel = majorRelation(moving, fleet.ownerId, other.ownerId);
-                    if (rel && rel->atWar) { hostilePresent = true; break; }
-                }
+                if (other.hull > 0 && other.x == fleet.x && other.y == fleet.y &&
+                    combatAllowed(moving, fleet.ownerId, other.ownerId)) { hostilePresent = true; break; }
             }
             if (hostilePresent) continue;
             for (const auto& c : moving.colonies) {
@@ -4758,6 +4852,14 @@ TurnReport advanceWithCombat(GameState& state, const std::function<void(GameStat
     report.outcome = next.outcome;
     validate(next);
     report.creditsAfter = next.credits;
+    {
+        auto& l = report.ledger;
+        l.income = l.colonyIncome + l.tradeRouteIncome + l.treatyDividends + l.eventIncome;
+        l.upkeep = l.buildingUpkeep + l.fleetUpkeep + l.stationUpkeep + l.eventCosts;
+        l.net = l.income - l.upkeep;
+        l.nextTreasury = report.creditsAfter;
+        l.other = l.nextTreasury - (l.treasury + l.orders + l.net);
+    }
     report.stateHash = fingerprint(next);
     state = std::move(next);
     return report;
@@ -4774,7 +4876,7 @@ std::string serialize(const GameState& state) {
 }
 
 GameState deserialize(const std::string& text) {
-    require(text.size() <= 1024 * 1024, "Save too large");
+    require(text.size() <= MaxSaveBytes, "Save too large");
     const bool version4 = text.starts_with("BOTF_SIM 4 prototype-development-4\n");
     const bool version5 = text.starts_with("BOTF_SIM 5 prototype-empires-5\n");
     const bool version6 = text.starts_with("BOTF_SIM 6 prototype-diplomacy-6\n");
@@ -4808,14 +4910,18 @@ GameState deserialize(const std::string& text) {
     const bool legacy11 = version == 11 && content == "campaign-expansion-11";
     // Schema 12 differs from 13 only by the header and the GAMEPLAY_LAYER section.
     const bool legacy12 = version == 12 && content == "remaster-12";
+    // Schema 13 differs from 14 only by the header, the optional COMBAT_ORDERS section
+    // (never present in 13) and the RefuseCallToArms order (never pending in 13).
+    const bool legacy13 = version == 13 && content == "remaster-13";
     const bool current = version == SaveVersion && content == ContentVersion;
-    require(current || legacy7 || legacy8 || legacy9 || legacy10 || legacy11 || legacy12, "Unsupported save version");
-    require(content == ContentVersion || legacy7 || legacy8 || legacy9 || legacy10 || legacy11 || legacy12, "Incompatible prototype content");
+    require(current || legacy7 || legacy8 || legacy9 || legacy10 || legacy11 || legacy12 || legacy13, "Unsupported save version");
+    require(content == ContentVersion || legacy7 || legacy8 || legacy9 || legacy10 || legacy11 || legacy12 || legacy13,
+        "Incompatible prototype content");
     const auto checksumStart = text.rfind("CHECKSUM ");
     require(checksumStart != std::string::npos, "Missing save checksum");
     const auto rawBody = text.substr(0, checksumStart);
     require(text.substr(checksumStart) == "CHECKSUM " + std::to_string(hashText(rawBody)) + "\n",
-        (legacy7 || legacy8 || legacy9 || legacy10 || legacy11 || legacy12) ? "Legacy save checksum mismatch" : "Save checksum mismatch");
+        (legacy7 || legacy8 || legacy9 || legacy10 || legacy11 || legacy12 || legacy13) ? "Legacy save checksum mismatch" : "Save checksum mismatch");
     GameState s;
     tag(in, "STATE");
     in >> s.seed >> s.rngState >> s.lastAcceptedCommand >> s.width >> s.height >> s.turn >> s.credits >> s.research;
@@ -5014,8 +5120,12 @@ GameState deserialize(const std::string& text) {
                         }
                     }
                     if (gameplay::isGameplayCommand(static_cast<CommandType>(type))) {
-                        require(current, "Schema-13 command in an older save");
+                        require(current || legacy13, "Schema-13 command in an older save");
                         gameplay::readCommandTail(rem, c);
+                    }
+                    if (static_cast<CommandType>(type) == CommandType::RefuseCallToArms) {
+                        require(current, "Schema-14 command in an older save");
+                        require(static_cast<bool>(rem >> c.callAggressor), "Truncated call-to-arms refusal");
                     }
                 }
             }
@@ -5165,7 +5275,7 @@ GameState deserialize(const std::string& text) {
         s.startingEra = StartingEra::Early;
     }
     if (nextTag == "REMASTER") {
-        require(current || legacy12, "Schema 12 section in an older save");
+        require(current || legacy12 || legacy13, "Schema 12 section in an older save");
         hasRemaster = true;
         parseRemaster();
         nextTag = readTag("Malformed save section after REMASTER");
@@ -5177,10 +5287,15 @@ GameState deserialize(const std::string& text) {
     }
     bool hasGameplayLayer = false;
     if (nextTag == "GAMEPLAY_LAYER") {
-        require(current, "Schema 13 section in an older save");
+        require(current || legacy13, "Schema 13 section in an older save");
         hasGameplayLayer = true;
         gameplay::parseSection(in, s);
         nextTag = readTag("Malformed save section after GAMEPLAY_LAYER");
+    }
+    if (nextTag == "COMBAT_ORDERS") {
+        require(current, "Schema 14 section in an older save");
+        parseCombatOrders(in, s);
+        nextTag = readTag("Malformed save section after COMBAT_ORDERS");
     }
     require(nextTag == "CHECKSUM", ("Unexpected save section: " + nextTag).c_str());
     std::uint64_t checksum = 0;
@@ -5188,10 +5303,18 @@ GameState deserialize(const std::string& text) {
     in >> std::ws;
     require(in.eof(), "Unexpected trailing save data");
     validate(s);
-    if (current) {
+    if (current || legacy13) {
         require(hasStartingEra && hasRemaster && hasColonyGovernors && hasGameplayLayer &&
-            (!s.modernEnginesActive || hasIntelOperations), "Schema 13 save is missing a required section");
-        require(rawBody == payload(s), "Save is not in canonical format");
+            (!s.modernEnginesActive || hasIntelOperations),
+            current ? "Schema 14 save is missing a required section" : "Schema 13 save is missing a required section");
+        std::string expected = payload(s);
+        if (legacy13) {
+            // Schema 13 text is the schema-14 payload of a campaign without recorded round orders.
+            const std::string header = std::string("BOTF_SIM ") + std::to_string(SaveVersion) + ' ' + ContentVersion + '\n';
+            require(expected.starts_with(header), "Malformed canonical payload header");
+            expected.replace(0, header.size(), "BOTF_SIM 13 remaster-13\n");
+        }
+        require(rawBody == expected, "Save is not in canonical format");
     } else if (legacy12) {
         // Schema 12 text is the schema-13 payload without the gameplay layer.
         require(hasStartingEra && hasRemaster && hasColonyGovernors &&
@@ -5320,16 +5443,21 @@ bool empireEliminated(const GameState& state, int empireId) {
 }
 
 namespace {
+// Hot path (supply and sensor checks call it per sector): treaties are scanned
+// first, and elimination (a colony scan) is only checked when a partner exists.
 std::vector<int> treatyPartners(const GameState& state, int empireId, int minimumRank) {
     std::vector<int> partners;
-    if (!modernDiplomacy(state) || empireEliminatedInternal(state, empireId)) return partners;
+    if (!modernDiplomacy(state)) return partners;
     const auto self = diplomacy::ParticipantId::major(empireId);
     for (const auto& t : state.diplomacyEngineState.activeTreaties) {
         if (t.status != diplomacy::TreatyStatus::Active || !t.involves(self) || diplomacy::getTreatyRank(t.type) < minimumRank) continue;
         const auto other = t.getCounterparty(self);
-        if (other.isMinor || !campaignEmpire(state, other.id) || empireEliminatedInternal(state, other.id)) continue;
+        if (other.isMinor) continue;
         if (std::find(partners.begin(), partners.end(), other.id) == partners.end()) partners.push_back(other.id);
     }
+    if (partners.empty()) return partners;
+    if (empireEliminatedInternal(state, empireId)) return {};
+    std::erase_if(partners, [&](int id) { return !campaignEmpire(state, id) || empireEliminatedInternal(state, id); });
     std::sort(partners.begin(), partners.end());
     return partners;
 }
@@ -5341,6 +5469,12 @@ std::vector<int> alliedEmpires(const GameState& state, int empireId) {
 
 std::vector<int> sensorSharingEmpires(const GameState& state, int empireId) {
     return treatyPartners(state, empireId, diplomacy::getTreatyRank(diplomacy::TreatyType::Affiliation));
+}
+
+bool combatAllowed(const GameState& state, int empireA, int empireB) {
+    if (empireA == empireB) return false;
+    const auto* relation = majorRelation(state, empireA, empireB);
+    return relation && relation->atWar && !treatyForbidsAttack(state, empireA, empireB);
 }
 
 bool treatyForbidsAttack(const GameState& state, int empireA, int empireB) {
@@ -5427,6 +5561,117 @@ Command makeRespondProposalCommand(std::uint64_t id, std::uint64_t proposalId, b
     c.proposalAccept = accept;
     c.proposalReason = reason;
     return c;
+}
+
+Command makeRefuseCallToArmsCommand(std::uint64_t id, int defenderId, int aggressorId) {
+    Command c;
+    c.id = id;
+    c.type = CommandType::RefuseCallToArms;
+    c.targetEmpire = defenderId;
+    c.callAggressor = aggressorId;
+    return c;
+}
+
+int fleetUpkeep(const Fleet& f) {
+    return f.referenceShipId >= 0 ? sourceShip(f.referenceShipId).maintenance :
+        f.colonyShip ? 2 : f.shipClass == Building::Destroyer ? 4 : f.shipClass == Building::Transport ? 3 : 1;
+}
+
+int tradeRouteRevenue(const GameState& state, const TradeRoute& route) {
+    const auto source = colonyAt(state, route.fromSystemId);
+    const auto target = colonyAt(state, route.toSystemId);
+    if (!source || !target || source->ownerId != route.ownerId || target->ownerId == route.ownerId) return 0;
+    const auto relation = majorRelation(state, route.ownerId, target->ownerId);
+    if (!relation || relation->atWar || !relation->tradeTreaty) return 0;
+    return 5 + std::min(source->population, target->population) / 10;
+}
+
+CreditForecast creditForecast(const GameState& state, int empireId) {
+    validate(state);
+    const auto& owner = empire(state, empireId);
+    CreditForecast f;
+    f.empireId = empireId;
+    f.treasury = owner.credits;
+    // Pending orders apply first (they only exist for the player): purchases, gifts, upgrades.
+    auto draft = state;
+    applyDraft(draft);
+    draft.pending.clear();
+    f.orders = empire(draft, empireId).credits - f.treasury;
+    for (const auto& fleet : draft.fleets) if (fleet.ownerId == empireId) f.fleetUpkeep += fleetUpkeep(fleet);
+    for (const auto& st : draft.stations) if (st.ownerId == empireId) f.stationUpkeep += stationStats(draft, st).upkeep;
+    for (const auto& c : draft.colonies) {
+        if (c.ownerId != empireId) continue;
+        const auto e = economy(draft, c);
+        f.colonyIncome += e.income;
+        f.buildingUpkeep += e.upkeep;
+    }
+    for (const auto& route : draft.tradeRoutes) if (route.ownerId == empireId) f.tradeRouteIncome += tradeRouteRevenue(draft, route);
+    if (modernDiplomacy(draft) && !empireEliminatedInternal(draft, empireId)) {
+        const auto self = diplomacy::ParticipantId::major(empireId);
+        for (const auto& rel : draft.majorRelations) {
+            if ((rel.first != empireId && rel.second != empireId) || !rel.contact || rel.atWar) continue;
+            const int other = rel.first == empireId ? rel.second : rel.first;
+            if (empireEliminatedInternal(draft, other)) continue;
+            f.treatyDividends += treatyDividendForRank(
+                draft.diplomacyEngineState.highestTreatyRank(self, diplomacy::ParticipantId::major(other)));
+        }
+    }
+    if (draft.rules.curatedEvents) {
+        // Event decisions resolve after production, trade and treaties, so affordability
+        // uses the balance projected up to that point.
+        std::int64_t balance = f.treasury + f.orders + f.colonyIncome - f.buildingUpkeep - f.fleetUpkeep - f.stationUpkeep +
+            f.tradeRouteIncome + f.treatyDividends;
+        int colonies = 0;
+        for (const auto& c : draft.colonies) if (c.ownerId == empireId) ++colonies;
+        for (const auto& fleet : draft.fleets) if (fleet.ownerId == empireId && fleet.colonize) ++colonies; // Founded this turn.
+        const int nextTurn = draft.turn + 1;
+        for (const auto& e : draft.galacticEvents) {
+            if (e.empireId != empireId) continue;
+            const auto credit = gameplay::eventCredits(draft, e, nextTurn, balance, colonies);
+            f.eventIncome += credit.income;
+            f.eventCosts += credit.cost;
+            balance += credit.income - credit.cost;
+        }
+    }
+    f.income = f.colonyIncome + f.tradeRouteIncome + f.treatyDividends + f.eventIncome;
+    f.upkeep = f.buildingUpkeep + f.fleetUpkeep + f.stationUpkeep + f.eventCosts;
+    f.net = f.income - f.upkeep;
+    f.nextTreasury = std::clamp<std::int64_t>(f.treasury + f.orders + f.net, -MaxBalance, MaxBalance);
+    return f;
+}
+
+int shipSpeed(const GameState& state, const Fleet& fleet) {
+    if (fleet.taskForceId > 0) return taskForceSpeed(state, fleet.taskForceId);
+    return fleet.referenceShipId >= 0 ? std::clamp(static_cast<int>(sourceShip(fleet.referenceShipId).speed), 1, 3) : 1;
+}
+
+int supplyRange(const GameState& state, const Fleet& fleet) {
+    return supplyReach(state, fleet.ownerId, shipRange(fleet));
+}
+
+int taskForceRange(const GameState& state, int taskForceId) {
+    const auto members = taskForceFleets(state, taskForceId);
+    if (members.empty()) return 0;
+    int range = std::numeric_limits<int>::max();
+    for (const auto& m : members) range = std::min(range, supplyRange(state, m));
+    return range;
+}
+
+std::vector<std::pair<int, int>> taskForceRoute(const GameState& state, int taskForceId, int x, int y) {
+    const auto* tf = taskForceAt(state, taskForceId);
+    if (!tf || x < 0 || y < 0 || x >= state.width || y >= state.height) return {};
+    const auto path = taskForcePath(state, *tf, x, y);
+    if (path.empty()) return {};
+    // Every member must itself be able to reach the destination (members normally
+    // share a sector, where the leader's shortest-range path implies it).
+    for (int fid : tf->fleetIds) {
+        const auto member = std::find_if(state.fleets.begin(), state.fleets.end(), [fid](const Fleet& f) { return f.id == fid; });
+        if (member == state.fleets.end() || route(state, *member, x, y).empty()) return {};
+    }
+    std::vector<std::pair<int, int>> cells;
+    cells.reserve(path.size());
+    for (int cell : path) cells.emplace_back(cell % state.width, cell / state.width);
+    return cells;
 }
 
 const intelligence::EmpireIntelState* empireIntelState(const GameState& state, int empireId) {
@@ -5811,6 +6056,9 @@ bool colonySupplied(const GameState& state, const Fleet& fleet, int x, int y) {
 }
 bool colonySuppliedWithRange(const GameState& state, int owner, int range, int x, int y) {
     return colonySuppliedWithRangeImpl(state, owner, range, x, y);
+}
+bool supplyReaches(const GameState& state, int owner, int range, int x, int y) {
+    return supplyReachesImpl(state, owner, range, x, y);
 }
 std::vector<int> activeEmpires(const GameState& state) {
     std::vector<int> ids{state.playerEmpire};

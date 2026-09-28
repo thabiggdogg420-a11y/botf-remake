@@ -1,4 +1,4 @@
-# Remaster gameplay layer (save schema 13)
+# Remaster gameplay layer (save schema 13, integration schema 14)
 
 Lane D adds a modern gameplay layer on top of the deterministic core:
 
@@ -305,10 +305,16 @@ player as galactic news.
 In Supreme-era games every field starts at level 10, so the megaproject race decides those games at around turn 150.
 In the soak, 10 of 55 Remastered campaigns ended this way, all of them Supreme or fast prototype games.
 
-**Diplomatic victory.** `bool diplomaticVictoryAchieved(const GameState&, int empireId)` in `Victory.cpp` is a clearly
-marked **placeholder** that returns `false`. Lane B replaces its body with the predicate "this empire's alliances and
-memberships control a majority of galactic population". `evaluateVictory` already awards the victory when the
-predicate returns true.
+**Diplomatic victory.** `diplomaticVictoryAchieved(state, empireId)` is Lane B's predicate (DIPLOMACY.md section 8:
+the empire, its Full Alliance partners and member minors hold a population majority). `evaluateVictory` awards the
+campaign victory to the first empire (in ID order, after any completed megaproject) that also meets the remaster
+pacing rules in `Victory.cpp`:
+
+- turn 150 or later (`DiplomaticVictoryEarliestTurn`; 80 before schema 14, see "Balance notes");
+- the bloc holds at least two thirds of the galactic population;
+- at least two partners (allied empires or member minors);
+- the claimant leads its bloc: no allied empire holds more population (ties go to the lower empire ID), so one bloc
+  has one winner (schema 14).
 
 **`victoryProgress(state, empireId)`** returns four `VictoryProgress` entries, one per condition: Conquest, Domination,
 Scientific and Diplomatic. Each has `enabled`, `achieved`, `percent` (0–100) and an `explanation` string.
@@ -318,7 +324,7 @@ Scientific and Diplomatic. Each has `enabled`, `achieved`, `percent` (0–100) a
 | Conquest | Share of all colonies held |
 | Domination | Colonies held against the 60% requirement |
 | Scientific | 70% from tech progress toward the threshold, 30% from megaproject work |
-| Diplomatic | 0 until Lane B's predicate lands |
+| Diplomatic | Bloc population against the two-thirds requirement (100 when claimed) |
 
 ## 6. Turn chronicle ("Turn Briefing")
 
@@ -358,7 +364,8 @@ Limits are 16 templates per empire and 80 in the galaxy.
 
 ## 8. Save schema 13
 
-The header is `BOTF_SIM 13 remaster-13`. Everything new is in one section, `GAMEPLAY_LAYER ... END_GAMEPLAY_LAYER`.
+Schema 14 (section 13) keeps this layout and adds an optional `COMBAT_ORDERS` section after it. The schema-13 header
+was `BOTF_SIM 13 remaster-13`. Everything new is in one section, `GAMEPLAY_LAYER ... END_GAMEPLAY_LAYER`.
 It follows `COLONY_GOVERNORS` and is required in schema 13. The layout is shown below; comments are not part of the
 format.
 
@@ -489,9 +496,9 @@ The behaviour of existing functions changed only for campaigns with stations or 
 
 ## 12. Open issues
 
-- **Diplomatic victory** waits for Lane B's predicate. See section 5.
-- **No AI-vs-AI wars.** The current AI declares war only on the player, so rival stations are only attacked or captured
-  when the player fights. The raid logic already covers AI-vs-AI wars once Lane B's diplomacy AI starts them.
+- **Diplomatic victory** is wired (section 5); its pacing was retuned in schema 14 (see "Balance notes").
+- **AI-vs-AI wars happen** (Lane B's war planner), but rival AIs almost never raid or capture stations: see
+  "Balance notes".
 - **Provisional balance.** This covers station stats, costs, event magnitudes, the megaproject cost and pace, and the
   threshold. Credits accumulate quickly in current AI economies, so rivals upgrade most outposts to starbases.
 - **Starbase gating.** In reference rules the catalogue gates starbases at tech 4–6. The remaster gates the upgrade at
@@ -501,3 +508,95 @@ The behaviour of existing functions changed only for campaigns with stations or 
   `CombatReport`, because it must satisfy the `isShip` bound. Clients should detect stations with
   `isStationCombatant()`.
 - **Balance knobs.** Supernovae do not leave a remnant anomaly, and ion storms do not slow movement.
+
+## 13. Schema 14: treaty integration and client queries (Lane H)
+
+Schema 14 wires the diplomacy engine's treaty hooks into the turn loop and gives clients the queries they used to
+mirror. Everything is integer and deterministic; GCC and Clang agree on `FINAL_HASH` (56 campaigns compared).
+
+### Treaty effects in the turn loop
+
+DIPLOMACY.md section 4 has the rules. In short:
+
+| Effect | Treaty | Where |
+|---|---|---|
+| No combat | Non-aggression or stronger, or a timed Peace | `combatAllowed(state, a, b)` gates battle detection, pursuit, invasions, station combat, repairs and boarding, AI targeting and raids; `AttackFleet` and `Invade` are refused until war is declared. |
+| Shared supply | Full Alliance | `supplied()`, `route()`, task forces and the AI: allied powered shipyards (within our own `supplyRange`), allied stations, and wormhole exits supplied through them. |
+| Shared sensors | Affiliation or Alliance | `visible()` includes partners' ships, colonies and stations, so `visibleStations`, first contact and AI targeting see through partners. |
+| Refuse a call to arms | Full Alliance | `RefuseCallToArms` (`makeRefuseCallToArmsCommand(id, defenderId, aggressorId)`) applies the refusal at once: −20 trust, +2 grievances, an AI defender may cancel the alliance, and a Diplomacy line reports it. |
+
+### Client queries
+
+| Query | Answers |
+|---|---|
+| `CreditForecast creditForecast(const GameState&, int empireId)` | The coming turn's treasury by source: `orders` (credits pending orders spend), income (`colonyIncome`, `tradeRouteIncome`, `treatyDividends`, `eventIncome`), upkeep (`buildingUpkeep`, `fleetUpkeep`, `stationUpkeep`, `eventCosts`), `income`, `upkeep`, `net`, `nextTreasury`. |
+| `TurnReport::ledger` | The same structure for what the turn actually did to the player's treasury, plus `other` for what nothing can forecast (gifts and tribute answered that turn, espionage theft, refunded minor gifts, balance clamps). |
+| `int fleetUpkeep(const Fleet&)`, `int tradeRouteRevenue(const GameState&, const TradeRoute&)` | The per-item figures `advance()` charges and pays. The route query is not named `tradeRouteIncome` because the Unreal view model still defines a mirror of that name and calls it unqualified. |
+| `int shipSpeed(const GameState&, const Fleet&)` | Sectors per turn, the task force's pace for members. |
+| `int supplyRange(const GameState&, const Fleet&)` | `shipRange + Propulsion/2`: the Chebyshev reach from an own or allied powered shipyard. Stations and wormholes extend supply beyond it. |
+| `int taskForceRange(const GameState&, int taskForceId)` | The shortest member supply range (0 for an unknown or empty task force). |
+| `std::vector<std::pair<int,int>> taskForceRoute(const GameState&, int taskForceId, int x, int y)` | The sectors the task force travels, start included. `SetTaskForceOrder` validation calls it, so it is empty exactly when the order would be refused. |
+| `bool combatAllowed(const GameState&, int a, int b)` | Whether the two empires can fight this turn. |
+
+The forecast's colony, fleet, station and order lines always equal the ledger. Trade, treaty and event lines equal it
+unless the turn itself changes a war or treaty involving the empire (an AI declaration, a proposal accepted at
+resolution); the labor-unrest price uses today's population, not the population after that turn's growth.
+`IntegrationTests` checks this over seven campaigns (five-empire Remastered and Classic of several eras, a legacy
+reference campaign and a prototype one): 537 comparable turns, 536 with an exact next-turn treasury.
+
+### Recorded battle rounds
+
+`CombatRound::orders` lists a `CombatShipOrder` for every ship still in the battle at the start of the round:
+`fleetId`, `targetFleetId`, `maneuver` (a `tactical::TacticalManeuver` value) and the flags `aiControlled`,
+`decloaked` (the ambush volley), `disengaging`, `hailed` and `rammed`. `tactical::toCombatReport` fills them for every
+battle the unified resolver fights, headless or in a session, so `GameState::latestBattles` replays from saves and
+older turns show orders, not only damage. Legacy-resolver battles have none.
+
+### Save schema 14
+
+The header is `BOTF_SIM 14 remaster-14`. Schema 14 is schema 13 plus:
+
+```
+COMBAT_ORDERS <battles>          (after END_GAMEPLAY_LAYER, only when some recorded round has orders)
+<rounds> (<orders> (fleetId targetFleetId maneuver flags)...)...   one line per latest battle, in order
+```
+
+`flags` is a bit set: 1 AI-controlled, 2 decloaked, 4 disengaging, 8 hailed, 16 rammed. A pending `RefuseCallToArms`
+order appends the aggressor ID to its command line. `validate()` checks every order (a participant still in the
+battle, at most one per ship and round, a participant or no target, a valid maneuver).
+
+Migration: a schema-13 save is the schema-14 payload of a campaign without recorded orders, so it loads with a
+canonical-form check after swapping the header, and continues exactly (it re-saves as schema 14). A schema-13 header
+with a `COMBAT_ORDERS` section or a `RefuseCallToArms` order is rejected. Schemas 12 and older keep their migrations.
+
+### Save size cap
+
+`botf::MaxSaveBytes` is 8 MiB (it was 1 MiB). `deserialize()` enforces it, a turn-session envelope loads its baseline
+through `deserialize()`, and the CLI's `--load` uses the same constant. The largest save measured in the soak,
+including six 300-turn five-empire Remastered campaigns, is 52,631 bytes, so the cap leaves two orders of magnitude of
+headroom; the soak fails if a save exceeds it.
+
+### Balance notes
+
+Measured with 300-turn five-empire Remastered reference campaigns and a passive player (8 seeds × players 1, 3 and
+5; the soak runs 6 of them).
+
+- **Diplomatic victory came at turn 80.** With `DiplomaticVictoryEarliestTurn = 80`, 22 of 24 campaigns ended by
+  diplomatic victory, 16 of them on exactly turn 80, with an AI grand alliance (usually the four rivals, holding 85–92% of the population) claiming the
+  galaxy, before most wars had been fought. The earliest turn is now 150, and the claimant must lead its bloc. Now 16
+  of 24 end by diplomatic victory (12 of them on turn 150, the rest at turns 159–293); of the others, 2 run the full
+  300 turns and 6 end earlier because the passive player is conquered. The AI grand alliance is still the usual
+  winner: a human player has to join it or break it up by turn 150.
+- **AI-vs-AI wars.** 90 AI-vs-AI war declarations in the 24 campaigns (1 to 7 each, the first around turns 28–45),
+  and 69 AI-vs-AI colony captures. No campaign loses an empire by turn 60; the Klingons are the usual first
+  casualty, at turns 68–182 in 6 of 24 campaigns. Treaties now stop combat, and no soak battle is fought under a pact.
+- **Station raids and captures are rare.** Rival stations fought only 11 battles in the 24 campaigns, all against a
+  lone passing ship that did not break the shields, and no station was captured. The raid planner needs a strike
+  force of `(attack + Weapons) × 6 ≥ hull + shields` within 8 sectors (375–1,062 for reference outposts and
+  starbases), while the rivals field 24–60 of that power near hostile stations: they build destroyers only at war and
+  at most five. A task-force raid variant was tried and reverted because it never triggered. Fixing this needs AI
+  military production (Lane B) or station strength (Lane D) tuning, not a pipeline change.
+- **Open issues.** A player wins diplomatically only by leading its bloc: joining a bloc led by a more populous AI
+  ally hands that ally the victory (no shared victory is modelled). A stateful rule (for example a council that must
+  still see the supermajority some turns after it first forms) would pace the endgame better than a fixed turn, but
+  needs a saved counter.

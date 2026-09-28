@@ -170,14 +170,31 @@ Each turn, between surviving majors:
 
 | Treaty in force | Credits (each party) | Trust | Other |
 |---|---|---|---|
-| Non-aggression | – | +1 per 4 turns, up to 60 | Honourable AIs will not attack. Use `treatyForbidsAttack` to enforce this in combat. |
-| Friendship | +3 | +1 per 2 turns, up to 75 | – |
-| Affiliation | +5 | +1 per turn, up to 85 | Shared star charts: the explored maps are merged. Use `sensorSharingEmpires` for fleet visibility. |
-| Full Alliance | +8 | +1 per turn, up to 100 | Shared charts, mutual defence, shared supply (`alliedEmpires`). |
+| Non-aggression | – | +1 per 4 turns, up to 60 | No combat between the two empires (see "Treaties forbid attacks" below). |
+| Friendship | +3 | +1 per 2 turns, up to 75 | No combat. |
+| Affiliation | +5 | +1 per turn, up to 85 | No combat. Shared star charts (the explored maps are merged) and shared sensors. |
+| Full Alliance | +8 | +1 per turn, up to 100 | No combat. Shared charts and sensors, mutual defence, shared supply. |
 | None, at peace | – | drifts 1 per 3 turns toward the mean of both baselines | – |
 
-- The dividend is added to `TurnReport::tradeIncome` for the player.
+- The dividend is added to `TurnReport::tradeIncome` for the player, and itemised as
+  `TurnReport::ledger.treatyDividends` and `creditForecast().treatyDividends` (schema 14).
 - A trade pact enables legacy trade routes. When a pact ends, its routes are dropped.
+
+Schema 14 wires the remaining effects into the turn loop:
+
+- **Treaties forbid attacks.** `combatAllowed(state, a, b)` is true only when the two empires are formally at
+  war *and* `treatyForbidsAttack` is false (no non-aggression pact or stronger, and no timed Peace, in force). Every
+  combat path uses it: battle detection in the unified resolver (and the legacy resolver), pursuit of an attack
+  target, invasions at resolution, station combat, repairs and boarding, the rival AI's targeting and sector-safety
+  estimates, and station raids. The player's `AttackFleet` and `Invade` orders are refused while a treaty holds
+  ("declare war first"). Declaring war breaks the treaties (section 3.2), so combat can follow in the same turn.
+- **Shared supply (Full Alliance).** A ship is supplied within its own supply range (`supplyRange(state, fleet)`,
+  that is `shipRange + Propulsion/2` of its owner) of an allied powered shipyard, inside an allied station's supply
+  radius, and at the exit of a known wormhole whose entry is supplied by any of those. `supplied()`, `route()`,
+  task-force movement (`taskForceRoute`) and the AI all share the rule.
+- **Shared sensors (Affiliation or Alliance).** `visible(state, empire, x, y)` also covers every sector a
+  `sensorSharingEmpires` partner sees with its own ships, colonies and stations (nebula rules apply to each
+  observer). `visibleStations`, first contact and the AI's targeting see through partners too.
 
 ### 4.1 Calls to arms
 
@@ -189,10 +206,15 @@ When an ally of the defender is at peace with the aggressor, it receives a `Defe
     33%, Federation 50%, Cardassian 100%, Romulan 150%, Ferengi 200%.
   - The ally refuses if it is bound by a treaty with the aggressor, unless it is Klingon. A
     Klingon honours the alliance even if that betrays the other treaty.
-- **The player** must declare war before the call falls due.
+- **The player** declares war before the call falls due, or refuses it at once with
+  `makeRefuseCallToArmsCommand(id, defenderId, aggressorId)` (`CommandType::RefuseCallToArms`, schema 14). The order
+  is validated on submission (the call must be open), applies at the start of the next turn resolution and is
+  reported as "Diplomacy: We refused *defender*'s call to arms against *aggressor*. *Defender*'s trust in us fell
+  by 20." Letting the call lapse still counts as a refusal when it falls due.
 - **Honoured:** +10 trust with the defender.
-- **Refused:** −20 trust and +2 grievances. An AI defender whose trust would fall below 40 cancels
-  the alliance (the treaty's status becomes Dissolved).
+- **Refused** (lapsed or explicit, `DiplomacyEngine::refuseDefenseCall` for the explicit order): −20 trust and
+  +2 grievances. An AI defender whose trust would fall below 40 cancels the alliance (the treaty's status becomes
+  Dissolved).
 - Calls lapse on peace or when the alliance ends.
 
 ## 5. AI-initiated diplomacy
@@ -281,7 +303,7 @@ An empire is eliminated when it owns no colonies (`empireEliminated`). An elimin
 - is excluded from intelligence as both attacker and defender. Every budget line against it
   returns to internal security, and the player is told.
 
-## 8. Diplomatic victory (predicate only)
+## 8. Diplomatic victory (predicate)
 
 `diplomaticVictoryStatus(state, empire)` counts two populations:
 
@@ -292,8 +314,9 @@ An empire is eliminated when it owns no colonies (`empireEliminated`). An elimin
 `achieved` is true when the bloc holds a strict majority *and* includes at least one ally or member
 minor. Otherwise a plain conquest majority would count as diplomatic.
 
-`diplomaticVictoryAchieved` is false in legacy campaigns. Wiring it to `CampaignOutcome` is left to
-the pipeline owner.
+`diplomaticVictoryAchieved` is false in legacy campaigns. The campaign victory adds pacing rules on top
+(turn 150 or later, a two-thirds supermajority, at least two partners, and the claimant must lead its bloc);
+see GAMEPLAY-REMASTER.md section 5.
 
 ## 9. Intelligence
 
@@ -387,18 +410,18 @@ byte-for-byte.
   - attacker ≠ defender
   - no trailing tokens
 - Escapes must be exactly two hex digits.
-- Legacy campaigns reject `SubmitDiplomaticProposal`, `RespondDiplomaticProposal`, `SetIntelBudget`
-  and `SetIntelFocus`, because their state is not serialized there.
+- Legacy campaigns reject `SubmitDiplomaticProposal`, `RespondDiplomaticProposal`, `SetIntelBudget`,
+  `SetIntelFocus` and `RefuseCallToArms`, because their state is not serialized there.
+- Schema 14: a pending `RefuseCallToArms` order appends the aggressor ID to its command line (the defender is
+  `targetEmpire`). Older schemas reject it.
 
 ## 11. Integration notes (turn pipeline owner)
 
-1. `treatyForbidsAttack(state, a, b)` should gate AI target selection and player attack orders,
-   if non-aggression is to be enforced in combat as well as in declarations.
+1. Done (schema 14): `treatyForbidsAttack` gates every combat path through `combatAllowed` (section 4).
 2. The invasion merge should set `Minor::memberOf` to the conqueror when a member minor's colony
    is captured. `reconcileMinorMembership` does the same thing idempotently at the start of modern
    diplomacy resolution. Legacy campaigns still need the pipeline fix.
-3. `alliedEmpires` is the hook for shared supply range: treat an ally's powered shipyards as
-   supply sources.
-4. `sensorSharingEmpires` is the hook for shared fleet visibility. Star charts are already merged
-   each turn.
-5. `diplomaticVictoryAchieved` is ready to be wired into the victory check.
+3. Done (schema 14): `alliedEmpires` partners share supply (section 4).
+4. Done (schema 14): `sensorSharingEmpires` partners share sensors in `visible()` (section 4).
+5. Done: `diplomaticVictoryAchieved` feeds the victory check with remaster pacing rules
+   (GAMEPLAY-REMASTER.md section 5).
