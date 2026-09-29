@@ -70,6 +70,9 @@ static void testKeys() {
     EXPECT(assets::normaliseObjectPath("/Game/X/Mesh.Mesh") == "/Game/X/Mesh.Mesh");
     EXPECT(assets::builtInShipPlaceholder("kli") == "/Game/Presentation/Klingon/StaticMeshes/Klingon.Klingon");
     EXPECT(assets::builtInShipPlaceholder("borg").empty());
+    EXPECT(assets::generatedShipPath("ship.fed.explorer") == "/Game/Generated/Ships/fed/SM_explorer.SM_explorer");
+    EXPECT(assets::generatedShipPath("ship.kli.k-vort.b") == "/Game/Generated/Ships/kli/SM_k_vort_b.SM_k_vort_b");
+    EXPECT(assets::generatedShipPath("study.fed").empty() && assets::generatedShipPath("ship.fed").empty());
 }
 
 static const char* ResolvedSample = R"({
