@@ -69,6 +69,11 @@ func _ready() -> void:
 # Layers and chrome
 # ---------------------------------------------------------------------------------------------
 func _build_layers() -> void:
+	var base := ColorRect.new()
+	base.color = Lcars.BG
+	base.set_anchors_preset(Control.PRESET_FULL_RECT)
+	base.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(base)
 	_background = ColorRect.new()
 	_background.set_anchors_preset(Control.PRESET_FULL_RECT)
 	var mat := ShaderMaterial.new()
@@ -92,10 +97,10 @@ func _build_layers() -> void:
 	add_child(_overlay)
 	_toasts = VBoxContainer.new()
 	_toasts.name = "Toasts"
-	_toasts.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
-	_toasts.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	_toasts.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
+	_toasts.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	_toasts.grow_vertical = Control.GROW_DIRECTION_BEGIN
-	_toasts.position = Vector2(-24, -24)
+	_toasts.offset_bottom = -90
 	_toasts.alignment = BoxContainer.ALIGNMENT_END
 	_toasts.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_toasts)
@@ -139,7 +144,7 @@ func _build_chrome() -> void:
 	who.add_child(Lcars.label(str(view["meta"]["playerName"]).to_upper(), "Heading", 26))
 	who.add_child(Lcars.caption("%s era · %s rules · stardate %d.%d" % [view["meta"].get("eraName", ""), view["meta"].get("rules", {}).get("presetName", ""), 2360 + int(view["meta"]["turn"]) / 4, (int(view["meta"]["turn"]) % 4) * 25]))
 	row.add_child(who)
-	row.add_child(_top_stat("Turn", str(view["meta"]["turn"]), "", "Current turn. Enter ends the turn."))
+	row.add_child(_top_stat("Turn", str(int(view["meta"]["turn"])), "", "Current turn. Enter ends the turn."))
 	var net := int(e.get("income", {}).get("net", 0))
 	row.add_child(_top_stat("Credits", "%s  %s" % [Lcars.fmt(e.get("credits", 0)), Lcars.signed(net)], "alert" if net < 0 else "secondary",
 		"Treasury ¢%s. Per turn: colonies %s, trade %s, ships -%s. Drafted spending ¢%s." % [Lcars.fmt(e.get("credits", 0)), e.get("income", {}).get("colonies", 0), e.get("income", {}).get("trade", 0), e.get("income", {}).get("ships", 0), e.get("draftCredits", 0)]))
@@ -244,10 +249,7 @@ class ElbowView extends Control:
 		# LCARS elbow: rail column sweeping into the top bar with an inner radius.
 		draw_rect(Rect2(0, 0, w, h + 30), a)
 		draw_rect(Rect2(w, 0, 40, h), a)
-		draw_circle(Vector2(w + 30, h + 30), 30, Lcars.BG)
-		draw_rect(Rect2(w, h, 40, 60), Lcars.BG)
-		draw_rect(Rect2(w, h + 0, 30, 30), a)
-		draw_circle(Vector2(w + 30, h + 30), 30, Color(0, 0, 0, 0))
+		draw_rect(Rect2(w, h, 30, 30), a)
 		# inner corner cut
 		var pts := PackedVector2Array()
 		for k in range(0, 17):
@@ -255,7 +257,6 @@ class ElbowView extends Control:
 			pts.append(Vector2(w + 30, h + 30) + Vector2(cos(ang), sin(ang)) * 30)
 		pts.append(Vector2(w + 30, h + 30))
 		draw_colored_polygon(pts, Lcars.BG)
-		draw_rect(Rect2(0, h + 30, w, 6), Lcars.BG)
 		Lcars.draw_emblem(self, empire, Vector2(34, 34), 40, Lcars.ink())
 		draw_string(Lcars.font("display", 600), Vector2(62, 44), "LCARS", HORIZONTAL_ALIGNMENT_LEFT, -1, 22, Lcars.ink())
 
@@ -632,6 +633,24 @@ func open_modal(content: Control, title: String = "", min_size: Vector2 = Vector
 		if ev is InputEventMouseButton and ev.pressed and ev.button_index == MOUSE_BUTTON_LEFT:
 			close_modal(backdrop))
 	return backdrop
+
+## Confirmation dialog: runs `on_confirm` when accepted.
+func confirm(title: String, body: String, confirm_label: String, on_confirm: Callable, tone: String = "alert") -> Control:
+	var col := Lcars.vbox(14)
+	col.name = "Confirm"
+	col.add_child(Lcars.para(body, Lcars.TEXT2, 15))
+	var row := Lcars.hbox(10)
+	row.alignment = BoxContainer.ALIGNMENT_END
+	row.add_child(Lcars.pill("Cancel", "ghost", func(): close_modal(), "", "", "Esc"))
+	var ok := Lcars.pill(confirm_label, tone, func():
+		close_modal()
+		on_confirm.call())
+	ok.name = "ConfirmButton"
+	row.add_child(ok)
+	col.add_child(row)
+	var m := open_modal(col, title, Vector2(520, 0), tone)
+	ok.grab_focus.call_deferred()
+	return m
 
 func close_modal(m: Control = null) -> void:
 	if _modals.is_empty():

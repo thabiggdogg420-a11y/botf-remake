@@ -446,7 +446,7 @@ static func meter(value: float, max_value: float, color: Color = Color(0, 0, 0, 
 static func stat(caption_text: String, value: Variant, tone: String = "", tip: String = "") -> Control:
 	var v := vbox(0)
 	v.add_child(caption(caption_text))
-	var val := label(str(value), "", 24, tone_color(tone) if tone != "" else TEXT)
+	var val := label(num(value), "", 24, tone_color(tone) if tone != "" else TEXT)
 	val.add_theme_font_override("font", font("display", 560))
 	v.add_child(val)
 	v.tooltip_text = tip
@@ -470,6 +470,12 @@ static func empty_note(text: String) -> Label:
 	var l := para(text, TEXT3, 14)
 	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	return l
+
+## Formats JSON numbers (which arrive as floats) without a spurious ".0".
+static func num(value: Variant) -> String:
+	if value is float and is_equal_approx(value, round(value)):
+		return str(int(value))
+	return str(value)
 
 static func signed(n: float) -> String:
 	return ("+%d" % n) if n > 0 else ("%d" % n)
