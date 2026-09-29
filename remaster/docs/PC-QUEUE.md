@@ -9,16 +9,16 @@ Status markers: `[ ]` pending, `[x]` done (paste the result or log into the PR/s
 ## Pending
 
 0. [ ] **Create accounts** in the order of the sign-up checklist in ASSET-SOURCES-LOGIN.md: Nexus Mods, Steam, Freesound, ModDB, the BOTF forum at armadafleetcommand.com, then Discord/Patreon. Then check the login-gated leads marked [unverified] and download what fills a gap.
-1. [ ] **First real UE 5.8 build.**
+1. [x] **First real UE 5.8 build.** Done 2026-09-29: two compile fixes (80eab60), packaged, UI tests pass; see HANDOFF.md "PC session 2026-09-29".
    - Run `remaster\game\Package-Windows.ps1 -CheckOnly`, then run it again without `-CheckOnly`.
    - If it fails, paste back `Build\Logs\<stamp>\FAILURE-SUMMARY.txt`. The script also copies it to the clipboard.
    - Risk list: UNREAL-CLIENT.md, "First real compile: risk list".
-2. [ ] **Online audio downloads** (the main audio route; see AUDIO-SOURCES-ONLINE.md, "Recommended acquisition order").
+2. [ ] **Online audio downloads** (the main audio route; see AUDIO-SOURCES-ONLINE.md, "Recommended acquisition order"). Partly done 2026-09-29: the no-login TrekCore and archive.org clips are in `C:\Dev\botf-downloads`, 22 keys resolved and 121 sounds imported; the voice packs still need logins (item 0).
    - TrekCore audio library, archive.org Sound Source Interactive TOS/TNG AudioClips, the voice packs from Armada Fleet Command's BOTF Ultimate Mod 5, and LCARS UI-sound repos.
    - Save them into the same downloads folder as item 4. `Import-Assets.ps1` converts and indexes them.
 3. [ ] **Optional: original BOTF audio extraction.** This is a fallback now.
    - `python remaster\game\Tools\Extract-BotfAudio.py` against your own install, if you want the original voice lines alongside.
-4. [ ] **Asset downloads.**
+4. [ ] **Asset downloads.** Still open 2026-09-29: no ship model was downloadable without a login, so every class uses its generated hull for now.
    - Download candidates from `remaster/docs/ASSET-SOURCES.md` into one folder, then run `remaster\game\Import-Assets.ps1 -Downloads <folder>`.
    - Requires Blender (with NifTools for .nif), ffmpeg and 7-Zip.
    - `-UnrealImport` imports into `/Game/Local`.
@@ -50,10 +50,14 @@ Status markers: `[ ]` pending, `[x]` done (paste the result or log into the PR/s
      "target destroyed") once the `vo.combat.*` lines exist. Say whether the round length (6 s,
      `SetTimelineRoundSeconds`) feels right.
    - Try a battle with more than 8 ships per side (the new cap is 24) and report the frame rate.
-8. [ ] **Editor-side audio setup (optional polish).** If imported WAVs play too loud or too quiet relative to each other, create Sound Classes (Voice, SFX, UI, Music) and a Sound Mix under `/Game/Audio` and report their paths; the subsystem currently sets per-component volume only.
+8. [x] **Editor-side audio setup (optional polish).** Not needed (2026-09-29): the 21 mapped cues measure -17.8 to -24.2 dB RMS, within 7 dB, so the per-category gains are enough. If imported WAVs play too loud or too quiet relative to each other, create Sound Classes (Voice, SFX, UI, Music) and a Sound Mix under `/Game/Audio` and report their paths; the subsystem currently sets per-component volume only.
+
+9. [ ] **Unreal Insights profile of a 24-v-24 battle** (`Run-Showcase.ps1` plus `-trace=cpu,gpu,frame`); record the top costs in HANDOFF.md.
+10. [ ] **Merge the Slate UI redesign** from `claude/ui-redesign` after review of its showcase screenshots.
+11. [ ] **Fresh-clone check:** run `game\Build-GeneratedArt.ps1` on a clean checkout (needs Python with numpy and Pillow, and Blender 5.x). The generated art is gitignored.
 
 ## Blocked cloud work (waiting on the items above)
 
-- Verifying the Unreal client compiles (needs 1).
+- Keep the Unreal client compiling: every cloud change to `remaster/game/Source` should be followed by a PC build (`Build.bat BOTFRemakeEditor`) and a `Run-Showcase.ps1` run.
 - Tuning ship scale, weapon socket positions and VFX against the real models (needs 4 and 5).
 - Automatic voice cue mapping, and tuning mixer levels against the real audio (needs 2).
