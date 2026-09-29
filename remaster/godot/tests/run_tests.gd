@@ -1,0 +1,205 @@
+extends SceneTree
+## Headless test runner for the BotfCore GDExtension. A GDScript port of a subset of
+## remaster/web/test/bridge.test.mjs. Run: remaster/godot/run-tests.sh
+## (or godot --headless --path remaster/godot -s res://tests/run_tests.gd).
+
+var core: Object
+var passed := 0
+var failed := 0
+var current := ""
+
+func _initialize() -> void:
+	core = Engine.get_singleton("BotfCore") if Engine.has_singleton("BotfCore") else null
+	print("BOTF Godot core tests")
+	if core == null:
+		printerr("FAIL: BotfCore singleton missing (build the extension: core/build.sh, then import the project)")
+		quit(1)
+		return
+	for t in [
+		"test_meta", "test_new_campaign", "test_invalid_order", "test_orders", "test_forecast_and_turns",
+		"test_save_load_determinism", "test_battle_drill", "test_rules3_events", "test_diplomacy_drill",
+		"test_fixture_determinism",
+	]:
+		current = t
+		var failures_before := failed
+		var t0 := Time.get_ticks_msec()
+		call(t)
+		if failed == failures_before:
+			passed += 1
+			print("  ok  %s  (%d ms)" % [t, Time.get_ticks_msec() - t0])
+	print("%d passed, %d failed" % [passed, failed])
+	quit(1 if failed > 0 else 0)
+
+# --- helpers -----------------------------------------------------------------------------------
+
+func api(method: String, args := {}) -> Variant:
+	var reply: Dictionary = core.request(method, args)
+	if not reply.get("ok", false):
+		check(false, "%s: %s" % [method, reply.get("error", "?")])
+		return null
+	return reply.get("result")
+
+func attempt(method: String, args := {}) -> Dictionary:
+	return core.request(method, args)
+
+func check(cond: bool, what: String) -> bool:
+	if not cond:
+		failed += 1
+		printerr("  FAIL %s: %s" % [current, what])
+	return cond
+
+func end_turn() -> Dictionary:
+	var status: Dictionary = api("endTurn")
+	var guard := 0
+	while status.status == "battle":
+		var encounter = api("tactical")
+		check(encounter is Dictionary and encounter.ships is Array, "battle exposes a tactical encounter")
+		api("tacticalAuto")
+		status = api("endTurn")
+		guard += 1
+		if not check(guard < 20, "battles terminate"):
+			break
+	check(status.status == "complete", "turn completes")
+	return status.get("briefing", {})
+
+func load_fixture(name: String) -> Dictionary:
+	var text := FileAccess.get_file_as_string("res://fixtures/%s.json" % name)
+	return JSON.parse_string(text)
+
+const CAMPAIGN := {"faction": 1, "empires": 5, "seed": 424242, "era": 1, "ruleset": "reference"}
+
+# --- tests -------------------------------------------------------------------------------------
+
+func test_meta() -> void:
+	var meta: Dictionary = api("meta")
+	check(meta.empires.size() == 5, "five majors")
+	check(meta.researchFields.size() == 6, "six research fields")
+	check(meta.maneuvers.any(func(m): return m.key == "Engage"), "Engage maneuver")
+
+func test_new_campaign() -> void:
+	var view: Dictionary = api("newCampaign", {"faction": 2, "empires": 5, "seed": 424242, "era": 1, "ruleset": "reference"})
+	check(view.meta.player == 2, "player is faction 2")
+	check(view.meta.turn == 0, "turn 0")
+	check(typeof(view.meta.turn) == TYPE_INT, "integral numbers come back as int")
+	check(view.fog.length() == view.meta.width * view.meta.height, "fog covers the map")
+	check(view.colonies[0].population > 0, "home colony populated")
+	for c in view.contacts:
+		check(view.fog[c.y * view.meta.width + c.x] == "2", "contacts only in sensor range")
+	check(view.fleets.size() >= 2, "player starts with ships")
+
+func test_invalid_order() -> void:
+	api("newCampaign", CAMPAIGN)
+	var before = api("fingerprint")
+	var bad := attempt("submit", {"command": {"type": "Colonize", "fleetId": 999}})
+	check(bad.ok == false and String(bad.error) != "", "invalid order rejected with a reason")
+	check(api("fingerprint") == before, "rejected order changes nothing")
+	var dry: Dictionary = api("dryRun", {"command": {"type": "AllocateResearch", "researchAllocation": [50, 50, 50, 0, 0, 0]}})
+	check(dry.ok == false and "100 percent" in dry.error, "dry run explains allocation error")
+
+func test_orders() -> void:
+	var view: Dictionary = api("newCampaign", CAMPAIGN)
+	var home: Dictionary = view.colonies[0]
+	var detail: Dictionary = api("colony", {"systemId": home.systemId})
+	var pop: int = detail.colony.population
+	var food: int = mini(detail.capacityLimits.food, ceili(pop / 2.0))
+	var industry: int = mini(detail.capacityLimits.industry, pop - food)
+	var preview: Dictionary = api("workforcePreview", {"systemId": home.systemId, "food": food, "industry": industry, "research": 0})
+	check(preview.error == "", "workforce preview ok")
+	api("submit", {"command": {"type": "AssignWorkers", "systemId": home.systemId, "foodWorkers": food, "industryWorkers": industry, "researchWorkers": 0}, "cancelIds": preview.cancelIds})
+	api("submit", {"command": {"type": "AllocateResearch", "researchAllocation": [20, 20, 20, 20, 10, 10]}})
+	view = api("view")
+	check(view.pending.any(func(p): return p.type == "AllocateResearch"), "research order pending")
+
+func test_forecast_and_turns() -> void:
+	api("newCampaign", CAMPAIGN)
+	var before = api("fingerprint")
+	var forecast: Dictionary = api("forecast")
+	check(api("fingerprint") == before, "forecast commits nothing")
+	var briefing := end_turn()
+	check(briefing.creditsAfter == forecast.creditsAfter, "forecast matches the resolved turn")
+	for i in 9:
+		end_turn()
+	var view: Dictionary = api("view")
+	check(view.meta.turn == 10, "reached turn 10")
+	api("research")
+	api("diplomacy")
+	api("intel")
+
+func test_save_load_determinism() -> void:
+	api("newCampaign", CAMPAIGN)
+	for i in 3:
+		end_turn()
+	var fp = api("fingerprint")
+	var save: Dictionary = api("save")
+	check(save.kind == "game", "game save")
+	end_turn()
+	check(api("fingerprint") != fp, "turn changes the state")
+	var loaded: Dictionary = api("load", {"data": save.data})
+	check(loaded.meta.turn == 3, "load restores the turn")
+	check(api("fingerprint") == fp, "load restores the fingerprint")
+	end_turn()
+	var a = api("fingerprint")
+	api("load", {"data": save.data})
+	end_turn()
+	check(api("fingerprint") == a, "same save + end turn = same result")
+
+func test_battle_drill() -> void:
+	api("newBattleDrill")
+	var status: Dictionary = api("endTurn")
+	check(status.status == "battle", "drill pauses for battle")
+	var encounter: Dictionary = api("tactical")
+	var mine: Array = encounter.ships.filter(func(s): return s.mine and s.alive)
+	check(mine.size() >= 2, "player has ships in the battle")
+	api("tacticalOrder", {"all": true, "maneuver": "Engage"})
+	var after: Dictionary = api("tacticalRound")
+	check(after.round == 1, "one round resolved")
+	check(not attempt("submit", {"command": {"type": "AllocateResearch", "researchAllocation": [100, 0, 0, 0, 0, 0]}}).ok, "strategic orders locked in battle")
+	var save: Dictionary = api("save")
+	check(save.kind == "session", "mid-battle session save")
+	api("load", {"data": save.data})
+	check(api("tactical").round == 1, "session resumes at round 1")
+	check(api("tacticalAuto").finished == true, "auto-resolve finishes")
+	var result: Dictionary = api("endTurn")
+	check(result.status == "complete", "turn completes after battle")
+	check(result.briefing.events.any(func(e): return e.category == "combat"), "combat in briefing")
+	check(api("replays").size() == 1, "one replay")
+
+func test_rules3_events() -> void:
+	api("newBattleDrill", {"station": true})
+	check(api("endTurn").status == "battle", "station drill battle")
+	var e: Dictionary = api("tactical")
+	check(e.rules == 3 and e.ticksPerRound == 12, "rules 3, 12 ticks")
+	var fire = null
+	for i in 12:
+		if fire != null or e.finished:
+			break
+		e = api("tacticalRound")
+		var r: Dictionary = e.rounds[e.rounds.size() - 1]
+		check(r.events.size() > 0, "every rules 3 round has events")
+		for ev in r.events:
+			if ev.kind == "Fire":
+				fire = ev
+				break
+	check(fire != null, "weapons fire within a few rounds")
+	if fire != null:
+		check(fire.key == "weapon.%s" % fire.weapon, "fire event key")
+
+func test_diplomacy_drill() -> void:
+	var v: Dictionary = api("newDiplomacyDrill")
+	check(v.meta.scenario == "diplomacy", "diplomacy scenario")
+	var d: Dictionary = api("diplomacy")
+	check(d.callsToArms.size() == 1, "one call to arms")
+	check(d.proposals.any(func(p): return p.incoming and p.kind == "tribute"), "tribute demand")
+
+## Determinism across builds: the native extension must reproduce the fingerprint the wasm core
+## recorded in fixtures/determinism.json (tools/dump-fixtures.sh).
+func test_fixture_determinism() -> void:
+	var fx := load_fixture("determinism")
+	api("newCampaign", fx.args.campaign)
+	for i in int(fx.args.turns):
+		end_turn()
+	check(api("fingerprint") == fx.result, "fingerprint %s == wasm %s" % [api("fingerprint"), fx.result])
+	var fx_view := load_fixture("campaign-view")
+	var raw: String = core.request_json("newCampaign", JSON.stringify(fx_view.args))
+	var reparsed: Dictionary = JSON.parse_string(raw)
+	check(JSON.stringify(reparsed.result) == JSON.stringify(fx_view.result), "new campaign view matches the wasm fixture")

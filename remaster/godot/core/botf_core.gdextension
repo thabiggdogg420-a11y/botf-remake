@@ -1,0 +1,8 @@
+[configuration]
+entry_symbol = "botf_core_init"
+compatibility_minimum = "4.5"
+reloadable = false
+
+[libraries]
+linux.x86_64 = "res://core/bin/libbotf_core.linux.x86_64.so"
+windows.x86_64 = "res://core/bin/libbotf_core.windows.x86_64.dll"
