@@ -327,4 +327,101 @@ private:
     float Height = 10.f;
 };
 
+// ---------------------------------------------------------------------------------------------------------------------
+// Slider and toggle for the settings screen: painted in the design language instead of the engine's grey defaults.
+// ---------------------------------------------------------------------------------------------------------------------
+class SBotfSlider final : public SLeafWidget {
+public:
+    SLATE_BEGIN_ARGS(SBotfSlider) : _Value(0.f), _OnChange(), _OnEnd() {}
+        SLATE_ATTRIBUTE(float, Value)
+        SLATE_ARGUMENT(std::function<void(float)>, OnChange)
+        SLATE_ARGUMENT(std::function<void()>, OnEnd)
+    SLATE_END_ARGS()
+    void Construct(const FArguments& Args) { Value = Args._Value; OnChange = Args._OnChange; OnEnd = Args._OnEnd; }
+    virtual FVector2D ComputeDesiredSize(float) const override { return FVector2D(160.0, 28.0); }
+    virtual int32 OnPaint(const FPaintArgs&, const FGeometry& Geometry, const FSlateRect&, FSlateWindowElementList& Elements, int32 Layer,
+                         const FWidgetStyle&, bool bParentEnabled) const override {
+        const FVector2f Size = Geometry.GetLocalSize();
+        const FPalette& P = Theme();
+        const bool bOn = bParentEnabled && IsEnabled();
+        const float V = FMath::Clamp(Value.Get(0.f), 0.f, 1.f);
+        const float Pad = 10.f, Track = 6.f, Width = FMath::Max(1.f, Size.X - Pad * 2.f), Y = Size.Y * 0.5f;
+        const float X = Pad + Width * V;
+        const FLinearColor Tint = bOn ? P.Primary : P.Muted;
+        PaintRounded(Elements, Layer, Geometry, FVector2f(Pad, Y - Track * 0.5f), FVector2f(Width, Track), FVector4(3, 3, 3, 3), WithAlpha(FLinearColor::Black, 0.42f), P.Line, 1.f);
+        if (V > 0.002f)
+            PaintGradientRounded(Elements, Layer + 1, Geometry, FVector2f(Pad, Y - Track * 0.5f), FVector2f(FMath::Max(Track, Width * V), Track), Lift(Tint, 0.25f), Shade(Tint, 0.85f));
+        const bool bLift = bOn && (IsHovered() || bDragging);
+        if (bLift) PaintGlow(Elements, Layer + 2, Geometry, FVector2f(X, Y), 17.f, WithAlpha(P.Accent, 0.4f));
+        PaintCircle(Elements, Layer + 3, Geometry, FVector2f(X, Y), 9.f, bOn ? Lift(P.Accent, 0.55f) : P.Muted, WithAlpha(P.Void, 0.7f), 1.5f);
+        return Layer + 3;
+    }
+    virtual FReply OnMouseButtonDown(const FGeometry& Geometry, const FPointerEvent& Event) override {
+        if (!IsEnabled() || Event.GetEffectingButton() != EKeys::LeftMouseButton) return FReply::Unhandled();
+        bDragging = true; Set(Geometry, Event);
+        return FReply::Handled().CaptureMouse(SharedThis(this));
+    }
+    virtual FReply OnMouseMove(const FGeometry& Geometry, const FPointerEvent& Event) override {
+        if (bDragging && HasMouseCapture()) { Set(Geometry, Event); return FReply::Handled(); }
+        return FReply::Unhandled();
+    }
+    virtual FReply OnMouseButtonUp(const FGeometry& Geometry, const FPointerEvent& Event) override {
+        if (!bDragging || Event.GetEffectingButton() != EKeys::LeftMouseButton) return FReply::Unhandled();
+        bDragging = false;
+        if (OnEnd) OnEnd();
+        return FReply::Handled().ReleaseMouseCapture();
+    }
+    virtual FCursorReply OnCursorQuery(const FGeometry&, const FPointerEvent&) const override { return FCursorReply::Cursor(EMouseCursor::Hand); }
+private:
+    static void PaintGradientRounded(FSlateWindowElementList& Elements, int32 Layer, const FGeometry& Geometry, FVector2f Offset, FVector2f Size,
+        const FLinearColor& Left, const FLinearColor& Right)
+    {
+        PaintGradient(Elements, Layer, Geometry, Offset, Size, FVector4(3, 3, 3, 3), Left, Right);
+    }
+    void Set(const FGeometry& Geometry, const FPointerEvent& Event) {
+        const FVector2f Local = FVector2f(Geometry.AbsoluteToLocal(Event.GetScreenSpacePosition()));
+        const float Width = FMath::Max(1.f, Geometry.GetLocalSize().X - 20.f);
+        if (OnChange) OnChange(FMath::Clamp((Local.X - 10.f) / Width, 0.f, 1.f));
+        Invalidate(EInvalidateWidgetReason::Paint);
+    }
+    TAttribute<float> Value;
+    std::function<void(float)> OnChange;
+    std::function<void()> OnEnd;
+    bool bDragging = false;
+};
+
+class SBotfToggle final : public SLeafWidget {
+public:
+    SLATE_BEGIN_ARGS(SBotfToggle) : _Checked(false), _OnToggle() {}
+        SLATE_ATTRIBUTE(bool, Checked)
+        SLATE_ARGUMENT(std::function<void(bool)>, OnToggle)
+    SLATE_END_ARGS()
+    void Construct(const FArguments& Args) { Checked = Args._Checked; OnToggle = Args._OnToggle; }
+    virtual FVector2D ComputeDesiredSize(float) const override { return FVector2D(50.0, 28.0); }
+    virtual int32 OnPaint(const FPaintArgs&, const FGeometry& Geometry, const FSlateRect&, FSlateWindowElementList& Elements, int32 Layer,
+                         const FWidgetStyle&, bool bParentEnabled) const override {
+        const FVector2f Size = Geometry.GetLocalSize();
+        const FPalette& P = Theme();
+        const bool bOn = Checked.Get(false), bLive = bParentEnabled && IsEnabled();
+        const float H = 22.f, W = 42.f, Y = (Size.Y - H) * 0.5f;
+        const FLinearColor Tint = bLive ? P.Primary : P.Muted;
+        PaintRounded(Elements, Layer, Geometry, FVector2f(0.f, Y), FVector2f(W, H), FVector4(11, 11, 11, 11),
+            bOn ? WithAlpha(Tint, 0.85f) : WithAlpha(FLinearColor::Black, 0.42f), bOn ? Lift(Tint, 0.3f) : P.LineHi, 1.f);
+        const float Knob = bOn ? W - 11.f : 11.f;
+        if (bLive && IsHovered()) PaintGlow(Elements, Layer + 1, Geometry, FVector2f(Knob, Y + H * 0.5f), 15.f, WithAlpha(P.Accent, 0.35f));
+        PaintCircle(Elements, Layer + 2, Geometry, FVector2f(Knob, Y + H * 0.5f), 8.f, bOn ? FLinearColor::White : P.Text2);
+        return Layer + 2;
+    }
+    virtual FReply OnMouseButtonDown(const FGeometry&, const FPointerEvent& Event) override {
+        if (!IsEnabled() || Event.GetEffectingButton() != EKeys::LeftMouseButton) return FReply::Unhandled();
+        if (OnToggle) OnToggle(!Checked.Get(false));
+        Invalidate(EInvalidateWidgetReason::Paint);
+        return FReply::Handled();
+    }
+    virtual FCursorReply OnCursorQuery(const FGeometry&, const FPointerEvent&) const override { return FCursorReply::Cursor(EMouseCursor::Hand); }
+private:
+    TAttribute<bool> Checked;
+    std::function<void(bool)> OnToggle;
+};
+
 } // namespace BotfUi

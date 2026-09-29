@@ -37,6 +37,7 @@
 #include "Widgets/SNullWidget.h"
 #include "Widgets/SOverlay.h"
 #include "Widgets/SBoxPanel.h"
+#include "Widgets/Layout/SWrapBox.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Input/SEditableTextBox.h"
 #include "Widgets/Images/SImage.h"
@@ -193,6 +194,7 @@ public:
                 if (Key == EKeys::T) return Guarded([this] { NextTacTarget(); });
                 if (Key == EKeys::C && Scene.IsValid()) { Scene->CycleCameraMode(); return FReply::Handled(); }
                 if (Key == EKeys::Home && Scene.IsValid()) { Scene->ResetCameraOrbit(); return FReply::Handled(); }
+                if (Key == EKeys::L) { bTelemetryTall = !bTelemetryTall; return FReply::Handled(); }
                 if (Key == EKeys::Left && Scene.IsValid()) { Scene->AddCameraOrbit(-15.f, 0.f); return FReply::Handled(); }
                 if (Key == EKeys::Right && Scene.IsValid()) { Scene->AddCameraOrbit(15.f, 0.f); return FReply::Handled(); }
                 if (Key == EKeys::Up && Scene.IsValid()) { Scene->AddCameraOrbit(0.f, 10.f); return FReply::Handled(); }
@@ -260,6 +262,7 @@ public:
             + SOverlay::Slot().VAlign(VAlign_Top) [ BuildTopBar() ]
             + SOverlay::Slot().HAlign(HAlign_Left).VAlign(VAlign_Fill).Padding(10, 78, 0, 74) [ BuildLeftDock() ]
             + SOverlay::Slot().HAlign(HAlign_Right).VAlign(VAlign_Fill).Padding(0, 78, 10, 74) [ BuildInbox() ]
+            + SOverlay::Slot().HAlign(HAlign_Center).VAlign(VAlign_Bottom).Padding(0, 0, 0, 78) [ BuildOrderTray() ]
             + SOverlay::Slot().VAlign(VAlign_Bottom) [ BuildBottomBar() ]
             + SOverlay::Slot().Padding(TAttribute<FMargin>::CreateLambda([this] { return (ActivePanel == PanelCombat && Session.pending) ? FMargin(0) : FMargin(0, 67, 0, 67); })) [ BuildSheetLayer() ]
             + SOverlay::Slot().HAlign(HAlign_Left).VAlign(VAlign_Top)
@@ -375,7 +378,7 @@ private:
     TSharedPtr<SVerticalBox> SectorRows, BuildRows, ShipRows, QueueRows, RaceRows, IntelCards, IntelReportRows,
         SystemTableRows, FleetTableRows, ReferenceRows, SaveRows, MenuRows, InboxRows, SheetPlanetRows, ProposalRows;
     TSharedPtr<SVerticalBox> EventRows, TemplateRows;
-    TSharedPtr<SVerticalBox> PlanetRows;
+    TSharedPtr<SVerticalBox> PlanetRows, ResearchDetailRows;
     TSharedPtr<SVerticalBox> TacRows;
     TSharedPtr<SVerticalBox> TacFriendlyRows;
     TSharedPtr<SVerticalBox> TacHostileRows;
@@ -596,6 +599,42 @@ private:
     TSharedRef<SWidget> ModeButton(const FString& Label, int* Mode, int Value, const FString& Tip = FString()) {
         return Control(Label, [Mode, Value] { *Mode = Value; }, nullptr, [Mode, Value] { return *Mode == Value; },
             ERole::Segment, FMargin(14, 7), false, 10, Tip);
+    }
+    // Compact icon-and-value chip for list rows.
+    TSharedRef<SWidget> MiniStat(BotfUi::EIcon Glyph, const FString& Text, FLinearColor FPalette::* Tone = &FPalette::Text2, const FString& Tip = FString()) const {
+        TSharedRef<SWidget> Chip = SNew(BotfUi::SBotfSurface).Padding(FMargin(7, 3, 10, 3)).VAlign(VAlign_Center)
+            .Look([this] {
+                BotfUi::FSurfaceLook L; L.Fill = BotfUi::WithAlpha(FLinearColor::White, 0.04f); L.Outline = P().Line; L.Radius = FVector4(10, 10, 10, 10); return L; })
+            [ SNew(SHorizontalBox)
+                + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0, 0, 5, 0) [ Icon(Glyph, 13, Tone) ]
+                + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+                [ SNew(STextBlock).Text(Txt(Text)).Font(BotfUi::Font(7)).ColorAndOpacity(C(Tone)) ] ];
+        if (!Tip.IsEmpty()) BotfUi::SetTip(Chip, Txt(Tip));
+        return Chip;
+    }
+    // A clickable list row: rounded card with hover and selected states and a stripe. StripeTint alpha 0 means the theme accent.
+    TSharedRef<SWidget> ListCard(const TSharedRef<SWidget>& Content, std::function<void()> Action, std::function<bool()> IsPicked,
+                                 std::function<bool()> Enabled = nullptr, const FString& Tip = FString(),
+                                 FLinearColor StripeTint = FLinearColor::Transparent, FMargin Pad = FMargin(16, 9, 12, 9)) {
+        return CardButton(Content,
+            [this, IsPicked, StripeTint](bool Hover, bool Pressed, bool Focus, bool On) {
+                const FPalette& Pal = P();
+                const bool Picked = IsPicked && SafeBool(IsPicked, false);
+                const FLinearColor Hue = StripeTint.A > 0.f ? StripeTint : Pal.Primary;
+                BotfUi::FSurfaceLook L; L.Radius = FVector4(12, 12, 12, 12);
+                L.Fill = BotfUi::WithAlpha(Picked ? BotfUi::Mix(Pal.FieldHi, Hue, 0.12f) : Pal.Field, On && Hover ? 0.98f : 0.88f);
+                if (Pressed) L.Fill = BotfUi::Shade(L.Fill, 0.85f, L.Fill.A);
+                L.Outline = Focus ? Pal.Accent : (Picked ? BotfUi::WithAlpha(Hue, 0.9f) : (On && Hover ? BotfUi::WithAlpha(Hue, 0.55f) : Pal.Line));
+                L.OutlineWidth = Focus || Picked ? 2.f : 1.f;
+                L.Stripe = BotfUi::WithAlpha(Hue, Picked ? 1.f : (On ? 0.55f : 0.2f));
+                return L; },
+            Action, Enabled, Tip, Pad);
+    }
+    // A row of controls that wraps onto further lines when the column is narrow.
+    TSharedRef<SWidget> Wrap(std::initializer_list<TSharedRef<SWidget>> Items, float Gap = 5) {
+        auto Box = SNew(SWrapBox).UseAllottedSize(true).InnerSlotPadding(FVector2D(Gap, Gap));
+        for (const auto& Item : Items) Box->AddSlot() [ Item ];
+        return Box;
     }
     TSharedRef<SWidget> Row(const FString& Label, std::function<void()> Action, std::function<bool()> IsSelected,
                             std::function<bool()> Enabled = nullptr, const FString& Tip = FString()) {
@@ -2091,12 +2130,23 @@ private:
             for (const auto& Option : Card.options) {
                 const int Index = Option.index;
                 const bool Chosen = Card.chosen == Index;
-                Options->AddSlot().AutoHeight().Padding(0, 0, 0, 3)
-                    [ Control(Str(Option.label).ToUpper() + (Option.isDefault ? TEXT("  (DEFAULT)") : TEXT("")) + TEXT("\n") + Str(Option.effect),
-                        [this, EventId, Index] { ChooseEventOption(EventId, Index); },
-                        [this, Open = Card.needsDecision] { return Open && !Session.active; }, [Chosen] { return Chosen; },
-                        ERole::Primary, FMargin(4, 5, 8, 5), true, 10,
-                        Card.needsDecision ? FString(TEXT("Order this response; you can change it until the turn ends")) : FString(TEXT("Already decided"))) ];
+                const TSharedRef<SWidget> Content = SNew(SHorizontalBox)
+                    + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0, 0, 12, 0)
+                    [ Icon(Chosen ? BotfUi::EIcon::Check : BotfUi::EIcon::Dot, 16, Chosen ? &FPalette::Good : &FPalette::Muted) ]
+                    + SHorizontalBox::Slot().FillWidth(1).VAlign(VAlign_Center)
+                    [ SNew(SVerticalBox)
+                        + SVerticalBox::Slot().AutoHeight()
+                        [ SNew(SHorizontalBox)
+                            + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+                            [ SNew(STextBlock).Text(Txt(Str(Option.label).ToUpper())).Font(BotfUi::Condensed(11)).ColorAndOpacity(C(&FPalette::Text)) ]
+                            + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(8, 0, 0, 0)
+                            [ SNew(SBox).Visibility(Option.isDefault ? EVisibility::Visible : EVisibility::Collapsed) [ Badge(Txt(TEXT("DEFAULT")), &FPalette::Muted, 6) ] ] ]
+                        + SVerticalBox::Slot().AutoHeight() [ Para(Txt(Str(Option.effect)), 9, &FPalette::Text2) ] ];
+                Options->AddSlot().AutoHeight().Padding(0, 0, 0, 5)
+                    [ ListCard(Content, [this, EventId, Index] { ChooseEventOption(EventId, Index); }, [Chosen] { return Chosen; },
+                        [this, Open = Card.needsDecision] { return Open && !Session.active; },
+                        Card.needsDecision ? FString(TEXT("Order this response; you can change it until the turn ends")) : FString(TEXT("Already decided")),
+                        FLinearColor::Transparent, FMargin(16, 8, 12, 8)) ];
             }
             const FString Heading_ = Str(Card.title).ToUpper() + (Card.where.empty() ? FString() : TEXT("  /  ") + Str(Card.where).ToUpper());
             FString Detail = Str(Card.description);
@@ -2129,7 +2179,13 @@ private:
             + SOverlay::Slot().HAlign(HAlign_Center).VAlign(VAlign_Center)
             [ SNew(SBox).WidthOverride(640)
                 [ Fill(EShape::Row, &FPalette::Void, Stack({
-                    SNew(STextBlock).Text(Dyn([this] { return Str(botf::view::outcomeView(State).title); })).Font(BotfUi::Condensed(44))
+                    SNew(SHorizontalBox)
+                        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0, 0, 12, 0) [ SNew(BotfUi::SBotfEmblem).Empire_Lambda([this] { return State.playerEmpire; }).Size(34) ]
+                        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+                        [ SNew(SWidgetSwitcher).WidgetIndex_Lambda([this] { return State.outcome == botf::CampaignOutcome::Victory ? 0 : 1; })
+                            + SWidgetSwitcher::Slot() [ Badge(Txt(TEXT("VICTORY")), &FPalette::Good, 8) ]
+                            + SWidgetSwitcher::Slot() [ Badge(Txt(TEXT("CAMPAIGN OVER")), &FPalette::Alert, 8) ] ],
+                    SNew(STextBlock).Text(Dyn([this] { return Str(botf::view::outcomeView(State).title); })).Font(BotfUi::Display(44))
                         .ColorAndOpacity_Lambda([this] { return FSlateColor(State.outcome == botf::CampaignOutcome::Victory ? P().Accent : P().Alert); }),
                     Para(Dyn([this] { return Str(botf::view::outcomeView(State).detail); }), 13, &FPalette::Text),
                     Para(Dyn([this] { return VictorySummaryText(); }), 10, &FPalette::Muted),
@@ -2444,8 +2500,11 @@ private:
                 [ StatTile(BotfUi::EIcon::Pin, TEXT("RANGE"), [this] { FUnitVitals V; return UnitVitals(V) && V.Range >= 0 ? FString::FromInt(V.Range) : FString(TEXT("-")); },
                     C(&FPalette::Info), TEXT("Supply range in sectors: how far it can travel from supply")) ]
                 + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-                [ Badge(Dyn([this] { FUnitVitals V; return UnitVitals(V) ? V.Stance : FString(); }), &FPalette::Secondary, 7) ],
-            Section(Txt(TEXT("ORDERS")), SNew(SVerticalBox)
+                [ Badge(Dyn([this] { FUnitVitals V; return UnitVitals(V) ? V.Stance : FString(); }), &FPalette::Secondary, 7) ] }, 10);
+    }
+    // Command tray: every order the selected unit can take, docked bottom-centre so the inspector stays short.
+    TSharedRef<SWidget> BuildOrderTray() {
+        const TSharedRef<SWidget> Orders = Section(Txt(TEXT("ORDERS")), SNew(SVerticalBox)
                 + SVerticalBox::Slot().AutoHeight()
                 [ Grid({
                     ActionTile(BotfUi::EIcon::Pin, TEXT("SET COURSE"), [this] { MapView.bPlotting = true; }, [this] { return Fleet() != nullptr; },
@@ -2474,7 +2533,7 @@ private:
                         Submit(Cmd); Status = TEXT("Ship ordered to disengage.");
                     }, [this] { return Fleet() != nullptr; }, TEXT("Disengage from combat"), ERole::Secondary),
                     ActionTile(BotfUi::EIcon::Ship, TEXT("NEXT UNIT"), [this] { NextShip(); }, [this] { return OwnShipCount() > 0; },
-                        TEXT("Cycle your task forces and ships"), ERole::Secondary, TEXT("Tab")) }, 2) ]
+                        TEXT("Cycle your task forces and ships"), ERole::Secondary, TEXT("Tab")) }, 4) ]
                 + SVerticalBox::Slot().AutoHeight().Padding(0, 6, 0, 0)
                 [ SNew(SHorizontalBox)
                     + SHorizontalBox::Slot().FillWidth(1).Padding(0, 0, 4, 0)
@@ -2494,8 +2553,8 @@ private:
                 [ SNew(SBox).Visibility_Lambda([this] { return SafeText([this] { return OutpostText(); }).IsEmpty() ? EVisibility::Collapsed : EVisibility::Visible; })
                     [ Para(Dyn([this] { return OutpostText(); }), 8, &FPalette::Tertiary) ] ]
                 + SVerticalBox::Slot().AutoHeight().Padding(0, 4, 0, 0)
-                [ Para(Dyn([this] { return PendingUnitText(); }), 7, &FPalette::Muted) ]),
-            Section(Txt(TEXT("TASK FORCE AND STANCE")), SNew(SVerticalBox)
+                [ Para(Dyn([this] { return PendingUnitText(); }), 7, &FPalette::Muted) ]);
+        const TSharedRef<SWidget> Group = Section(Txt(TEXT("TASK FORCE AND STANCE")), SNew(SVerticalBox)
                 + SVerticalBox::Slot().AutoHeight()
                 [ SNew(SHorizontalBox)
                     + SHorizontalBox::Slot().FillWidth(1).Padding(0, 0, 4, 0)
@@ -2512,7 +2571,11 @@ private:
                 + SVerticalBox::Slot().AutoHeight().Padding(0, 4, 0, 0)
                 [ Capsule(SNew(SHorizontalBox)
                     + SHorizontalBox::Slot().FillWidth(1) [ StanceButton(botf::TacticalStance::Defensive) ]
-                    + SHorizontalBox::Slot().FillWidth(1).Padding(2, 0, 0, 0) [ StanceButton(botf::TacticalStance::Withdraw) ] ) ]) }, 10);
+                    + SHorizontalBox::Slot().FillWidth(1).Padding(2, 0, 0, 0) [ StanceButton(botf::TacticalStance::Withdraw) ] ) ]);
+        return SNew(SBox).Visibility_Lambda([this] { return ActivePanel == PanelGalaxy && Fleet() ? EVisibility::SelfHitTestInvisible : EVisibility::Collapsed; })
+            [ Glass(SNew(SHorizontalBox)
+                + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Top).Padding(0, 0, 16, 0) [ SNew(SBox).WidthOverride(590) [ Orders ] ]
+                + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Top) [ SNew(SBox).WidthOverride(270) [ Group ] ]) ];
     }
     TSharedRef<SWidget> StanceButton(botf::TacticalStance Stance) {
         return Control(StanceName(Stance), [this, Stance] {
@@ -2921,7 +2984,7 @@ private:
                         return Col->workforceManualOverride ? FString(TEXT("MANUAL OVERRIDE")) : FString();
                     })).Font(BotfUi::Condensed(10)).ColorAndOpacity(C(&FPalette::Alert)) ] ]
                 + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 4)
-                [ Line({
+                [ Wrap({
                     Option(TEXT("MANUAL"), [this] { SetWorkforceGovernor(botf::GovernorPriority::Manual); },
                         [this] { const auto* Col = DraftColony(); return Col && Col->workforcePriority == botf::GovernorPriority::Manual; }, TEXT("Full manual control")),
                     Option(TEXT("BALANCED"), [this] { SetWorkforceGovernor(botf::GovernorPriority::Balanced); },
@@ -2976,7 +3039,7 @@ private:
                         const auto* Col = DraftColony(); return Col ? (Col->population - Col->foodWorkers - Col->industryWorkers - Col->researchWorkers + 9) / 10 : 0;
                     }).LitColor(C(&FPalette::Secondary)).DarkColor(C(&FPalette::Field)) ],
                 FMargin(10, 8)),
-            Line({ Pill(TEXT("BALANCED STAFFING"), [this] { Assign(false); }, [this] { return Owned(); }, ERole::Secondary, TEXT("Feed the population, split the rest between industry and research")),
+            Wrap({ Pill(TEXT("BALANCED STAFFING"), [this] { Assign(false); }, [this] { return Owned(); }, ERole::Secondary, TEXT("Feed the population, split the rest between industry and research")),
                    Pill(TEXT("INDUSTRY STAFFING"), [this] { Assign(true); }, [this] { return Owned(); }, ERole::Secondary, TEXT("Feed the population, all remaining workers to industry")) }),
             Para(Txt(TEXT("Each block is one structure staffed by 10 workers. Red output means a shortage: people starve if food falls short.")), 9, &FPalette::Muted) });
     }
@@ -3043,17 +3106,32 @@ private:
         for (const auto& Choice : botf::constructionChoices(Draft, Selected)) {
             FString Name = Str(Choice.name);
             Name.ReplaceInline(TEXT(" (remake infrastructure)"), TEXT(""));
+            const bool bShip = botf::isShip(Choice.product);
+            const bool bBlocked = !Choice.blocker.empty();
             const FString Turns = Output > 0 ? FString::Printf(TEXT("%d turns"), std::max(1, (Choice.industryCost + Output - 1) / Output)) : FString(TEXT("no industry"));
-            const FString Label = FString::Printf(TEXT("%s\nCost %d  |  %s  |  upkeep %d%s"), *Name.ToUpper(), Choice.industryCost, *Turns, Choice.creditUpkeep,
-                Choice.blocker.empty() ? TEXT("") : TEXT("  |  UNAVAILABLE"));
-            const FString Tip = Choice.blocker.empty() ? TEXT("Add to the build queue") : TEXT("Unavailable: ") + Str(Choice.blocker);
-            auto Widget = Row(Label, [this, Choice] {
+            const FString Tip = bBlocked ? TEXT("Unavailable: ") + Str(Choice.blocker) : TEXT("Add to the build queue");
+            const TSharedRef<SWidget> Content = SNew(SHorizontalBox)
+                + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0, 0, 12, 0)
+                [ Icon(bShip ? BotfUi::EIcon::Ship : BotfUi::EIcon::Industry, 22, bBlocked ? &FPalette::Muted : &FPalette::Primary) ]
+                + SHorizontalBox::Slot().FillWidth(1).VAlign(VAlign_Center)
+                [ SNew(SVerticalBox)
+                    + SVerticalBox::Slot().AutoHeight()
+                    [ SNew(STextBlock).Text(Txt(Name.ToUpper())).Font(BotfUi::Condensed(11)).OverflowPolicy(ETextOverflowPolicy::Ellipsis)
+                        .ColorAndOpacity(C(bBlocked ? &FPalette::Muted : &FPalette::Text)) ]
+                    + SVerticalBox::Slot().AutoHeight()
+                    [ SNew(STextBlock).Text(Txt(bBlocked ? Str(Choice.blocker) : FString::Printf(TEXT("upkeep %d credits per turn"), Choice.creditUpkeep)))
+                        .Font(BotfUi::Font(7)).OverflowPolicy(ETextOverflowPolicy::Ellipsis).ColorAndOpacity(C(bBlocked ? &FPalette::Alert : &FPalette::Muted)) ] ]
+                + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(8, 0, 0, 0)
+                [ MiniStat(BotfUi::EIcon::Industry, FString::FromInt(Choice.industryCost), &FPalette::Accent, TEXT("Industry cost")) ]
+                + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(6, 0, 0, 0)
+                [ MiniStat(BotfUi::EIcon::Clock, Turns, &FPalette::Text2, TEXT("At this system's current industry output")) ];
+            auto Widget = ListCard(Content, [this, Choice] {
                 botf::Command Cmd; Cmd.id = State.lastAcceptedCommand + 1;
                 Cmd.type = botf::CommandType::EnqueueBuilding; Cmd.systemId = Selected;
                 Cmd.building = Choice.product; Cmd.referenceId = Choice.referenceId;
                 Submit(Cmd);
                 Status = TEXT("Added ") + Str(Choice.name) + TEXT(" to the build queue.");
-            }, nullptr, [this, Choice] { return OwnedColony() && Choice.blocker.empty(); }, Tip);
+            }, nullptr, [this, Choice] { return OwnedColony() && Choice.blocker.empty(); }, Tip, bBlocked ? BotfUi::Theme().Muted : FLinearColor::Transparent, FMargin(14, 7, 10, 7));
             if (botf::isShip(Choice.product)) { ShipRows->AddSlot().AutoHeight().Padding(0, 0, 0, 3) [ Widget ]; ++Ships; }
             else { BuildRows->AddSlot().AutoHeight().Padding(0, 0, 0, 3) [ Widget ]; ++Buildings; }
         }
@@ -3143,7 +3221,7 @@ private:
                     return FString::Printf(TEXT("QUEUE GOVERNOR: %s"), *Str(botf::governorPriorityName(Col->queuePriority)).ToUpper());
                 }), 11, &FPalette::Accent) ]
                 + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 4)
-                [ Line({
+                [ Wrap({
                     Option(TEXT("MANUAL"), [this] { SetQueueGovernor(botf::GovernorPriority::Manual); },
                         [this] { const auto* Col = DraftColony(); return Col && Col->queuePriority == botf::GovernorPriority::Manual; }, TEXT("Only build player-queued items")),
                     Option(TEXT("BALANCED"), [this] { SetQueueGovernor(botf::GovernorPriority::Balanced); },
@@ -3189,7 +3267,7 @@ private:
                     TEXT("Pay credits to finish the first item in the queue when the turn ends")) ],
                 FMargin(8, 5)) ]
             + SVerticalBox::Slot().AutoHeight()
-            [ Line({
+            [ Wrap({
                 Pill(TEXT("CANCEL FIRST"), [this] { CancelFirst(); }, [this] { return CanCancelFirst(); }, ERole::Alert,
                     TEXT("Cancel and discard the first project in queue (cannot be pinned)")),
                 Pill(TEXT("PRIORITIZE LAST"), [this] { PrioritizeLast(); }, [this] { return CanPrioritizeLast(); }, ERole::Secondary,
@@ -3255,11 +3333,18 @@ private:
             const auto& Project = C.queue[Index];
             const int Cost = ConstructionCost(Draft, Selected, Project);
             const bool bIsPinned = Project.pinned;
-            QueueRows->AddSlot().AutoHeight().Padding(0, 0, 0, 3)
+            QueueRows->AddSlot().AutoHeight().Padding(0, 0, 0, 4)
                 [ Fill(EShape::Row, Index == 0 ? &FPalette::FieldHi : &FPalette::Field, SNew(SVerticalBox)
                     + SVerticalBox::Slot().AutoHeight()
-                    [ Para(Txt(FString::Printf(TEXT("%d. %s  %d/%d%s"), Index + 1, *ConstructionName(Draft, Selected, Project), Project.work, Cost, bIsPinned ? TEXT("  [PINNED]") : TEXT(""))),
-                        9, Index == 0 ? &FPalette::Accent : (bIsPinned ? &FPalette::Secondary : &FPalette::Text)) ]
+                    [ SNew(SHorizontalBox)
+                        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0, 0, 8, 0)
+                        [ Badge(Txt(FString::FromInt(Index + 1)), Index == 0 ? &FPalette::Accent : &FPalette::Muted, 7) ]
+                        + SHorizontalBox::Slot().FillWidth(1).VAlign(VAlign_Center)
+                        [ SNew(STextBlock).Text(Txt(ConstructionName(Draft, Selected, Project).ToUpper())).Font(BotfUi::Condensed(9))
+                            .OverflowPolicy(ETextOverflowPolicy::Ellipsis).ColorAndOpacity(this->C(Index == 0 ? &FPalette::Accent : &FPalette::Text)) ]
+                        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(6, 0, 0, 0)
+                        [ SNew(STextBlock).Text(Txt(bIsPinned ? FString::Printf(TEXT("PINNED  %d / %d"), Project.work, Cost) : FString::Printf(TEXT("%d / %d"), Project.work, Cost)))
+                            .Font(BotfUi::Font(7)).ColorAndOpacity(this->C(bIsPinned ? &FPalette::Secondary : &FPalette::Muted)) ] ]
                     + SVerticalBox::Slot().AutoHeight().Padding(0, 3)
                     [ SNew(BotfUi::SSegmentBar).Segments(16).Height(5)
                         .Fraction(Cost > 0 ? static_cast<float>(Project.work) / Cost : 0.f)
@@ -3439,14 +3524,23 @@ private:
         Status = TEXT("Research allocation set. It applies from the next turn.");
     }
     TSharedRef<SWidget> ResearchTile(int Field) {
-        return SNew(SBorder).BorderImage_Lambda([this] { return BotfUi::Styles().Get(ThemeEmpire(), EShape::Row); })
-            .BorderBackgroundColor_Lambda([this, Field] { return FSlateColor(SelectedResearchField == Field ? P().FieldHi : P().Field); })
-            .Padding(FMargin(10, 8))
+        static const BotfUi::EIcon FieldIcons[6] = { BotfUi::EIcon::Pop, BotfUi::EIcon::Eye, BotfUi::EIcon::Industry, BotfUi::EIcon::Bolt, BotfUi::EIcon::ChevronRight, BotfUi::EIcon::Combat };
+        return SNew(BotfUi::SBotfSurface).Padding(FMargin(16, 11, 14, 11))
+            .Look([this, Field] {
+                const FPalette& Pal = P(); const bool Picked = SelectedResearchField == Field;
+                BotfUi::FSurfaceLook L; L.Radius = FVector4(14, 14, 14, 14);
+                L.Fill = BotfUi::WithAlpha(Picked ? BotfUi::Mix(Pal.FieldHi, Pal.Primary, 0.10f) : Pal.Field, 0.92f);
+                L.Outline = Picked ? BotfUi::WithAlpha(Pal.Accent, 0.9f) : Pal.Line; L.OutlineWidth = Picked ? 2.f : 1.f;
+                L.Stripe = Picked ? Pal.Accent : BotfUi::WithAlpha(Pal.Primary, 0.4f);
+                if (Picked) { L.Glow = BotfUi::WithAlpha(Pal.Accent, 0.25f); L.GlowSize = 6.f; }
+                return L; })
             [ SNew(SVerticalBox)
-                + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 4)
+                + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 5)
                 [ SNew(SHorizontalBox)
-                    + SHorizontalBox::Slot().FillWidth(1) [ Heading(Txt(Str(botf::researchName(Field)).ToUpper()), 13, &FPalette::Tertiary) ]
-                    + SHorizontalBox::Slot().AutoWidth() [ Label(Dyn([this, Field] { return FString::Printf(TEXT("LEVEL %d"), State.technologies[Field].level); }), 12, &FPalette::Accent, true) ] ]
+                    + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0, 0, 8, 0) [ Icon(FieldIcons[Field % 6], 18, &FPalette::Secondary) ]
+                    + SHorizontalBox::Slot().FillWidth(1).VAlign(VAlign_Center) [ Heading(Txt(Str(botf::researchName(Field)).ToUpper()), 13, &FPalette::Text) ]
+                    + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+                    [ Badge(Dyn([this, Field] { return FString::Printf(TEXT("LEVEL %d"), State.technologies[Field].level); }), &FPalette::Accent, 8) ] ]
                 + SVerticalBox::Slot().AutoHeight()
                 [ Para(Dyn([this, Field] {
                     const auto& T = State.technologies[Field];
@@ -3511,46 +3605,49 @@ private:
                     + SHorizontalBox::Slot().FillWidth(1).VAlign(VAlign_Center)
                     [ Para(Dyn([this] { return bAllocationDirty ? FString(TEXT("Allocation changed; apply to order it.")) : FString(TEXT("Allocation matches your orders.")); }), 9, &FPalette::Muted) ],
                 Section(Dyn([this] { return Str(botf::researchName(SelectedResearchField)).ToUpper() + TEXT("  /  FIELD DETAIL"); }),
-                    Para(Dyn([this] { return ResearchFieldDetail(); }), 10, &FPalette::Text)) })) ]
+                    SAssignNew(ResearchDetailRows, SVerticalBox)) })) ]
             + SWidgetSwitcher::Slot() [ BuildDatabaseView() ],
             14, SheetHeader({ ModeButton(TEXT("FIELDS"), &ResearchMode, 0, TEXT("Allocation and progress")),
                               ModeButton(TEXT("OBJECT DATABASE"), &ResearchMode, 1, TEXT("Technologies, ships and structures")) }));
+    }
+    void ResearchEffect(int Field, int Level, FString& Domain, FString& Benefit) const {
+        switch (Field) {
+        case 0: // Biotech
+            Domain = TEXT("Food production (+5% per level ladder bonus)");
+            Benefit = FString::Printf(TEXT("+%d%% food yield"), Level * 5);
+            break;
+        case 1: // Computers
+            Domain = TEXT("Research output (+5% per level ladder bonus) and intelligence calculations");
+            Benefit = FString::Printf(TEXT("+%d%% research output, Level %d intel rating"), Level * 5, Level);
+            break;
+        case 2: // Construction
+            Domain = TEXT("Colony industry output (+5% per level ladder bonus)");
+            Benefit = FString::Printf(TEXT("+%d%% industry yield"), Level * 5);
+            break;
+        case 3: // Energy
+            Domain = TEXT("Colony power generation (+5% per level ladder bonus)");
+            Benefit = FString::Printf(TEXT("+%d%% energy generation"), Level * 5);
+            break;
+        case 4: // Propulsion
+            Domain = TEXT("Fleet operational range (+1 sector route range per 2 tech levels)");
+            Benefit = FString::Printf(TEXT("+%d sector(s) operational range"), Level / 2);
+            break;
+        case 5: // Weapons
+            Domain = TEXT("Tactical fleet combat attack (+1 per level) and ground invasion strength (+2 per level)");
+            Benefit = FString::Printf(TEXT("+%d fleet combat attack, +%d ground invasion strength"), Level, Level * 2);
+            break;
+        default:
+            Domain = TEXT("Domain technological progress");
+            Benefit = FString::Printf(TEXT("Level %d"), Level);
+            break;
+        }
     }
     FString ResearchFieldDetail() const {
         const int Field = SelectedResearchField;
         const auto& T = State.technologies[Field];
         FString DomainEffect;
         FString CurrentBenefit;
-        switch (Field) {
-        case 0: // Biotech
-            DomainEffect = TEXT("Food production (+5% per level ladder bonus)");
-            CurrentBenefit = FString::Printf(TEXT("+%d%% food yield"), T.level * 5);
-            break;
-        case 1: // Computers
-            DomainEffect = TEXT("Research output (+5% per level ladder bonus) and intelligence calculations");
-            CurrentBenefit = FString::Printf(TEXT("+%d%% research output, Level %d intel rating"), T.level * 5, T.level);
-            break;
-        case 2: // Construction
-            DomainEffect = TEXT("Colony industry output (+5% per level ladder bonus)");
-            CurrentBenefit = FString::Printf(TEXT("+%d%% industry yield"), T.level * 5);
-            break;
-        case 3: // Energy
-            DomainEffect = TEXT("Colony power generation (+5% per level ladder bonus)");
-            CurrentBenefit = FString::Printf(TEXT("+%d%% energy generation"), T.level * 5);
-            break;
-        case 4: // Propulsion
-            DomainEffect = TEXT("Fleet operational range (+1 sector route range per 2 tech levels)");
-            CurrentBenefit = FString::Printf(TEXT("+%d sector(s) operational range"), T.level / 2);
-            break;
-        case 5: // Weapons
-            DomainEffect = TEXT("Tactical fleet combat attack (+1 per level) and ground invasion strength (+2 per level)");
-            CurrentBenefit = FString::Printf(TEXT("+%d fleet combat attack, +%d ground invasion strength"), T.level, T.level * 2);
-            break;
-        default:
-            DomainEffect = TEXT("Domain technological progress");
-            CurrentBenefit = FString::Printf(TEXT("Level %d"), T.level);
-            break;
-        }
+        ResearchEffect(Field, T.level, DomainEffect, CurrentBenefit);
         FString Detail = FString::Printf(TEXT("FIELD: %s (Level %d / %d)\nDOMAIN EFFECT: %s\nCURRENT BENEFIT: %s\n"),
             *Str(botf::researchName(Field)).ToUpper(), T.level, botf::MaxTechLevel, *DomainEffect, *CurrentBenefit);
         if (T.level < botf::MaxTechLevel) {
@@ -3604,6 +3701,91 @@ private:
             Detail += TEXT("\nAll research levels complete for this domain. Maximum tech level reached.\n");
         }
         return Detail;
+    }
+    // Structured field detail: effect and benefit cards, next advance with progress, and what it unlocks.
+    void RefreshResearchDetail() {
+        if (!ResearchDetailRows.IsValid()) return;
+        ResearchDetailRows->ClearChildren();
+        const int Field = SelectedResearchField;
+        if (Field < 0 || Field >= botf::ResearchFields) return;
+        const auto& T = State.technologies[Field];
+        FString Domain, Benefit;
+        ResearchEffect(Field, T.level, Domain, Benefit);
+        const auto Fact = [this](const FString& Caption, const FString& Body, FLinearColor FPalette::* Tone) -> TSharedRef<SWidget> {
+            return Fill(EShape::Row, &FPalette::FieldHi, SNew(SVerticalBox)
+                + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 3) [ SNew(STextBlock).Text(Txt(Caption)).Font(BotfUi::Caption(7)).ColorAndOpacity(C(&FPalette::Muted)) ]
+                + SVerticalBox::Slot().AutoHeight() [ Para(Txt(Body), 10, Tone) ], FMargin(12, 8));
+        };
+        ResearchDetailRows->AddSlot().AutoHeight().Padding(0, 0, 0, 8)
+            [ SNew(SHorizontalBox)
+                + SHorizontalBox::Slot().FillWidth(1).Padding(0, 0, 8, 0) [ Fact(TEXT("DOMAIN EFFECT"), Domain, &FPalette::Text) ]
+                + SHorizontalBox::Slot().FillWidth(1).Padding(0, 0, 8, 0) [ Fact(TEXT("CURRENT BENEFIT"), Benefit, &FPalette::Good) ]
+                + SHorizontalBox::Slot().FillWidth(0.7f)
+                [ SNew(SBox)
+                    [ Fill(EShape::Row, &FPalette::FieldHi, SNew(SVerticalBox)
+                        + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 5) [ SNew(STextBlock).Text(Txt(TEXT("LEVEL LADDER"))).Font(BotfUi::Caption(7)).ColorAndOpacity(C(&FPalette::Muted)) ]
+                        + SVerticalBox::Slot().AutoHeight()
+                        [ SNew(BotfUi::SSegmentBar).Segments(botf::MaxTechLevel).Height(9)
+                            .Fraction(static_cast<float>(T.level) / botf::MaxTechLevel)
+                            .FillColor(C(&FPalette::Accent)).EmptyColor_Lambda([this] { return FSlateColor(BotfUi::Shade(P().Secondary, 0.22f)); }) ]
+                        + SVerticalBox::Slot().AutoHeight().Padding(0, 4, 0, 0)
+                        [ Para(Txt(FString::Printf(TEXT("Level %d of %d"), T.level, botf::MaxTechLevel)), 9, &FPalette::Text2) ], FMargin(12, 8)) ] ] ];
+        if (T.level >= botf::MaxTechLevel) {
+            ResearchDetailRows->AddSlot().AutoHeight() [ Para(Txt(TEXT("All research levels complete for this domain. Maximum tech level reached.")), 10, &FPalette::Good) ];
+            return;
+        }
+        const int Next = T.level + 1;
+        const int Cost = botf::researchCost(State, Field, Next);
+        ResearchDetailRows->AddSlot().AutoHeight().Padding(0, 0, 0, 8)
+            [ Fill(EShape::Row, &FPalette::FieldHi, SNew(SVerticalBox)
+                + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 5)
+                [ SNew(SHorizontalBox)
+                    + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0, 0, 10, 0) [ Badge(Txt(FString::Printf(TEXT("NEXT  /  LEVEL %d"), Next)), &FPalette::Accent, 7) ]
+                    + SHorizontalBox::Slot().FillWidth(1).VAlign(VAlign_Center)
+                    [ SNew(STextBlock).Text(Txt(Str(botf::technologyName(State, Field, Next)).ToUpper())).Font(BotfUi::Condensed(13)).ColorAndOpacity(C(&FPalette::Text)) ]
+                    + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+                    [ Label(Txt(FString::Printf(TEXT("%lld / %d points"), static_cast<long long>(T.progress), Cost)), 9, &FPalette::Text2) ] ]
+                + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 6)
+                [ SNew(BotfUi::SSegmentBar).Segments(30).Height(8).Fraction(Cost > 0 ? static_cast<float>(T.progress) / Cost : 0.f)
+                    .FillColor(C(&FPalette::Secondary)).EmptyColor_Lambda([this] { return FSlateColor(BotfUi::Shade(P().Secondary, 0.22f)); }) ]
+                + SVerticalBox::Slot().AutoHeight()
+                [ Para(Txt(State.ruleset == botf::Ruleset::Reference ? ReferenceTechnologyDescription(Field, Next) : FString()), 9, &FPalette::Text2) ],
+                FMargin(12, 9)) ];
+        // Unlocks: structures and ships gated by this level (same rules as the text readout).
+        auto Unlocks = SNew(SVerticalBox);
+        int Count = 0;
+        const int PlayerRace = State.playerEmpire - 1;
+        const auto AddUnlock = [&](bool bShip, const FString& Name, const FString& Meta, const FString& Prereq) {
+            ++Count;
+            Unlocks->AddSlot().AutoHeight().Padding(0, 0, 0, 4)
+                [ Fill(EShape::Row, &FPalette::FieldHi, SNew(SHorizontalBox)
+                    + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0, 0, 10, 0) [ Icon(bShip ? BotfUi::EIcon::Ship : BotfUi::EIcon::Industry, 18, &FPalette::Primary) ]
+                    + SHorizontalBox::Slot().FillWidth(1).VAlign(VAlign_Center)
+                    [ SNew(SVerticalBox)
+                        + SVerticalBox::Slot().AutoHeight() [ SNew(STextBlock).Text(Txt(Name.ToUpper())).Font(BotfUi::Condensed(10)).ColorAndOpacity(C(&FPalette::Text)) ]
+                        + SVerticalBox::Slot().AutoHeight() [ SNew(STextBlock).Text(Txt(Prereq.IsEmpty() ? FString(bShip ? TEXT("Starship") : TEXT("Structure")) : FString(TEXT("Also needs ")) + Prereq))
+                            .Font(BotfUi::Font(7)).ColorAndOpacity(C(&FPalette::Muted)).OverflowPolicy(ETextOverflowPolicy::Ellipsis) ] ]
+                    + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(8, 0, 0, 0) [ MiniStat(BotfUi::EIcon::Industry, Meta, &FPalette::Accent) ],
+                    FMargin(12, 6)) ];
+        };
+        for (const auto& B : botf::referenceData::BuildingCatalogue) {
+            if (B.technologyField != Field || B.technologyLevel != Next) continue;
+            if (PlayerRace >= 0 && (B.excludedEmpireMask & (1 << PlayerRace))) continue;
+            AddUnlock(false, Str(B.name), FString::Printf(TEXT("%d"), B.industryCost), FString());
+        }
+        for (const auto& S : botf::referenceData::ShipCatalogue) {
+            if (!(PlayerRace >= 0 && S.raceId == PlayerRace && S.technologyRequirements[Field] == Next)) continue;
+            FString Prereqs;
+            for (int F = 0; F < botf::ResearchFields; ++F)
+                if (F != Field && S.technologyRequirements[F] > 0)
+                    Prereqs += (Prereqs.IsEmpty() ? FString() : FString(TEXT(", "))) + FString::Printf(TEXT("%s %d"), *Str(botf::researchName(F)), S.technologyRequirements[F]);
+            AddUnlock(true, Str(S.name) + TEXT("  (") + Str(S.shipClass) + TEXT(")"), FString::Printf(TEXT("%d"), S.industryCost), Prereqs);
+        }
+        ResearchDetailRows->AddSlot().AutoHeight().Padding(0, 0, 0, 5)
+            [ SNew(STextBlock).Text(Txt(FString::Printf(TEXT("UNLOCKS AT LEVEL %d"), Next))).Font(BotfUi::Caption(7)).ColorAndOpacity(C(&FPalette::Secondary)) ];
+        if (Count) ResearchDetailRows->AddSlot().AutoHeight() [ Unlocks ];
+        else ResearchDetailRows->AddSlot().AutoHeight()
+            [ Para(Txt(TEXT("Theoretical foundation advancement: raises this domain's efficiency and its level ladder bonus.")), 9, &FPalette::Muted) ];
     }
     FString ReferenceTechnologyDescription(int Field, int Level) const {
         for (const auto& Entry : botf::referenceData::TechnologyCatalogue)
@@ -3747,9 +3929,13 @@ private:
             + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 8)
             [ Fill(EShape::Row, &FPalette::Field, SNew(SHorizontalBox)
                 + SHorizontalBox::Slot().AutoWidth().Padding(0, 0, 12, 0)
-                [ SNew(SBox).WidthOverride(64).HeightOverride(64)
-                    [ SNew(SBorder).BorderImage_Lambda([this] { return BotfUi::Styles().Get(DipMinor() ? ThemeEmpire() : SelectedEmpire, EShape::Pill); })
-                        .BorderBackgroundColor_Lambda([this] { return FSlateColor(DipMinor() ? FLinearColor(0.8f, 0.8f, 0.9f) : BotfUi::FactionColor(SelectedEmpire)); }) ] ]
+                [ SNew(SBox).WidthOverride(72).HeightOverride(72)
+                    [ SNew(BotfUi::SBotfSurface).HAlign(HAlign_Center).VAlign(VAlign_Center)
+                        .Look([this] {
+                            BotfUi::FSurfaceLook L; const FLinearColor F = DipMinor() ? FLinearColor(0.8f, 0.8f, 0.95f) : BotfUi::FactionColor(SelectedEmpire);
+                            L.Top = BotfUi::WithAlpha(F, 0.30f); L.Fill = BotfUi::WithAlpha(F, 0.08f); L.Outline = BotfUi::WithAlpha(F, 0.7f); L.OutlineWidth = 2.f;
+                            L.Radius = FVector4(20, 20, 20, 20); L.Glow = BotfUi::WithAlpha(F, 0.3f); L.GlowSize = 8.f; return L; })
+                        [ SNew(BotfUi::SBotfEmblem).Empire_Lambda([this] { return DipMinor() ? ThemeEmpire() : SelectedEmpire; }).Size(44) ] ] ]
                 + SHorizontalBox::Slot().FillWidth(1).VAlign(VAlign_Center)
                 [ SNew(SVerticalBox)
                     + SVerticalBox::Slot().AutoHeight() [ Heading(Dyn([this] { return DipName().ToUpper(); }), 18, &FPalette::Accent) ]
@@ -4059,22 +4245,51 @@ private:
             const auto* R = botf::majorRelation(State, State.playerEmpire, Id);
             if (!R || !R->contact) continue;
             ++Count;
-            RaceRows->AddSlot().AutoHeight().Padding(0, 0, 0, 3)
+            const bool bElim = botf::empireEliminated(State, Id);
+            const auto Allies = botf::alliedEmpires(State, State.playerEmpire);
+            const bool bAlly = std::find(Allies.begin(), Allies.end(), Id) != Allies.end();
+            const int Trust = R->trust;
+            const bool bWar = R->atWar, bTrade = R->tradeTreaty;
+            const FLinearColor Faction = BotfUi::FactionColor(Id);
+            const TSharedRef<SWidget> Content = SNew(SVerticalBox)
+                + SVerticalBox::Slot().AutoHeight()
                 [ SNew(SHorizontalBox)
-                    + SHorizontalBox::Slot().AutoWidth().Padding(0, 0, 4, 0) [ SNew(SBox).WidthOverride(5) [ Swatch(Id, 0) ] ]
-                    + SHorizontalBox::Slot().FillWidth(1)
-                    [ Row(RaceRowLabel(Id, *R),
-                        [this, Id] { SelectedEmpire = Id; SelectedMinor = 0; }, [this, Id] { return !DipMinor() && SelectedEmpire == Id; }) ] ];
+                    + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0, 0, 10, 0) [ SNew(BotfUi::SBotfEmblem).Empire(Id).Size(26) ]
+                    + SHorizontalBox::Slot().FillWidth(1).VAlign(VAlign_Center)
+                    [ SNew(SVerticalBox)
+                        + SVerticalBox::Slot().AutoHeight()
+                        [ SNew(STextBlock).Text(Txt(Str(botf::empireName(Id)).ToUpper())).Font(BotfUi::Condensed(11)).ColorAndOpacity(C(&FPalette::Text)) ]
+                        + SVerticalBox::Slot().AutoHeight()
+                        [ SNew(STextBlock).Text(Txt(bElim ? FString(TEXT("Eliminated")) : FString::Printf(TEXT("Trust %d%s"), Trust, bTrade ? TEXT("  |  trade treaty") : TEXT(""))))
+                            .Font(BotfUi::Font(7)).ColorAndOpacity(C(&FPalette::Muted)) ] ]
+                    + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+                    [ Badge(Txt(bElim ? TEXT("OUT") : bWar ? TEXT("WAR") : bAlly ? TEXT("ALLY") : TEXT("PEACE")), bElim ? &FPalette::Muted : bWar ? &FPalette::Alert : bAlly ? &FPalette::Good : &FPalette::Info, 7) ] ]
+                + SVerticalBox::Slot().AutoHeight().Padding(0, 6, 0, 0)
+                [ SNew(BotfUi::SSegmentBar).Segments(20).Height(4).Fraction(FMath::Clamp(Trust / 100.f, 0.f, 1.f))
+                    .FillColor(C(&FPalette::Good)).EmptyColor_Lambda([this] { return FSlateColor(BotfUi::Shade(P().Secondary, 0.2f)); }) ];
+            RaceRows->AddSlot().AutoHeight().Padding(0, 0, 0, 5)
+                [ ListCard(Content, [this, Id] { SelectedEmpire = Id; SelectedMinor = 0; }, [this, Id] { return !DipMinor() && SelectedEmpire == Id; },
+                    nullptr, FString(), Faction, FMargin(16, 9, 12, 9)) ];
         }
         for (const auto& M : State.minors) {
             if (!M.contact[State.playerEmpire]) continue;
             ++Count;
-            RaceRows->AddSlot().AutoHeight().Padding(0, 0, 0, 3)
-                [ Row(FString::Printf(TEXT("%s\n%s  |  relations %d%s\n%s"), *Str(M.name).ToUpper(),
-                    M.memberOf ? *(FString(TEXT("member of ")) + Str(botf::empireName(M.memberOf))) : TEXT("independent"),
-                    M.attitude[State.playerEmpire], M.friendshipTurn[State.playerEmpire] >= 0 ? TEXT("  |  friendship") : TEXT(""),
-                    *MinorRowDetail(M)),
-                    [this, Sys = M.systemId] { SelectedMinor = Sys; }, [this, Sys = M.systemId] { return SelectedMinor == Sys; }) ];
+            const TSharedRef<SWidget> Content = SNew(SHorizontalBox)
+                + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0, 0, 10, 0) [ Icon(BotfUi::EIcon::Star, 22, &FPalette::Tertiary) ]
+                + SHorizontalBox::Slot().FillWidth(1).VAlign(VAlign_Center)
+                [ SNew(SVerticalBox)
+                    + SVerticalBox::Slot().AutoHeight()
+                    [ SNew(STextBlock).Text(Txt(Str(M.name).ToUpper())).Font(BotfUi::Condensed(11)).ColorAndOpacity(C(&FPalette::Text)) ]
+                    + SVerticalBox::Slot().AutoHeight()
+                    [ SNew(STextBlock).Text(Txt(FString::Printf(TEXT("Relations %d%s"), M.attitude[State.playerEmpire], M.friendshipTurn[State.playerEmpire] >= 0 ? TEXT("  |  friendship") : TEXT(""))))
+                        .Font(BotfUi::Font(7)).ColorAndOpacity(C(&FPalette::Muted)) ]
+                    + SVerticalBox::Slot().AutoHeight()
+                    [ SNew(STextBlock).Text(Txt(MinorRowDetail(M))).Font(BotfUi::Font(7)).ColorAndOpacity(C(&FPalette::Text2)).OverflowPolicy(ETextOverflowPolicy::Ellipsis) ] ]
+                + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+                [ Badge(Txt(M.memberOf ? FString(TEXT("MEMBER")) : FString(TEXT("INDEPENDENT"))), M.memberOf ? &FPalette::Good : &FPalette::Secondary, 6) ];
+            RaceRows->AddSlot().AutoHeight().Padding(0, 0, 0, 5)
+                [ ListCard(Content, [this, Sys = M.systemId] { SelectedMinor = Sys; }, [this, Sys = M.systemId] { return SelectedMinor == Sys; },
+                    nullptr, FString(), FLinearColor::Transparent, FMargin(16, 9, 12, 9)) ];
         }
         if (!Count) RaceRows->AddSlot().AutoHeight() [ Para(Txt(TEXT("No races contacted yet. Explore to meet them.")), 10, &FPalette::Muted) ];
     }
@@ -4283,7 +4498,7 @@ private:
         return Fill(EShape::Row, &FPalette::Field, SNew(SVerticalBox)
             + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 6)
             [ SNew(SHorizontalBox)
-                + SHorizontalBox::Slot().AutoWidth().Padding(0, 0, 8, 0) [ SNew(SBox).WidthOverride(8).HeightOverride(34) [ Swatch(Id, 0) ] ]
+                + SHorizontalBox::Slot().AutoWidth().Padding(0, 0, 8, 0) [ SNew(BotfUi::SBotfEmblem).Empire(Id).Size(32) ]
                 + SHorizontalBox::Slot().FillWidth(1)
                 [ SNew(SVerticalBox)
                     + SVerticalBox::Slot().AutoHeight() [ Heading(Txt(Str(botf::empireName(Id)).ToUpper()), 14, &FPalette::Accent) ]
@@ -4476,10 +4691,27 @@ private:
                 if (!Col.governorWarning.empty()) {
                     GovStatus += FString::Printf(TEXT("  |  ALERT: %s"), *Str(Col.governorWarning));
                 }
-                SystemTableRows->AddSlot().AutoHeight().Padding(0, 0, 0, 3)
-                    [ Row(FString::Printf(TEXT("%s\nPop %d  |  morale %d  |  food %+d  |  industry %d  |  research %d  |  credits %+d  |  building: %s\n%s"),
-                        *SystemName(Col.systemId).ToUpper(), Col.population, Col.morale, E.food - Col.population, E.industry, E.research, E.income - E.upkeep, *Building, *GovStatus),
-                        [this, Id = Col.systemId] { SelectSystem(Id); GoPanel(PanelSystem); }, [this, Id = Col.systemId] { return Selected == Id; },
+                const int FoodNet = E.food - Col.population, CreditNet = E.income - E.upkeep;
+                const TSharedRef<SWidget> Content = SNew(SVerticalBox)
+                    + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 6)
+                    [ SNew(SHorizontalBox)
+                        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0, 0, 10, 0) [ Icon(BotfUi::EIcon::System, 22, &FPalette::Primary) ]
+                        + SHorizontalBox::Slot().FillWidth(1).VAlign(VAlign_Center)
+                        [ SNew(STextBlock).Text(Txt(SystemName(Col.systemId).ToUpper())).Font(BotfUi::Display(14)).ColorAndOpacity(C(&FPalette::Accent)) ]
+                        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+                        [ Badge(Txt(Col.governorWarning.empty() ? FString(TEXT("OK")) : FString(TEXT("ALERT"))), Col.governorWarning.empty() ? &FPalette::Good : &FPalette::Alert, 7) ] ]
+                    + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 6)
+                    [ Wrap({
+                        MiniStat(BotfUi::EIcon::Pop, FString::Printf(TEXT("Pop %d"), Col.population), &FPalette::Text, TEXT("Population")),
+                        MiniStat(BotfUi::EIcon::Star, FString::Printf(TEXT("Morale %d"), Col.morale), Col.morale >= 50 ? &FPalette::Good : &FPalette::Warn, TEXT("Morale")),
+                        MiniStat(BotfUi::EIcon::Food, FString::Printf(TEXT("Food %+d"), FoodNet), FoodNet >= 0 ? &FPalette::Good : &FPalette::Alert, TEXT("Food surplus")),
+                        MiniStat(BotfUi::EIcon::Industry, FString::Printf(TEXT("Industry %d"), E.industry), &FPalette::Accent, TEXT("Industry per turn")),
+                        MiniStat(BotfUi::EIcon::Research, FString::Printf(TEXT("Research %d"), E.research), &FPalette::Info, TEXT("Research per turn")),
+                        MiniStat(BotfUi::EIcon::Coin, FString::Printf(TEXT("Credits %+d"), CreditNet), CreditNet >= 0 ? &FPalette::Warn : &FPalette::Alert, TEXT("Net credits per turn")) }, 6) ]
+                    + SVerticalBox::Slot().AutoHeight()
+                    [ Para(Txt(FString::Printf(TEXT("Building: %s     %s"), *Building, *GovStatus)), 8, &FPalette::Text2) ];
+                SystemTableRows->AddSlot().AutoHeight().Padding(0, 0, 0, 6)
+                    [ ListCard(Content, [this, Id = Col.systemId] { SelectSystem(Id); GoPanel(PanelSystem); }, [this, Id = Col.systemId] { return Selected == Id; },
                         nullptr, TEXT("Open in the Solar System screen")) ];
             }
         }
@@ -4491,19 +4723,44 @@ private:
                 const int GroupId = Group.id, LeadId = Group.fleetIds.front();
                 FString Members;
                 for (const auto& Member : botf::taskForceFleets(Draft, GroupId)) Members += FString::Printf(TEXT("  %s #%d"), *Str(botf::fleetName(Member)), Member.id);
-                FleetTableRows->AddSlot().AutoHeight().Padding(0, 0, 0, 3)
-                    [ Row(FString::Printf(TEXT("%s  /  %d SHIPS  /  %s\nDestination %d,%d  |  hull %d  |  shields %d  |  attack %d\n%s"),
-                        *Str(Group.name).ToUpper(), static_cast<int>(Group.fleetIds.size()), StanceName(Group.stance), Group.targetX, Group.targetY,
-                        botf::taskForceHull(Draft, GroupId), botf::taskForceShields(Draft, GroupId), botf::taskForceAttack(Draft, GroupId), *Members),
+                const auto Stat = [this](BotfUi::EIcon G, const FString& T, FLinearColor FPalette::* Tone) { return MiniStat(G, T, Tone); };
+                const TSharedRef<SWidget> Content = SNew(SVerticalBox)
+                    + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 5)
+                    [ SNew(SHorizontalBox)
+                        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0, 0, 10, 0) [ Icon(BotfUi::EIcon::Flag, 20, &FPalette::Secondary) ]
+                        + SHorizontalBox::Slot().FillWidth(1).VAlign(VAlign_Center)
+                        [ SNew(STextBlock).Text(Txt(FString::Printf(TEXT("%s   %d SHIPS"), *Str(Group.name).ToUpper(), static_cast<int>(Group.fleetIds.size()))))
+                            .Font(BotfUi::Condensed(12)).ColorAndOpacity(C(&FPalette::Accent)) ]
+                        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center) [ Badge(Txt(FString(StanceName(Group.stance)).ToUpper()), &FPalette::Secondary, 7) ] ]
+                    + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 5)
+                    [ Wrap({
+                        Stat(BotfUi::EIcon::Hull, FString::Printf(TEXT("Hull %d"), botf::taskForceHull(Draft, GroupId)), &FPalette::Good),
+                        Stat(BotfUi::EIcon::Shield, FString::Printf(TEXT("Shields %d"), botf::taskForceShields(Draft, GroupId)), &FPalette::Shield),
+                        Stat(BotfUi::EIcon::Combat, FString::Printf(TEXT("Attack %d"), botf::taskForceAttack(Draft, GroupId)), &FPalette::Alert),
+                        Stat(BotfUi::EIcon::Pin, FString::Printf(TEXT("To %d,%d"), Group.targetX, Group.targetY), &FPalette::Info) }, 6) ]
+                    + SVerticalBox::Slot().AutoHeight() [ Para(Txt(Members.TrimStartAndEnd()), 8, &FPalette::Text2) ];
+                FleetTableRows->AddSlot().AutoHeight().Padding(0, 0, 0, 6)
+                    [ ListCard(Content,
                         [this, GroupId, LeadId] { SelectedFleet = LeadId; SelectedTaskForce = GroupId; if (const auto* Ship = Fleet()) SelectCell(Ship->y * State.width + Ship->x); GoPanel(PanelGalaxy); if (Chart.IsValid()) Chart->CentreOn(SelectedCell); },
                         [this, GroupId] { return SelectedTaskForce == GroupId; }, nullptr, TEXT("Show on the galactic chart")) ];
             }
             for (const auto& F : Draft.fleets) {
                 if (F.ownerId != State.playerEmpire || botf::fleetTaskForce(Draft, F.id)) continue;
-                FleetTableRows->AddSlot().AutoHeight().Padding(0, 0, 0, 3)
-                    [ Row(FString::Printf(TEXT("#%d  %s\nSector %d,%d  |  destination %d,%d  |  hull %d/%d  |  shields %d/%d  |  %s"),
-                        F.id, *Str(botf::fleetName(F)), F.x, F.y, F.targetX, F.targetY, F.hull, botf::fleetMaxHull(F),
-                        F.shields, botf::fleetMaxShields(F), StanceName(F.stance)),
+                const TSharedRef<SWidget> Content = SNew(SVerticalBox)
+                    + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 5)
+                    [ SNew(SHorizontalBox)
+                        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0, 0, 10, 0) [ Icon(BotfUi::EIcon::Ship, 20, &FPalette::Primary) ]
+                        + SHorizontalBox::Slot().FillWidth(1).VAlign(VAlign_Center)
+                        [ SNew(STextBlock).Text(Txt(FString::Printf(TEXT("%s  #%d"), *Str(botf::fleetName(F)).ToUpper(), F.id))).Font(BotfUi::Condensed(12)).ColorAndOpacity(C(&FPalette::Text)) ]
+                        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center) [ Badge(Txt(FString(StanceName(F.stance)).ToUpper()), &FPalette::Secondary, 7) ] ]
+                    + SVerticalBox::Slot().AutoHeight()
+                    [ Wrap({
+                        MiniStat(BotfUi::EIcon::Pin, FString::Printf(TEXT("Sector %d,%d"), F.x, F.y), &FPalette::Info),
+                        MiniStat(BotfUi::EIcon::ChevronRight, FString::Printf(TEXT("To %d,%d"), F.targetX, F.targetY), &FPalette::Text2),
+                        MiniStat(BotfUi::EIcon::Hull, FString::Printf(TEXT("Hull %d/%d"), F.hull, botf::fleetMaxHull(F)), &FPalette::Good),
+                        MiniStat(BotfUi::EIcon::Shield, FString::Printf(TEXT("Shields %d/%d"), F.shields, botf::fleetMaxShields(F)), &FPalette::Shield) }, 6) ];
+                FleetTableRows->AddSlot().AutoHeight().Padding(0, 0, 0, 6)
+                    [ ListCard(Content,
                         [this, Id = F.id] { SelectedFleet = Id; SelectedTaskForce = 0; if (const auto* Ship = Fleet()) SelectCell(Ship->y * State.width + Ship->x); GoPanel(PanelGalaxy); if (Chart.IsValid()) Chart->CentreOn(SelectedCell); },
                         [this, Id = F.id] { return SelectedTaskForce == 0 && SelectedFleet == Id; }, nullptr, TEXT("Show on the galactic chart")) ];
             }
@@ -4570,6 +4827,7 @@ private:
     }
     // ---- Battle HUD ----
     TSharedPtr<SVerticalBox> ContactPlayerRows, ContactEnemyRows, TelemetryRows;
+    bool bTelemetryTall = false;
     struct FSideTotals {
         int Owner = 0, Ships = 0, Active = 0, Hull = 0, MaxHull = 0, Shields = 0, MaxShields = 0;
         TArray<TPair<FString, int>> Classes;
@@ -4899,7 +5157,10 @@ private:
                 [ SNew(STextBlock).Text(Txt(TEXT("COMBAT TELEMETRY"))).Font(BotfUi::Caption(7)).ColorAndOpacity(C(&FPalette::Tertiary)) ]
                 + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
                 [ SNew(STextBlock).Visibility_Lambda([this] { return Status.StartsWith(TEXT("Order rejected")) ? EVisibility::Visible : EVisibility::Collapsed; })
-                    .Text(Dyn([this] { return Status; })).Font(BotfUi::Font(7, true)).ColorAndOpacity(C(&FPalette::Alert)) ] ]
+                    .Text(Dyn([this] { return Status; })).Font(BotfUi::Font(7, true)).ColorAndOpacity(C(&FPalette::Alert)) ]
+                + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(10, 0, 0, 0)
+                [ DynControl(Dyn([this] { return bTelemetryTall ? FString(TEXT("SHRINK")) : FString(TEXT("EXPAND")); }), [this] { bTelemetryTall = !bTelemetryTall; }, nullptr, nullptr,
+                    ERole::Tertiary, FMargin(9, 3), false, 7, TEXT("Show more or less of the combat log (L)"), 0, TEXT("L")) ] ]
             + SVerticalBox::Slot().FillHeight(1)
             [ SNew(SScrollBox).ScrollBarThickness(FVector2D(5, 5)) + SScrollBox::Slot() [ SAssignNew(TelemetryRows, SVerticalBox) ] ],
             FMargin(12, 9, 8, 9));
@@ -4907,10 +5168,10 @@ private:
             // 0: full-screen 3D combat viewport (mouse orbit drag and wheel zoom)
             + SOverlay::Slot() [ SNew(BotfUi::STacticalViewport, Scene, &BattleBrush, [this] { return Scene.IsValid() && Session.pending; }) ]
             + SOverlay::Slot().VAlign(VAlign_Top).HAlign(HAlign_Fill) [ TopBar ]
-            + SOverlay::Slot().VAlign(VAlign_Fill).HAlign(HAlign_Left).Padding(FMargin(10, 66, 0, 128)) [ FleetDock ]
-            + SOverlay::Slot().VAlign(VAlign_Fill).HAlign(HAlign_Right).Padding(FMargin(0, 66, 10, 128)) [ RightDock ]
+            + SOverlay::Slot().VAlign(VAlign_Fill).HAlign(HAlign_Left).Padding(TAttribute<FMargin>::CreateLambda([this] { return FMargin(10, 66, 0, bTelemetryTall ? 282 : 128); })) [ FleetDock ]
+            + SOverlay::Slot().VAlign(VAlign_Fill).HAlign(HAlign_Right).Padding(TAttribute<FMargin>::CreateLambda([this] { return FMargin(0, 66, 10, bTelemetryTall ? 282 : 128); })) [ RightDock ]
             + SOverlay::Slot().VAlign(VAlign_Bottom).HAlign(HAlign_Fill).Padding(FMargin(10, 0, 10, 10))
-            [ SNew(SBox).HeightOverride(110)
+            [ SNew(SBox).HeightOverride_Lambda([this] { return FOptionalSize(bTelemetryTall ? 264.f : 110.f); })
                 [ SNew(SHorizontalBox)
                     + SHorizontalBox::Slot().FillWidth(1).Padding(0, 0, 10, 0) [ TelemetryPanel ]
                     + SHorizontalBox::Slot().AutoWidth() [ CommandBox ] ] ];
@@ -4943,19 +5204,23 @@ private:
                 const FLinearColor Side = Owner ? BotfUi::FactionColor(Owner) : FLinearColor(0.6f, 0.65f, 0.75f);
                 auto Row = SNew(SHorizontalBox)
                     + SHorizontalBox::Slot().AutoWidth().Padding(0, 0, 8, 0) [ SNew(SBox).WidthOverride(3).HeightOverride(15) [ SNew(SBorder).BorderImage(BotfUi::Styles().Get(1, EShape::Block)).BorderBackgroundColor(Side) ] ]
-                    + SHorizontalBox::Slot().FillWidth(1.2f).VAlign(VAlign_Center)
-                    [ SNew(STextBlock).Text(Txt(Left)).Font(BotfUi::Font(6, true)).ColorAndOpacity(C(&FPalette::Text)).OverflowPolicy(ETextOverflowPolicy::Ellipsis) ]
-                    + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(8, 0, 8, 0) [ Badge(Txt(Move.ToUpper()), &FPalette::Secondary, 6) ]
+                    + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+                    [ SNew(SBox).WidthOverride(300)
+                        [ SNew(STextBlock).Text(Txt(Left)).Font(BotfUi::Font(6, true)).ColorAndOpacity(C(&FPalette::Text)).OverflowPolicy(ETextOverflowPolicy::Ellipsis) ] ]
+                    + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(6, 0, 6, 0)
+                    [ SNew(SBox).WidthOverride(96) [ Badge(Txt(Move.ToUpper()), &FPalette::Secondary, 6) ] ]
                     + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0, 0, 8, 0) [ Icon(BotfUi::EIcon::ChevronRight, 11, &FPalette::Muted) ]
-                    + SHorizontalBox::Slot().FillWidth(1.2f).VAlign(VAlign_Center)
+                    + SHorizontalBox::Slot().FillWidth(1.f).VAlign(VAlign_Center)
                     [ SNew(STextBlock).Text(Txt(Target)).Font(BotfUi::Font(6)).ColorAndOpacity(C(&FPalette::Text2)).OverflowPolicy(ETextOverflowPolicy::Ellipsis) ];
                 FString Beam, Torpedo;
+                auto DamageCell = SNew(SHorizontalBox);
                 if (Damage.Split(TEXT(" beam + "), &Beam, &Torpedo)) {
-                    Row->AddSlot().AutoWidth().VAlign(VAlign_Center).Padding(8, 0, 0, 0) [ Badge(Txt(Beam + TEXT(" BEAM")), &FPalette::Warn, 6) ];
+                    DamageCell->AddSlot().AutoWidth().VAlign(VAlign_Center).Padding(0, 0, 4, 0) [ Badge(Txt(Beam + TEXT(" BEAM")), &FPalette::Warn, 6) ];
                     if (FCString::Atoi(*Torpedo) > 0)
-                        Row->AddSlot().AutoWidth().VAlign(VAlign_Center).Padding(4, 0, 0, 0) [ Badge(Txt(FString::FromInt(FCString::Atoi(*Torpedo)) + TEXT(" TORP")), &FPalette::Info, 6) ];
+                        DamageCell->AddSlot().AutoWidth().VAlign(VAlign_Center) [ Badge(Txt(FString::FromInt(FCString::Atoi(*Torpedo)) + TEXT(" TORP")), &FPalette::Info, 6) ];
                 } else if (!Damage.IsEmpty())
-                    Row->AddSlot().AutoWidth().VAlign(VAlign_Center).Padding(8, 0, 0, 0) [ SNew(STextBlock).Text(Txt(Damage)).Font(BotfUi::Font(6)).ColorAndOpacity(C(&FPalette::Warn)) ];
+                    DamageCell->AddSlot().AutoWidth().VAlign(VAlign_Center) [ SNew(STextBlock).Text(Txt(Damage)).Font(BotfUi::Font(6)).ColorAndOpacity(C(&FPalette::Warn)) ];
+                Row->AddSlot().AutoWidth().VAlign(VAlign_Center).Padding(8, 0, 0, 0) [ SNew(SBox).WidthOverride(178) [ DamageCell ] ];
                 TelemetryRows->AddSlot().AutoHeight().Padding(0, 0, 0, 3) [ Row ];
             } else {
                 TelemetryRows->AddSlot().AutoHeight().Padding(0, 0, 0, 3)
@@ -5414,7 +5679,7 @@ private:
     void RefreshAll() {
         ++StateVersion;
         SyncAllocation();
-        RefreshSector(); RefreshChoices(); RefreshQueue(); RefreshRaces(); RefreshProposals(); RefreshIntel(); RefreshEmpireTables(); RefreshReference(); RefreshSaveRows(); RefreshTactical();
+        RefreshSector(); RefreshChoices(); RefreshQueue(); RefreshRaces(); RefreshProposals(); RefreshIntel(); RefreshEmpireTables(); RefreshResearchDetail(); RefreshReference(); RefreshSaveRows(); RefreshTactical();
         RefreshEvents(); RefreshTemplates();
         RefreshInbox();
         if (bMenuOpen && MenuCell >= 0 && MenuCell < State.width * State.height) OpenSectorMenu(MenuCell, MenuAt - FVector2D(6, 6));
