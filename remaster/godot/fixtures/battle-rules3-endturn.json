@@ -1,0 +1,8 @@
+{
+ "method": "endTurn",
+ "args": {},
+ "result": {
+  "status": "battle",
+  "turn": 0
+ }
+}

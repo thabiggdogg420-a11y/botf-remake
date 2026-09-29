@@ -1,0 +1,14 @@
+{
+ "method": "fingerprint",
+ "args": {
+  "campaign": {
+   "faction": 1,
+   "empires": 5,
+   "seed": 424242,
+   "era": 1,
+   "ruleset": "reference"
+  },
+  "turns": 10
+ },
+ "result": "11122467961809938595"
+}

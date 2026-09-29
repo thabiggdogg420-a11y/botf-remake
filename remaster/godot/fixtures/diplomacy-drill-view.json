@@ -1,0 +1,660 @@
+{
+ "method": "newDiplomacyDrill",
+ "args": {},
+ "result": {
+  "meta": {
+   "turn": 1,
+   "width": 16,
+   "height": 12,
+   "seed": 2024,
+   "player": 1,
+   "playerName": "Federation",
+   "ruleset": "reference",
+   "era": 1,
+   "eraName": "Early",
+   "contentVersion": "remaster-14",
+   "saveVersion": 14,
+   "outcome": "ongoing",
+   "winner": 0,
+   "advancedRules": true,
+   "campaignExpansion": true,
+   "modernEngines": true,
+   "populationEnabled": true,
+   "scenario": "diplomacy",
+   "version": 2,
+   "empireCount": 5,
+   "rules": {
+    "preset": "classic",
+    "presetName": "Classic",
+    "stations": false,
+    "galaxyFeatures": false,
+    "curatedEvents": false,
+    "alternativeVictories": false
+   }
+  },
+  "empire": {
+   "id": 1,
+   "name": "Federation",
+   "credits": 1044,
+   "draftCredits": 1044,
+   "research": 10,
+   "researchReserve": 0,
+   "intelligence": 5,
+   "researchOutput": 10,
+   "industry": 21,
+   "food": 42,
+   "population": 41,
+   "memberBonuses": {
+    "members": 0,
+    "research": 0,
+    "industry": 0,
+    "food": 0,
+    "credits": 0,
+    "morale": 0,
+    "groundDefense": 0,
+    "minors": []
+   },
+   "income": {
+    "colonies": 95,
+    "trade": 0,
+    "ships": 49,
+    "spend": 0,
+    "net": 46
+   },
+   "techs": [
+    {
+     "field": 0,
+     "name": "Biotech",
+     "level": 1,
+     "progress": 2,
+     "allocation": 17,
+     "committedAllocation": 17,
+     "current": "Hydroponics",
+     "next": "Bionics",
+     "cost": 200
+    },
+    {
+     "field": 1,
+     "name": "Computers",
+     "level": 1,
+     "progress": 2,
+     "allocation": 17,
+     "committedAllocation": 17,
+     "current": "Microtape Storage",
+     "next": "Linguistics",
+     "cost": 200
+    },
+    {
+     "field": 2,
+     "name": "Construction",
+     "level": 1,
+     "progress": 2,
+     "allocation": 17,
+     "committedAllocation": 17,
+     "current": "Gamma Welding",
+     "next": "Integrity Fields",
+     "cost": 300
+    },
+    {
+     "field": 3,
+     "name": "Energy",
+     "level": 1,
+     "progress": 2,
+     "allocation": 17,
+     "committedAllocation": 17,
+     "current": "Force Fields",
+     "next": "Subspace Physics",
+     "cost": 100
+    },
+    {
+     "field": 4,
+     "name": "Propulsion",
+     "level": 1,
+     "progress": 1,
+     "allocation": 16,
+     "committedAllocation": 16,
+     "current": "Warp Drive",
+     "next": "Distortion",
+     "cost": 200
+    },
+    {
+     "field": 5,
+     "name": "Weapons",
+     "level": 1,
+     "progress": 1,
+     "allocation": 16,
+     "committedAllocation": 16,
+     "current": "Beam Emitters",
+     "next": "Torpedo Hardening",
+     "cost": 300
+    }
+   ]
+  },
+  "fog": "000000000000000000000000000000000000000000000000000000000000000000002220000000000000222000000000000022200000000000000000000002220000000000000222000000000000022200000000000000220000000000000000",
+  "systems": [
+   {
+    "id": 1,
+    "x": 5,
+    "y": 5,
+    "name": "Sol",
+    "visible": true,
+    "owner": 1,
+    "capacity": 130,
+    "maxCapacity": 220,
+    "planets": [
+     {
+      "index": 0,
+      "name": "Sol I",
+      "class": "K",
+      "className": "Class K (Barren)",
+      "terraformState": "Untouched",
+      "terraformWork": 0,
+      "terraformNeeded": 440,
+      "baseCapacity": 10,
+      "maxCapacity": 40,
+      "capacity": 10
+     },
+     {
+      "index": 1,
+      "name": "Sol II",
+      "class": "Y",
+      "className": "Class Y (Demon)",
+      "terraformState": "Untouched",
+      "terraformWork": 0,
+      "terraformNeeded": 390,
+      "baseCapacity": 0,
+      "maxCapacity": 30,
+      "capacity": 0
+     },
+     {
+      "index": 2,
+      "name": "Sol III",
+      "class": "M",
+      "className": "Class M (Terran)",
+      "terraformState": "Terraformed",
+      "terraformWork": 0,
+      "terraformNeeded": 0,
+      "baseCapacity": 80,
+      "maxCapacity": 100,
+      "capacity": 100
+     },
+     {
+      "index": 3,
+      "name": "Sol IV",
+      "class": "H",
+      "className": "Class H (Desert)",
+      "terraformState": "Untouched",
+      "terraformWork": 0,
+      "terraformNeeded": 400,
+      "baseCapacity": 20,
+      "maxCapacity": 50,
+      "capacity": 20
+     },
+     {
+      "index": 4,
+      "name": "Sol V",
+      "class": "GasGiant",
+      "className": "Gas Giant",
+      "terraformState": "Uninhabitable",
+      "terraformWork": 0,
+      "terraformNeeded": 0,
+      "baseCapacity": 0,
+      "maxCapacity": 0,
+      "capacity": 0
+     }
+    ]
+   },
+   {
+    "id": 17,
+    "x": 5,
+    "y": 4,
+    "name": "System-17",
+    "visible": true,
+    "owner": 0,
+    "capacity": 80,
+    "maxCapacity": 190,
+    "planets": [
+     {
+      "index": 0,
+      "name": "System-17 I",
+      "class": "H",
+      "className": "Class H (Desert)",
+      "terraformState": "Untouched",
+      "terraformWork": 0,
+      "terraformNeeded": 400,
+      "baseCapacity": 20,
+      "maxCapacity": 50,
+      "capacity": 20
+     },
+     {
+      "index": 1,
+      "name": "System-17 II",
+      "class": "Asteroids",
+      "className": "Asteroids",
+      "terraformState": "Uninhabitable",
+      "terraformWork": 0,
+      "terraformNeeded": 0,
+      "baseCapacity": 0,
+      "maxCapacity": 0,
+      "capacity": 0
+     },
+     {
+      "index": 2,
+      "name": "System-17 III",
+      "class": "L",
+      "className": "Class L (Jungle)",
+      "terraformState": "Untouched",
+      "terraformWork": 0,
+      "terraformNeeded": 490,
+      "baseCapacity": 30,
+      "maxCapacity": 70,
+      "capacity": 30
+     },
+     {
+      "index": 3,
+      "name": "System-17 IV",
+      "class": "Asteroids",
+      "className": "Asteroids",
+      "terraformState": "Uninhabitable",
+      "terraformWork": 0,
+      "terraformNeeded": 0,
+      "baseCapacity": 0,
+      "maxCapacity": 0,
+      "capacity": 0
+     },
+     {
+      "index": 4,
+      "name": "System-17 V",
+      "class": "L",
+      "className": "Class L (Jungle)",
+      "terraformState": "Untouched",
+      "terraformWork": 0,
+      "terraformNeeded": 490,
+      "baseCapacity": 30,
+      "maxCapacity": 70,
+      "capacity": 30
+     }
+    ]
+   }
+  ],
+  "colonies": [
+   {
+    "systemId": 1,
+    "name": "Sol",
+    "population": 41,
+    "capacity": 130,
+    "morale": 70,
+    "workers": {
+     "food": 20,
+     "industry": 10,
+     "research": 10,
+     "unassigned": 1
+    },
+    "structures": {
+     "farms": 2,
+     "factories": 2,
+     "laboratories": 1,
+     "shipyards": 1,
+     "powerPlants": 0,
+     "fusionPlants": 0,
+     "defenseBatteries": 0
+    },
+    "energy": 20,
+    "shipyardEnabled": true,
+    "economy": {
+     "food": 42,
+     "foodDeficit": 0,
+     "industry": 21,
+     "research": 10,
+     "energyUsed": 20,
+     "energyAvailable": 21,
+     "inactiveFactories": 0,
+     "inactiveLabs": 0,
+     "income": 102,
+     "upkeep": 7,
+     "net": 95,
+     "shipyardPowered": true,
+     "poweredBatteries": 0,
+     "inactiveBatteries": 0
+    },
+    "growth": {
+     "enabled": true,
+     "min": 1,
+     "max": 1,
+     "upChance": 0
+    },
+    "queueLength": 3,
+    "building": {
+     "name": "Factory",
+     "work": 0,
+     "cost": 100,
+     "eta": 5
+    },
+    "queueBlocker": "",
+    "governor": {
+     "workforce": "Manual",
+     "queue": "Manual",
+     "override": false,
+     "workforceExplanation": "",
+     "queueExplanation": "",
+     "warning": ""
+    }
+   }
+  ],
+  "fleets": [
+   {
+    "id": 1,
+    "owner": 1,
+    "name": "Oberth — Science Vessel",
+    "shipClass": "Scout",
+    "className": "Scout",
+    "referenceShipId": 35,
+    "designClass": "Oberth",
+    "designName": "Science Vessel",
+    "roster": null,
+    "x": 5,
+    "y": 5,
+    "targetX": 5,
+    "targetY": 5,
+    "committedTargetX": 5,
+    "committedTargetY": 5,
+    "hull": 19,
+    "maxHull": 19,
+    "shields": 110,
+    "maxShields": 110,
+    "attack": 2,
+    "range": 6,
+    "speed": 1,
+    "maintenance": 26,
+    "colonyShip": false,
+    "colonize": false,
+    "taskForceId": 0,
+    "stance": "Balanced",
+    "attackTarget": 0,
+    "retreat": false,
+    "invadeSystemId": 0,
+    "terraforming": false,
+    "terraformSystemId": 0,
+    "terraformPlanetIndex": 0,
+    "buildingOutpost": false,
+    "outpostProgress": 0,
+    "route": [],
+    "eta": 0,
+    "routeBlocked": false,
+    "hasOrders": false
+   },
+   {
+    "id": 2,
+    "owner": 1,
+    "name": "Edward — Colony Ship",
+    "shipClass": "ColonyShip",
+    "className": "Colony ship",
+    "referenceShipId": 22,
+    "designClass": "Edward",
+    "designName": "Colony Ship",
+    "roster": null,
+    "x": 5,
+    "y": 5,
+    "targetX": 5,
+    "targetY": 5,
+    "committedTargetX": 5,
+    "committedTargetY": 5,
+    "hull": 55,
+    "maxHull": 55,
+    "shields": 70,
+    "maxShields": 70,
+    "attack": 0,
+    "range": 5,
+    "speed": 1,
+    "maintenance": 23,
+    "colonyShip": true,
+    "colonize": false,
+    "taskForceId": 0,
+    "stance": "Balanced",
+    "attackTarget": 0,
+    "retreat": false,
+    "invadeSystemId": 0,
+    "terraforming": false,
+    "terraformSystemId": 0,
+    "terraformPlanetIndex": 0,
+    "buildingOutpost": false,
+    "outpostProgress": 0,
+    "route": [],
+    "eta": 0,
+    "routeBlocked": false,
+    "hasOrders": false
+   }
+  ],
+  "contacts": [
+   {
+    "id": 5,
+    "owner": 3,
+    "ownerName": "Romulan Star Empire",
+    "name": "D'renet — Scout",
+    "className": "Scout",
+    "shipClass": "Scout",
+    "x": 14,
+    "y": 8,
+    "hull": 15,
+    "maxHull": 15,
+    "shields": 80,
+    "maxShields": 80,
+    "attack": 2,
+    "taskForce": false,
+    "atWar": false
+   },
+   {
+    "id": 6,
+    "owner": 3,
+    "ownerName": "Romulan Star Empire",
+    "name": "D'retex — Colony Ship",
+    "className": "Colony ship",
+    "shipClass": "ColonyShip",
+    "x": 14,
+    "y": 8,
+    "hull": 45,
+    "maxHull": 45,
+    "shields": 50,
+    "maxShields": 50,
+    "attack": 0,
+    "taskForce": false,
+    "atWar": false
+   }
+  ],
+  "taskForces": [],
+  "empires": [
+   {
+    "empire": 2,
+    "name": "Klingon Empire",
+    "contact": true,
+    "eliminated": false,
+    "atWar": false,
+    "tradeTreaty": false,
+    "trust": 45,
+    "warStartTurn": 0,
+    "personality": "Klingon",
+    "allied": false,
+    "sensorSharing": false,
+    "treatyForbidsAttack": false,
+    "memory": {
+     "theirGrievances": 0,
+     "ourGrievances": 0,
+     "theirBetrayals": 1,
+     "lastWarTurn": -1,
+     "lastPeaceTurn": -1,
+     "ourRefusedProposals": 0,
+     "theirRefusedProposals": 0,
+     "lastProposalFromThem": 1
+    }
+   },
+   {
+    "empire": 3,
+    "name": "Romulan Star Empire",
+    "contact": true,
+    "eliminated": false,
+    "atWar": false,
+    "tradeTreaty": false,
+    "trust": 80,
+    "warStartTurn": 0,
+    "personality": "Romulan",
+    "allied": true,
+    "sensorSharing": true,
+    "treatyForbidsAttack": true,
+    "memory": {
+     "theirGrievances": 0,
+     "ourGrievances": 0,
+     "theirBetrayals": 0
+    }
+   },
+   {
+    "empire": 4,
+    "name": "Cardassian Union",
+    "contact": true,
+    "eliminated": true,
+    "atWar": false,
+    "tradeTreaty": false,
+    "trust": 55,
+    "warStartTurn": 0,
+    "personality": "Cardassian",
+    "allied": false,
+    "sensorSharing": false,
+    "treatyForbidsAttack": false,
+    "memory": {
+     "theirGrievances": 0,
+     "ourGrievances": 0,
+     "theirBetrayals": 0
+    }
+   },
+   {
+    "empire": 5,
+    "name": "Ferengi Alliance",
+    "contact": true,
+    "eliminated": false,
+    "atWar": false,
+    "tradeTreaty": false,
+    "trust": 70,
+    "warStartTurn": 0,
+    "personality": "Ferengi",
+    "allied": false,
+    "sensorSharing": false,
+    "treatyForbidsAttack": false,
+    "memory": {
+     "theirGrievances": 0,
+     "ourGrievances": 0,
+     "theirBetrayals": 0,
+     "lastWarTurn": -1,
+     "lastPeaceTurn": -1,
+     "ourRefusedProposals": 0,
+     "theirRefusedProposals": 0,
+     "lastProposalFromThem": 1
+    }
+   }
+  ],
+  "tradeRoutes": [],
+  "pending": [
+   {
+    "id": 1,
+    "type": "EnqueueBuilding",
+    "summary": "Sol: build Factory",
+    "systemId": 1,
+    "building": "Factory",
+    "referenceId": -1
+   },
+   {
+    "id": 2,
+    "type": "EnqueueBuilding",
+    "summary": "Sol: build Farm",
+    "systemId": 1,
+    "building": "Farm",
+    "referenceId": -1
+   },
+   {
+    "id": 3,
+    "type": "EnqueueBuilding",
+    "summary": "Sol: build Laboratory",
+    "systemId": 1,
+    "building": "Laboratory",
+    "referenceId": -1
+   }
+  ],
+  "battles": [],
+  "session": {
+   "active": false,
+   "battlePending": false,
+   "battleFinished": false,
+   "replays": 0
+  },
+  "stations": [],
+  "outpostTurns": 0,
+  "stationUpgradeCost": {
+   "credits": 1500,
+   "industry": 400
+  },
+  "features": [],
+  "events": [],
+  "templates": [],
+  "victory": {
+   "conditions": [
+    {
+     "condition": "Conquest",
+     "name": "Conquest",
+     "enabled": true,
+     "achieved": false,
+     "percent": 25,
+     "explanation": "Holds 1 of 4 colonies; conquest requires holding every colony in the galaxy."
+    },
+    {
+     "condition": "Domination",
+     "name": "Domination",
+     "enabled": true,
+     "achieved": false,
+     "percent": 5,
+     "explanation": "Controls 1 of 28 systems; domination needs 17 (60%) after turn 20."
+    },
+    {
+     "condition": "Scientific",
+     "name": "Scientific",
+     "enabled": false,
+     "achieved": false,
+     "percent": 0,
+     "explanation": "Disabled by the Classic ruleset."
+    },
+    {
+     "condition": "Diplomatic",
+     "name": "Diplomatic",
+     "enabled": false,
+     "achieved": false,
+     "percent": 0,
+     "explanation": "Disabled by the Classic ruleset."
+    }
+   ],
+   "alternative": false,
+   "threshold": 4,
+   "megaprojectName": "Genesis Initiative",
+   "megaprojectCost": 4000,
+   "megaprojectCredits": 500,
+   "megaprojectWorkPerTurn": 35,
+   "rivalProjects": []
+  },
+  "alerts": [
+   {
+    "kind": "proposal",
+    "severity": "info",
+    "empire": 5,
+    "text": "Ferengi Alliance proposes a Trade Pact — answer by turn 3"
+   },
+   {
+    "kind": "proposal",
+    "severity": "info",
+    "empire": 2,
+    "text": "Klingon Empire demands 150 credits in tribute — answer by turn 3"
+   },
+   {
+    "kind": "callToArms",
+    "severity": "alert",
+    "empire": 3,
+    "text": "Romulan Star Empire calls us to arms against Klingon Empire — declare war by turn 4"
+   }
+  ]
+ }
+}
