@@ -73,3 +73,31 @@ jobs:
           name: playwright-traces
           path: remaster/web/test-results/
           retention-days: 7
+
+  godot:
+    name: godot client (GDExtension + headless tests)
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: remaster/godot
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Cache godot-cpp build and Godot binary
+        uses: actions/cache@v4
+        with:
+          path: |
+            remaster/godot/core/godot-cpp
+            remaster/godot/core/build-linux-debug
+            ~/.cache/botf-godot
+          key: godot-4.5-${{ runner.os }}-${{ hashFiles('remaster/godot/core/CMakeLists.txt', 'remaster/godot/core/fetch-godot-cpp.sh') }}
+      - name: Build extension (linux, template_debug)
+        run: ./core/build.sh linux debug
+      - name: Headless tests (includes the wasm-vs-native determinism check)
+        run: SKIP_BUILD=1 ./run-tests.sh
+      - name: Fixtures match the committed core
+        run: |
+          ./tools/dump-fixtures.sh
+          git diff --exit-code -- fixtures
