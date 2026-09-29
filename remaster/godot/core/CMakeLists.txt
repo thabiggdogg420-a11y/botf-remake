@@ -33,6 +33,11 @@ if(NOT MSVC)
     # No -ffast-math and no FP contraction, so results match the native and wasm core bit for bit.
     target_compile_options(botf_core PRIVATE -fexceptions -ffp-contract=off)
 endif()
+if(NOT WIN32)
+    # godot-cpp links libstdc++ statically. Keep its symbols private, or they interpose with the
+    # system libstdc++ that the GPU drivers load, and iostream locale facets crash in serialize().
+    target_link_options(botf_core PRIVATE -Wl,--exclude-libs,ALL)
+endif()
 if(WIN32)
     # One self-contained DLL: no libstdc++/libgcc/winpthread DLLs next to the exe.
     target_link_options(botf_core PRIVATE -static -static-libgcc -static-libstdc++)
