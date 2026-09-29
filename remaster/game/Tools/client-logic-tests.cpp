@@ -3,6 +3,7 @@
 #include "BotfAssetCatalog.h"
 #include "BotfAudioCues.h"
 #include "BotfAudioEvents.h"
+#include "BotfCameraRig.h"
 #include "BotfCombatTimeline.h"
 #include "BotfJson.h"
 #include "BotfShipDatabase.h"
@@ -542,6 +543,56 @@ static void testCombatTimeline() {
         for (std::size_t i = 0; i < 8; ++i) for (std::size_t j = i + 1; j < 8; ++j) worst = std::min(worst, gapOf(crowd, cr, i, j));
         EXPECT(worst > -0.15);
         EXPECT(cr[8].x == 0.0 && cr[8].alt == 0.0);
+    }
+
+    // Camera rig: an orthonormal view looking at the focus from above the plane; projection and screen rays agree;
+    // a framed sphere fills the frame; picking finds the nearest hull, or a speck near the cursor; easing converges
+    // along the short way round and arcs out on long moves.
+    {
+        namespace cam = botf::camera;
+        const auto near = [](double a, double b, double eps = 1e-6) { return std::fabs(a - b) < eps; };
+        cam::Rig rig; rig.focus = {100, -50, 20}; rig.distance = 1500; rig.azimuth = -90; rig.elevation = 58;
+        const cam::View v = cam::viewOf(rig, 55.0, 16.0 / 9.0);
+        EXPECT(near(cam::length(v.forward), 1) && near(cam::length(v.right), 1) && near(cam::length(v.up), 1));
+        EXPECT(near(cam::dot(v.forward, v.right), 0) && near(cam::dot(v.forward, v.up), 0) && near(cam::dot(v.right, v.up), 0));
+        EXPECT(v.eye.z > rig.focus.z && v.eye.y < rig.focus.y && near(cam::length(v.eye - rig.focus), 1500, 1e-6));
+        EXPECT(v.up.z > 0.0); // screen up leans away from the plane, never upside down
+        const auto centre = cam::project(v, rig.focus);
+        EXPECT(centre.visible && near(centre.u, 0.5) && near(centre.v, 0.5));
+        EXPECT(cam::project(v, rig.focus + v.right * 50.0).u > 0.5 && cam::project(v, rig.focus + v.up * 50.0).v < 0.5);
+        EXPECT(!cam::project(v, v.eye - v.forward * 10.0).visible);
+        const cam::Vec3 somewhere{180, 40, -30};
+        const auto sp = cam::project(v, somewhere);
+        const cam::Vec3 along = cam::rayThrough(v, sp.u, sp.v);
+        EXPECT(near(cam::length(cam::cross(along, cam::normalized(somewhere - v.eye))), 0, 1e-9));
+        cam::Vec3 ground;
+        EXPECT(cam::rayPlane(v, 0.5, 0.5, rig.focus.z, ground) && near(ground.x, rig.focus.x, 1e-6) && near(ground.y, rig.focus.y, 1e-6));
+        // Framing: at frameDistance a sphere's projected radius is half the image height over the margin.
+        const double d = cam::frameDistance(40.0, 55.0, 16.0 / 9.0, 1.0);
+        cam::Rig framed; framed.distance = d;
+        const auto fp = cam::project(cam::viewOf(framed, 55.0, 16.0 / 9.0), framed.focus, 40.0);
+        EXPECT(std::fabs(fp.radius - 0.5) < 0.05);
+        EXPECT(cam::frameDistance(400.0, 55.0, 16.0 / 9.0) > 9.0 * cam::frameDistance(40.0, 55.0, 16.0 / 9.0));
+        // Picking: the nearer of two hulls on the ray; a speck by screen distance; nothing in empty space.
+        const cam::Vec3 toward = cam::normalized(rig.focus - v.eye);
+        const std::vector<cam::Body> line = {{7, v.eye + toward * 1200.0, 30}, {9, v.eye + toward * 600.0, 30}};
+        EXPECT(cam::pick(v, 0.5, 0.5, line) == 9);
+        const std::vector<cam::Body> speck = {{4, rig.focus + v.right * 60.0, 1.0}};
+        const auto sk = cam::project(v, speck[0].center, 1.0);
+        EXPECT(cam::pick(v, sk.u + 0.004, sk.v, speck) == 4 && cam::pick(v, sk.u + 0.2, sk.v, speck) == 0);
+        const auto all = cam::boundsOf({{1, {0, 0, 0}, 10}, {2, {100, 0, 0}, 20}});
+        EXPECT(near(all.center.x, 55) && near(all.radius, 65));
+        // Easing.
+        EXPECT(near(cam::angleDelta(170, -170), 20) && near(cam::angleDelta(-170, 170), -20));
+        EXPECT(near(cam::approachAngle(170, -170, 1.0, 1.0), 180) && cam::approach(0, 10, 0.0, 1.0) == 0.0);
+        cam::RigSmoother smooth; cam::Rig a; a.distance = 100; smooth.snap(a);
+        cam::Rig b = a; b.focus = {1000, 0, 0}; b.distance = 400;
+        const cam::Rig first = smooth.step(b, 0.1, 0.3);
+        EXPECT(first.distance > 400.0 * 0.5 + 0.35 * 500.0); // lifted while the focus travels
+        for (int i = 0; i < 200; ++i) smooth.step(b, 0.05, 0.3);
+        const cam::Rig settled = smooth.step(b, 0.05, 0.3);
+        EXPECT(near(settled.focus.x, 1000, 1e-3) && near(settled.distance, 400, 1e-3));
+        EXPECT(cam::zoomFactorAfter(1.0, 2) < cam::zoomFactorAfter(1.0, 1) && cam::zoomFactorAfter(1.0, -1) > 1.0);
     }
 
     // Sockets: WPN_Beam_NN for beams, WPN_Torp / *_Torp_* for torpedoes, deterministic by name; none -> -1.

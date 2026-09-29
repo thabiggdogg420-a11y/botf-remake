@@ -17,6 +17,20 @@ class UNiagaraComponent;
 namespace botf { struct CombatReport; struct CombatEvent; }
 namespace botf::tactical { struct Encounter; }
 namespace botf::combatfx { struct RoundTimeline; struct ShipInfo; struct VisualJob; class CinematicDirector; }
+namespace botf::camera { struct Body; struct View; struct RigSmoother; }
+
+// One ship as the battle camera sees it, for the tactical markers drawn over the 3D view.
+struct FBotfShipMarker
+{
+    int32 FleetId = 0;
+    int32 OwnerId = 0;
+    FVector2D Screen = FVector2D::ZeroVector; // 0..1 across and down the rendered image
+    float Radius = 0.f;                        // projected hull radius, as a fraction of the image height
+    float Hull = 1.f;                          // fractions of the starting values
+    float Shields = 0.f;
+    bool bSelected = false;                    // the player's active ship
+    bool bTarget = false;                      // the player's target
+};
 
 struct FShipKinematicState
 {
@@ -105,9 +119,16 @@ public:
     void CycleCameraMode();
     void SetFocusedShips(int InShipId, int InTargetId);
     void AddCameraOrbit(float DeltaYaw, float DeltaPitch);
-    void AddCameraZoom(float DeltaZoom);
-    void ResetCameraOrbit();
+    void AddCameraZoom(float WheelNotches);                       // + closer, - farther, about the screen centre
+    void ResetCameraOrbit();                                      // orbit, zoom and pan back to the mode's own framing
     FString GetCameraModeName() const;
+    // Interactive camera (BotfCameraRig.h). Screen points are 0..1 across and down the rendered image.
+    void AddCameraZoomAt(float WheelNotches, FVector2D Screen01); // overview: zooms toward the point under the cursor
+    void AddCameraPan(FVector2D DragScreen01);                    // drag distance as a fraction of the image; frees the camera
+    int32 PickShipAt(FVector2D Screen01) const;                   // fleet id of the ship under the cursor, 0 = none
+    void FollowFleet(int32 FleetId);                              // fly to and follow a ship (own: SHIP mode, enemy: TARGET)
+    void FlyToScreenPoint(FVector2D Screen01);                    // fly the free camera to that spot on the battle plane
+    void GetShipMarkers(TArray<FBotfShipMarker>& Out) const;
 
 private:
     UPROPERTY() TObjectPtr<UTextureRenderTarget2D> BattleTexture;
@@ -162,7 +183,8 @@ private:
     FString TimelineSignature;
     float PlaneCenterX = 0.f, PlaneCenterY = 0.f;
     int32 PlayerEmpire = 0;
-    static constexpr float CellUnits = 85.f;
+    // Scene units per tactical cell. 170 gives true-scale hulls room: a 685 m Sovereign spans about 1.4 cells.
+    static constexpr float CellUnits = 170.f;
 
     TArray<FVector> Positions;
     TArray<int> ShipOwners;
@@ -183,7 +205,17 @@ private:
     int FocusedTargetId = 0;
     float OrbitYaw = 0.f;
     float OrbitPitch = 0.f;
-    float ZoomOffset = 0.f;
+    float ZoomFactor = 1.f;         // multiplies the mode's framed distance
+    // Free camera: set by panning, cursor zoom or fly-to in OVERVIEW; RESET returns to framing the whole battle.
+    bool bFreeCam = false;
+    FVector FreeFocus = FVector::ZeroVector; // tactical frame (x, y across the plane, z height)
+    double FreeDistance = 2000.0;
+    double MaxCameraDistance = 6000.0;
+    float CamTransition = 0.f;      // seconds of soft focus easing left after a mode or subject change
+    TSharedPtr<botf::camera::RigSmoother> CamSmoother;
+    TSharedPtr<botf::camera::View> CamView; // the view last filmed: markers and picking use it
+    void CollectCameraBodies(std::vector<botf::camera::Body>& Out) const;
+    void DetachToFreeCam();
 
     void SetupEffectPools();
     // Swaps a slot to its class mesh by asset key (UBotfAssetRegistry), scale-normalised by canon length.

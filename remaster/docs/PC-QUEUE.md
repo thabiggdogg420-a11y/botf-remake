@@ -34,6 +34,9 @@ Status markers: `[ ]` pending, `[x]` done (paste the result or log into the PR/s
    - Settings, Audio: move each slider and confirm the level changes and survives a restart (`Saved/Config/Windows/GameUserSettings.ini` `[BotfAudio]`).
    - End a turn with research or a battle and listen for the beep/alert and advisor voice; say whether ducking (effects dipping under voice) feels right.
 7. [ ] **Rules 3 battle scene: visual tuning and socket placement in the editor** (after 1; 4 and 5 for real models).
+   - 2026-09-30: the battle camera is interactive now (HANDOFF.md, "Battle camera redesign"). In a real battle try the
+     wheel (zooms toward the cursor), right-drag (pan), click a ship (select), double-click a ship (follow) or empty
+     space (fly there), F / G / Home. Say how the speeds and the marker density feel.
    - Start a Remastered (rules 3) battle and watch a round in every camera mode, including the new CINEMATIC one.
    - Check that ships fly from their start pose to their end pose without popping, and that they bank the right way
      into turns and strafes. `PoseRotation` in `BotfCombatScene.cpp` assumes that ship tops face the default camera

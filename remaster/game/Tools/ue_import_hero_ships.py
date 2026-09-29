@@ -97,7 +97,7 @@ def build_master():
     MEL.connect_material_property(mul(mat, orm, rough, -600, 380, "G", ""), "", unreal.MaterialProperty.MP_ROUGHNESS)
     MEL.connect_material_property(mul(mat, orm, metal, -600, 480, "B", ""), "", unreal.MaterialProperty.MP_METALLIC)
     emi = sampler(mat, "Emissive", base["e"], ST.SAMPLERTYPE_COLOR, -900, 700)
-    k = param(mat, unreal.MaterialExpressionScalarParameter, "EmissiveStrength", 2.5, -900, 880)
+    k = param(mat, unreal.MaterialExpressionScalarParameter, "EmissiveStrength", 1.5, -900, 880)
     MEL.connect_material_property(mul(mat, emi, k, -600, 760, "RGB", ""), "", unreal.MaterialProperty.MP_EMISSIVE_COLOR)
     MEL.recompile_material(mat)
     EAL.save_loaded_asset(mat)
@@ -207,7 +207,7 @@ def import_ship(folder, master):
             MEL.set_material_instance_scalar_parameter_value(mi, "RoughnessScale", 0.45)
             MEL.set_material_instance_scalar_parameter_value(mi, "MetallicScale", slot.get("metallic", 0.5))
         if slot.get("e"):
-            MEL.set_material_instance_scalar_parameter_value(mi, "EmissiveStrength", 2.5 * max(1.0, slot.get("emissive", 1.0)))
+            MEL.set_material_instance_scalar_parameter_value(mi, "EmissiveStrength", 1.5 * max(1.0, slot.get("emissive", 1.0)))
         EAL.save_loaded_asset(mi)
         mesh.set_material(index, mi)
     set_lods(mesh)

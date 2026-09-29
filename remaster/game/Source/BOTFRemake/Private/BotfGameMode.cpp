@@ -195,6 +195,10 @@ public:
                 if (Key == EKeys::T) return Guarded([this] { NextTacTarget(); });
                 if (Key == EKeys::C && Scene.IsValid()) { Scene->CycleCameraMode(); return FReply::Handled(); }
                 if (Key == EKeys::Home && Scene.IsValid()) { Scene->ResetCameraOrbit(); return FReply::Handled(); }
+                if (Key == EKeys::F && Scene.IsValid()) { Scene->FollowFleet(TacShip); return FReply::Handled(); }
+                if (Key == EKeys::G && Scene.IsValid()) { Scene->FollowFleet(TacTarget); return FReply::Handled(); }
+                if ((Key == EKeys::Equals || Key == EKeys::Add) && Scene.IsValid()) { Scene->AddCameraZoom(1.f); return FReply::Handled(); }
+                if ((Key == EKeys::Hyphen || Key == EKeys::Subtract) && Scene.IsValid()) { Scene->AddCameraZoom(-1.f); return FReply::Handled(); }
                 if (Key == EKeys::L) { bTelemetryTall = !bTelemetryTall; return FReply::Handled(); }
                 if (Key == EKeys::Left && Scene.IsValid()) { Scene->AddCameraOrbit(-15.f, 0.f); return FReply::Handled(); }
                 if (Key == EKeys::Right && Scene.IsValid()) { Scene->AddCameraOrbit(15.f, 0.f); return FReply::Handled(); }
@@ -5292,7 +5296,7 @@ private:
                         + SHorizontalBox::Slot().AutoWidth() [ CameraOption(TEXT("CINEMATIC"), 5, true, TEXT("Cinematic camera that follows the action of a round")) ]) ]
                     + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(8, 0, 0, 0)
                     [ Control(TEXT("RESET"), [this] { if (Scene.IsValid()) Scene->ResetCameraOrbit(); }, nullptr, nullptr, ERole::Secondary, FMargin(12, 6), false, 8,
-                        TEXT("Reset camera orbit and zoom (double-click the view)"), 0, TEXT("Home")) ] ] ];
+                        TEXT("Frame the whole battle again: resets orbit, zoom and pan. Drag to orbit, right-drag to pan, wheel to zoom, click a ship to select it, double-click to follow it (F: your ship, G: the target)"), 0, TEXT("Home")) ] ] ];
         const TSharedRef<SWidget> FleetDock = SNew(SBox).WidthOverride(330)
             [ Glass(SNew(SVerticalBox)
                 + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 8) [ FleetHeader(TEXT("FRIENDLY FLEET"), &FPalette::Accent, SideCount(true)) ]
@@ -5396,8 +5400,10 @@ private:
             [ SNew(SScrollBox).ScrollBarThickness(FVector2D(5, 5)) + SScrollBox::Slot() [ SAssignNew(TelemetryRows, SVerticalBox) ] ],
             FMargin(12, 9, 8, 9));
         return SNew(SOverlay)
-            // 0: full-screen 3D combat viewport (mouse orbit drag and wheel zoom)
-            + SOverlay::Slot() [ SNew(BotfUi::STacticalViewport, Scene, &BattleBrush, [this] { return Scene.IsValid() && Session.pending; }) ]
+            // 0: full-screen 3D combat viewport: orbit, pan, cursor zoom, click a ship to select it, double-click to follow
+            + SOverlay::Slot() [ SNew(BotfUi::STacticalViewport, Scene, &BattleBrush, [this] { return Scene.IsValid() && Session.pending; },
+                [this](int32 FleetId) { RunGuarded([this, FleetId] { TacPick(FleetId); }); },
+                [this](int32 FleetId) { const auto* S = TacShipPtr(FleetId); return S ? FString::Printf(TEXT("%s #%d"), *Str(S->name), FleetId) : FString(); }) ]
             + SOverlay::Slot().VAlign(VAlign_Top).HAlign(HAlign_Fill) [ TopBar ]
             + SOverlay::Slot().VAlign(VAlign_Fill).HAlign(HAlign_Left).Padding(TAttribute<FMargin>::CreateLambda([this] { return FMargin(10, 66, 0, bTelemetryTall ? 282 : 128); })) [ FleetDock ]
             + SOverlay::Slot().VAlign(VAlign_Fill).HAlign(HAlign_Right).Padding(TAttribute<FMargin>::CreateLambda([this] { return FMargin(0, 66, 10, bTelemetryTall ? 282 : 128); })) [ RightDock ]
@@ -6836,7 +6842,41 @@ private:
                 }
                 Wait = 1.5f; break;
             }
-            if (Index == ABotfCombatScene::Cam_Count * 2) {
+            // The interactive camera: follow the smallest own hull, then the biggest enemy, then a free fly-in and zoom.
+            const auto Pick = [&U](bool bOwn, bool bSmallest) {
+                int32 Best = 0, BestHull = 0;
+                if (U.Session.pending)
+                    for (const auto& S : U.Session.pending->ships) {
+                        if ((S.ownerId == U.State.playerEmpire) != bOwn || !U.TacActive(&S)) continue;
+                        if (!Best || (bSmallest ? S.initialHull < BestHull : S.initialHull > BestHull)) { Best = S.fleetId; BestHull = S.initialHull; }
+                    }
+                return Best;
+            };
+            const int32 Cam = Index - ABotfCombatScene::Cam_Count * 2;
+            if (Cam == 0) {
+                if (const int32 Id = Pick(true, true)) { U.TacPick(Id); if (Scene.IsValid()) Scene->FollowFleet(Id); }
+                Wait = 2.2f; break;
+            }
+            if (Cam == 1) {
+                if (Shot(TEXT("battle-follow-escort"))) return false;
+                if (const int32 Id = Pick(false, false)) { U.TacPick(Id); if (Scene.IsValid()) Scene->FollowFleet(Id); }
+                Wait = 2.2f; break;
+            }
+            if (Cam == 2) {
+                if (Shot(TEXT("battle-follow-enemy"))) return false;
+                if (Scene.IsValid()) {
+                    Scene->SetCameraMode(ABotfCombatScene::Cam_Overview);
+                    Scene->FlyToScreenPoint(FVector2D(0.5, 0.5));
+                    Scene->AddCameraZoomAt(3.f, FVector2D(0.58, 0.5));
+                }
+                Wait = 2.2f; break;
+            }
+            if (Cam == 3) {
+                if (Shot(TEXT("battle-free-zoom"))) return false;
+                if (Scene.IsValid()) Scene->ResetCameraOrbit();
+                Wait = 0.5f; break;
+            }
+            if (Cam == 4) {
                 bMeasuring = false;
                 U.Save();
                 U.OpenSubPage(V::Load);
@@ -6846,8 +6886,8 @@ private:
                     U.Session.pending ? U.Session.pending->currentRound : -1));
                 break;
             }
-            if (Index == ABotfCombatScene::Cam_Count * 2 + 1) { if (Shot(TEXT("battle-after-load"))) return false; Wait = 0.5f; break; }
-            return RunExtra(U, Index - (ABotfCombatScene::Cam_Count * 2 + 2));
+            if (Cam == 5) { if (Shot(TEXT("battle-after-load"))) return false; Wait = 0.5f; break; }
+            return RunExtra(U, Cam - 6);
         }
         }
         return true;

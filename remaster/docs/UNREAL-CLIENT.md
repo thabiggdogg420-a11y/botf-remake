@@ -298,8 +298,24 @@ Still unproven, in rough order of likelihood. Each is a single-line fix if it fa
     at the moment of their visual job. Voice barks `vo.combat.shields.<N>.<fac>`, `vo.combat.torpedo.<fac>` and
     `vo.combat.kill.<fac>` (`GameCue::CombatBark`) go through the `CueScheduler` voice queue and cooldown.
     `OnRoundResolved` no longer plays its summary cues for such rounds.
-  - **Camera.** Camera mode 5, `CINEMATIC`, follows the action via `CinematicDirector`: shots are held for at least
-    1.4 s and cut to explosions. The free orbit and zoom still apply on top.
+  - **Camera** (`BotfCameraRig.h`, engine-independent and unit-tested).
+    - **Rig.** Every mode drives one orbit rig: focus, distance, azimuth and elevation in the tactical frame.
+      `RigSmoother` eases toward the rig in log distance, takes angles the short way round, and lifts the camera on
+      long moves so a fly-to arcs.
+    - **Framing.** `frameDistance` sizes shots to bounding spheres:
+      - OVERVIEW and TOP-DOWN frame every visible ship; cloaked ships are left out, so they are not revealed.
+      - SHIP follows your ship from the rear quarter; TARGET follows the target from the front quarter.
+      - CHASE frames the latest exchange of fire side-on.
+      - CINEMATIC is `CinematicDirector`'s over-the-shoulder shot, with the subject sized to its hull.
+    - **Input** (`STacticalViewport`):
+      - Left-drag orbits; right-drag pans and frees the camera; the wheel zooms toward the cursor.
+      - Click a ship to select it: own ship becomes ACTIVE, an enemy becomes TARGET.
+      - Double-click a ship to fly to it and follow it; double-click empty space to fly there.
+      - Middle-click or Home frames the whole battle again; F follows your ship, G the target; +/- zoom.
+    - **Markers.** Faction brackets on every visible ship. They fade as a hull grows on screen, and specks get a
+      diamond. The active ship, the target and the hovered ship get their name and hull and shield bars. A hull
+      filling the view keeps only the name and compact bars.
+    - **Arena.** `CellUnits` is 170 (was 85), so a Sovereign spans about 1.4 cells.
   - **Ship cap.** The cap is 24 ships per side (was 8).
   - **Resuming.** Re-showing the same round resumes playback without replaying sounds.
 - **Object Database.** The ship list shows the legacy catalogue and the 98 expanded roster classes

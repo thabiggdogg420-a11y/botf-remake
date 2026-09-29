@@ -151,6 +151,16 @@ in wings; upgrade each model's own textures, plating for untextured ones.
   - `ue_import_hero_ships.py`: 14/14 imported.
   - Showcase 6v6: 180 fps avg, p99 9.6 ms.
   - Shots: `pc-screens/battle-hero-overview.png`, `pc-screens/battle-hero-chase.png`.
+- **Battle camera redesign** (Simon: "the battle scene should be zoomable to different ships and locations").
+  - `BotfCameraRig.h` holds the orbit rig, framing, projection, picking and easing. It is unit-tested
+    (client-logic-tests 535 checks, 0 failures).
+  - `ABotfCombatScene` films every mode through it. `STacticalViewport` adds cursor zoom, pan, click-to-select,
+    double-click follow and fly-to, and faction markers. Keys: F / G follow ship / target, +/- zoom, Home frames the battle.
+  - Arena scale doubled (`CellUnits` 170).
+  - Chromatic fringe 0.6 → 0.15; hero `EmissiveStrength` 2.5 → 1.5.
+  - The showcase adds three shots: `battle-follow-escort`, `battle-follow-enemy` and `battle-free-zoom`.
+  - Proof: UE build succeeded; showcase 6v6 at 170 fps avg, p99 9.6 ms.
+  - Screenshots: `pc-screens/battle-camera-overview.png`, `battle-camera-follow.png`, `battle-camera-target.png`.
 - **Open.**
   - Keldon and Nagus still use generated hulls; plan: variants of the Galor and D'Kora.
   - The Klingon plating reads low-contrast.

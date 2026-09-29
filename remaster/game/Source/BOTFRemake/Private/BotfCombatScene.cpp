@@ -4,6 +4,7 @@
 #include "BotfAssetRegistry.h"
 #include "BotfAudioSubsystem.h"
 #include "BotfCombatTimeline.h"
+#include "BotfCameraRig.h"
 #include "NiagaraComponent.h"
 #include "NiagaraFunctionLibrary.h"
 #include "NiagaraSystem.h"
@@ -22,6 +23,15 @@
 
 namespace
 {
+// The camera rig works in the tactical frame (x, y across the plane, z height); the scene maps x -> X, y -> Z, z -> -Y.
+botf::camera::Vec3 ToTac(const FVector& S) { return {S.X, S.Z, -S.Y}; }
+FVector ToScene(const botf::camera::Vec3& T) { return FVector(T.x, -T.z, T.y); }
+botf::camera::Vec3 AsVec(const FVector& V) { return {V.X, V.Y, V.Z}; }
+FVector AsFVector(const botf::camera::Vec3& V) { return FVector(V.x, V.y, V.z); }
+// The default tactical angle: the camera stands off the near edge of the battle, 45 degrees above the plane.
+constexpr double kBaseAzimuth = -90.0;
+constexpr double kBaseElevation = 45.0;
+
 // Shields read as a hit response, not a permanent bubble: invisible at rest, a flare on impact whose brightness follows
 // the remaining shield fraction (a failing shield answers weakly).
 float ShieldDisplayStrength(float Fraction, float Flare)
@@ -64,7 +74,7 @@ ABotfCombatScene::ABotfCombatScene()
     Post.bOverride_BloomThreshold = true;            Post.BloomThreshold = 1.0f;
     Post.bOverride_LensFlareIntensity = true;        Post.LensFlareIntensity = 0.35f;
     Post.bOverride_VignetteIntensity = true;         Post.VignetteIntensity = 0.55f;
-    Post.bOverride_SceneFringeIntensity = true;      Post.SceneFringeIntensity = 0.6f;
+    Post.bOverride_SceneFringeIntensity = true;      Post.SceneFringeIntensity = 0.15f;
     Post.bOverride_FilmGrainIntensity = true;        Post.FilmGrainIntensity = 0.06f;
     Post.bOverride_ColorSaturation = true;           Post.ColorSaturation = FVector4(1.08f, 1.08f, 1.12f, 1.f);
     Post.bOverride_ColorContrast = true;             Post.ColorContrast = FVector4(1.06f, 1.06f, 1.06f, 1.f);
@@ -144,36 +154,159 @@ void ABotfCombatScene::SetupEnvironment()
 
 void ABotfCombatScene::SetCameraMode(int InMode)
 {
+    // A mode starts from its own framing; the camera then eases there.
     CameraMode = FMath::Clamp(InMode, 0, static_cast<int>(Cam_Count) - 1);
+    OrbitYaw = OrbitPitch = 0.f;
+    ZoomFactor = 1.f;
+    bFreeCam = false;
+    CamTransition = 1.f;
 }
 
 void ABotfCombatScene::CycleCameraMode()
 {
-    CameraMode = (CameraMode + 1) % static_cast<int>(Cam_Count);
+    SetCameraMode((CameraMode + 1) % static_cast<int>(Cam_Count));
 }
 
 void ABotfCombatScene::SetFocusedShips(int InShipId, int InTargetId)
 {
+    const bool bSubjectChanged = (CameraMode == Cam_FocusShip && InShipId != FocusedFriendlyId) ||
+        (CameraMode == Cam_FocusTarget && InTargetId != FocusedTargetId);
     FocusedFriendlyId = InShipId;
     FocusedTargetId = InTargetId;
+    if (bSubjectChanged) CamTransition = 1.f;
 }
 
 void ABotfCombatScene::AddCameraOrbit(float DeltaYaw, float DeltaPitch)
 {
     OrbitYaw = FMath::Fmod(OrbitYaw + DeltaYaw, 360.f);
-    OrbitPitch = FMath::Clamp(OrbitPitch + DeltaPitch, -65.f, 65.f);
+    // The elevation (mode base + pitch) is clamped by the rig; keep the offset itself within a sane range.
+    OrbitPitch = FMath::Clamp(OrbitPitch + DeltaPitch, -150.f, 90.f);
 }
 
-void ABotfCombatScene::AddCameraZoom(float DeltaZoom)
+void ABotfCombatScene::AddCameraZoom(float WheelNotches)
 {
-    ZoomOffset = FMath::Clamp(ZoomOffset + DeltaZoom, -1200.f, 1500.f);
+    AddCameraZoomAt(WheelNotches, FVector2D(0.5, 0.5));
 }
 
 void ABotfCombatScene::ResetCameraOrbit()
 {
     OrbitYaw = 0.f;
     OrbitPitch = 0.f;
-    ZoomOffset = 0.f;
+    ZoomFactor = 1.f;
+    bFreeCam = false;
+    CamTransition = 1.f;
+}
+
+void ABotfCombatScene::CollectCameraBodies(std::vector<botf::camera::Body>& Out) const
+{
+    Out.clear();
+    for (int32 Index = 0; Index < Ships.Num() && Index < Kinematics.Num(); ++Index)
+    {
+        const UStaticMeshComponent* Ship = Ships[Index];
+        if (!Ship || !Ship->IsVisible() || Kinematics[Index].FleetId == 0) continue;
+        Out.push_back({Kinematics[Index].FleetId, ToTac(Ship->GetRelativeLocation()), ShipRadius(Index)});
+    }
+}
+
+void ABotfCombatScene::DetachToFreeCam()
+{
+    // Keep exactly what is on screen, now as a free OVERVIEW camera the player steers.
+    if (bFreeCam && CameraMode == Cam_Overview) return;
+    if (!CamSmoother || !CamSmoother->primed) { bFreeCam = true; CameraMode = Cam_Overview; return; }
+    const botf::camera::Rig& Now = CamSmoother->current;
+    CameraMode = Cam_Overview;
+    bFreeCam = true;
+    FreeFocus = AsFVector(Now.focus);
+    FreeDistance = Now.distance;
+    OrbitYaw = static_cast<float>(botf::camera::angleDelta(kBaseAzimuth, Now.azimuth));
+    OrbitPitch = static_cast<float>(Now.elevation - kBaseElevation);
+    ZoomFactor = 1.f;
+}
+
+void ABotfCombatScene::AddCameraZoomAt(float WheelNotches, FVector2D Screen01)
+{
+    using namespace botf::camera;
+    if (CameraMode != Cam_Overview || !CamView || !CamSmoother || !CamSmoother->primed)
+    {
+        // Following a ship or a shot: zoom about the subject.
+        ZoomFactor = FMath::Clamp(static_cast<float>(zoomFactorAfter(ZoomFactor, WheelNotches)), 0.04f, 8.f);
+        return;
+    }
+    DetachToFreeCam();
+    // Zoom about the point under the cursor on the plane through the focus: it stays under the cursor.
+    const double NewDistance = FMath::Clamp(FreeDistance * FMath::Pow(0.85, static_cast<double>(WheelNotches)), 30.0, MaxCameraDistance);
+    Vec3 Ground;
+    const Vec3 Focus = AsVec(FreeFocus);
+    if (rayPlane(*CamView, Screen01.X, Screen01.Y, Focus.z, Ground))
+        FreeFocus = AsFVector(Focus + (Ground - Focus) * (1.0 - NewDistance / FMath::Max(1.0, FreeDistance)));
+    FreeDistance = NewDistance;
+}
+
+void ABotfCombatScene::AddCameraPan(FVector2D DragScreen01)
+{
+    using namespace botf::camera;
+    if (!CamView) return;
+    DetachToFreeCam();
+    const View& V = *CamView;
+    // Ground covered by the image at the focus; a low camera sees farther up the screen, so vertical drags go further.
+    const double Width = 2.0 * FreeDistance * halfTanH(V);
+    const double Height = Width / V.aspect / FMath::Max(0.25, FMath::Sin(FMath::DegreesToRadians(FMath::Clamp(kBaseElevation + OrbitPitch, 5.0, 88.0))));
+    Vec3 Right = normalized(Vec3{V.right.x, V.right.y, 0.0});
+    Vec3 Ahead = normalized(Vec3{V.forward.x, V.forward.y, 0.0});
+    if (length(Ahead) < 0.5) Ahead = normalized(Vec3{V.up.x, V.up.y, 0.0});
+    // Dragging moves the battle with the cursor: the camera goes the other way.
+    FreeFocus = AsFVector(AsVec(FreeFocus) - Right * (DragScreen01.X * Width) + Ahead * (DragScreen01.Y * Height));
+}
+
+int32 ABotfCombatScene::PickShipAt(FVector2D Screen01) const
+{
+    if (!CamView || bTitleScene) return 0;
+    std::vector<botf::camera::Body> Bodies;
+    CollectCameraBodies(Bodies);
+    for (auto& Body : Bodies) Body.radius *= 0.8; // bounding spheres overstate flat hulls
+    return botf::camera::pick(*CamView, Screen01.X, Screen01.Y, Bodies);
+}
+
+void ABotfCombatScene::FollowFleet(int32 FleetId)
+{
+    const int32 Slot = SlotForFleet(FleetId);
+    if (!Kinematics.IsValidIndex(Slot)) return;
+    if (Kinematics[Slot].OwnerId == PlayerEmpire) { FocusedFriendlyId = FleetId; SetCameraMode(Cam_FocusShip); }
+    else { FocusedTargetId = FleetId; SetCameraMode(Cam_FocusTarget); }
+}
+
+void ABotfCombatScene::FlyToScreenPoint(FVector2D Screen01)
+{
+    if (!CamView) return;
+    DetachToFreeCam();
+    botf::camera::Vec3 Ground;
+    if (!botf::camera::rayPlane(*CamView, Screen01.X, Screen01.Y, FreeFocus.Z, Ground)) return;
+    FreeFocus = AsFVector(Ground);
+    FreeDistance = FMath::Clamp(FreeDistance * 0.55, 60.0, MaxCameraDistance);
+    CamTransition = 1.f;
+}
+
+void ABotfCombatScene::GetShipMarkers(TArray<FBotfShipMarker>& Out) const
+{
+    Out.Reset();
+    if (!CamView || bTitleScene) return;
+    for (int32 Index = 0; Index < Ships.Num() && Index < Kinematics.Num(); ++Index)
+    {
+        const UStaticMeshComponent* Ship = Ships[Index];
+        const FShipKinematicState& K = Kinematics[Index];
+        if (!Ship || !Ship->IsVisible() || K.FleetId == 0) continue;
+        const auto P = botf::camera::project(*CamView, ToTac(Ship->GetRelativeLocation()), ShipRadius(Index));
+        if (!P.visible) continue;
+        FBotfShipMarker& M = Out.AddDefaulted_GetRef();
+        M.FleetId = K.FleetId;
+        M.OwnerId = K.OwnerId;
+        M.Screen = FVector2D(P.u, P.v);
+        M.Radius = static_cast<float>(P.radius);
+        M.Hull = FMath::Clamp(static_cast<float>(K.Hull) / FMath::Max(1, K.InitialHull), 0.f, 1.f);
+        M.Shields = K.InitialShields > 0 ? FMath::Clamp(static_cast<float>(K.Shields) / K.InitialShields, 0.f, 1.f) : 0.f;
+        M.bSelected = K.FleetId == FocusedFriendlyId;
+        M.bTarget = K.FleetId == FocusedTargetId;
+    }
 }
 
 FString ABotfCombatScene::GetCameraModeName() const
@@ -282,6 +415,7 @@ void ABotfCombatScene::ConfigureTitleScene(int EmpireId)
     static const FVector Formation[3] = {FVector(0.f, 0.f, 0.f), FVector(-360.f, 165.f, -110.f), FVector(-360.f, 300.f, 90.f)};
     ConfigureBattle(Faction, Faction, 3, 0, 1999);
     bTitleScene = true;
+    if (CamSmoother) CamSmoother->primed = false; // the next battle opens on its own framing, not a flight from here
     const UBotfAssetRegistry* Registry = UBotfAssetRegistry::Get();
     double HeroLength = 0.0;
     for (int Index = 0; Index < Ships.Num() && Index < 3; ++Index)
@@ -656,10 +790,10 @@ void ABotfCombatScene::ConfigureEncounter(const botf::tactical::Encounter& Encou
                 const auto* Status = LastRound->getStatus(FleetId);
                 if (Status)
                 {
-                    Kinematics[Index].StartPosition = FVector((Status->positionBefore.x - CenterX) * 85.f,
-                        ElevationOffset, (Status->positionBefore.y - CenterY) * 85.f);
-                    Kinematics[Index].TargetPosition = FVector((Status->positionAfter.x - CenterX) * 85.f,
-                        ElevationOffset, (Status->positionAfter.y - CenterY) * 85.f);
+                    Kinematics[Index].StartPosition = FVector((Status->positionBefore.x - CenterX) * CellUnits,
+                        ElevationOffset, (Status->positionBefore.y - CenterY) * CellUnits);
+                    Kinematics[Index].TargetPosition = FVector((Status->positionAfter.x - CenterX) * CellUnits,
+                        ElevationOffset, (Status->positionAfter.y - CenterY) * CellUnits);
                     Kinematics[Index].CurrentPosition = Kinematics[Index].StartPosition;
                     Kinematics[Index].bDecloaking = Status->decloakedThisRound;
                     Kinematics[Index].bDestroyedThisRound = Status->destroyedThisRound;
@@ -683,7 +817,7 @@ void ABotfCombatScene::ConfigureEncounter(const botf::tactical::Encounter& Encou
             }
             else
             {
-                const FVector Pos((Ship->position.x - CenterX) * 85.f, ElevationOffset, (Ship->position.y - CenterY) * 85.f);
+                const FVector Pos((Ship->position.x - CenterX) * CellUnits, ElevationOffset, (Ship->position.y - CenterY) * CellUnits);
                 Kinematics[Index].StartPosition = Pos;
                 Kinematics[Index].TargetPosition = Pos;
                 Kinematics[Index].CurrentPosition = Pos;
@@ -905,7 +1039,7 @@ void ABotfCombatScene::ConfigureBattleReport(const botf::CombatReport& Report, i
     }
     if (bTimeline)
     {
-        // Centre the plane on the poses the round mentions; the fallback formation poses (scene units / 85 around 0)
+        // Centre the plane on the poses the round mentions; the fallback formation poses (scene units / CellUnits around 0)
         // are shifted into the same frame.
         const auto& Events = Report.rounds[ShownRound].events;
         int MinX = 0, MaxX = 0, MinY = 0, MaxY = 0;
@@ -1115,144 +1249,161 @@ void ABotfCombatScene::AnimateCamera(float DeltaSeconds)
         return;
     }
 
+    using namespace botf::camera;
+    const double Fov = Capture->FOVAngle;
+    const double Aspect = BattleTexture && BattleTexture->SizeY > 0 ? static_cast<double>(BattleTexture->SizeX) / BattleTexture->SizeY : 16.0 / 9.0;
+    std::vector<Body> Bodies;
+    CollectCameraBodies(Bodies);
+    Sphere All = boundsOf(Bodies);
+    if (Bodies.empty()) { All.center = Vec3{}; All.radius = 600.0; }
+    All.radius = FMath::Max(All.radius, 150.0);
+    const double FrameAll = frameDistance(All.radius, Fov, Aspect, 1.05);
+    MaxCameraDistance = FMath::Max(4000.0, FrameAll * 3.0);
+    const auto BodyOf = [&Bodies](int32 FleetId) -> const Body* {
+        for (const auto& B : Bodies) if (B.id == FleetId && FleetId != 0) return &B;
+        return nullptr;
+    };
+    const auto HeadingOf = [this](int32 FleetId) {
+        const int32 Slot = SlotForFleet(FleetId);
+        if (!Ships.IsValidIndex(Slot) || !Ships[Slot]) return 0.0;
+        const Vec3 F = ToTac(Ships[Slot]->GetRelativeRotation().Vector());
+        return FMath::RadiansToDegrees(FMath::Atan2(F.y, F.x));
+    };
+    const double ShownAzimuth = CamSmoother && CamSmoother->primed ? CamSmoother->current.azimuth : kBaseAzimuth;
+
+    // Each mode proposes a rig: what to look at, from which side, and how far away to fit it.
+    Rig Target;
+    Target.focus = All.center;
+    Target.azimuth = kBaseAzimuth;
+    Target.elevation = kBaseElevation;
+    Target.distance = FrameAll;
+    double SubjectRadius = 0.0; // > 0 when the camera films one hull: it may come close, never inside
+    bool bModeFramed = false;
     switch (CameraMode)
     {
-    case Cam_Chase:
-        if (Salvos.Num() > 0)
-        {
-            const auto& PrimarySalvo = Salvos[0];
-            if (Kinematics.IsValidIndex(PrimarySalvo.AttackerVisualIndex) &&
-                Kinematics.IsValidIndex(PrimarySalvo.DefenderVisualIndex))
-            {
-                FocusPoint = (Kinematics[PrimarySalvo.AttackerVisualIndex].CurrentPosition +
-                              Kinematics[PrimarySalvo.DefenderVisualIndex].CurrentPosition) * 0.5f;
-                DesiredLocation = FocusPoint + FVector(0.f, -1150.f, 550.f);
-                DesiredRotation = (FocusPoint - DesiredLocation).Rotation();
-            }
-        }
-        else
-        {
-            DesiredLocation = BaseCameraLocation;
-            DesiredRotation = BaseCameraRotation;
-        }
-        break;
-
     case Cam_FocusShip:
+    case Cam_FocusTarget:
+        // Follow one ship, sized to its hull: own ship from the rear quarter, the target from the front quarter.
+        if (const Body* B = BodyOf(CameraMode == Cam_FocusShip ? FocusedFriendlyId : FocusedTargetId))
         {
-            bool bFound = false;
-            for (const auto& K : Kinematics)
-            {
-                if (K.FleetId == FocusedFriendlyId && K.bAlive && !K.bRetreated)
-                {
-                    FocusPoint = K.CurrentPosition;
-                    DesiredLocation = FocusPoint + FVector(-350.f, -480.f, 240.f);
-                    DesiredRotation = (FocusPoint - DesiredLocation).Rotation();
-                    bFound = true;
-                    break;
-                }
-            }
-            if (!bFound)
-            {
-                DesiredLocation = BaseCameraLocation;
-                DesiredRotation = BaseCameraRotation;
-            }
+            Target.focus = B->center;
+            Target.azimuth = HeadingOf(B->id) + (CameraMode == Cam_FocusShip ? 215.0 : 35.0);
+            Target.elevation = 18.0;
+            Target.distance = frameDistance(B->radius, Fov, Aspect, 1.7);
+            SubjectRadius = B->radius;
+            bModeFramed = true;
         }
         break;
 
-    case Cam_FocusTarget:
+    case Cam_Chase:
         {
-            bool bFound = false;
-            for (const auto& K : Kinematics)
+            // The latest exchange of fire: both ships in frame, seen side-on to the line between them.
+            int32 From = 0, To = 0;
+            if (bTimelinePlaying && Timeline)
             {
-                if (K.FleetId == FocusedTargetId && K.bAlive && !K.bRetreated)
+                for (const auto& Job : Timeline->jobs)
                 {
-                    FocusPoint = K.CurrentPosition;
-                    DesiredLocation = FocusPoint + FVector(350.f, -480.f, 240.f);
-                    DesiredRotation = (FocusPoint - DesiredLocation).Rotation();
-                    bFound = true;
-                    break;
+                    if (Job.start > TimelineTime) break;
+                    if (Job.fleetId && Job.targetFleetId && (Job.kind == botf::combatfx::JobKind::Beam || Job.kind == botf::combatfx::JobKind::PulseBolt ||
+                        Job.kind == botf::combatfx::JobKind::Torpedo || Job.kind == botf::combatfx::JobKind::Ram)) { From = Job.fleetId; To = Job.targetFleetId; }
                 }
             }
-            if (!bFound)
+            else if (Salvos.Num() > 0 && Kinematics.IsValidIndex(Salvos[0].AttackerVisualIndex) && Kinematics.IsValidIndex(Salvos[0].DefenderVisualIndex))
             {
-                DesiredLocation = BaseCameraLocation;
-                DesiredRotation = BaseCameraRotation;
+                From = Kinematics[Salvos[0].AttackerVisualIndex].FleetId;
+                To = Kinematics[Salvos[0].DefenderVisualIndex].FleetId;
+            }
+            const Body* A = BodyOf(From);
+            const Body* B = BodyOf(To);
+            if (A && B)
+            {
+                const Vec3 Line = B->center - A->center;
+                Target.focus = (A->center + B->center) * 0.5;
+                const double LineAz = FMath::RadiansToDegrees(FMath::Atan2(Line.y, Line.x));
+                // The side of the line nearer the current view, so the camera never whips across.
+                const double Left = LineAz + 90.0, Right = LineAz - 90.0;
+                Target.azimuth = FMath::Abs(angleDelta(ShownAzimuth, Left)) < FMath::Abs(angleDelta(ShownAzimuth, Right)) ? Left : Right;
+                Target.elevation = 24.0;
+                Target.distance = frameDistance(length(Line) * 0.5 + FMath::Max(A->radius, B->radius), Fov, Aspect, 1.1);
+                bModeFramed = true;
             }
         }
         break;
 
     case Cam_Cinematic:
+        if (bTimelinePlaying && Timeline && Director)
         {
-            bool bShot = false;
-            if (bTimelinePlaying && Timeline && Director)
+            Director->update(*Timeline, TimelineTime, FocusedFriendlyId);
+            if (const Body* Subject = BodyOf(Director->shot.subjectFleetId))
             {
-                Director->update(*Timeline, TimelineTime, FocusedFriendlyId);
-                const int32 Subject = SlotForFleet(Director->shot.subjectFleetId);
-                const int32 Other = SlotForFleet(Director->shot.otherFleetId);
-                if (Kinematics.IsValidIndex(Subject))
-                {
-                    const FVector SubjectPos = Kinematics[Subject].CurrentPosition;
-                    const FVector OtherPos = Kinematics.IsValidIndex(Other) ? Kinematics[Other].CurrentPosition : SubjectPos + FVector(400.f, 0.f, 0.f);
-                    FVector Line = OtherPos - SubjectPos;
-                    if (Line.SizeSquared() < 1.f) Line = FVector(1.f, 0.f, 0.f);
-                    const FVector Dir = Line.GetSafeNormal();
-                    // Over the shoulder: behind the subject and out of the plane toward the viewer, looking at a point
-                    // two thirds of the way to the other ship.
-                    FocusPoint = SubjectPos + Line * 0.66f;
-                    const float Back = FMath::Clamp(static_cast<float>(Line.Size()) * 0.6f + 380.f, 450.f, 1400.f);
-                    DesiredLocation = SubjectPos - Dir * Back + FVector(0.f, -520.f, 180.f);
-                    DesiredRotation = (FocusPoint - DesiredLocation).Rotation();
-                    bShot = true;
-                }
+                // Over the shoulder: behind the subject, looking two thirds of the way to the other ship; the subject
+                // stays large in the foreground whatever its size.
+                const Body* Other = BodyOf(Director->shot.otherFleetId);
+                Vec3 Line = Other ? Other->center - Subject->center : Vec3{400.0, 0.0, 0.0};
+                if (length(Line) < 1.0) Line = Vec3{400.0, 0.0, 0.0};
+                Target.focus = Subject->center + Line * 0.66;
+                Target.azimuth = FMath::RadiansToDegrees(FMath::Atan2(-Line.y, -Line.x)) + 14.0;
+                Target.elevation = 16.0;
+                Target.distance = length(Line) * 0.66 + frameDistance(Subject->radius, Fov, Aspect, 2.4);
+                bModeFramed = true;
             }
-            if (!bShot)
-            {
-                // Between rounds: a slow establishing drift around the arena.
-                const float Angle = FMath::DegreesToRadians(Elapsed * 6.f);
-                FocusPoint = FVector::ZeroVector;
-                DesiredLocation = FVector(FMath::Sin(Angle) * 900.f, -1700.f, 900.f + FMath::Cos(Angle) * 250.f);
-                DesiredRotation = (FocusPoint - DesiredLocation).Rotation();
-            }
+        }
+        if (!bModeFramed)
+        {
+            // Between rounds: a slow establishing drift around the battle.
+            Target.azimuth = kBaseAzimuth + FMath::Sin(Elapsed * 0.1f) * 25.0;
+            Target.elevation = 40.0;
+            Target.distance = FrameAll * 1.1;
+            bModeFramed = true;
         }
         break;
 
     case Cam_Overhead:
-        FocusPoint = FVector::ZeroVector;
-        DesiredLocation = FVector(0.f, 0.f, 2300.f);
-        DesiredRotation = FRotator(-89.9f, 90.f, 0.f);
+        Target.elevation = kMaxElevation;
+        bModeFramed = true;
         break;
 
     case Cam_Overview:
     default:
-        FocusPoint = FVector::ZeroVector;
-        DesiredLocation = BaseCameraLocation;
-        DesiredRotation = BaseCameraRotation;
+        if (bFreeCam)
+        {
+            Target.focus = AsVec(FreeFocus);
+            Target.distance = FreeDistance;
+        }
+        bModeFramed = true;
         break;
     }
 
-    // Apply interactive orbit angles and zoom distance
-    if (FMath::Abs(OrbitYaw) > 0.01f || FMath::Abs(OrbitPitch) > 0.01f || FMath::Abs(ZoomOffset) > 0.01f)
+    // The player's orbit and zoom on top of the mode's framing.
+    Target.azimuth += OrbitYaw;
+    const double WantedElevation = Target.elevation + OrbitPitch;
+    Target.elevation = FMath::Clamp(WantedElevation, kMinElevation, kMaxElevation);
+    OrbitPitch += static_cast<float>(Target.elevation - WantedElevation); // no dead zone past the limits
+    if (!(CameraMode == Cam_Overview && bFreeCam))
     {
-        FRotator Rotated = DesiredRotation;
-        Rotated.Yaw += OrbitYaw;
-        Rotated.Pitch = FMath::Clamp(Rotated.Pitch + OrbitPitch, -89.f, 85.f);
-
-        float Distance = FVector::Distance(DesiredLocation, FocusPoint);
-        Distance = FMath::Clamp(Distance + ZoomOffset, 200.f, 4500.f);
-
-        DesiredLocation = FocusPoint - Rotated.Vector() * Distance;
-        DesiredRotation = Rotated;
+        Target.distance *= ZoomFactor;
+        const double MinDistance = SubjectRadius > 0.0 ? SubjectRadius * 1.3 : 30.0;
+        Target.distance = FMath::Clamp(Target.distance, MinDistance, MaxCameraDistance);
+        ZoomFactor = FMath::Clamp(ZoomFactor, 0.04f, 8.f);
     }
 
-    const float InterpSpeed = CameraMode == Cam_Chase ? 2.5f : CameraMode == Cam_Cinematic ? 1.8f : 3.5f;
-    Capture->SetRelativeLocation(FMath::VInterpTo(Capture->GetRelativeLocation(), DesiredLocation, DeltaSeconds, InterpSpeed));
-    Capture->SetRelativeRotation(FMath::RInterpTo(Capture->GetRelativeRotation(), DesiredRotation, DeltaSeconds, InterpSpeed));
+    // Ease there. A followed ship keeps moving, so the focus tracks it tightly once the camera has arrived; right
+    // after a change of mode or subject the focus eases softly, so the move reads as a flight.
+    if (!CamSmoother) CamSmoother = MakeShared<RigSmoother>();
+    if (!CamView) CamView = MakeShared<View>();
+    CamTransition = FMath::Max(0.f, CamTransition - DeltaSeconds);
+    const double HalfLife = CameraMode == Cam_Cinematic ? 0.45 : CameraMode == Cam_Chase ? 0.35 : 0.22;
+    const bool bTracking = SubjectRadius > 0.0 || CameraMode == Cam_Chase || CameraMode == Cam_Cinematic;
+    const double FocusHalfLife = bTracking ? FMath::Lerp(0.05, HalfLife, FMath::Clamp(static_cast<double>(CamTransition), 0.0, 1.0)) : HalfLife;
+    const Rig Shown = CamSmoother->step(Target, DeltaSeconds, HalfLife, FocusHalfLife);
+    *CamView = viewOf(Shown, Fov, Aspect);
+    Capture->SetRelativeLocation(ToScene(CamView->eye));
+    Capture->SetRelativeRotation(FRotationMatrix::MakeFromXZ(ToScene(CamView->forward), ToScene(CamView->up)).Rotator());
     // The sky and the distant bodies are effectively at infinity: they travel with the camera, so no camera mode can fly
     // up to them, and they never show parallax or the dome's edge.
     const FVector Eye = Capture->GetRelativeLocation();
     if (SkyDome) SkyDome->SetRelativeLocation(Eye);
-    if (Planet) Planet->SetRelativeLocation(Eye + FVector(0.30f, 0.92f, -0.25f).GetSafeNormal() * 26000.f);
-    if (Moon) Moon->SetRelativeLocation(Eye + FVector(-0.42f, 0.88f, 0.10f).GetSafeNormal() * 30000.f);
+    if (Planet) Planet->SetRelativeLocation(Eye + FVector(0.30f, 0.92f, -0.25f).GetSafeNormal() * 26000.f);    if (Moon) Moon->SetRelativeLocation(Eye + FVector(-0.42f, 0.88f, 0.10f).GetSafeNormal() * 30000.f);
 }
 
 void ABotfCombatScene::BeginPlay()
