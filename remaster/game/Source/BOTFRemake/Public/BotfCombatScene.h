@@ -63,6 +63,7 @@ class BOTFREMAKE_API ABotfCombatScene : public AActor
     GENERATED_BODY()
 public:
     ABotfCombatScene();
+    virtual void BeginPlay() override;
     virtual void Tick(float DeltaSeconds) override;
     UTextureRenderTarget2D* GetBattleTexture() const;
     // Ships drawn per side. Raised from 8: the station mask is 64 bits wide (2 x 32) and every ship costs a mesh, a
@@ -74,6 +75,11 @@ public:
     void ConfigureBattleReport(const botf::CombatReport& Report, int RoundIndex = -1);
     void ConfigureEncounter(const botf::tactical::Encounter& Encounter);
     void SetPresentationActive(bool bActive);
+    // Title-screen backdrop: the empire's hero ships (generated hulls) in formation over the gas giant, filmed by a
+    // slow drifting camera. Render it with SetPresentationActive(true) and show GetBattleTexture() full-bleed behind
+    // the menu; any ConfigureBattle* call ends it.
+    void ConfigureTitleScene(int EmpireId);
+    bool IsTitleScene() const { return bTitleScene; }
     // Listening player's empire: combat voice barks are only for its ships.
     void SetPlayerEmpire(int32 EmpireId) { PlayerEmpire = EmpireId; }
     // Seconds one rules 3 round (12 ticks) takes on screen.
@@ -162,6 +168,8 @@ private:
     TArray<FSalvoVisualItem> Salvos;
 
     float Elapsed = 0.f;
+    bool bTitleScene = false;
+    FString TitleShotPath; // dev builds: -BotfTitleShot=<png> renders the title scene, saves one frame and quits
     float RoundAnimElapsed = 0.f;
     float RoundDuration = 2.4f;
     bool bIsRoundAnimating = false;

@@ -9,8 +9,11 @@ Creates under /Game/Generated/Environment:
   M_Planet      lit body: equirectangular lookup by local direction, slow spin, Fresnel atmosphere rim.
                 Parameters: Surface (texture), SpinSpeed, AtmosphereColor, AtmosphereStrength.
   MI_GasGiant, MI_RockyMoon   instances of M_Planet.
+  SM_BodySphere a 256 x 128 UV sphere (radius 50) for the planet, moon and sky, written here as OBJ: the engine spheres
+                show facets on the limb of a gas giant that fills a third of the frame.
 Idempotent: existing assets are replaced.
 """
+import math
 import os
 
 import unreal
@@ -166,7 +169,55 @@ def planet_instance(name, parent, tex, atmosphere, strength):
     EAL.save_loaded_asset(mi)
 
 
+def write_sphere(path, seg=256, rings=128, radius=50.0):
+    """UV sphere with smooth normals. The materials map by local direction, so its UVs and axes do not matter."""
+    lines = []
+    for r in range(rings + 1):
+        th = math.pi * r / rings
+        for s in range(seg + 1):
+            ph = 2 * math.pi * s / seg
+            n = (math.sin(th) * math.cos(ph), math.sin(th) * math.sin(ph), math.cos(th))
+            lines.append("v %.5f %.5f %.5f" % (n[0] * radius, n[1] * radius, n[2] * radius))
+            lines.append("vn %.5f %.5f %.5f" % n)
+            lines.append("vt %.5f %.5f" % (s / seg, 1 - r / rings))
+    row = seg + 1
+    for r in range(rings):
+        for s in range(seg):
+            a, b = r * row + s + 1, r * row + s + 2
+            c, d = a + row, b + row
+            if r > 0:
+                lines.append("f %d/%d/%d %d/%d/%d %d/%d/%d" % (a, a, a, c, c, c, b, b, b))
+            if r < rings - 1:
+                lines.append("f %d/%d/%d %d/%d/%d %d/%d/%d" % (b, b, b, c, c, c, d, d, d))
+    with open(path, "w") as f:
+        f.write("\n".join(lines) + "\n")
+
+
+def import_sphere():
+    path = os.path.join(ART, "SM_BodySphere.obj")
+    write_sphere(path)
+    task = unreal.AssetImportTask()
+    task.filename = path
+    task.destination_path = DEST
+    task.destination_name = "SM_BodySphere"
+    task.automated = True
+    task.replace_existing = True
+    task.save = True
+    TOOLS.import_asset_tasks([task])
+    mesh = unreal.load_asset(f"{DEST}/SM_BodySphere")
+    if not mesh:
+        unreal.log_error("Missing SM_BodySphere after import")
+        return
+    # OBJ imports default to Nanite; the battle scene capture draws Nanite meshes by their coarse fallback, which put
+    # facets back on the limb. A plain 65k-triangle mesh is cheap for one planet.
+    nanite = mesh.get_editor_property("nanite_settings")
+    nanite.set_editor_property("enabled", False)
+    mesh.set_editor_property("nanite_settings", nanite)
+    EAL.save_loaded_asset(mesh)
+
+
 def main():
+    import_sphere()
     sky = import_texture("T_SpaceNebula")
     giant = import_texture("T_GasGiant")
     moon = import_texture("T_RockyMoon")

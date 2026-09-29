@@ -16,6 +16,9 @@
 #include "Materials/MaterialInterface.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Misc/PackageName.h"
+#include "Misc/CommandLine.h"
+#include "HAL/FileManager.h"
+#include "ImageUtils.h"
 
 namespace
 {
@@ -78,9 +81,20 @@ ABotfCombatScene::ABotfCombatScene()
 
 UTextureRenderTarget2D* ABotfCombatScene::GetBattleTexture() const { return BattleTexture; }
 
+// Scale that gives a sphere body the radius Radius, whichever sphere mesh it carries.
+static FVector BodyScale(const UStaticMeshComponent* Body, float Radius)
+{
+    const UStaticMesh* Mesh = Body ? Body->GetStaticMesh() : nullptr;
+    return FVector(Radius / FMath::Max(1.f, Mesh ? Mesh->GetBounds().SphereRadius : 50.f));
+}
+
 void ABotfCombatScene::SetupEnvironment()
 {
-    auto* SphereMesh = LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Sphere.Sphere"));
+    // The generated 256-segment sphere keeps the gas giant's limb round at title-screen size; the basic shape is the
+    // fallback when generated art is missing.
+    auto* SphereMesh = FPackageName::DoesPackageExist(TEXT("/Game/Generated/Environment/SM_BodySphere"))
+        ? LoadObject<UStaticMesh>(nullptr, TEXT("/Game/Generated/Environment/SM_BodySphere.SM_BodySphere")) : nullptr;
+    if (!SphereMesh) SphereMesh = LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Sphere.Sphere"));
     auto* SkyMaterial = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/Generated/Environment/M_SkySphere.M_SkySphere"));
     auto* GiantMaterial = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/Generated/Environment/MI_GasGiant.MI_GasGiant"));
     auto* MoonMaterial = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/Generated/Environment/MI_RockyMoon.MI_RockyMoon"));
@@ -94,7 +108,7 @@ void ABotfCombatScene::SetupEnvironment()
         Body->SetCollisionEnabled(ECollisionEnabled::NoCollision);
         Body->SetCastShadow(false);
         Body->SetRelativeLocation(Location);
-        Body->SetRelativeScale3D(FVector(Radius / 50.f));   // engine sphere radius 50
+        Body->SetRelativeScale3D(BodyScale(Body, Radius));
         Body->RegisterComponent();
         Capture->ShowOnlyComponent(Body);
         return Body;
@@ -253,8 +267,65 @@ void ABotfCombatScene::SetupEffectPools()
     }
 }
 
+void ABotfCombatScene::ConfigureTitleScene(int EmpireId)
+{
+    const int Faction = FMath::Clamp(EmpireId, 1, 5);
+    // Lead ship first; the escorts fly off its quarters. Classes without a generated hull keep the faction mesh.
+    static const TCHAR* Heroes[5][3] = {
+        {TEXT("ship.fed.sovereign"), TEXT("ship.fed.galaxy"), TEXT("ship.fed.defiant")},
+        {TEXT("ship.kli.neghvar"), TEXT("ship.kli.vorcha"), TEXT("ship.kli.bop")},
+        {TEXT("ship.rom.dderidex"), TEXT("ship.rom.valdore"), TEXT("ship.rom.bop")},
+        {TEXT("ship.car.keldon"), TEXT("ship.car.galor"), TEXT("ship.car.hideki")},
+        {TEXT("ship.fer.dkora"), TEXT("ship.fer.nagus"), TEXT("ship.fer.pod")}};
+    // Ship frame (bow +X before the heading turn): the escorts trail high and low, deeper than the hero, so all three
+    // stay in frame against the gas giant.
+    static const FVector Formation[3] = {FVector(0.f, 0.f, 0.f), FVector(-360.f, 165.f, -110.f), FVector(-360.f, 300.f, 90.f)};
+    ConfigureBattle(Faction, Faction, 3, 0, 1999);
+    bTitleScene = true;
+    for (int Index = 0; Index < Ships.Num() && Index < 3; ++Index)
+    {
+        auto* Ship = Ships[Index].Get();
+        if (!Ship) continue;
+        const FString Path = UTF8_TO_TCHAR(botf::assets::generatedShipPath(TCHAR_TO_UTF8(Heroes[Faction - 1][Index])).c_str());
+        UStaticMesh* Mesh = !Path.IsEmpty() && FPackageName::DoesPackageExist(FSoftObjectPath(Path).GetLongPackageName())
+            ? Cast<UStaticMesh>(FSoftObjectPath(Path).TryLoad()) : nullptr;
+        if (Mesh) Ship->SetStaticMesh(Mesh);
+        const float Size = Index == 0 ? 170.f : 110.f; // the hero reads largest
+        const FVector Scale(Size / FMath::Max(1.f, Ship->GetStaticMesh()->GetBounds().SphereRadius));
+        Ship->SetRelativeScale3D(Scale);
+        // The formation turns its bows toward the camera side (-Y) for a three-quarter hero view.
+        const FRotator Heading(0.f, -60.f, 0.f);
+        const FVector At = Heading.RotateVector(Formation[Index]);
+        Ship->SetRelativeRotation(FRotator(0.f, Heading.Yaw, Index == 0 ? 0.f : (Index == 1 ? -8.f : 8.f)));
+        Ship->SetRelativeLocation(At);
+        if (Kinematics.IsValidIndex(Index))
+        {
+            Kinematics[Index].BaseScale = Scale;
+            Kinematics[Index].CurrentPosition = At;
+            Kinematics[Index].bAlive = true;
+            Kinematics[Index].bRetreated = false;
+        }
+        if (ShieldShells.IsValidIndex(Index) && ShieldShells[Index]) ShieldShells[Index]->SetVisibility(false);
+    }
+    // Title lighting: the sun from the side so the gas giant shows a terminator and hulls get a hard rim; the planet
+    // drawn larger. ConfigureBattle restores both.
+    if (SunLight) SunLight->SetRelativeRotation(FRotator(-18.f, 178.f, 0.f));
+    if (Planet) Planet->SetRelativeScale3D(BodyScale(Planet, 8200.f));
+    Capture->PostProcessSettings.LensFlareIntensity = 0.f; // flare ghosts read as smudges on a still backdrop
+    CameraMode = Cam_Cinematic;
+    ResetCameraOrbit();
+    Elapsed = 0.f;
+}
+
 void ABotfCombatScene::ConfigureBattle(int AttackerFaction, int DefenderFaction, int AttackerCount, int DefenderCount, uint32 Seed, uint64 StationSlots)
 {
+    if (bTitleScene)
+    {
+        if (SunLight) SunLight->SetRelativeRotation(FRotator(-38.f, 62.f, 0.f));
+        if (Planet) Planet->SetRelativeScale3D(BodyScale(Planet, 5600.f));
+        Capture->PostProcessSettings.LensFlareIntensity = 0.35f;
+    }
+    bTitleScene = false;
     if (!BattleTexture)
     {
         BattleTexture = NewObject<UTextureRenderTarget2D>(this);
@@ -503,6 +574,9 @@ void ABotfCombatScene::ApplyStationMesh(int VisualIndex, int OwnerFaction)
 
 void ABotfCombatScene::SetPresentationActive(bool bActive)
 {
+#if WITH_DEV_AUTOMATION_TESTS
+    if (!TitleShotPath.IsEmpty()) bActive = true; // a pending -BotfTitleShot keeps rendering until its frame is saved
+#endif
     SetActorTickEnabled(bActive);
     Capture->bCaptureEveryFrame = bActive;
 }
@@ -986,6 +1060,29 @@ void ABotfCombatScene::AnimateCamera(float DeltaSeconds)
     FRotator DesiredRotation = BaseCameraRotation;
     FVector FocusPoint = FVector::ZeroVector;
 
+    if (bTitleScene)
+    {
+        // A slow low pass alongside the formation, the gas giant behind it: the camera looks along +Y (toward the
+        // planet, see SetupEnvironment) from below and slightly ahead of the lead ship, drifting aft over ~70 s.
+        // Looking roughly along the planet's direction (SetupEnvironment) but a little higher, so the gas giant fills
+        // the lower background behind the ships; a slow lateral drift and breathing distance keep it alive.
+        const float T = Elapsed * 0.08f;
+        const FVector View = FVector(0.58f, 0.81f, -0.02f).GetSafeNormal(); // planet sits lower right of centre
+        const FVector Side = FVector::CrossProduct(View, FVector::UpVector).GetSafeNormal();
+        FocusPoint = FVector(-60.f, 60.f, -10.f) - Side * 80.f + Side * FMath::Sin(T) * 40.f; // ships left of centre
+        DesiredLocation = FocusPoint - View * (700.f + FMath::Sin(T * 0.6f) * 70.f) + Side * FMath::Sin(T) * 180.f + FVector(0.f, 0.f, 90.f);
+        DesiredRotation = (FocusPoint - DesiredLocation).Rotation();
+        DesiredRotation.Roll = FMath::Sin(T * 0.8f) * 3.f;
+        Capture->SetRelativeLocation(FMath::VInterpTo(Capture->GetRelativeLocation(), DesiredLocation, DeltaSeconds, 1.2f));
+        Capture->SetRelativeRotation(FMath::RInterpTo(Capture->GetRelativeRotation(), DesiredRotation, DeltaSeconds, 1.2f));
+        const FVector Eye = Capture->GetRelativeLocation();
+        if (SkyDome) SkyDome->SetRelativeLocation(Eye);
+        // Side points screen-left: the gas giant hangs lower right, partly out of frame; the moon upper left.
+        if (Planet) Planet->SetRelativeLocation(Eye + (View - Side * 0.62f - FVector::UpVector * 0.40f).GetSafeNormal() * 26000.f);
+        if (Moon) Moon->SetRelativeLocation(Eye + (View + Side * 0.55f + FVector::UpVector * 0.28f).GetSafeNormal() * 30000.f);
+        return;
+    }
+
     switch (CameraMode)
     {
     case Cam_Chase:
@@ -1126,10 +1223,37 @@ void ABotfCombatScene::AnimateCamera(float DeltaSeconds)
     if (Moon) Moon->SetRelativeLocation(Eye + FVector(-0.42f, 0.88f, 0.10f).GetSafeNormal() * 30000.f);
 }
 
+void ABotfCombatScene::BeginPlay()
+{
+    Super::BeginPlay();
+#if WITH_DEV_AUTOMATION_TESTS
+    if (FParse::Value(FCommandLine::Get(), TEXT("BotfTitleShot="), TitleShotPath))
+    {
+        int32 Empire = 1;
+        FParse::Value(FCommandLine::Get(), TEXT("BotfTitleEmpire="), Empire);
+        ConfigureTitleScene(Empire);
+        SetPresentationActive(true);
+    }
+#endif
+}
+
 void ABotfCombatScene::Tick(float DeltaSeconds)
 {
     Super::Tick(DeltaSeconds);
     Elapsed += DeltaSeconds;
+#if WITH_DEV_AUTOMATION_TESTS
+    if (!TitleShotPath.IsEmpty() && bTitleScene && Elapsed > 6.f && BattleTexture)
+    {
+        if (FArchive* Out = IFileManager::Get().CreateFileWriter(*TitleShotPath))
+        {
+            FImageUtils::ExportRenderTarget2DAsPNG(BattleTexture, *Out);
+            delete Out;
+            UE_LOG(LogTemp, Display, TEXT("BOTF_TITLE_SHOT %s"), *TitleShotPath);
+        }
+        TitleShotPath.Reset();
+        FPlatformMisc::RequestExit(false);
+    }
+#endif
 
     if (bTimelinePlaying)
     {
