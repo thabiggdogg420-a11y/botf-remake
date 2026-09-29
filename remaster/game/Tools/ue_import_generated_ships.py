@@ -225,9 +225,10 @@ def mesh_options():
 
 
 def main():
-    # Interchange (the 5.8 default for FBX) drops the "Mask" colour layer whatever FbxImportUI says; the legacy FBX
-    # importer honours vertex_color_import_option. Scoped to this commandlet run.
-    unreal.SystemLibrary.execute_console_command(None, "Interchange.FeatureFlags.Import.FBX 0")
+    # Interchange (the 5.8 default for FBX) keeps the "Mask" colour layer. The legacy importer lost it on reimport
+    # over existing meshes (every vertex read as white, so whole hulls glowed); it is opt-in, for debugging only.
+    if os.environ.get("BOTF_LEGACY_FBX") == "1":
+        unreal.SystemLibrary.execute_console_command(None, "Interchange.FeatureFlags.Import.FBX 0")
     panels = import_texture("T_HullPanels", False)
     normal = import_texture("T_HullNormal", True)
     parent = build_hull_material(panels, normal)

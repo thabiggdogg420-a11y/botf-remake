@@ -223,6 +223,21 @@ class Ship:
         bm = self.bm
         bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=1e-5)
         bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+        # Armour panelling: large flat faces (plates, wings, boxes; lathed skins keep their curvature) get an inset
+        # panel, raised or recessed, so angular hulls read as plated rather than as bare facets.
+        min_area = (length * 0.03) ** 2
+        flat = [f for f in bm.faces if not f.smooth and f.calc_area() > min_area]
+        for f in flat:
+            if not f.is_valid or self.rng.next() > 0.8:
+                continue
+            size = math.sqrt(f.calc_area())
+            depth = size * self.rng.range(0.006, 0.02) * (1 if self.rng.next() < 0.6 else -1)
+            bmesh.ops.inset_individual(bm, faces=[f], thickness=size * self.rng.range(0.05, 0.12), depth=depth,
+                                       use_even_offset=True)
+            if self.rng.next() < 0.35 and f.is_valid and f.calc_area() > min_area * 4:  # a second, smaller panel
+                bmesh.ops.inset_individual(bm, faces=[f], thickness=math.sqrt(f.calc_area()) * 0.1, depth=-depth * 0.6,
+                                           use_even_offset=True)
+        bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
         # Box-projected UVs at a constant texel density (panel texture tiles every `tile` metres).
         uv = bm.loops.layers.uv.new("UVMap")
         tile = max(4.0, length / 14.0)
@@ -267,26 +282,37 @@ def key_seed(key):
 # ----------------------------------------------------------------------------------------------------------------
 def fed_saucer(s, cx, cz, radius, thick, shape=1.0, windows=True, squash_y=1.0):
     """Lathed saucer around +Z at (cx, cz); a window band on the rim, bridge dome on top, impulse deck aft."""
-    prof = [(-thick * 0.62, 0.0), (-thick * 0.60, radius * 0.18), (-thick * 0.45, radius * 0.62), (-thick * 0.22, radius * 0.93),
-            (0.0, radius), (thick * 0.18, radius * 0.97), (thick * 0.38, radius * 0.78), (thick * 0.55, radius * 0.40),
-            (thick * 0.62, radius * 0.14), (thick * 0.75, radius * 0.08), (thick * 0.78, 0.0)]
+    # Stepped profile (height, radius), bottom to top: ventral curve, rim band, dorsal slope, raised upper tier, bridge.
+    t, R = thick, radius
+    prof = [(-t * 0.70, 0.0), (-t * 0.68, R * 0.10), (-t * 0.62, R * 0.30), (-t * 0.48, R * 0.60), (-t * 0.30, R * 0.84),
+            (-t * 0.14, R * 0.96), (-t * 0.04, R), (t * 0.04, R), (t * 0.16, R * 0.97), (t * 0.22, R * 0.935),
+            (t * 0.28, R * 0.90), (t * 0.34, R * 0.86), (t * 0.46, R * 0.70), (t * 0.52, R * 0.62), (t * 0.62, R * 0.60),
+            (t * 0.72, R * 0.45), (t * 0.80, R * 0.25), (t * 0.84, R * 0.12), (t * 0.95, R * 0.10), (t * 1.05, R * 0.06),
+            (t * 1.08, 0.0)]
     m = Matrix.Translation((cx, 0, cz)) @ Matrix.Rotation(-math.pi / 2, 4, "Y")  # lathe axis -> +Z
-    nr = len(prof)
 
     def colour(i, n, j, nseg):
-        if windows and i in (3, 5):
+        if windows and i in (4, 9, 13, 18):  # two rim decks (narrow bands), the upper-tier wall, the bridge
             return WINDOWS
-        if i == 4:
+        if i == 6:
             return ACCENT
         return HULL
 
-    faces = s.lathe(prof, m, 48, (1.0 * shape, 1.0 * squash_y), colour_fn=colour)
-    s.greebles([f for f in faces if f.normal.z > 0.5], 10, radius * 0.07, up_only=True)
+    faces = s.lathe(prof, m, 64, (1.0 * shape, 1.0 * squash_y), colour_fn=colour)
+    s.greebles([f for f in faces if f.normal.z > 0.5], 14, R * 0.05, up_only=True)
+    # Dorsal and ventral phaser strips (four arcs), the ventral sensor dome.
+    for z, rr in ((t * 0.37, R * 0.82), (-t * 0.40, R * 0.72)):
+        for a0 in (0.15, math.pi + 0.15):
+            s.arc_sweep(rr, a0, a0 + math.pi - 0.3, (R * 0.012, t * 0.035, 6),
+                        Matrix.Translation((cx, 0, cz + z)) @ Matrix.Scale(squash_y, 4, Vector((1, 0, 0))) @ Matrix.Scale(shape, 4, Vector((0, 1, 0))),
+                        steps=28, colour=ACCENT)
+    s.ellipsoid((cx, 0, cz - t * 0.72), (R * 0.07, R * 0.07, t * 0.12), colour=COOL)
     # Phaser strips: the scene fires beams from these sockets.
     for k in range(4):
         a = math.pi * (0.25 + 0.5 * k)
-        s.socket("WPN_Beam", (cx + radius * 0.75 * math.cos(a), radius * 0.75 * math.sin(a) * squash_y, cz + thick * 0.4))
-        s.socket("WPN_Beam", (cx + radius * 0.75 * math.cos(a), radius * 0.75 * math.sin(a) * squash_y, cz - thick * 0.4))
+        # The lathe squash stretches world X by squash_y (oval saucers are longer) and world Y by shape.
+        s.socket("WPN_Beam", (cx + radius * 0.75 * math.cos(a) * squash_y, radius * 0.75 * math.sin(a) * shape, cz + thick * 0.4))
+        s.socket("WPN_Beam", (cx + radius * 0.75 * math.cos(a) * squash_y, radius * 0.75 * math.sin(a) * shape, cz - thick * 0.4))
     # Impulse engines on the aft rim.
     s.box((cx - radius * 0.93, 0, cz + thick * 0.05), (radius * 0.08, radius * 0.45 * squash_y, thick * 0.3), colour=WARM)
     s.socket("ENG", (cx - radius * 0.98, 0, cz))
@@ -295,15 +321,23 @@ def fed_saucer(s, cx, cz, radius, thick, shape=1.0, windows=True, squash_y=1.0):
 
 def fed_nacelle(s, x0, x1, y, z, r, bussard=True, grille_side=0.0):
     length = x1 - x0
-    prof = [(x0, 0.0), (x0 + length * 0.015, r * 0.55), (x0 + length * 0.06, r * 0.9), (x0 + length * 0.2, r),
-            (x1 - length * 0.12, r), (x1 - length * 0.05, r * 0.92), (x1, r * 0.55), (x1, 0.0)]
-    s.lathe(prof, Matrix.Translation((0, y, z)), 20, (1.0, 1.15))
+    # Flattened oval body: tapered aft cap, long straight run, a raised collar behind the bussard.
+    prof = [(x0, 0.0), (x0 + length * 0.01, r * 0.45), (x0 + length * 0.04, r * 0.8), (x0 + length * 0.12, r),
+            (x1 - length * 0.17, r), (x1 - length * 0.14, r * 1.08), (x1 - length * 0.1, r * 1.08),
+            (x1 - length * 0.07, r * 0.95), (x1 - length * 0.02, r * 0.75), (x1, r * 0.35), (x1, 0.0)]
+
+    def colour(i, n, j, nseg):
+        return ACCENT if i == 5 else HULL
+
+    s.lathe(prof, Matrix.Translation((0, y, z)), 24, (1.0, 0.8), colour_fn=colour)
     if bussard:
-        s.ellipsoid((x1 - length * 0.03, y, z), (length * 0.06, r * 0.82, r * 0.92), colour=WARM)
-    # Warp grille on the inboard side (or both sides when centred).
+        s.ellipsoid((x1 - length * 0.035, y, z), (length * 0.07, r * 0.86, r * 0.72), colour=WARM)
+    # Warp grilles: a long glowing strip on the inboard side (both sides when centred), and a dorsal spine.
     side = -1 if y > 0 else 1
-    gy = y + side * r * 0.9 if grille_side == 0.0 else y + grille_side * r * 0.9
-    s.box((x0 + length * 0.55, gy, z), (length * 0.62, r * 0.18, r * 0.9), colour=COOL)
+    for gs in ((side,) if grille_side == 0.0 else (grille_side,)):
+        s.box((x0 + length * 0.5, y + gs * r * 0.93, z), (length * 0.6, r * 0.12, r * 0.6), colour=COOL)
+    s.box((x0 + length * 0.48, y, z + r * 0.78), (length * 0.66, r * 0.35, r * 0.14), colour=COOL)
+    s.box((x0 + length * 0.02, y, z), (length * 0.03, r * 0.9, r * 0.6), colour=WARM)  # aft exhaust
     s.socket("ENG", (x0, y, z))
 
 
@@ -315,10 +349,17 @@ def fed_engineering(s, x0, x1, z, r, deflector=True, squash=(1.0, 1.0)):
     def colour(i, n, j, nseg):
         return WINDOWS if i == 3 and (j % 3 == 0) else HULL
 
-    faces = s.lathe(prof, Matrix.Translation((0, 0, z)), 28, squash, colour_fn=colour)
-    s.greebles([f for f in faces if abs(f.normal.y) > 0.6], 8, r * 0.18)
+    faces = s.lathe(prof, Matrix.Translation((0, 0, z)), 32, squash, colour_fn=colour)
+    s.greebles([f for f in faces if abs(f.normal.y) > 0.6], 10, r * 0.14)
     if deflector:
-        s.ellipsoid((x1 - length * 0.02, 0, z - r * 0.05 * squash[1]), (length * 0.03, r * 0.55 * squash[0], r * 0.55 * squash[1]), colour=COOL)
+        # Glowing dish inside a raised accent ring, facing forward.
+        dz = z - r * 0.05 * squash[1]
+        s.ellipsoid((x1 - length * 0.015, 0, dz), (length * 0.03, r * 0.5 * squash[0], r * 0.5 * squash[1]), colour=COOL)
+        ring = Matrix.Translation((x1 - length * 0.02, 0, dz)) @ Matrix.Rotation(math.pi / 2, 4, "Y") @ \
+            Matrix.Scale(squash[1], 4, Vector((1, 0, 0))) @ Matrix.Scale(squash[0], 4, Vector((0, 1, 0)))
+        s.arc_sweep(r * 0.58, 0, 2 * math.pi, (r * 0.07, r * 0.07, 8), ring, steps=32, colour=ACCENT)
+    # Shuttle bay doors at the stern.
+    s.box((x0 + length * 0.03, 0, z + r * 0.2 * squash[1]), (length * 0.04, r * 0.7 * squash[0], r * 0.5 * squash[1]), colour=WINDOWS)
     s.socket("WPN_Torp", (x1 - length * 0.08, 0, z + r * 0.55 * squash[1]))
     s.socket("WPN_Torp", (x0 + length * 0.05, 0, z + r * 0.4 * squash[1]))
     s.socket("WPN_Beam", (x0 + length * 0.5, 0, z - r * squash[1]))
@@ -337,19 +378,25 @@ def build_fed(s, p):
     r = s.rng
     if arch == "explorer":  # Galaxy / Sovereign / Ambassador / Luna / Olympic
         sr = L * p.get("saucer", 0.26)
-        st = sr * 0.22
+        st = sr * 0.26
         sx = L * 0.5 - sr
         fed_saucer(s, sx, 0, sr, st, squash_y=p.get("oval", 1.0))
-        ex0, ex1 = -L * 0.5 + L * 0.12, sx - sr * 0.2
-        er = sr * 0.28
-        fed_engineering(s, ex0, ex1, -st * 1.3, er, squash=(1.0, 0.8))
-        s.box((sx - sr * 0.55, 0, -st * 0.6), (sr * 0.6, er * 0.9, st * 1.6))  # neck
+        ex0, ex1 = -L * 0.5 + L * 0.12, sx - sr * 0.15
+        er = sr * 0.32
+        ez = -st * 1.45
+        fed_engineering(s, ex0, ex1, ez, er, squash=(1.0, 0.8))
+        # Swept neck: wide where it meets the saucer's belly, narrowing onto the engineering hull's back.
+        s.plate([(sx - sr * 0.15, er * 0.45, -st * 0.4), (sx - sr * 0.15, -er * 0.45, -st * 0.4),
+                 (sx - sr * 0.85, er * 0.55, -st * 0.4), (sx - sr * 0.85, -er * 0.55, -st * 0.4),
+                 (sx - sr * 0.55, er * 0.35, ez + er * 0.6), (sx - sr * 0.55, -er * 0.35, ez + er * 0.6),
+                 (sx - sr * 1.25, er * 0.45, ez + er * 0.7), (sx - sr * 1.25, -er * 0.45, ez + er * 0.7)])
+        s.box((sx - sr * 0.5, 0, (-st * 0.4 + ez) * 0.5), (sr * 0.5, er * 0.72, st * 0.5), colour=WINDOWS)
         ny = sr * p.get("span", 0.62)
         nz = -st * 0.4 + L * p.get("nac_z", 0.0)
         nx0, nx1 = -L * 0.5, -L * 0.5 + L * p.get("nac_len", 0.52)
         for side in (-1, 1):
             fed_nacelle(s, nx0, nx1, side * ny, nz, L * 0.028)
-            fed_pylon(s, (ex0 + L * 0.2, side * er * 0.7, -st * 1.2), (nx0 + L * 0.22, side * ny, nz), L * 0.12, L * 0.01)
+            fed_pylon(s, (ex0 + L * 0.2, side * er * 0.7, ez), (nx0 + L * 0.22, side * ny, nz), L * 0.12, L * 0.012)
     elif arch == "cruiser":  # Constitution / Excelsior / refit
         sr = L * p.get("saucer", 0.22)
         st = sr * 0.25
@@ -387,21 +434,54 @@ def build_fed(s, p):
         h = L * p.get("height", 0.2)
         nose = L * 0.5
         tail = -L * 0.5
-        s.plate([(nose, 0, 0), (nose - L * 0.15, w * 0.18, h * 0.35), (nose - L * 0.15, -w * 0.18, h * 0.35), (nose - L * 0.15, 0, -h * 0.4),
-                 (tail + L * 0.25, w * 0.5, h * 0.3), (tail + L * 0.25, -w * 0.5, h * 0.3), (tail + L * 0.25, w * 0.5, -h * 0.35), (tail + L * 0.25, -w * 0.5, -h * 0.35),
-                 (tail, w * 0.38, h * 0.25), (tail, -w * 0.38, h * 0.25), (tail, w * 0.38, -h * 0.25), (tail, -w * 0.38, -h * 0.25)], colour=HULL)
-        # Raised command deck, window band, integrated nacelles.
-        s.box((L * 0.02, 0, h * 0.45), (L * 0.3, w * 0.22, h * 0.3), colour=WINDOWS)
-        for side in (-1, 1):
-            fed_nacelle(s, tail - L * 0.02, tail + L * 0.55, side * w * 0.52, -h * 0.05, h * 0.3)
-            s.socket("WPN_Pulse", (nose - L * 0.12, side * w * 0.15, h * 0.1))
-        if p.get("pod", False):  # Akira-style weapons pod on a catamaran
-            s.box((-L * 0.25, 0, h * 0.75), (L * 0.35, w * 0.4, h * 0.35), colour=HULL)
-            for k in range(3):
-                s.socket("WPN_Torp", (-L * 0.1, (k - 1) * w * 0.12, h * 0.8))
-        s.box((nose - L * 0.03, 0, -h * 0.05), (L * 0.05, w * 0.12, h * 0.25), colour=COOL)
-        s.socket("WPN_Torp", (nose - L * 0.05, 0, -h * 0.1))
-        s.socket("WPN_Beam", (0, 0, h * 0.5))
+        if p.get("pod", False):  # Akira: a broad saucer, twin catamaran arms, a torpedo pod bridging them
+            sr = L * 0.33
+            st = sr * 0.26
+            sx = nose - sr
+            fed_saucer(s, sx, 0, sr, st, shape=1.12)
+            az = -st * 0.1
+            for side in (-1, 1):
+                s.plate([(sx - sr * 0.3, side * sr * 0.55, az + st * 0.3), (sx - sr * 0.3, side * sr * 0.55, az - st * 0.3),
+                         (sx - sr * 0.3, side * sr * 0.9, az + st * 0.3), (sx - sr * 0.3, side * sr * 0.9, az - st * 0.3),
+                         (tail + L * 0.05, side * w * 0.42, az + st * 0.35), (tail + L * 0.05, side * w * 0.42, az - st * 0.35),
+                         (tail + L * 0.05, side * w * 0.58, az + st * 0.35), (tail + L * 0.05, side * w * 0.58, az - st * 0.35)])
+                fed_nacelle(s, tail - L * 0.02, tail + L * 0.4, side * w * 0.5, az - st * 0.9, L * 0.028)
+                s.box((tail + L * 0.2, side * w * 0.5, az + st * 1.0), (L * 0.12, w * 0.06, st * 1.4))  # pod strut
+            pod = [(tail + L * 0.1, 0.0), (tail + L * 0.11, 0.6), (tail + L * 0.16, 1.0), (tail + L * 0.36, 1.0), (tail + L * 0.42, 0.55), (tail + L * 0.43, 0.0)]
+            s.lathe([(x, r * st * 0.8) for x, r in pod], Matrix.Translation((0, 0, az + st * 1.9)), 24, (w * 0.62 / (st * 0.8), 1.0),
+                    colour_fn=lambda i, n, j, ns: WINDOWS if i == 2 and j % 4 == 0 else HULL)
+            for k in range(5):
+                s.socket("WPN_Torp", (tail + L * 0.42, (k - 2) * w * 0.1, az + st * 1.9))
+            s.socket("WPN_Beam", (sx, 0, st * 0.5))
+        else:
+            # Smooth arrowhead: a lathed body flattened into a wedge, a raised command deck with a window band, and
+            # nacelles faired into the flanks.
+            # Per-class variation (seeded by key): nose length, deck placement, nacelles above/below, tail fins.
+            nose_k = r.range(0.28, 0.46)
+            deck_x = r.range(-0.12, 0.1) * L
+            nac_z = r.pick((-0.05, -0.05, 0.35, -0.4)) * h
+            prof = [(tail, 0.0), (tail, 0.28), (tail + L * 0.04, 0.42), (tail + L * 0.3, 0.5), (nose - L * nose_k, 0.48),
+                    (nose - L * nose_k * 0.5, 0.32), (nose - L * 0.05, 0.14), (nose, 0.0)]
+            s.lathe([(x, rr * w) for x, rr in prof], Matrix(), 40, (1.0, h / w),
+                    colour_fn=lambda i, n, j, ns: ACCENT if i == 4 and (j % (ns // 2)) < 2 else HULL)
+
+            def deck_colour(i, n, j, ns):  # a window band running round the deck's equator
+                return WINDOWS if 2 <= i <= n - 4 and j in (0, ns // 2 - 1, ns // 2, ns - 1) else HULL
+
+            s.ellipsoid((deck_x, 0, h * 0.42), (L * r.range(0.15, 0.24), w * 0.16, h * 0.32), colour_fn=deck_colour)
+            for side in (-1, 1):
+                fed_nacelle(s, tail - L * 0.02, tail + L * 0.55, side * w * 0.46, nac_z, h * 0.3)
+                if abs(nac_z) > h * 0.2:  # raised or dropped nacelles need a pylon
+                    fed_pylon(s, (tail + L * 0.25, side * w * 0.3, 0), (tail + L * 0.25, side * w * 0.46, nac_z), L * 0.14, h * 0.12)
+            for k in range(r.int(3)):  # dorsal fins
+                fx = tail + L * (0.08 + 0.1 * k)
+                ft = w * 0.012
+                s.plate([(fx + L * 0.08, sy * ft, h * 0.3) for sy in (-1, 1)] + [(fx, sy * ft, h * 0.3) for sy in (-1, 1)] +
+                        [(fx + L * 0.01, sy * ft * 0.6, h * 0.8) for sy in (-1, 1)] + [(fx - L * 0.03, sy * ft * 0.6, h * 0.8) for sy in (-1, 1)])
+                s.socket("WPN_Pulse", (nose - L * 0.12, side * w * 0.15, h * 0.1))
+            s.ellipsoid((nose - L * 0.06, 0, -h * 0.12), (L * 0.05, w * 0.1, h * 0.14), colour=COOL)  # navigational deflector
+            s.socket("WPN_Torp", (nose - L * 0.05, 0, -h * 0.1))
+            s.socket("WPN_Beam", (0, 0, h * 0.5))
     elif arch == "science":  # Nova / Oberth / Intrepid / Nebula / Olympic
         sr = L * p.get("saucer", 0.3)
         st = sr * 0.25
@@ -918,8 +998,27 @@ def spec_for(key, display):
     return spec
 
 
+class Varied(dict):
+    """Spec whose numeric proportions (explicit or builder defaults) vary by up to +/-12% per class key, so classes
+    sharing an archetype (every Ferengi marauder, every Romulan bird) get their own silhouette. Length is exact."""
+
+    def __init__(self, key, spec):
+        super().__init__(spec)
+        self.key = key
+
+    def get(self, name, default=None):
+        value = super().get(name, default)
+        if name == "length" or not isinstance(value, float):  # counts (nacelles=2) and flags stay exact
+            return value
+        return value * (0.88 + 0.24 * (key_seed(self.key + "/" + name) % 10000) / 10000.0)
+
+    def __getitem__(self, name):
+        return self.get(name) if name != "length" and name in self else super().__getitem__(name)
+
+
 def build(key, spec):
     s = Ship(key, key_seed(key))
+    spec = Varied(key, spec)
     builder = spec["builder"]
     if builder == "station":
         build_station(s, spec)

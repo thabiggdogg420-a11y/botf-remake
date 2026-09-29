@@ -94,8 +94,8 @@ Run9 (editor `-game`, 1080p offscreen): avg 6.05 ms (165 fps), p95 7.78 ms, p99 
   post-processing. Shields stay hidden and flare only on impact.
 - Ships: `blender_generate_ships.py` makes 159 hulls, one per `ship.*` key, with canon lengths, a vertex mask
   (windows, warm glow, cool glow, accent) and `WPN_*`/`ENG_*` sockets.
-  - `ue_import_generated_ships.py` imports them with `M_ShipHull` and one colour scheme per faction. It forces the
-    legacy FBX importer, because Interchange drops the colour layer.
+  - `ue_import_generated_ships.py` imports them with `M_ShipHull` and one colour scheme per faction. It uses
+    Interchange: the legacy FBX importer lost the colour layer on reimport, which made whole hulls glow.
   - `ApplyShipMesh` uses the generated hull whenever there is no local model. Stations use their faction's
     generated starbase or outpost.
 - Effects: `ue_build_vfx.py` builds additive `M_FxGlow` for beams, torpedoes and flashes, `M_FxFireball`
