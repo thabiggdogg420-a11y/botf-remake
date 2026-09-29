@@ -21,6 +21,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -52,6 +53,19 @@ struct TimelineConfig {
     double bankPerSlideCell = 14.0;   // Roll (deg) per lateral cell slid.
     double maxBankDegrees = 35.0;
     int playerEmpire = 0;             // Barks only for this empire's ships (0 = none).
+    // 3D flight. Presentation only: the rules stay on BOTF's 2D grid. Heights are cells above (+) or below the plane.
+    double smallShipMeters = 260.0;   // Escorts and smaller fly livelier and form wings; unknown length counts as capital.
+    double capitalHeightSpread = 0.45;
+    double smallHeightSpread = 1.5;
+    double sideHeightOffset = 0.3;    // The first side holds a little above the plane, the other below.
+    double capitalClimbCells = 0.3;   // Height change per maneuver around the ship's home height.
+    double smallClimbCells = 1.1;
+    double maxPitchDegrees = 32.0;
+    double smallBankScale = 1.6;      // Small craft roll hard into turns; capital ships lumber.
+    double capitalBankScale = 0.7;
+    double wingRadiusCells = 2.5;     // Small ships of one side starting this close together fly as a wing...
+    int wingSize = 4;                 // ...of up to this many, in finger-four on the first (lowest id) ship.
+    double wingSpacingCells = 0.55;
 };
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -67,12 +81,15 @@ struct ShipInfo {
     bool startsCloaked = false;
     double x = 0.0, y = 0.0; // Pose used when the ship has no maneuver or pose-carrying event this round.
     int facing = 0;
+    double lengthMeters = 0.0; // Canon length of the shown class, 0 = unknown (flight style, wings).
 };
 
 struct PlanePose {
     double x = 0.0, y = 0.0; // Tactical cells.
     double facing = 0.0;     // Degrees, 0 = +x, 90 = +y.
     double bank = 0.0;       // Roll in degrees, positive = right wing down.
+    double altitude = 0.0;   // Cells above (+) or below the tactical plane (presentation only).
+    double pitch = 0.0;      // Degrees, nose up positive.
     bool operator==(const PlanePose&) const = default;
 };
 
@@ -81,6 +98,7 @@ struct FlightSegment {
     PlanePose from, to;
     double tan0x = 0.0, tan0y = 0.0, tan1x = 0.0, tan1y = 0.0; // Hermite tangents (cells over the segment).
     double bankPeak = 0.0;
+    double pitchPeak = 0.0;
     int slideCells = 0;
     int maneuver = 0;
     bool operator==(const FlightSegment&) const = default;
@@ -111,12 +129,17 @@ struct ShipTrack {
     double decloakAt = -1.0; // Decloak fade starts.
     double hideAt = -1.0;    // Ship vanishes (explosion swallowed it, or it warped out), -1 = never.
     double cloakSeconds = 1.0;
+    double lengthMeters = 0.0;
+    bool small = false;      // Escort size or smaller (TimelineConfig::smallShipMeters).
+    int wingLeader = 0;      // Fleet id of the wing leader this ship holds station on, 0 = flies its own track.
+    double wingBack = 0.0, wingSide = 0.0, wingUp = 0.0; // Station in the leader's frame (cells: aft, port, up).
 
+    // The ship's own flight (RoundTimeline::poseOf adds wing stations).
     PlanePose poseAt(double t) const {
         PlanePose p = initial;
         for (const auto& s : segments) {
             if (t <= s.t0) return p;
-            if (t >= s.t1) { p = s.to; p.bank = 0.0; continue; }
+            if (t >= s.t1) { p = s.to; p.bank = 0.0; p.pitch = 0.0; continue; }
             const double u = (t - s.t0) / std::max(1e-9, s.t1 - s.t0);
             const double e = smoothstep(u);
             const double e2 = e * e, e3 = e2 * e;
@@ -126,6 +149,8 @@ struct ShipTrack {
             p.facing = wrapDegrees(s.from.facing + shortestTurn(s.from.facing, s.to.facing) * e);
             const double sn = std::sin(kPiValue * clamp01(u));
             p.bank = s.bankPeak * sn * sn;
+            p.altitude = s.from.altitude + (s.to.altitude - s.from.altitude) * e;
+            p.pitch = s.pitchPeak * sn * sn;
             return p;
         }
         return p;
@@ -231,6 +256,27 @@ struct RoundTimeline {
     const ShipTrack* track(int fleetId) const {
         for (const auto& s : ships) if (s.fleetId == fleetId) return &s;
         return nullptr;
+    }
+    // Where ships[index] is at time t: its own flight, or its station in its leader's wing. When the leader is
+    // gone (destroyed, warped out) the wingman peels off back to its own track over two ticks.
+    PlanePose poseOf(std::size_t index, double t) const {
+        const ShipTrack& tr = ships[index];
+        const PlanePose own = tr.poseAt(t);
+        const ShipTrack* lead = tr.wingLeader != 0 ? track(tr.wingLeader) : nullptr;
+        if (!lead) return own;
+        double w = 1.0;
+        if (lead->hideAt >= 0.0 && t > lead->hideAt) w = 1.0 - smoothstep((t - lead->hideAt) / std::max(1e-6, 2.0 * tickSeconds));
+        if (w <= 0.0) return own;
+        const PlanePose lp = lead->poseAt(t);
+        const double f = lp.facing * kPiValue / 180.0;
+        PlanePose p;
+        p.x = own.x + (lp.x - std::cos(f) * tr.wingBack - std::sin(f) * tr.wingSide - own.x) * w;
+        p.y = own.y + (lp.y - std::sin(f) * tr.wingBack + std::cos(f) * tr.wingSide - own.y) * w;
+        p.altitude = own.altitude + (lp.altitude + tr.wingUp - own.altitude) * w;
+        p.facing = wrapDegrees(own.facing + shortestTurn(own.facing, lp.facing) * w);
+        p.bank = own.bank + (lp.bank - own.bank) * w;
+        p.pitch = own.pitch + (lp.pitch - own.pitch) * w;
+        return p;
     }
     bool allConsumed() const {
         for (int c : consumed) if (c <= 0) return false;
@@ -360,6 +406,72 @@ inline PathPoint torpedoPoint(double sx, double sy, double tx, double ty, double
 // Builder
 // ---------------------------------------------------------------------------------------------------------------
 
+// Deterministic value in [0, 1) for a ship and a salt (heights must not flicker between replays of a round).
+inline double unitHash(int a, int b) {
+    std::uint32_t h = static_cast<std::uint32_t>(a) * 0x9E3779B1u ^ (static_cast<std::uint32_t>(b) + 0x7F4A7C15u) * 0x85EBCA77u;
+    h ^= h >> 15; h *= 0x2C1B3C6Du; h ^= h >> 12; h *= 0x297A2D39u; h ^= h >> 15;
+    return static_cast<double>(h & 0xFFFFFFu) / static_cast<double>(0x1000000u);
+}
+inline bool isSmallShip(double lengthMeters, const TimelineConfig& cfg) {
+    return lengthMeters > 0.0 && lengthMeters <= cfg.smallShipMeters;
+}
+// The height a ship holds between maneuvers: capital ships near the plane, small craft spread well above and below,
+// each side offset so the two fleets read as layers.
+inline double homeHeight(int fleetId, double lengthMeters, bool firstSide, const TimelineConfig& cfg = {}) {
+    const double spread = isSmallShip(lengthMeters, cfg) ? cfg.smallHeightSpread : cfg.capitalHeightSpread;
+    return (unitHash(fleetId, 1) * 2.0 - 1.0) * spread + (firstSide ? cfg.sideHeightOffset : -cfg.sideHeightOffset);
+}
+
+// Presentation-only spacing. Ships are drawn at true scale, so a capital ship spans several grid cells and hulls that
+// share or neighbour a cell would pass through each other. spacingOffsets() returns, per body, the smallest shift
+// (cells: plane x, plane y, altitude) that keeps every pair of active hulls at least (ra + rb) apart, preferring
+// height over sideways moves (verticalBias) so the grid positions the rules use stay readable from above.
+// Deterministic: pairs resolve in index order, coincident hulls split by index. The scene smooths the result.
+struct SpacingBody { double x = 0.0, y = 0.0, alt = 0.0, radius = 0.0; bool active = true; };
+struct SpacingOffset { double x = 0.0, y = 0.0, alt = 0.0; };
+inline std::vector<SpacingOffset> spacingOffsets(const std::vector<SpacingBody>& bodies, int iterations = 10,
+                                                 double verticalBias = 2.5, double maxShift = 3.0) {
+    const std::size_t n = bodies.size();
+    std::vector<SpacingOffset> off(n);
+    for (int pass = 0; pass < iterations; ++pass) {
+        bool moved = false;
+        for (std::size_t i = 0; i < n; ++i) {
+            if (!bodies[i].active || bodies[i].radius <= 0.0) continue;
+            for (std::size_t j = i + 1; j < n; ++j) {
+                if (!bodies[j].active || bodies[j].radius <= 0.0) continue;
+                const double dx = (bodies[j].x + off[j].x) - (bodies[i].x + off[i].x);
+                const double dy = (bodies[j].y + off[j].y) - (bodies[i].y + off[i].y);
+                const double da = (bodies[j].alt + off[j].alt) - (bodies[i].alt + off[i].alt);
+                const double dist = std::sqrt(dx * dx + dy * dy + da * da);
+                const double need = bodies[i].radius + bodies[j].radius;
+                if (dist >= need) continue;
+                // Push direction: the current separation with height weighted up and tilted at least ~27 degrees out
+                // of the plane (level neighbours stack rather than shove sideways); straight up/down when coincident.
+                const double flat = std::sqrt(dx * dx + dy * dy);
+                const double up = da > 1e-9 ? 1.0 : da < -1e-9 ? -1.0 : ((i + j) % 2 == 0 ? 1.0 : -1.0);
+                double ux = dx, uy = dy, ua = up * std::max(std::abs(da) * verticalBias, 0.5 * flat);
+                double len = std::sqrt(ux * ux + uy * uy + ua * ua);
+                if (len < 1e-9) { ux = 0.0; uy = 0.0; ua = up; len = 1.0; }
+                ux /= len; uy /= len; ua /= len;
+                // The push along u must close the gap along the true separation; split by the other hull's size so a
+                // cruiser moves less than the escort beside it.
+                const double along = std::max(0.3, (ux * dx + uy * dy + ua * da) / std::max(dist, 1e-9));
+                const double gap = (need - dist) / (dist < 1e-9 ? 1.0 : along);
+                const double wi = bodies[j].radius / need, wj = bodies[i].radius / need;
+                off[i].x -= ux * gap * wi; off[i].y -= uy * gap * wi; off[i].alt -= ua * gap * wi;
+                off[j].x += ux * gap * wj; off[j].y += uy * gap * wj; off[j].alt += ua * gap * wj;
+                moved = true;
+            }
+        }
+        if (!moved) break;
+    }
+    for (auto& o : off) {
+        const double len = std::sqrt(o.x * o.x + o.y * o.y + o.alt * o.alt);
+        if (len > maxShift) { const double k = maxShift / len; o.x *= k; o.y *= k; o.alt *= k; }
+    }
+    return off;
+}
+
 inline bool eventHasPose(CombatEventKind k) {
     return k == CombatEventKind::ManeuverStart || k == CombatEventKind::ManeuverEnd || k == CombatEventKind::Fire ||
         k == CombatEventKind::Ram || k == CombatEventKind::Retreated || k == CombatEventKind::Disengage ||
@@ -458,9 +570,66 @@ inline RoundTimeline buildRoundTimeline(const std::vector<CombatEvent>& events, 
             const double cross = std::cos(fa) * dy - std::sin(fa) * dx;
             bank += (cross > 0 ? -1.0 : 1.0) * cfg.bankPerSlideCell * e.value;
         }
-        s.bankPeak = std::clamp(bank, -cfg.maxBankDegrees, cfg.maxBankDegrees);
+        // Small craft roll harder (and may exceed the capital-ship limit); capital ships lumber.
+        double maxBank = cfg.maxBankDegrees;
+        if (const auto* si = infoFor(e.fleetId); si && si->lengthMeters > 0.0) {
+            const bool small = isSmallShip(si->lengthMeters, cfg);
+            bank *= small ? cfg.smallBankScale : cfg.capitalBankScale;
+            if (small) maxBank *= cfg.smallBankScale;
+        }
+        s.bankPeak = std::clamp(bank, -maxBank, maxBank);
         t.segments.push_back(s);
         ++tl.consumed[i];
+    }
+
+    // Heights (3D flight): each ship holds a home height and climbs or dives around it with every maneuver, pitching
+    // its nose with the climb. A ship sitting still (no horizontal run) rises or sinks level on thrusters.
+    const int firstOwner = info.empty() ? 0 : info.front().ownerId;
+    for (auto& t : tl.ships) {
+        const auto* si = infoFor(t.fleetId);
+        t.lengthMeters = si ? si->lengthMeters : 0.0;
+        t.small = isSmallShip(t.lengthMeters, cfg);
+        const bool firstSide = t.ownerId == firstOwner;
+        const double home = homeHeight(t.fleetId, t.lengthMeters, firstSide, cfg);
+        const double climb = t.small ? cfg.smallClimbCells : cfg.capitalClimbCells;
+        double h = home;
+        t.initial.altitude = h;
+        for (std::size_t k = 0; k < t.segments.size(); ++k) {
+            auto& s = t.segments[k];
+            s.from.altitude = h;
+            h = home + (unitHash(t.fleetId, 101 + static_cast<int>(k)) * 2.0 - 1.0) * climb;
+            s.to.altitude = h;
+            const double run = std::hypot(s.to.x - s.from.x, s.to.y - s.from.y);
+            s.pitchPeak = run > 0.3
+                ? std::clamp(std::atan2(s.to.altitude - s.from.altitude, run) * 180.0 / kPiValue * 1.5, -cfg.maxPitchDegrees, cfg.maxPitchDegrees)
+                : 0.0;
+        }
+    }
+
+    // Wings: escort-size ships of one side that start close together fly finger-four on the lowest-id ship among them
+    // (wingman aft-port, element lead aft-starboard, its wingman further aft-starboard).
+    {
+        static constexpr double kStations[3][3] = {{1.0, 1.0, 0.25}, {1.0, -1.0, -0.25}, {2.0, -2.0, 0.0}}; // aft, port, up
+        std::vector<ShipTrack*> pool;
+        for (auto& t : tl.ships) if (t.small) pool.push_back(&t);
+        std::sort(pool.begin(), pool.end(), [](const ShipTrack* a, const ShipTrack* b) { return a->fleetId < b->fleetId; });
+        std::vector<bool> used(pool.size(), false);
+        for (std::size_t i = 0; i < pool.size(); ++i) {
+            if (used[i]) continue;
+            used[i] = true;
+            int members = 1;
+            for (std::size_t j = i + 1; j < pool.size() && members < std::max(1, cfg.wingSize); ++j) {
+                if (used[j] || pool[j]->ownerId != pool[i]->ownerId) continue;
+                if (std::hypot(pool[j]->initial.x - pool[i]->initial.x, pool[j]->initial.y - pool[i]->initial.y) > cfg.wingRadiusCells) continue;
+                used[j] = true;
+                const auto& st = kStations[members - 1];
+                pool[j]->wingLeader = pool[i]->fleetId;
+                pool[j]->wingBack = st[0] * cfg.wingSpacingCells;
+                pool[j]->wingSide = st[1] * cfg.wingSpacingCells;
+                pool[j]->wingUp = st[2] * cfg.wingSpacingCells;
+                ++members;
+            }
+        }
     }
 
     // Weapon, impact and state jobs.

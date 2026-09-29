@@ -1,0 +1,553 @@
+"""Blender (5.x, headless): turn downloaded base models into game-ready hero ships (private, local only).
+
+    blender -b --factory-startup --python blender_hero_ships.py -- [--keys ship.fed.*,ship.kli.bop] [--preview]
+
+Reads ArtSource/HeroShips/hero-ships.json; sources come from LocalAssets/incoming (gitignored). For each ship:
+  1. Imports the source (glTF, or OBJ with the axes given in objAxes), drops cameras/lights/empties, joins all parts.
+  2. Orients it so the named forward axis becomes the nose (+X) and the named up axis the top (+Z), centres it on
+     its bounds and scales it to canon length in metres (the procedural hulls' convention).
+  3. Cleans it (merges coincident vertices, drops loose ones) and decimates to maxTriangles when above it.
+  4. Upgrades the materials. Slots sharing a texture set are merged. Each keeps its own paint and gets:
+     BC (base colour), N (normal: the source's own, else relief derived from the paint's luminance),
+     ORM (occlusion from panel cavities, roughness from the paint, metallic from the config or the source's
+     metallicRoughness map), E (the source's emissive windows/engines). Untextured models ("plating": fac) are
+     unwrapped at the procedural texel density instead and use the faction's plated hull material in Unreal.
+  5. Places weapon/engine sockets from the hull shape (nose torpedo, dorsal and ventral beams, aft engine), or the
+     config's "sockets" entries ([name, x, y, z] as fractions of the length, nose +X).
+  6. Writes LocalAssets/ships/<key>/SM_<slug>.fbx, T_<slug>_<slot>_{BC,N,ORM,E}.png and hero.json (slots, sockets,
+     length), plus four preview renders when --preview is given (default C:/Dev/botf-shots/hero).
+Tools/ue_import_hero_ships.py brings the result into /Game/Local and the resolved manifest.
+"""
+import fnmatch
+import json
+import math
+import os
+import sys
+
+import bmesh
+import bpy
+import numpy as np
+from mathutils import Matrix, Vector
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+GAME = os.path.normpath(os.path.join(HERE, ".."))
+CONFIG = os.path.join(GAME, "ArtSource", "HeroShips", "hero-ships.json")
+INCOMING = os.path.join(GAME, "LocalAssets", "incoming")
+OUT_ROOT = os.path.join(GAME, "LocalAssets", "ships")
+AXES = {"+X": Vector((1, 0, 0)), "-X": Vector((-1, 0, 0)), "+Y": Vector((0, 1, 0)), "-Y": Vector((0, -1, 0)),
+        "+Z": Vector((0, 0, 1)), "-Z": Vector((0, 0, -1))}
+MAX_TEX = 4096
+
+
+def arg(name, default=None):
+    argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
+    if name in argv:
+        i = argv.index(name)
+        return argv[i + 1] if i + 1 < len(argv) and not argv[i + 1].startswith("--") else True
+    return default
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# Geometry
+# ---------------------------------------------------------------------------------------------------------------
+
+def import_source(ship):
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+    path = os.path.join(INCOMING, ship["source"])
+    ext = os.path.splitext(path)[1].lower()
+    if ext in (".gltf", ".glb"):
+        bpy.ops.import_scene.gltf(filepath=path)
+    elif ext == ".obj":
+        fwd, up = ship.get("objAxes", ["NEGATIVE_Z", "Y"])
+        bpy.ops.wm.obj_import(filepath=path, forward_axis=fwd, up_axis=up)
+    elif ext == ".fbx":
+        bpy.ops.import_scene.fbx(filepath=path)
+    else:
+        raise RuntimeError("unsupported source " + ext)
+    meshes = [o for o in bpy.context.scene.objects if o.type == "MESH"]
+    if not meshes:
+        raise RuntimeError("no meshes in " + path)
+    # Un-parent first: importers put a root empty (axis conversion, unit scale) above the meshes, and deleting it
+    # while children still hang off it would drop that transform.
+    bpy.ops.object.select_all(action="DESELECT")
+    for o in meshes:
+        o.select_set(True)
+    bpy.context.view_layer.objects.active = meshes[0]
+    bpy.ops.object.parent_clear(type="CLEAR_KEEP_TRANSFORM")
+    for ob in list(bpy.context.scene.objects):
+        if ob.type != "MESH":
+            bpy.data.objects.remove(ob, do_unlink=True)
+    bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
+    # Old exports carry stray helpers (beam guides, lights as meshes) far from the hull: drop parts whose centre lies
+    # well outside the spread of all the vertices.
+    def verts(o):
+        a = np.empty(len(o.data.vertices) * 3, dtype=np.float64)
+        o.data.vertices.foreach_get("co", a)
+        return a.reshape(-1, 3)
+    every = np.concatenate([verts(o) for o in meshes])
+    centre = np.median(every, axis=0)
+    reach = float(np.percentile(np.linalg.norm(every - centre, axis=1), 95)) * 1.6
+    for o in list(meshes):
+        v = verts(o)
+        if len(meshes) > 1 and (not len(v) or np.linalg.norm((v.min(axis=0) + v.max(axis=0)) / 2 - centre) > reach):
+            meshes.remove(o)
+            bpy.data.objects.remove(o, do_unlink=True)
+    bpy.ops.object.select_all(action="DESELECT")
+    for o in meshes:
+        o.select_set(True)
+    bpy.context.view_layer.objects.active = max(meshes, key=lambda o: len(o.data.vertices))
+    if len(meshes) > 1:
+        bpy.ops.object.join()
+    hull = bpy.context.view_layer.objects.active
+    return hull
+
+
+def bounds(ob):
+    co = np.empty(len(ob.data.vertices) * 3, dtype=np.float64)
+    ob.data.vertices.foreach_get("co", co)
+    co = co.reshape(-1, 3)
+    return co, co.min(axis=0), co.max(axis=0)
+
+
+def orient_and_scale(hull, ship):
+    fwd, up = AXES[ship.get("forward", "+X")], AXES[ship.get("up", "+Z")]
+    side = up.cross(fwd)
+    # Rows are where the source axes go: source forward -> +X, source side -> +Y, source up -> +Z.
+    rot = Matrix((fwd, side, up)).to_4x4()
+    hull.data.transform(rot)
+    _, lo, hi = bounds(hull)
+    centre = Vector(((lo + hi) / 2).tolist())
+    hull.data.transform(Matrix.Translation(-centre))
+    length = float(hi[0] - lo[0])
+    scale = ship["lengthMeters"] / max(length, 1e-9)
+    hull.data.transform(Matrix.Scale(scale, 4))
+    hull.data.update()
+
+
+def clean(hull, max_tris):
+    length = float(np.ptp(bounds(hull)[0][:, 0]))
+    bm = bmesh.new()
+    bm.from_mesh(hull.data)
+    bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=length * 2e-6)
+    loose = [v for v in bm.verts if not v.link_faces]
+    bmesh.ops.delete(bm, geom=loose, context="VERTS")
+    bm.to_mesh(hull.data)
+    bm.free()
+    tris = tri_count(hull)
+    if max_tris and tris > max_tris:
+        mod = hull.modifiers.new("Decimate", "DECIMATE")
+        mod.ratio = max_tris / float(tris)
+        mod.use_collapse_triangulate = True
+        bpy.context.view_layer.objects.active = hull
+        bpy.ops.object.modifier_apply(modifier=mod.name)
+    return tris
+
+
+def tri_count(ob):
+    return sum(len(p.vertices) - 2 for p in ob.data.polygons)
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# Materials
+# ---------------------------------------------------------------------------------------------------------------
+
+def upstream_image(socket, depth=0):
+    """First image texture feeding a socket, and the output channel it came through (R/G/B/A or '')."""
+    if not socket.is_linked or depth > 8:
+        return None, ""
+    link = socket.links[0]
+    node = link.from_node
+    if node.type == "TEX_IMAGE" and node.image:
+        return node.image, ""
+    if node.type in ("SEPARATE_COLOR", "SEPRGB", "SEPARATE_RGB"):
+        img, _ = upstream_image(node.inputs[0], depth + 1)
+        return img, {"Red": "R", "Green": "G", "Blue": "B", "R": "R", "G": "G", "B": "B"}.get(link.from_socket.name, "")
+    for inp in node.inputs:
+        img, ch = upstream_image(inp, depth + 1)
+        if img:
+            return img, ch
+    return None, ""
+
+
+def material_sources(mat):
+    info = {"bc": None, "n": None, "mr": None, "e": None, "tint": (0.6, 0.6, 0.6), "estrength": 1.0}
+    if not mat or not mat.node_tree:
+        return info
+    bsdf = next((n for n in mat.node_tree.nodes if n.type == "BSDF_PRINCIPLED"), None)
+    if not bsdf:
+        return info
+    info["bc"], _ = upstream_image(bsdf.inputs["Base Color"])
+    if not info["bc"]:
+        info["tint"] = tuple(bsdf.inputs["Base Color"].default_value[:3])
+    info["n"], _ = upstream_image(bsdf.inputs["Normal"])
+    rimg, rch = upstream_image(bsdf.inputs["Roughness"])
+    if rimg and rch == "G" and "metallic" in rimg.name.lower():
+        info["mr"] = rimg
+    info["e"], _ = upstream_image(bsdf.inputs["Emission Color"])
+    info["estrength"] = float(bsdf.inputs["Emission Strength"].default_value) if info["e"] else 0.0
+    return info
+
+
+def pixels(img):
+    w, h = img.size
+    a = np.empty(w * h * 4, dtype=np.float32)
+    img.pixels.foreach_get(a)
+    return a.reshape(h, w, 4)
+
+
+def blur(a, r):
+    """Separable box blur (wrapping), radius r pixels; three passes approximate a gaussian."""
+    for _ in range(3):
+        for axis in (0, 1):
+            c = np.cumsum(np.concatenate([a.take(range(-r - 1, 0), axis=axis), a, a.take(range(0, r), axis=axis)], axis=axis), axis=axis)
+            n = a.shape[axis]
+            a = (c.take(range(2 * r + 1, 2 * r + 1 + n), axis=axis) - c.take(range(0, n), axis=axis)) / (2 * r + 1)
+    return a
+
+
+def save_png(arr, path, colour):
+    h, w = arr.shape[:2]
+    rgba = np.ones((h, w, 4), dtype=np.float32)
+    rgba[..., :arr.shape[2]] = np.clip(arr, 0, 1)
+    img = bpy.data.images.new(os.path.basename(path), w, h, alpha=False)
+    img.colorspace_settings.name = "sRGB" if colour else "Non-Color"
+    img.pixels.foreach_set(rgba.ravel())
+    img.filepath_raw = path
+    img.file_format = "PNG"
+    img.save()
+    bpy.data.images.remove(img)
+
+
+def build_textures(slot, src, out_dir, stem, metallic):
+    """Writes the slot's BC/N/ORM/E maps. Returns the file names (None where a map is absent)."""
+    files = {"bc": None, "n": None, "orm": None, "e": None}
+    if not src["bc"]:
+        return files
+    bc = pixels(src["bc"])[..., :3]
+    h, w = bc.shape[:2]
+    step = max(1, int(math.ceil(max(w, h) / MAX_TEX)))
+    bc = bc[::step, ::step]
+    h, w = bc.shape[:2]
+    files["bc"] = f"{stem}_{slot}_BC.png"
+    save_png(bc, os.path.join(out_dir, files["bc"]), True)
+    lum = bc @ np.array([0.2126, 0.7152, 0.0722], dtype=np.float32)
+    k = max(1, w // 512)
+    fine = blur(lum, k)
+    broad = blur(lum, 12 * k)
+    cavity = np.clip((broad - fine) * 4.0, 0, 1)
+    if src["n"]:
+        n = pixels(src["n"])[..., :3]
+        if n.shape[:2] != (h, w):
+            ys = (np.arange(h) * n.shape[0] / h).astype(int)
+            xs = (np.arange(w) * n.shape[1] / w).astype(int)
+            n = n[ys][:, xs]
+    else:
+        height = fine - broad
+        strength = 6.0 * (w / 1024.0)
+        dx = (np.roll(height, -1, 1) - np.roll(height, 1, 1)) * strength
+        dy = (np.roll(height, -1, 0) - np.roll(height, 1, 0)) * strength
+        n = np.stack([-dx, dy, np.ones_like(dx)], axis=-1)
+        n /= np.linalg.norm(n, axis=-1, keepdims=True)
+        n = n * 0.5 + 0.5
+    files["n"] = f"{stem}_{slot}_N.png"
+    save_png(n, os.path.join(out_dir, files["n"]), False)
+    ao = np.clip(1.0 - cavity * 1.6, 0.35, 1.0)
+    if src["mr"]:
+        mr = pixels(src["mr"])
+        ys = (np.arange(h) * mr.shape[0] / h).astype(int)
+        xs = (np.arange(w) * mr.shape[1] / w).astype(int)
+        mr = mr[ys][:, xs]
+        rough, metal = mr[..., 1], mr[..., 2]
+    else:
+        # Paint drives roughness: darker, dirtier plating is rougher; bright trim and cavities differ.
+        rough = np.clip(0.58 - (lum - lum.mean()) * 0.55 + cavity * 0.25, 0.22, 0.92)
+        metal = np.full_like(lum, metallic)
+    files["orm"] = f"{stem}_{slot}_ORM.png"
+    save_png(np.stack([ao, rough, metal], axis=-1), os.path.join(out_dir, files["orm"]), False)
+    if src["e"]:
+        e = pixels(src["e"])[..., :3]
+        if e.max() > 0.02:
+            files["e"] = f"{stem}_{slot}_E.png"
+            save_png(e, os.path.join(out_dir, files["e"]), True)
+    return files
+
+
+def merge_slots(hull):
+    """One slot per distinct texture set; returns [(slot name, sources)] in slot order."""
+    mats = list(hull.data.materials)
+    sigs, order, remap = {}, [], {}
+    for i, mat in enumerate(mats):
+        src = material_sources(mat)
+        sig = (src["bc"].name if src["bc"] else "tint%.2f,%.2f,%.2f" % src["tint"],
+               src["e"].name if src["e"] else "", src["n"].name if src["n"] else "")
+        if sig not in sigs:
+            sigs[sig] = len(order)
+            order.append(src)
+        remap[i] = sigs[sig]
+    idx = np.empty(len(hull.data.polygons), dtype=np.int32)
+    hull.data.polygons.foreach_get("material_index", idx)
+    if len(mats):
+        idx = np.vectorize(lambda m: remap.get(int(m), 0))(idx).astype(np.int32)
+    hull.data.materials.clear()
+    names = []
+    for k in range(max(1, len(order))):
+        name = "M%02d" % k
+        hull.data.materials.append(bpy.data.materials.new(name))
+        names.append(name)
+    hull.data.polygons.foreach_set("material_index", idx)
+    return list(zip(names, order or [material_sources(None)]))
+
+
+def plating_unwrap(hull, length):
+    """Untextured source: one hull slot, UVs at the procedural texel density (1 UV unit = max(4, L/14) m)."""
+    bpy.context.view_layer.objects.active = hull
+    hull.select_set(True)
+    bpy.ops.object.mode_set(mode="EDIT")
+    bpy.ops.mesh.select_all(action="SELECT")
+    bpy.ops.uv.smart_project(angle_limit=math.radians(55), island_margin=0.002)
+    bpy.ops.object.mode_set(mode="OBJECT")
+    me = hull.data
+    uv = me.uv_layers.active.data
+    area3d = sum(p.area for p in me.polygons)
+    area_uv = 0.0
+    for p in me.polygons:
+        pts = [uv[i].uv for i in p.loop_indices]
+        area_uv += abs(sum(pts[i].x * pts[i - 1].y - pts[i - 1].x * pts[i].y for i in range(len(pts)))) / 2
+    s = math.sqrt(area3d / max(area_uv, 1e-9)) / max(4.0, length / 14.0)
+    for d in uv:
+        d.uv = d.uv * s
+    me.materials.clear()
+    me.materials.append(bpy.data.materials.new("M00"))
+    if "Mask" not in me.color_attributes:
+        me.color_attributes.new("Mask", "BYTE_COLOR", "CORNER")
+    col = me.color_attributes["Mask"]
+    zero = np.zeros(len(col.data) * 4, dtype=np.float32)
+    col.data.foreach_set("color", zero)
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# Sockets, preview, export
+# ---------------------------------------------------------------------------------------------------------------
+
+def auto_sockets(hull, length):
+    co, lo, hi = bounds(hull)
+    half_w = max(hi[1] - lo[1], 1e-6) * 0.5
+    core = co[np.abs(co[:, 1]) < half_w * 0.15]
+    core = core if len(core) else co
+    nose = core[core[:, 0].argmax()]
+    front = co[co[:, 0] > lo[0] + (hi[0] - lo[0]) * 0.45]
+    top = front[front[:, 2].argmax()]
+    bottom = front[front[:, 2].argmin()]
+    aft = core[core[:, 0] < lo[0] + (hi[0] - lo[0]) * 0.1]
+    eng_z = float(aft[:, 2].mean()) if len(aft) else 0.0
+    return [("WPN_Torp_01", (nose[0] - length * 0.01, 0.0, nose[2])),
+            ("WPN_Beam_01", (top[0], 0.0, top[2])),
+            ("WPN_Beam_02", (bottom[0], 0.0, bottom[2])),
+            ("ENG_01", (lo[0], 0.0, eng_z))]
+
+
+def add_sockets(hull, ship, length):
+    sockets = auto_sockets(hull, length)
+    if ship.get("sockets"):
+        sockets = [(s[0], (s[1] * length, s[2] * length, s[3] * length)) for s in ship["sockets"]]
+    for name, at in sockets:
+        e = bpy.data.objects.new("SOCKET_" + name, None)
+        e.location = Vector(at)
+        e.empty_display_size = length * 0.01
+        bpy.context.scene.collection.objects.link(e)
+        e.parent = hull
+    return [s[0] for s in sockets]
+
+
+PLATING_TINT = {"fed": (0.46, 0.48, 0.52), "kli": (0.17, 0.22, 0.17), "rom": (0.20, 0.36, 0.26), "car": (0.50, 0.41, 0.27),
+                "fer": (0.52, 0.32, 0.17)}  # HullColor of MI_Hull_<fac> (ue_import_generated_ships.py SCHEMES)
+
+
+def preview_material(name, files, out_dir, tint):
+    mat = bpy.data.materials.new("P_" + name)
+    if mat.node_tree is None:
+        mat.use_nodes = True
+    nt = mat.node_tree
+    bsdf = nt.nodes.get("Principled BSDF")
+
+    def tex(fn, colour, folder=out_dir):
+        node = nt.nodes.new("ShaderNodeTexImage")
+        node.image = bpy.data.images.load(os.path.join(folder, fn))
+        node.image.colorspace_settings.name = "sRGB" if colour else "Non-Color"
+        return node
+    if files.get("plating"):
+        # Mirrors M_ShipHull: panel tone (R) around the hull colour, seams (G) darkened, UVs x PanelScale 0.35.
+        fac = files["plating"]
+        gen = os.path.join(GAME, "ArtSource", "Generated", "Ships")
+        own = os.path.exists(os.path.join(gen, "T_HullPanels_%s.png" % fac))
+        uv = nt.nodes.new("ShaderNodeTexCoord")
+        sc = nt.nodes.new("ShaderNodeVectorMath")
+        sc.operation = "SCALE"
+        sc.inputs["Scale"].default_value = 0.35
+        nt.links.new(uv.outputs["UV"], sc.inputs[0])
+        panels = tex("T_HullPanels_%s.png" % fac if own else "T_HullPanels.png", False, gen)
+        normal = tex("T_HullNormal_%s.png" % fac if own else "T_HullNormal.png", False, gen)
+        for node in (panels, normal):
+            nt.links.new(sc.outputs["Vector"], node.inputs["Vector"])
+        sep = nt.nodes.new("ShaderNodeSeparateColor")
+        nt.links.new(panels.outputs["Color"], sep.inputs["Color"])
+        tone = nt.nodes.new("ShaderNodeMath")
+        tone.operation = "MULTIPLY_ADD"
+        nt.links.new(sep.outputs["Red"], tone.inputs[0])
+        tone.inputs[1].default_value, tone.inputs[2].default_value = 0.8, 0.6
+        seam = nt.nodes.new("ShaderNodeMath")
+        seam.operation = "MULTIPLY_ADD"
+        nt.links.new(sep.outputs["Green"], seam.inputs[0])
+        seam.inputs[1].default_value, seam.inputs[2].default_value = -0.6, 1.0
+        shade = nt.nodes.new("ShaderNodeMath")
+        shade.operation = "MULTIPLY"
+        nt.links.new(tone.outputs[0], shade.inputs[0])
+        nt.links.new(seam.outputs[0], shade.inputs[1])
+        col = nt.nodes.new("ShaderNodeMix")
+        col.data_type = "RGBA"
+        col.blend_type = "MULTIPLY"
+        col.inputs["Factor"].default_value = 1.0
+        col.inputs["A"].default_value = (*PLATING_TINT.get(fac, (0.45, 0.45, 0.48)), 1)
+        nt.links.new(shade.outputs[0], col.inputs["B"])
+        nt.links.new(col.outputs["Result"], bsdf.inputs["Base Color"])
+        nm = nt.nodes.new("ShaderNodeNormalMap")
+        nt.links.new(normal.outputs["Color"], nm.inputs["Color"])
+        nt.links.new(nm.outputs["Normal"], bsdf.inputs["Normal"])
+        nt.links.new(panels.outputs["Alpha"], bsdf.inputs["Roughness"])
+        bsdf.inputs["Metallic"].default_value = 0.5
+        return mat
+    if files["bc"]:
+        nt.links.new(tex(files["bc"], True).outputs["Color"], bsdf.inputs["Base Color"])
+    else:
+        bsdf.inputs["Base Color"].default_value = (*tint, 1)
+    if files["n"]:
+        nm = nt.nodes.new("ShaderNodeNormalMap")
+        nt.links.new(tex(files["n"], False).outputs["Color"], nm.inputs["Color"])
+        nt.links.new(nm.outputs["Normal"], bsdf.inputs["Normal"])
+    if files["orm"]:
+        sep = nt.nodes.new("ShaderNodeSeparateColor")
+        nt.links.new(tex(files["orm"], False).outputs["Color"], sep.inputs["Color"])
+        nt.links.new(sep.outputs["Green"], bsdf.inputs["Roughness"])
+        nt.links.new(sep.outputs["Blue"], bsdf.inputs["Metallic"])
+    else:
+        bsdf.inputs["Metallic"].default_value = 0.5
+        bsdf.inputs["Roughness"].default_value = 0.45
+    if files["e"]:
+        nt.links.new(tex(files["e"], True).outputs["Color"], bsdf.inputs["Emission Color"])
+        bsdf.inputs["Emission Strength"].default_value = 4.0
+    return mat
+
+
+def render_previews(hull, length, key, preview_dir, slot_files, out_dir):
+    scene = bpy.context.scene
+    keep = [m.name for m in hull.data.materials]
+    for i, (name, files, tint) in enumerate(slot_files):
+        hull.data.materials[i] = preview_material(name, files, out_dir, tint)
+    world = bpy.data.worlds.new("W")
+    world.color = (0.012, 0.014, 0.02)
+    scene.world = world
+    for rot, energy, colour in (((45, 0, 35), 4.5, (1.0, 0.96, 0.9)), ((-50, 0, 210), 1.2, (0.55, 0.65, 1.0)),
+                                ((160, 0, 100), 0.8, (1.0, 0.8, 0.6))):
+        light = bpy.data.objects.new("Sun", bpy.data.lights.new("Sun", "SUN"))
+        light.data.energy = energy
+        light.data.color = colour
+        light.rotation_euler = [math.radians(a) for a in rot]
+        scene.collection.objects.link(light)
+    cam = bpy.data.objects.new("Cam", bpy.data.cameras.new("Cam"))
+    scene.collection.objects.link(cam)
+    scene.camera = cam
+    engines = [x.identifier for x in bpy.types.RenderSettings.bl_rna.properties["engine"].enum_items]
+    scene.render.engine = "BLENDER_EEVEE_NEXT" if "BLENDER_EEVEE_NEXT" in engines else "BLENDER_EEVEE"
+    scene.render.resolution_x, scene.render.resolution_y = 1600, 900
+    scene.view_settings.view_transform = "AgX"
+    co, lo, hi = bounds(hull)
+    radius = float(np.linalg.norm(co, axis=1).max())
+    for tag, d, ortho in (("", (0.9, -1.05, 0.55), False), ("-side", (0, -1, 0), True), ("-top", (0, -0.0001, 1), True),
+                          ("-front", (1, 0, 0), True)):
+        cam.data.type = "ORTHO" if ortho else "PERSP"
+        cam.data.ortho_scale = length * 1.15
+        cam.data.lens = 55
+        cam.data.clip_start = length * 0.01
+        cam.data.clip_end = length * 30
+        # Frame the bounding sphere in the vertical field of view (16:9, 55 mm on a 36 mm sensor).
+        fov_v = 2 * math.atan(36 * 9 / 16 / 2 / 55)
+        cam.location = Vector(d).normalized() * (length * 3 if ortho else radius / math.sin(fov_v / 2) * 1.05)
+        cam.rotation_euler = (-cam.location).to_track_quat("-Z", "Y" if tag == "-top" else "Z").to_euler()
+        if tag == "-top":  # nose to the right, port side up, like the side view
+            cam.rotation_euler = (Matrix.Rotation(math.pi, 4, "Z") @ cam.rotation_euler.to_matrix().to_4x4()).to_euler()
+            cam.location = Vector((0, 0, length * 3))
+        scene.render.filepath = os.path.join(preview_dir, key + ".hero%s.png" % tag)
+        bpy.ops.render.render(write_still=True)
+    for i, name in enumerate(keep):
+        hull.data.materials[i] = bpy.data.materials[name]
+
+
+def build(ship, defaults, preview_dir):
+    key = ship["key"]
+    fac, slug = key.split(".")[1], key.split(".", 2)[2]
+    stem = "T_%s_%s" % (fac, slug)
+    out_dir = os.path.join(OUT_ROOT, key)
+    os.makedirs(out_dir, exist_ok=True)
+    hull = import_source(ship)
+    orient_and_scale(hull, ship)
+    tris_in = clean(hull, ship.get("maxTriangles", defaults["maxTriangles"]))
+    length = float(ship["lengthMeters"])
+    metallic = float(ship.get("metallic", defaults["metallic"]))
+    slots = []
+    if ship.get("plating"):
+        plating_unwrap(hull, length)
+        slots.append({"name": "M00", "plating": ship["plating"], "bc": None, "n": None, "orm": None, "e": None,
+                      "tint": None, "emissive": 0.0})
+        slot_files = [("M00", {"bc": None, "n": None, "orm": None, "e": None, "plating": ship["plating"]}, (0.45, 0.47, 0.5))]
+    else:
+        slot_files = []
+        for name, src in merge_slots(hull):
+            files = build_textures(name, src, out_dir, stem, metallic)
+            slots.append({"name": name, **files, "tint": None if files["bc"] else list(src["tint"]),
+                          "metallic": metallic, "emissive": src["estrength"]})
+            slot_files.append((name, files, src["tint"]))
+    bpy.ops.object.select_all(action="DESELECT")
+    hull.select_set(True)
+    bpy.context.view_layer.objects.active = hull
+    bpy.ops.object.shade_smooth_by_angle(angle=math.radians(40), keep_sharp_edges=True)
+    hull.name = hull.data.name = "SM_%s" % slug
+    sockets = add_sockets(hull, ship, length)
+    fbx = os.path.join(out_dir, "SM_%s.fbx" % slug)
+    bpy.ops.export_scene.fbx(filepath=fbx, use_selection=False, apply_unit_scale=True, global_scale=1.0, axis_forward="-Y",
+                             axis_up="Z", object_types={"MESH", "EMPTY"}, mesh_smooth_type="FACE", colors_type="LINEAR",
+                             use_mesh_modifiers=True, add_leaf_bones=False, bake_space_transform=False, path_mode="STRIP")
+    report = {"key": key, "faction": fac, "file": os.path.basename(fbx), "lengthMeters": length, "trianglesIn": tris_in,
+              "triangles": tri_count(hull), "sockets": sockets, "slots": slots, "source": ship["source"]}
+    with open(os.path.join(out_dir, "hero.json"), "w", encoding="utf-8") as f:
+        json.dump(report, f, indent=1)
+    if preview_dir:
+        render_previews(hull, length, key, preview_dir, slot_files, out_dir)
+    return report
+
+
+def main():
+    config = json.load(open(CONFIG, encoding="utf-8-sig"))
+    defaults = config.get("defaults", {})
+    pats = arg("--keys").split(",") if isinstance(arg("--keys"), str) else None
+    preview = arg("--preview")
+    preview_dir = (preview if isinstance(preview, str) else r"C:\Dev\botf-shots\hero") if preview else None
+    if preview_dir:
+        os.makedirs(preview_dir, exist_ok=True)
+    done = total = 0
+    for ship in config["ships"]:
+        if pats and not any(fnmatch.fnmatch(ship["key"], p) for p in pats):
+            continue
+        total += 1
+        try:
+            r = build(ship, defaults, preview_dir)
+            done += 1
+            print("HERO OK  %-22s %7d -> %6d tris  %d slots  %d sockets" % (r["key"], r["trianglesIn"], r["triangles"],
+                                                                         len(r["slots"]), len(r["sockets"])))
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            print("HERO ERR %s  %s" % (ship["key"], e))
+    print("hero ships %d/%d" % (done, total))
+
+
+main()

@@ -1,0 +1,20 @@
+{
+ "_comment": "Hero ships built from third-party base models (private, local only). Sources are paths under LocalAssets/incoming (gitignored); nothing here is a binary. forward/up name the source axes (after import) that become the ship's nose (+X) and top (+Z). lengthMeters is canon length. Tools/blender_hero_ships.py builds them.",
+ "defaults": {"maxTriangles": 160000, "metallic": 0.5},
+ "ships": [
+  {"key": "ship.fed.sovereign", "source": "fed.sovereign/scene.gltf", "forward": "-Y", "up": "+Z", "lengthMeters": 685, "metallic": 0.55},
+  {"key": "ship.fed.galaxy", "source": "fed.galaxy/scene.gltf", "forward": "+Y", "up": "+Z", "lengthMeters": 642, "metallic": 0.55},
+  {"key": "ship.fed.defiant", "source": "fed.defiant/scene.gltf", "forward": "-Y", "up": "+Z", "lengthMeters": 170, "metallic": 0.55, "plating": "fed"},
+  {"key": "ship.kli.neghvar", "source": "kli.neghvar/scene.gltf", "forward": "-Y", "up": "+Z", "lengthMeters": 682, "metallic": 0.45, "plating": "kli"},
+  {"key": "ship.kli.bop", "source": "kli.bop/scene.gltf", "forward": "+Y", "up": "+Z", "lengthMeters": 110, "metallic": 0.45},
+  {"key": "ship.kli.vorcha", "source": "kli.vorcha.3ds/vorcha.obj", "objAxes": ["Y", "Z"], "forward": "+Y", "up": "+Z", "lengthMeters": 481, "metallic": 0.45, "plating": "kli"},
+  {"key": "ship.rom.dderidex", "source": "rom.dderidex/scene.gltf", "forward": "-Y", "up": "+Z", "lengthMeters": 1041, "metallic": 0.4},
+  {"key": "ship.rom.valdore", "source": "rom.valdore/scene.gltf", "forward": "-Y", "up": "+Z", "lengthMeters": 843, "metallic": 0.4},
+  {"key": "ship.rom.bop", "source": "rom.bop/scene.gltf", "forward": "+Y", "up": "+Z", "lengthMeters": 180, "metallic": 0.4},
+  {"key": "ship.car.galor", "source": "car.galor/scene.gltf", "forward": "-Y", "up": "+Z", "lengthMeters": 371, "metallic": 0.45},
+  {"key": "ship.car.hideki", "source": "car.hideki.3ds/hedeki.obj", "objAxes": ["Y", "Z"], "forward": "+Y", "up": "+Z", "lengthMeters": 80, "metallic": 0.45, "plating": "car"},
+  {"key": "ship.fer.dkora", "source": "fer.dkora.obj/Ferengi Marauder Full.obj", "forward": "+Y", "up": "+Z", "lengthMeters": 350, "metallic": 0.55},
+  {"key": "ship.fer.shuttle", "source": "fer.shuttle/scene.gltf", "forward": "-Y", "up": "+Z", "lengthMeters": 15, "metallic": 0.55},
+  {"key": "ship.fer.pod", "source": "fer.shuttle/scene.gltf", "forward": "-Y", "up": "+Z", "lengthMeters": 45, "metallic": 0.55}
+ ]
+}

@@ -120,6 +120,43 @@ Run9 (editor `-game`, 1080p offscreen): avg 6.05 ms (165 fps), p95 7.78 ms, p99 
   in (`DirectoriesToAlwaysCook` includes /Game/Generated). 3 turns, 50-ship encounter, save/load at round 7,
   avg 6.29 ms (159 fps), p95 9.27 ms, p99 12.38 ms.
 
+## PC session 2026-09-30: hero ship models, true scale, 3D flight
+
+Simon's calls: true scale with a small-craft floor; 3D flight over the unchanged 2D rules; escorts and smaller fly
+in wings; upgrade each model's own textures, plating for untextured ones.
+
+- **Models.** 14 fan-made models were downloaded to the gitignored `LocalAssets/incoming/` (Sketchfab glTF,
+  Trekmeshes OBJ/3DS, GameFront Vor'Cha Pack). None are committed. `ArtSource/HeroShips/hero-ships.json` lists each source,
+  its axes and canon length. Keys: Sovereign, Galaxy, Defiant, Negh'Var, Klingon BoP, Vor'cha, D'deridex, Valdore,
+  Romulan BoP, Galor, Hideki, D'Kora, Ferengi shuttle and pod.
+- **Pipeline** (all under `Tools/`):
+  - `convert_3ds.py`: 3DS → OBJ.
+  - `blender_hero_ships.py`: orient, scale to canon metres, weld and decimate to 160k tris, merge material slots,
+    bake BC/N/ORM/E from the source textures, plating UVs for untextured hulls, auto weapon/engine sockets, FBX plus
+    `hero.json`, EEVEE previews.
+  - `ue_import_hero_ships.py`: `M_ShipHero`, per-slot MIs, 4 LODs, `/Game/Local/Ships/...`, merges
+    `LocalAssets/ships/hero-manifest.json` into `resolved-manifest.json`. `Import-Assets.ps1` keeps those entries.
+- **Scale.** `BotfAssetCatalog.h` `displayLengthForLength`: 350 m = 120 units, a 60 m floor and a 1000-unit cap.
+  Meshes are scaled by their X length.
+- **3D flight** (`BotfCombatTimeline.h`):
+  - Home heights: capitals stay near the plane, small craft spread ±1.5 cells, and each side sits on its own layer.
+  - Per-maneuver climbs with pitch.
+  - Bank scaled by class.
+  - Finger-four wings for escorts within 2.5 cells: the lowest fleet id leads; wingmen peel off when it dies.
+  - `spacingOffsets` pushes overlapping true-scale hulls apart, mostly in height. The scene eases the offset, and
+    rules positions are untouched.
+- **Proof.**
+  - client-logic-tests: 516 checks, 0 failures.
+  - UE build: succeeded.
+  - `ue_import_hero_ships.py`: 14/14 imported.
+  - Showcase 6v6: 180 fps avg, p99 9.6 ms.
+  - Shots: `pc-screens/battle-hero-overview.png`, `pc-screens/battle-hero-chase.png`.
+- **Open.**
+  - Keldon and Nagus still use generated hulls; plan: variants of the Galor and D'Kora.
+  - The Klingon plating reads low-contrast.
+  - The Sovereign's window texture sparkles at a distance.
+  - The Vor'Cha Pack NIFs are unused: no diffuse textures.
+
 ## PC session 2026-09-29: Godot (Windows 11, RTX 4090)
 
 The cloud's Godot 4.5 client, built natively on Windows and run for the first time here. The mingw DLL was not needed.

@@ -373,6 +373,20 @@ if (-not $SkipConvert) {
     }
 }
 
+# ---------------------------------------------------------------- hero ships (Tools\ue_import_hero_ships.py)
+# Hero ships are built and imported outside this script; their entries live in LocalAssets\ships\hero-manifest.json
+# and win over whatever this run resolved for the same key.
+$heroPath = Join-Path $LocalRoot 'ships\hero-manifest.json'
+if (Test-Path -LiteralPath $heroPath) {
+    $hero = Get-Content -LiteralPath $heroPath -Raw | ConvertFrom-Json
+    foreach ($p in $hero.assets.PSObject.Properties) {
+        $rec = [ordered]@{}
+        foreach ($f in $p.Value.PSObject.Properties) { $rec[$f.Name] = $f.Value }
+        if ($resolved.Contains($p.Name) -and -not $rec.fallback) { $rec.fallback = $resolved[$p.Name].fallback }
+        $resolved[$p.Name] = $rec
+    }
+}
+
 # ---------------------------------------------------------------- write resolved manifest + credits
 $out = [ordered]@{ generated = (Get-Date).ToString('s'); manifest = (Resolve-Path -LiteralPath $ManifestPath).ProviderPath
     ueContentRoot = $manifest.ueContentRoot; assets = $resolved }

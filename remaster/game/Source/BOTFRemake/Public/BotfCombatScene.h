@@ -41,6 +41,8 @@ struct FShipKinematicState
     float FlareStrength = 0.f;
     float DestructionProgress = 0.f;
     FVector BaseScale = FVector::OneVector; // Scale-normalised mesh scale; the destruction shrink multiplies it.
+    double LengthMeters = 0.0;              // Canon length of the shown class (0 = unknown): flight style and wings.
+    FVector SpacingOffset = FVector::ZeroVector; // Smoothed presentation shift that keeps true-scale hulls apart.
     // Rules 3 timeline playback: state at the start of the shown round (ships already gone get no track).
     bool bAliveAtRoundStart = true;
     int ShieldsAtRoundStart = 0;
@@ -200,8 +202,8 @@ private:
     void FinishTimeline();
     void CacheSlotSockets(int32 VisualIndex);
     int32 SlotForFleet(int32 FleetId) const;
-    FVector PlaneToScene(double X, double Y, int32 VisualIndex) const;
-    FQuat PoseRotation(double FacingDegrees, double BankDegrees) const;
+    FVector PlaneToScene(double X, double Y, double AltitudeCells) const;
+    FQuat PoseRotation(double FacingDegrees, double BankDegrees, double PitchDegrees = 0.0) const;
     FVector MuzzleLocation(int32 VisualIndex, int32 Family, int32 MountIndex, int32 EmitterIndex) const;
     float ShipRadius(int32 VisualIndex) const;
     UNiagaraSystem* FindNiagara(const std::vector<std::string>& Keys);

@@ -282,17 +282,37 @@ void ABotfCombatScene::ConfigureTitleScene(int EmpireId)
     static const FVector Formation[3] = {FVector(0.f, 0.f, 0.f), FVector(-360.f, 165.f, -110.f), FVector(-360.f, 300.f, 90.f)};
     ConfigureBattle(Faction, Faction, 3, 0, 1999);
     bTitleScene = true;
+    const UBotfAssetRegistry* Registry = UBotfAssetRegistry::Get();
+    double HeroLength = 0.0;
     for (int Index = 0; Index < Ships.Num() && Index < 3; ++Index)
     {
         auto* Ship = Ships[Index].Get();
         if (!Ship) continue;
         FString Key = Heroes[Faction - 1][Index];
         if (TitleShipOverride.IsValidIndex(Index)) Key = TitleShipOverride[Index];
-        const FString Path = UTF8_TO_TCHAR(botf::assets::generatedShipPath(TCHAR_TO_UTF8(*Key)).c_str());
-        UStaticMesh* Mesh = !Path.IsEmpty() && FPackageName::DoesPackageExist(FSoftObjectPath(Path).GetLongPackageName())
-            ? Cast<UStaticMesh>(FSoftObjectPath(Path).TryLoad()) : nullptr;
+        // A local model (hero ship) first, else the class's procedural hull.
+        UStaticMesh* Mesh = nullptr;
+        double LengthMeters = 0.0;
+        if (Registry)
+        {
+            const auto Resolution = Registry->GetCatalog().resolve(TCHAR_TO_UTF8(*Key));
+            LengthMeters = Resolution.targetLengthMeters;
+            if (!Resolution.placeholder && Resolution.resolvedKey == Resolution.requestedKey)
+                Mesh = Cast<UStaticMesh>(FSoftObjectPath(UTF8_TO_TCHAR(Resolution.primaryPath().c_str())).TryLoad());
+        }
+        if (!Mesh)
+        {
+            const FString Path = UTF8_TO_TCHAR(botf::assets::generatedShipPath(TCHAR_TO_UTF8(*Key)).c_str());
+            if (!Path.IsEmpty() && FPackageName::DoesPackageExist(FSoftObjectPath(Path).GetLongPackageName()))
+                Mesh = Cast<UStaticMesh>(FSoftObjectPath(Path).TryLoad());
+        }
         if (Mesh) Ship->SetStaticMesh(Mesh);
-        const float Size = Index == 0 ? 170.f : 110.f; // the hero reads largest
+        // The hero reads largest; escorts keep their canon size relative to it (a Defiant beside a Sovereign is a
+        // quarter of its length), never below a readable minimum.
+        if (Index == 0) HeroLength = LengthMeters;
+        float Size = 170.f;
+        if (Index > 0)
+            Size = (HeroLength > 0.0 && LengthMeters > 0.0) ? FMath::Clamp(170.f * static_cast<float>(LengthMeters / HeroLength), 45.f, 150.f) : 110.f;
         const FVector Scale(Size / FMath::Max(1.f, Ship->GetStaticMesh()->GetBounds().SphereRadius));
         Ship->SetRelativeScale3D(Scale);
         // The formation turns its bows toward the camera side (-Y) for a three-quarter hero view.
@@ -514,6 +534,7 @@ void ABotfCombatScene::ConfigureBattle(int AttackerFaction, int DefenderFaction,
 void ABotfCombatScene::ApplyShipMesh(int VisualIndex, int ReferenceShipId, int OwnerFaction, bool bLegacyDestroyer)
 {
     if (!Ships.IsValidIndex(VisualIndex) || !Ships[VisualIndex]) return;
+    if (Kinematics.IsValidIndex(VisualIndex)) Kinematics[VisualIndex].LengthMeters = 0.0; // slots are reused per battle
     UStaticMesh* Mesh = nullptr;
     double LengthMeters = 0.0;
     FString Key;
@@ -545,9 +566,14 @@ void ABotfCombatScene::ApplyShipMesh(int VisualIndex, int ReferenceShipId, int O
     if (!Mesh) return;
     auto* Ship = Ships[VisualIndex].Get();
     Ship->SetStaticMesh(Mesh);
-    const FVector BaseScale(static_cast<float>(botf::assets::uniformScaleFor(LengthMeters, Mesh->GetBounds().SphereRadius)));
+    const FBoxSphereBounds Bounds = Mesh->GetBounds();
+    const FVector BaseScale(static_cast<float>(botf::assets::uniformScaleFor(LengthMeters, Bounds.SphereRadius, Bounds.BoxExtent.X * 2.0)));
     Ship->SetRelativeScale3D(BaseScale);
-    if (Kinematics.IsValidIndex(VisualIndex)) Kinematics[VisualIndex].BaseScale = BaseScale;
+    if (Kinematics.IsValidIndex(VisualIndex))
+    {
+        Kinematics[VisualIndex].BaseScale = BaseScale;
+        Kinematics[VisualIndex].LengthMeters = LengthMeters;
+    }
     CacheSlotSockets(VisualIndex);
     if (!Key.IsEmpty()) UE_LOG(LogTemp, Verbose, TEXT("BOTF battle: ship %d uses %s"), ReferenceShipId, *Key);
 }
@@ -621,7 +647,9 @@ void ABotfCombatScene::ConfigureEncounter(const botf::tactical::Encounter& Encou
 
             const float CenterX = (Encounter.arenaWidth - 1) * 0.5f;
             const float CenterY = (Encounter.arenaHeight - 1) * 0.5f;
-            const float ElevationOffset = ((Index % 3) - 1.0f) * 45.f;
+            // Rules 2 has no flight tracks; ships still hold their 3D home height (BotfCombatTimeline.h).
+            const float ElevationOffset = static_cast<float>(-botf::combatfx::homeHeight(FleetId, Kinematics[Index].LengthMeters,
+                Ship->ownerId == Report.firstOwner) * CellUnits);
 
             if (LastRound)
             {
@@ -694,6 +722,7 @@ void ABotfCombatScene::ConfigureEncounter(const botf::tactical::Encounter& Encou
             Info.x = Status ? Status->positionBefore.x : Ship->position.x;
             Info.y = Status ? Status->positionBefore.y : Ship->position.y;
             Info.facing = Ship->facing;
+            Info.lengthMeters = K.LengthMeters;
             Infos.push_back(Info);
         }
         const FString Signature = FString::Printf(TEXT("E%d:%d:%d:%d"), static_cast<int>(Encounter.rounds.size()),
@@ -857,6 +886,7 @@ void ABotfCombatScene::ConfigureBattleReport(const botf::CombatReport& Report, i
                     Info.facing = Side == 0 ? 0 : 180;
                     Info.x = Kinematics[VisualIndex].StartPosition.X / CellUnits;
                     Info.y = Kinematics[VisualIndex].StartPosition.Z / CellUnits;
+                    Info.lengthMeters = Kinematics[VisualIndex].LengthMeters;
                     for (const auto& Event : Report.rounds[ShownRound].events)
                         if (Event.kind == botf::CombatEventKind::Decloak && Event.fleetId == Participant.fleetId) Info.startsCloaked = true;
                     Kinematics[VisualIndex].bCloakedAtRoundStart = Info.startsCloaked;
@@ -1422,20 +1452,24 @@ int32 ABotfCombatScene::SlotForFleet(int32 FleetId) const
     return -1;
 }
 
-FVector ABotfCombatScene::PlaneToScene(double X, double Y, int32 VisualIndex) const
+FVector ABotfCombatScene::PlaneToScene(double X, double Y, double AltitudeCells) const
 {
-    // Same frame as the rules 2 path: tactical x -> scene X, tactical y -> scene Z, a small per-slot depth offset.
-    const double Depth = ((VisualIndex % 3) - 1.0) * 45.0;
-    return FVector((X - PlaneCenterX) * CellUnits, Depth, (Y - PlaneCenterY) * CellUnits);
+    // Same frame as the rules 2 path: tactical x -> scene X, tactical y -> scene Z; height above the plane points at
+    // the default camera (-Y), the side the ships' tops face.
+    return FVector((X - PlaneCenterX) * CellUnits, -AltitudeCells * CellUnits, (Y - PlaneCenterY) * CellUnits);
 }
 
-FQuat ABotfCombatScene::PoseRotation(double FacingDegrees, double BankDegrees) const
+FQuat ABotfCombatScene::PoseRotation(double FacingDegrees, double BankDegrees, double PitchDegrees) const
 {
-    // Facing 0 = +x, 90 = +y in the tactical plane (scene X/Z); ship tops face the default camera (-Y). Bank rolls
-    // about the bow.
+    // Facing 0 = +x, 90 = +y in the tactical plane (scene X/Z); ship tops face the default camera (-Y). Pitch raises
+    // the bow toward the ship's top; bank rolls about the (pitched) bow.
     const double Radians = FMath::DegreesToRadians(FacingDegrees);
-    const FVector Forward(FMath::Cos(Radians), 0.0, FMath::Sin(Radians));
-    const FQuat Base = FRotationMatrix::MakeFromXZ(Forward, FVector(0.0, -1.0, 0.0)).ToQuat();
+    const double Pitch = FMath::DegreesToRadians(PitchDegrees);
+    const FVector Level(FMath::Cos(Radians), 0.0, FMath::Sin(Radians));
+    const FVector Top(0.0, -1.0, 0.0);
+    const FVector Forward = Level * FMath::Cos(Pitch) + Top * FMath::Sin(Pitch);
+    const FVector Up = Top * FMath::Cos(Pitch) - Level * FMath::Sin(Pitch);
+    const FQuat Base = FRotationMatrix::MakeFromXZ(Forward, Up).ToQuat();
     return FQuat(Forward, FMath::DegreesToRadians(BankDegrees)) * Base;
 }
 
@@ -1574,6 +1608,34 @@ void ABotfCombatScene::TickTimeline(float DeltaSeconds)
     TimelineTime += DeltaSeconds;
     const double Now = TimelineTime;
 
+    // True-scale hulls can overlap on the grid: shift the visible ones apart (mostly in height), eased so the
+    // formation drifts rather than jumps. A zero-length tick snaps only a ship that has no spacing yet (a fresh scene).
+    {
+        std::vector<SpacingBody> Bodies(TL.ships.size());
+        for (int32 TrackIndex = 0; TrackIndex < static_cast<int32>(TL.ships.size()); ++TrackIndex)
+        {
+            const int32 Slot = TrackSlot.IsValidIndex(TrackIndex) ? TrackSlot[TrackIndex] : -1;
+            SpacingBody& Body = Bodies[static_cast<std::size_t>(TrackIndex)];
+            Body.active = Ships.IsValidIndex(Slot) && Ships[Slot] && Kinematics.IsValidIndex(Slot) && Kinematics[Slot].bAliveAtRoundStart &&
+                TL.ships[static_cast<std::size_t>(TrackIndex)].visibilityAt(Now) > 0.05;
+            if (!Body.active) continue;
+            const PlanePose Pose = TL.poseOf(static_cast<std::size_t>(TrackIndex), Now);
+            Body.x = Pose.x; Body.y = Pose.y; Body.alt = Pose.altitude;
+            Body.radius = 0.75 * ShipRadius(Slot) / CellUnits; // bounding spheres of flat hulls may overlap a little
+        }
+        const std::vector<SpacingOffset> Offsets = spacingOffsets(Bodies);
+        const float Ease = DeltaSeconds <= 0.f ? 1.f : 1.f - FMath::Exp(-2.5f * DeltaSeconds);
+        for (int32 TrackIndex = 0; TrackIndex < static_cast<int32>(TL.ships.size()); ++TrackIndex)
+        {
+            const int32 Slot = TrackSlot.IsValidIndex(TrackIndex) ? TrackSlot[TrackIndex] : -1;
+            if (!Kinematics.IsValidIndex(Slot) || !Bodies[static_cast<std::size_t>(TrackIndex)].active) continue;
+            const SpacingOffset& O = Offsets[static_cast<std::size_t>(TrackIndex)];
+            const FVector Target(O.x * CellUnits, -O.alt * CellUnits, O.y * CellUnits); // PlaneToScene's axes
+            FVector& Current = Kinematics[Slot].SpacingOffset;
+            Current = FMath::Lerp(Current, Target, DeltaSeconds <= 0.f && !Current.IsNearlyZero() ? 0.f : Ease);
+        }
+    }
+
     // Ships: pose, visibility, warp-out stretch, destruction tumble, shield strength.
     for (int32 TrackIndex = 0; TrackIndex < static_cast<int32>(TL.ships.size()); ++TrackIndex)
     {
@@ -1581,9 +1643,9 @@ void ABotfCombatScene::TickTimeline(float DeltaSeconds)
         if (!Ships.IsValidIndex(Slot) || !Ships[Slot] || !Kinematics.IsValidIndex(Slot)) continue;
         const ShipTrack& Track = TL.ships[static_cast<std::size_t>(TrackIndex)];
         auto& K = Kinematics[Slot];
-        const PlanePose Pose = Track.poseAt(Now);
-        FVector Location = PlaneToScene(Pose.x, Pose.y, Slot);
-        FQuat Rotation = PoseRotation(Pose.facing, Pose.bank);
+        const PlanePose Pose = TL.poseOf(static_cast<std::size_t>(TrackIndex), Now); // own flight or wing station
+        FVector Location = PlaneToScene(Pose.x, Pose.y, Pose.altitude) + K.SpacingOffset;
+        FQuat Rotation = PoseRotation(Pose.facing, Pose.bank, Pose.pitch);
         FVector Scale = K.BaseScale;
         int ShieldsNow = K.ShieldsAtRoundStart;
         float Flare = 0.f;

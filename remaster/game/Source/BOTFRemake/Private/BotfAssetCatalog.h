@@ -137,15 +137,23 @@ inline ShipWeaponKeys shipWeapons(int referenceShipId, int ownerFaction) {
 // Scale normalisation
 // ---------------------------------------------------------------------------------------------------------------
 
-// On-screen bounding radius (scene units) for a ship of the given canon length. Unknown length keeps the interim 80.
-// Square-root compression keeps a 3 km station and a 30 m fighter both readable in one battle.
-inline double displayRadiusForLength(double lengthMeters) {
-    if (!(lengthMeters > 0.0)) return 80.0;
-    const double radius = 80.0 * std::sqrt(lengthMeters / 350.0);
-    return std::clamp(radius, 40.0, 170.0);
+// Battle scale: ships are shown at their canon length relative to each other (a Galaxy is 3.8 Defiants long).
+// kSceneUnitsPerMeter puts a 642 m Galaxy at 220 units, 2.6 of the arena's 85-unit cells. Only small craft are
+// enlarged, to the size of a 60 m ship, so runabouts and fighters stay visible; km-scale giants stop at 1000 units.
+constexpr double kSceneUnitsPerMeter = 120.0 / 350.0;
+constexpr double kMinDisplayLengthMeters = 60.0;
+inline double displayLengthForLength(double lengthMeters) {
+    return std::clamp(lengthMeters, kMinDisplayLengthMeters, 1000.0 / kSceneUnitsPerMeter) * kSceneUnitsPerMeter;
 }
-inline double uniformScaleFor(double lengthMeters, double meshBoundsRadius) {
-    return displayRadiusForLength(lengthMeters) / std::max(1.0, meshBoundsRadius);
+// Uniform scale that makes a mesh (nose along +X, meshLengthUnits long) its canon length in the battle.
+inline double scaleForCanonLength(double lengthMeters, double meshLengthUnits) {
+    return displayLengthForLength(lengthMeters) / std::max(1.0, meshLengthUnits);
+}
+// Unknown canon length: the interim bounding radius of 80 units (about a 470 m cruiser).
+inline double uniformScaleFor(double lengthMeters, double meshBoundsRadius, double meshLengthUnits = 0.0) {
+    if (lengthMeters > 0.0 && meshLengthUnits > 0.0) return scaleForCanonLength(lengthMeters, meshLengthUnits);
+    if (lengthMeters > 0.0) return displayLengthForLength(lengthMeters) * 0.5 / std::max(1.0, meshBoundsRadius);
+    return 80.0 / std::max(1.0, meshBoundsRadius);
 }
 
 // Object path of the procedural stand-in for a ship key (Tools/ue_import_generated_ships.py, original art):

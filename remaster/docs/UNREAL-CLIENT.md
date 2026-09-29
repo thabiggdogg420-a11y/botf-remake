@@ -266,8 +266,10 @@ Still unproven, in rough order of likelihood. Each is a single-line fix if it fa
   fallback chain; nothing resolved means the built-in `/Game/Presentation/<Faction>` mesh, then an engine shape.
   Parsing and the walk are in the engine-independent `BotfJson.h` / `BotfAssetCatalog.h`.
 - **Combat scene.** `ABotfCombatScene::ApplyShipMesh` gives every participant with a class id its own mesh, scaled by
-  canon length (`displayRadiusForLength`, square-root compressed between radius 40 and 170). Ships whose chain ends at a
-  placeholder keep the scene's interim art (franger, Ulysses, faction studies).
+  true canon length (`displayLengthForLength`: 350 m = 120 units, 60 m floor, 1000-unit cap, applied to the mesh's X
+  length). Rules 3 playback keeps overlapping hulls apart with `spacingOffsets` (presentation only). Ships whose chain
+  ends at a placeholder keep the scene's interim art (franger, Ulysses, faction studies). Hero models:
+  `Tools/blender_hero_ships.py` + `Tools/ue_import_hero_ships.py` (HANDOFF.md, PC session 2026-09-30).
 - **`UBotfAudioSubsystem`** plays cues from `BotfAudioCues.h` (keys, priority, cooldowns, one voice line at a time with
   a 0.6 s gap, 24 sfx with the lowest priority culled, voice ducking of sfx and music) and `BotfAudioEvents.h` (turn
   briefing, tactical round and diplomacy mapping). Hooks: `FinishTurn`, `OpenEncounter`, `TacOrder`, `TacNextRound`,

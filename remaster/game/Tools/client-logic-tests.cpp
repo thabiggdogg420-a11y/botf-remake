@@ -61,11 +61,14 @@ static void testKeys() {
     EXPECT(classic.beam == roster::WeaponType::Disruptor && classic.torpedo == roster::WeaponType::PlasmaTorpedo);
     const auto nx = assets::shipWeapons(1000, 1);
     EXPECT(nx.beam == roster::WeaponType::PhaseCannon && nx.torpedo == roster::WeaponType::PhotonicTorpedo);
-    EXPECT(assets::displayRadiusForLength(0) == 80.0);
-    EXPECT(std::fabs(assets::displayRadiusForLength(350) - 80.0) < 1e-9);
-    EXPECT(assets::displayRadiusForLength(5) == 40.0 && assets::displayRadiusForLength(100000) == 170.0);
-    EXPECT(assets::displayRadiusForLength(642) > assets::displayRadiusForLength(170));
-    EXPECT(std::fabs(assets::uniformScaleFor(0, 40) - 2.0) < 1e-9);
+    // True relative scale: a 642 m Galaxy is 642/170 Defiants long; craft under 60 m show at 60 m; giants stop at 1000 units.
+    EXPECT(std::fabs(assets::displayLengthForLength(350) - 120.0) < 1e-9);
+    EXPECT(std::fabs(assets::displayLengthForLength(642) / assets::displayLengthForLength(170) - 642.0 / 170.0) < 1e-9);
+    EXPECT(assets::displayLengthForLength(15) == assets::displayLengthForLength(60));
+    EXPECT(std::fabs(assets::displayLengthForLength(100000) - 1000.0) < 1e-9);
+    EXPECT(std::fabs(assets::scaleForCanonLength(350, 60) - 2.0) < 1e-9);
+    EXPECT(std::fabs(assets::uniformScaleFor(350, 999, 60) - 2.0) < 1e-9);  // length wins over the bounding sphere
+    EXPECT(std::fabs(assets::uniformScaleFor(0, 40) - 2.0) < 1e-9);          // unknown length keeps radius 80
     EXPECT(assets::normaliseObjectPath("/Game/X/Mesh") == "/Game/X/Mesh.Mesh");
     EXPECT(assets::normaliseObjectPath("/Game/X/Mesh.Mesh") == "/Game/X/Mesh.Mesh");
     EXPECT(assets::builtInShipPlaceholder("kli") == "/Game/Presentation/Klingon/StaticMeshes/Klingon.Klingon");
@@ -322,9 +325,11 @@ static void testCombatTimeline() {
     // Flight: exact poses at the ends, no snapping in between, banking into the slide and back to level.
     const auto* t1 = tl.track(1);
     EXPECT(t1 && t1->segments.size() == 1 && t1->segments[0].slideCells == 1);
-    EXPECT(t1->poseAt(0.0) == (PlanePose{0, 0, 0, 0}));
-    EXPECT(t1->poseAt(4 * tk) == (PlanePose{2, 1, 45, 0}));
-    EXPECT(t1->poseAt(6.0) == (PlanePose{2, 1, 45, 0}));
+    // The plane part of a pose (height and pitch are the 3D flight layer, checked below).
+    const auto plane = [](PlanePose p) { p.altitude = 0.0; p.pitch = 0.0; return p; };
+    EXPECT(plane(t1->poseAt(0.0)) == (PlanePose{0, 0, 0, 0}));
+    EXPECT(plane(t1->poseAt(4 * tk)) == (PlanePose{2, 1, 45, 0}));
+    EXPECT(plane(t1->poseAt(6.0)) == (PlanePose{2, 1, 45, 0}));
     EXPECT(std::fabs(t1->poseAt(2 * tk).bank) > 5.0 && std::fabs(t1->poseAt(2 * tk).bank) <= cfg.maxBankDegrees);
     for (int fleet : {1, 2}) {
         const auto* tr = tl.track(fleet);
@@ -441,7 +446,103 @@ static void testCombatTimeline() {
 
     // Empty round (rules 1/2 or nothing happened): static tracks, no jobs.
     const auto none = buildRoundTimeline({}, ships, cfg);
-    EXPECT(none.jobs.empty() && none.sounds.empty() && none.allConsumed() && none.track(2)->poseAt(3.0) == (PlanePose{6, 0, 180, 0}));
+    EXPECT(none.jobs.empty() && none.sounds.empty() && none.allConsumed() && plane(none.track(2)->poseAt(3.0)) == (PlanePose{6, 0, 180, 0}));
+
+    // 3D flight: heights are deterministic, sides sit in layers, small craft spread and climb more than capital
+    // ships, the nose pitches with a climb and levels at the end, and heights change smoothly.
+    {
+        EXPECT(homeHeight(7, 110, true) == homeHeight(7, 110, true));
+        double capMax = 0.0, smallMax = 0.0, firstSum = 0.0, otherSum = 0.0;
+        for (int id = 1; id <= 400; ++id) {
+            capMax = std::max(capMax, std::fabs(homeHeight(id, 650, true) - TimelineConfig{}.sideHeightOffset));
+            smallMax = std::max(smallMax, std::fabs(homeHeight(id, 110, true) - TimelineConfig{}.sideHeightOffset));
+            firstSum += homeHeight(id, 650, true);
+            otherSum += homeHeight(id, 650, false);
+        }
+        EXPECT(capMax <= TimelineConfig{}.capitalHeightSpread + 1e-9 && smallMax > 1.0 && firstSum > otherSum);
+        auto sized = ships;
+        for (auto& s : sized) s.lengthMeters = 110.0; // both escorts
+        const auto t3 = buildRoundTimeline(events, sized, cfg);
+        const auto* s1 = t3.track(1);
+        EXPECT(s1 && s1->small && s1->segments.size() == 1);
+        const auto& seg = s1->segments[0];
+        EXPECT(s1->poseAt(0.0).altitude == seg.from.altitude && s1->poseAt(6.0).altitude == seg.to.altitude);
+        EXPECT(s1->poseAt(6.0).pitch == 0.0 && std::fabs(seg.pitchPeak) <= cfg.maxPitchDegrees);
+        if (std::fabs(seg.to.altitude - seg.from.altitude) > 0.05)
+            EXPECT((seg.pitchPeak > 0.0) == (seg.to.altitude > seg.from.altitude)); // climbing noses up
+        double maxClimbStep = 0.0;
+        for (double t = 0.001; t <= 6.0; t += 0.001) maxClimbStep = std::max(maxClimbStep, std::fabs(s1->poseAt(t).altitude - s1->poseAt(t - 0.001).altitude));
+        EXPECT(maxClimbStep < 0.02);
+        // Escorts roll harder than the same maneuver flown by a capital ship.
+        auto big = ships;
+        for (auto& s : big) s.lengthMeters = 650.0;
+        const auto t4 = buildRoundTimeline(events, big, cfg);
+        EXPECT(std::fabs(t3.track(1)->segments[0].bankPeak) > std::fabs(t4.track(1)->segments[0].bankPeak));
+        EXPECT(!t4.track(1)->small && t4.track(1)->wingLeader == 0);
+    }
+
+    // Wings: escorts of one side starting close together fly finger-four on the lowest id; a far-off escort, another
+    // side's escort and capital ships fly alone. Wingmen hold station in the leader's frame and peel off when it dies.
+    {
+        std::vector<ShipInfo> fleet;
+        const auto add = [&](int id, int owner, double x, double y, double len) {
+            ShipInfo s; s.fleetId = id; s.ownerId = owner; s.x = x; s.y = y; s.facing = 0; s.lengthMeters = len; s.maxShields = 10;
+            fleet.push_back(s);
+        };
+        add(10, 1, 2, 5, 110); add(11, 1, 2, 6, 120); add(12, 1, 3, 4, 90); add(13, 1, 1, 5, 150); add(14, 1, 2, 7, 100);
+        add(15, 1, 12, 2, 110); add(16, 2, 3, 5, 110); add(17, 1, 2, 4, 650);
+        std::vector<CombatEvent> wingEvents;
+        { auto d = ev(6, K::Destroyed, 10); d.x = 2; d.y = 5; wingEvents.push_back(d); }
+        const auto w = buildRoundTimeline(wingEvents, fleet, cfg);
+        EXPECT(w.track(10)->wingLeader == 0 && w.track(11)->wingLeader == 10 && w.track(12)->wingLeader == 10 && w.track(13)->wingLeader == 10);
+        EXPECT(w.track(14)->wingLeader == 0);  // the wing is full (4)
+        EXPECT(w.track(15)->wingLeader == 0 && w.track(16)->wingLeader == 0 && w.track(17)->wingLeader == 0);
+        std::size_t i11 = 0;
+        for (std::size_t i = 0; i < w.ships.size(); ++i) if (w.ships[i].fleetId == 11) i11 = i;
+        const PlanePose lead = w.track(10)->poseAt(0.5), mate = w.poseOf(i11, 0.5);
+        // Facing 0 (+x): station is aft (-x) and to port (+y) of the leader, and above it.
+        EXPECT(std::fabs(mate.x - (lead.x - cfg.wingSpacingCells)) < 1e-9 && std::fabs(mate.y - (lead.y + cfg.wingSpacingCells)) < 1e-9);
+        EXPECT(mate.altitude > lead.altitude && mate.facing == lead.facing);
+        // Leader destroyed at tick 6 (plus its explosion): after it is gone the wingman is back on its own track.
+        EXPECT(w.track(10)->hideAt > 0.0);
+        EXPECT(plane(w.poseOf(i11, w.track(10)->hideAt + 3.0 * w.tickSeconds)) == plane(w.track(11)->poseAt(w.track(10)->hideAt + 3.0 * w.tickSeconds)));
+    }
+
+    // Spacing: true-scale hulls that overlap are pushed apart (mostly in height), clear hulls and inactive ones stay
+    // put, coincident hulls split deterministically, and the result is stable across calls.
+    {
+        const auto gapOf = [](const std::vector<SpacingBody>& b, const std::vector<SpacingOffset>& o, std::size_t i, std::size_t j) {
+            const double dx = (b[j].x + o[j].x) - (b[i].x + o[i].x), dy = (b[j].y + o[j].y) - (b[i].y + o[i].y);
+            const double da = (b[j].alt + o[j].alt) - (b[i].alt + o[i].alt);
+            return std::sqrt(dx * dx + dy * dy + da * da) - (b[i].radius + b[j].radius);
+        };
+        std::vector<SpacingBody> clear = {{0, 0, 0, 0.5}, {3, 0, 0, 0.5}};
+        const auto none = spacingOffsets(clear);
+        EXPECT(none[0].x == 0.0 && none[0].alt == 0.0 && none[1].x == 0.0 && none[1].alt == 0.0);
+        std::vector<SpacingBody> level = {{0, 0, 0, 1.2}, {1, 0, 0, 1.2}};
+        const auto lv = spacingOffsets(level);
+        EXPECT(gapOf(level, lv, 0, 1) > -1e-6);
+        EXPECT(std::fabs(lv[0].alt) > 0.2 && std::fabs(lv[1].alt) > 0.2 && lv[0].alt * lv[1].alt < 0.0); // they stack
+        std::vector<SpacingBody> same = {{2, 2, 0, 0.8}, {2, 2, 0, 0.8}};
+        const auto sm = spacingOffsets(same);
+        EXPECT(gapOf(same, sm, 0, 1) > -1e-6 && sm[0].x == 0.0 && sm[0].y == 0.0);
+        const auto again = spacingOffsets(same);
+        EXPECT(again[0].alt == sm[0].alt && again[1].alt == sm[1].alt);
+        // A cruiser beside an escort: the escort moves further.
+        std::vector<SpacingBody> mixed = {{0, 0, 0, 1.4}, {0.5, 0.3, 0.1, 0.3}};
+        const auto mx = spacingOffsets(mixed);
+        const auto mag = [](const SpacingOffset& o) { return std::sqrt(o.x * o.x + o.y * o.y + o.alt * o.alt); };
+        EXPECT(gapOf(mixed, mx, 0, 1) > -1e-6 && mag(mx[1]) > 2.0 * mag(mx[0]));
+        // Eight capitals stacked in two cells settle apart; an inactive hull is ignored.
+        std::vector<SpacingBody> crowd;
+        for (int i = 0; i < 8; ++i) crowd.push_back({static_cast<double>(i % 2), 0.2 * (i / 2), 0.1 * i, 1.0});
+        crowd.push_back({0, 0, 0, 1.0, false});
+        const auto cr = spacingOffsets(crowd, 40);
+        double worst = 0.0;
+        for (std::size_t i = 0; i < 8; ++i) for (std::size_t j = i + 1; j < 8; ++j) worst = std::min(worst, gapOf(crowd, cr, i, j));
+        EXPECT(worst > -0.15);
+        EXPECT(cr[8].x == 0.0 && cr[8].alt == 0.0);
+    }
 
     // Sockets: WPN_Beam_NN for beams, WPN_Torp / *_Torp_* for torpedoes, deterministic by name; none -> -1.
     const std::vector<std::string> sockets = {"FX_Engine_01", "WPN_Torp_F_02", "WPN_Beam_D_02", "WPN_Beam_D_01", "WPN_Plasma_Torp_01", "WPN_Pulse_01"};
