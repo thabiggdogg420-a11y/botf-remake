@@ -1,0 +1,33 @@
+{
+ "key": "ship.kli.vorcha",
+ "note": "Vor'cha attack cruiser, fitted by hand to the Gemini concept (ArtSource/Gemini). Ship units: 1000 long, X stern 0 .. nose 1000, Y port +, Z up.",
+ "style": {"segments": 10, "exponent": 1.25, "subdiv": 0, "step": 22, "plates": {"chance": 0.75, "gap": 1.6, "depth": 2.4}},
+ "bodies": [
+  {"name": "head", "exponent": 1.3, "segments": 8, "stations": [[788, 18, 16, -18], [805, 40, 30, -36], [840, 58, 38, -48], [890, 64, 40, -52], [940, 54, 34, -44], [975, 36, 24, -28], [995, 14, 12, -10], [1003, 3, 5, -3]]},
+  {"name": "neck", "exponent": 1.4, "segments": 8, "stations": [[590, 48, 32, -24], [700, 36, 22, -18], [815, 24, 16, -14]]},
+  {"name": "hull", "stations": [[48, 62, 26, -26], [90, 110, 34, -30], [170, 145, 46, -36], [280, 168, 54, -42], [380, 155, 58, -42], [480, 110, 48, -36], [560, 72, 38, -28], [640, 48, 32, -22]]},
+  {"name": "spine", "exponent": 1.4, "segments": 8, "stations": [[200, 30, 55, 20], [280, 42, 80, 30], [380, 44, 94, 35], [460, 32, 76, 35], [530, 16, 50, 30]]}
+ ],
+ "parts": [
+  {"type": "wing", "mirror": true, "root": [[450, 118, 0], [150, 124, 0]], "tip": [[478, 335, -56], [346, 335, -56]], "thickness": [18, 10]},
+  {"type": "tube", "mirror": true, "p0": [330, 351, -58], "p1": [575, 351, -58], "radius": 15, "profile": [[0, 0.9], [0.1, 1.1], [0.5, 1.0], [0.85, 0.85], [1, 0.6]]},
+  {"type": "tube", "mirror": true, "mask": "warm", "p0": [570, 351, -58], "p1": [588, 351, -58], "radius": 9},
+  {"type": "box", "centre": [636, 0, 3], "size": [16, 98, 56]},
+  {"type": "box", "centre": [681, 0, 2], "size": [16, 88, 50]},
+  {"type": "box", "centre": [726, 0, 1], "size": [16, 80, 45]},
+  {"type": "box", "centre": [771, 0, 0], "size": [16, 70, 40]},
+  {"type": "ellipsoid", "centre": [905, 0, 40], "radii": [26, 18, 12]},
+  {"type": "tube", "mirror": true, "p0": [60, 77, 40], "p1": [270, 77, 40], "radius": 22, "profile": [[0, 0.8], [0.05, 1.0], [0.8, 1.0], [1, 0.7]]},
+  {"type": "tube", "mirror": true, "mask": "warm", "p0": [52, 77, 40], "p1": [62, 77, 40], "radius": 17},
+  {"type": "box", "mirror": true, "centre": [457, 92, 55], "size": [34, 24, 22]},
+  {"type": "box", "mask": "warm", "centre": [52, 0, 0], "size": [14, 92, 28]},
+  {"type": "tube", "mask": "warm", "p0": [990, 0, -4], "p1": [1006, 0, -4], "radius": 8}
+ ],
+ "paint": [
+  {"box": [830, 965, -70, 70, 0, 12], "mask": "windows", "facing": "side"},
+  {"box": [250, 560, -200, 200, 20, 46], "mask": "windows", "facing": "side"},
+  {"box": [430, 490, 110, 340, -70, 20], "mask": "accent", "mirror": true, "facing": "up"},
+  {"box": [300, 430, 140, 320, -90, 0], "mask": "cool", "mirror": true, "facing": "down"}
+ ],
+ "sockets": [["WPN_Pulse", 588, 351, -58, "mirror"], ["WPN_Beam", 965, 42, -18, "mirror"], ["WPN_Torp", 1006, 0, -4], ["ENG", 44, 0, 0]]
+}
