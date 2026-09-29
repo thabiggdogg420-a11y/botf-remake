@@ -359,8 +359,8 @@ func _construction() -> Control:
 	f.name = "Construction"
 	var b := Lcars.body(f)
 	var choices: Array = detail.get("choices", [])
-	var structures := choices.filter(func(x): return not x["isShip"])
-	var ships := choices.filter(func(x): return x["isShip"])
+	var structures: Array = choices.filter(func(x): return not x["isShip"])
+	var ships: Array = choices.filter(func(x): return x["isShip"])
 	var tabs := Lcars.hbox(6)
 	for t in [["structures", "Structures  %d" % structures.filter(func(x): return str(x["blocker"]) == "").size()], ["ships", "Starships  %d" % ships.filter(func(x): return str(x["blocker"]) == "").size()], ["installed", "Installed"]]:
 		var id: String = t[0]
