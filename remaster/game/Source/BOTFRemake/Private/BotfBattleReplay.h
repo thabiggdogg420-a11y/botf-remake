@@ -106,53 +106,59 @@ public:
         const botf::CombatReport* B = Report ? Report() : nullptr;
         if (!B) return Layer;
         const FPalette& Pal = Palette(Player ? *Player : 1);
-        const FSlateBrush* White = FCoreStyle::Get().GetBrush("WhiteBrush");
         const FVector2D Size = Geometry.GetLocalSize();
-        auto Box = [&](int L, FVector2D At, FVector2D Extent, const FLinearColor& Color) {
-            FSlateDrawElement::MakeBox(Elements, Layer + L, Geometry.ToPaintGeometry(Extent, FSlateLayoutTransform(At)), White, ESlateDrawEffect::None, Color);
-        };
+        const auto F2 = [](FVector2D V) { return FVector2f(static_cast<float>(V.X), static_cast<float>(V.Y)); };
         auto Text = [&](int L, FVector2D At, double Width, const FString& Value, int Pt, bool Bold, const FLinearColor& Color) {
             FSlateDrawElement::MakeText(Elements, Layer + L, Geometry.ToPaintGeometry(FVector2D(Width, Pt + 8), FSlateLayoutTransform(At)),
                 Value, Font(Pt, Bold), ESlateDrawEffect::None, Color);
         };
         const auto Ships = BattleShipStates(*B, Round ? Round() : -1);
-        const double Column = (Size.X - 36) * 0.5, Top = 24;
+        const double Column = (Size.X - 44) * 0.5, Top = 30;
         int Counts[2] = {0, 0};
         for (const auto& S : Ships) ++Counts[S.Side];
-        const double RowH = FMath::Clamp((Size.Y - Top - 4) / FMath::Max(1, FMath::Max(Counts[0], Counts[1])), 16.0, 34.0);
+        const double RowH = FMath::Clamp((Size.Y - Top - 4) / FMath::Max(1, FMath::Max(Counts[0], Counts[1])), 18.0, 36.0);
         for (int Side = 0; Side < 2; ++Side) {
             const int Owner = Side == 0 ? B->firstOwner : B->secondOwner;
-            const double X = Side == 0 ? 8 : 28 + Column;
-            Text(1, FVector2D(X, 2), Column, FString(UTF8_TO_TCHAR(botf::empireName(Owner))).ToUpper()
-                + (B->winnerOwner == Owner ? TEXT("  /  HOLDS THE FIELD") : TEXT("")), 10, true, FactionColor(Owner));
+            const double X = Side == 0 ? 8 : 36 + Column;
+            const FLinearColor F = FactionColor(Owner);
+            PaintRounded(Elements, Layer, Geometry, F2(FVector2D(X - 4, 2)), F2(FVector2D(Column, 24)), FVector4(9, 9, 9, 9), WithAlpha(F, 0.14f), WithAlpha(F, 0.5f), 1.f);
+            Text(1, FVector2D(X + 6, 6), Column - 12, FString(UTF8_TO_TCHAR(botf::empireName(Owner))).ToUpper()
+                + (B->winnerOwner == Owner ? TEXT("   HOLDS THE FIELD") : TEXT("")), 9, true, Lift(F, 0.3f));
         }
-        Text(1, FVector2D(Size.X * 0.5 - 8, 2), 24, TEXT("VS"), 9, true, Pal.Muted);
+        Text(1, FVector2D(Size.X * 0.5 - 9, 8), 24, TEXT("VS"), 9, true, Pal.Muted);
         int Row[2] = {0, 0};
         for (const auto& S : Ships) {
-            const double X = S.Side == 0 ? 8 : 28 + Column;
+            const double X = S.Side == 0 ? 8 : 36 + Column;
             const double Y = Top + Row[S.Side]++ * RowH;
             if (Y + RowH > Size.Y + 1) continue;
             const bool Out = S.bLost || S.bRetreated;
             const FLinearColor Faction = FactionColor(S.OwnerId);
-            Box(1, FVector2D(X, Y + 2), FVector2D(5, RowH - 4), Out ? Shade(Faction, 0.35f) : Faction);
-            if (S.bHit && !Out) Box(1, FVector2D(X + 7, Y + 2), FVector2D(3, RowH - 4), Pal.Alert);
-            const double TextW = Column * 0.5 - 14;
-            Text(2, FVector2D(X + 14, Y + (RowH - 16) * 0.5), TextW, S.Name, RowH >= 24 ? 9 : 8, false, Out ? Pal.Muted : Pal.Text);
-            const double BarX = X + 14 + TextW + 4, BarW = FMath::Max(10.0, Column - (BarX - X) - 4);
+            if (S.bHit && !Out) PaintRounded(Elements, Layer, Geometry, F2(FVector2D(X - 4, Y + 1)), F2(FVector2D(Column, RowH - 2)), FVector4(6, 6, 6, 6), WithAlpha(Pal.Alert, 0.14f));
+            PaintRounded(Elements, Layer + 1, Geometry, F2(FVector2D(X, Y + 3)), F2(FVector2D(4, RowH - 6)), FVector4(2, 2, 2, 2), Out ? Shade(Faction, 0.35f) : Faction);
+            const double TextW = Column * 0.48 - 14;
+            const int Pt = RowH >= 26 ? 9 : 8;
+            FString Label = S.Name;
+            const int MaxChars = FMath::Max(6, static_cast<int>(TextW / (Pt * 0.62)));
+            if (Label.Len() > MaxChars) Label = Label.Left(MaxChars - 1).TrimEnd() + TEXT("...");
+            Text(2, FVector2D(X + 12, Y + (RowH - 16) * 0.5), TextW, Label, Pt, false, Out ? Pal.Muted : Pal.Text);
+            const double BarX = X + 12 + TextW + 6, BarW = FMath::Max(10.0, Column - (BarX - X) - 8);
             if (S.bLost || S.bRetreated) {
-                Text(2, FVector2D(BarX, Y + (RowH - 16) * 0.5), BarW, S.bLost ? TEXT("DESTROYED") : TEXT("WITHDRAWN"), 9, true, S.bLost ? Pal.Alert : Pal.Muted);
-                if (S.bLost) Box(3, FVector2D(X + 14, Y + RowH * 0.5), FVector2D(TextW, 1.5), Shade(Pal.Alert, 1.f, 0.8f));
+                Text(2, FVector2D(BarX, Y + (RowH - 16) * 0.5), BarW, S.bLost ? TEXT("DESTROYED") : TEXT("WITHDRAWN"), 8, true, S.bLost ? Pal.Alert : Pal.Muted);
                 continue;
             }
-            const double HullH = FMath::Max(4.0, RowH * 0.32), ShieldH = FMath::Max(2.0, RowH * 0.16);
+            const double HullH = FMath::Max(5.0, RowH * 0.30), ShieldH = FMath::Max(3.0, RowH * 0.16);
             const double HullY = Y + RowH * 0.5 - HullH, ShieldY = Y + RowH * 0.5 + 2;
             const float HullF = FMath::Clamp(static_cast<float>(S.Hull) / S.MaxHull, 0.f, 1.f);
-            Box(1, FVector2D(BarX, HullY), FVector2D(BarW, HullH), Shade(Pal.Secondary, 0.22f));
-            Box(2, FVector2D(BarX, HullY), FVector2D(BarW * HullF, HullH), HullF > 0.5f ? Pal.Good : HullF > 0.25f ? Pal.Tertiary : Pal.Alert);
+            const FVector4 Rh(HullH * 0.5, HullH * 0.5, HullH * 0.5, HullH * 0.5), Rs(ShieldH * 0.5, ShieldH * 0.5, ShieldH * 0.5, ShieldH * 0.5);
+            PaintRounded(Elements, Layer + 1, Geometry, F2(FVector2D(BarX, HullY)), F2(FVector2D(BarW, HullH)), Rh, WithAlpha(FLinearColor::Black, 0.4f));
+            if (HullF > 0.01f) {
+                const FLinearColor Hc = HullF > 0.5f ? Pal.Good : HullF > 0.25f ? Pal.Warn : Pal.Alert;
+                PaintGradient(Elements, Layer + 2, Geometry, F2(FVector2D(BarX, HullY)), F2(FVector2D(FMath::Max(HullH, BarW * HullF), HullH)), Rh, Lift(Hc, 0.25f), Shade(Hc, 0.85f));
+            }
             if (S.MaxShields > 0) {
                 const float ShieldF = FMath::Clamp(static_cast<float>(S.Shields) / S.MaxShields, 0.f, 1.f);
-                Box(1, FVector2D(BarX, ShieldY), FVector2D(BarW, ShieldH), Shade(Pal.Secondary, 0.22f));
-                Box(2, FVector2D(BarX, ShieldY), FVector2D(BarW * ShieldF, ShieldH), Pal.Secondary);
+                PaintRounded(Elements, Layer + 1, Geometry, F2(FVector2D(BarX, ShieldY)), F2(FVector2D(BarW, ShieldH)), Rs, WithAlpha(FLinearColor::Black, 0.4f));
+                if (ShieldF > 0.01f) PaintRounded(Elements, Layer + 2, Geometry, F2(FVector2D(BarX, ShieldY)), F2(FVector2D(FMath::Max(ShieldH, BarW * ShieldF), ShieldH)), Rs, Pal.Shield);
             }
         }
         return Layer + 3;

@@ -29,7 +29,6 @@ public:
     virtual int32 OnPaint(const FPaintArgs&, const FGeometry& Geometry, const FSlateRect&,
                          FSlateWindowElementList& Elements, int32 Layer, const FWidgetStyle& Style, bool) const override {
         const FVector2D Size = Geometry.GetLocalSize();
-        const FSlateBrush* White = FCoreStyle::Get().GetBrush("WhiteBrush");
         const int32 N = Count();
         if (N <= 0) return Layer;
         const float Gap = N > 40 ? 1.f : 2.f, W = FMath::Max(1.f, (static_cast<float>(Size.X) - Gap * (N - 1)) / N);
@@ -38,10 +37,13 @@ public:
         if (Locked.Get(false)) On = Shade(On, 0.55f);
         const FLinearColor Off = EmptyColor.Get(FLinearColor(0.1f, 0.1f, 0.1f)).GetColor(Style);
         const FLinearColor Hi = Lift(Off, 0.18f);
-        for (int32 I = 0; I < N; ++I)
-            FSlateDrawElement::MakeBox(Elements, Layer,
-                Geometry.ToPaintGeometry(FVector2D(W, Size.Y), FSlateLayoutTransform(FVector2D(I * (W + Gap), 0))),
-                White, ESlateDrawEffect::None, I < Lit ? On : (I < Hover ? Hi : Off));
+        const float R = FMath::Min(FMath::Min(W * 0.5f, static_cast<float>(Size.Y) * 0.5f), 4.f);
+        const FVector4 Round(R, R, R, R);
+        for (int32 I = 0; I < N; ++I) {
+            const FVector2f At(I * (W + Gap), 0.f), Ext(W, static_cast<float>(Size.Y));
+            if (I < Lit) PaintGradient(Elements, Layer, Geometry, At, Ext, Round, Lift(On, 0.22f), Shade(On, 0.82f));
+            else PaintRounded(Elements, Layer, Geometry, At, Ext, Round, I < Hover ? Hi : Off);
+        }
         return Layer;
     }
     int32 StepAt(const FGeometry& Geometry, const FPointerEvent& Event) const {

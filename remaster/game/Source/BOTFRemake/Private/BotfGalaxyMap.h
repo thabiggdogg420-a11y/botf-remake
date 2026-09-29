@@ -64,6 +64,7 @@ public:
         std::function<void(int)> Select, Activate, Plot;
         std::function<void(int, FVector2D, bool)> Command;         // cell, local position, force context menu
         std::function<FString(int)> Hint;                          // cursor hint for a hovered sector
+        std::function<FMargin()> Inset;                            // screen area covered by bars and docks; the galaxy is fitted to the rest
     };
     SLATE_BEGIN_ARGS(SStarChart) {} SLATE_END_ARGS()
     void Construct(const FArguments&, const FBinding& In) {
@@ -77,14 +78,21 @@ public:
     virtual bool SupportsKeyboardFocus() const override { return false; }
 
     // ---- Geometry: square sectors, fitted to the widget, then zoomed and panned ----
+    FMargin Insets() const { return B.Inset ? B.Inset() : FMargin(0); }
     double CellSize(FVector2D Size) const {
         const auto& S = *B.State;
-        const double Fit = FMath::Max(4.0, FMath::Min((Size.X - 2 * Margin) / S.width, (Size.Y - 2 * Margin) / S.height));
+        const FMargin In = Insets();
+        const double Fit = FMath::Max(4.0, FMath::Min((Size.X - In.Left - In.Right - 2 * Margin) / S.width, (Size.Y - In.Top - In.Bottom - 2 * Margin) / S.height));
         return Fit * B.View->Zoom;
+    }
+    // Centre of the area the galaxy is fitted to (the screen less the bars and docks).
+    FVector2D FitCentre(FVector2D Size) const {
+        const FMargin In = Insets();
+        return FVector2D(In.Left + (Size.X - In.Left - In.Right) * 0.5, In.Top + (Size.Y - In.Top - In.Bottom) * 0.5);
     }
     FVector2D Offset(FVector2D Size) const {
         const double C = CellSize(Size);
-        return (Size - FVector2D(C * B.State->width, C * B.State->height)) * 0.5 + B.View->Pan;
+        return FitCentre(Size) - FVector2D(C * B.State->width, C * B.State->height) * 0.5 + B.View->Pan;
     }
     FVector2D Origin(int X, int Y, FVector2D Size) const { const double C = CellSize(Size); return Offset(Size) + FVector2D(X * C, Y * C); }
     FVector2D Centre(int X, int Y, FVector2D Size) const { const double C = CellSize(Size); return Origin(X, Y, Size) + FVector2D(C, C) * 0.5; }
@@ -97,7 +105,7 @@ public:
     // Centres the view on a sector without changing zoom.
     void CentreOn(int CellId) {
         if (!B.State || CellId < 0 || LastSize.X <= 0) return;
-        const FVector2D Want = LastSize * 0.5;
+        const FVector2D Want = FitCentre(LastSize);
         const FVector2D Now = Centre(CellId % B.State->width, CellId / B.State->width, LastSize);
         B.View->Pan += Want - Now;
         Invalidate(EInvalidateWidgetReason::Paint);
@@ -109,7 +117,7 @@ public:
         B.View->Zoom = FMath::Clamp(B.View->Zoom * Factor, 0.6f, 4.5f);
         const double After = CellSize(LastSize);
         // Keep the world point under the anchor fixed.
-        const FVector2D Base = (LastSize - FVector2D(After * B.State->width, After * B.State->height)) * 0.5;
+        const FVector2D Base = FitCentre(LastSize) - FVector2D(After * B.State->width, After * B.State->height) * 0.5;
         B.View->Pan = Anchor - World * After - Base;
         Invalidate(EInvalidateWidgetReason::Paint);
     }
@@ -208,8 +216,19 @@ public:
             BotfUi::WithAlpha(Pal.Primary, 0.06f));
         BotfUi::PaintGlow(Elements, Layer, Geometry, F2(Size * FVector2D(0.74, 0.70) + B.View->Pan * 0.05), static_cast<float>(Size.X * 0.36),
             BotfUi::WithAlpha(Pal.Secondary, 0.035f));
+        // Far clouds and dust across the whole width, so a wide screen never shows bare space beside the galaxy.
+        {
+            static const float Cloud[8][4] = { {0.08f, 0.22f, 0.20f, 0.05f}, {0.16f, 0.78f, 0.24f, 0.04f}, {0.36f, 0.10f, 0.16f, 0.035f}, {0.55f, 0.90f, 0.22f, 0.045f},
+                                               {0.66f, 0.18f, 0.26f, 0.05f}, {0.84f, 0.55f, 0.24f, 0.05f}, {0.93f, 0.15f, 0.18f, 0.04f}, {0.90f, 0.88f, 0.20f, 0.045f} };
+            for (int I = 0; I < 8; ++I) {
+                const FLinearColor Tint = I % 3 == 0 ? FLinearColor(0.55f, 0.28f, 0.85f) : (I % 3 == 1 ? Pal.Primary : FLinearColor(0.25f, 0.65f, 0.75f));
+                BotfUi::PaintGlow(Elements, Layer, Geometry, F2(Size * FVector2D(Cloud[I][0], Cloud[I][1]) + B.View->Pan * 0.04), static_cast<float>(FMath::Max(Size.X, Size.Y) * Cloud[I][2]),
+                    BotfUi::WithAlpha(Tint, Cloud[I][3] * 1.9f));
+            }
+        }
         // Fixed decorative starfield with slight parallax; consumes no simulation randomness.
-        for (int I = 0; I < 320; ++I) {
+        const int StarCount = FMath::Clamp(static_cast<int>(320.0 * Size.X * Size.Y / (1920.0 * 1080.0)), 320, 1400);
+        for (int I = 0; I < StarCount; ++I) {
             FVector2D P((I * 173 % 997) / 997.0 * Size.X, (I * 317 % 991) / 991.0 * Size.Y);
             P += B.View->Pan * (I % 3 == 0 ? 0.08 : 0.03);
             P.X = std::fmod(std::fmod(P.X, Size.X) + Size.X, Size.X); P.Y = std::fmod(std::fmod(P.Y, Size.Y) + Size.Y, Size.Y);

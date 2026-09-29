@@ -3,6 +3,7 @@
 // starfield backdrop. All original artwork: icons are drawn from lines and discs, emblems are the beta's geometric marks.
 
 #include "BotfUiTheme.h"
+#include "Simulation.h"
 
 namespace BotfUi {
 
@@ -422,6 +423,80 @@ public:
 private:
     TAttribute<bool> Checked;
     std::function<void(bool)> OnToggle;
+};
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Galaxy preview for the setup screen: every system of the generated campaign, the powers' homes and the minor races.
+// ---------------------------------------------------------------------------------------------------------------------
+struct FGalaxyPreview {
+    struct FMark { int X = 0, Y = 0, Owner = 0; bool bMinor = false; };
+    int Width = 0, Height = 0, Player = 1;
+    TArray<FMark> Marks;
+    FString Name;   // seed and size label
+};
+
+class SGalaxyPreview final : public SLeafWidget {
+public:
+    SLATE_BEGIN_ARGS(SGalaxyPreview) : _Get() {}
+        SLATE_ARGUMENT(std::function<const FGalaxyPreview*()>, Get)
+    SLATE_END_ARGS()
+    void Construct(const FArguments& Args) { Get = Args._Get; }
+    virtual FVector2D ComputeDesiredSize(float) const override { return FVector2D(300.0, 220.0); }
+    virtual int32 OnPaint(const FPaintArgs&, const FGeometry& Geometry, const FSlateRect&, FSlateWindowElementList& Elements, int32 Layer,
+                         const FWidgetStyle&, bool) const override {
+        const FGalaxyPreview* D = Get ? Get() : nullptr;
+        const FVector2f Size = Geometry.GetLocalSize();
+        const FPalette& P = Theme();
+        PaintGradient(Elements, Layer, Geometry, FVector2f::ZeroVector, Size, FVector4(14, 14, 14, 14), Mix(P.Void, P.FieldHi, 0.3f), Shade(P.Void, 0.8f));
+        if (!D || D->Width <= 0 || D->Height <= 0) return Layer + 6;
+        const float Foot = 26.f, Pad = 18.f;
+        const float Cell = FMath::Max(4.f, FMath::Min((Size.X - 2.f * Pad) / D->Width, (Size.Y - Foot - 2.f * Pad) / D->Height));
+        const FVector2f O((Size.X - Cell * D->Width) * 0.5f, Pad + (Size.Y - Foot - 2.f * Pad - Cell * D->Height) * 0.5f);
+        PaintGlow(Elements, Layer + 1, Geometry, FVector2f(Size.X * 0.3f, Size.Y * 0.4f), Size.X * 0.4f, WithAlpha(P.Primary, 0.06f));
+        PaintRounded(Elements, Layer + 1, Geometry, O - FVector2f(8.f, 8.f), FVector2f(Cell * D->Width + 16.f, Cell * D->Height + 16.f), FVector4(10, 10, 10, 10),
+            WithAlpha(FLinearColor::Black, 0.3f), WithAlpha(P.LineHi, 0.7f), 1.f);
+        for (int X = 0; X <= D->Width; ++X)
+            PaintRect(Elements, Layer + 2, Geometry, O + FVector2f(X * Cell, 0.f), FVector2f(1.f, Cell * D->Height), WithAlpha(P.Secondary, 0.07f));
+        for (int Y = 0; Y <= D->Height; ++Y)
+            PaintRect(Elements, Layer + 2, Geometry, O + FVector2f(0.f, Y * Cell), FVector2f(Cell * D->Width, 1.f), WithAlpha(P.Secondary, 0.07f));
+        for (const auto& M : D->Marks) {
+            const FVector2f C = O + FVector2f((M.X + 0.5f) * Cell, (M.Y + 0.5f) * Cell);
+            const bool bHome = M.Owner > 0;
+            const FLinearColor Tint = bHome ? FactionColor(M.Owner) : (M.bMinor ? FLinearColor(0.82f, 0.78f, 1.f) : FLinearColor(0.95f, 0.88f, 0.72f));
+            const float R = bHome ? Cell * 0.26f : Cell * 0.14f;
+            PaintGlow(Elements, Layer + 3, Geometry, C, R * 3.2f, WithAlpha(Tint, bHome ? 0.42f : 0.26f));
+            PaintDisc(Elements, Layer + 4, Geometry, C, R, Lift(Tint, 0.2f), 18);
+            PaintDisc(Elements, Layer + 4, Geometry, C, R * 0.45f, FLinearColor::White, 12);
+            if (bHome && M.Owner == D->Player) {
+                TArray<FVector2D> Ring;
+                for (int I = 0; I <= 32; ++I) { const double A = I * 6.2831853 / 32; Ring.Add(FVector2D(C.X, C.Y) + FVector2D(FMath::Cos(A), FMath::Sin(A)) * (R + 6.0)); }
+                DrawLines(Elements, Layer + 5, Geometry, Ring, P.Accent, 2.f);
+            } else if (M.bMinor && !bHome) {
+                TArray<FVector2D> Ring;
+                for (int I = 0; I <= 24; ++I) { const double A = I * 6.2831853 / 24; Ring.Add(FVector2D(C.X, C.Y) + FVector2D(FMath::Cos(A), FMath::Sin(A)) * (R + 4.0)); }
+                DrawLines(Elements, Layer + 5, Geometry, Ring, WithAlpha(Tint, 0.7f), 1.f);
+            }
+        }
+        // Legend.
+        float X = O.X - 8.f;
+        const float Y = Size.Y - Foot + 4.f;
+        const auto Key = [&](const FLinearColor& Tint, const FString& Label) {
+            PaintDisc(Elements, Layer + 5, Geometry, FVector2f(X + 5.f, Y + 9.f), 4.5f, Tint, 12);
+            FSlateDrawElement::MakeText(Elements, Layer + 5, Geometry.ToPaintGeometry(FVector2f(200.f, 16.f), FSlateLayoutTransform(FVector2f(X + 15.f, Y))),
+                Label, Caption(6), ESlateDrawEffect::None, P.Text2);
+            X += 24.f + Label.Len() * 6.2f;
+        };
+        for (int E = 1; E <= 5; ++E) {
+            bool bIn = false;
+            for (const auto& M : D->Marks) if (M.Owner == E) { bIn = true; break; }
+            if (bIn) Key(FactionColor(E), FString(UTF8_TO_TCHAR(botf::empireName(E))).ToUpper());
+        }
+        Key(FLinearColor(0.82f, 0.78f, 1.f), TEXT("MINOR RACES"));
+        Key(FLinearColor(0.95f, 0.88f, 0.72f), TEXT("OTHER SYSTEMS"));
+        return Layer + 6;
+    }
+private:
+    std::function<const FGalaxyPreview*()> Get;
 };
 
 } // namespace BotfUi
