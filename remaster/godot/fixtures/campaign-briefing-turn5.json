@@ -1,0 +1,53 @@
+{
+ "method": "endTurn",
+ "args": {},
+ "result": {
+  "status": "complete",
+  "turn": 5,
+  "briefing": {
+   "turn": 5,
+   "creditsBefore": 1190,
+   "creditsAfter": 1241,
+   "researchGained": 10,
+   "fleetUpkeep": 49,
+   "tradeIncome": 0,
+   "ordersApplied": 0,
+   "stateHash": "8048819006071705606",
+   "outcome": "ongoing",
+   "colonies": [
+    {
+     "systemId": 1,
+     "name": "Sol",
+     "completed": "Factory",
+     "economy": {
+      "food": 42,
+      "foodDeficit": 1,
+      "industry": 21,
+      "research": 10,
+      "energyUsed": 20,
+      "energyAvailable": 21,
+      "inactiveFactories": 0,
+      "inactiveLabs": 0,
+      "income": 107,
+      "upkeep": 7,
+      "net": 100,
+      "shipyardPowered": true,
+      "poweredBatteries": 0,
+      "inactiveBatteries": 0
+     }
+    }
+   ],
+   "events": [
+    {
+     "category": "construction",
+     "severity": "good",
+     "text": "Sol completed Factory.",
+     "systemId": 1,
+     "x": 11,
+     "y": 2
+    }
+   ],
+   "replays": 0
+  }
+ }
+}
