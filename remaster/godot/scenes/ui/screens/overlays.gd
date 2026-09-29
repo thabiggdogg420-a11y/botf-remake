@@ -1,0 +1,467 @@
+extends RefCounted
+## Modal overlays: turn briefing / chronicle, galactic event cards, victory panel, end screen,
+## game menu, settings and keyboard help. Port of Briefing.tsx, ui/Remaster.tsx, SettingsPanel.tsx, Help.tsx.
+
+const ORDER := ["victory", "combat", "events", "diplomacy", "stations", "intel", "construction", "research", "colonization", "exploration", "fleets", "economy"]
+const CONDITION_BLURB := {
+	"Conquest": "Be the last power holding colonies.",
+	"Domination": "Hold 60% of all star systems after turn 20.",
+	"Scientific": "Master every field, then complete the era megaproject.",
+	"Diplomatic": "Lead an alliance bloc holding two-thirds of the galaxy's population.",
+}
+const CATEGORY_TONE := {"combat": "alert", "victory": "good", "events": "secondary", "diplomacy": "tertiary", "research": "info", "intel": "tertiary", "construction": "primary", "stations": "secondary"}
+
+static func open(app: App, kind: String) -> Control:
+	match kind:
+		"briefing": return briefing(app)
+		"events": return events(app)
+		"victory": return victory(app)
+		"end": return end_screen(app)
+		"menu": return menu(app)
+		"settings": return settings(app)
+		"help": return help(app)
+	return null
+
+# ---------------------------------------------------------------------------------------------
+static func briefing(app: App, filter: String = "all") -> Control:
+	var b: Variant = app.briefing
+	if not b is Dictionary:
+		var fetched: Variant = app.core.request("briefing")
+		if fetched is Dictionary:
+			b = fetched
+			app.briefing = b
+	var root := Lcars.vbox(12)
+	root.name = "Briefing"
+	if not b is Dictionary:
+		root.add_child(Lcars.empty_note("No briefing yet. End a turn to receive the chronicle."))
+		return app.open_modal(root, "Turn briefing", Vector2(900, 0))
+	var head := Lcars.hbox(24)
+	var t := Lcars.vbox(0)
+	t.add_child(Lcars.caption("Turn briefing · chronicle"))
+	var outcome := str(b.get("outcome", "ongoing"))
+	t.add_child(Lcars.heading("Turn %d %s" % [int(b["turn"]), "- Victory" if outcome == "victory" else ("- Defeat" if outcome == "defeat" else "report")], 34))
+	head.add_child(t)
+	head.add_child(Lcars.spacer())
+	var credits := int(b.get("creditsAfter", 0)) - int(b.get("creditsBefore", 0))
+	head.add_child(Lcars.stat("Credits", Lcars.signed(credits), "alert" if credits < 0 else "good"))
+	head.add_child(Lcars.stat("Treasury", Lcars.fmt(b.get("creditsAfter", 0))))
+	head.add_child(Lcars.stat("Research", "+" + Lcars.fmt(b.get("researchGained", 0)), "info"))
+	head.add_child(Lcars.stat("Orders", int(b.get("ordersApplied", 0))))
+	var ack := Lcars.pill("Acknowledge", "primary", func(): app.close_modal(), "", "", "Enter")
+	ack.name = "Acknowledge"
+	ack.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	head.add_child(ack)
+	root.add_child(head)
+	var events: Array = b.get("events", [])
+	var cats := []
+	for c in ORDER:
+		for e in events:
+			if e["category"] == c and not cats.has(c):
+				cats.append(c)
+	for e in events:
+		if not cats.has(e["category"]):
+			cats.append(e["category"])
+	var tabs := Lcars.hbox(6)
+	var modal_holder := {"m": null}
+	var mk_tab := func(id: String, text: String):
+		var tb := Lcars.toggle(text, filter == id, func(_on):
+			app.close_modal(modal_holder["m"])
+			briefing(app, id))
+		tabs.add_child(tb)
+	mk_tab.call("all", "All  %d" % events.size())
+	for c in cats:
+		mk_tab.call(c, "%s  %d" % [Lcars.CATEGORY_LABELS.get(c, c), events.filter(func(e): return e["category"] == c).size()])
+	root.add_child(tabs)
+	var list := Lcars.vbox(10)
+	for c in cats:
+		if filter != "all" and filter != c:
+			continue
+		var sec := Lcars.vbox(4)
+		var h := Lcars.hbox(8)
+		var dot := ColorRect.new()
+		dot.color = Lcars.tone_color(CATEGORY_TONE.get(c, "primary"))
+		dot.custom_minimum_size = Vector2(10, 10)
+		dot.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		h.add_child(dot)
+		h.add_child(Lcars.label(Lcars.CATEGORY_LABELS.get(c, c).to_upper(), "SubHeading"))
+		sec.add_child(h)
+		for e in events:
+			if e["category"] != c:
+				continue
+			sec.add_child(_event_row(app, e, modal_holder))
+		list.add_child(sec)
+	if events.is_empty():
+		list.add_child(Lcars.empty_note("A quiet turn. Production and research continue."))
+	var sc := Lcars.scroll(list)
+	sc.custom_minimum_size = Vector2(0, 520)
+	root.add_child(sc)
+	var foot := HFlowContainer.new()
+	for col in b.get("colonies", []):
+		var bd := Lcars.badge("%s%s" % [col["name"], (" ✓ " + str(col["completed"])) if str(col.get("completed", "")) != "" else ""], "alert" if int(col["economy"].get("foodDeficit", 0)) > 0 else "dim")
+		bd.tooltip_text = "Food %s · industry %s · research %s · net %s" % [col["economy"]["food"], col["economy"]["industry"], col["economy"]["research"], Lcars.signed(col["economy"]["net"])]
+		foot.add_child(bd)
+	root.add_child(foot)
+	var m := app.open_modal(root, "", Vector2(1100, 0))
+	modal_holder["m"] = m
+	ack.grab_focus.call_deferred()
+	return m
+
+static func _event_row(app: App, e: Dictionary, holder: Dictionary) -> Control:
+	var sev := str(e.get("severity", "info"))
+	var b := Button.new()
+	b.theme_type_variation = "GhostButton"
+	b.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	b.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	b.add_theme_font_override("font", Lcars.font("ui", 440))
+	b.add_theme_font_size_override("font_size", 15)
+	var sb := Lcars.box(Color(Lcars.PANEL2, 0.7), 10, Lcars.tone_color("alert" if sev == "alert" else ("warn" if sev == "warn" else ("good" if sev == "good" else "info"))), 0, Vector4(16, 7, 16, 7))
+	sb.border_width_left = 5
+	b.add_theme_stylebox_override("normal", sb)
+	var due := ""
+	if e.has("dueTurn"):
+		due = "   (due turn %d)" % int(e["dueTurn"])
+	b.text = str(e["text"]) + due
+	b.pressed.connect(func():
+		app.close_modal(holder["m"])
+		_open_event(app, e))
+	return b
+
+static func _open_event(app: App, e: Dictionary) -> void:
+	var cat := str(e["category"])
+	if cat == "combat" and e.has("battle"):
+		app.goto("combat")
+		return
+	if e.has("eventId"):
+		app.open_overlay("events")
+		return
+	if cat == "victory" and not e.has("x"):
+		app.open_overlay("victory")
+		return
+	if e.has("systemId"):
+		app.select_system(int(e["systemId"]))
+		if cat == "construction":
+			app.goto("system")
+			return
+	elif e.has("fleetId"):
+		app.select_fleet(int(e["fleetId"]))
+	if cat == "research":
+		app.goto("research")
+	elif cat == "diplomacy" and not e.has("x"):
+		app.goto("diplomacy")
+	elif cat == "intel" and not e.has("x"):
+		app.goto("intel")
+	elif e.has("x"):
+		app.goto("galaxy")
+		var s := app.current_screen()
+		if s and s.has_method("focus_cell"):
+			s.focus_cell(int(e["x"]), int(e["y"]))
+
+# ---------------------------------------------------------------------------------------------
+static func events(app: App) -> Control:
+	var v := app.view
+	var root := Lcars.vbox(12)
+	root.name = "Events"
+	var evs: Array = v.get("events", []).duplicate()
+	evs.sort_custom(func(a, b):
+		if a["awaitingChoice"] != b["awaitingChoice"]:
+			return a["awaitingChoice"]
+		return int(a["deadline"]) < int(b["deadline"]))
+	if evs.is_empty():
+		root.add_child(Lcars.empty_note("No galactic events concern your empire right now. New events are drawn every few turns."))
+	var grid := Lcars.grid(2)
+	grid.add_theme_constant_override("h_separation", 14)
+	grid.add_theme_constant_override("v_separation", 14)
+	var turn := int(v["meta"]["turn"])
+	var locked: bool = v.get("session", {}).get("active", false)
+	for e in evs:
+		var c := Lcars.card()
+		c.custom_minimum_size = Vector2(520, 0)
+		var col := Lcars.vbox(6)
+		c.add_child(col)
+		var h := Lcars.hbox(10)
+		var glyph := EventGlyph.new()
+		glyph.kind = str(e["kind"])
+		glyph.custom_minimum_size = Vector2(40, 40)
+		h.add_child(glyph)
+		var tt := Lcars.vbox(0)
+		tt.add_child(Lcars.label(str(e["name"]).to_upper(), "SubHeading", 22, Lcars.TEXT))
+		var where := ""
+		if e.has("system"):
+			where = str(e["system"]) + " · "
+		elif e.has("x"):
+			where = "Sector %d.%d · " % [int(e["x"]), int(e["y"])]
+		tt.add_child(Lcars.caption("%ssince turn %d%s" % [where, int(e["startTurn"]), (" · effects until turn %d" % int(e["endTurn"])) if int(e["endTurn"]) > turn else ""]))
+		tt.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		h.add_child(tt)
+		var drafted := int(e.get("drafted", -1))
+		if e["awaitingChoice"]:
+			h.add_child(Lcars.badge("decided" if drafted >= 0 else "due T%d" % int(e["deadline"]), "good" if drafted >= 0 else ("alert" if int(e["deadline"]) <= turn else "warn")))
+		else:
+			h.add_child(Lcars.badge("resolved" if e.get("choiceApplied", false) else "active", "dim"))
+		col.add_child(h)
+		col.add_child(Lcars.para(str(e["description"]), Lcars.TEXT2, 14))
+		var chosen := drafted if drafted >= 0 else int(e.get("choice", -1))
+		for o in e.get("choices", []):
+			var blocked := "Finish the battle in progress first" if locked else str(o.get("blocker", ""))
+			var ob := Button.new()
+			ob.theme_type_variation = "GhostButton"
+			ob.toggle_mode = true
+			ob.button_pressed = chosen == int(o["index"])
+			ob.alignment = HORIZONTAL_ALIGNMENT_LEFT
+			ob.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			ob.text = "%s%s\n%s" % [o["label"], "  (default)" if o.get("isDefault", false) else "", o["effect"]]
+			ob.add_theme_font_override("font", Lcars.font("ui", 460))
+			ob.add_theme_font_size_override("font_size", 14)
+			ob.disabled = not e["awaitingChoice"] or blocked != ""
+			ob.tooltip_text = ("Unavailable: " + blocked) if blocked != "" else str(o["effect"])
+			var eid := int(e["id"])
+			var idx := int(o["index"])
+			var ids: Array = e.get("draftIds", [])
+			var name_: String = e["name"]
+			var lbl: String = o["label"]
+			ob.pressed.connect(func():
+				if app.issue({"type": "ResolveEventChoice", "eventId": eid, "eventOption": idx}, ids, "%s: “%s” takes effect next turn." % [name_, lbl]):
+					app.close_modal()
+					events(app))
+			col.add_child(ob)
+		grid.add_child(c)
+	var sc := Lcars.scroll(grid)
+	sc.custom_minimum_size = Vector2(1080, 600)
+	root.add_child(sc)
+	var close := Lcars.pill("Close", "ghost", func(): app.close_modal(), "", "", "Esc")
+	root.add_child(close)
+	return app.open_modal(root, "Galactic events · decisions & developments", Vector2(1120, 0), "secondary")
+
+class EventGlyph extends Control:
+	var kind := ""
+	func _process(_d: float) -> void:
+		queue_redraw()
+	func _draw() -> void:
+		var c := size / 2.0
+		var t := Time.get_ticks_msec() / 1000.0
+		var col := Lcars.accent2()
+		draw_circle(c, 18, Color(col, 0.15))
+		draw_arc(c, 17, t, t + PI * 1.4, 24, col, 2.0, true)
+		draw_arc(c, 11, -t * 1.3, -t * 1.3 + PI, 24, Color(col, 0.7), 2.0, true)
+		draw_circle(c, 4, col)
+
+# ---------------------------------------------------------------------------------------------
+static func victory_rows(v: Dictionary, compact: bool = false) -> Control:
+	var list := Lcars.vbox(10 if not compact else 6)
+	for c in v.get("victory", {}).get("conditions", []):
+		var row := Lcars.vbox(3)
+		var h := Lcars.hbox(8)
+		h.add_child(Lcars.label(str(c["name"]).to_upper(), "SubHeading", 20 if not compact else 16, Lcars.TEXT))
+		if c["achieved"]:
+			h.add_child(Lcars.badge("achieved", "good"))
+		elif not c["enabled"]:
+			h.add_child(Lcars.badge("off in this ruleset", "dim"))
+		h.add_child(Lcars.spacer())
+		h.add_child(Lcars.label("%d%%" % int(c["percent"]) if c["enabled"] else "-", "Mono", 16))
+		row.add_child(h)
+		var tone := "good" if c["achieved"] else ("warn" if int(c["percent"]) >= 75 else "primary")
+		row.add_child(Lcars.meter(int(c["percent"]) if c["enabled"] else 0, 100, Lcars.tone_color(tone), 8 if not compact else 5))
+		if not compact:
+			row.add_child(Lcars.para(CONDITION_BLURB.get(c["condition"], ""), Lcars.TEXT3, 13))
+		row.add_child(Lcars.para(str(c["explanation"]), Lcars.TEXT2, 13))
+		row.name = "Victory_" + str(c["condition"])
+		list.add_child(row)
+	return list
+
+static func victory(app: App) -> Control:
+	var v := app.view
+	var vic: Dictionary = v.get("victory", {})
+	var root := Lcars.vbox(14)
+	root.name = "Victory"
+	root.add_child(Lcars.caption("Paths to victory · %s rules" % v["meta"].get("rules", {}).get("presetName", "")))
+	root.add_child(victory_rows(v))
+	if vic.get("alternative", false):
+		var box := Lcars.frame(str(vic.get("megaprojectName", "Megaproject")), "scientific victory", "secondary")
+		var b := Lcars.body(box)
+		var mp: Variant = vic.get("megaproject")
+		if mp is Dictionary:
+			b.add_child(Lcars.para("Under construction at %s since turn %d." % [mp["system"], int(mp["startTurn"])]))
+			b.add_child(Lcars.meter(mp["work"], vic["megaprojectCost"], Lcars.GOOD, 8))
+			b.add_child(Lcars.label("%s / %s industry · up to %d/turn" % [Lcars.fmt(mp["work"]), Lcars.fmt(vic["megaprojectCost"]), int(vic["megaprojectWorkPerTurn"])], "Mono"))
+		else:
+			b.add_child(Lcars.para("Needs every research field at level %d, turn 50 or later and ¢%s; then %s industry (up to %d per turn) from one colony. Start it from the System screen." % [int(vic.get("threshold", 0)), Lcars.fmt(vic.get("megaprojectCredits", 0)), Lcars.fmt(vic.get("megaprojectCost", 0)), int(vic.get("megaprojectWorkPerTurn", 0))]))
+		for r in vic.get("rivalProjects", []):
+			var rr := Lcars.hbox(8)
+			rr.add_child(Lcars.emblem(int(r["owner"]), 16))
+			rr.add_child(Lcars.label("%s began theirs on turn %d: %s / %s" % [r["ownerName"], int(r["startTurn"]), Lcars.fmt(r["work"]), Lcars.fmt(vic["megaprojectCost"])], "", 14))
+			rr.add_child(Lcars.meter(r["work"], vic["megaprojectCost"], Lcars.ALERT, 4, 160))
+			b.add_child(rr)
+		b.add_child(Lcars.pill("Open System screen", "secondary", func(): app.close_modal(); app.goto("system")))
+		root.add_child(box)
+	else:
+		root.add_child(Lcars.para("Classic rules: conquest and domination only.", Lcars.TEXT3))
+	root.add_child(Lcars.pill("Close", "ghost", func(): app.close_modal(), "", "", "Esc"))
+	return app.open_modal(root, "Victory progress", Vector2(820, 0), "good")
+
+# ---------------------------------------------------------------------------------------------
+static func end_screen(app: App, preview: String = "") -> Control:
+	var v := app.view
+	var outcome := preview if preview != "" else str(v["meta"].get("outcome", "ongoing"))
+	var won := outcome == "victory"
+	var root := Lcars.vbox(14)
+	root.name = "EndScreen"
+	root.alignment = BoxContainer.ALIGNMENT_CENTER
+	var winner := int(v["meta"].get("winner", 0))
+	var em := Lcars.emblem(app.player() if won or winner == 0 else winner, 84)
+	em.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	root.add_child(em)
+	var kick := Lcars.caption("Turn %d · Stardate %.1f" % [int(v["meta"]["turn"]), 41000 + int(v["meta"]["turn"]) * 25.7])
+	kick.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	root.add_child(kick)
+	var title := Lcars.label("VICTORY" if won else "DEFEAT", "", 96, Lcars.GOOD if won else Lcars.ALERT)
+	title.add_theme_font_override("font", Lcars.font("display", 700))
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	root.add_child(title)
+	var reason := "Your empire commands the quadrant."
+	for c in v.get("victory", {}).get("conditions", []):
+		if c["achieved"] and won:
+			reason = "%s victory: %s" % [c["name"], c["explanation"]]
+	if not won:
+		reason = ("%s prevailed." % app.empire_name(winner)) if winner != 0 and winner != app.player() else ("Your last colony has fallen." if v.get("colonies", []).is_empty() else "Your empire has been defeated.")
+	var rl := Lcars.para(reason, Lcars.TEXT, 18)
+	rl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	root.add_child(rl)
+	var stats := Lcars.grid(4)
+	stats.add_theme_constant_override("h_separation", 40)
+	var techs := 0
+	for t in v["empire"].get("techs", []):
+		techs += int(t["level"])
+	var mine := 0
+	for s in v.get("stations", []):
+		if s.get("mine", false):
+			mine += 1
+	var contacts := 0
+	for e in v.get("empires", []):
+		if e.get("contact", false):
+			contacts += 1
+	for pair in [["Turns", v["meta"]["turn"]], ["Colonies", v["colonies"].size()], ["Population", Lcars.fmt(v["empire"]["population"])], ["Ships", v["fleets"].size()],
+			["Stations", mine], ["Treasury", Lcars.fmt(v["empire"]["credits"])], ["Tech levels", techs], ["Contacts", contacts]]:
+		stats.add_child(Lcars.stat(pair[0], pair[1]))
+	var sc := CenterContainer.new()
+	sc.add_child(stats)
+	root.add_child(sc)
+	root.add_child(victory_rows(v, true))
+	var acts := Lcars.hbox(10)
+	acts.alignment = BoxContainer.ALIGNMENT_CENTER
+	acts.add_child(Lcars.pill("Final briefing", "ghost", func(): app.close_modal(); app.open_overlay("briefing")))
+	acts.add_child(Lcars.pill("View the galaxy", "ghost", func(): app.close_modal()))
+	acts.add_child(Lcars.pill("Save", "secondary", func():
+		if app.save_game("%s - %s turn %d" % [v["meta"]["playerName"], outcome, int(v["meta"]["turn"])]):
+			app.toast("Campaign saved.", "good")))
+	acts.add_child(Lcars.pill("New campaign", "primary", func(): app.close_modal(); app.view = {}; app.goto("new")))
+	acts.add_child(Lcars.pill("Title", "tertiary", func(): app.close_modal(); app.view = {}; app.goto("title")))
+	root.add_child(acts)
+	return app.open_modal(root, "", Vector2(980, 0), "good" if won else "alert")
+
+# ---------------------------------------------------------------------------------------------
+static func menu(app: App) -> Control:
+	var root := Lcars.vbox(10)
+	root.name = "Menu"
+	var name_edit := LineEdit.new()
+	name_edit.text = app.save_name if app.save_name != "" else "Campaign"
+	name_edit.custom_minimum_size.x = 380
+	root.add_child(Lcars.caption("Save name"))
+	var row := Lcars.hbox(8)
+	row.add_child(name_edit)
+	var do_save := func():
+		if app.save_game(name_edit.text.strip_edges()):
+			app.toast("Saved as %s." % name_edit.text, "good")
+			app.close_modal()
+	row.add_child(Lcars.pill("Save", "secondary", do_save, "", "", "Ctrl+S"))
+	root.add_child(row)
+	for item in [["Resume", "primary", func(): app.close_modal()],
+			["Load campaign", "secondary", func(): app.close_modal(); app.goto("saves")],
+			["Settings", "tertiary", func(): app.close_modal(); app.open_overlay("settings")],
+			["Keyboard help", "tertiary", func(): app.close_modal(); app.open_overlay("help")],
+			["Quit to title", "alert", func(): app.close_modal(); app.view = {}; app.goto("title", false)]]:
+		var b := Lcars.pill(item[0], item[1], item[2])
+		b.custom_minimum_size.y = 42
+		root.add_child(b)
+	return app.open_modal(root, "Menu", Vector2(480, 0))
+
+static func settings(app: App) -> Control:
+	var s := app.settings
+	var root := Lcars.vbox(14)
+	root.name = "Settings"
+	var scale_row := Lcars.hbox(12)
+	scale_row.add_child(_setting_text("Interface scale", "Enlarges or shrinks text and controls (75-150%). The star chart keeps its own zoom."))
+	var sl := HSlider.new()
+	sl.min_value = 0.75
+	sl.max_value = 1.5
+	sl.step = 0.05
+	sl.value = float(s.get("uiScale", 1.0))
+	sl.custom_minimum_size.x = 220
+	sl.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	var pct := Lcars.label("%d%%" % int(sl.value * 100), "Mono")
+	sl.value_changed.connect(func(val): pct.text = "%d%%" % int(val * 100))
+	sl.drag_ended.connect(func(_c): s["uiScale"] = sl.value; app.save_settings())
+	scale_row.add_child(sl)
+	scale_row.add_child(pct)
+	root.add_child(scale_row)
+	for item in [["reducedMotion", "Reduced motion", "Stops camera glides, pulsing effects and battle animations."],
+			["colorblind", "Colour-blind-safe owner colours", "Okabe-Ito palette for empires on the map and in the interface. Emblems stay the primary owner cue."],
+			["autosave", "Autosave every turn", "Keeps one rolling autosave slot for the campaign in progress."],
+			["confirmEndTurn", "Confirm end turn", "Ask before ending a turn with idle units."]]:
+		var r := Lcars.hbox(12)
+		r.add_child(_setting_text(item[1], item[2]))
+		var key: String = item[0]
+		var cb := CheckButton.new()
+		cb.button_pressed = bool(s.get(key, false))
+		cb.toggled.connect(func(on): s[key] = on; app.save_settings())
+		cb.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		r.add_child(cb)
+		root.add_child(r)
+	var vr := Lcars.hbox(12)
+	vr.add_child(_setting_text("Sound volume", "Interface cues (the Godot client uses the master bus)."))
+	var vol := HSlider.new()
+	vol.max_value = 1.0
+	vol.step = 0.05
+	vol.value = float(s.get("volume", 0.7))
+	vol.custom_minimum_size.x = 220
+	vol.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	vol.value_changed.connect(func(val):
+		s["volume"] = val
+		AudioServer.set_bus_volume_db(0, linear_to_db(max(0.001, val))))
+	vol.drag_ended.connect(func(_c): app.save_settings())
+	vr.add_child(vol)
+	root.add_child(vr)
+	var acts := Lcars.hbox(8)
+	acts.add_child(Lcars.pill("Reset to defaults", "ghost", func():
+		app.settings = {"uiScale": 1.0, "colorblind": false, "reducedMotion": false, "autosave": true, "confirmEndTurn": false, "volume": 0.7, "showGrid": true}
+		app.save_settings()
+		app.close_modal()
+		settings(app)))
+	acts.add_child(Lcars.spacer())
+	acts.add_child(Lcars.pill("Close", "primary", func(): app.close_modal(), "", "", "Esc"))
+	root.add_child(acts)
+	root.add_child(Lcars.label("Core backend: %s" % app.core.backend, "Mono", 12, Lcars.TEXT3))
+	return app.open_modal(root, "Settings", Vector2(720, 0))
+
+static func _setting_text(title: String, detail: String) -> Control:
+	var v := Lcars.vbox(0)
+	v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	v.add_child(Lcars.label(title, "", 16, Lcars.TEXT))
+	v.add_child(Lcars.para(detail, Lcars.TEXT3, 13))
+	return v
+
+static func help(app: App) -> Control:
+	var root := Lcars.vbox(8)
+	root.name = "Help"
+	var g := Lcars.grid(2)
+	g.add_theme_constant_override("h_separation", 26)
+	for pair in [["F1 - F8", "Galaxy, System, Empire, Research, Fleets, Diplomacy, Intel, Database"], ["Enter", "End turn / acknowledge briefing"],
+			["Esc", "Back, close panel, deselect unit, open menu"], ["Tab / Shift+Tab", "Cycle your ships on the star chart"],
+			["Right-click", "Order menu for a sector (with a unit selected: move, attack, colonize...)"], ["Double-click", "Open your colony's System screen"],
+			["Wheel / drag", "Zoom and pan the star chart"], ["F  /  H", "Fit the charted region  /  centre on the capital"],
+			["Ctrl+S", "Quick save"], ["?", "This help"]]:
+		var k := Lcars.label(pair[0], "Mono", 16, Lcars.accent2())
+		g.add_child(k)
+		g.add_child(Lcars.label(pair[1], "", 15))
+	root.add_child(g)
+	root.add_child(Lcars.pill("Close", "ghost", func(): app.close_modal(), "", "", "Esc"))
+	return app.open_modal(root, "Keyboard & mouse", Vector2(760, 0), "tertiary")
