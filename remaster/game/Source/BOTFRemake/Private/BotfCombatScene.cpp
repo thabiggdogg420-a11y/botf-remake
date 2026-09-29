@@ -14,6 +14,7 @@
 #include "Components/DirectionalLightComponent.h"
 #include "Engine/TextureRenderTarget2D.h"
 #include "Engine/StaticMesh.h"
+#include "StaticMeshResources.h"
 #include "Materials/MaterialInterface.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Misc/PackageName.h"
@@ -448,7 +449,16 @@ void ABotfCombatScene::ConfigureTitleScene(int EmpireId)
             if (!Path.IsEmpty() && FPackageName::DoesPackageExist(FSoftObjectPath(Path).GetLongPackageName()))
                 Mesh = Cast<UStaticMesh>(FSoftObjectPath(Path).TryLoad());
         }
-        if (Mesh) Ship->SetStaticMesh(Mesh);
+        if (Mesh)
+        {
+            Ship->SetStaticMesh(Mesh);
+            // The plated heroes and the generated hulls read their colour masks from vertex colours; a mesh that lost
+            // them on import renders white or black, so the title shot says which meshes carry them.
+            const FStaticMeshRenderData* Render = Mesh->GetRenderData();
+            const uint32 Colours = Render && Render->LODResources.Num()
+                ? Render->LODResources[0].VertexBuffers.ColorVertexBuffer.GetNumVertices() : 0u;
+            UE_LOG(LogTemp, Display, TEXT("BOTF_TITLE_MESH %s %s colours=%u"), *Key, *Mesh->GetPathName(), Colours);
+        }
         // The hero reads largest; escorts keep their canon size relative to it (a Defiant beside a Sovereign is a
         // quarter of its length), never below a readable minimum.
         if (Index == 0) HeroLength = LengthMeters;

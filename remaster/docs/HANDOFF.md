@@ -172,8 +172,19 @@ in wings; upgrade each model's own textures, plating for untextured ones.
   - A camera-following fill light (`FillLight`) is added.
   - The title sun is a three-quarter front key (it was backlight).
   - Proof: 16/16 heroes built and imported; titles `pc-screens/title-cardassian.png`, `title-ferengi.png`; showcase 6v6 220 fps.
+- **Plated hulls (untextured sources: Negh'Var, Vor'cha, Defiant, Hideki).**
+  - `blender_hero_ships.py` `bake_plating` bakes the large-scale look into a vertex colour `Col` with Cycles on the GPU.
+    It holds the faction hull colour (`PLATING_BAKE`), a rust underside accent, tone mottling, plate families and AO.
+  - A unique-texture bake was dropped: these meshes unwrap into thousands of islands and the atlas used 3–13%.
+  - `ue_import_hero_ships.py` `M_ShipPlated` multiplies the vertex colour by the tiling faction plating (panel tone,
+    seams, roughness, normal).
+  - Two bugs made these hulls black:
+    - The bake linked the Mix nodes' float sockets instead of their colour sockets, which averaged 0.04.
+    - The material read a VertexColor output named "RGB", which doesn't exist, so the multiply stayed at zero.
+  - Headless checks can't see vertex colours: `has_vertex_colors` is always False in the commandlet, which has no render data.
+    The title shot now logs `BOTF_TITLE_MESH <key> <path> colours=<n>` from the render data instead.
+  - Proof: `pc-screens/title-klingon-plated.png`, where the Negh'Var shows deep olive with rust undersides and AO.
 - **Open.**
-  - Klingon plating is still flat next to textured hulls.
   - The Vor'Cha Pack NIFs are unused: no diffuse textures.
   - The Romulan D'deridex paint is very dark green by source.
   - Preview top/front renders crop wide hulls (preview only).

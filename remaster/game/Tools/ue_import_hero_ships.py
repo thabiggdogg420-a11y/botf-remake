@@ -9,7 +9,7 @@ Creates:
   /Game/Local/Ships/<fac>/<slug>/SM_<slug>     sockets kept, LODs 0-3 by screen size, Nanite off (scene captures
                                                 render the Nanite fallback mesh)
   /Game/Local/Ships/<fac>/<slug>/MI_<slug>_<slot>
-Untextured slots marked "plating" use /Game/Generated/Ships/MI_Hull_<fac> (run ue_import_generated_ships.py first).
+Untextured slots marked "plating" with "vertexBake" get MI_<slug>_<slot> of /Game/Local/Ships/M_ShipPlated (baked vertex
 Writes LocalAssets/ships/hero-manifest.json and merges it into LocalAssets/resolved-manifest.json, so
 UBotfAssetRegistry resolves those keys to the hero meshes. Import-Assets.ps1 re-applies hero-manifest.json.
 """
@@ -104,6 +104,75 @@ def build_master():
     return mat
 
 
+def build_plated():
+    """M_ShipPlated: an untextured hero model with its look baked into the vertex colour (blender_hero_ships.py
+    bake_plating: hull colour, underside accent, mottling, ambient occlusion) times the tiling faction plating on UV0
+    (panel tone R, seams G, roughness A, and its normal map), as M_ShipHull lays it out at PanelScale 0.35."""
+    path = f"{DEST}/M_ShipPlated"
+    if EAL.does_asset_exist(path):
+        EAL.delete_asset(path)
+    mat = TOOLS.create_asset("M_ShipPlated", DEST, unreal.Material, unreal.MaterialFactoryNew())
+    ST = unreal.MaterialSamplerType
+    uv = expr(mat, unreal.MaterialExpressionTextureCoordinate, -1500, 0)
+    scale = param(mat, unreal.MaterialExpressionScalarParameter, "PanelScale", 0.35, -1500, 100)
+    uvs = mul(mat, uv, scale, -1350, 40)
+    panels = sampler(mat, "Panels", "/Game/Generated/Ships/T_HullPanels", ST.SAMPLERTYPE_LINEAR_COLOR, -1150, -100)
+    MEL.connect_material_expressions(uvs, "", panels, "UVs")
+    nrm = sampler(mat, "Normal", "/Game/Generated/Ships/T_HullNormal", ST.SAMPLERTYPE_NORMAL, -1150, 300)
+    MEL.connect_material_expressions(uvs, "", nrm, "UVs")
+    MEL.connect_material_property(nrm, "RGB", unreal.MaterialProperty.MP_NORMAL)
+    vc = expr(mat, unreal.MaterialExpressionVertexColor, -1150, -400)
+    # tone = R * 0.7 + 0.65, seam = 1 - 0.55 * G (as the Blender preview and bake assume)
+    tone = expr(mat, unreal.MaterialExpressionMultiply, -900, -120)
+    tone.set_editor_property("const_b", 0.7)
+    MEL.connect_material_expressions(panels, "R", tone, "A")
+    tone1 = expr(mat, unreal.MaterialExpressionAdd, -760, -120)
+    tone1.set_editor_property("const_b", 0.65)
+    MEL.connect_material_expressions(tone, "", tone1, "A")
+    seam = expr(mat, unreal.MaterialExpressionMultiply, -900, 0)
+    seam.set_editor_property("const_b", 0.55)
+    MEL.connect_material_expressions(panels, "G", seam, "A")
+    seam1 = expr(mat, unreal.MaterialExpressionOneMinus, -760, 0)
+    MEL.connect_material_expressions(seam, "", seam1, "")
+    shade = mul(mat, tone1, seam1, -600, -60)
+    gain = param(mat, unreal.MaterialExpressionScalarParameter, "ColorGain", 1.0, -760, -300)
+    # The VertexColor node's outputs are the unnamed RGBA and R/G/B/A; a mask takes the RGB (a link to "RGB" fails
+    # silently and leaves the multiply at zero, a black hull).
+    rgb = expr(mat, unreal.MaterialExpressionComponentMask, -1000, -400)
+    for ch, on in (("r", True), ("g", True), ("b", True), ("a", False)):
+        rgb.set_editor_property(ch, on)
+    MEL.connect_material_expressions(vc, "", rgb, "")
+    base = mul(mat, mul(mat, rgb, shade, -450, -250), gain, -300, -250)
+    MEL.connect_material_property(base, "", unreal.MaterialProperty.MP_BASE_COLOR)
+    rough_k = param(mat, unreal.MaterialExpressionScalarParameter, "RoughnessScale", 1.0, -760, 160)
+    rough = mul(mat, panels, rough_k, -600, 160, "A", "")
+    rough_min = expr(mat, unreal.MaterialExpressionMax, -450, 160)
+    rough_min.set_editor_property("const_b", 0.32)
+    MEL.connect_material_expressions(rough, "", rough_min, "A")
+    MEL.connect_material_property(rough_min, "", unreal.MaterialProperty.MP_ROUGHNESS)
+    metal = param(mat, unreal.MaterialExpressionScalarParameter, "Metallic", 0.15, -600, 260)
+    MEL.connect_material_property(metal, "", unreal.MaterialProperty.MP_METALLIC)
+    MEL.recompile_material(mat)
+    EAL.save_loaded_asset(mat)
+    return mat
+
+
+def plated_instance(slug, dest, slot, plated):
+    fac = slot["plating"]
+    name = "MI_%s_%s" % (slug, slot["name"])
+    if EAL.does_asset_exist(f"{dest}/{name}"):
+        EAL.delete_asset(f"{dest}/{name}")
+    mi = TOOLS.create_asset(name, dest, unreal.MaterialInstanceConstant, unreal.MaterialInstanceConstantFactoryNew())
+    MEL.set_material_instance_parent(mi, plated)
+    for pname, tex in (("Panels", "T_HullPanels"), ("Normal", "T_HullNormal")):
+        own = f"/Game/Generated/Ships/{tex}_{fac}"
+        if EAL.does_asset_exist(own):
+            MEL.set_material_instance_texture_parameter_value(mi, pname, unreal.load_asset(own))
+    MEL.set_material_instance_scalar_parameter_value(mi, "Metallic", 0.35 * slot.get("metallic", 0.45))
+    EAL.save_loaded_asset(mi)
+    return mi
+
+
 def import_texture(src, dest, kind):
     t = unreal.AssetImportTask()
     t.filename = src
@@ -159,7 +228,7 @@ def set_lods(mesh):
     unreal.EditorStaticMeshLibrary.set_lods(mesh, options)
 
 
-def import_ship(folder, master):
+def import_ship(folder, master, plated):
     info = json.load(open(os.path.join(folder, "hero.json"), encoding="utf-8"))
     key = info["key"]
     fac, slug = key.split(".")[1], key.split(".", 2)[2]
@@ -186,6 +255,9 @@ def import_ship(folder, master):
         index = slot_names.index(slot["name"]) if slot["name"] in slot_names else (0 if len(slot_names) == 1 else -1)
         if index < 0:
             unreal.log_warning("BOTF heroes: %s has no slot %s (%s)" % (key, slot["name"], slot_names))
+            continue
+        if slot.get("plating") and slot.get("vertexBake"):
+            mesh.set_material(index, plated_instance(slug, dest, slot, plated))
             continue
         if slot.get("plating"):
             mi = unreal.load_asset("/Game/Generated/Ships/MI_Hull_%s" % slot["plating"])
@@ -226,11 +298,12 @@ def import_ship(folder, master):
 
 def main():
     master = build_master()
+    plated = build_plated()
     entries = {}
     folders = sorted(os.path.dirname(p) for p in glob.glob(os.path.join(SHIPS, "*", "hero.json")))
     for folder in folders:
         unreal.log("BOTF heroes: importing %s" % os.path.basename(folder))
-        r = import_ship(folder, master)
+        r = import_ship(folder, master, plated)
         if r:
             entries[r[0]] = r[1]
     with open(os.path.join(SHIPS, "hero-manifest.json"), "w", encoding="utf-8") as f:

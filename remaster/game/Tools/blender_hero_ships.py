@@ -387,6 +387,134 @@ def plating_unwrap(hull, length):
     col.data.foreach_set("color", zero)
 
 
+# Baked plating palette per faction: hull, underside accent, how far the accent climbs, tone mottling.
+# Brighter than the shared generated-ship scheme: these hulls are seen close up and lit only by key, rim and fill.
+PLATING_BAKE = {
+    "kli": ((0.19, 0.25, 0.16), (0.34, 0.11, 0.07), 0.55, 0.20),
+    "fed": ((0.56, 0.58, 0.61), (0.42, 0.44, 0.48), 0.30, 0.07),
+    "car": ((0.56, 0.46, 0.31), (0.36, 0.27, 0.18), 0.40, 0.12),
+    "rom": ((0.24, 0.40, 0.30), (0.44, 0.50, 0.38), 0.35, 0.12),
+    "fer": ((0.56, 0.35, 0.19), (0.34, 0.24, 0.14), 0.40, 0.10),
+}
+
+
+def use_gpu():
+    """Cycles on the GPU when one is there (OptiX, then CUDA); otherwise the CPU."""
+    try:
+        prefs = bpy.context.preferences.addons["cycles"].preferences
+        for kind in ("OPTIX", "CUDA"):
+            try:
+                prefs.compute_device_type = kind
+                prefs.get_devices()
+                devs = [d for d in prefs.devices if d.type == kind]
+                if devs:
+                    for d in prefs.devices:
+                        d.use = d.type == kind
+                    bpy.context.scene.cycles.device = "GPU"
+                    return kind
+            except TypeError:
+                continue
+    except Exception:
+        pass
+    bpy.context.scene.cycles.device = "CPU"
+    return "CPU"
+
+
+def bake_plating(hull, fac, length):
+    """Untextured source: bakes the plating's large-scale look into the vertex colour "Col" (linear): the faction hull
+    colour with an underside accent, tone mottling (blobs about L/7) and plate families (cells about L/18), times
+    ambient occlusion from the model's own geometry. The dense hero meshes carry that detail well; the fine panels,
+    seams and normals come from the tiling faction plating in M_ShipPlated (ue_import_hero_ships.py), through the
+    tiling UVs plating_unwrap made. (A unique texture bake was tried: these hard-surface meshes unwrap into thousands
+    of islands and the atlas used 3-13% of the texture.)"""
+    hull_c, accent_c, accent_amt, mottle = PLATING_BAKE.get(fac, PLATING_BAKE["fed"])
+    me = hull.data
+    for name in [a.name for a in me.color_attributes]:
+        me.color_attributes.remove(me.color_attributes[name])
+    col_attr = me.color_attributes.new("Col", "FLOAT_COLOR", "POINT")
+    me.color_attributes.active_color = col_attr
+
+    mat = me.materials[0]
+    mat.use_nodes = True
+    nt = mat.node_tree
+    nt.nodes.clear()
+    N = nt.nodes.new
+    L = nt.links.new
+    out = N("ShaderNodeOutputMaterial")
+    emit = N("ShaderNodeEmission")
+    L(emit.outputs["Emission"], out.inputs["Surface"])
+
+    def math_node(op, a=None, b=None, c=None):
+        m = N("ShaderNodeMath")
+        m.operation = op
+        for i, v in enumerate((a, b, c)):
+            if v is None:
+                continue
+            if isinstance(v, (int, float)):
+                m.inputs[i].default_value = v
+            else:
+                L(v, m.inputs[i])
+        return m.outputs[0]
+    obj = N("ShaderNodeTexCoord")
+    noise = N("ShaderNodeTexNoise")
+    noise.inputs["Scale"].default_value = 7.0 / length
+    noise.inputs["Detail"].default_value = 3.0
+    L(obj.outputs["Object"], noise.inputs["Vector"])
+    vor = N("ShaderNodeTexVoronoi")
+    vor.inputs["Scale"].default_value = 18.0 / length
+    L(obj.outputs["Object"], vor.inputs["Vector"])
+    mot = math_node("MULTIPLY_ADD", math_node("SUBTRACT", noise.outputs["Fac"], 0.5), 2.0 * mottle, 1.0)
+    fam = math_node("MULTIPLY_ADD", math_node("SUBTRACT", vor.outputs["Distance"], 0.5), 0.5 * mottle, 1.0)
+    geo = N("ShaderNodeNewGeometry")
+    nz = N("ShaderNodeSeparateXYZ")
+    L(geo.outputs["Normal"], nz.inputs["Vector"])
+    acc_f = N("ShaderNodeMapRange")
+    acc_f.inputs["From Min"].default_value = 0.15
+    acc_f.inputs["From Max"].default_value = 0.75
+    acc_f.inputs["To Max"].default_value = accent_amt
+    L(math_node("SUBTRACT", 0.0, nz.outputs["Z"]), acc_f.inputs["Value"])
+    def rgba(sockets, name):
+        # ShaderNodeMix carries float, vector and colour sockets under the same names; the colour one is wanted.
+        return next(x for x in sockets if x.name == name and x.type == "RGBA")
+    mix = N("ShaderNodeMix")
+    mix.data_type = "RGBA"
+    rgba(mix.inputs, "A").default_value = (*hull_c, 1)
+    rgba(mix.inputs, "B").default_value = (*accent_c, 1)
+    L(acc_f.outputs["Result"], mix.inputs["Factor"])
+    ao = N("ShaderNodeAmbientOcclusion")
+    ao.samples = 16
+    ao.inputs["Distance"].default_value = length * 0.04
+    ao_t = math_node("MULTIPLY_ADD", math_node("POWER", ao.outputs["AO"], 1.4), 0.72, 0.28)
+    shade = math_node("MULTIPLY", math_node("MULTIPLY", mot, fam), ao_t)
+    col = N("ShaderNodeMix")
+    col.data_type = "RGBA"
+    col.blend_type = "MULTIPLY"
+    col.inputs["Factor"].default_value = 1.0
+    L(rgba(mix.outputs, "Result"), rgba(col.inputs, "A"))
+    L(shade, rgba(col.inputs, "B"))
+    L(rgba(col.outputs, "Result"), emit.inputs["Color"])
+
+    scene = bpy.context.scene
+    scene.render.engine = "CYCLES"
+    device = use_gpu()
+    scene.cycles.samples = 32
+    bpy.ops.object.select_all(action="DESELECT")
+    hull.select_set(True)
+    bpy.context.view_layer.objects.active = hull
+    bpy.ops.object.bake(type="EMIT", target="VERTEX_COLORS")
+    # The FBX path Unreal reads (as for the generated ships' "Mask") is a byte, per-corner colour layer.
+    bpy.ops.object.mode_set(mode="OBJECT")
+    bpy.ops.geometry.color_attribute_convert(domain="CORNER", data_type="BYTE_COLOR")
+    me.color_attributes.active_color = me.color_attributes["Col"]
+    me.color_attributes.render_color_index = me.color_attributes.active_color_index
+    me.materials.clear()
+    me.materials.append(bpy.data.materials.new("M00"))
+    cols = me.color_attributes["Col"].data
+    step = max(1, len(cols) // 4000)
+    picks = [cols[i].color for i in range(0, len(cols), step)]
+    mean = [sum(c[i] for c in picks) / len(picks) for i in range(3)]
+    print("HERO vertex bake %s %d verts on %s, mean %s" % (hull.name, len(me.vertices), device, [round(v, 3) for v in mean]))
+
 # ---------------------------------------------------------------------------------------------------------------
 # Sockets, preview, export
 # ---------------------------------------------------------------------------------------------------------------
@@ -470,13 +598,20 @@ def preview_material(name, files, out_dir, tint):
         col.blend_type = "MULTIPLY"
         col.inputs["Factor"].default_value = 1.0
         col.inputs["A"].default_value = (*PLATING_TINT.get(fac, (0.45, 0.45, 0.48)), 1)
+        if files.get("vertexBake"):
+            # Mirrors M_ShipPlated: the baked vertex colour instead of the flat faction tint.
+            vcol = nt.nodes.new("ShaderNodeVertexColor")
+            vcol.layer_name = "Col"
+            nt.links.new(vcol.outputs["Color"], col.inputs["A"])
+            tone.inputs[1].default_value, tone.inputs[2].default_value = 0.7, 0.65
+            seam.inputs[1].default_value = -0.55
         nt.links.new(shade.outputs[0], col.inputs["B"])
         nt.links.new(col.outputs["Result"], bsdf.inputs["Base Color"])
         nm = nt.nodes.new("ShaderNodeNormalMap")
         nt.links.new(normal.outputs["Color"], nm.inputs["Color"])
         nt.links.new(nm.outputs["Normal"], bsdf.inputs["Normal"])
         nt.links.new(panels.outputs["Alpha"], bsdf.inputs["Roughness"])
-        bsdf.inputs["Metallic"].default_value = 0.5
+        bsdf.inputs["Metallic"].default_value = 0.15 if files.get("vertexBake") else 0.5
         return mat
     if files["bc"]:
         nt.links.new(tex(files["bc"], True).outputs["Color"], bsdf.inputs["Base Color"])
@@ -557,7 +692,15 @@ def build(ship, defaults, preview_dir):
     length = float(ship["lengthMeters"])
     metallic = float(ship.get("metallic", defaults["metallic"]))
     slots = []
-    if ship.get("plating"):
+    if ship.get("plating") and ship.get("bakePlating", True):
+        # Untextured model: bake its own plated base colour, then treat it like a textured model.
+        plating_unwrap(hull, length)
+        bake_plating(hull, ship["plating"], length)
+        slots.append({"name": "M00", "plating": ship["plating"], "vertexBake": True, "bc": None, "n": None, "orm": None,
+                      "e": None, "tint": None, "metallic": metallic, "emissive": 0.0})
+        slot_files = [("M00", {"bc": None, "n": None, "orm": None, "e": None, "plating": ship["plating"], "vertexBake": True},
+                       (1.0, 1.0, 1.0))]
+    elif ship.get("plating"):
         plating_unwrap(hull, length)
         slots.append({"name": "M00", "plating": ship["plating"], "bc": None, "n": None, "orm": None, "e": None,
                       "tint": None, "emissive": 0.0})
