@@ -5121,7 +5121,7 @@ private:
                             + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0, 0, 8, 0) [ Bar(EShape::Block, &FPalette::Secondary, 3, 13) ]
                             + SHorizontalBox::Slot().FillWidth(1).VAlign(VAlign_Center)
                             [ SNew(STextBlock).Text(Txt(TEXT("TACTICAL RADAR"))).Font(BotfUi::Caption(7)).ColorAndOpacity(C(&FPalette::Secondary)) ]
-                            + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+                            + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(10, 0, 0, 0)
                             [ SNew(STextBlock).Text(Txt(TEXT("click a blip to select or target"))).Font(BotfUi::Font(5)).ColorAndOpacity(C(&FPalette::Muted)) ] ]
                         + SVerticalBox::Slot().AutoHeight()
                         [ SNew(SBox).HeightOverride(165)
