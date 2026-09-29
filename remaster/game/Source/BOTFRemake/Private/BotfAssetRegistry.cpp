@@ -35,10 +35,15 @@ void UBotfAssetRegistry::Reload()
     }
     std::string Error;
     bLoaded = Catalog.loadFromJson(ToStd(Text), &Error);
+    // Braces are required: UE 5.8's UE_LOG expands to a block, so an unbraced if/else does not compile.
     if (bLoaded)
+    {
         UE_LOG(LogTemp, Display, TEXT("BOTF assets: %d keys from %s"), static_cast<int32>(Catalog.size()), *ManifestPath);
+    }
     else
+    {
         UE_LOG(LogTemp, Warning, TEXT("BOTF assets: cannot read %s (%s); using built-in placeholders"), *ManifestPath, *ToFString(Error));
+    }
 }
 
 UBotfAssetRegistry* UBotfAssetRegistry::Get()

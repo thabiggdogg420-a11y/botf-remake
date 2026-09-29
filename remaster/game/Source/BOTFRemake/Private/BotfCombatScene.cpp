@@ -10,10 +10,31 @@
 #include "Components/SceneCaptureComponent2D.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/PointLightComponent.h"
+#include "Components/DirectionalLightComponent.h"
 #include "Engine/TextureRenderTarget2D.h"
 #include "Engine/StaticMesh.h"
 #include "Materials/MaterialInterface.h"
 #include "Materials/MaterialInstanceDynamic.h"
+
+namespace
+{
+// Shields read as a hit response, not a permanent bubble: invisible at rest, a flare on impact whose brightness follows
+// the remaining shield fraction (a failing shield answers weakly).
+float ShieldDisplayStrength(float Fraction, float Flare)
+{
+    return Flare > 0.01f ? Flare * (0.3f + 0.7f * FMath::Clamp(Fraction, 0.f, 1.f)) : 0.f;
+}
+
+// Fits the engine sphere (radius 50) around the hull as an ellipsoid; no axis thinner than 40% of the longest.
+void FitShieldShell(UStaticMeshComponent* Shell, const UStaticMeshComponent* Ship, const FVector& ShipScale, const FQuat& Rotation)
+{
+    if (!Shell || !Ship || !Ship->GetStaticMesh()) return;
+    const FVector Extent = Ship->GetStaticMesh()->GetBounds().BoxExtent * ShipScale * 1.3f;
+    const float Floor = Extent.GetMax() * 0.4f;
+    Shell->SetRelativeRotation(Rotation);
+    Shell->SetRelativeScale3D(FVector(FMath::Max(Extent.X, Floor), FMath::Max(Extent.Y, Floor), FMath::Max(Extent.Z, Floor)) / 50.f);
+}
+}
 
 ABotfCombatScene::ABotfCombatScene()
 {
@@ -32,18 +53,79 @@ ABotfCombatScene::ABotfCombatScene()
     Capture->PostProcessSettings.bOverride_AutoExposureMaxBrightness = true;
     Capture->PostProcessSettings.AutoExposureMinBrightness = 1.f;
     Capture->PostProcessSettings.AutoExposureMaxBrightness = 1.f;
-    Capture->PostProcessSettings.bOverride_BloomIntensity = true;
-    Capture->PostProcessSettings.BloomIntensity = 0.25f;
+    // Cinematic grade: bloom so beams, torpedoes and explosions glow, a soft lens flare on the brightest flashes,
+    // vignette, a little chromatic fringe and film grain, and a cool-shadow / warm-highlight split.
+    FPostProcessSettings& Post = Capture->PostProcessSettings;
+    Post.bOverride_BloomIntensity = true;            Post.BloomIntensity = 1.1f;
+    Post.bOverride_BloomThreshold = true;            Post.BloomThreshold = 1.0f;
+    Post.bOverride_LensFlareIntensity = true;        Post.LensFlareIntensity = 0.35f;
+    Post.bOverride_VignetteIntensity = true;         Post.VignetteIntensity = 0.55f;
+    Post.bOverride_SceneFringeIntensity = true;      Post.SceneFringeIntensity = 0.6f;
+    Post.bOverride_FilmGrainIntensity = true;        Post.FilmGrainIntensity = 0.06f;
+    Post.bOverride_ColorSaturation = true;           Post.ColorSaturation = FVector4(1.08f, 1.08f, 1.12f, 1.f);
+    Post.bOverride_ColorContrast = true;             Post.ColorContrast = FVector4(1.06f, 1.06f, 1.06f, 1.f);
+    Post.bOverride_ColorGainShadows = true;          Post.ColorGainShadows = FVector4(0.94f, 0.98f, 1.08f, 1.f);
+    Post.bOverride_ColorGainHighlights = true;       Post.ColorGainHighlights = FVector4(1.06f, 1.0f, 0.93f, 1.f);
 
     auto* Light = CreateDefaultSubobject<UPointLightComponent>(TEXT("KeyLight"));
     Light->SetupAttachment(RootComponent);
     Light->SetRelativeLocation(FVector(0, -500, 1100));
-    Light->SetIntensity(220000.f);
+    Light->SetIntensity(60000.f);   // soft fill; the sun and rim lights (SetupEnvironment) carry the key
     Light->SetAttenuationRadius(7000.f);
     Light->SetCastShadows(false);
 }
 
 UTextureRenderTarget2D* ABotfCombatScene::GetBattleTexture() const { return BattleTexture; }
+
+void ABotfCombatScene::SetupEnvironment()
+{
+    auto* SphereMesh = LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Sphere.Sphere"));
+    auto* SkyMaterial = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/Generated/Environment/M_SkySphere.M_SkySphere"));
+    auto* GiantMaterial = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/Generated/Environment/MI_GasGiant.MI_GasGiant"));
+    auto* MoonMaterial = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/Generated/Environment/MI_RockyMoon.MI_RockyMoon"));
+    const auto MakeBody = [this, SphereMesh](UMaterialInterface* Material, const FVector& Location, float Radius) -> UStaticMeshComponent*
+    {
+        if (!SphereMesh || !Material) return nullptr;
+        auto* Body = NewObject<UStaticMeshComponent>(this);
+        Body->SetupAttachment(RootComponent);
+        Body->SetStaticMesh(SphereMesh);
+        Body->SetMaterial(0, Material);
+        Body->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+        Body->SetCastShadow(false);
+        Body->SetRelativeLocation(Location);
+        Body->SetRelativeScale3D(FVector(Radius / 50.f));   // engine sphere radius 50
+        Body->RegisterComponent();
+        Capture->ShowOnlyComponent(Body);
+        return Body;
+    };
+    if (SkyMaterial)
+    {
+        auto* SkyInstance = UMaterialInstanceDynamic::Create(SkyMaterial, this);
+        SkyInstance->SetScalarParameterValue(TEXT("Brightness"), 0.9f);
+        SkyDome = MakeBody(SkyInstance, BaseCameraLocation, 60000.f);
+    }
+    // Behind the arena as the default camera sees it (the camera looks along +Y, tilted down).
+    // Placed each frame relative to the camera (AnimateCamera); the radii set their apparent size at that distance.
+    Planet = MakeBody(GiantMaterial, FVector(0.f, 26000.f, 0.f), 5600.f);
+    if (Planet) Planet->SetRelativeRotation(FRotator(18.f, 0.f, -12.f));
+    Moon = MakeBody(MoonMaterial, FVector(0.f, 30000.f, 0.f), 700.f);
+
+    // Key light from the upper left in front of the fleets, warm like a nearby star; a cool rim from behind.
+    SunLight = NewObject<UDirectionalLightComponent>(this);
+    SunLight->SetupAttachment(RootComponent);
+    SunLight->SetRelativeRotation(FRotator(-38.f, 62.f, 0.f));
+    SunLight->SetIntensity(4.0f);
+    SunLight->SetLightColor(FLinearColor(1.0f, 0.90f, 0.78f));
+    SunLight->SetCastShadows(false);
+    SunLight->RegisterComponent();
+    RimLight = NewObject<UDirectionalLightComponent>(this);
+    RimLight->SetupAttachment(RootComponent);
+    RimLight->SetRelativeRotation(FRotator(-10.f, -118.f, 0.f));
+    RimLight->SetIntensity(2.2f);
+    RimLight->SetLightColor(FLinearColor(0.45f, 0.62f, 1.0f));
+    RimLight->SetCastShadows(false);
+    RimLight->RegisterComponent();
+}
 
 void ABotfCombatScene::SetCameraMode(int InMode)
 {
@@ -178,6 +260,10 @@ void ABotfCombatScene::ConfigureBattle(int AttackerFaction, int DefenderFaction,
         BattleTexture->ClearColor = FLinearColor(0.002f, 0.004f, 0.012f);
         BattleTexture->InitAutoFormat(1920, 1080);
         Capture->TextureTarget = BattleTexture;
+        SetupEnvironment();
+    }
+    if (!SkyDome && Stars.IsEmpty())
+    {
         auto* StarMesh = LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Sphere.Sphere"));
         auto* StarGlow = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/Presentation/M_SpaceGlow.M_SpaceGlow"));
         auto* StarLit = LoadObject<UMaterialInterface>(nullptr, TEXT("/Engine/EngineMaterials/DefaultMaterial.DefaultMaterial"));
@@ -667,10 +753,9 @@ void ABotfCombatScene::ConfigureBattleReport(const botf::CombatReport& Report, i
             Ship->SetVisibility(Hull > 0 && !Retreated);
             if (ShieldShells[VisualIndex] && ShieldMaterials[VisualIndex])
             {
-                ShieldShells[VisualIndex]->SetVisibility(Hull > 0 && !Retreated && Shields > 0);
-                const float Fraction = FMath::Clamp(static_cast<float>(Shields) /
-                    FMath::Max(1, Participant.initialShields), 0.f, 1.f);
-                ShieldMaterials[VisualIndex]->SetScalarParameterValue(TEXT("Strength"), Fraction * 0.45f);
+                // At rest the shield is invisible; impacts flare it (AnimateShieldsAndDamage / TickTimeline).
+                ShieldShells[VisualIndex]->SetVisibility(false);
+                ShieldMaterials[VisualIndex]->SetScalarParameterValue(TEXT("Strength"), 0.f);
             }
         }
     }
@@ -829,8 +914,9 @@ void ABotfCombatScene::AnimateShieldsAndDamage(float DeltaSeconds, float NormTim
             K.FlareStrength = FMath::FInterpTo(K.FlareStrength, 0.0f, DeltaSeconds, 5.f);
         }
 
-        const float EffectiveStrength = FMath::Max(ShieldFraction * 0.45f, K.FlareStrength * 0.85f);
-        Shell->SetVisibility(K.bAlive && !K.bRetreated && K.Shields > 0);
+        const float EffectiveStrength = ShieldDisplayStrength(ShieldFraction, K.FlareStrength);
+        Shell->SetVisibility(K.bAlive && !K.bRetreated && K.Shields > 0 && EffectiveStrength > 0.01f);
+        if (Ships.IsValidIndex(Index)) FitShieldShell(Shell, Ships[Index], K.BaseScale, K.CurrentRotation.Quaternion());
         Mat->SetScalarParameterValue(TEXT("Strength"), EffectiveStrength);
 
         // Ship Destruction Sequence
@@ -994,6 +1080,12 @@ void ABotfCombatScene::AnimateCamera(float DeltaSeconds)
     const float InterpSpeed = CameraMode == Cam_Chase ? 2.5f : CameraMode == Cam_Cinematic ? 1.8f : 3.5f;
     Capture->SetRelativeLocation(FMath::VInterpTo(Capture->GetRelativeLocation(), DesiredLocation, DeltaSeconds, InterpSpeed));
     Capture->SetRelativeRotation(FMath::RInterpTo(Capture->GetRelativeRotation(), DesiredRotation, DeltaSeconds, InterpSpeed));
+    // The sky and the distant bodies are effectively at infinity: they travel with the camera, so no camera mode can fly
+    // up to them, and they never show parallax or the dome's edge.
+    const FVector Eye = Capture->GetRelativeLocation();
+    if (SkyDome) SkyDome->SetRelativeLocation(Eye);
+    if (Planet) Planet->SetRelativeLocation(Eye + FVector(0.30f, 0.92f, -0.25f).GetSafeNormal() * 26000.f);
+    if (Moon) Moon->SetRelativeLocation(Eye + FVector(-0.42f, 0.88f, 0.10f).GetSafeNormal() * 30000.f);
 }
 
 void ABotfCombatScene::Tick(float DeltaSeconds)
@@ -1290,7 +1382,7 @@ void ABotfCombatScene::FinishTimeline()
         Ships[Index]->SetVisibility(bVisible);
         Ships[Index]->SetRelativeScale3D(K.BaseScale);
         if (ShieldShells.IsValidIndex(Index) && ShieldShells[Index])
-            ShieldShells[Index]->SetVisibility(bVisible && K.Shields > 0);
+            ShieldShells[Index]->SetVisibility(false);
     }
 }
 
@@ -1346,10 +1438,12 @@ void ABotfCombatScene::TickTimeline(float DeltaSeconds)
         if (ShieldShells.IsValidIndex(Slot) && ShieldShells[Slot])
         {
             ShieldShells[Slot]->SetRelativeLocation(Location);
+            FitShieldShell(ShieldShells[Slot], Ships[Slot], Scale, Rotation);
             const float Fraction = FMath::Clamp(static_cast<float>(ShieldsNow) / FMath::Max(1, K.InitialShields), 0.f, 1.f);
-            ShieldShells[Slot]->SetVisibility(Visibility > 0.5f && (ShieldsNow > 0 || Flare > 0.f));
+            const float Strength = ShieldDisplayStrength(Fraction, Flare) * Visibility;
+            ShieldShells[Slot]->SetVisibility(Visibility > 0.5f && Strength > 0.01f);
             if (ShieldMaterials.IsValidIndex(Slot) && ShieldMaterials[Slot])
-                ShieldMaterials[Slot]->SetScalarParameterValue(TEXT("Strength"), FMath::Max(Fraction * 0.45f, Flare * 0.9f) * Visibility);
+                ShieldMaterials[Slot]->SetScalarParameterValue(TEXT("Strength"), Strength);
         }
     }
 
