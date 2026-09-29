@@ -38,9 +38,15 @@ if(NOT WIN32)
     # system libstdc++ that the GPU drivers load, and iostream locale facets crash in serialize().
     target_link_options(botf_core PRIVATE -Wl,--exclude-libs,ALL)
 endif()
-if(WIN32)
+if(WIN32 AND NOT MSVC)
     # One self-contained DLL: no libstdc++/libgcc/winpthread DLLs next to the exe.
     target_link_options(botf_core PRIVATE -static -static-libgcc -static-libstdc++)
+endif()
+if(MSVC)
+    # Native Windows build (VS Build Tools): C++ exceptions, UTF-8 sources, big translation units. /fp:precise is
+    # MSVC's default and does not contract, so results match the wasm core. godot-cpp's cached
+    # CMAKE_MSVC_RUNTIME_LIBRARY (static CRT) applies here too, so the DLL is self-contained like the mingw one.
+    target_compile_options(botf_core PRIVATE /EHsc /utf-8 /bigobj /fp:precise)
 endif()
 
 set(BOTF_PLATFORM linux)

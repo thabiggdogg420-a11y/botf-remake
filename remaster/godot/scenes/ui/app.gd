@@ -605,11 +605,12 @@ func toast(text: String, tone: String = "info", seconds: float = 3.4) -> void:
 	_toasts.add_child(p)
 	while _toasts.get_child_count() > 5:
 		_toasts.get_child(0).free()
-	get_tree().create_timer(seconds).timeout.connect(func():
-		if is_instance_valid(p):
-			var tw := p.create_tween()
-			tw.tween_property(p, "modulate:a", 0.0, 0.3)
-			tw.tween_callback(p.queue_free))
+	# The wait runs on the toast's own tween, so it dies with the toast. A SceneTree timer whose lambda captured `p`
+	# logged "Lambda capture at index 0 was freed" whenever the overflow above freed that toast first.
+	var tw := p.create_tween()
+	tw.tween_interval(seconds)
+	tw.tween_property(p, "modulate:a", 0.0, 0.3)
+	tw.tween_callback(p.queue_free)
 
 func report_error(message: String) -> void:
 	toast(message if message != "" else "Unknown error", "alert", 6.0)

@@ -107,11 +107,90 @@ Run9 (editor `-game`, 1080p offscreen): avg 6.05 ms (165 fps), p95 7.78 ms, p99 
 **Warnings, stubs and honest limits**
 - The procedural hulls read as their classes but are blocky next to hand-made models. A local HD model from the
   login-gated sources (PC-QUEUE item 0) overrides them automatically.
-- UI: the Slate UI still predates the browser beta's look. A full modern redesign against `remaster/web` is in
-  progress on branch `claude/ui-redesign` (worktree `C:\Dev\botf-remake-ui`), to be merged after review.
+- UI: the modern Slate redesign (Barclay, `claude/ui-redesign`, passes 1 and 2) is merged: battle records and
+  replay, radar, summary cards, setup galaxy preview, 16:10 scaling fix, showcase shots 25-43. BOTF.UI.Shell passes
+  on the merge. Open: the records 3D view is letterboxed, and the diplomacy Events mode is sparse.
+- Title backdrop (03ec46e): `ABotfCombatScene::ConfigureTitleScene(EmpireId)` films the empire's three hero hulls over
+  the gas giant. The Slate title screen does not call it yet. Hook: `ConfigureTitleScene(E); SetPresentationActive(true)`
+  and show `GetBattleTexture()` full-bleed behind the menu. Dev render: `-BotfTitleShot=<png> -BotfTitleEmpire=N`.
 - The Unreal Insights 24-v-24 profile has not been done yet. The showcase frame report stands in for it.
-- A separate session pushed `remaster/godot` (a 4-file Godot skeleton, 87d898e) to this branch during this session.
+- `remaster/godot` is the cloud session's Godot 4.5 client, a deliberate comparison build (see the Godot section below).
 - Packaged proof (a0ad5c8, Development): `Package-Windows.ps1 -SkipCoreTests -RunUiTests` packaged in 11 min, and the
   packaged `BOTFRemake.exe -BotfShowcase=<dir> -RenderOffscreen` ran the whole showcase with the generated art cooked
   in (`DirectoriesToAlwaysCook` includes /Game/Generated). 3 turns, 50-ship encounter, save/load at round 7,
   avg 6.29 ms (159 fps), p95 9.27 ms, p99 12.38 ms.
+
+## PC session 2026-09-29: Godot (Windows 11, RTX 4090)
+
+The cloud's Godot 4.5 client, built natively on Windows and run for the first time here. The mingw DLL was not needed.
+
+**Build steps that worked**
+1. Godot 4.5-stable (standard, not .NET) from the GitHub release into `C:\Tools\Godot`. Only the Windows x86_64/console
+   templates from `Godot_v4.5-stable_export_templates.tpz` were unpacked, into `%APPDATA%\Godot\export_templates\4.5.stable\`.
+2. `git clone --depth 1 --branch godot-4.5-stable https://github.com/godotengine/godot-cpp` into `core/godot-cpp`
+   (then create empty `.gdignore` and `.fetched-godot-4.5-stable` files, as `fetch-godot-cpp.sh` does).
+3. This PC has VS **18** (2026) Build Tools, not VS 2022, so the "Visual Studio 17 2022" generator does not exist. Use
+   CMake and Ninja from the VS 18 install, in a vcvars64 environment. For each of `template_release` and `template_debug`:
+   `call "C:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools\VC\Auxiliary\Build\vcvars64.bat"`
+   `cmake -S . -B build-win-release -G Ninja -DCMAKE_BUILD_TYPE=Release -DBOTF_GODOT_TARGET=template_release`
+   `cmake --build build-win-release --parallel` (debug target: `build-win-debug`), then add `.gdignore` to each build dir.
+   Output: `core/bin/libbotf_core.windows.template_{release,debug}.x86_64.dll`, about 1.9 MB each, which import
+   only KERNEL32 (static CRT). The first build compiles 1,037 units.
+4. `Godot_v4.5-stable_win64_console.exe --headless --path . --import`, then the tests (below).
+5. `... --headless --path . --export-release "Windows Desktop" build/BOTFRemastered.exe`. The preset picks the DLL up
+   on its own, and it lands next to the exe.
+
+**Fixes**
+- `core/CMakeLists.txt`: the mingw `-static -static-libgcc -static-libstdc++` link flags are now mingw-only
+  (`WIN32 AND NOT MSVC`). MSVC gets `/EHsc /utf-8 /bigobj /fp:precise`.
+- `scenes/ui/app.gd` `toast()`: the fade timer was a SceneTree timer whose lambda captured the toast panel. When more
+  than five toasts piled up (end turn, battle rounds), the overflow `free()` removed the panel first, and each timer
+  then logged `Lambda capture at index 0 was freed`: 5 errors per smoke run. The wait now runs on the toast's own tween,
+  so it dies with the toast. After the fix, stderr is empty and the UI suite still reports 85/0.
+- New `tools/pc_smoke.gd`: a GPU smoke driver in a real window. It uses synthetic F1-F8 and C keys and mouse clicks on
+  the real buttons, saves 1920x1080 shots and logs frame rates.
+  `Godot_v4.5-stable_win64_console.exe --path . -s res://tools/pc_smoke.gd -- <out_dir> [--novsync]`
+
+**Tests (native MSVC core)**
+- `tests/run_tests.gd`: 10 passed, 0 failed. This includes `test_fixture_determinism`: MSVC reproduces the wasm
+  fingerprints.
+- `test_campaign_ui.gd`: 85 checks, 0 failures. `test_battle_timeline.gd`: 9 passed. `test_battle_scene.gd`: 0 failures.
+- GPU boot: Vulkan 1.4 Forward+ on the RTX 4090, `core ok=true, 5 empires`, title screen shown. The exported exe
+  opens its window, "BOTF Remastered (Godot)".
+
+**Smoke test (`pc_smoke.gd`, 0 failures)**
+- Covered: title → New Campaign (Federation, Remastered) → galaxy; a right-click order menu Set course, clicked; a
+  System-screen build queued by clicking a construction choice; F1-F8 each opening its screen; 12 turns ended; the
+  Events, Victory and Chronicle overlays; save, relaunch (a fresh client), load (turn and core fingerprint identical);
+  the tactical drill with Take command clicked, 5 commanded rounds with 3D playback, C pressed, battle finished and
+  turn completed.
+- Not done by hand: Simon declined screen control of the game window, so a person has not clicked through the
+  exported exe. The driver runs the same project through the editor binary.
+- Frame rate, 1920x1080 window:
+  - Vsync on (the default; display 120 Hz): 76-90 fps.
+  - Uncapped: 85-91 fps in galaxy and battle.
+  - An empty Godot 4.5 window on this PC tops out at about 103 fps uncapped, so the game is near the machine's windowed
+    ceiling (virtual display drivers are installed). It is not GPU-bound.
+  - Battle frame spikes are 40-60 ms.
+
+**Bugs (repro steps)**
+1. **Fixed:** toast lambda errors. See Fixes above.
+2. **First-battle hitch of 1.35 s.** On a fresh shader cache: Tactical drill → Take command → Resolve round. The
+   first round freezes for about 1.35 s (first-use pipeline compiles for the battle effects). Once cached it is 73 ms.
+   Suggestion: prewarm the beam, torpedo and explosion materials in `load_encounter` (scenes/battle).
+3. **Battle camera too far in the opening rounds.** Tactical drill → Take command → Resolve round x2: ships deploy at
+   opposite arena edges and are 10-20 px specks against the nebula (`pc-battle-round2.png`). They only read at the
+   end (`pc-battle-end.png`).
+4. **Cinematic toggle not visible.** In the same battle, press C: the capture 3 s later is framed like the default
+   camera. Check by hand; the synthetic key may not reach the SubViewport.
+5. **Galaxy opens with a lot of empty chart.** New campaign (Medium galaxy): the known systems sit in a small patch
+   and roughly 70% of the map panel is empty until you pan or zoom. The Unreal client fits the chart between its bars.
+6. **Events overlay is a large empty modal** when there are no events (turn 12, Events). Minor.
+7. Frame spikes of 40-60 ms during battle rounds (worst-frame column above). Not visible as stutter in the shots;
+   worth an Insights-style profile.
+
+**Package**
+- `C:\Dev\BOTF-Godot-2026-09-29.zip`: `BOTFRemastered.exe` plus `libbotf_core.windows.template_release.x86_64.dll`.
+- Unzipped to `C:\Games\BOTF-Godot\`, with the desktop shortcut "BOTF Remastered (Godot)".
+- Logs: `%APPDATA%\Godot\app_userdata\BOTF Remastered (Godot)\logs`.
+- Screenshots: `remaster/godot/docs/screens/pc-*.png` (960x540).
