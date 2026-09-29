@@ -11,7 +11,9 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 # The core throws for invalid orders and the bridge returns those messages as JSON errors.
 set(GODOTCPP_DISABLE_EXCEPTIONS OFF CACHE BOOL "" FORCE)
-set(GODOTCPP_TARGET template_debug CACHE STRING "")
+# template_debug for the editor, headless tests and debug exports; template_release for release exports.
+set(BOTF_GODOT_TARGET template_debug CACHE STRING "template_debug or template_release")
+set(GODOTCPP_TARGET ${BOTF_GODOT_TARGET} CACHE STRING "" FORCE)
 add_subdirectory(godot-cpp EXCLUDE_FROM_ALL)
 
 set(REMASTER ${CMAKE_CURRENT_SOURCE_DIR}/../..)
@@ -42,6 +44,6 @@ if(WIN32)
 endif()
 set_target_properties(botf_core PROPERTIES
     PREFIX "lib"
-    OUTPUT_NAME "botf_core.${BOTF_PLATFORM}.x86_64"
+    OUTPUT_NAME "botf_core.${BOTF_PLATFORM}.${BOTF_GODOT_TARGET}.x86_64"
     LIBRARY_OUTPUT_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/bin
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/bin)

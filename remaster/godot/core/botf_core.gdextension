@@ -4,5 +4,7 @@ compatibility_minimum = "4.5"
 reloadable = false
 
 [libraries]
-linux.x86_64 = "res://core/bin/libbotf_core.linux.x86_64.so"
-windows.x86_64 = "res://core/bin/libbotf_core.windows.x86_64.dll"
+linux.debug.x86_64 = "res://core/bin/libbotf_core.linux.template_debug.x86_64.so"
+linux.release.x86_64 = "res://core/bin/libbotf_core.linux.template_release.x86_64.so"
+windows.debug.x86_64 = "res://core/bin/libbotf_core.windows.template_debug.x86_64.dll"
+windows.release.x86_64 = "res://core/bin/libbotf_core.windows.template_release.x86_64.dll"

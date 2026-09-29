@@ -1,23 +1,25 @@
 #!/usr/bin/env bash
 # Builds the botf_core GDExtension into core/bin/.
-#   ./build.sh            linux x86_64
-#   ./build.sh windows    windows x86_64 (mingw-w64 cross-compile)
-#   ./build.sh all        both
+#   ./build.sh [linux|windows|all] [debug|release|both]
+# Defaults: linux debug (what the editor and the headless tests load).
+# Release exports need the release library: the release engine template crashes on a
+# template_debug godot-cpp build.
 set -euo pipefail
 cd "$(dirname "$0")"
 ./fetch-godot-cpp.sh
 JOBS="${JOBS:-$(nproc)}"
 build() {
-  local platform="$1" extra=()
+  local platform="$1" target="template_$2" dir="build-$1-$2" extra=()
   [[ "$platform" == windows ]] && extra=(-DCMAKE_TOOLCHAIN_FILE="$PWD/mingw-w64.cmake")
-  mkdir -p "build-$platform" && touch "build-$platform/.gdignore"
-  cmake -S . -B "build-$platform" -DCMAKE_BUILD_TYPE=Release "${extra[@]}" >/dev/null
-  cmake --build "build-$platform" -j "$JOBS"
-  echo "[core] built $platform"
+  mkdir -p "$dir" && touch "$dir/.gdignore"   # keep Godot from importing .obj files as meshes
+  cmake -S . -B "$dir" -DCMAKE_BUILD_TYPE=Release -DBOTF_GODOT_TARGET="$target" "${extra[@]}" >/dev/null
+  cmake --build "$dir" -j "$JOBS" | grep -vE '^\[ *[0-9]+%\] Building CXX object godot-cpp' || true
+  test -n "$(ls bin/libbotf_core."$platform"."$target".x86_64.* 2>/dev/null)"
+  echo "[core] built $platform $target"
 }
-case "${1:-linux}" in
-  linux) build linux ;;
-  windows) build windows ;;
-  all) build linux; build windows ;;
-  *) echo "usage: $0 [linux|windows|all]" >&2; exit 2 ;;
-esac
+platforms=(linux); targets=(debug)
+case "${1:-linux}" in linux) ;; windows) platforms=(windows) ;; all) platforms=(linux windows) ;;
+  *) echo "usage: $0 [linux|windows|all] [debug|release|both]" >&2; exit 2 ;; esac
+case "${2:-debug}" in debug) ;; release) targets=(release) ;; both) targets=(debug release) ;;
+  *) echo "usage: $0 [linux|windows|all] [debug|release|both]" >&2; exit 2 ;; esac
+for p in "${platforms[@]}"; do for t in "${targets[@]}"; do build "$p" "$t"; done; done
