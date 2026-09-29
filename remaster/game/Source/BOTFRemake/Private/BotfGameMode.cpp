@@ -4356,7 +4356,7 @@ private:
             // Rules 2 state: disengaging, no retreat route, unarmed; and what the ship actually did last round.
             if (S.isAlive && !S.retreated) {
                 std::vector<std::string> Tags = botf::view::shipTags(E, S);
-                Tags.erase(std::remove_if(Tags.begin(), Tags.end(), [](const std::string& Tag) { return Tag.rfind("CLOAKED", 0) == 0; }), Tags.end());
+                Tags.erase(std::remove_if(Tags.begin(), Tags.end(), [](const std::string& ShipTag) { return ShipTag.rfind("CLOAKED", 0) == 0; }), Tags.end());
                 if (!Tags.empty()) State_ += TEXT("\n") + Str(botf::view::joinTags(Tags));
                 const std::string Last = botf::view::executedOrderText(E, S.fleetId);
                 if (!Last.empty()) State_ += TEXT("\nLast round: ") + Str(Last);
