@@ -1,5 +1,6 @@
 #include "BotfSettingsPanel.h"
 #include "BotfUiTheme.h"
+#include "BotfUiWidgets.h"
 #include "CoreGlobals.h"
 #include "GameFramework/GameUserSettings.h"
 #include "Engine/Engine.h"
@@ -35,84 +36,114 @@ void SBotfSettingsPanel::Construct(const FArguments& InArgs)
 	PopulateQualityOptions();
 	PopulateFpsCapOptions();
 
-	// ---- Styling only below: LCARS console themed by the active empire ----
+	// ---- Styling only below: the shared navy design language, themed by the active empire ----
 	using BotfUi::FPalette;
-	using BotfUi::EShape;
 	using BotfUi::ERole;
 	auto Empire = [this]() { return ThemeEmpire.Get(1); };
 	auto Col = [Empire](FLinearColor FPalette::* Field)
 	{
 		return TAttribute<FSlateColor>::CreateLambda([Empire, Field]() { return FSlateColor(BotfUi::Palette(Empire()).*Field); });
 	};
-	auto Fill = [Empire, Col](EShape Shape, FLinearColor FPalette::* Field, float Width, float Height,
-		const TSharedRef<SWidget>& Content, FMargin Pad) -> TSharedRef<SWidget>
-	{
-		return SNew(SBox)
-			.WidthOverride(Width > 0 ? FOptionalSize(Width) : FOptionalSize())
-			.HeightOverride(Height > 0 ? FOptionalSize(Height) : FOptionalSize())
-			[
-				SNew(SBorder)
-				.BorderImage_Lambda([Empire, Shape]() { return BotfUi::Styles().Get(Empire(), Shape); })
-				.BorderBackgroundColor(Col(Field))
-				.Padding(Pad)
-				[ Content ]
-			];
-	};
-	auto Bar = [Fill](EShape Shape, FLinearColor FPalette::* Field, float Width, float Height)
-	{
-		return Fill(Shape, Field, Width, Height, SNullWidget::NullWidget, FMargin(0));
-	};
 	auto Pill = [Empire](const FString& Label, TFunction<void()> OnClick, TFunction<bool()> Enabled, ERole Role)
 	{
 		return BotfUi::MakeButton(FText::FromString(Label), MoveTemp(OnClick), MoveTemp(Enabled), nullptr,
-			Empire, Role, FMargin(20.0f, 8.0f), false, 11, FText::GetEmpty());
+			Empire, Role, FMargin(22.0f, 9.0f), false, 11, FText::GetEmpty());
 	};
-	auto Section = [Fill, Bar, Col](const FString& Title, const TSharedRef<SWidget>& Body) -> TSharedRef<SWidget>
+	// A titled card: accent bar, tracked caption, then the body.
+	auto Section = [Col](const FString& Title, const FString& Hint, const TSharedRef<SWidget>& Body) -> TSharedRef<SWidget>
 	{
-		return Fill(EShape::Block, &FPalette::Field, 0, 0,
+		return BotfUi::MakePanel(
 			SNew(SVerticalBox)
-			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 10.0f)
+			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 12.0f)
 			[
 				SNew(SHorizontalBox)
-				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center) [ Bar(EShape::CapLeft, &FPalette::Secondary, 22, 16) ]
-				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(8.0f, 0.0f)
+				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, 10.0f, 0.0f)
 				[
-					SNew(STextBlock).Text(FText::FromString(Title)).Font(BotfUi::Condensed(13)).ColorAndOpacity(Col(&FPalette::Tertiary))
+					SNew(SBox).WidthOverride(4.0f).HeightOverride(18.0f)
+					[
+						SNew(BotfUi::SBotfSurface).Look([]() {
+							BotfUi::FSurfaceLook L; L.Fill = BotfUi::Theme().Secondary; L.Radius = FVector4(2, 2, 2, 2); return L; })
+					]
 				]
-				+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center) [ Bar(EShape::Block, &FPalette::Secondary, 0, 3) ]
+				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+				[
+					SNew(STextBlock).Text(FText::FromString(Title)).Font(BotfUi::Caption(9)).ColorAndOpacity(Col(&FPalette::Secondary))
+				]
+				+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center).Padding(14.0f, 0.0f, 0.0f, 0.0f)
+				[
+					SNew(STextBlock).Text(FText::FromString(Hint)).Font(BotfUi::Font(8)).ColorAndOpacity(Col(&FPalette::Muted))
+				]
 			]
 			+ SVerticalBox::Slot().AutoHeight() [ Body ],
-			FMargin(16.0f, 12.0f));
+			FMargin(22.0f, 18.0f));
 	};
-	// Audio volume slider bound to UBotfAudioSubsystem (Index -1 = master, else botf::audio::Category). Applies live;
-	// saved to GameUserSettings.ini when the drag ends. Disabled when no game instance exists (editor preview).
-	auto VolumeSlider = [](int32 Index) -> TSharedRef<SWidget>
+	// A dropdown sitting in a rounded field.
+	auto Field = [](const TSharedRef<SWidget>& Control) -> TSharedRef<SWidget>
 	{
-		return SNew(SSlider)
-			.IsEnabled_Lambda([]() { return UBotfAudioSubsystem::Get() != nullptr; })
-			.Value_Lambda([Index]() {
-				const UBotfAudioSubsystem* Audio = UBotfAudioSubsystem::Get();
-				if (!Audio) return 0.0f;
-				return Index < 0 ? Audio->GetMasterVolume() : Audio->GetCategoryVolume(static_cast<botf::audio::Category>(Index));
-			})
-			.OnValueChanged_Lambda([Index](float Value) {
-				if (UBotfAudioSubsystem* Audio = UBotfAudioSubsystem::Get())
-				{
-					if (Index < 0) Audio->SetMasterVolume(Value);
-					else Audio->SetCategoryVolume(static_cast<botf::audio::Category>(Index), Value);
-				}
-			})
-			.OnMouseCaptureEnd_Lambda([]() { if (const UBotfAudioSubsystem* Audio = UBotfAudioSubsystem::Get()) Audio->SaveSettings(); })
-			.OnControllerCaptureEnd_Lambda([]() { if (const UBotfAudioSubsystem* Audio = UBotfAudioSubsystem::Get()) Audio->SaveSettings(); });
+		return SNew(BotfUi::SBotfSurface).Padding(FMargin(6.0f, 2.0f))
+			.Look([]() {
+				const FPalette& Pal = BotfUi::Theme();
+				BotfUi::FSurfaceLook L; L.Fill = BotfUi::WithAlpha(FLinearColor::Black, 0.35f); L.Outline = Pal.LineHi; L.Radius = FVector4(10, 10, 10, 10); return L; })
+			[ Control ];
+	};
+	auto Combo = [Field, Col](TSharedPtr<STextComboBox>& Out, TArray<TSharedPtr<FString>>* Source, STextComboBox::FOnTextSelectionChanged Handler) -> TSharedRef<SWidget>
+	{
+		return Field(SAssignNew(Out, STextComboBox)
+			.OptionsSource(Source)
+			.OnSelectionChanged(Handler)
+			.ButtonStyle(&BotfUi::Styles().Bare)
+			.Font(BotfUi::Font(11))
+			.ContentPadding(FMargin(8.0f, 5.0f))
+			.ColorAndOpacity(Col(&FPalette::Text)));
+	};
+	// Volume slider bound to UBotfAudioSubsystem (Index -1 = master, else botf::audio::Category). Applies live;
+	// saved to GameUserSettings.ini when the drag ends. Disabled when no game instance exists (editor preview).
+	auto VolumeSlider = [Col](int32 Index) -> TSharedRef<SWidget>
+	{
+		const auto Level = [Index]() {
+			const UBotfAudioSubsystem* Audio = UBotfAudioSubsystem::Get();
+			if (!Audio) return 0.0f;
+			return Index < 0 ? Audio->GetMasterVolume() : Audio->GetCategoryVolume(static_cast<botf::audio::Category>(Index));
+		};
+		return SNew(SHorizontalBox)
+			+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
+			[
+				SNew(SBox).IsEnabled_Lambda([]() { return UBotfAudioSubsystem::Get() != nullptr; })
+				[
+					SNew(BotfUi::SBotfSlider)
+					.Value_Lambda(Level)
+					.OnChange([Index](float Value) {
+						if (UBotfAudioSubsystem* Audio = UBotfAudioSubsystem::Get())
+						{
+							if (Index < 0) Audio->SetMasterVolume(Value);
+							else Audio->SetCategoryVolume(static_cast<botf::audio::Category>(Index), Value);
+						}
+					})
+					.OnEnd([]() { if (const UBotfAudioSubsystem* Audio = UBotfAudioSubsystem::Get()) Audio->SaveSettings(); })
+				]
+			]
+			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(12.0f, 0.0f, 0.0f, 0.0f)
+			[
+				SNew(SBox).WidthOverride(48.0f)
+				[
+					SNew(STextBlock)
+					.Text_Lambda([Level]() { return FText::FromString(FString::Printf(TEXT("%d%%"), FMath::RoundToInt(Level() * 100.0f))); })
+					.Font(BotfUi::Font(10)).ColorAndOpacity(Col(&FPalette::Text)).Justification(ETextJustify::Right)
+				]
+			];
 	};
 	auto SettingRow = [Col](const FString& Label, const TSharedRef<SWidget>& Control) -> TSharedRef<SWidget>
 	{
 		return SNew(SHorizontalBox)
-			+ SHorizontalBox::Slot().FillWidth(0.45f).VAlign(VAlign_Center)
+			+ SHorizontalBox::Slot().FillWidth(0.38f).VAlign(VAlign_Center)
 			[
 				SNew(STextBlock).Text(FText::FromString(Label)).Font(BotfUi::Font(11)).ColorAndOpacity(Col(&FPalette::Text))
 			]
-			+ SHorizontalBox::Slot().FillWidth(0.55f).VAlign(VAlign_Center) [ Control ];
+			+ SHorizontalBox::Slot().FillWidth(0.62f).VAlign(VAlign_Center) [ Control ];
+	};
+	auto Note = [Col](const FString& Text) -> TSharedRef<SWidget>
+	{
+		return SNew(STextBlock).Text(FText::FromString(Text)).Font(BotfUi::Font(9)).ColorAndOpacity(Col(&FPalette::Muted)).AutoWrapText(true);
 	};
 
 	ChildSlot
@@ -121,198 +152,164 @@ void SBotfSettingsPanel::Construct(const FArguments& InArgs)
 		.HAlign(HAlign_Center)
 		[
 			SNew(SBox)
-			.MinDesiredWidth(560.0f)
-			.MaxDesiredWidth(980.0f)
+			.MinDesiredWidth(640.0f)
+			.MaxDesiredWidth(1020.0f)
 			[
 				SNew(SVerticalBox)
 
-				// LCARS header: elbow, title, segmented bar
+				// Header: title and the screen's purpose
 				+ SVerticalBox::Slot()
 				.AutoHeight()
+				.Padding(0.0f, 4.0f, 0.0f, 14.0f)
 				[
 					SNew(SHorizontalBox)
-					+ SHorizontalBox::Slot().AutoWidth() [ Bar(EShape::ElbowTop, &FPalette::Primary, 64, 30) ]
-					+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(10.0f, 0.0f)
+					+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, 16.0f, 0.0f)
 					[
-						SNew(STextBlock)
-						.Text(FText::FromString(TEXT("SYSTEM CONFIGURATION  /  SETTINGS")))
-						.Font(BotfUi::Condensed(18))
-						.ColorAndOpacity(Col(&FPalette::Accent))
+						SNew(STextBlock).Text(FText::FromString(TEXT("SETTINGS"))).Font(BotfUi::Display(30)).ColorAndOpacity(Col(&FPalette::Accent))
 					]
-					+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center) [ Bar(EShape::Block, &FPalette::Secondary, 0, 10) ]
-					+ SHorizontalBox::Slot().AutoWidth().Padding(4.0f, 0.0f, 0.0f, 0.0f) [ Bar(EShape::CapRight, &FPalette::Tertiary, 44, 30) ]
+					+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Bottom).Padding(0.0f, 0.0f, 0.0f, 6.0f)
+					[
+						SNew(STextBlock).Text(FText::FromString(TEXT("DISPLAY  /  GRAPHICS  /  AUDIO"))).Font(BotfUi::Caption(8)).ColorAndOpacity(Col(&FPalette::Muted))
+					]
 				]
 
 				+ SVerticalBox::Slot()
 				.FillHeight(1.0f)
-				.Padding(0.0f, 4.0f, 0.0f, 0.0f)
 				[
-					SNew(SHorizontalBox)
+					SNew(SVerticalBox)
 
-					// Segmented sidebar
-					+ SHorizontalBox::Slot()
-					.AutoWidth()
+					// Confirmation banner (video mode change testing)
+					+ SVerticalBox::Slot()
+					.AutoHeight()
+					.Padding(0.0f, 0.0f, 0.0f, 12.0f)
 					[
-						SNew(SBox).WidthOverride(22.0f)
+						SNew(SBox)
+						.Visibility(this, &SBotfSettingsPanel::GetConfirmationBannerVisibility)
 						[
-							SNew(SVerticalBox)
-							+ SVerticalBox::Slot().FillHeight(1.0f) [ Bar(EShape::Block, &FPalette::Primary, 0, 0) ]
-							+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 3.0f, 0.0f, 0.0f) [ Bar(EShape::Block, &FPalette::Secondary, 0, 46) ]
-							+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 3.0f, 0.0f, 0.0f) [ Bar(EShape::ElbowBottom, &FPalette::Primary, 0, 28) ]
+							BotfUi::MakePanel(
+								SNew(SHorizontalBox)
+								+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
+								[
+									SNew(STextBlock)
+									.Text(this, &SBotfSettingsPanel::GetCountdownText)
+									.Font(BotfUi::Condensed(13))
+									.ColorAndOpacity(Col(&FPalette::Accent))
+									.AutoWrapText(true)
+								]
+								+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(8.0f, 0.0f, 0.0f, 0.0f)
+								[ Pill(TEXT("KEEP SETTINGS"), [this]() { OnConfirmKeepClicked(); }, nullptr, ERole::Accent) ]
+								+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(8.0f, 0.0f, 0.0f, 0.0f)
+								[ Pill(TEXT("REVERT NOW"), [this]() { OnConfirmRevertClicked(); }, nullptr, ERole::Alert) ],
+								FMargin(18.0f, 12.0f),
+								[]() {
+									BotfUi::FSurfaceLook L = BotfUi::PanelLook(BotfUi::ThemeEmpireRef(), 1.f);
+									L.Outline = BotfUi::WithAlpha(BotfUi::Theme().Alert, 0.8f); L.Stripe = BotfUi::Theme().Alert; return L; })
 						]
 					]
 
-					+ SHorizontalBox::Slot()
-					.FillWidth(1.0f)
-					.Padding(14.0f, 8.0f, 0.0f, 0.0f)
+					// Scrollable settings body
+					+ SVerticalBox::Slot()
+					.FillHeight(1.0f)
 					[
-						SNew(SVerticalBox)
+						SNew(SScrollBox)
+						.ScrollBarThickness(FVector2D(5, 5))
 
-						// Confirmation Banner (Video Mode Change Testing)
-						+ SVerticalBox::Slot()
-						.AutoHeight()
-						.Padding(0.0f, 0.0f, 0.0f, 12.0f)
+						// Display and video
+						+ SScrollBox::Slot()
+						.Padding(0.0f, 0.0f, 0.0f, 14.0f)
 						[
 							SNew(SBox)
-							.Visibility(this, &SBotfSettingsPanel::GetConfirmationBannerVisibility)
+							.IsEnabled(this, &SBotfSettingsPanel::IsSettingsEditable)
 							[
-								Fill(EShape::Row, &FPalette::FieldHi, 0, 0,
-									SNew(SHorizontalBox)
-									+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, 12.0f, 0.0f)
-									[ Bar(EShape::Block, &FPalette::Alert, 8, 34) ]
-									+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
-									[
-										SNew(STextBlock)
-										.Text(this, &SBotfSettingsPanel::GetCountdownText)
-										.Font(BotfUi::Condensed(13))
-										.ColorAndOpacity(Col(&FPalette::Accent))
-										.AutoWrapText(true)
-									]
-									+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(8.0f, 0.0f, 0.0f, 0.0f)
-									[ Pill(TEXT("KEEP SETTINGS"), [this]() { OnConfirmKeepClicked(); }, nullptr, ERole::Accent) ]
-									+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(8.0f, 0.0f, 0.0f, 0.0f)
-									[ Pill(TEXT("REVERT NOW"), [this]() { OnConfirmRevertClicked(); }, nullptr, ERole::Alert) ],
-									FMargin(14.0f, 10.0f))
-							]
-						]
-
-						// Scrollable Settings Body
-						+ SVerticalBox::Slot()
-						.FillHeight(1.0f)
-						[
-							SNew(SScrollBox)
-
-							// Section: Display & Video
-							+ SScrollBox::Slot()
-							.Padding(0.0f, 0.0f, 0.0f, 12.0f)
-							[
-								SNew(SBox)
-								.IsEnabled(this, &SBotfSettingsPanel::IsSettingsEditable)
-								[
-									Section(TEXT("DISPLAY & RESOLUTION"),
-										SNew(SVerticalBox)
-										+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 4.0f)
-										[
-											SettingRow(TEXT("Window Mode"),
-												SAssignNew(WindowModeComboBox, STextComboBox)
-												.OptionsSource(&WindowModeOptions)
-												.OnSelectionChanged(this, &SBotfSettingsPanel::OnWindowModeChanged))
-										]
-										+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 4.0f)
-										[
-											SettingRow(TEXT("Resolution"),
-												SAssignNew(ResolutionComboBox, STextComboBox)
-												.OptionsSource(&ResolutionOptions)
-												.OnSelectionChanged(this, &SBotfSettingsPanel::OnResolutionChanged))
-										]
-										+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 4.0f)
-										[
-											SettingRow(TEXT("Vertical Sync (VSync)"),
-												SAssignNew(VSyncCheckBox, SCheckBox)
-												.IsChecked_Lambda([this]() { return bStagedVSync ? ECheckBoxState::Checked : ECheckBoxState::Unchecked; })
-												.OnCheckStateChanged(this, &SBotfSettingsPanel::OnVSyncCheckChanged))
-										]
-										+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 8.0f, 0.0f, 0.0f)
-										[
-											SNew(STextBlock)
-											.Text(FText::FromString(TEXT("Resolution or window mode changes apply as a test: keep them within 15 seconds or they revert automatically.")))
-											.Font(BotfUi::Font(10))
-											.ColorAndOpacity(Col(&FPalette::Muted))
-											.AutoWrapText(true)
-										])
-								]
-							]
-
-							// Section: Graphics & Scalability
-							+ SScrollBox::Slot()
-							.Padding(0.0f, 0.0f, 0.0f, 12.0f)
-							[
-								SNew(SBox)
-								.IsEnabled(this, &SBotfSettingsPanel::IsSettingsEditable)
-								[
-									Section(TEXT("GRAPHICS & PERFORMANCE"),
-										SNew(SVerticalBox)
-										+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 4.0f)
-										[
-											SettingRow(TEXT("Overall Quality Preset"),
-												SAssignNew(QualityComboBox, STextComboBox)
-												.OptionsSource(&QualityOptions)
-												.OnSelectionChanged(this, &SBotfSettingsPanel::OnQualityChanged))
-										]
-										+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 4.0f)
-										[
-											SettingRow(TEXT("Max Frame Rate"),
-												SAssignNew(FpsCapComboBox, STextComboBox)
-												.OptionsSource(&FpsCapOptions)
-												.OnSelectionChanged(this, &SBotfSettingsPanel::OnFpsCapChanged))
-										])
-								]
-							]
-
-							// Section: Audio Note
-							+ SScrollBox::Slot()
-							.Padding(0.0f, 0.0f, 0.0f, 12.0f)
-							[
-								Section(TEXT("AUDIO"),
+								Section(TEXT("DISPLAY AND RESOLUTION"), TEXT("Video changes are tested before they stick"),
 									SNew(SVerticalBox)
-									+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 4.0f) [ SettingRow(TEXT("Master Volume"), VolumeSlider(-1)) ]
-									+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 4.0f) [ SettingRow(TEXT("Effects"), VolumeSlider(static_cast<int32>(botf::audio::Category::Sfx))) ]
-									+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 4.0f) [ SettingRow(TEXT("Voice"), VolumeSlider(static_cast<int32>(botf::audio::Category::Voice))) ]
-									+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 4.0f) [ SettingRow(TEXT("Interface"), VolumeSlider(static_cast<int32>(botf::audio::Category::Ui))) ]
-									+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 4.0f) [ SettingRow(TEXT("Music"), VolumeSlider(static_cast<int32>(botf::audio::Category::Music))) ]
-									+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 8.0f, 0.0f, 0.0f)
+									+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 5.0f)
 									[
-										SNew(STextBlock)
-										.Text(FText::FromString(TEXT("Volumes apply immediately and are saved with your settings. Sounds, voices and music come from locally installed assets (Import-Assets.ps1); without them the game is silent. Effects and music dip while a voice line plays.")))
-										.Font(BotfUi::Font(10))
-										.ColorAndOpacity(Col(&FPalette::Muted))
-										.AutoWrapText(true)
+										SettingRow(TEXT("Window mode"), Combo(WindowModeComboBox, &WindowModeOptions,
+											STextComboBox::FOnTextSelectionChanged::CreateSP(this, &SBotfSettingsPanel::OnWindowModeChanged)))
+									]
+									+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 5.0f)
+									[
+										SettingRow(TEXT("Resolution"), Combo(ResolutionComboBox, &ResolutionOptions,
+											STextComboBox::FOnTextSelectionChanged::CreateSP(this, &SBotfSettingsPanel::OnResolutionChanged)))
+									]
+									+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 5.0f)
+									[
+										SettingRow(TEXT("Vertical sync"),
+											SNew(SHorizontalBox)
+											+ SHorizontalBox::Slot().AutoWidth()
+											[
+												SNew(BotfUi::SBotfToggle)
+												.Checked_Lambda([this]() { return bStagedVSync; })
+												.OnToggle([this](bool bOn) { OnVSyncCheckChanged(bOn ? ECheckBoxState::Checked : ECheckBoxState::Unchecked); })
+											])
+									]
+									+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 10.0f, 0.0f, 0.0f)
+									[
+										Note(TEXT("Resolution or window mode changes apply as a test: keep them within 15 seconds or they revert automatically."))
 									])
 							]
 						]
 
-						// Footer Action Buttons
-						+ SVerticalBox::Slot()
-						.AutoHeight()
-						.Padding(0.0f, 12.0f, 0.0f, 0.0f)
+						// Graphics and scalability
+						+ SScrollBox::Slot()
+						.Padding(0.0f, 0.0f, 0.0f, 14.0f)
 						[
-							SNew(SHorizontalBox)
-							+ SHorizontalBox::Slot()
-							.AutoWidth()
-							[ Pill(TEXT("< BACK"), [this]() { OnBackClicked(); }, [this]() { return IsSettingsEditable(); }, ERole::Tertiary) ]
-							+ SHorizontalBox::Slot()
-							.FillWidth(1.0f)
-							.VAlign(VAlign_Center)
-							.Padding(8.0f, 0.0f)
-							[ Bar(EShape::Block, &FPalette::Secondary, 0, 6) ]
-							+ SHorizontalBox::Slot()
-							.AutoWidth()
-							.Padding(0.0f, 0.0f, 8.0f, 0.0f)
-							[ Pill(TEXT("REVERT"), [this]() { OnRevertClicked(); }, [this]() { return IsRevertEnabled(); }, ERole::Secondary) ]
-							+ SHorizontalBox::Slot()
-							.AutoWidth()
-							[ Pill(TEXT("APPLY"), [this]() { OnApplyClicked(); }, [this]() { return IsApplyEnabled(); }, ERole::Accent) ]
+							SNew(SBox)
+							.IsEnabled(this, &SBotfSettingsPanel::IsSettingsEditable)
+							[
+								Section(TEXT("GRAPHICS AND PERFORMANCE"), TEXT("Quality presets and the frame rate cap"),
+									SNew(SVerticalBox)
+									+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 5.0f)
+									[
+										SettingRow(TEXT("Overall quality preset"), Combo(QualityComboBox, &QualityOptions,
+											STextComboBox::FOnTextSelectionChanged::CreateSP(this, &SBotfSettingsPanel::OnQualityChanged)))
+									]
+									+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 5.0f)
+									[
+										SettingRow(TEXT("Max frame rate"), Combo(FpsCapComboBox, &FpsCapOptions,
+											STextComboBox::FOnTextSelectionChanged::CreateSP(this, &SBotfSettingsPanel::OnFpsCapChanged)))
+									])
+							]
 						]
+
+						// Audio
+						+ SScrollBox::Slot()
+						.Padding(0.0f, 0.0f, 0.0f, 14.0f)
+						[
+							Section(TEXT("AUDIO"), TEXT("Volumes apply at once and are saved"),
+								SNew(SVerticalBox)
+								+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 5.0f) [ SettingRow(TEXT("Master volume"), VolumeSlider(-1)) ]
+								+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 5.0f) [ SettingRow(TEXT("Effects"), VolumeSlider(static_cast<int32>(botf::audio::Category::Sfx))) ]
+								+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 5.0f) [ SettingRow(TEXT("Voice"), VolumeSlider(static_cast<int32>(botf::audio::Category::Voice))) ]
+								+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 5.0f) [ SettingRow(TEXT("Interface"), VolumeSlider(static_cast<int32>(botf::audio::Category::Ui))) ]
+								+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 5.0f) [ SettingRow(TEXT("Music"), VolumeSlider(static_cast<int32>(botf::audio::Category::Music))) ]
+								+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 10.0f, 0.0f, 0.0f)
+								[
+									Note(TEXT("Sounds, voices and music come from locally installed assets (Import-Assets.ps1); without them the game is silent. Effects and music dip while a voice line plays."))
+								])
+						]
+					]
+
+					// Footer actions
+					+ SVerticalBox::Slot()
+					.AutoHeight()
+					.Padding(0.0f, 6.0f, 0.0f, 0.0f)
+					[
+						SNew(SHorizontalBox)
+						+ SHorizontalBox::Slot()
+						.AutoWidth()
+						[ Pill(TEXT("< BACK"), [this]() { OnBackClicked(); }, [this]() { return IsSettingsEditable(); }, ERole::Tertiary) ]
+						+ SHorizontalBox::Slot()
+						.FillWidth(1.0f)
+						[ SNullWidget::NullWidget ]
+						+ SHorizontalBox::Slot()
+						.AutoWidth()
+						.Padding(0.0f, 0.0f, 8.0f, 0.0f)
+						[ Pill(TEXT("REVERT"), [this]() { OnRevertClicked(); }, [this]() { return IsRevertEnabled(); }, ERole::Secondary) ]
+						+ SHorizontalBox::Slot()
+						.AutoWidth()
+						[ Pill(TEXT("APPLY"), [this]() { OnApplyClicked(); }, [this]() { return IsApplyEnabled(); }, ERole::Accent) ]
 					]
 				]
 			]

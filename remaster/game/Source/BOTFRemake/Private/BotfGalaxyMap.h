@@ -200,39 +200,56 @@ public:
         };
         auto OnScreen = [&](FVector2D A) { return A.X > -CS && A.Y > -CS && A.X < Size.X + CS && A.Y < Size.Y + CS; };
 
-        Box(0, FVector2D::ZeroVector, Size, Pal.Void);
+        const auto F2 = [](FVector2D V) { return FVector2f(static_cast<float>(V.X), static_cast<float>(V.Y)); };
+        // Deep-space backdrop: a vertical wash, two soft nebula clouds that drift a little with the pan, then the starfield.
+        BotfUi::PaintGradient(Elements, Layer, Geometry, FVector2f(0.f, 0.f), F2(Size), FVector4(0, 0, 0, 0),
+            BotfUi::Mix(Pal.Void, Pal.FieldHi, 0.30f), Shade(Pal.Void, 0.8f));
+        BotfUi::PaintGlow(Elements, Layer, Geometry, F2(Size * FVector2D(0.28, 0.30) + B.View->Pan * 0.05), static_cast<float>(Size.X * 0.42),
+            BotfUi::WithAlpha(Pal.Primary, 0.06f));
+        BotfUi::PaintGlow(Elements, Layer, Geometry, F2(Size * FVector2D(0.74, 0.70) + B.View->Pan * 0.05), static_cast<float>(Size.X * 0.36),
+            BotfUi::WithAlpha(Pal.Secondary, 0.035f));
         // Fixed decorative starfield with slight parallax; consumes no simulation randomness.
-        for (int I = 0; I < 260; ++I) {
+        for (int I = 0; I < 320; ++I) {
             FVector2D P((I * 173 % 997) / 997.0 * Size.X, (I * 317 % 991) / 991.0 * Size.Y);
             P += B.View->Pan * (I % 3 == 0 ? 0.08 : 0.03);
             P.X = std::fmod(std::fmod(P.X, Size.X) + Size.X, Size.X); P.Y = std::fmod(std::fmod(P.Y, Size.Y) + Size.Y, Size.Y);
-            const float S = I % 11 == 0 ? 2.f : 1.f;
-            Box(0, P, FVector2D(S, S), Shade(Pal.Text, I % 5 == 0 ? 0.30f : 0.12f));
+            const float S = I % 13 == 0 ? 2.5f : (I % 4 == 0 ? 1.6f : 1.f);
+            const FLinearColor Tint = I % 7 == 0 ? Pal.Secondary : (I % 5 == 0 ? Pal.Primary : Pal.Text);
+            Box(0, P, FVector2D(S, S), Shade(Tint, 1.f, I % 13 == 0 ? 0.55f : (I % 5 == 0 ? 0.30f : 0.14f)), S > 1.5f ? Round : nullptr);
+        }
+        // The galaxy itself: a lit plate with a hairline edge; unexplored space stays dark, explored space glows faintly.
+        {
+            const FVector2D O = Offset(Size);
+            BotfUi::PaintRounded(Elements, Layer + 1, Geometry, F2(O - FVector2D(6, 6)), F2(FVector2D(CS * W + 12, CS * State.height + 12)),
+                FVector4(14, 14, 14, 14), BotfUi::WithAlpha(Pal.Void, 0.55f), BotfUi::WithAlpha(Pal.LineHi, 0.75f), 1.f);
         }
         // Sectors: explored space is lit, sensor coverage brighter, colonised sectors carry their owner's tint.
         for (int Y = 0; Y < State.height; ++Y) for (int X = 0; X < W; ++X) {
             const FVector2D A = Origin(X, Y, Size);
             if (!OnScreen(A) || !botf::explored(State, X, Y)) continue;
             const int Id = Y * W + X;
-            FLinearColor Fill = Shade(Pal.Field, 1.f, 0.72f);
-            if (botf::visible(State, State.playerEmpire, X, Y)) Fill = Shade(Pal.FieldHi, 0.75f, 0.78f);
-            if (HoverCell == Id) Fill = Lift(Fill, 0.07f);
-            Box(1, A + FVector2D(0.5, 0.5), FVector2D(CS - 1, CS - 1), Fill);
+            FLinearColor Fill = BotfUi::WithAlpha(Pal.Field, 0.85f);
+            if (botf::visible(State, State.playerEmpire, X, Y)) Fill = BotfUi::WithAlpha(BotfUi::Mix(Pal.FieldHi, Pal.Primary, 0.10f), 0.92f);
+            if (HoverCell == Id) Fill = Lift(Fill, 0.08f);
+            Box(1, A, FVector2D(CS, CS), Fill);
         }
         for (const auto& Sys : State.systems) {
             const auto* Col = botf::colonyAt(State, Sys.id);
             if (!Col || !botf::explored(State, Sys.x, Sys.y)) continue;
             if (Col->ownerId != State.playerEmpire && !botf::visible(State, State.playerEmpire, Sys.x, Sys.y)) continue;
-            Box(1, Origin(Sys.x, Sys.y, Size) + FVector2D(0.5, 0.5), FVector2D(CS - 1, CS - 1), Shade(FactionColor(Col->ownerId), 0.6f, 0.22f));
+            const FLinearColor Owner = FactionColor(Col->ownerId);
+            const FVector2D A = Origin(Sys.x, Sys.y, Size);
+            BotfUi::PaintGlow(Elements, Layer + 1, Geometry, F2(A + FVector2D(CS, CS) * 0.5), static_cast<float>(CS * 1.5), BotfUi::WithAlpha(Owner, 0.20f));
+            Box(1, A, FVector2D(CS, CS), Shade(Owner, 0.6f, 0.16f));
         }
         if (B.View->bGrid || CS >= 34) {
-            const FLinearColor Grid = Shade(Pal.Secondary, 0.22f, B.View->bGrid ? 1.f : 0.45f);
+            const FLinearColor Grid = Shade(Pal.Secondary, 0.28f, B.View->bGrid ? 0.55f : 0.16f);
             const FVector2D O = Offset(Size);
             for (int X = 0; X <= W; ++X) Line(2, O + FVector2D(X * CS, 0), O + FVector2D(X * CS, State.height * CS), Grid, 1.f);
             for (int Y = 0; Y <= State.height; ++Y) Line(2, O + FVector2D(0, Y * CS), O + FVector2D(W * CS, Y * CS), Grid, 1.f);
             if (B.View->bGrid && CS >= 18) {
-                for (int X = 0; X < W; ++X) Text(2, O + FVector2D(X * CS + 3, -15), FString::FromInt(X), 7, false, Pal.Muted);
-                for (int Y = 0; Y < State.height; ++Y) Text(2, O + FVector2D(-16, Y * CS + 2), FString::FromInt(Y), 7, false, Pal.Muted);
+                for (int X = 0; X < W; ++X) Text(2, O + FVector2D(X * CS + 3, -17), FString::FromInt(X), 7, false, Pal.Muted);
+                for (int Y = 0; Y < State.height; ++Y) Text(2, O + FVector2D(-20, Y * CS + 2), FString::FromInt(Y), 7, false, Pal.Muted);
             }
         }
         const bool Military = B.View->Mode == EMapMode::Military;
@@ -299,14 +316,15 @@ public:
         }
         // Supply range of the selected unit: a task force is bounded by its shortest-ranged member.
         if (Military && Ship && B.View->bRange) {
-            const FLinearColor Edge = Shade(Pal.Good, 0.85f, 0.9f);
+            const FLinearColor Edge = Shade(Pal.Good, 0.85f, 0.75f);
             for (int Y = 0; Y < State.height; ++Y) for (int X = 0; X < W; ++X) {
                 if (!CachedSupplied(X, Y)) continue;
                 const FVector2D A = Origin(X, Y, Size);
-                if (!CachedSupplied(X - 1, Y)) Line(3, A, A + FVector2D(0, CS), Edge, 2.f);
-                if (!CachedSupplied(X + 1, Y)) Line(3, A + FVector2D(CS, 0), A + FVector2D(CS, CS), Edge, 2.f);
-                if (!CachedSupplied(X, Y - 1)) Line(3, A, A + FVector2D(CS, 0), Edge, 2.f);
-                if (!CachedSupplied(X, Y + 1)) Line(3, A + FVector2D(0, CS), A + FVector2D(CS, CS), Edge, 2.f);
+                Box(2, A, FVector2D(CS, CS), BotfUi::WithAlpha(Pal.Good, 0.07f));
+                if (!CachedSupplied(X - 1, Y)) Line(3, A, A + FVector2D(0, CS), Edge, 1.5f);
+                if (!CachedSupplied(X + 1, Y)) Line(3, A + FVector2D(CS, 0), A + FVector2D(CS, CS), Edge, 1.5f);
+                if (!CachedSupplied(X, Y - 1)) Line(3, A, A + FVector2D(CS, 0), Edge, 1.5f);
+                if (!CachedSupplied(X, Y + 1)) Line(3, A + FVector2D(0, CS), A + FVector2D(CS, CS), Edge, 1.5f);
             }
         }
         auto DrawRoute = [&](const std::vector<int>& Path, const FLinearColor& Color, float Thick, bool Arrow) {
@@ -349,9 +367,20 @@ public:
                 Line(4, Centre(A->x, A->y, Size), Centre(Z->x, Z->y, Size), T.ownerId == State.playerEmpire ? Pal.Good : Shade(FactionColor(T.ownerId), 0.8f), 2.f);
             }
         }
-        Outline(5, Origin(*B.Cell % W, *B.Cell / W, Size), CS, Pal.Accent, 2.f);
+        // Selected sector: soft wash and four corner brackets rather than a hard box. Hover: a hairline.
+        {
+            const FVector2D A = Origin(*B.Cell % W, *B.Cell / W, Size);
+            Box(5, A, FVector2D(CS, CS), BotfUi::WithAlpha(Pal.Accent, 0.09f));
+            const double Arm = FMath::Clamp(CS * 0.28, 7.0, 22.0);
+            const FLinearColor Br = Pal.Accent;
+            const auto Corner = [&](FVector2D At, double Sx, double Sy) {
+                TArray<FVector2D> Pts = { At + FVector2D(Sx * Arm, 0), At, At + FVector2D(0, Sy * Arm) };
+                BotfUi::DrawLines(Elements, Layer + 5, Geometry, Pts, Br, 2.5f);
+            };
+            Corner(A, 1, 1); Corner(A + FVector2D(CS, 0), -1, 1); Corner(A + FVector2D(0, CS), 1, -1); Corner(A + FVector2D(CS, CS), -1, -1);
+        }
         if (HoverCell >= 0 && HoverCell != *B.Cell)
-            Outline(5, Origin(HoverCell % W, HoverCell / W, Size), CS, B.View->bPlotting ? Pal.Good : Shade(Pal.Text, 0.6f, 0.6f), 1.f);
+            Outline(5, Origin(HoverCell % W, HoverCell / W, Size), CS, B.View->bPlotting ? Pal.Good : Shade(Pal.Text, 0.6f, 0.35f), 1.f);
 
         const float Star = FMath::Clamp(static_cast<float>(CS) * 0.2f, 4.f, 14.f);
         for (const auto& S : State.systems) {
@@ -364,49 +393,80 @@ public:
             const auto Minor = botf::minorAt(State, S.id);
             const FLinearColor Color = Seen ? FactionColor(Colony->ownerId) : Minor && Minor->contact[State.playerEmpire]
                 ? FLinearColor(0.85f, 0.85f, 0.95f) : FLinearColor(0.95f, 0.88f, 0.72f);
-            Box(6, P - FVector2D(Star, Star), FVector2D(Star, Star) * 2, Shade(Color, 1.f, 0.16f), Round);   // glow
+            // Corona, halo and a hot core; a four-point flare on the larger stars.
+            BotfUi::PaintGlow(Elements, Layer + 6, Geometry, F2(P), Star * 3.4f, BotfUi::WithAlpha(Color, 0.30f));
+            BotfUi::PaintGlow(Elements, Layer + 6, Geometry, F2(P), Star * 1.7f, BotfUi::WithAlpha(Color, 0.55f));
             if (*B.Selected == S.id) {
                 TArray<FVector2D> Ring;
-                for (int I = 0; I <= 32; ++I) { const double A = I * 6.283185307 / 32; Ring.Add(P + FVector2D(std::cos(A), std::sin(A)) * (Star + 5)); }
+                for (int I = 0; I <= 40; ++I) { const double A = I * 6.283185307 / 40; Ring.Add(P + FVector2D(std::cos(A), std::sin(A)) * (Star + 6)); }
                 BotfUi::DrawLines(Elements, Layer + 6, Geometry, Ring, Pal.Accent, 2.f);
             }
-            Box(7, P - FVector2D(Star, Star) * 0.5, FVector2D(Star, Star), Color, Round);
+            BotfUi::PaintDisc(Elements, Layer + 7, Geometry, F2(P), Star * 0.62f, Lift(Color, 0.15f), 24);
+            BotfUi::PaintDisc(Elements, Layer + 7, Geometry, F2(P), Star * 0.30f, FLinearColor(1.f, 1.f, 1.f, 0.95f), 16);
+            if (Star >= 8.f) {
+                Line(7, P - FVector2D(Star * 1.5, 0), P + FVector2D(Star * 1.5, 0), BotfUi::WithAlpha(Lift(Color, 0.4f), 0.35f), 1.f);
+                Line(7, P - FVector2D(0, Star * 1.5), P + FVector2D(0, Star * 1.5), BotfUi::WithAlpha(Lift(Color, 0.4f), 0.35f), 1.f);
+            }
             // A contacted independent minor race (the roster's homeworlds) wears a thin ring; hover for its profile.
             if (!Seen && Minor && !Minor->memberOf && Minor->contact[State.playerEmpire])
                 Circle(7, P, Star + 3, FLinearColor(0.80f, 0.76f, 1.f, 0.85f), 1.f);
             if (B.View->bNames && CS >= 22) {
-                const FVector2D At = P + FVector2D(-CS * 0.45, Star * 0.5 + 2);
-                Text(8, At, MapStr(S.name), CS >= 48 ? 9 : 8, Own, Seen ? Color : Pal.Text);
+                const FVector2D At = P + FVector2D(-CS * 0.45, Star * 0.5 + 3);
+                const FString Name = MapStr(S.name);
+                const int Pt = CS >= 48 ? 9 : 8;
+                Text(8, At + FVector2D(1, 1), Name, Pt, Own, FLinearColor(0.f, 0.f, 0.f, 0.85f));
+                Text(8, At, Name, Pt, Own, Seen ? Lift(Color, 0.25f) : Pal.Text2);
                 if (!Military && Own && CS >= 40) {
                     const auto E = botf::economy(State, *Colony);
-                    Text(8, At + FVector2D(0, 12), FString::Printf(TEXT("pop %d  ind %d"), Colony->population, E.industry), 7, false, Pal.Muted);
+                    Text(8, At + FVector2D(0, 13), FString::Printf(TEXT("pop %d  ind %d"), Colony->population, E.industry), 7, false, Pal.Muted);
                 }
             }
         }
-        // Stations sit in the top-right corner of their sector: an outpost is a small block, a starbase a larger block
+        // Stations sit in the top-right corner of their sector: an outpost is a small diamond, a starbase a larger one
         // with a second frame; an upgrade in progress is framed in the accent colour. Transports assembling an
         // outpost show an empty frame there.
         {
             const double Mark = FMath::Clamp(CS * 0.2, 6.0, 12.0);
+            const auto Diamond = [&](FVector2D C, double R, const FLinearColor& Fill, const FLinearColor* Rim) {
+                TArray<FVector2f> Pts = { F2(C + FVector2D(0, -R)), F2(C + FVector2D(R, 0)), F2(C + FVector2D(0, R)), F2(C + FVector2D(-R, 0)) };
+                BotfUi::PaintFan(Elements, Layer + 8, Geometry, F2(C), Pts, Fill, Rim);
+            };
             for (const auto& St : Cache.Stations) {
                 const bool Starbase = St.type == botf::StationType::Starbase;
-                const double Ext = Starbase ? Mark * 1.35 : Mark;
-                const FVector2D A = Origin(St.x, St.y, Size) + FVector2D(CS - Ext - 3, 3);
-                if (!OnScreen(A)) continue;
+                const double R = (Starbase ? Mark * 0.85 : Mark * 0.6);
+                const FVector2D C = Origin(St.x, St.y, Size) + FVector2D(CS - R - 5, R + 5);
+                if (!OnScreen(C)) continue;
                 const FLinearColor Owner = FactionColor(St.ownerId);
-                Box(8, A, FVector2D(Ext, Ext), Owner, Styles().Get(St.ownerId, EShape::Block));
-                Outline(8, A - FVector2D(2, 2), Ext + 4, St.upgrading ? Pal.Accent : Shade(Owner, 0.7f), 1.f);
-                if (Starbase) Outline(8, A - FVector2D(4, 4), Ext + 8, Shade(Owner, 0.9f, 0.8f), 1.f);
+                const FLinearColor Dark = Shade(Owner, 0.45f);
+                Diamond(C, R, Lift(Owner, 0.1f), &Dark);
+                TArray<FVector2D> Frame = { C + FVector2D(0, -R - 3), C + FVector2D(R + 3, 0), C + FVector2D(0, R + 3), C + FVector2D(-R - 3, 0), C + FVector2D(0, -R - 3) };
+                BotfUi::DrawLines(Elements, Layer + 8, Geometry, Frame, St.upgrading ? Pal.Accent : BotfUi::WithAlpha(Owner, 0.7f), 1.f);
             }
             for (const auto& Site : Cache.Assembling) {
-                const FVector2D A = Origin(Site.first, Site.second, Size) + FVector2D(CS - Mark - 3, 3);
-                if (OnScreen(A)) Outline(8, A, Mark, Shade(FactionColor(State.playerEmpire), 1.f, 0.75f), 1.f);
+                const FVector2D C = Origin(Site.first, Site.second, Size) + FVector2D(CS - Mark * 0.6 - 5, Mark * 0.6 + 5);
+                if (!OnScreen(C)) continue;
+                const double R = Mark * 0.6 + 3;
+                TArray<FVector2D> Frame = { C + FVector2D(0, -R), C + FVector2D(R, 0), C + FVector2D(0, R), C + FVector2D(-R, 0), C + FVector2D(0, -R) };
+                BotfUi::DrawLines(Elements, Layer + 8, Geometry, Frame, Shade(FactionColor(State.playerEmpire), 1.f, 0.8f), 1.f);
             }
         }
         if (Military) {
             // One marker per owner per sector with a unit count; own units top-left, foreign bottom-left.
+            // A ship is a small chevron: own ships point up, foreign ships point down.
             std::set<int> Sectors;
             const double Mark = FMath::Clamp(CS * 0.2, 6.0, 12.0);
+            const auto Chevron = [&](FVector2D C, double R, bool Up, const FLinearColor& Fill, const FLinearColor& Rim) {
+                const float D = Up ? 1.f : -1.f;
+                TArray<FVector2f> Pts = { F2(C + FVector2D(0, -R * D)), F2(C + FVector2D(R * 0.85, R * 0.95 * D)), F2(C + FVector2D(0, R * 0.42 * D)), F2(C + FVector2D(-R * 0.85, R * 0.95 * D)) };
+                BotfUi::PaintFan(Elements, Layer + 9, Geometry, F2(C), Pts, Fill, &Rim);
+            };
+            const auto Count = [&](FVector2D At, int N, const FLinearColor& Tone) {
+                const FString Label = FString::FromInt(N);
+                const double W2 = 8.0 + 6.0 * Label.Len();
+                BotfUi::PaintRounded(Elements, Layer + 9, Geometry, F2(At), FVector2f(static_cast<float>(W2), 15.f), FVector4(7, 7, 7, 7),
+                    BotfUi::WithAlpha(Pal.Void, 0.9f), BotfUi::WithAlpha(Tone, 0.8f), 1.f);
+                Text(10, At + FVector2D(4, 0), Label, 8, true, Pal.Text);
+            };
             for (const auto& F : Draft.fleets) {
                 const bool Mine = F.ownerId == State.playerEmpire;
                 if (!Mine && !botf::visible(State, State.playerEmpire, F.x, F.y)) continue;
@@ -416,18 +476,22 @@ public:
                     if (O.ownerId == State.playerEmpire) ++Own;
                     else if (botf::visible(State, State.playerEmpire, O.x, O.y)) { ++Foreign; ForeignOwner = O.ownerId; }
                 }
-                const FVector2D A = Origin(F.x, F.y, Size) + FVector2D(3, 3);
+                const FVector2D A = Origin(F.x, F.y, Size);
                 if (!OnScreen(A)) continue;
+                const double R = Mark * 0.95;
                 if (Own) {
                     const bool Sel = Ship && Ship->x == F.x && Ship->y == F.y;
-                    if (Sel) Outline(9, A - FVector2D(2, 2), Mark + 4, Pal.Accent, 1.5f);
-                    Box(9, A, FVector2D(Mark, Mark), Sel ? Pal.Accent : FactionColor(State.playerEmpire));
-                    if (Own > 1) Text(9, A + FVector2D(Mark + 2, -2), FString::FromInt(Own), 8, true, Pal.Text);
+                    const FVector2D C = A + FVector2D(R + 4, R + 4);
+                    const FLinearColor Body = Sel ? Pal.Accent : FactionColor(State.playerEmpire);
+                    if (Sel) BotfUi::PaintGlow(Elements, Layer + 9, Geometry, F2(C), static_cast<float>(R * 2.6), BotfUi::WithAlpha(Pal.Accent, 0.5f));
+                    Chevron(C, R, true, Lift(Body, Sel ? 0.1f : 0.05f), Shade(Body, 0.85f));
+                    if (Own > 1) Count(A + FVector2D(R * 2 + 6, 3), Own, Body);
                 }
                 if (Foreign) {
-                    const FVector2D Z = Origin(F.x, F.y, Size) + FVector2D(3, CS - Mark - 3);
-                    Box(9, Z, FVector2D(Mark, Mark), FactionColor(ForeignOwner));
-                    if (Foreign > 1) Text(9, Z + FVector2D(Mark + 2, -2), FString::FromInt(Foreign), 8, true, FactionColor(ForeignOwner));
+                    const FVector2D C = A + FVector2D(R + 4, CS - R - 4);
+                    const FLinearColor Body = FactionColor(ForeignOwner);
+                    Chevron(C, R, false, Lift(Body, 0.05f), Shade(Body, 0.8f));
+                    if (Foreign > 1) Count(A + FVector2D(R * 2 + 6, CS - 18), Foreign, Body);
                 }
             }
         }
@@ -441,9 +505,10 @@ public:
                 int Longest = 0;
                 for (const FString& Entry : Lines) Longest = FMath::Max(Longest, Entry.Len());
                 const FVector2D At = HoverLocal + FVector2D(16, 14);
-                const FVector2D Ext(FMath::Min(520.0, 6.6 * Longest + 18), 8.0 + 15.0 * Lines.Num());
+                const FVector2D Ext(FMath::Min(560.0, 7.0 * Longest + 22), 8.0 + 15.0 * Lines.Num());
                 const FVector2D Place(FMath::Max(4.0, FMath::Min(At.X, Size.X - Ext.X - 4)), FMath::Max(4.0, FMath::Min(At.Y, Size.Y - Ext.Y - 4)));
-                Box(10, Place, Ext, Shade(Pal.Void, 1.f, 0.88f), Styles().Get(State.playerEmpire, EShape::Row));
+                BotfUi::PaintRounded(Elements, Layer + 10, Geometry, F2(Place), F2(Ext), FVector4(10, 10, 10, 10),
+                    BotfUi::WithAlpha(Pal.Void, 0.94f), BotfUi::WithAlpha(Pal.LineHi, 1.f), 1.f);
                 for (int I = 0; I < Lines.Num(); ++I)
                     FSlateDrawElement::MakeText(Elements, Layer + 11,
                         Geometry.ToPaintGeometry(FVector2D(Ext.X - 12, 17), FSlateLayoutTransform(Place + FVector2D(8, 3 + 15.0 * I))),
