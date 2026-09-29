@@ -472,6 +472,28 @@ inline std::vector<SpacingOffset> spacingOffsets(const std::vector<SpacingBody>&
     return off;
 }
 
+// Station-keeping between maneuvers (presentation only). A ship holding position still lives: it bobs, rolls and
+// nods a little, small craft more than capital ships, each on its own phase. The motion fades in and out over
+// fadeSeconds at every maneuver edge and at the round's start and end, so poses at those instants are untouched and
+// rounds join seamlessly. Added by the scene on top of RoundTimeline::poseOf.
+struct IdleOffset { double altitude = 0.0, bank = 0.0, pitch = 0.0; };
+inline IdleOffset stationKeeping(const ShipTrack& track, double t, double roundSeconds, double fadeSeconds = 0.6) {
+    if (t <= 0.0 || t >= roundSeconds) return {};
+    double edge = std::min(t, roundSeconds - t);
+    for (const auto& s : track.segments) {
+        if (t > s.t0 && t < s.t1) return {}; // flying a maneuver
+        edge = std::min(edge, std::min(std::abs(t - s.t0), std::abs(t - s.t1)));
+    }
+    const double env = smoothstep(edge / std::max(1e-6, fadeSeconds));
+    const double phase = unitHash(track.fleetId, 7) * 2.0 * kPiValue;
+    const double amp = track.small ? 1.0 : 0.4;
+    IdleOffset o;
+    o.altitude = env * amp * 0.12 * std::sin(2.0 * kPiValue * t / 3.4 + phase);
+    o.bank = env * amp * 6.0 * std::sin(2.0 * kPiValue * t / 4.1 + phase * 1.7);
+    o.pitch = env * amp * 2.5 * std::sin(2.0 * kPiValue * t / 2.9 + phase * 0.6);
+    return o;
+}
+
 inline bool eventHasPose(CombatEventKind k) {
     return k == CombatEventKind::ManeuverStart || k == CombatEventKind::ManeuverEnd || k == CombatEventKind::Fire ||
         k == CombatEventKind::Ram || k == CombatEventKind::Retreated || k == CombatEventKind::Disengage ||

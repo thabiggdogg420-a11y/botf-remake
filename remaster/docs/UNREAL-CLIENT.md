@@ -316,6 +316,9 @@ Still unproven, in rough order of likelihood. Each is a single-line fix if it fa
       diamond. The active ship, the target and the hovered ship get their name and hull and shield bars. A hull
       filling the view keeps only the name and compact bars.
     - **Arena.** `CellUnits` is 170 (was 85), so a Sovereign spans about 1.4 cells.
+  - **Station-keeping.** Between manoeuvres ships bob, roll and nod a little (`stationKeeping` in
+    `BotfCombatTimeline.h`), small craft more than capital ships. The motion fades out at every manoeuvre edge and
+    at round boundaries, so rounds join seamlessly.
   - **Ship cap.** The cap is 24 ships per side (was 8).
   - **Resuming.** Re-showing the same round resumes playback without replaying sounds.
 - **Object Database.** The ship list shows the legacy catalogue and the 98 expanded roster classes

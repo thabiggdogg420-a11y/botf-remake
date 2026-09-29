@@ -545,6 +545,26 @@ static void testCombatTimeline() {
         EXPECT(cr[8].x == 0.0 && cr[8].alt == 0.0);
     }
 
+    // Station-keeping: nothing during a maneuver or at the round's edges (rounds join seamlessly), gentle motion while
+    // holding, more for small craft, deterministic.
+    {
+        ShipTrack hold; hold.fleetId = 21; hold.small = false;
+        FlightSegment seg; seg.t0 = 0.0; seg.t1 = 2.0; hold.segments.push_back(seg);
+        ShipTrack escort = hold; escort.small = true;
+        const auto mag = [](const IdleOffset& o) { return std::fabs(o.altitude) + std::fabs(o.bank) + std::fabs(o.pitch); };
+        EXPECT(mag(stationKeeping(hold, 1.0, 6.0)) == 0.0 && mag(stationKeeping(hold, 2.0, 6.0)) == 0.0);
+        EXPECT(mag(stationKeeping(hold, 6.0, 6.0)) == 0.0 && mag(stationKeeping(hold, 0.0, 6.0)) == 0.0);
+        EXPECT(mag(stationKeeping(hold, 2.0 + 1e-4, 6.0)) < 1e-3 && mag(stationKeeping(hold, 6.0 - 1e-4, 6.0)) < 1e-3);
+        double capPeak = 0.0, smallPeak = 0.0;
+        for (double t = 2.0; t < 6.0; t += 0.05) {
+            capPeak = std::max(capPeak, std::fabs(stationKeeping(hold, t, 6.0).bank));
+            smallPeak = std::max(smallPeak, std::fabs(stationKeeping(escort, t, 6.0).bank));
+        }
+        EXPECT(capPeak > 0.5 && capPeak <= 2.4 + 1e-9 && smallPeak > capPeak);
+        EXPECT(stationKeeping(hold, 3.7, 6.0).altitude == stationKeeping(hold, 3.7, 6.0).altitude);
+        EXPECT(std::fabs(stationKeeping(escort, 4.0, 6.0).altitude) <= 0.12 + 1e-9);
+    }
+
     // Camera rig: an orthonormal view looking at the focus from above the plane; projection and screen rays agree;
     // a framed sphere fills the frame; picking finds the nearest hull, or a speck near the cursor; easing converges
     // along the short way round and arcs out on long moves.

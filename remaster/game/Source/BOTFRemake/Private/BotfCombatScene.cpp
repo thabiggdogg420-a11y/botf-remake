@@ -1805,7 +1805,9 @@ void ABotfCombatScene::TickTimeline(float DeltaSeconds)
         if (!Ships.IsValidIndex(Slot) || !Ships[Slot] || !Kinematics.IsValidIndex(Slot)) continue;
         const ShipTrack& Track = TL.ships[static_cast<std::size_t>(TrackIndex)];
         auto& K = Kinematics[Slot];
-        const PlanePose Pose = TL.poseOf(static_cast<std::size_t>(TrackIndex), Now); // own flight or wing station
+        PlanePose Pose = TL.poseOf(static_cast<std::size_t>(TrackIndex), Now); // own flight or wing station
+        const IdleOffset Idle = stationKeeping(Track, Now, TL.roundSeconds); // holding position still breathes
+        Pose.altitude += Idle.altitude; Pose.bank += Idle.bank; Pose.pitch += Idle.pitch;
         FVector Location = PlaneToScene(Pose.x, Pose.y, Pose.altitude) + K.SpacingOffset;
         FQuat Rotation = PoseRotation(Pose.facing, Pose.bank, Pose.pitch);
         FVector Scale = K.BaseScale;
