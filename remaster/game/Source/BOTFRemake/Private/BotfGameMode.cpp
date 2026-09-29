@@ -2,6 +2,7 @@
 #include "BotfCombatScene.h"
 #include "BotfSettingsPanel.h"
 #include "BotfUiTheme.h"
+#include "BotfUiWidgets.h"
 #include "BotfGalaxyMap.h"
 #include "BotfUiControls.h"
 #include "BotfTacticalRadar.h"
@@ -135,6 +136,10 @@ public:
             else if (Shell == EUiView::Settings) ShowView(SubPageReturn);
             return FReply::Handled();
         }
+        if (Shell == EUiView::Setup && !bPreview && Key == EKeys::Enter) {
+            RunGuarded([this] { RequestAction(EPendingAction::StartCampaign); });
+            return FReply::Handled();
+        }
         if (Shell != EUiView::Game) return SCompoundWidget::OnKeyDown(Geometry, Event);
         // The end-of-game overlay is modal: shortcuts are held back, a focused overlay button still gets its key.
         if (OutcomeOverlayVisible()) return bPreview ? FReply::Unhandled() : FReply::Handled();
@@ -198,6 +203,8 @@ public:
         if (Key == EKeys::Tab) return Guarded([this] { NextShip(); if (Chart.IsValid()) Chart->CentreOn(SelectedCell); });
         if (ActivePanel == PanelGalaxy) {
             if (Key == EKeys::M) { MapView.Mode = MapView.Mode == BotfUi::EMapMode::Military ? BotfUi::EMapMode::Economic : BotfUi::EMapMode::Military; return FReply::Handled(); }
+            if (Key == EKeys::LeftBracket) { bLeftOpen = !bLeftOpen; return FReply::Handled(); }
+            if (Key == EKeys::RightBracket) { bInboxOpen = !bInboxOpen; return FReply::Handled(); }
             if (Key == EKeys::N) { MapView.bNames = !MapView.bNames; return FReply::Handled(); }
             if (Key == EKeys::R) { MapView.bRange = !MapView.bRange; return FReply::Handled(); }
             if (Key == EKeys::G) { MapView.bGrid = !MapView.bGrid; return FReply::Handled(); }
@@ -251,10 +258,10 @@ public:
         const TSharedRef<SWidget> GameShell = SNew(SOverlay)
             + SOverlay::Slot() [ SAssignNew(Chart, BotfUi::SStarChart, ChartBinding()) ]
             + SOverlay::Slot().VAlign(VAlign_Top) [ BuildTopBar() ]
-            + SOverlay::Slot().HAlign(HAlign_Left).VAlign(VAlign_Fill).Padding(10, 74, 0, 64) [ BuildLeftDock() ]
-            + SOverlay::Slot().HAlign(HAlign_Right).VAlign(VAlign_Fill).Padding(0, 74, 10, 64) [ BuildInbox() ]
+            + SOverlay::Slot().HAlign(HAlign_Left).VAlign(VAlign_Fill).Padding(10, 78, 0, 74) [ BuildLeftDock() ]
+            + SOverlay::Slot().HAlign(HAlign_Right).VAlign(VAlign_Fill).Padding(0, 78, 10, 74) [ BuildInbox() ]
             + SOverlay::Slot().VAlign(VAlign_Bottom) [ BuildBottomBar() ]
-            + SOverlay::Slot() [ BuildSheetLayer() ]
+            + SOverlay::Slot().Padding(TAttribute<FMargin>::CreateLambda([this] { return (ActivePanel == PanelCombat && Session.pending) ? FMargin(0) : FMargin(0, 67, 0, 67); })) [ BuildSheetLayer() ]
             + SOverlay::Slot().HAlign(HAlign_Left).VAlign(VAlign_Top)
                 .Padding(TAttribute<FMargin>::CreateLambda([this] { return FMargin(MenuAt.X, MenuAt.Y, 0, 0); })) [ BuildSectorMenu() ]
             + SOverlay::Slot().HAlign(HAlign_Center).VAlign(VAlign_Center).Padding(60) [ BuildSummaryWindow() ]
@@ -376,7 +383,7 @@ private:
 
     // ---- Theme and LCARS building blocks (presentation only) ----
     int ThemeEmpire() const { return Shell == EUiView::Setup || !bHasActiveCampaign ? SetupPlayer : State.playerEmpire; }
-    const FPalette& P() const { return BotfUi::Palette(ThemeEmpire()); }
+    const FPalette& P() const { BotfUi::SetThemeEmpire(ThemeEmpire()); return BotfUi::Palette(ThemeEmpire()); }
     TAttribute<FSlateColor> C(FLinearColor FPalette::* Field) const {
         return TAttribute<FSlateColor>::CreateLambda([this, Field] { return FSlateColor(P().*Field); });
     }
@@ -414,10 +421,31 @@ private:
     TSharedRef<SWidget> Label(const TAttribute<FText>& Value, int Size, FLinearColor FPalette::* Field, bool bCondensed = false) const {
         return SNew(STextBlock).Text(Value).Font(bCondensed ? BotfUi::Condensed(Size) : Font(Size)).ColorAndOpacity(C(Field));
     }
+    // Cards and panels (Field / FieldHi / Void) are painted surfaces with a hairline border; any other colour is a flat
+    // rounded swatch (accent bars, ownership markers).
     TSharedRef<SWidget> Fill(EShape Shape, FLinearColor FPalette::* Field,
                              const TSharedRef<SWidget>& Content = SNullWidget::NullWidget, FMargin Pad = FMargin(0)) const {
-        return SNew(SBorder).BorderImage_Lambda([this, Shape] { return BotfUi::Styles().Get(ThemeEmpire(), Shape); })
-            .BorderBackgroundColor(C(Field)).Padding(Pad) [ Content ];
+        const bool bCard = Field == &FPalette::Field || Field == &FPalette::FieldHi || Field == &FPalette::Void;
+        if (!bCard)
+            return SNew(SBorder).BorderImage_Lambda([this, Shape] { return BotfUi::Styles().Get(ThemeEmpire(), Shape); })
+                .BorderBackgroundColor(C(Field)).Padding(Pad) [ Content ];
+        return SNew(BotfUi::SBotfSurface).Padding(Pad)
+            .Look([this, Shape, Field] {
+                const FPalette& Pal = P();
+                BotfUi::FSurfaceLook L;
+                L.Radius = BotfUi::Radii(ThemeEmpire(), Shape);
+                if (Shape == EShape::Row) L.Radius = L.Radius + FVector4(3, 3, 3, 3);
+                if (Field == &FPalette::Void) {
+                    L.Top = BotfUi::WithAlpha(BotfUi::Mix(Pal.FieldHi, Pal.Void, 0.55f), 0.985f); L.Fill = BotfUi::WithAlpha(Pal.Void, 0.985f);
+                    L.Outline = Pal.LineHi; L.Glow = BotfUi::WithAlpha(FLinearColor::Black, 0.9f); L.GlowSize = 14.f;
+                } else if (Field == &FPalette::FieldHi) {
+                    L.Top = BotfUi::WithAlpha(BotfUi::Lift(Pal.FieldHi, 0.05f), 0.96f); L.Fill = BotfUi::WithAlpha(Pal.FieldHi, 0.96f); L.Outline = Pal.LineHi;
+                } else {
+                    L.Top = BotfUi::WithAlpha(BotfUi::Mix(Pal.FieldHi, Pal.Field, 0.4f), 0.9f); L.Fill = BotfUi::WithAlpha(Pal.Field, 0.9f); L.Outline = Pal.Line;
+                }
+                L.Sheen = BotfUi::WithAlpha(FLinearColor::White, 0.045f);
+                return L; })
+            [ Content ];
     }
     TSharedRef<SWidget> Bar(EShape Shape, FLinearColor FPalette::* Field, float Width, float Height) const {
         return SNew(SBox).WidthOverride(Width > 0 ? FOptionalSize(Width) : FOptionalSize())
@@ -427,48 +455,54 @@ private:
         return SNew(SBox).HeightOverride(Height > 0 ? FOptionalSize(Height) : FOptionalSize())
             [ SNew(SBorder).BorderImage(BotfUi::Styles().Get(Empire, EShape::Block)).BorderBackgroundColor(BotfUi::FactionColor(Empire)) ];
     }
+    // A screen: starfield backdrop with the content laid over it.
     TSharedRef<SWidget> Screen(const TSharedRef<SWidget>& Content, FMargin Pad = FMargin(18)) const {
-        return SNew(SBorder).BorderImage(FCoreStyle::Get().GetBrush("WhiteBrush")).BorderBackgroundColor(C(&FPalette::Void)).Padding(Pad)
-            [ Content ];
+        return SNew(SOverlay)
+            + SOverlay::Slot() [ SNew(BotfUi::SBotfBackdrop).Horizon(true) ]
+            + SOverlay::Slot().Padding(Pad) [ Content ];
     }
-    TSharedRef<SWidget> Sidebar() const {
-        return SNew(SVerticalBox)
-            + SVerticalBox::Slot().FillHeight(1) [ Fill(EShape::Block, &FPalette::Primary) ]
-            + SVerticalBox::Slot().AutoHeight().Padding(0, 3, 0, 0) [ Bar(EShape::Block, &FPalette::Secondary, 0, 46) ]
-            + SVerticalBox::Slot().AutoHeight().Padding(0, 3, 0, 0) [ Bar(EShape::Block, &FPalette::Tertiary, 0, 20) ]
-            + SVerticalBox::Slot().AutoHeight().Padding(0, 3, 0, 0) [ Bar(EShape::Block, &FPalette::Primary, 0, 12) ];
+    // Hairline divider.
+    TSharedRef<SWidget> Divider(float Height = 1.f) const {
+        return SNew(SBox).HeightOverride(Height)
+            [ SNew(SBorder).BorderImage(BotfUi::WhiteBrush()).BorderBackgroundColor_Lambda([this] { return FSlateColor(P().Line); }) ];
     }
-    // LCARS console frame. Trailing sits in the header rail (sheet tabs and the close control).
+    // Panel frame from the beta: rounded card, accent elbow and title in the header, a fading rule, controls at the right.
+    // Trailing sits in the header (sheet tabs and the close control).
     TSharedRef<SWidget> Console(const TAttribute<FText>& Title, const TSharedRef<SWidget>& Body, float Side = 14,
                                 const TSharedRef<SWidget>& Trailing = SNullWidget::NullWidget) const {
-        return SNew(SVerticalBox)
-            + SVerticalBox::Slot().AutoHeight()
-            [ SNew(SHorizontalBox)
-                + SHorizontalBox::Slot().AutoWidth() [ Bar(EShape::ElbowTop, &FPalette::Primary, Side + 36, 28) ]
-                + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(10, 0, 10, 0)
-                [ SNew(STextBlock).Text(Title).Font(BotfUi::Condensed(17)).ColorAndOpacity(C(&FPalette::Accent)) ]
-                + SHorizontalBox::Slot().FillWidth(1).VAlign(VAlign_Center) [ Bar(EShape::Block, &FPalette::Secondary, 0, 10) ]
-                + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(8, 0, 4, 0) [ Trailing ]
-                + SHorizontalBox::Slot().AutoWidth().Padding(4, 0, 0, 0) [ Bar(EShape::Block, &FPalette::Tertiary, 22, 28) ]
-                + SHorizontalBox::Slot().AutoWidth().Padding(4, 0, 0, 0) [ Bar(EShape::CapRight, &FPalette::Primary, 42, 28) ] ]
-            + SVerticalBox::Slot().FillHeight(1).Padding(0, 4, 0, 0)
-            [ SNew(SHorizontalBox)
-                + SHorizontalBox::Slot().AutoWidth() [ SNew(SBox).WidthOverride(Side) [ Sidebar() ] ]
-                + SHorizontalBox::Slot().FillWidth(1).Padding(12, 6, 2, 2) [ Body ] ];
+        const float BodyPad = FMath::Clamp(Side * 0.6f, 10.f, 18.f);
+        return SNew(BotfUi::SBotfSurface)
+            .Look([this] {
+                BotfUi::FSurfaceLook L = BotfUi::PanelLook(ThemeEmpire(), 0.3f);
+                L.Radius = FVector4(20, 14, 14, 14); return L; })
+            [ SNew(SVerticalBox)
+                + SVerticalBox::Slot().AutoHeight()
+                [ SNew(SHorizontalBox)
+                    + SHorizontalBox::Slot().AutoWidth()
+                    [ SNew(SBox).WidthOverride(54).HeightOverride(36)
+                        [ SNew(BotfUi::SBotfSurface).Look([this] {
+                            BotfUi::FSurfaceLook L; const FPalette& Pal = P();
+                            L.Top = BotfUi::Lift(Pal.Primary, 0.18f); L.Fill = Pal.Primary; L.Radius = FVector4(20, 0, 14, 0); return L; }) ] ]
+                    + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(12, 0, 12, 0)
+                    [ SNew(STextBlock).Text(Title).Font(BotfUi::Condensed(13)).ColorAndOpacity(C(&FPalette::Accent)) ]
+                    + SHorizontalBox::Slot().FillWidth(1).VAlign(VAlign_Center)
+                    [ SNew(SBox).HeightOverride(5) [ SNew(BotfUi::SBotfRule) ] ]
+                    + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(10, 0, 12, 0) [ Trailing ] ]
+                + SVerticalBox::Slot().FillHeight(1).Padding(BodyPad, 8, BodyPad, BodyPad) [ Body ] ];
     }
+    // Card with a captioned header: a short accent bar, tracked uppercase title and a hairline.
     TSharedRef<SWidget> Section(const TAttribute<FText>& Title, const TSharedRef<SWidget>& Body) const {
-        return Fill(EShape::Block, &FPalette::Field, SNew(SVerticalBox)
-            + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 6)
+        return Fill(EShape::Row, &FPalette::Field, SNew(SVerticalBox)
+            + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 8)
             [ SNew(SHorizontalBox)
-                + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center) [ Bar(EShape::CapLeft, &FPalette::Secondary, 18, 14) ]
+                + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0, 0, 8, 0) [ Bar(EShape::Block, &FPalette::Secondary, 3, 13) ]
                 // The title may be long (a ship and its target); it takes the row and ends in an ellipsis rather than
-                // running past a narrow column. The rule after it keeps a short fixed stub.
-                + SHorizontalBox::Slot().FillWidth(1).VAlign(VAlign_Center).Padding(8, 0)
-                [ SNew(STextBlock).Text(Title).Font(BotfUi::Condensed(11)).ColorAndOpacity(C(&FPalette::Tertiary))
-                    .OverflowPolicy(ETextOverflowPolicy::Ellipsis).ToolTipText(Title) ]
-                + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center) [ Bar(EShape::Block, &FPalette::Secondary, 36, 3) ] ]
+                // running past a narrow column.
+                + SHorizontalBox::Slot().FillWidth(1).VAlign(VAlign_Center)
+                [ SNew(STextBlock).Text(Title).Font(BotfUi::Caption(8)).ColorAndOpacity(C(&FPalette::Secondary))
+                    .OverflowPolicy(ETextOverflowPolicy::Ellipsis).ToolTipText(Title) ] ]
             + SVerticalBox::Slot().AutoHeight() [ Body ],
-            FMargin(10, 8, 10, 10));
+            FMargin(12, 10, 12, 12));
     }
     // Honest label where the original showed information this build cannot yet provide.
     TSharedRef<SWidget> Unavailable(const FString& What) const {
@@ -477,31 +511,71 @@ private:
             + SHorizontalBox::Slot().FillWidth(1).VAlign(VAlign_Center) [ Para(Txt(What + TEXT(": not yet available")), 9, &FPalette::Muted) ],
             FMargin(8, 5));
     }
+    // Small rounded status tag (a role, a state, a count).
+    TSharedRef<SWidget> Badge(const TAttribute<FText>& Text, FLinearColor FPalette::* Tone, int Size = 7) const {
+        return SNew(BotfUi::SBotfSurface).Padding(FMargin(8, 2, 8, 3))
+            .Look([this, Tone] {
+                BotfUi::FSurfaceLook L; const FLinearColor Hue = P().*Tone;
+                L.Fill = BotfUi::WithAlpha(Hue, 0.14f); L.Outline = BotfUi::WithAlpha(Hue, 0.6f); L.Radius = FVector4(9, 9, 9, 9); return L; })
+            [ SNew(STextBlock).Text(Text).Font(BotfUi::Caption(Size)).ColorAndOpacity_Lambda([this, Tone] { return FSlateColor(BotfUi::Lift(P().*Tone, 0.3f)); }) ];
+    }
+    TSharedRef<SWidget> Icon(BotfUi::EIcon Glyph, float Size, FLinearColor FPalette::* Tone = &FPalette::Text2) const {
+        return SNew(BotfUi::SBotfIcon).Icon(Glyph).Size(Size).Colour(C(Tone));
+    }
+    // A figure with a caption: icon, tracked caption over a large value. The tile sizes to its content.
+    TSharedRef<SWidget> StatTile(BotfUi::EIcon Glyph, const FString& Caption, std::function<FString()> Value, const TAttribute<FSlateColor>& Color,
+                                 const FString& Tip, std::function<FString()> LiveTip = nullptr) const {
+        TSharedRef<SWidget> Tile = SNew(BotfUi::SBotfSurface).Padding(FMargin(10, 5, 12, 6))
+            .Look([this] {
+                BotfUi::FSurfaceLook L; const FPalette& Pal = P();
+                L.Fill = BotfUi::WithAlpha(FLinearColor::White, 0.03f); L.Outline = Pal.Line; L.Radius = FVector4(11, 11, 11, 11); return L; })
+            [ SNew(SHorizontalBox)
+                + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0, 0, 8, 0) [ SNew(BotfUi::SBotfIcon).Icon(Glyph).Size(19).Colour(Color) ]
+                + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+                [ SNew(SVerticalBox)
+                    + SVerticalBox::Slot().AutoHeight() [ SNew(STextBlock).Text(Txt(Caption)).Font(BotfUi::Caption(7)).ColorAndOpacity(C(&FPalette::Muted)) ]
+                    + SVerticalBox::Slot().AutoHeight() [ SNew(STextBlock).Text(Dyn(Value)).Font(BotfUi::Display(13)).ColorAndOpacity(Color) ] ] ];
+        BotfUi::SetTip(Tile, LiveTip ? Dyn(LiveTip) : TAttribute<FText>(Txt(Tip)), Txt(Caption));
+        return Tile;
+    }
+    // Caption-over-figure chip for dense readouts (kept name: used by sheets).
     TSharedRef<SWidget> Readout(const FString& Caption, std::function<FString()> Value, const TAttribute<FSlateColor>& Color,
                                 const TAttribute<FText>& Tip = TAttribute<FText>()) const {
         TSharedRef<SWidget> Chip = Fill(EShape::Block, &FPalette::Field, SNew(SVerticalBox)
             + SVerticalBox::Slot().AutoHeight()
-            [ SNew(STextBlock).Text(Txt(Caption)).Font(BotfUi::Condensed(8)).ColorAndOpacity(C(&FPalette::Muted)) ]
+            [ SNew(STextBlock).Text(Txt(Caption)).Font(BotfUi::Caption(7)).ColorAndOpacity(C(&FPalette::Muted)) ]
             + SVerticalBox::Slot().AutoHeight()
-            [ SNew(STextBlock).Text(Dyn(Value)).Font(BotfUi::Condensed(13)).ColorAndOpacity(Color) ],
-            FMargin(8, 3, 8, 4));
-        if (Tip.IsSet()) Chip->SetToolTipText(Tip);
+            [ SNew(STextBlock).Text(Dyn(Value)).Font(BotfUi::Display(13)).ColorAndOpacity(Color) ],
+            FMargin(10, 4, 10, 5));
+        if (Tip.IsSet()) BotfUi::SetTip(Chip, Tip);
         return Chip;
+    }
+    // Header for floating cards (summary, events, warnings): accent bar, title and an optional close control.
+    TSharedRef<SWidget> ModalHeader(const FString& Title, std::function<void()> Close = nullptr, FLinearColor FPalette::* Tone = &FPalette::Accent) {
+        auto Head = SNew(SHorizontalBox)
+            + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0, 0, 10, 0) [ SNew(SBox).WidthOverride(6).HeightOverride(20) [ Fill(EShape::Block, Tone) ] ]
+            + SHorizontalBox::Slot().FillWidth(1).VAlign(VAlign_Center)
+            [ SNew(STextBlock).Text(Txt(Title)).Font(BotfUi::Condensed(14)).ColorAndOpacity(C(Tone)) ];
+        if (Close)
+            Head->AddSlot().AutoWidth().VAlign(VAlign_Center)
+                [ Control(TEXT("CLOSE"), Close, nullptr, nullptr, ERole::Alert, FMargin(12, 5), false, 9, TEXT("Close (Esc)")) ];
+        return Head;
     }
     // Every control funnels through here: consistent LCARS states, and order errors surface in Status.
     TSharedRef<SWidget> DynControl(TAttribute<FText> Label, std::function<void()> Action, std::function<bool()> Enabled = nullptr,
                                    std::function<bool()> IsSelected = nullptr, ERole Role = ERole::Primary, FMargin Pad = FMargin(8, 7),
-                                   bool bRow = false, int FontSize = 10, const FString& Tip = FString(), int FixedEmpire = 0) {
+                                   bool bRow = false, int FontSize = 10, const FString& Tip = FString(), int FixedEmpire = 0,
+                                   const FString& Key = FString()) {
         TFunction<bool()> En; if (Enabled) En = [Enabled] { return SafeBool(Enabled, false); };
         TFunction<bool()> Sel; if (IsSelected) Sel = [IsSelected] { return SafeBool(IsSelected, false); };
         return BotfUi::MakeButton(Label, [this, Action] { RunGuarded(Action); },
             En, Sel, [this, FixedEmpire] { return FixedEmpire ? FixedEmpire : ThemeEmpire(); },
-            Role, Pad, bRow, FontSize, Txt(Tip));
+            Role, Pad, bRow, FontSize, Txt(Tip), Key);
     }
     TSharedRef<SWidget> Control(const FString& Label, std::function<void()> Action, std::function<bool()> Enabled,
                                 std::function<bool()> IsSelected, ERole Role, FMargin Pad, bool bRow, int FontSize,
-                                const FString& Tip, int FixedEmpire = 0) {
-        return DynControl(Txt(Label), Action, Enabled, IsSelected, Role, Pad, bRow, FontSize, Tip, FixedEmpire);
+                                const FString& Tip, int FixedEmpire = 0, const FString& Key = FString()) {
+        return DynControl(Txt(Label), Action, Enabled, IsSelected, Role, Pad, bRow, FontSize, Tip, FixedEmpire, Key);
     }
     TSharedRef<SWidget> Button(const FString& Label, std::function<void()> Action,
                               std::function<bool()> Enabled = [] { return true; }, float HorizontalPadding = 12,
@@ -521,7 +595,7 @@ private:
     }
     TSharedRef<SWidget> ModeButton(const FString& Label, int* Mode, int Value, const FString& Tip = FString()) {
         return Control(Label, [Mode, Value] { *Mode = Value; }, nullptr, [Mode, Value] { return *Mode == Value; },
-            ERole::Secondary, FMargin(12, 7), false, 10, Tip);
+            ERole::Segment, FMargin(14, 7), false, 10, Tip);
     }
     TSharedRef<SWidget> Row(const FString& Label, std::function<void()> Action, std::function<bool()> IsSelected,
                             std::function<bool()> Enabled = nullptr, const FString& Tip = FString()) {
@@ -607,109 +681,151 @@ private:
         if (!SavePath.IsEmpty()) RequestAction(EPendingAction::LoadCampaign);
     }
     TSharedRef<SWidget> MenuButton(const FString& Label, std::function<void()> Action,
-                                   std::function<bool()> Enabled = nullptr, ERole Role = ERole::Primary) {
-        return Control(Label, Action, Enabled, nullptr, Role, FMargin(18, 11), false, 12, FString());
+                                   std::function<bool()> Enabled = nullptr, ERole Role = ERole::Primary, const FString& Key = FString()) {
+        return Control(Label, Action, Enabled, nullptr, Role, FMargin(20, 12), false, 11, FString(), 0, Key);
+    }
+    // Flavour for the empire cards and the title strip: capital, motto and three traits (from the beta's setup screen).
+    struct FFactionInfo { const TCHAR* Capital; const TCHAR* Motto; const TCHAR* Traits[3]; };
+    static const FFactionInfo& FactionInfo(int Id) {
+        static const FFactionInfo Table[5] = {
+            { TEXT("Sol"), TEXT("Explore. Unite. Endure."), { TEXT("Balanced economy"), TEXT("Diplomatic reach"), TEXT("Science vessels") } },
+            { TEXT("Qo'noS"), TEXT("Glory is earned in fire."), { TEXT("Aggressive fleets"), TEXT("Cloaking raiders"), TEXT("Warrior culture") } },
+            { TEXT("Romulus"), TEXT("Patience is the sharpest blade."), { TEXT("Cloaked warbirds"), TEXT("Espionage"), TEXT("Secretive state") } },
+            { TEXT("Cardassia"), TEXT("Order. Duty. The State."), { TEXT("Industrial might"), TEXT("Security services"), TEXT("Disciplined") } },
+            { TEXT("Ferenginar"), TEXT("Every contact is a customer."), { TEXT("Trade and credits"), TEXT("Opportunists"), TEXT("Fast traders") } },
+        };
+        return Table[FMath::Clamp(Id, 1, 5) - 1];
+    }
+    // A clickable card whose look is decided by its state. Actions go through the same guarded boundary as every control.
+    TSharedRef<SWidget> CardButton(const TSharedRef<SWidget>& Content, std::function<BotfUi::FSurfaceLook(bool, bool, bool, bool)> Look,
+                                   std::function<void()> Action, std::function<bool()> Enabled = nullptr, const FString& Tip = FString(),
+                                   FMargin Pad = FMargin(12, 10)) {
+        TFunction<bool()> En; if (Enabled) En = [Enabled] { return SafeBool(Enabled, false); };
+        return BotfUi::MakeCardButton(Content, Look, [this, Action] { RunGuarded(Action); }, En, Txt(Tip), Pad);
+    }
+    TSharedRef<SWidget> FactionStrip() {
+        auto Strip = SNew(SHorizontalBox);
+        for (int Id = 1; Id <= 5; ++Id)
+            Strip->AddSlot().AutoWidth().Padding(0, 0, 10, 0)
+                [ SNew(BotfUi::SBotfSurface).Padding(FMargin(12, 8, 16, 8))
+                    .Look([Id] {
+                        BotfUi::FSurfaceLook L; const FLinearColor F = BotfUi::FactionColor(Id);
+                        L.Fill = BotfUi::WithAlpha(F, 0.08f); L.Outline = BotfUi::WithAlpha(F, 0.42f); L.Radius = FVector4(12, 12, 12, 12); return L; })
+                    [ SNew(SHorizontalBox)
+                        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0, 0, 9, 0) [ SNew(BotfUi::SBotfEmblem).Empire(Id).Size(22) ]
+                        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+                        [ SNew(STextBlock).Text(Txt(Str(botf::empireName(Id)).ToUpper())).Font(BotfUi::Caption(8)).ColorAndOpacity(C(&FPalette::Text2)) ] ] ];
+        return Strip;
     }
     TSharedRef<SWidget> BuildTitleScreen() {
-        auto Factions = SNew(SHorizontalBox);
-        for (int Id = 1; Id <= 5; ++Id) Factions->AddSlot().FillWidth(1).Padding(0, 0, Id < 5 ? 6 : 0, 0)
-            [ SNew(SVerticalBox)
-                + SVerticalBox::Slot().AutoHeight() [ Swatch(Id, 6) ]
-                + SVerticalBox::Slot().AutoHeight().Padding(0, 4, 0, 0)
-                [ SNew(STextBlock).Text(Txt(Str(botf::empireName(Id)).ToUpper())).Font(BotfUi::Condensed(9)).ColorAndOpacity(C(&FPalette::Muted)).AutoWrapText(true) ] ];
-        return Screen(Console(Txt(TEXT("MAIN MENU")), SNew(SHorizontalBox)
-            + SHorizontalBox::Slot().FillWidth(1).VAlign(VAlign_Center).Padding(8, 0, 28, 0)
-            [ SNew(SVerticalBox)
-                + SVerticalBox::Slot().AutoHeight() [ Heading(Txt(TEXT("BIRTH OF THE")), 26, &FPalette::Tertiary) ]
-                + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 6) [ Heading(Txt(TEXT("FEDERATION")), 54, &FPalette::Accent) ]
-                + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 18) [ Para(Txt(TEXT("Lead one of five great powers. Explore, expand, and shape the fate of the quadrant.")), 13, &FPalette::Muted) ]
-                + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 18) [ Bar(EShape::Block, &FPalette::Secondary, 0, 4) ]
-                + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 18) [ Factions ]
+        const TSharedRef<SWidget> Hero = SNew(SVerticalBox)
+            + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 16)
+            [ SNew(SHorizontalBox)
+                + SHorizontalBox::Slot().AutoWidth().Padding(0, 0, 12, 0) [ Badge(Txt(TEXT("REMASTERED")), &FPalette::Primary, 8) ]
+                + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+                [ SNew(STextBlock).Text(Txt(TEXT("A MODERN RECONSTRUCTION OF THE 1999 GRAND STRATEGY CLASSIC"))).Font(BotfUi::Caption(7)).ColorAndOpacity(C(&FPalette::Muted)) ] ]
+            + SVerticalBox::Slot().AutoHeight() [ SNew(STextBlock).Text(Txt(TEXT("BIRTH OF THE"))).Font(BotfUi::Display(26)).ColorAndOpacity(C(&FPalette::Secondary)) ]
+            + SVerticalBox::Slot().AutoHeight().Padding(0, -6, 0, 10) [ SNew(STextBlock).Text(Txt(TEXT("FEDERATION"))).Font(BotfUi::Display(78)).ColorAndOpacity(C(&FPalette::Accent)) ]
+            + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 26)
+            [ SNew(SBox).MaxDesiredWidth(560)
+                [ Para(Txt(TEXT("Five powers. One quadrant. Explore, expand, negotiate and command fleets, and shape the fate of the galaxy.")), 13, &FPalette::Text2) ] ]
+            + SVerticalBox::Slot().AutoHeight() [ FactionStrip() ];
+        const TSharedRef<SWidget> Menu = SNew(SBox).WidthOverride(340)
+            [ BotfUi::MakePanel(SNew(SVerticalBox)
+                + SVerticalBox::Slot().AutoHeight().Padding(2, 0, 0, 10)
+                [ SNew(STextBlock).Text(Txt(TEXT("MAIN MENU"))).Font(BotfUi::Caption(8)).ColorAndOpacity(C(&FPalette::Secondary)) ]
+                + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 8)
+                [ MenuButton(TEXT("CONTINUE"), [this] { ContinueCampaign(); }, [this] { return bHasActiveCampaign || !SavePath.IsEmpty(); }, ERole::Accent) ]
+                + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 8)
+                [ MenuButton(TEXT("NEW CAMPAIGN"), [this] { OpenSubPage(EUiView::Setup); }) ]
+                + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 8)
+                [ MenuButton(TEXT("LOAD CAMPAIGN"), [this] { OpenSubPage(EUiView::Load); }, nullptr, ERole::Secondary) ]
+                + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 8)
+                [ MenuButton(TEXT("SETTINGS"), [this] { OpenSubPage(EUiView::Settings); }, nullptr, ERole::Secondary) ]
+                + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 12)
+                [ MenuButton(TEXT("QUIT"), [this] { RequestAction(EPendingAction::Quit); }, nullptr, ERole::Alert) ]
+                + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 10) [ Divider() ]
                 + SVerticalBox::Slot().AutoHeight()
-                [ Para(Dyn([this] {
-                    return bHasActiveCampaign
-                        ? FString(TEXT("Campaign in progress: ")) + Str(botf::empireName(State.playerEmpire))
-                            + FString::Printf(TEXT(", turn %d  /  %s"), State.turn,
-                                HasUnsavedChanges() ? TEXT("unsaved progress") : TEXT("saved"))
-                        : FString::Printf(TEXT("%d saved campaigns available"), Saves.Num());
-                }), 12, &FPalette::Primary, true) ] ]
-            + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-            [ SNew(SBox).WidthOverride(300)
-                [ SNew(SVerticalBox)
-                    + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 6)
-                    [ MenuButton(TEXT("CONTINUE"), [this] { ContinueCampaign(); }, [this] { return bHasActiveCampaign || !SavePath.IsEmpty(); }, ERole::Accent) ]
-                    + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 6)
-                    [ MenuButton(TEXT("NEW CAMPAIGN"), [this] { OpenSubPage(EUiView::Setup); }) ]
-                    + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 6)
-                    [ MenuButton(TEXT("LOAD CAMPAIGN"), [this] { OpenSubPage(EUiView::Load); }) ]
-                    + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 6)
-                    [ MenuButton(TEXT("SETTINGS"), [this] { OpenSubPage(EUiView::Settings); }, nullptr, ERole::Secondary) ]
-                    + SVerticalBox::Slot().AutoHeight()
-                    [ MenuButton(TEXT("QUIT"), [this] { RequestAction(EPendingAction::Quit); }, nullptr, ERole::Alert) ] ] ],
-            40));
+                [ SNew(SHorizontalBox)
+                    + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0, 0, 8, 0)
+                    [ SNew(BotfUi::SBotfIcon).Icon(BotfUi::EIcon::Flag).Size(16).Colour(C(&FPalette::Primary)) ]
+                    + SHorizontalBox::Slot().FillWidth(1).VAlign(VAlign_Center)
+                    [ Para(Dyn([this] {
+                        return bHasActiveCampaign
+                            ? FString(TEXT("Campaign in progress: ")) + Str(botf::empireName(State.playerEmpire))
+                                + FString::Printf(TEXT(", turn %d  /  %s"), State.turn, HasUnsavedChanges() ? TEXT("unsaved progress") : TEXT("saved"))
+                            : FString::Printf(TEXT("%d saved campaign%s available"), Saves.Num(), Saves.Num() == 1 ? TEXT("") : TEXT("s"));
+                    }), 9, &FPalette::Text2) ] ], FMargin(18, 16)) ];
+        return SNew(SOverlay)
+            + SOverlay::Slot() [ SNew(BotfUi::SBotfBackdrop).Horizon(true) ]
+            + SOverlay::Slot().HAlign(HAlign_Left).VAlign(VAlign_Center).Padding(90, 0, 0, 70) [ Hero ]
+            + SOverlay::Slot().HAlign(HAlign_Right).VAlign(VAlign_Center).Padding(0, 0, 90, 70) [ Menu ]
+            + SOverlay::Slot().HAlign(HAlign_Left).VAlign(VAlign_Bottom).Padding(90, 0, 0, 26)
+            [ SNew(STextBlock).Text(Txt(TEXT("Unofficial fan reconstruction  /  private build, not for distribution"))).Font(BotfUi::Font(7)).ColorAndOpacity(C(&FPalette::Muted)) ];
     }
     TSharedRef<SWidget> BackRow(const FString& Caption) {
         return SNew(SHorizontalBox)
             + SHorizontalBox::Slot().AutoWidth().Padding(0, 0, 14, 0)
-            [ Button(TEXT("< BACK"), [this] { ShowView(SubPageReturn); }, [] { return true; }, 12, FString(), ERole::Tertiary) ]
-            + SHorizontalBox::Slot().FillWidth(1).VAlign(VAlign_Center) [ Para(Txt(Caption), 11, &FPalette::Muted) ];
+            [ Control(TEXT("BACK"), [this] { ShowView(SubPageReturn); }, nullptr, nullptr, ERole::Tertiary, FMargin(16, 7), false, 10, TEXT("Return without changing anything"), 0, TEXT("Esc")) ]
+            + SHorizontalBox::Slot().FillWidth(1).VAlign(VAlign_Center) [ Para(Txt(Caption), 10, &FPalette::Text2) ];
     }
     TSharedRef<SWidget> BuildSetupScreen() {
         return Screen(Console(Txt(TEXT("NEW CAMPAIGN")), SNew(SVerticalBox)
             + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 10)
-            [ BackRow(TEXT("Choose your empire and galaxy. Escape returns without changing your current campaign.")) ]
+            [ BackRow(TEXT("Choose a power and shape the quadrant. Escape returns without changing your current campaign.")) ]
             + SVerticalBox::Slot().FillHeight(1)
-            [ SNew(SScrollBox) + SScrollBox::Slot() [ BuildCampaignControls() ] ], 24));
+            [ SNew(SScrollBox) + SScrollBox::Slot() [ BuildCampaignControls() ] ], 24), FMargin(28, 24));
     }
     TSharedRef<SWidget> BuildLoadScreen() {
         return Screen(Console(Txt(TEXT("LOAD CAMPAIGN")), SNew(SVerticalBox)
             + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 10)
             [ BackRow(TEXT("Select a saved campaign, review it, then load. You will be asked before unsaved progress is replaced.")) ]
             + SVerticalBox::Slot().FillHeight(1).HAlign(HAlign_Fill)
-            [ SNew(SBox).MaxDesiredWidth(1000) [ BuildSnapshotBrowser() ] ], 24));
+            [ BuildSnapshotBrowser() ], 24), FMargin(28, 24));
     }
     TSharedRef<SWidget> BuildSettingsScreen() {
         return Screen(SAssignNew(SettingsPanel, SBotfSettingsPanel)
             .ThemeEmpire_Lambda([this] { return ThemeEmpire(); })
-            .OnClose(FSimpleDelegate::CreateLambda([this] { ShowView(SubPageReturn); })), FMargin(16));
+            .OnClose(FSimpleDelegate::CreateLambda([this] { ShowView(SubPageReturn); })), FMargin(28, 24));
     }
     TSharedRef<SWidget> CenteredConsole(const FString& Title, const TSharedRef<SWidget>& Body) {
         return Screen(SNew(SVerticalBox)
             + SVerticalBox::Slot().FillHeight(1).HAlign(HAlign_Center).VAlign(VAlign_Center)
-            [ SNew(SBox).MinDesiredWidth(480).MaxDesiredWidth(640)
+            [ SNew(SBox).MinDesiredWidth(520).MaxDesiredWidth(680)
                 [ Console(Txt(Title), Body, 24) ] ], FMargin(26));
     }
     TSharedRef<SWidget> BuildMenuScreen() {
         return CenteredConsole(TEXT("CAMPAIGN MENU"), SNew(SVerticalBox)
-            + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 6)
-            [ MenuButton(TEXT("RESUME  /  ESC"), [this] { ShowView(EUiView::Game); }, nullptr, ERole::Accent) ]
-            + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 6)
-            [ MenuButton(TEXT("SAVE CAMPAIGN"), [this] { Save(); }) ]
-            + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 6)
-            [ MenuButton(TEXT("LOAD CAMPAIGN"), [this] { OpenSubPage(EUiView::Load); }) ]
-            + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 6)
-            [ MenuButton(TEXT("NEW CAMPAIGN"), [this] { OpenSubPage(EUiView::Setup); }) ]
-            + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 6)
-            [ MenuButton(TEXT("SETTINGS"), [this] { OpenSubPage(EUiView::Settings); }, nullptr, ERole::Secondary) ]
-            + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 6)
+            + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 8)
+            [ MenuButton(TEXT("RESUME"), [this] { ShowView(EUiView::Game); }, nullptr, ERole::Accent, TEXT("Esc")) ]
+            + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 8)
+            [ MenuButton(TEXT("SAVE CAMPAIGN"), [this] { Save(); }, nullptr, ERole::Primary, TEXT("Ctrl+S")) ]
+            + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 8)
+            [ SNew(SHorizontalBox)
+                + SHorizontalBox::Slot().FillWidth(1).Padding(0, 0, 4, 0) [ MenuButton(TEXT("LOAD"), [this] { OpenSubPage(EUiView::Load); }, nullptr, ERole::Secondary) ]
+                + SHorizontalBox::Slot().FillWidth(1).Padding(4, 0, 4, 0) [ MenuButton(TEXT("NEW CAMPAIGN"), [this] { OpenSubPage(EUiView::Setup); }, nullptr, ERole::Secondary) ]
+                + SHorizontalBox::Slot().FillWidth(1).Padding(4, 0, 0, 0) [ MenuButton(TEXT("SETTINGS"), [this] { OpenSubPage(EUiView::Settings); }, nullptr, ERole::Secondary) ] ]
+            + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 8)
             [ MenuButton(TEXT("RETURN TO TITLE"), [this] { ShowView(EUiView::Title); }, nullptr, ERole::Tertiary) ]
             + SVerticalBox::Slot().AutoHeight()
             [ MenuButton(TEXT("QUIT"), [this] { RequestAction(EPendingAction::Quit); }, nullptr, ERole::Alert) ]
             + SVerticalBox::Slot().AutoHeight().Padding(0, 14, 0, 0)
-            [ Para(Dyn([this] { return Status; }), 11, &FPalette::Primary) ]);
+            [ Para(Dyn([this] { return Status; }), 10, &FPalette::Text2) ]);
     }
     TSharedRef<SWidget> BuildConfirmScreen() {
         return CenteredConsole(TEXT("CONFIRM ACTION"), SNew(SVerticalBox)
             + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 16)
-            [ Para(Dyn([this] { return ConfirmationText(); }), 13, &FPalette::Text) ]
-            + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 6)
-            [ MenuButton(TEXT("SAVE AND PROCEED"), [this] { ConfirmAction(true); }, [this] { return bHasActiveCampaign; }) ]
-            + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 6)
+            [ SNew(SHorizontalBox)
+                + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Top).Padding(0, 2, 12, 0) [ Icon(BotfUi::EIcon::Alert, 26, &FPalette::Warn) ]
+                + SHorizontalBox::Slot().FillWidth(1) [ Para(Dyn([this] { return ConfirmationText(); }), 12, &FPalette::Text) ] ]
+            + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 8)
+            [ MenuButton(TEXT("SAVE AND PROCEED"), [this] { ConfirmAction(true); }, [this] { return bHasActiveCampaign; }, ERole::Accent) ]
+            + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 8)
             [ MenuButton(TEXT("PROCEED WITHOUT SAVING"), [this] { ConfirmAction(false); }, nullptr, ERole::Alert) ]
             + SVerticalBox::Slot().AutoHeight()
-            [ MenuButton(TEXT("CANCEL"), [this] { CancelConfirmation(); }, nullptr, ERole::Tertiary) ]
+            [ MenuButton(TEXT("CANCEL"), [this] { CancelConfirmation(); }, nullptr, ERole::Tertiary, TEXT("Esc")) ]
             + SVerticalBox::Slot().AutoHeight().Padding(0, 14, 0, 0)
-            [ Para(Dyn([this] { return Status; }), 11, &FPalette::Primary) ]);
+            [ Para(Dyn([this] { return Status; }), 10, &FPalette::Text2) ]);
     }
     FString ConfirmationText() const {
         const bool Dirty = HasUnsavedChanges();
@@ -1098,113 +1214,199 @@ private:
 
     // ================= COMMAND DECK HUD =================
     // Translucent panel over the chart.
-    TSharedRef<SWidget> Glass(const TSharedRef<SWidget>& Content, FMargin Pad = FMargin(10, 8)) const {
-        return SNew(SBorder).BorderImage_Lambda([this] { return BotfUi::Styles().Get(ThemeEmpire(), EShape::Row); })
-            .BorderBackgroundColor_Lambda([this] { return FSlateColor(BotfUi::Shade(P().Void, 1.f, 0.9f)); }).Padding(Pad) [ Content ];
+    TSharedRef<SWidget> Glass(const TSharedRef<SWidget>& Content, FMargin Pad = FMargin(12, 10)) const {
+        return SNew(BotfUi::SBotfSurface).Padding(Pad)
+            .Look([this] {
+                BotfUi::FSurfaceLook L = BotfUi::PanelLook(ThemeEmpire());
+                L.Top.A = 0.88f; L.Fill.A = 0.86f; return L; })
+            [ Content ];
     }
     TSharedRef<SWidget> SheetButton(const FString& Label, int Panel, const FString& Key) {
-        return Control(Label, [this, Panel] { GoPanel(ActivePanel == Panel ? PanelGalaxy : Panel); }, nullptr, [this, Panel] { return ActivePanel == Panel; },
-            ERole::Secondary, FMargin(10, 7), false, 9, Label + TEXT("  (") + Key + TEXT(")"));
+        return Control(Label, [this, Panel] { GoPanel(ActivePanel == Panel && Panel != PanelGalaxy ? PanelGalaxy : Panel); }, nullptr,
+            [this, Panel] { return ActivePanel == Panel; },
+            ERole::Secondary, FMargin(11, 7), false, 9, Label + TEXT("  (") + Key + TEXT(")"), 0, Key);
     }
     TSharedRef<SWidget> Chip(const FString& Caption, std::function<FString()> Value, const TAttribute<FSlateColor>& Color, const FString& Tip,
                              std::function<FString()> LiveTip = nullptr) const {
         TSharedRef<SWidget> Box = SNew(SVerticalBox)
-            + SVerticalBox::Slot().AutoHeight() [ SNew(STextBlock).Text(Txt(Caption)).Font(BotfUi::Condensed(7)).ColorAndOpacity(C(&FPalette::Muted)) ]
-            + SVerticalBox::Slot().AutoHeight() [ SNew(STextBlock).Text(Dyn(Value)).Font(BotfUi::Condensed(13)).ColorAndOpacity(Color) ];
-        if (LiveTip) Box->SetToolTipText(Dyn(LiveTip)); else Box->SetToolTipText(Txt(Tip));
+            + SVerticalBox::Slot().AutoHeight() [ SNew(STextBlock).Text(Txt(Caption)).Font(BotfUi::Caption(7)).ColorAndOpacity(C(&FPalette::Muted)) ]
+            + SVerticalBox::Slot().AutoHeight() [ SNew(STextBlock).Text(Dyn(Value)).Font(BotfUi::Display(13)).ColorAndOpacity(Color) ];
+        BotfUi::SetTip(Box, LiveTip ? Dyn(LiveTip) : TAttribute<FText>(Txt(Tip)), Txt(Caption));
         return Box;
     }
     TSharedRef<SWidget> BuildTopBar() {
-        auto Chips = SNew(SHorizontalBox);
-        const auto AddChip = [&Chips](const TSharedRef<SWidget>& W) { Chips->AddSlot().AutoWidth().VAlign(VAlign_Center).Padding(0, 0, 18, 0) [ W ]; };
-        AddChip(Chip(TEXT("TREASURY"), [this] { return FString::Printf(TEXT("%lld"), static_cast<long long>(State.credits)); }, C(&FPalette::Primary),
+        auto Tiles = SNew(SHorizontalBox);
+        const auto AddTile = [&Tiles](const TSharedRef<SWidget>& W) { Tiles->AddSlot().AutoWidth().VAlign(VAlign_Center).Padding(0, 0, 8, 0) [ W ]; };
+        AddTile(StatTile(BotfUi::EIcon::Coin, TEXT("TREASURY"), [this] { return FString::Printf(TEXT("%lld"), static_cast<long long>(State.credits)); }, C(&FPalette::Warn),
             TEXT("Credits in the treasury")));
         // Net forecast, as the original's income readout: negative (red, with a minus sign) when ship support
         // outweighs revenue. The breakdown is in the tooltip.
-        AddChip(Chip(TEXT("PER TURN"), [this] { return FString::Printf(TEXT("%+d"), IncomeForecast().Net()); },
+        AddTile(StatTile(BotfUi::EIcon::Income, TEXT("PER TURN"), [this] { return FString::Printf(TEXT("%+d"), IncomeForecast().Net()); },
             TAttribute<FSlateColor>::CreateLambda([this] { return FSlateColor(IncomeForecast().Net() < 0 ? P().Alert : P().Good); }),
             FString(), [this] { return IncomeTip(); }));
-        AddChip(Chip(TEXT("RESEARCH"), [this] { return FString::Printf(TEXT("%lld"), static_cast<long long>(State.research)); }, C(&FPalette::Secondary),
+        AddTile(StatTile(BotfUi::EIcon::Research, TEXT("RESEARCH"), [this] { return FString::Printf(TEXT("%lld"), static_cast<long long>(State.research)); }, C(&FPalette::Info),
             TEXT("Research points accumulated")));
-        AddChip(Chip(TEXT("SYSTEMS"), [this] { return FString::FromInt(OwnColonyCount()); }, C(&FPalette::Text), TEXT("Systems you control")));
-        AddChip(Chip(TEXT("SHIPS"), [this] { return FString::FromInt(OwnShipCount()); }, C(&FPalette::Text), TEXT("Ships in service")));
-        AddChip(Chip(TEXT("ORDERS"), [this] { return FString::FromInt(static_cast<int>(State.pending.size())); }, C(&FPalette::Tertiary),
+        AddTile(StatTile(BotfUi::EIcon::System, TEXT("SYSTEMS"), [this] { return FString::FromInt(OwnColonyCount()); }, C(&FPalette::Text), TEXT("Systems you control")));
+        AddTile(StatTile(BotfUi::EIcon::Ship, TEXT("SHIPS"), [this] { return FString::FromInt(OwnShipCount()); }, C(&FPalette::Text), TEXT("Ships in service")));
+        AddTile(StatTile(BotfUi::EIcon::Orders, TEXT("ORDERS"), [this] { return FString::FromInt(static_cast<int>(State.pending.size())); }, C(&FPalette::Accent),
             TEXT("Orders drafted this turn. They are carried out when you end the turn and can be cancelled until then.")));
-        return SNew(SBox).HeightOverride(64)
-            [ SNew(SBorder).BorderImage(FCoreStyle::Get().GetBrush("WhiteBrush"))
-                .BorderBackgroundColor_Lambda([this] { return FSlateColor(BotfUi::Shade(P().Void, 1.f, 0.92f)); }).Padding(FMargin(0, 0, 10, 0))
-                [ SNew(SHorizontalBox)
-                    + SHorizontalBox::Slot().AutoWidth()
-                    [ SNew(SBox).WidthOverride(210)
-                        [ Fill(EShape::ElbowBottom, &FPalette::Primary, SNew(SVerticalBox)
-                            + SVerticalBox::Slot().AutoHeight()
-                            [ SNew(STextBlock).Text(Dyn([this] { return FString::Printf(TEXT("TURN %d"), State.turn); })).Font(BotfUi::Condensed(20)).ColorAndOpacity(C(&FPalette::Ink)) ]
-                            + SVerticalBox::Slot().AutoHeight()
-                            [ SNew(STextBlock).Text(Dyn([this] { return Str(botf::empireName(State.playerEmpire)).ToUpper(); })).Font(BotfUi::Condensed(9)).ColorAndOpacity(C(&FPalette::Ink)) ],
-                            FMargin(16, 6, 10, 6)) ] ]
-                    + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(16, 0, 0, 0) [ Chips ]
-                    + SHorizontalBox::Slot().FillWidth(1) [ SNullWidget::NullWidget ]
-                    + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-                    [ Line({ SheetButton(TEXT("SYSTEM"), PanelSystem, TEXT("F2")), SheetButton(TEXT("RESEARCH"), PanelResearch, TEXT("F3")),
-                             SheetButton(TEXT("DIPLOMACY"), PanelDiplomacy, TEXT("F4")), SheetButton(TEXT("INTELLIGENCE"), PanelIntel, TEXT("F5")),
-                             SheetButton(TEXT("EMPIRE"), PanelEmpire, TEXT("F6")), SheetButton(TEXT("BATTLES"), PanelCombat, TEXT("F7")) }, 4) ]
-                    + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(12, 0, 0, 0)
-                    [ Line({ DynControl(Dyn([this] { return FString::Printf(TEXT("EVENTS %d"), static_cast<int>(botf::view::eventCards(State).size())); }),
-                                [this] { bEventsOpen = !bEventsOpen; bSummaryOpen = bMenuOpen = false; }, nullptr, [this] { return bEventsOpen; },
-                                ERole::Tertiary, FMargin(10, 7), false, 9, TEXT("Galactic events and the decisions they need")),
-                             Control(TEXT("SUMMARY"), [this] { bSummaryOpen = !bSummaryOpen; bMenuOpen = false; bEventsOpen = false; }, nullptr, [this] { return bSummaryOpen; },
-                                ERole::Tertiary, FMargin(10, 7), false, 9, TEXT("Events, relationships and systems (S)")),
-                             Control(TEXT("MENU"), [this] { ShowView(EUiView::Menu); }, nullptr, nullptr, ERole::Tertiary, FMargin(10, 7), false, 9,
-                                TEXT("Save, load, settings, quit (Esc)")) }, 4) ] ] ];
+        const TSharedRef<SWidget> TurnPlate = SNew(BotfUi::SBotfSurface).Padding(FMargin(14, 6, 22, 6))
+            .Look([this] {
+                BotfUi::FSurfaceLook L; const FPalette& Pal = P();
+                L.Top = BotfUi::WithAlpha(BotfUi::Mix(Pal.Primary, Pal.FieldHi, 0.72f), 1.f); L.Fill = BotfUi::WithAlpha(BotfUi::Mix(Pal.Primary, Pal.Void, 0.84f), 1.f);
+                L.Outline = BotfUi::WithAlpha(Pal.Primary, 0.6f); L.Radius = FVector4(0, 0, 22, 0); L.Glow = Pal.Glow; L.GlowSize = 6.f; return L; })
+            [ SNew(SHorizontalBox)
+                + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0, 0, 12, 0)
+                [ SNew(BotfUi::SBotfEmblem).Empire_Lambda([this] { return State.playerEmpire; }).Size(34) ]
+                + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+                [ SNew(SVerticalBox)
+                    + SVerticalBox::Slot().AutoHeight()
+                    [ SNew(STextBlock).Text(Dyn([this] { return FString::Printf(TEXT("TURN %d"), State.turn); })).Font(BotfUi::Display(17)).ColorAndOpacity(C(&FPalette::Accent)) ]
+                    + SVerticalBox::Slot().AutoHeight()
+                    [ SNew(STextBlock).Text(Dyn([this] { return Str(botf::empireName(State.playerEmpire)).ToUpper(); })).Font(BotfUi::Caption(7)).ColorAndOpacity(C(&FPalette::Text2)) ] ] ];
+        return SNew(SVerticalBox)
+            + SVerticalBox::Slot().AutoHeight()
+            [ SNew(SBox).HeightOverride(66)
+                [ SNew(BotfUi::SBotfSurface)
+                    .Look([this] {
+                        BotfUi::FSurfaceLook L; const FPalette& Pal = P();
+                        L.Top = BotfUi::WithAlpha(BotfUi::Mix(Pal.FieldHi, Pal.Void, 0.5f), 0.95f); L.Fill = BotfUi::WithAlpha(Pal.Void, 0.93f);
+                        L.Radius = FVector4(0, 0, 0, 0); return L; })
+                    [ SNew(SHorizontalBox)
+                        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Fill) [ TurnPlate ]
+                        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(16, 0, 0, 0) [ Tiles ]
+                        + SHorizontalBox::Slot().FillWidth(1) [ SNullWidget::NullWidget ]
+                        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+                        [ Line({ SheetButton(TEXT("SYSTEM"), PanelSystem, TEXT("F2")), SheetButton(TEXT("RESEARCH"), PanelResearch, TEXT("F3")),
+                                 SheetButton(TEXT("DIPLOMACY"), PanelDiplomacy, TEXT("F4")), SheetButton(TEXT("INTEL"), PanelIntel, TEXT("F5")),
+                                 SheetButton(TEXT("EMPIRE"), PanelEmpire, TEXT("F6")), SheetButton(TEXT("BATTLES"), PanelCombat, TEXT("F7")) }, 5) ]
+                        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(16, 0, 14, 0)
+                        [ Line({ DynControl(Dyn([this] { return FString::Printf(TEXT("EVENTS %d"), static_cast<int>(botf::view::eventCards(State).size())); }),
+                                    [this] { bEventsOpen = !bEventsOpen; bSummaryOpen = bMenuOpen = false; }, nullptr, [this] { return bEventsOpen; },
+                                    ERole::Tertiary, FMargin(11, 7), false, 9, TEXT("Galactic events and the decisions they need")),
+                                 Control(TEXT("SUMMARY"), [this] { bSummaryOpen = !bSummaryOpen; bMenuOpen = false; bEventsOpen = false; }, nullptr, [this] { return bSummaryOpen; },
+                                    ERole::Tertiary, FMargin(11, 7), false, 9, TEXT("Events, relationships and systems"), 0, TEXT("S")),
+                                 Control(TEXT("MENU"), [this] { ShowView(EUiView::Menu); }, nullptr, nullptr, ERole::Tertiary, FMargin(11, 7), false, 9,
+                                    TEXT("Save, load, settings, quit"), 0, TEXT("Esc")) }, 5) ] ] ] ]
+            + SVerticalBox::Slot().AutoHeight() [ Divider() ];
     }
-    // Left dock: whatever is selected. Sector and system first, then units, then the selected unit's card.
+    // ---- Inspector docks: collapsible side panels over the chart ----
+    bool bLeftOpen = true, bInboxOpen = true;
+    TSharedPtr<SHorizontalBox> SectorTags;
+    TSharedPtr<SVerticalBox> SectorStats;
+    TSharedRef<SWidget> DockToggle(bool* Flag, BotfUi::EIcon OpenGlyph, BotfUi::EIcon ClosedGlyph, const FString& Tip) {
+        return BotfUi::MakeCardButton(
+            SNew(BotfUi::SBotfIcon).Icon_Lambda([Flag, OpenGlyph, ClosedGlyph] { return *Flag ? OpenGlyph : ClosedGlyph; }).Size(15).Colour(C(&FPalette::Text2)),
+            [this](bool Hover, bool Pressed, bool Focus, bool) {
+                BotfUi::FSurfaceLook L; const FPalette& Pal = P();
+                L.Fill = BotfUi::WithAlpha(FLinearColor::White, Pressed ? 0.1f : (Hover ? 0.07f : 0.03f));
+                L.Outline = Focus ? Pal.Accent : (Hover ? Pal.Primary : Pal.LineHi); L.OutlineWidth = Focus ? 2.f : 1.f;
+                L.Radius = FVector4(16, 16, 16, 16); return L; },
+            [Flag] { *Flag = !*Flag; }, nullptr, Txt(Tip), FMargin(8));
+    }
+    // A tile inside a dock card: icon and tracked caption over a figure, with an optional meter underneath.
+    TSharedRef<SWidget> MiniStat(BotfUi::EIcon Glyph, const FString& Caption, const FString& Value, FLinearColor FPalette::* Tone, float Meter = -1.f,
+                                 const FString& Tip = FString()) const {
+        auto Body = SNew(SVerticalBox)
+            + SVerticalBox::Slot().AutoHeight()
+            [ SNew(SHorizontalBox)
+                + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0, 0, 5, 0) [ Icon(Glyph, 12, &FPalette::Muted) ]
+                + SHorizontalBox::Slot().FillWidth(1).VAlign(VAlign_Center)
+                [ SNew(STextBlock).Text(Txt(Caption)).Font(BotfUi::Caption(6)).ColorAndOpacity(C(&FPalette::Muted)) ] ]
+            + SVerticalBox::Slot().AutoHeight().Padding(0, 1, 0, 0)
+            [ SNew(STextBlock).Text(Txt(Value)).Font(BotfUi::Display(12)).ColorAndOpacity(C(Tone)) ];
+        if (Meter >= 0.f)
+            Body->AddSlot().AutoHeight().Padding(0, 4, 0, 0)
+                [ SNew(SBox).HeightOverride(4) [ SNew(BotfUi::SBotfMeter).Value(Meter).Height(4).Fill(C(Tone)) ] ];
+        const TSharedRef<SWidget> Tile = SNew(BotfUi::SBotfSurface).Padding(FMargin(9, 6, 9, 7))
+            .Look([this] {
+                BotfUi::FSurfaceLook L; L.Fill = BotfUi::WithAlpha(FLinearColor::White, 0.03f); L.Outline = P().Line; L.Radius = FVector4(10, 10, 10, 10); return L; })
+            [ Body ];
+        if (!Tip.IsEmpty()) BotfUi::SetTip(Tile, Txt(Tip), Txt(Caption));
+        return Tile;
+    }
+    // A small owner-coloured tag (empire name).
+    TSharedRef<SWidget> OwnerBadge(int Empire, const FString& Text) const {
+        return SNew(BotfUi::SBotfSurface).Padding(FMargin(7, 2, 9, 3))
+            .Look([Empire] {
+                BotfUi::FSurfaceLook L; const FLinearColor F = BotfUi::FactionColor(Empire);
+                L.Fill = BotfUi::WithAlpha(F, 0.14f); L.Outline = BotfUi::WithAlpha(F, 0.65f); L.Radius = FVector4(9, 9, 9, 9); return L; })
+            [ SNew(SHorizontalBox)
+                + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0, 0, 5, 0) [ SNew(BotfUi::SBotfEmblem).Empire(Empire).Size(12) ]
+                + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+                [ SNew(STextBlock).Text(Txt(Text)).Font(BotfUi::Caption(6)).ColorAndOpacity(FSlateColor(BotfUi::Lift(BotfUi::FactionColor(Empire), 0.35f))) ] ];
+    }
     TSharedRef<SWidget> BuildLeftDock() {
-        return SNew(SBox).WidthOverride(330)
+        const TSharedRef<SWidget> Body = Stack({
+            Glass(SNew(SVerticalBox)
+                + SVerticalBox::Slot().AutoHeight()
+                [ SNew(STextBlock).Text(Dyn([this] { return SystemTitle(); })).Font(BotfUi::Display(17)).ColorAndOpacity(C(&FPalette::Accent))
+                    .OverflowPolicy(ETextOverflowPolicy::Ellipsis) ]
+                + SVerticalBox::Slot().AutoHeight().Padding(0, 5, 0, 8) [ SAssignNew(SectorTags, SHorizontalBox) ]
+                + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 6) [ SAssignNew(SectorStats, SVerticalBox) ]
+                + SVerticalBox::Slot().AutoHeight()
+                [ SNew(SBox).Visibility_Lambda([this] { return SafeBool([this] { return OwnedColony() != nullptr; }, false) ? EVisibility::Collapsed : EVisibility::Visible; })
+                    [ Para(Dyn([this] { return SectorBrief(); }), 8, &FPalette::Text2) ] ]
+                // Charted anomalies in the sector and, for a contacted minor race, its profile.
+                + SVerticalBox::Slot().AutoHeight().Padding(0, 4, 0, 0)
+                [ SNew(SBox).Visibility_Lambda([this] { return SafeText([this] { return SectorExtras(); }).IsEmpty() ? EVisibility::Collapsed : EVisibility::Visible; })
+                    [ Para(Dyn([this] { return SectorExtras(); }), 8, &FPalette::Muted) ] ]
+                + SVerticalBox::Slot().AutoHeight().Padding(0, 6, 0, 0) [ SAssignNew(PlanetRows, SVerticalBox) ]
+                + SVerticalBox::Slot().AutoHeight().Padding(0, 8, 0, 0)
+                [ Line({
+                    Pill(TEXT("OPEN SYSTEM"), [this] { GoPanel(PanelSystem); }, [this] { return Owned(); }, ERole::Primary, TEXT("Solar System sheet (double-click the system)")),
+                    Pill(TEXT("DIPLOMACY"), [this] { OpenDiplomacyFor(Selected); }, [this] { return DiplomacyTargetAt(Selected) != 0; }, ERole::Secondary,
+                        TEXT("Open the dossier of the race that holds this system")),
+                    Pill(TEXT("CENTRE"), [this] { if (Chart.IsValid()) Chart->CentreOn(SelectedCell); }, nullptr, ERole::Tertiary, TEXT("Centre the chart here (C)")) }, 4) ]),
+            // Economic map: trade routes are assigned here, from the chart (Tutorial p13), as well as in Diplomacy.
+            SNew(SBox).Visibility_Lambda([this] { return MapView.Mode == BotfUi::EMapMode::Economic ? EVisibility::Visible : EVisibility::Collapsed; })
+                [ Glass(BuildTradeRoutePanel()) ],
+            SNew(SBox).Visibility_Lambda([this] { return SafeBool([this] { return SelectedStation() != nullptr; }, false) ? EVisibility::Visible : EVisibility::Collapsed; })
+                [ Glass(BuildStationInspector()) ],
+            Glass(SNew(SVerticalBox)
+                + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 6)
+                [ SNew(SHorizontalBox)
+                    + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0, 0, 8, 0) [ Bar(EShape::Block, &FPalette::Secondary, 3, 13) ]
+                    + SHorizontalBox::Slot().FillWidth(1).VAlign(VAlign_Center)
+                    [ SNew(STextBlock).Text(Txt(TEXT("UNITS IN SECTOR"))).Font(BotfUi::Caption(7)).ColorAndOpacity(C(&FPalette::Secondary)) ] ]
+                + SVerticalBox::Slot().AutoHeight() [ SAssignNew(SectorRows, SVerticalBox) ]),
+            SNew(SBox).Visibility_Lambda([this] { return Fleet() ? EVisibility::Visible : EVisibility::Collapsed; })
+                [ Glass(BuildUnitCard()) ] }, 8);
+        return SNew(SBox).WidthOverride_Lambda([this] { return FOptionalSize(bLeftOpen ? 356.f : 46.f); })
             .Visibility_Lambda([this] { return ActivePanel == PanelGalaxy ? EVisibility::SelfHitTestInvisible : EVisibility::Collapsed; })
-            [ SNew(SScrollBox) + SScrollBox::Slot()
-                [ Stack({
-                    Glass(SNew(SVerticalBox)
-                        + SVerticalBox::Slot().AutoHeight() [ Heading(Dyn([this] { return SystemTitle(); }), 16, &FPalette::Accent) ]
-                        + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 4)
-                        [ SNew(STextBlock).Text(Dyn([this] { return SectorLabel(SelectedCell); })).Font(BotfUi::Condensed(8)).ColorAndOpacity(C(&FPalette::Tertiary)).AutoWrapText(true) ]
-                        + SVerticalBox::Slot().AutoHeight() [ Para(Dyn([this] { return SectorBrief(); }), 9, &FPalette::Text) ]
-                        // Charted anomalies in the sector and, for a contacted minor race, its profile.
-                        + SVerticalBox::Slot().AutoHeight().Padding(0, 4, 0, 0)
-                        [ SNew(SBox).Visibility_Lambda([this] { return SafeText([this] { return SectorExtras(); }).IsEmpty() ? EVisibility::Collapsed : EVisibility::Visible; })
-                            [ Para(Dyn([this] { return SectorExtras(); }), 9, &FPalette::Muted) ] ]
-                        + SVerticalBox::Slot().AutoHeight().Padding(0, 6, 0, 0) [ SAssignNew(PlanetRows, SVerticalBox) ]
-                        + SVerticalBox::Slot().AutoHeight().Padding(0, 6, 0, 0)
-                        [ Line({
-                            Pill(TEXT("OPEN SYSTEM"), [this] { GoPanel(PanelSystem); }, [this] { return Owned(); }, ERole::Primary, TEXT("Solar System sheet (double-click the system)")),
-                            Pill(TEXT("DIPLOMACY"), [this] { OpenDiplomacyFor(Selected); }, [this] { return DiplomacyTargetAt(Selected) != 0; }, ERole::Secondary,
-                                TEXT("Open the dossier of the race that holds this system")),
-                            Pill(TEXT("CENTRE"), [this] { if (Chart.IsValid()) Chart->CentreOn(SelectedCell); }, nullptr, ERole::Tertiary, TEXT("Centre the chart here (C)")) }, 4) ]),
-                    // Economic map: trade routes are assigned here, from the chart (Tutorial p13), as well as in Diplomacy.
-                    SNew(SBox).Visibility_Lambda([this] { return MapView.Mode == BotfUi::EMapMode::Economic ? EVisibility::Visible : EVisibility::Collapsed; })
-                        [ Glass(BuildTradeRoutePanel()) ],
-                    SNew(SBox).Visibility_Lambda([this] { return SafeBool([this] { return SelectedStation() != nullptr; }, false) ? EVisibility::Visible : EVisibility::Collapsed; })
-                        [ Glass(BuildStationInspector()) ],
-                    Glass(SNew(SVerticalBox)
-                        + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 4) [ Heading(Txt(TEXT("UNITS IN SECTOR")), 10, &FPalette::Tertiary) ]
-                        + SVerticalBox::Slot().AutoHeight() [ SAssignNew(SectorRows, SVerticalBox) ]),
-                    SNew(SBox).Visibility_Lambda([this] { return Fleet() ? EVisibility::Visible : EVisibility::Collapsed; })
-                        [ Glass(BuildUnitCard()) ] }, 6) ] ];
+            [ SNew(SVerticalBox)
+                + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 8)
+                [ SNew(SHorizontalBox)
+                    + SHorizontalBox::Slot().FillWidth(1).VAlign(VAlign_Center).Padding(4, 0, 0, 0)
+                    [ SNew(STextBlock).Visibility_Lambda([this] { return bLeftOpen ? EVisibility::HitTestInvisible : EVisibility::Collapsed; })
+                        .Text(Txt(TEXT("INSPECTOR"))).Font(BotfUi::Caption(7)).ColorAndOpacity(C(&FPalette::Muted)) ]
+                    + SHorizontalBox::Slot().AutoWidth() [ DockToggle(&bLeftOpen, BotfUi::EIcon::ChevronLeft, BotfUi::EIcon::ChevronRight, TEXT("Show or hide the inspector ([)")) ] ]
+                + SVerticalBox::Slot().FillHeight(1)
+                [ SNew(SBox).Visibility_Lambda([this] { return bLeftOpen ? EVisibility::SelfHitTestInvisible : EVisibility::Collapsed; })
+                    [ SNew(SScrollBox).ScrollBarThickness(FVector2D(5, 5)) + SScrollBox::Slot() [ Body ] ] ] ];
     }
     // Turn inbox: everything that needs a decision, each entry jumps to where it is dealt with.
     TSharedRef<SWidget> BuildInbox() {
-        return SNew(SBox).WidthOverride(300)
+        return SNew(SBox).WidthOverride_Lambda([this] { return FOptionalSize(bInboxOpen ? 330.f : 46.f); })
             .Visibility_Lambda([this] { return ActivePanel == PanelGalaxy ? EVisibility::SelfHitTestInvisible : EVisibility::Collapsed; })
             [ SNew(SVerticalBox).Visibility(EVisibility::SelfHitTestInvisible)
                 + SVerticalBox::Slot().AutoHeight()
-                [ Glass(SNew(SVerticalBox)
-                    + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 6)
-                    [ Heading(Dyn([this] { return FString::Printf(TEXT("TURN INBOX  /  %d"), InboxCount); }), 11, &FPalette::Accent) ]
-                    + SVerticalBox::Slot().AutoHeight() [ SNew(SBox).MaxDesiredHeight(460) [ Scroll(SAssignNew(InboxRows, SVerticalBox)) ] ]) ]
+                [ SNew(SHorizontalBox)
+                    + SHorizontalBox::Slot().AutoWidth() [ DockToggle(&bInboxOpen, BotfUi::EIcon::ChevronRight, BotfUi::EIcon::Inbox, TEXT("Show or hide the turn inbox (])")) ]
+                    + SHorizontalBox::Slot().FillWidth(1).VAlign(VAlign_Center).Padding(10, 0, 0, 0)
+                    [ SNew(SHorizontalBox).Visibility_Lambda([this] { return bInboxOpen ? EVisibility::HitTestInvisible : EVisibility::Collapsed; })
+                        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+                        [ SNew(STextBlock).Text(Txt(TEXT("TURN INBOX"))).Font(BotfUi::Caption(7)).ColorAndOpacity(C(&FPalette::Muted)) ]
+                        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(8, 0, 0, 0)
+                        [ Badge(Dyn([this] { return FString::FromInt(InboxCount); }), &FPalette::Accent, 7) ] ] ]
+                + SVerticalBox::Slot().AutoHeight().Padding(0, 8, 0, 0)
+                [ SNew(SBox).Visibility_Lambda([this] { return bInboxOpen ? EVisibility::SelfHitTestInvisible : EVisibility::Collapsed; }).MaxDesiredHeight(560)
+                    [ Scroll(SAssignNew(InboxRows, SVerticalBox)) ] ]
                 + SVerticalBox::Slot().FillHeight(1) [ SNullWidget::NullWidget ] ];
     }
     TSharedRef<SWidget> MapToggle(const FString& Label, bool BotfUi::FMapView::* Flag, const FString& Key, const FString& Tip) {
         return Control(Label, [this, Flag] { MapView.*Flag = !(MapView.*Flag); }, nullptr, [this, Flag] { return MapView.*Flag; },
-            ERole::Tertiary, FMargin(8, 6), false, 8, Key.IsEmpty() ? Tip : Tip + TEXT(" (") + Key + TEXT(")"));
+            ERole::Tertiary, FMargin(9, 6), false, 8, Tip, 0, Key);
     }
     FString MapHelp() const {
         if (MapView.bPlotting) return TEXT("PLOT COURSE: left-click a destination. Right-click or Esc cancels.");
@@ -1213,56 +1415,75 @@ private:
         if (Fleet()) return TEXT("Right-click: order unit there  |  Shift+right-click: all options  |  Click: select  |  Double-click: open  |  Tab: next unit");
         return TEXT("Click: select  |  Double-click: open system or dossier  |  Right-click: options  |  Drag: pan  |  Wheel: zoom");
     }
+    // A group of controls in one rounded capsule (segmented switch).
+    TSharedRef<SWidget> Capsule(const TSharedRef<SWidget>& Content) const {
+        return SNew(BotfUi::SBotfSurface).Padding(FMargin(3))
+            .Look([this] {
+                BotfUi::FSurfaceLook L; L.Fill = BotfUi::WithAlpha(FLinearColor::Black, 0.25f); L.Outline = P().Line; L.Radius = FVector4(18, 18, 18, 18); return L; })
+            [ Content ];
+    }
     TSharedRef<SWidget> BuildBottomBar() {
-        return SNew(SBox).HeightOverride(56)
-            [ SNew(SBorder).BorderImage(FCoreStyle::Get().GetBrush("WhiteBrush"))
-                .BorderBackgroundColor_Lambda([this] { return FSlateColor(BotfUi::Shade(P().Void, 1.f, 0.92f)); }).Padding(FMargin(10, 6))
-                [ SNew(SHorizontalBox)
-                    + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-                    [ Line({
-                        Option(TEXT("MILITARY"), [this] { MapView.Mode = BotfUi::EMapMode::Military; }, [this] { return MapView.Mode == BotfUi::EMapMode::Military; },
-                            ERole::Secondary, 0, TEXT("Ships, ranges and courses (M)")),
-                        Option(TEXT("ECONOMIC"), [this] { MapView.Mode = BotfUi::EMapMode::Economic; }, [this] { return MapView.Mode == BotfUi::EMapMode::Economic; },
-                            ERole::Secondary, 0, TEXT("Trade routes and colony output; ships hidden (M)")) }, 4) ]
-                    + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(10, 0, 0, 0)
-                    [ Line({ MapToggle(TEXT("NAMES"), &BotfUi::FMapView::bNames, TEXT("N"), TEXT("System names")),
-                             MapToggle(TEXT("RANGE"), &BotfUi::FMapView::bRange, TEXT("R"), TEXT("Supply range of the selected ship")),
-                             MapToggle(TEXT("COURSES"), &BotfUi::FMapView::bCourses, FString(),TEXT("Courses of all your units")),
-                             MapToggle(TEXT("GRID"), &BotfUi::FMapView::bGrid, TEXT("G"), TEXT("Sector grid and coordinates")),
-                             MapToggle(TEXT("ANOMALIES"), &BotfUi::FMapView::bAnomalies, FString(), TEXT("Charted nebulae, black holes, neutron stars, ion storms and wormholes; hover a sector for details")),
-                             MapToggle(TEXT("STATIONS"), &BotfUi::FMapView::bStations, FString(), TEXT("Supply (bright) and sensor (faint) reach of your outposts and starbases")) }, 3) ]
-                    + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(10, 0, 0, 0)
-                    [ Line({ Pill(TEXT("-"), [this] { if (Chart.IsValid()) Chart->ZoomBy(1.f / 1.25f, ChartMiddle()); }, nullptr, ERole::Tertiary, TEXT("Zoom out (-, wheel)")),
-                             Pill(TEXT("+"), [this] { if (Chart.IsValid()) Chart->ZoomBy(1.25f, ChartMiddle()); }, nullptr, ERole::Tertiary, TEXT("Zoom in (+, wheel)")),
-                             Pill(TEXT("FIT"), [this] { if (Chart.IsValid()) Chart->ResetView(); }, nullptr, ERole::Tertiary, TEXT("Whole galaxy (Home)")) }, 3) ]
-                    + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(10, 0, 0, 0)
-                    [ SNew(SBox).Visibility_Lambda([this] { return (ActivePanel == PanelGalaxy && PreviousPanel != PanelGalaxy) ? EVisibility::Visible : EVisibility::Collapsed; })
-                        [ Pill(TEXT("BACK"), [this] { GoBack(); }, nullptr, ERole::Secondary, TEXT("Return to previous screen (Backspace)")) ] ]
-                    + SHorizontalBox::Slot().FillWidth(1).VAlign(VAlign_Center).Padding(14, 0)
-                    [ SNew(SVerticalBox)
-                        + SVerticalBox::Slot().AutoHeight()
-                        [ SNew(STextBlock).Text(Dyn([this] { return Status; })).Font(BotfUi::Font(9)).ColorAndOpacity_Lambda([this] {
-                            return FSlateColor(Status.StartsWith(TEXT("Order rejected")) ? P().Alert : P().Text); }) ]
-                        + SVerticalBox::Slot().AutoHeight()
-                        [ SNew(STextBlock).Text(Dyn([this] { return MapHelp(); })).Font(BotfUi::Font(8)).ColorAndOpacity(C(&FPalette::Muted)) ] ]
-                    + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-                    [ SNew(SBox).WidthOverride(190)
-                        [ Control(TEXT("END TURN"), [this] { RequestEndTurn(); }, [this] { return State.outcome == botf::CampaignOutcome::Ongoing; },
-                            nullptr, ERole::Accent, FMargin(14, 10), false, 15, TEXT("Carry out all orders (Ctrl+Enter)")) ] ] ] ];
+        return SNew(SVerticalBox)
+            + SVerticalBox::Slot().AutoHeight() [ Divider() ]
+            + SVerticalBox::Slot().AutoHeight()
+            [ SNew(SBox).HeightOverride(66)
+                [ SNew(BotfUi::SBotfSurface)
+                    .Look([this] {
+                        BotfUi::FSurfaceLook L; const FPalette& Pal = P();
+                        L.Top = BotfUi::WithAlpha(Pal.Void, 0.93f); L.Fill = BotfUi::WithAlpha(BotfUi::Mix(Pal.FieldHi, Pal.Void, 0.5f), 0.95f);
+                        L.Radius = FVector4(0, 0, 0, 0); return L; })
+                    .Padding(FMargin(12, 0, 12, 0)).VAlign(VAlign_Center)
+                    [ SNew(SHorizontalBox)
+                        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+                        [ Capsule(Line({
+                            Option(TEXT("MILITARY"), [this] { MapView.Mode = BotfUi::EMapMode::Military; }, [this] { return MapView.Mode == BotfUi::EMapMode::Military; },
+                                ERole::Segment, 0, TEXT("Ships, ranges and courses (M)")),
+                            Option(TEXT("ECONOMIC"), [this] { MapView.Mode = BotfUi::EMapMode::Economic; }, [this] { return MapView.Mode == BotfUi::EMapMode::Economic; },
+                                ERole::Segment, 0, TEXT("Trade routes and colony output; ships hidden (M)")) }, 2)) ]
+                        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(12, 0, 0, 0)
+                        [ Line({ MapToggle(TEXT("NAMES"), &BotfUi::FMapView::bNames, TEXT("N"), TEXT("System names")),
+                                 MapToggle(TEXT("RANGE"), &BotfUi::FMapView::bRange, TEXT("R"), TEXT("Supply range of the selected ship")),
+                                 MapToggle(TEXT("COURSES"), &BotfUi::FMapView::bCourses, FString(), TEXT("Courses of all your units")),
+                                 MapToggle(TEXT("GRID"), &BotfUi::FMapView::bGrid, TEXT("G"), TEXT("Sector grid and coordinates")),
+                                 MapToggle(TEXT("ANOMALIES"), &BotfUi::FMapView::bAnomalies, FString(), TEXT("Charted nebulae, black holes, neutron stars, ion storms and wormholes; hover a sector for details")),
+                                 MapToggle(TEXT("STATIONS"), &BotfUi::FMapView::bStations, FString(), TEXT("Supply (bright) and sensor (faint) reach of your outposts and starbases")) }, 4) ]
+                        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(12, 0, 0, 0)
+                        [ Capsule(Line({ Pill(TEXT("-"), [this] { if (Chart.IsValid()) Chart->ZoomBy(1.f / 1.25f, ChartMiddle()); }, nullptr, ERole::Tertiary, TEXT("Zoom out (-, wheel)")),
+                                 Pill(TEXT("+"), [this] { if (Chart.IsValid()) Chart->ZoomBy(1.25f, ChartMiddle()); }, nullptr, ERole::Tertiary, TEXT("Zoom in (+, wheel)")),
+                                 Pill(TEXT("FIT"), [this] { if (Chart.IsValid()) Chart->ResetView(); }, nullptr, ERole::Tertiary, TEXT("Whole galaxy (Home)")) }, 2)) ]
+                        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(10, 0, 0, 0)
+                        [ SNew(SBox).Visibility_Lambda([this] { return (ActivePanel == PanelGalaxy && PreviousPanel != PanelGalaxy) ? EVisibility::Visible : EVisibility::Collapsed; })
+                            [ Control(TEXT("BACK"), [this] { GoBack(); }, nullptr, nullptr, ERole::Secondary, FMargin(10, 6), false, 9, TEXT("Return to previous screen"), 0, TEXT("Bksp")) ] ]
+                        + SHorizontalBox::Slot().FillWidth(1).VAlign(VAlign_Center).Padding(18, 0)
+                        [ SNew(SVerticalBox)
+                            + SVerticalBox::Slot().AutoHeight()
+                            [ SNew(STextBlock).Text(Dyn([this] { return Status; })).Font(BotfUi::Font(9)).OverflowPolicy(ETextOverflowPolicy::Ellipsis)
+                                .ColorAndOpacity_Lambda([this] { return FSlateColor(Status.StartsWith(TEXT("Order rejected")) ? P().Alert : P().Text); }) ]
+                            + SVerticalBox::Slot().AutoHeight()
+                            [ SNew(STextBlock).Text(Dyn([this] { return MapHelp(); })).Font(BotfUi::Font(7)).OverflowPolicy(ETextOverflowPolicy::Ellipsis)
+                                .ColorAndOpacity(C(&FPalette::Muted)) ] ]
+                        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+                        [ SNew(SBox).MinDesiredWidth(230)
+                            [ Control(TEXT("END TURN"), [this] { RequestEndTurn(); }, [this] { return State.outcome == botf::CampaignOutcome::Ongoing; },
+                                nullptr, ERole::Accent, FMargin(20, 11), false, 14, TEXT("Carry out all orders"), 0, TEXT("Ctrl+Enter")) ] ] ] ] ];
     }
     FVector2D ChartMiddle() const { return Chart.IsValid() ? Chart->ViewSize() * 0.5 : FVector2D::ZeroVector; }
 
     // ---- Sheets: the original's separate screens, opened over the chart ----
     TSharedRef<SWidget> SheetHeader(std::initializer_list<TSharedRef<SWidget>> Tabs) {
         auto Box = SNew(SHorizontalBox);
-        for (const auto& Tab : Tabs) Box->AddSlot().AutoWidth().VAlign(VAlign_Center).Padding(0, 0, 4, 0) [ Tab ];
-        Box->AddSlot().AutoWidth().VAlign(VAlign_Center).Padding(8, 0, 0, 0)
+        Box->AddSlot().AutoWidth().VAlign(VAlign_Center)
+            [ Capsule([&Tabs] {
+                auto Group = SNew(SHorizontalBox);
+                for (const auto& Tab : Tabs) Group->AddSlot().AutoWidth().VAlign(VAlign_Center).Padding(0, 0, 2, 0) [ Tab ];
+                return Group; }()) ];
+        Box->AddSlot().AutoWidth().VAlign(VAlign_Center).Padding(12, 0, 0, 0)
             [ Control(TEXT("BACK"), [this] { GoBack(); },
                 [this] { return !(ActivePanel == PanelCombat && Session.pending) && (ActivePanel != PanelGalaxy || PreviousPanel != PanelGalaxy); },
-                nullptr, ERole::Secondary, FMargin(10, 6), false, 9, TEXT("Return to previous screen (Backspace)")) ];
-        Box->AddSlot().AutoWidth().VAlign(VAlign_Center).Padding(4, 0, 0, 0)
+                nullptr, ERole::Secondary, FMargin(11, 6), false, 9, TEXT("Return to previous screen"), 0, TEXT("Bksp")) ];
+        Box->AddSlot().AutoWidth().VAlign(VAlign_Center).Padding(6, 0, 0, 0)
             [ Control(TEXT("CLOSE"), [this] { GoPanel(PanelGalaxy); }, [this] { return !(ActivePanel == PanelCombat && Session.pending); }, nullptr,
-                ERole::Alert, FMargin(10, 6), false, 9, TEXT("Back to the chart (Esc, F1)")) ];
+                ERole::Alert, FMargin(11, 6), false, 9, TEXT("Back to the chart"), 0, TEXT("Esc")) ];
         return Box;
     }
     TSharedRef<SWidget> BuildSheetLayer() {
@@ -1270,14 +1491,17 @@ private:
             [ SNew(SOverlay)
                 // Dimmed chart behind the sheet; clicking it returns to the chart.
                 + SOverlay::Slot()
-                [ SNew(SBorder).BorderImage(FCoreStyle::Get().GetBrush("WhiteBrush")).BorderBackgroundColor(FLinearColor(0.f, 0.f, 0.f, 0.55f))
+                [ SNew(SBorder).BorderImage(FCoreStyle::Get().GetBrush("WhiteBrush")).BorderBackgroundColor(FLinearColor(0.f, 0.005f, 0.02f, 0.62f))
                     .OnMouseButtonDown_Lambda([this](const FGeometry&, const FPointerEvent&) {
                         if (!(ActivePanel == PanelCombat && Session.pending)) GoPanel(PanelGalaxy);
                         return FReply::Handled();
                     }) ]
-                + SOverlay::Slot().Padding(TAttribute<FMargin>::CreateLambda([this] { return (ActivePanel == PanelCombat && Session.pending) ? FMargin(0) : FMargin(28, 70, 28, 62); }))
-                [ SNew(SBorder).BorderImage(FCoreStyle::Get().GetBrush("WhiteBrush")).BorderBackgroundColor_Lambda([this] { return FSlateColor(P().Void); })
-                    .Padding(TAttribute<FMargin>::CreateLambda([this] { return (ActivePanel == PanelCombat && Session.pending) ? FMargin(0) : FMargin(16, 12); }))
+                + SOverlay::Slot().Padding(TAttribute<FMargin>::CreateLambda([this] { return (ActivePanel == PanelCombat && Session.pending) ? FMargin(0) : FMargin(24, 12, 24, 12); }))
+                [ SNew(SBorder).BorderImage(FCoreStyle::Get().GetBrush("WhiteBrush"))
+                    .BorderBackgroundColor_Lambda([this] {
+                        const bool bFull = ActivePanel == PanelCombat && Session.pending;
+                        return FSlateColor(BotfUi::WithAlpha(P().Void, bFull ? 1.f : 0.f)); })
+                    .Padding(0)
                     .OnMouseButtonDown_Lambda([](const FGeometry&, const FPointerEvent&) { return FReply::Handled(); })
                     [ SNew(SWidgetSwitcher).WidgetIndex_Lambda([this] { return FMath::Clamp(ActivePanel - 1, 0, 5); })
                         + SWidgetSwitcher::Slot() [ BuildSystemScreen() ]
@@ -1290,13 +1514,14 @@ private:
 
     // ---- Sector context menu (right click / Shift+right click / ~) ----
     TSharedRef<SWidget> BuildSectorMenu() {
-        return SNew(SBox).WidthOverride(270).Visibility_Lambda([this] { return bMenuOpen && Shell == EUiView::Game ? EVisibility::Visible : EVisibility::Collapsed; })
-            [ SNew(SBorder).BorderImage_Lambda([this] { return BotfUi::Styles().Get(ThemeEmpire(), EShape::Row); })
-                .BorderBackgroundColor_Lambda([this] { return FSlateColor(BotfUi::Shade(P().Secondary, 0.6f)); }).Padding(2)
-                [ SNew(SBorder).BorderImage_Lambda([this] { return BotfUi::Styles().Get(ThemeEmpire(), EShape::Row); })
-                    .BorderBackgroundColor_Lambda([this] { return FSlateColor(P().Void); }).Padding(FMargin(8, 6))
-                    [ SAssignNew(MenuRows, SVerticalBox) ] ] ];
+        return SNew(SBox).WidthOverride(300).Visibility_Lambda([this] { return bMenuOpen && Shell == EUiView::Game ? EVisibility::Visible : EVisibility::Collapsed; })
+            [ SNew(BotfUi::SBotfSurface).Padding(FMargin(8, 8))
+                .Look([this] {
+                    BotfUi::FSurfaceLook L = BotfUi::PanelLook(ThemeEmpire(), 0.6f);
+                    L.Fill.A = 0.985f; L.Top.A = 0.985f; L.Glow = BotfUi::WithAlpha(FLinearColor::Black, 0.9f); L.GlowSize = 12.f; return L; })
+                [ SAssignNew(MenuRows, SVerticalBox) ] ];
     }
+
     struct FMenuItem { FString Label, Tip; std::function<void()> Action; bool bEnabled = true; ERole Role = ERole::Primary; };
     std::vector<FMenuItem> SectorActions(int CellId) {
         std::vector<FMenuItem> Items;
@@ -1587,11 +1812,23 @@ private:
     // ---- Turn inbox ----
     void InboxRow(const FString& Label, std::function<void()> Action, FLinearColor FPalette::* Tone, const FString& Tip = FString()) {
         ++InboxCount;
-        InboxRows->AddSlot().AutoHeight().Padding(0, 0, 0, 3)
-            [ SNew(SHorizontalBox)
-                + SHorizontalBox::Slot().AutoWidth().Padding(0, 0, 4, 0) [ SNew(SBox).WidthOverride(4) [ Fill(EShape::Block, Tone) ] ]
-                + SHorizontalBox::Slot().FillWidth(1)
-                [ Row(Label, Action ? Action : std::function<void()>([] {}), nullptr, [HasAction = static_cast<bool>(Action)] { return HasAction; }, Tip) ] ];
+        const BotfUi::EIcon Glyph = Tone == &FPalette::Alert ? BotfUi::EIcon::Alert : Tone == &FPalette::Accent ? BotfUi::EIcon::Star
+            : Tone == &FPalette::Secondary ? BotfUi::EIcon::Ship : Tone == &FPalette::Primary ? BotfUi::EIcon::Flag : BotfUi::EIcon::Dot;
+        const bool bActionable = static_cast<bool>(Action);
+        const TSharedRef<SWidget> Content = SNew(SHorizontalBox)
+            + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Top).Padding(0, 1, 10, 0) [ Icon(Glyph, 15, Tone) ]
+            + SHorizontalBox::Slot().FillWidth(1).VAlign(VAlign_Center)
+            [ SNew(STextBlock).Text(Txt(Label)).Font(BotfUi::Font(8)).AutoWrapText(true).ColorAndOpacity(C(bActionable ? &FPalette::Text : &FPalette::Text2)) ];
+        InboxRows->AddSlot().AutoHeight().Padding(0, 0, 0, 5)
+            [ CardButton(Content,
+                [this, Tone, bActionable](bool Hover, bool Pressed, bool Focus, bool) {
+                    const FPalette& Pal = P(); const FLinearColor H = Pal.*Tone;
+                    BotfUi::FSurfaceLook L; L.Radius = FVector4(11, 11, 11, 11);
+                    L.Fill = BotfUi::WithAlpha(Pal.Field, bActionable && Hover ? 0.96f : 0.86f);
+                    if (Pressed) L.Fill = BotfUi::Shade(L.Fill, 0.85f, L.Fill.A);
+                    L.Outline = Focus ? Pal.Accent : BotfUi::WithAlpha(H, bActionable && Hover ? 0.85f : 0.30f); L.OutlineWidth = Focus ? 2.f : 1.f;
+                    L.Stripe = BotfUi::WithAlpha(H, bActionable ? 1.f : 0.5f); return L; },
+                Action ? Action : std::function<void()>([] {}), nullptr, Tip, FMargin(16, 8, 10, 8)) ];
     }
     void RefreshInbox() {
         if (!InboxRows.IsValid()) return;
@@ -1737,12 +1974,23 @@ private:
         }
         return Out;
     }
+    TSharedPtr<SVerticalBox> EndTurnRows;
+    void RefreshEndTurnRows() {
+        if (!EndTurnRows.IsValid()) return;
+        EndTurnRows->ClearChildren();
+        for (const FString& Warning : EndTurnWarnings())
+            EndTurnRows->AddSlot().AutoHeight().Padding(0, 0, 0, 6)
+                [ Fill(EShape::Row, &FPalette::Field, SNew(SHorizontalBox)
+                    + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Top).Padding(0, 1, 10, 0) [ Icon(BotfUi::EIcon::Alert, 16, &FPalette::Warn) ]
+                    + SHorizontalBox::Slot().FillWidth(1) [ Para(Txt(Warning), 10, &FPalette::Text) ], FMargin(12, 9)) ];
+    }
     // A request never confirms itself: while the warning is open, a repeated END TURN click or Ctrl+Enter leaves it
     // open. Only END TURN ANYWAY (or Enter inside the dialog) resolves the turn; REVIEW or Esc closes it.
     void RequestEndTurn() {
         bMenuOpen = false;
         if (bEndTurnCheck) return;
         if (Session.active || EndTurnWarnings().IsEmpty()) { EndTurn(); return; }
+        RefreshEndTurnRows();
         bEndTurnCheck = true;
     }
     void ConfirmEndTurn() {
@@ -1754,16 +2002,17 @@ private:
         // Modal: a full-screen scrim takes every click, so nothing behind the dialog (END TURN included) can act.
         return SNew(SOverlay).Visibility_Lambda([this] { return bEndTurnCheck && Shell == EUiView::Game ? EVisibility::Visible : EVisibility::Collapsed; })
             + SOverlay::Slot()
-            [ SNew(SBorder).BorderImage(FCoreStyle::Get().GetBrush("WhiteBrush")).BorderBackgroundColor(FLinearColor(0.f, 0.f, 0.f, 0.5f))
+            [ SNew(SBorder).BorderImage(FCoreStyle::Get().GetBrush("WhiteBrush")).BorderBackgroundColor(FLinearColor(0.f, 0.004f, 0.016f, 0.66f))
                 .OnMouseButtonDown_Lambda([](const FGeometry&, const FPointerEvent&) { return FReply::Handled(); }) ]
             + SOverlay::Slot().HAlign(HAlign_Center).VAlign(VAlign_Center)
-            [ SNew(SBox).WidthOverride(520)
+            [ SNew(SBox).WidthOverride(560)
                 [ Fill(EShape::Row, &FPalette::Void, Stack({
-                    Heading(Txt(TEXT("BEFORE YOU END THE TURN")), 16, &FPalette::Accent),
-                    Para(Dyn([this] { return FString::Join(EndTurnWarnings(), TEXT("\n")); }), 11, &FPalette::Text),
-                    Line({ Control(TEXT("END TURN ANYWAY"), [this] { ConfirmEndTurn(); }, nullptr, nullptr, ERole::Accent, FMargin(16, 10), false, 11, TEXT("Enter")),
-                           Control(TEXT("REVIEW"), [this] { bEndTurnCheck = false; }, nullptr, nullptr, ERole::Tertiary, FMargin(16, 10), false, 11, TEXT("Esc")) }, 6) }, 10),
-                    FMargin(18, 14)) ] ];
+                    ModalHeader(TEXT("BEFORE YOU END THE TURN"), nullptr, &FPalette::Warn),
+                    Para(Txt(TEXT("These need a look. Review them, or end the turn anyway.")), 9, &FPalette::Text2),
+                    SAssignNew(EndTurnRows, SVerticalBox),
+                    Line({ Control(TEXT("END TURN ANYWAY"), [this] { ConfirmEndTurn(); }, nullptr, nullptr, ERole::Accent, FMargin(18, 11), false, 11, TEXT("Resolve the turn now"), 0, TEXT("Enter")),
+                           Control(TEXT("REVIEW"), [this] { bEndTurnCheck = false; }, nullptr, nullptr, ERole::Secondary, FMargin(18, 11), false, 11, TEXT("Go back and fix them"), 0, TEXT("Esc")) }, 8) }, 12),
+                    FMargin(22, 18)) ] ];
     }
 
     // ---- Summary window (original: Events / Relationships / Systems, Tutorial p12) ----
@@ -1800,12 +2049,7 @@ private:
             .MinDesiredWidth(560).MaxDesiredWidth(860).MaxDesiredHeight(620)
             [ Fill(EShape::Row, &FPalette::Void, SNew(SVerticalBox)
                 + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 8)
-                [ SNew(SHorizontalBox)
-                    + SHorizontalBox::Slot().AutoWidth() [ Bar(EShape::ElbowTop, &FPalette::Primary, 40, 24) ]
-                    + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(8, 0) [ Label(Txt(TEXT("SUMMARY")), 15, &FPalette::Accent, true) ]
-                    + SHorizontalBox::Slot().FillWidth(1).VAlign(VAlign_Center) [ Bar(EShape::Block, &FPalette::Secondary, 0, 6) ]
-                    + SHorizontalBox::Slot().AutoWidth().Padding(6, 0, 0, 0)
-                    [ Pill(TEXT("CLOSE"), [this] { bSummaryOpen = false; }, nullptr, ERole::Alert, TEXT("Close (Esc)")) ] ]
+                [ ModalHeader(TEXT("SUMMARY"), [this] { bSummaryOpen = false; }) ]
                 + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 8)
                 [ Line({ ModeButton(TEXT("EVENTS"), &SummaryMode, 0), ModeButton(TEXT("RELATIONSHIPS"), &SummaryMode, 1), ModeButton(TEXT("SYSTEMS"), &SummaryMode, 2) }) ]
                 + SVerticalBox::Slot().FillHeight(1)
@@ -1826,12 +2070,7 @@ private:
             .MinDesiredWidth(560).MaxDesiredWidth(760).MaxDesiredHeight(620)
             [ Fill(EShape::Row, &FPalette::Void, SNew(SVerticalBox)
                 + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 8)
-                [ SNew(SHorizontalBox)
-                    + SHorizontalBox::Slot().AutoWidth() [ Bar(EShape::ElbowTop, &FPalette::Primary, 40, 24) ]
-                    + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(8, 0) [ Label(Txt(TEXT("GALACTIC EVENTS")), 15, &FPalette::Accent, true) ]
-                    + SHorizontalBox::Slot().FillWidth(1).VAlign(VAlign_Center) [ Bar(EShape::Block, &FPalette::Secondary, 0, 6) ]
-                    + SHorizontalBox::Slot().AutoWidth().Padding(6, 0, 0, 0)
-                    [ Pill(TEXT("CLOSE"), [this] { bEventsOpen = false; }, nullptr, ERole::Alert, TEXT("Close (Esc)")) ] ]
+                [ ModalHeader(TEXT("GALACTIC EVENTS"), [this] { bEventsOpen = false; }) ]
                 + SVerticalBox::Slot().FillHeight(1) [ Scroll(SAssignNew(EventRows, SVerticalBox)) ],
                 FMargin(16, 12)) ];
     }
@@ -2064,27 +2303,158 @@ private:
                         Pill(TEXT("UPGRADE TO STARBASE"), [this] { OrderStationUpgrade(); }, [this] { return UpgradeBlocker().IsEmpty(); }, ERole::Accent,
                             TEXT("Starbase: supply radius 5, sensor radius 3, repairs friendly ships in its sector")) }, 2) ] ] ];
     }
+    // A compact action: glyph, label and an optional key hint. Tinted by role; dims when unavailable.
+    TSharedRef<SWidget> ActionTile(BotfUi::EIcon Glyph, const FString& Label, std::function<void()> Action, std::function<bool()> Enabled,
+                                   const FString& Tip, ERole Role = ERole::Primary, const FString& Key = FString(),
+                                   std::function<bool()> Chosen = nullptr) {
+        auto On = [Enabled] { return !Enabled || SafeBool(Enabled, false); };
+        auto Sel = [Chosen] { return Chosen && SafeBool(Chosen, false); };
+        auto Hue = [this, Role]() -> FLinearColor {
+            const FPalette& Pal = P();
+            switch (Role) {
+            case ERole::Alert: return Pal.Alert;
+            case ERole::Accent: return Pal.Accent;
+            case ERole::Secondary: return Pal.Text2;
+            case ERole::Tertiary: return Pal.Muted;
+            default: return Pal.Primary;
+            }
+        };
+        auto Tint = [Hue, On]() { return On() ? BotfUi::Lift(Hue(), 0.45f) : BotfUi::WithAlpha(BotfUi::Mix(Hue(), FLinearColor(0.35f, 0.4f, 0.5f), 0.5f), 0.5f); };
+        auto Content = SNew(SHorizontalBox)
+            + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0, 0, 8, 0)
+            [ SNew(BotfUi::SBotfIcon).Icon(Glyph).Size(15).Colour(TAttribute<FSlateColor>::CreateLambda([Tint] { return FSlateColor(Tint()); })) ]
+            + SHorizontalBox::Slot().FillWidth(1).VAlign(VAlign_Center)
+            [ SNew(STextBlock).Text(Txt(Label)).Font(BotfUi::Condensed(8)).OverflowPolicy(ETextOverflowPolicy::Ellipsis)
+                .ColorAndOpacity_Lambda([Tint] { return FSlateColor(Tint()); }) ];
+        if (!Key.IsEmpty())
+            Content->AddSlot().AutoWidth().VAlign(VAlign_Center).Padding(6, 0, 0, 0) [ BotfUi::MakeKeyChip(Key, [Tint] { return Tint(); }) ];
+        return CardButton(Content,
+            [Hue, On, Sel](bool Hover, bool Pressed, bool Focus, bool) {
+                const FLinearColor H = Hue(); const bool Ready = On(); const bool Picked = Sel(); const FPalette& Pal = BotfUi::Theme();
+                BotfUi::FSurfaceLook L;
+                L.Radius = FVector4(10, 10, 10, 10);
+                L.Fill = Ready ? BotfUi::WithAlpha(H, Pressed ? 0.30f : (Picked ? 0.36f : (Hover ? 0.22f : 0.10f))) : BotfUi::WithAlpha(FLinearColor::White, 0.02f);
+                L.Outline = Focus ? Pal.Accent : (Picked ? Pal.Accent : (Ready ? BotfUi::WithAlpha(H, Hover ? 0.95f : 0.42f) : Pal.Line));
+                L.OutlineWidth = Focus || Picked ? 2.f : 1.f;
+                if (Picked) { L.Stripe = Pal.Accent; L.Glow = BotfUi::WithAlpha(Pal.Accent, 0.4f); L.GlowSize = 6.f; }
+                if (Ready && Hover) { L.Glow = BotfUi::WithAlpha(H, 0.4f); L.GlowSize = 8.f; }
+                return L; },
+            Action, Enabled, Tip, FMargin(9, 7, 9, 7));
+    }
     TSharedRef<SWidget> OrderButton(const FString& Label, std::function<void()> Action, std::function<bool()> Enabled, const FString& Tip, ERole Role = ERole::Primary) {
         return Control(Label, Action, Enabled, nullptr, Role, FMargin(6, 6), false, 9, Tip);
     }
-    // Selected unit card in the left dock: readout and every order the unit can take.
+    // Hull, shields, attack and range of the selected ship or task force.
+    struct FUnitVitals { FString Name, Stance; int Hull = 0, MaxHull = 0, Shields = 0, MaxShields = 0, Attack = 0, Range = -1, Speed = -1, Ships = 1; bool bGroup = false; };
+    bool UnitVitals(FUnitVitals& Out) const {
+        if (const auto* Group = CurrentTaskForce()) {
+            const auto& Draft = Preview();
+            Out.bGroup = true; Out.Ships = static_cast<int>(Group->fleetIds.size());
+            Out.Name = Str(Group->name); Out.Stance = StanceName(Group->stance);
+            Out.Hull = botf::taskForceHull(Draft, Group->id); Out.Shields = botf::taskForceShields(Draft, Group->id);
+            Out.Attack = botf::taskForceAttack(Draft, Group->id); Out.Speed = botf::taskForceSpeed(Draft, Group->id);
+            for (const auto& Member : botf::taskForceFleets(Draft, Group->id)) { Out.MaxHull += botf::fleetMaxHull(Member); Out.MaxShields += botf::fleetMaxShields(Member); }
+            if (const auto* Limit = botf::view::rangeLimitingFleet(Draft, Group->id)) Out.Range = botf::view::supplyRange(Draft, *Limit);
+            return true;
+        }
+        const auto* F = DraftFleet();
+        if (!F) return false;
+        Out.Name = Str(botf::fleetName(*F)) + FString::Printf(TEXT(" #%d"), F->id); Out.Stance = StanceName(F->stance);
+        Out.Hull = F->hull; Out.MaxHull = botf::fleetMaxHull(*F); Out.Shields = F->shields; Out.MaxShields = botf::fleetMaxShields(*F);
+        Out.Attack = botf::fleetAttack(*F); Out.Range = botf::view::supplyRange(Preview(), *F);
+        return true;
+    }
+    TSharedRef<SWidget> VitalRow(const FString& Caption, std::function<FString()> Text, std::function<float()> Fraction, FLinearColor FPalette::* Tone) const {
+        return SNew(SHorizontalBox)
+            + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+            [ SNew(SBox).WidthOverride(58) [ SNew(STextBlock).Text(Txt(Caption)).Font(BotfUi::Caption(6)).ColorAndOpacity(C(&FPalette::Muted)) ] ]
+            + SHorizontalBox::Slot().FillWidth(1).VAlign(VAlign_Center).Padding(0, 0, 10, 0)
+            [ SNew(SBox).HeightOverride(7)
+                [ SNew(BotfUi::SBotfMeter).Value_Lambda([Fraction] { return Fraction(); }).Height(7).Fill(C(Tone)) ] ]
+            + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+            [ SNew(SBox).MinDesiredWidth(74)
+                [ SNew(STextBlock).Text(Dyn(Text)).Font(BotfUi::Font(7)).ColorAndOpacity(C(&FPalette::Text)).Justification(ETextJustify::Right) ] ];
+    }
+    // Destination, drafted orders and outpost assembly: the parts of the old readout the bars do not show.
+    FString UnitStatusText() const {
+        if (const auto* Group = CurrentTaskForce()) {
+            FString Text = FString::Printf(TEXT("Destination %d,%d"), Group->targetX, Group->targetY);
+            if (const auto* Limit = botf::view::rangeLimitingFleet(Preview(), Group->id))
+                Text += FString::Printf(TEXT("\nRange is set by its shortest-ranged ship: %s #%d"), *Str(botf::fleetName(*Limit)), Limit->id);
+            return Text;
+        }
+        const auto F = DraftFleet();
+        if (!F) return FString();
+        FString Text;
+        const auto Path = botf::route(Preview(), *F, F->targetX, F->targetY);
+        if (F->targetX != F->x || F->targetY != F->y)
+            Text += Path.empty() ? FString::Printf(TEXT("Destination %d,%d: out of supply range, holding"), F->targetX, F->targetY)
+                : FString::Printf(TEXT("Destination %d,%d: %d turns"), F->targetX, F->targetY, static_cast<int>(Path.size()) - 1);
+        for (const auto& Order : State.pending) if (Order.fleetId == F->id) {
+            if (!Text.IsEmpty()) Text += TEXT("\n");
+            if (Order.type == botf::CommandType::MoveFleet) Text += FString::Printf(TEXT("Ordered: course to %d,%d"), Order.targetX, Order.targetY);
+            else if (Order.type == botf::CommandType::Colonize) Text += TEXT("Ordered: colonize");
+            else if (Order.type == botf::CommandType::AttackFleet) Text += FString::Printf(TEXT("Ordered: attack ship #%d"), Order.targetFleetId);
+            else if (Order.type == botf::CommandType::RetreatFleet) Text += TEXT("Ordered: retreat");
+            else if (Order.type == botf::CommandType::Invade) Text += TEXT("Ordered: invade");
+            else if (Order.type == botf::CommandType::SetTacticalStance) Text += FString::Printf(TEXT("Ordered: stance %s"), StanceName(Order.stance));
+            else if (Order.type == botf::CommandType::BuildOutpost) Text += TEXT("Ordered: build outpost");
+        }
+        if (const auto* Base = Fleet(); Base && Base->buildingOutpost) {
+            if (!Text.IsEmpty()) Text += TEXT("\n");
+            Text += FString::Printf(TEXT("Assembling an outpost: %d of %d turns"), Base->outpostProgress, botf::outpostBuildTurns(State, Base->ownerId));
+        }
+        return Text;
+    }
+    // Selected unit card in the left dock: vitals, then every order the unit can take, grouped by intent.
     TSharedRef<SWidget> BuildUnitCard() {
+        const auto Frac = [this](bool bHull) {
+            FUnitVitals V;
+            if (!UnitVitals(V)) return 0.f;
+            const int Cur = bHull ? V.Hull : V.Shields, Max = bHull ? V.MaxHull : V.MaxShields;
+            return Max > 0 ? FMath::Clamp(static_cast<float>(Cur) / Max, 0.f, 1.f) : 0.f;
+        };
         return Stack({
             SNew(SHorizontalBox)
-                + SHorizontalBox::Slot().FillWidth(1) [ Heading(Dyn([this] { return UnitName().ToUpper(); }), 13, &FPalette::Accent) ]
-                + SHorizontalBox::Slot().AutoWidth() [ Pill(TEXT("FIND"), [this] {
+                + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0, 0, 9, 0) [ SNew(BotfUi::SBotfEmblem).Empire_Lambda([this] { return State.playerEmpire; }).Size(22) ]
+                + SHorizontalBox::Slot().FillWidth(1).VAlign(VAlign_Center)
+                [ SNew(SVerticalBox)
+                    + SVerticalBox::Slot().AutoHeight()
+                    [ SNew(STextBlock).Text(Dyn([this] { FUnitVitals V; return UnitVitals(V) ? V.Name.ToUpper() : FString(); })).Font(BotfUi::Display(13))
+                        .ColorAndOpacity(C(&FPalette::Accent)).OverflowPolicy(ETextOverflowPolicy::Ellipsis) ]
+                    + SVerticalBox::Slot().AutoHeight()
+                    [ SNew(STextBlock).Text(Dyn([this] {
+                            FUnitVitals V; if (!UnitVitals(V)) return FString();
+                            return V.bGroup ? FString::Printf(TEXT("TASK FORCE  /  %d SHIPS"), V.Ships) : FString(TEXT("SHIP")); }))
+                        .Font(BotfUi::Caption(6)).ColorAndOpacity(C(&FPalette::Muted)) ] ]
+                + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(8, 0, 0, 0)
+                [ Pill(TEXT("FIND"), [this] {
                     if (const auto* F = Fleet()) { SelectCell(F->y * State.width + F->x); if (Chart.IsValid()) Chart->CentreOn(SelectedCell); }
                   }, nullptr, ERole::Tertiary, TEXT("Centre the chart on this unit")) ],
-            Para(Dyn([this] { return ShipReadout(); }), 9, &FPalette::Text),
+            Stack({
+                VitalRow(TEXT("HULL"), [this] { FUnitVitals V; return UnitVitals(V) ? FString::Printf(TEXT("%d / %d"), V.Hull, V.MaxHull) : FString(); },
+                    [Frac] { return Frac(true); }, &FPalette::Good),
+                VitalRow(TEXT("SHIELDS"), [this] { FUnitVitals V; return UnitVitals(V) ? FString::Printf(TEXT("%d / %d"), V.Shields, V.MaxShields) : FString(); },
+                    [Frac] { return Frac(false); }, &FPalette::Shield) }, 5),
+            SNew(SHorizontalBox)
+                + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0, 0, 8, 0)
+                [ StatTile(BotfUi::EIcon::Combat, TEXT("ATTACK"), [this] { FUnitVitals V; return UnitVitals(V) ? FString::FromInt(V.Attack) : FString(); },
+                    C(&FPalette::Alert), TEXT("Combined attack strength")) ]
+                + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0, 0, 8, 0)
+                [ StatTile(BotfUi::EIcon::Pin, TEXT("RANGE"), [this] { FUnitVitals V; return UnitVitals(V) && V.Range >= 0 ? FString::FromInt(V.Range) : FString(TEXT("-")); },
+                    C(&FPalette::Info), TEXT("Supply range in sectors: how far it can travel from supply")) ]
+                + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+                [ Badge(Dyn([this] { FUnitVitals V; return UnitVitals(V) ? V.Stance : FString(); }), &FPalette::Secondary, 7) ],
             Section(Txt(TEXT("ORDERS")), SNew(SVerticalBox)
                 + SVerticalBox::Slot().AutoHeight()
                 [ Grid({
-                    OrderButton(TEXT("SET COURSE"), [this] { MapView.bPlotting = true; }, [this] { return Fleet() != nullptr; }, TEXT("Then click a destination, or simply right-click one (P)")),
-                    OrderButton(TEXT("HOLD"), [this] { HoldSelected(); }, [this] {
+                    ActionTile(BotfUi::EIcon::Pin, TEXT("SET COURSE"), [this] { MapView.bPlotting = true; }, [this] { return Fleet() != nullptr; },
+                        TEXT("Then click a destination, or simply right-click one"), ERole::Primary, TEXT("P")),
+                    ActionTile(BotfUi::EIcon::Dot, TEXT("HOLD"), [this] { HoldSelected(); }, [this] {
                         const auto* F = DraftFleet(); return F && (F->targetX != F->x || F->targetY != F->y);
-                    }, TEXT("Stop at the current sector, replacing any drafted course")),
-                    OrderButton(TEXT("COLONIZE"), [this] { OrderColonize(); }, [this] { return CanSettle(); }, TEXT("Colony ship in an unclaimed system")),
-                    OrderButton(TEXT("ATTACK"), [this] {
+                    }, TEXT("Stop at the current sector, replacing any drafted course"), ERole::Primary),
+                    ActionTile(BotfUi::EIcon::System, TEXT("COLONIZE"), [this] { OrderColonize(); }, [this] { return CanSettle(); }, TEXT("Colony ship in an unclaimed system"), ERole::Accent),
+                    ActionTile(BotfUi::EIcon::Combat, TEXT("ATTACK"), [this] {
                         botf::Command Cmd; Cmd.id = State.lastAcceptedCommand + 1; Cmd.type = botf::CommandType::AttackFleet;
                         Cmd.fleetId = SelectedFleet; Cmd.targetFleetId = TargetFleet()->id;
                         if (const auto* Group = CurrentTaskForce()) TaskForceOrder(TargetFleet()->x, TargetFleet()->y, Group->stance, TargetFleet()->id);
@@ -2096,37 +2466,53 @@ private:
                         const auto* R = botf::majorRelation(State, State.playerEmpire, Enemy->ownerId);
                         return R && R->atWar && UnitCanReach(*F, Enemy->x, Enemy->y);
                     }, TEXT("Select an enemy ship in this sector (or right-click it on the chart); requires war"), ERole::Alert),
-                    OrderButton(TEXT("INVADE"), [this] { OrderInvade(); }, [this] { return CanInvadeHere(); }, TEXT("Troop transport over an enemy colony, at war"), ERole::Alert),
-                    OrderButton(TEXT("BUILD OUTPOST"), [this] { OrderBuildOutpost(); }, [this] { return CanBuildOutpost(); },
-                        TEXT("Troop transport: assemble an outpost in this sector. It extends supply and sensor range; the transport is used up."), ERole::Accent),
-                    OrderButton(TEXT("RETREAT"), [this] {
+                    ActionTile(BotfUi::EIcon::Target, TEXT("INVADE"), [this] { OrderInvade(); }, [this] { return CanInvadeHere(); }, TEXT("Troop transport over an enemy colony, at war"), ERole::Alert),
+                    ActionTile(BotfUi::EIcon::Flag, TEXT("OUTPOST"), [this] { OrderBuildOutpost(); }, [this] { return CanBuildOutpost(); },
+                        TEXT("Build outpost: a troop transport assembles an outpost in this sector. It extends supply and sensor range; the transport is used up."), ERole::Accent),
+                    ActionTile(BotfUi::EIcon::ChevronLeft, TEXT("RETREAT"), [this] {
                         botf::Command Cmd; Cmd.id = State.lastAcceptedCommand + 1; Cmd.type = botf::CommandType::RetreatFleet; Cmd.fleetId = SelectedFleet;
                         Submit(Cmd); Status = TEXT("Ship ordered to disengage.");
-                    }, [this] { return Fleet() != nullptr; }, TEXT("Disengage from combat"), ERole::Tertiary),
-                    OrderButton(TEXT("NEXT UNIT"), [this] { NextShip(); }, [this] { return OwnShipCount() > 0; }, TEXT("Cycle your task forces and ships (Tab)"), ERole::Secondary),
-                    OrderButton(TEXT("CANCEL UNIT ORDERS"), [this] {
+                    }, [this] { return Fleet() != nullptr; }, TEXT("Disengage from combat"), ERole::Secondary),
+                    ActionTile(BotfUi::EIcon::Ship, TEXT("NEXT UNIT"), [this] { NextShip(); }, [this] { return OwnShipCount() > 0; },
+                        TEXT("Cycle your task forces and ships"), ERole::Secondary, TEXT("Tab")) }, 2) ]
+                + SVerticalBox::Slot().AutoHeight().Padding(0, 6, 0, 0)
+                [ SNew(SHorizontalBox)
+                    + SHorizontalBox::Slot().FillWidth(1).Padding(0, 0, 4, 0)
+                    [ ActionTile(BotfUi::EIcon::Close, TEXT("CLEAR ORDERS"), [this] {
                         ReplaceOrders(SelectedUnitOrders(), std::nullopt);
                         Status = TEXT("This turn's orders for the selected unit were cancelled.");
-                    }, [this] { return !Session.active && SelectedUnitHasDraft(); }, TEXT("Withdraw every order drafted this turn for the selected ship or task force"), ERole::Tertiary),
-                    OrderButton(TEXT("CANCEL LAST ORDER"), [this] { CancelLast(); Status = TEXT("Last order cancelled."); },
-                        [this] { return !Session.active && !State.pending.empty(); }, TEXT("Undo the most recent order of any kind"), ERole::Tertiary) }, 2) ]
-                + SVerticalBox::Slot().AutoHeight().Padding(0, 4, 0, 0)
-                [ Para(Dyn([this] { return PendingUnitText(); }), 9, &FPalette::Muted) ]
+                      }, [this] { return !Session.active && SelectedUnitHasDraft(); },
+                      TEXT("Cancel unit orders: withdraw every order drafted this turn for the selected ship or task force"), ERole::Tertiary) ]
+                    + SHorizontalBox::Slot().FillWidth(1).Padding(4, 0, 0, 0)
+                    [ ActionTile(BotfUi::EIcon::ChevronLeft, TEXT("UNDO LAST"), [this] { CancelLast(); Status = TEXT("Last order cancelled."); },
+                        [this] { return !Session.active && !State.pending.empty(); }, TEXT("Cancel last order: undo the most recent order of any kind"), ERole::Tertiary) ] ]
+                + SVerticalBox::Slot().AutoHeight().Padding(0, 6, 0, 0)
+                [ SNew(SBox).Visibility_Lambda([this] { return SafeText([this] { return UnitStatusText(); }).IsEmpty() ? EVisibility::Collapsed : EVisibility::Visible; })
+                    [ Para(Dyn([this] { return UnitStatusText(); }), 8, &FPalette::Text2) ] ]
                 // Troop transports in a station ruleset: outpost assembly time, core's blocker or assembly progress.
                 + SVerticalBox::Slot().AutoHeight().Padding(0, 4, 0, 0)
                 [ SNew(SBox).Visibility_Lambda([this] { return SafeText([this] { return OutpostText(); }).IsEmpty() ? EVisibility::Collapsed : EVisibility::Visible; })
-                    [ Para(Dyn([this] { return OutpostText(); }), 9, &FPalette::Tertiary) ] ]
-                + SVerticalBox::Slot().AutoHeight().Padding(0, 6, 0, 2) [ Heading(Txt(TEXT("TASK FORCE")), 9, &FPalette::Muted) ]
+                    [ Para(Dyn([this] { return OutpostText(); }), 8, &FPalette::Tertiary) ] ]
+                + SVerticalBox::Slot().AutoHeight().Padding(0, 4, 0, 0)
+                [ Para(Dyn([this] { return PendingUnitText(); }), 7, &FPalette::Muted) ]),
+            Section(Txt(TEXT("TASK FORCE AND STANCE")), SNew(SVerticalBox)
                 + SVerticalBox::Slot().AutoHeight()
-                [ Grid({
-                    OrderButton(TEXT("FORM FROM MARKED"), [this] { FormTaskForce(); }, [this] { return ValidFormMarks(); },
-                        TEXT("Group the ships marked + in this sector")),
-                    OrderButton(TEXT("SPLIT"), [this] { DisbandTaskForce(); }, [this] { return CurrentTaskForce() != nullptr; },
-                        TEXT("Disband the selected task force into individual ships"), ERole::Tertiary) }, 2) ]
-                + SVerticalBox::Slot().AutoHeight().Padding(0, 6, 0, 2) [ Heading(Txt(TEXT("COMBAT STANCE")), 9, &FPalette::Muted) ]
+                [ SNew(SHorizontalBox)
+                    + SHorizontalBox::Slot().FillWidth(1).Padding(0, 0, 4, 0)
+                    [ ActionTile(BotfUi::EIcon::Plus, TEXT("FORM"), [this] { FormTaskForce(); }, [this] { return ValidFormMarks(); },
+                        TEXT("Form from marked: group the ships marked + in this sector"), ERole::Primary) ]
+                    + SHorizontalBox::Slot().FillWidth(1).Padding(4, 0, 0, 0)
+                    [ ActionTile(BotfUi::EIcon::Minus, TEXT("SPLIT"), [this] { DisbandTaskForce(); }, [this] { return CurrentTaskForce() != nullptr; },
+                        TEXT("Disband the selected task force into individual ships"), ERole::Secondary) ] ]
+                + SVerticalBox::Slot().AutoHeight().Padding(0, 8, 0, 4) [ Caption(TEXT("COMBAT STANCE")) ]
                 + SVerticalBox::Slot().AutoHeight()
-                [ Grid({ StanceButton(botf::TacticalStance::Balanced), StanceButton(botf::TacticalStance::Aggressive),
-                         StanceButton(botf::TacticalStance::Defensive), StanceButton(botf::TacticalStance::Withdraw) }, 2) ]) });
+                [ Capsule(SNew(SHorizontalBox)
+                    + SHorizontalBox::Slot().FillWidth(1) [ StanceButton(botf::TacticalStance::Balanced) ]
+                    + SHorizontalBox::Slot().FillWidth(1).Padding(2, 0, 0, 0) [ StanceButton(botf::TacticalStance::Aggressive) ] ) ]
+                + SVerticalBox::Slot().AutoHeight().Padding(0, 4, 0, 0)
+                [ Capsule(SNew(SHorizontalBox)
+                    + SHorizontalBox::Slot().FillWidth(1) [ StanceButton(botf::TacticalStance::Defensive) ]
+                    + SHorizontalBox::Slot().FillWidth(1).Padding(2, 0, 0, 0) [ StanceButton(botf::TacticalStance::Withdraw) ] ) ]) }, 10);
     }
     TSharedRef<SWidget> StanceButton(botf::TacticalStance Stance) {
         return Control(StanceName(Stance), [this, Stance] {
@@ -2139,7 +2525,7 @@ private:
             [this, Stance] {
                 if (const auto* Group = CurrentTaskForce()) return Group->stance == Stance;
                 return Fleet() && Fleet()->stance == Stance;
-            }, ERole::Secondary, FMargin(6, 5), false, 9,
+            }, ERole::Segment, FMargin(6, 5), false, 8,
             TEXT("How the selected ship or task force fights when battle is joined"));
     }
     FString PendingUnitText() const {
@@ -2184,9 +2570,92 @@ private:
             Text += FString::Printf(TEXT("\nAssembling an outpost: %d of %d turns"), Base->outpostProgress, botf::outpostBuildTurns(State, Base->ownerId));
         return Text;
     }
+    // One selectable unit: owner mark, name, hull and shield bars. Meters are fractions of the unit's maximum.
+    TSharedRef<SWidget> UnitRow(int Owner, const FString& Name, const FString& Sub, float HullFrac, float ShieldFrac, std::function<void()> Action,
+                                std::function<bool()> IsSelected, const FString& Tip = FString()) {
+        auto Bars = SNew(SVerticalBox)
+            + SVerticalBox::Slot().AutoHeight().Padding(0, 4, 0, 0)
+            [ SNew(SBox).HeightOverride(4) [ SNew(BotfUi::SBotfMeter).Value(HullFrac).Height(4).Fill(C(&FPalette::Good)) ] ];
+        if (ShieldFrac >= 0.f)
+            Bars->AddSlot().AutoHeight().Padding(0, 3, 0, 0)
+                [ SNew(SBox).HeightOverride(4) [ SNew(BotfUi::SBotfMeter).Value(ShieldFrac).Height(4).Fill(C(&FPalette::Shield)) ] ];
+        return CardButton(SNew(SHorizontalBox)
+            + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0, 0, 10, 0) [ SNew(BotfUi::SBotfEmblem).Empire(Owner).Size(20) ]
+            + SHorizontalBox::Slot().FillWidth(1).VAlign(VAlign_Center)
+            [ SNew(SVerticalBox)
+                + SVerticalBox::Slot().AutoHeight()
+                [ SNew(STextBlock).Text(Txt(Name)).Font(BotfUi::Font(8, true)).ColorAndOpacity(C(&FPalette::Text)).OverflowPolicy(ETextOverflowPolicy::Ellipsis) ]
+                + SVerticalBox::Slot().AutoHeight()
+                [ SNew(STextBlock).Text(Txt(Sub)).Font(BotfUi::Font(6)).ColorAndOpacity(C(&FPalette::Muted)).OverflowPolicy(ETextOverflowPolicy::Ellipsis) ]
+                + SVerticalBox::Slot().AutoHeight() [ Bars ] ],
+            [this, IsSelected](bool Hover, bool Pressed, bool Focus, bool) {
+                const FPalette& Pal = P(); const bool Sel = IsSelected && SafeBool(IsSelected, false);
+                BotfUi::FSurfaceLook L;
+                L.Radius = FVector4(10, 10, 10, 10);
+                L.Fill = Sel ? BotfUi::WithAlpha(Pal.FieldHi, 0.98f) : BotfUi::WithAlpha(Pal.Field, Hover ? 0.9f : 0.55f);
+                if (Pressed) L.Fill = BotfUi::Shade(L.Fill, 0.85f, L.Fill.A);
+                L.Outline = Focus ? Pal.Accent : (Sel ? BotfUi::WithAlpha(Pal.Primary, 0.7f) : (Hover ? Pal.LineHi : Pal.Line));
+                L.OutlineWidth = Focus ? 2.f : 1.f;
+                L.Stripe = Sel ? Pal.Primary : FLinearColor::Transparent;
+                return L; },
+            Action, nullptr, Tip, FMargin(16, 8, 10, 9));
+    }
+    TSharedRef<SWidget> MarkToggle(int FleetId) {
+        return BotfUi::MakeCardButton(
+            SNew(BotfUi::SBotfIcon).Size(14).Icon_Lambda([this, FleetId] { return FormSelection.count(FleetId) > 0 ? BotfUi::EIcon::Check : BotfUi::EIcon::Plus; })
+                .Colour(TAttribute<FSlateColor>::CreateLambda([this, FleetId] { return FSlateColor(FormSelection.count(FleetId) > 0 ? P().Accent : P().Text2); })),
+            [this, FleetId](bool Hover, bool, bool Focus, bool) {
+                const FPalette& Pal = P(); const bool On = FormSelection.count(FleetId) > 0;
+                BotfUi::FSurfaceLook L; L.Radius = FVector4(15, 15, 15, 15);
+                L.Fill = On ? BotfUi::WithAlpha(Pal.Primary, 0.24f) : BotfUi::WithAlpha(FLinearColor::White, Hover ? 0.08f : 0.03f);
+                L.Outline = Focus ? Pal.Accent : (On ? Pal.Primary : Pal.LineHi); return L; },
+            [this, FleetId] { RunGuarded([this, FleetId] { if (!FormSelection.erase(FleetId)) FormSelection.insert(FleetId); }); }, nullptr,
+            Txt(TEXT("Mark for a new task force")), FMargin(8));
+    }
+    void RefreshSectorHeader() {
+        if (SectorTags.IsValid()) {
+            SectorTags->ClearChildren();
+            const int X = SelectedCell % State.width, Y = SelectedCell / State.width;
+            const auto AddTag = [this](const TSharedRef<SWidget>& W) { SectorTags->AddSlot().AutoWidth().VAlign(VAlign_Center).Padding(0, 0, 6, 0) [ W ]; };
+            AddTag(Badge(Txt(FString::Printf(TEXT("SECTOR %d,%d"), X, Y)), &FPalette::Muted, 6));
+            if (!botf::explored(State, X, Y)) AddTag(Badge(Txt(TEXT("UNEXPLORED")), &FPalette::Warn, 6));
+            else {
+                const bool Seen = botf::visible(State, State.playerEmpire, X, Y);
+                const auto System = std::find_if(State.systems.begin(), State.systems.end(), [X, Y](const botf::System& S) { return S.x == X && S.y == Y; });
+                if (System == State.systems.end()) AddTag(Badge(Txt(TEXT("OPEN SPACE")), &FPalette::Tertiary, 6));
+                else {
+                    const auto Col = botf::colonyAt(State, System->id);
+                    if (Col && (Col->ownerId == State.playerEmpire || Seen)) AddTag(OwnerBadge(Col->ownerId, Str(botf::empireName(Col->ownerId)).ToUpper()));
+                    else if (const auto M = botf::minorAt(State, System->id); M && M->contact[State.playerEmpire]) AddTag(Badge(Txt(Str(M->name).ToUpper()), &FPalette::Secondary, 6));
+                }
+                if (!Seen) AddTag(Badge(Txt(TEXT("NO SENSOR CONTACT")), &FPalette::Muted, 6));
+            }
+        }
+        if (SectorStats.IsValid()) {
+            SectorStats->ClearChildren();
+            if (const auto* Col = OwnedColony()) {
+                const auto E = botf::economy(State, *Col);
+                const int Capacity = std::max(1, botf::systemCapacity(State, Selected));
+                const int FoodNet = E.food - Col->population, Net = E.income - E.upkeep;
+                auto Grid = SNew(SUniformGridPanel).SlotPadding(FMargin(0, 0, 6, 6));
+                Grid->AddSlot(0, 0) [ MiniStat(BotfUi::EIcon::Pop, TEXT("POP"), FString::Printf(TEXT("%d / %d"), Col->population, Capacity), &FPalette::Text,
+                    FMath::Clamp(static_cast<float>(Col->population) / Capacity, 0.f, 1.f), TEXT("Population against the system's capacity")) ];
+                Grid->AddSlot(1, 0) [ MiniStat(BotfUi::EIcon::Diplomacy, TEXT("MORALE"), FString::Printf(TEXT("%d%%"), Col->morale),
+                    Col->morale < 40 ? &FPalette::Alert : Col->morale < 60 ? &FPalette::Warn : &FPalette::Good, FMath::Clamp(Col->morale / 100.f, 0.f, 1.f), TEXT("Colony morale")) ];
+                Grid->AddSlot(2, 0) [ MiniStat(BotfUi::EIcon::Food, TEXT("FOOD"), FString::Printf(TEXT("%+d"), FoodNet), FoodNet < 0 ? &FPalette::Alert : &FPalette::Good, -1.f,
+                    FString::Printf(TEXT("Food produced %d, needed %d"), E.food, Col->population)) ];
+                Grid->AddSlot(0, 1) [ MiniStat(BotfUi::EIcon::Industry, TEXT("INDUSTRY"), FString::FromInt(E.industry), &FPalette::Text, -1.f, TEXT("Industry points per turn")) ];
+                Grid->AddSlot(1, 1) [ MiniStat(BotfUi::EIcon::Research, TEXT("RESEARCH"), FString::FromInt(E.research), &FPalette::Info, -1.f, TEXT("Research points per turn")) ];
+                Grid->AddSlot(2, 1) [ MiniStat(BotfUi::EIcon::Coin, TEXT("CREDITS"), FString::Printf(TEXT("%+d"), Net), Net < 0 ? &FPalette::Alert : &FPalette::Warn, -1.f,
+                    TEXT("Colony income less structure upkeep")) ];
+                SectorStats->AddSlot().AutoHeight() [ Grid ];
+            }
+        }
+    }
     void RefreshSector() {
         if (!SectorRows.IsValid()) return;
         SectorRows->ClearChildren();
+        RefreshSectorHeader();
         int Count = 0;
         PruneFormMarks();
         const auto& Draft = Preview();
@@ -2197,27 +2666,37 @@ private:
             if (!Group || !Shown.insert(Group->id).second) continue;
             ++Count;
             const int GroupId = Group->id, LeadId = Group->fleetIds.empty() ? Lead->id : Group->fleetIds.front();
-            const FString Label = FString::Printf(TEXT("%s  /  %d SHIPS\nHull %d  |  Shields %d  |  %s"), *Str(Group->name).ToUpper(),
-                static_cast<int>(Group->fleetIds.size()), botf::taskForceHull(Draft, GroupId), botf::taskForceShields(Draft, GroupId), StanceName(Group->stance));
+            int MaxHull = 0, MaxShields = 0;
+            for (const auto& Member : botf::taskForceFleets(Draft, GroupId)) { MaxHull += botf::fleetMaxHull(Member); MaxShields += botf::fleetMaxShields(Member); }
+            const int Hull = botf::taskForceHull(Draft, GroupId), Shields = botf::taskForceShields(Draft, GroupId);
             const bool Expanded = ExpandedTaskForces.count(GroupId) > 0;
-            SectorRows->AddSlot().AutoHeight().Padding(0, 0, 0, 3)
+            SectorRows->AddSlot().AutoHeight().Padding(0, 0, 0, 5)
                 [ SNew(SHorizontalBox)
-                    + SHorizontalBox::Slot().AutoWidth().Padding(0, 0, 4, 0) [ SNew(SBox).WidthOverride(5) [ Swatch(State.playerEmpire, 0) ] ]
                     + SHorizontalBox::Slot().FillWidth(1)
-                    [ Row(Label, [this, GroupId, LeadId] { SelectedFleet = LeadId; SelectedTaskForce = GroupId; },
+                    [ UnitRow(State.playerEmpire, Str(Group->name).ToUpper() + FString::Printf(TEXT("  /  %d SHIPS"), static_cast<int>(Group->fleetIds.size())),
+                        FString::Printf(TEXT("Hull %d  |  Shields %d  |  %s"), Hull, Shields, StanceName(Group->stance)),
+                        MaxHull > 0 ? FMath::Clamp(static_cast<float>(Hull) / MaxHull, 0.f, 1.f) : 0.f,
+                        MaxShields > 0 ? FMath::Clamp(static_cast<float>(Shields) / MaxShields, 0.f, 1.f) : -1.f,
+                        [this, GroupId, LeadId] { SelectedFleet = LeadId; SelectedTaskForce = GroupId; },
                         [this, GroupId] { return SelectedTaskForce == GroupId; }) ]
-                    + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(3, 0, 0, 0)
-                    [ Pill(Expanded ? TEXT("-") : TEXT("+"), [this, GroupId] {
-                        if (!ExpandedTaskForces.erase(GroupId)) ExpandedTaskForces.insert(GroupId);
-                        RefreshSector();
-                    }, nullptr, ERole::Tertiary, TEXT("Show or hide the ships in this task force")) ] ];
+                    + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(4, 0, 0, 0)
+                    [ BotfUi::MakeCardButton(SNew(BotfUi::SBotfIcon).Size(14).Icon(Expanded ? BotfUi::EIcon::ChevronUp : BotfUi::EIcon::ChevronDown).Colour(C(&FPalette::Text2)),
+                        [this](bool Hover, bool, bool Focus, bool) {
+                            const FPalette& Pal = P(); BotfUi::FSurfaceLook L; L.Radius = FVector4(15, 15, 15, 15);
+                            L.Fill = BotfUi::WithAlpha(FLinearColor::White, Hover ? 0.08f : 0.03f); L.Outline = Focus ? Pal.Accent : Pal.LineHi; return L; },
+                        [this, GroupId] { RunGuarded([this, GroupId] { if (!ExpandedTaskForces.erase(GroupId)) ExpandedTaskForces.insert(GroupId); RefreshSector(); }); }, nullptr,
+                        Txt(TEXT("Show or hide the ships in this task force")), FMargin(8)) ] ];
             if (!Expanded) continue;
-            for (const auto& Member : botf::taskForceFleets(Draft, GroupId))
-                SectorRows->AddSlot().AutoHeight().Padding(14, 0, 0, 3)
-                    [ Row(FString::Printf(TEXT("%s #%d  hull %d/%d"), *Str(botf::fleetName(Member)), Member.id, Member.hull, botf::fleetMaxHull(Member)),
+            for (const auto& Member : botf::taskForceFleets(Draft, GroupId)) {
+                const int MaxH = botf::fleetMaxHull(Member), MaxS = botf::fleetMaxShields(Member);
+                SectorRows->AddSlot().AutoHeight().Padding(16, 0, 0, 5)
+                    [ UnitRow(State.playerEmpire, Str(botf::fleetName(Member)) + FString::Printf(TEXT(" #%d"), Member.id),
+                        FString::Printf(TEXT("Hull %d/%d"), Member.hull, MaxH), MaxH > 0 ? FMath::Clamp(static_cast<float>(Member.hull) / MaxH, 0.f, 1.f) : 0.f,
+                        MaxS > 0 ? FMath::Clamp(static_cast<float>(Member.shields) / MaxS, 0.f, 1.f) : -1.f,
                         [this, Id = Member.id] { SelectedFleet = Id; SelectedTaskForce = 0; },
-                        [this, Id = Member.id] { return SelectedTaskForce == 0 && SelectedFleet == Id; }, nullptr,
+                        [this, Id = Member.id] { return SelectedTaskForce == 0 && SelectedFleet == Id; },
                         TEXT("Select this ship on its own (colonize, invade, terraform)")) ];
+            }
         }
         for (const auto& F : Draft.fleets) {
             if (F.x != SelectedCell % State.width || F.y != SelectedCell / State.width) continue;
@@ -2225,26 +2704,26 @@ private:
             if (!Mine && !botf::visible(State, State.playerEmpire, F.x, F.y)) continue;
             if (Mine && botf::fleetTaskForce(Draft, F.id)) continue;
             ++Count;
-            const FString Label = FString::Printf(TEXT("%s%s #%d\nHull %d/%d  |  Shields %d/%d"),
-                Mine ? TEXT("") : *(Str(botf::empireName(F.ownerId)).ToUpper() + TEXT("  ")),
-                *Str(botf::fleetName(F)), F.id, F.hull, botf::fleetMaxHull(F), F.shields, botf::fleetMaxShields(F));
-            SectorRows->AddSlot().AutoHeight().Padding(0, 0, 0, 3)
+            const int MaxH = botf::fleetMaxHull(F), MaxS = botf::fleetMaxShields(F);
+            const FString Name = Str(botf::fleetName(F)) + FString::Printf(TEXT(" #%d"), F.id);
+            const FString Sub = FString::Printf(TEXT("%sHull %d/%d  |  Shields %d/%d"), Mine ? TEXT("") : *(Str(botf::empireName(F.ownerId)).ToUpper() + TEXT("  |  ")),
+                F.hull, MaxH, F.shields, MaxS);
+            const float HullFrac = MaxH > 0 ? FMath::Clamp(static_cast<float>(F.hull) / MaxH, 0.f, 1.f) : 0.f;
+            const float ShieldFrac = MaxS > 0 ? FMath::Clamp(static_cast<float>(F.shields) / MaxS, 0.f, 1.f) : -1.f;
+            SectorRows->AddSlot().AutoHeight().Padding(0, 0, 0, 5)
                 [ SNew(SHorizontalBox)
-                    + SHorizontalBox::Slot().AutoWidth().Padding(0, 0, 4, 0) [ SNew(SBox).WidthOverride(5) [ Swatch(F.ownerId, 0) ] ]
                     + SHorizontalBox::Slot().FillWidth(1)
-                    [ Mine ? Row(Label, [this, Id = F.id] { SelectedFleet = Id; SelectedTaskForce = 0; }, [this, Id = F.id] { return SelectedTaskForce == 0 && SelectedFleet == Id; })
-                           : Row(Label, [this, Id = F.id] { SelectedEnemyFleet = Id; }, [this, Id = F.id] { return SelectedEnemyFleet == Id; }) ]
-                    + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(3, 0, 0, 0)
-                    [ Mine ? Control(TEXT("+"), [this, Id = F.id] { if (!FormSelection.erase(Id)) FormSelection.insert(Id); }, nullptr,
-                                [this, Id = F.id] { return FormSelection.count(Id) > 0; }, ERole::Secondary, FMargin(6, 4), false, 9,
-                                TEXT("Mark for a new task force"))
-                           : SNullWidget::NullWidget ] ];
+                    [ Mine ? UnitRow(F.ownerId, Name, Sub, HullFrac, ShieldFrac, [this, Id = F.id] { SelectedFleet = Id; SelectedTaskForce = 0; },
+                                [this, Id = F.id] { return SelectedTaskForce == 0 && SelectedFleet == Id; })
+                           : UnitRow(F.ownerId, Name, Sub, HullFrac, ShieldFrac, [this, Id = F.id] { SelectedEnemyFleet = Id; },
+                                [this, Id = F.id] { return SelectedEnemyFleet == Id; }) ]
+                    + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(4, 0, 0, 0)
+                    [ Mine ? MarkToggle(F.id) : SNullWidget::NullWidget ] ];
         }
         if (!Count) SectorRows->AddSlot().AutoHeight()
-            [ Para(Txt(FString::Printf(TEXT("No ships in this sector. You have %d ships; Tab cycles them."), OwnShipCount())), 9, &FPalette::Muted) ];
+            [ Para(Txt(FString::Printf(TEXT("No ships in this sector. You have %d ships; Tab cycles them."), OwnShipCount())), 8, &FPalette::Muted) ];
         RefreshPlanets();
     }
-    // Planets strip under the chart (original Main Galactic screen, Tutorial p5-7); terraforming by colony ship.
     // Planet survey (original planet strip, Tutorial p5-7): one row per planet; clicking terraforms with the selected colony ship.
     void RefreshPlanets() {
         for (TSharedPtr<SVerticalBox>* Target : { &PlanetRows, &SheetPlanetRows }) {
@@ -2253,29 +2732,54 @@ private:
             Box.ClearChildren();
             const auto& Planets = botf::systemPlanets(State, Selected);
             if (!Selected || Planets.empty()) {
-                if (Selected) Box.AddSlot().AutoHeight() [ Para(Txt(TEXT("No planet survey for this system.")), 9, &FPalette::Muted) ];
+                if (Selected) Box.AddSlot().AutoHeight() [ Para(Txt(TEXT("No planet survey for this system.")), 8, &FPalette::Muted) ];
                 continue;
             }
             for (const auto& Planet : Planets) {
                 const bool Habitable = Planet.terraformState == botf::TerraformingState::Terraformed;
-                const FString Label = FString::Printf(TEXT("%s  /  %s  /  %s  /  pop %d of %d"), *Str(Planet.name).ToUpper(),
-                    *Str(botf::planetClassName(Planet.planetClass)), *Str(botf::terraformingStateName(Planet.terraformState)).ToLower(),
-                    Planet.currentCapacity(), Planet.maxCapacity);
+                FLinearColor FPalette::* Tone = Habitable ? &FPalette::Good
+                    : Planet.terraformState == botf::TerraformingState::Uninhabitable ? &FPalette::Muted
+                    : Planet.terraformState == botf::TerraformingState::InProgress ? &FPalette::Warn : &FPalette::Tertiary;
+                const FString ClassName = Str(botf::planetClassName(Planet.planetClass));
+                const FString Letter = ClassName.Len() > 6 ? ClassName.Mid(6, 1) : FString(TEXT("?"));
+                const int Cap = Planet.currentCapacity(), Max = Planet.maxCapacity;
                 const FString Tip = Planet.terraformState == botf::TerraformingState::InProgress
                     ? FString::Printf(TEXT("Terraforming %d of %d"), Planet.terraformWork, Planet.terraformNeeded)
                     : TEXT("Select a colony ship in this system, then click to terraform");
-                Box.AddSlot().AutoHeight().Padding(0, 0, 0, 2)
-                    [ SNew(SHorizontalBox)
-                        + SHorizontalBox::Slot().AutoWidth().Padding(0, 0, 4, 0)
-                        [ SNew(SBox).WidthOverride(4) [ Fill(EShape::Block, Habitable ? &FPalette::Good
-                            : Planet.terraformState == botf::TerraformingState::Uninhabitable ? &FPalette::Muted : &FPalette::Tertiary) ] ]
-                        + SHorizontalBox::Slot().FillWidth(1)
-                        [ Control(Label, [this, Index = Planet.index] {
-                                botf::Command Cmd; Cmd.id = NextId(); Cmd.type = botf::CommandType::TerraformPlanet;
-                                Cmd.fleetId = SelectedFleet; Cmd.systemId = Selected; Cmd.planetIndex = Index;
-                                Submit(Cmd); Status = TEXT("Colony ship ordered to terraform this planet.");
-                            }, [this, Index = Planet.index] { return Fleet() && botf::canTerraformPlanet(State, SelectedFleet, Selected, Index); },
-                            nullptr, ERole::Secondary, FMargin(4, 3), true, 8, Tip) ] ];
+                Box.AddSlot().AutoHeight().Padding(0, 0, 0, 4)
+                    [ CardButton(SNew(SHorizontalBox)
+                        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0, 0, 10, 0)
+                        [ SNew(SBox).WidthOverride(26).HeightOverride(26)
+                            [ SNew(BotfUi::SBotfSurface).HAlign(HAlign_Center).VAlign(VAlign_Center)
+                                .Look([this, Tone] {
+                                    BotfUi::FSurfaceLook L; const FLinearColor H = P().*Tone;
+                                    L.Fill = BotfUi::WithAlpha(H, 0.2f); L.Outline = BotfUi::WithAlpha(H, 0.85f); L.Radius = FVector4(13, 13, 13, 13); return L; })
+                                [ SNew(STextBlock).Text(Txt(Letter)).Font(BotfUi::Display(9)).ColorAndOpacity_Lambda([this, Tone] { return FSlateColor(BotfUi::Lift(P().*Tone, 0.4f)); }) ] ] ]
+                        + SHorizontalBox::Slot().FillWidth(1).VAlign(VAlign_Center)
+                        [ SNew(SVerticalBox)
+                            + SVerticalBox::Slot().AutoHeight()
+                            [ SNew(STextBlock).Text(Txt(Str(Planet.name).ToUpper())).Font(BotfUi::Condensed(8)).ColorAndOpacity(C(&FPalette::Text)).OverflowPolicy(ETextOverflowPolicy::Ellipsis) ]
+                            + SVerticalBox::Slot().AutoHeight()
+                            [ SNew(STextBlock).Text(Txt(ClassName + TEXT("  /  ") + Str(botf::terraformingStateName(Planet.terraformState)).ToLower())).Font(BotfUi::Font(6))
+                                .ColorAndOpacity(C(&FPalette::Muted)).OverflowPolicy(ETextOverflowPolicy::Ellipsis) ] ]
+                        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(8, 0, 0, 0)
+                        [ SNew(SBox).WidthOverride(74)
+                            [ SNew(SVerticalBox)
+                                + SVerticalBox::Slot().AutoHeight()
+                                [ SNew(STextBlock).Text(Txt(FString::Printf(TEXT("%d / %d"), Cap, Max))).Font(BotfUi::Font(6)).ColorAndOpacity(C(&FPalette::Text2)).Justification(ETextJustify::Right) ]
+                                + SVerticalBox::Slot().AutoHeight().Padding(0, 3, 0, 0)
+                                [ SNew(SBox).HeightOverride(4) [ SNew(BotfUi::SBotfMeter).Value(Max > 0 ? FMath::Clamp(static_cast<float>(Cap) / Max, 0.f, 1.f) : 0.f).Height(4).Fill(C(Tone)) ] ] ] ],
+                        [this](bool Hover, bool Pressed, bool Focus, bool On) {
+                            const FPalette& Pal = P(); BotfUi::FSurfaceLook L; L.Radius = FVector4(10, 10, 10, 10);
+                            L.Fill = BotfUi::WithAlpha(Pal.Field, On ? (Hover ? 0.92f : 0.55f) : 0.4f);
+                            if (Pressed) L.Fill = BotfUi::Shade(L.Fill, 0.85f, L.Fill.A);
+                            L.Outline = Focus ? Pal.Accent : (Hover && On ? Pal.LineHi : Pal.Line); L.OutlineWidth = Focus ? 2.f : 1.f; return L; },
+                        [this, Index = Planet.index] {
+                            botf::Command Cmd; Cmd.id = NextId(); Cmd.type = botf::CommandType::TerraformPlanet;
+                            Cmd.fleetId = SelectedFleet; Cmd.systemId = Selected; Cmd.planetIndex = Index;
+                            Submit(Cmd); Status = TEXT("Colony ship ordered to terraform this planet.");
+                        }, [this, Index = Planet.index] { return Fleet() && botf::canTerraformPlanet(State, SelectedFleet, Selected, Index); },
+                        Tip, FMargin(10, 7, 10, 7)) ];
             }
         }
     }
@@ -4064,285 +4568,409 @@ private:
             [ SNew(SBox).Visibility_Lambda([this] { return Scene.IsValid() ? EVisibility::Collapsed : EVisibility::Visible; })
                 [ Para(Txt(TEXT("3D view unavailable; the radar shows the full battle.")), 10, &FPalette::Muted) ] ];
     }
-    TSharedRef<SWidget> ManeuverButton(const FString& Label, botf::tactical::TacticalManeuver Maneuver, const FString& Tip, ERole Role = ERole::Primary) {
-        return Control(Label, [this, Maneuver] { TacOrder(Maneuver); },
-            [this, Maneuver] { return CanTacOrder(Maneuver); },
+    // ---- Battle HUD ----
+    TSharedPtr<SVerticalBox> ContactPlayerRows, ContactEnemyRows, TelemetryRows;
+    struct FSideTotals {
+        int Owner = 0, Ships = 0, Active = 0, Hull = 0, MaxHull = 0, Shields = 0, MaxShields = 0;
+        TArray<TPair<FString, int>> Classes;
+        int Strength() const { return Hull + Shields; }
+    };
+    FSideTotals SideTotals(bool bMine) const {
+        FSideTotals T;
+        if (!Session.pending) return T;
+        TMap<FString, int> Count;
+        TArray<FString> Order;
+        for (const auto& S : Session.pending->ships) {
+            if ((S.ownerId == State.playerEmpire) != bMine) continue;
+            T.Owner = S.ownerId; ++T.Ships; if (TacActive(&S)) ++T.Active;
+            T.Hull += S.hull; T.MaxHull += S.maxHull; T.Shields += S.shields; T.MaxShields += S.maxShields;
+            const FString Name = Str(S.name);
+            if (!Count.Contains(Name)) Order.Add(Name);
+            Count.FindOrAdd(Name)++;
+        }
+        for (const FString& Name : Order) T.Classes.Emplace(Name, Count[Name]);
+        T.Classes.StableSort([](const TPair<FString, int>& A, const TPair<FString, int>& B) { return A.Value > B.Value; });
+        return T;
+    }
+    // One fleet's side of the contact card: emblem, ship counts, combined hull and shields and its ship classes.
+    void FillContactSide(const TSharedPtr<SVerticalBox>& Box, bool bMine) {
+        const FSideTotals T = SideTotals(bMine);
+        const int Owner = T.Owner ? T.Owner : State.playerEmpire;
+        Box->AddSlot().AutoHeight().Padding(0, 0, 0, 12)
+            [ SNew(SHorizontalBox)
+                + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0, 0, 14, 0) [ SNew(BotfUi::SBotfEmblem).Empire(Owner).Size(42) ]
+                + SHorizontalBox::Slot().FillWidth(1).VAlign(VAlign_Center)
+                [ SNew(SVerticalBox)
+                    + SVerticalBox::Slot().AutoHeight()
+                    [ SNew(STextBlock).Text(Txt(Str(botf::empireName(Owner)).ToUpper())).Font(BotfUi::Display(16))
+                        .ColorAndOpacity(FSlateColor(BotfUi::Lift(BotfUi::FactionColor(Owner), 0.3f))).OverflowPolicy(ETextOverflowPolicy::Ellipsis) ]
+                    + SVerticalBox::Slot().AutoHeight()
+                    [ SNew(STextBlock).Text(Txt(FString::Printf(TEXT("%s  /  %d SHIPS, %d FIGHTING"), bMine ? TEXT("YOUR FLEET") : TEXT("HOSTILE FORCE"), T.Ships, T.Active)))
+                        .Font(BotfUi::Caption(6)).ColorAndOpacity(C(&FPalette::Muted)) ] ] ];
+        const auto Bar = [this](const TCHAR* Caption, int Cur, int Max, FLinearColor FPalette::* Tone) {
+            return SNew(SHorizontalBox)
+                + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center) [ SNew(SBox).WidthOverride(58) [ SNew(STextBlock).Text(Txt(Caption)).Font(BotfUi::Caption(6)).ColorAndOpacity(C(&FPalette::Muted)) ] ]
+                + SHorizontalBox::Slot().FillWidth(1).VAlign(VAlign_Center).Padding(0, 0, 10, 0)
+                [ SNew(SBox).HeightOverride(7) [ SNew(BotfUi::SBotfMeter).Value(Max > 0 ? FMath::Clamp(static_cast<float>(Cur) / Max, 0.f, 1.f) : 0.f).Height(7).Fill(C(Tone)) ] ]
+                + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+                [ SNew(SBox).MinDesiredWidth(84) [ SNew(STextBlock).Text(Txt(FString::Printf(TEXT("%d / %d"), Cur, Max))).Font(BotfUi::Font(6)).ColorAndOpacity(C(&FPalette::Text)).Justification(ETextJustify::Right) ] ];
+        };
+        Box->AddSlot().AutoHeight().Padding(0, 0, 0, 5) [ Bar(TEXT("HULL"), T.Hull, T.MaxHull, &FPalette::Good) ];
+        Box->AddSlot().AutoHeight().Padding(0, 0, 0, 12) [ Bar(TEXT("SHIELDS"), T.Shields, T.MaxShields, &FPalette::Shield) ];
+        int Shown = 0, MaxCount = 1;
+        for (const auto& Entry : T.Classes) MaxCount = FMath::Max(MaxCount, Entry.Value);
+        for (const auto& Entry : T.Classes) {
+            if (Shown++ >= 6) break;
+            Box->AddSlot().AutoHeight().Padding(0, 0, 0, 4)
+                [ SNew(SHorizontalBox)
+                    + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+                    [ SNew(SBox).WidthOverride(38) [ SNew(STextBlock).Text(Txt(FString::Printf(TEXT("x%d"), Entry.Value))).Font(BotfUi::Display(10)).ColorAndOpacity(C(&FPalette::Accent)) ] ]
+                    + SHorizontalBox::Slot().FillWidth(1).VAlign(VAlign_Center)
+                    [ SNew(STextBlock).Text(Txt(Entry.Key)).Font(BotfUi::Font(7)).ColorAndOpacity(C(&FPalette::Text)).OverflowPolicy(ETextOverflowPolicy::Ellipsis) ]
+                    + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(8, 0, 0, 0)
+                    [ SNew(SBox).WidthOverride(70).HeightOverride(4)
+                        [ SNew(BotfUi::SBotfMeter).Value(static_cast<float>(Entry.Value) / MaxCount).Height(4).Fill(FSlateColor(BotfUi::FactionColor(Owner))) ] ] ];
+        }
+        if (T.Classes.Num() > 6)
+            Box->AddSlot().AutoHeight().Padding(38, 2, 0, 0)
+                [ SNew(STextBlock).Text(Txt(FString::Printf(TEXT("+ %d more classes"), T.Classes.Num() - 6))).Font(BotfUi::Font(6)).ColorAndOpacity(C(&FPalette::Muted)) ];
+    }
+    void RefreshContact() {
+        if (!ContactPlayerRows.IsValid() || !ContactEnemyRows.IsValid()) return;
+        ContactPlayerRows->ClearChildren(); ContactEnemyRows->ClearChildren();
+        if (!Session.pending) return;
+        FillContactSide(ContactPlayerRows, true);
+        FillContactSide(ContactEnemyRows, false);
+    }
+    // A large decision card: glyph and label over a one-line consequence, key hint at the corner.
+    TSharedRef<SWidget> ContactAction(BotfUi::EIcon Glyph, const FString& Label, const FString& Desc, const FString& Key, ERole Role,
+                                      std::function<void()> Action, const FString& Tip) {
+        const auto Hue = [this, Role]() -> FLinearColor {
+            const FPalette& Pal = P();
+            return Role == ERole::Alert ? Pal.Alert : Role == ERole::Accent ? Pal.Primary : Role == ERole::Secondary ? Pal.Info : Pal.Text2;
+        };
+        return CardButton(SNew(SVerticalBox)
+            + SVerticalBox::Slot().AutoHeight()
+            [ SNew(SHorizontalBox)
+                + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0, 0, 10, 0)
+                [ SNew(BotfUi::SBotfIcon).Icon(Glyph).Size(20).Colour(TAttribute<FSlateColor>::CreateLambda([Hue] { return FSlateColor(BotfUi::Lift(Hue(), 0.35f)); })) ]
+                + SHorizontalBox::Slot().FillWidth(1).VAlign(VAlign_Center)
+                [ SNew(STextBlock).Text(Txt(Label)).Font(BotfUi::Display(14)).ColorAndOpacity_Lambda([Hue] { return FSlateColor(BotfUi::Lift(Hue(), 0.5f)); }) ]
+                + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center) [ BotfUi::MakeKeyChip(Key, [Hue] { return BotfUi::Lift(Hue(), 0.3f); }) ] ]
+            + SVerticalBox::Slot().AutoHeight().Padding(0, 6, 0, 0)
+            [ SNew(STextBlock).Text(Txt(Desc)).Font(BotfUi::Font(7)).AutoWrapText(true).ColorAndOpacity(C(&FPalette::Text2)) ],
+            [Hue](bool Hover, bool Pressed, bool Focus, bool) {
+                const FLinearColor H = Hue(); const FPalette& Pal = BotfUi::Theme();
+                BotfUi::FSurfaceLook L; L.Radius = FVector4(14, 14, 14, 14);
+                L.Fill = BotfUi::WithAlpha(H, Pressed ? 0.30f : (Hover ? 0.20f : 0.10f));
+                L.Outline = Focus ? Pal.Accent : BotfUi::WithAlpha(H, Hover ? 1.f : 0.5f); L.OutlineWidth = Focus ? 2.f : 1.f;
+                if (Hover) { L.Glow = BotfUi::WithAlpha(H, 0.5f); L.GlowSize = 10.f; }
+                return L; },
+            Action, nullptr, Tip, FMargin(16, 14));
+    }
+    TSharedRef<SWidget> ManeuverButton(const FString& Label, botf::tactical::TacticalManeuver Maneuver, const FString& Tip, ERole Role = ERole::Primary,
+                                       BotfUi::EIcon Glyph = BotfUi::EIcon::Dot, const FString& Key = FString()) {
+        return ActionTile(Glyph, Label, [this, Maneuver] { TacOrder(Maneuver); }, [this, Maneuver] { return CanTacOrder(Maneuver); }, Tip, Role, Key,
             [this, Maneuver] {
                 if (!Session.pending || bTacOrderAll) return false;
                 for (const auto& O : Session.pending->pendingOrders) if (O.fleetId == TacShip) return O.maneuver == Maneuver;
                 return false;
-            }, Role, FMargin(6, 6), false, 9, Tip);
+            });
     }
     // Original encounter dialog (Tutorial p26): choose to command the battle or let it resolve.
     TSharedRef<SWidget> BuildEncounterChoice() {
+        const TSharedRef<SWidget> Card = Fill(EShape::Row, &FPalette::Void, SNew(SVerticalBox)
+            + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 16)
+            [ SNew(SHorizontalBox)
+                + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0, 0, 12, 0) [ Icon(BotfUi::EIcon::Alert, 26, &FPalette::Alert) ]
+                + SHorizontalBox::Slot().FillWidth(1).VAlign(VAlign_Center)
+                [ SNew(STextBlock).Text(Txt(TEXT("ENEMY CONTACT"))).Font(BotfUi::Display(22)).ColorAndOpacity(C(&FPalette::Alert)) ]
+                + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0, 0, 8, 0)
+                [ Badge(Dyn([this] { return Session.pending ? FString::Printf(TEXT("SECTOR %d,%d"), Session.pending->sectorX, Session.pending->sectorY) : FString(); }), &FPalette::Secondary, 7) ]
+                + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+                [ Badge(Dyn([this] { return Session.pending ? FString::Printf(TEXT("ROUND %d OF %d"), Session.pending->currentRound, Session.pending->maxRounds) : FString(); }), &FPalette::Muted, 7) ] ]
+            + SVerticalBox::Slot().AutoHeight()
+            [ SNew(SHorizontalBox)
+                + SHorizontalBox::Slot().FillWidth(1) [ SAssignNew(ContactPlayerRows, SVerticalBox) ]
+                + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(22, 0, 22, 0)
+                [ SNew(STextBlock).Text(Txt(TEXT("VS"))).Font(BotfUi::Display(20)).ColorAndOpacity(C(&FPalette::Muted)) ]
+                + SHorizontalBox::Slot().FillWidth(1) [ SAssignNew(ContactEnemyRows, SVerticalBox) ] ]
+            + SVerticalBox::Slot().AutoHeight().Padding(0, 6, 0, 0)
+            [ SNew(SVerticalBox)
+                + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 5)
+                [ SNew(SHorizontalBox)
+                    + SHorizontalBox::Slot().FillWidth(1) [ SNew(STextBlock).Text(Txt(TEXT("FLEET STRENGTH"))).Font(BotfUi::Caption(6)).ColorAndOpacity(C(&FPalette::Muted)) ]
+                    + SHorizontalBox::Slot().AutoWidth()
+                    [ SNew(STextBlock).Text(Dyn([this] {
+                            const FSideTotals A = SideTotals(true), B = SideTotals(false);
+                            return FString::Printf(TEXT("%d   against   %d"), A.Strength(), B.Strength()); }))
+                        .Font(BotfUi::Display(9)).ColorAndOpacity(C(&FPalette::Text)) ] ]
+                + SVerticalBox::Slot().AutoHeight()
+                [ SNew(SBox).HeightOverride(10)
+                    [ SNew(BotfUi::SBotfVersus)
+                        .Fraction_Lambda([this] {
+                            const float A = static_cast<float>(SideTotals(true).Strength()), B = static_cast<float>(SideTotals(false).Strength());
+                            return A + B > 0.f ? A / (A + B) : 0.5f; })
+                        .Left_Lambda([this] { return FSlateColor(BotfUi::FactionColor(State.playerEmpire)); })
+                        .Right_Lambda([this] { const FSideTotals B = SideTotals(false); return FSlateColor(BotfUi::FactionColor(B.Owner)); }) ] ]
+                + SVerticalBox::Slot().AutoHeight().Padding(0, 8, 0, 0)
+                [ SNew(SBox).Visibility_Lambda([this] { return Session.pending && !botf::view::hailOutlook(*Session.pending, State.playerEmpire).empty() ? EVisibility::Visible : EVisibility::Collapsed; })
+                    [ Para(Dyn([this] { return Session.pending ? Str(botf::view::hailOutlook(*Session.pending, State.playerEmpire)) : FString(); }), 8, &FPalette::Text2) ] ] ]
+            + SVerticalBox::Slot().AutoHeight().Padding(0, 16, 0, 0)
+            [ SNew(SHorizontalBox)
+                + SHorizontalBox::Slot().FillWidth(1).Padding(0, 0, 8, 0)
+                [ ContactAction(BotfUi::EIcon::Combat, TEXT("FIGHT"), TEXT("Command your ships round by round in 3D."), TEXT("F"), ERole::Alert,
+                    [this] { bEncounterChoice = false; TacLog = TEXT("You have tactical command. Give orders, then advance the round."); UpdateScene(); },
+                    TEXT("Command your ships round by round")) ]
+                + SHorizontalBox::Slot().FillWidth(1).Padding(4, 0, 4, 0)
+                [ ContactAction(BotfUi::EIcon::Bolt, TEXT("AUTO"), TEXT("Your ships fight under automatic command."), TEXT("A"), ERole::Secondary,
+                    [this] { TacAuto(); }, TEXT("Your ships fight under automatic command")) ]
+                + SHorizontalBox::Slot().FillWidth(1).Padding(8, 0, 0, 0)
+                [ ContactAction(BotfUi::EIcon::Diplomacy, TEXT("HAIL"), TEXT("Offer a truce. Every ship of yours must hail and the enemy must accept."), TEXT("H"), ERole::Tertiary,
+                    [this] {
+                        bEncounterChoice = false;
+                        bTacOrderAll = true;
+                        TacOrder(botf::tactical::TacticalManeuver::Hail);
+                        TacNextRound();
+                    }, TEXT("Attempt a diplomatic truce with the enemy force")) ] ],
+            FMargin(26, 22));
         return SNew(SOverlay)
             + SOverlay::Slot() [ BattleView() ]
-            + SOverlay::Slot().HAlign(HAlign_Center).VAlign(VAlign_Center)
-            [ SNew(SBox).WidthOverride(580)
-                [ Fill(EShape::Row, &FPalette::Field, Stack({
-                    Heading(Txt(TEXT("ENEMY CONTACT")), 22, &FPalette::Alert),
-                    Para(Dyn([this] { return EncounterSummary(); }), 12, &FPalette::Text),
-                    Para(Dyn([this] {
-                        FString Text;
-                        if (!Session.pending) return Text;
-                        for (const auto& S : Session.pending->ships)
-                            Text += FString::Printf(TEXT("%s  %s #%d  hull %d  shields %d\n"), *Str(botf::empireName(S.ownerId)), *Str(S.name), S.fleetId, S.hull, S.shields);
-                        return Text;
-                    }), 9, &FPalette::Muted),
-                    Line({
-                        Control(TEXT("FIGHT"), [this] { bEncounterChoice = false; TacLog = TEXT("You have tactical command. Give orders, then advance the round."); UpdateScene(); },
-                            nullptr, nullptr, ERole::Alert, FMargin(22, 12), false, 13, TEXT("Command your ships round by round (F)")),
-                        Control(TEXT("AUTO"), [this] { TacAuto(); }, nullptr, nullptr, ERole::Secondary, FMargin(22, 12), false, 13,
-                            TEXT("Your ships fight under automatic command (A)")),
-                        Control(TEXT("HAIL"), [this] {
-                            bEncounterChoice = false;
-                            bTacOrderAll = true;
-                            TacOrder(botf::tactical::TacticalManeuver::Hail);
-                            TacNextRound();
-                        }, nullptr, nullptr, ERole::Tertiary, FMargin(22, 12), false, 13, TEXT("Attempt diplomatic truce with enemy force (H)")) }, 8),
-                    Para(Txt(TEXT("Command in 3D (F), let ships fight automatically (A), or attempt a diplomatic truce (H).")), 9, &FPalette::Muted) }, 10), FMargin(20, 16)) ] ];
+            + SOverlay::Slot() [ SNew(SBorder).BorderImage(FCoreStyle::Get().GetBrush("WhiteBrush")).BorderBackgroundColor(FLinearColor(0.f, 0.004f, 0.02f, 0.45f)) ]
+            + SOverlay::Slot().HAlign(HAlign_Center).VAlign(VAlign_Center).Padding(30) [ SNew(SBox).WidthOverride(860) [ Card ] ];
     }
     std::function<void(int)> TacPickCallback() { return [this](int Id) { TacPick(Id); RefreshAll(); }; }
 
+    // A camera mode button inside the switch capsule.
+    TSharedRef<SWidget> CameraOption(const FString& Label, int Mode, bool bFocus, const FString& Tip) {
+        return Control(Label, [this, Mode, bFocus] { if (Scene.IsValid()) { Scene->SetCameraMode(Mode); if (bFocus) Scene->SetFocusedShips(TacShip, TacTarget); } },
+            nullptr, [this, Mode] { return Scene.IsValid() && Scene->GetCameraMode() == Mode; }, ERole::Segment, FMargin(12, 6), false, 8, Tip);
+    }
+    TSharedRef<SWidget> FleetHeader(const FString& Title, FLinearColor FPalette::* Tone, std::function<FString()> Count) {
+        return SNew(SHorizontalBox)
+            + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0, 0, 8, 0) [ Bar(EShape::Block, Tone, 3, 13) ]
+            + SHorizontalBox::Slot().FillWidth(1).VAlign(VAlign_Center)
+            [ SNew(STextBlock).Text(Txt(Title)).Font(BotfUi::Caption(7)).ColorAndOpacity(C(Tone)) ]
+            + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center) [ Badge(Dyn(Count), Tone, 6) ];
+    }
     TSharedRef<SWidget> BuildTacticalView() {
-        return SNew(SOverlay)
-            // 0: Fullscreen 3D Combat Viewport (with mouse orbit drag & wheel zoom)
-            + SOverlay::Slot()
-            [
-                SNew(BotfUi::STacticalViewport, Scene, &BattleBrush, [this] { return Scene.IsValid() && Session.pending; })
-            ]
-            // 1: Top HUD Bar (Title, Round, Faction Matchup, Camera Toolbar)
-            + SOverlay::Slot().VAlign(VAlign_Top).HAlign(HAlign_Fill)
-            [
-                SNew(SBox).HeightOverride(44)
-                [
-                    SNew(SBorder).BorderImage(FCoreStyle::Get().GetBrush("WhiteBrush"))
-                    .BorderBackgroundColor_Lambda([this] { return FSlateColor(BotfUi::Shade(P().Void, 0.82f, 0.90f)); })
-                    .Padding(FMargin(12, 5))
-                    [
-                        SNew(SHorizontalBox)
-                        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-                        [
-                            SNew(STextBlock).Text(Dyn([this] {
-                                if (!Session.pending) return FString();
-                                return FString::Printf(TEXT("TACTICAL ENGAGEMENT  /  SECTOR %d,%d"), Session.pending->sectorX, Session.pending->sectorY);
-                            })).Font(BotfUi::Font(11, true)).ColorAndOpacity(C(&FPalette::Accent))
-                        ]
-                        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(16, 0, 0, 0)
-                        [
-                            SNew(STextBlock).Text(Dyn([this] {
-                                if (!Session.pending) return FString();
-                                return FString::Printf(TEXT("ROUND %d OF %d  |  %s"),
-                                    Session.pending->currentRound, Session.pending->maxRounds,
-                                    Session.pending->isFinished ? TEXT("BATTLE OVER") : TEXT("TACTICAL PHASE"));
-                            })).Font(BotfUi::Font(9, true)).ColorAndOpacity_Lambda([this] {
-                                return FSlateColor(Session.pending && Session.pending->isFinished ? P().Good : P().Text);
-                            })
-                        ]
-                        + SHorizontalBox::Slot().FillWidth(1) [ SNullWidget::NullWidget ]
-                        // Camera Mode Presets & Toolbar
-                        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-                        [
-                            SNew(SHorizontalBox)
-                            + SHorizontalBox::Slot().AutoWidth().Padding(2, 0)
-                            [
-                                Option(TEXT("OVERVIEW (C)"), [this] { if (Scene.IsValid()) Scene->SetCameraMode(0); },
-                                    [this] { return Scene.IsValid() && Scene->GetCameraMode() == 0; }, ERole::Tertiary, 0, TEXT("Tactical Overview perspective (C)"))
-                            ]
-                            + SHorizontalBox::Slot().AutoWidth().Padding(2, 0)
-                            [
-                                Option(TEXT("CHASE"), [this] { if (Scene.IsValid()) Scene->SetCameraMode(1); },
-                                    [this] { return Scene.IsValid() && Scene->GetCameraMode() == 1; }, ERole::Tertiary, 0, TEXT("Dynamic Salvo/Dogfight Chase camera"))
-                            ]
-                            + SHorizontalBox::Slot().AutoWidth().Padding(2, 0)
-                            [
-                                Option(TEXT("FOCUS SHIP"), [this] { if (Scene.IsValid()) { Scene->SetCameraMode(2); Scene->SetFocusedShips(TacShip, TacTarget); } },
-                                    [this] { return Scene.IsValid() && Scene->GetCameraMode() == 2; }, ERole::Tertiary, 0, TEXT("Track currently selected friendly ship"))
-                            ]
-                            + SHorizontalBox::Slot().AutoWidth().Padding(2, 0)
-                            [
-                                Option(TEXT("FOCUS TARGET"), [this] { if (Scene.IsValid()) { Scene->SetCameraMode(3); Scene->SetFocusedShips(TacShip, TacTarget); } },
-                                    [this] { return Scene.IsValid() && Scene->GetCameraMode() == 3; }, ERole::Tertiary, 0, TEXT("Track designated hostile target"))
-                            ]
-                            + SHorizontalBox::Slot().AutoWidth().Padding(2, 0)
-                            [
-                                Option(TEXT("TOP-DOWN"), [this] { if (Scene.IsValid()) Scene->SetCameraMode(4); },
-                                    [this] { return Scene.IsValid() && Scene->GetCameraMode() == 4; }, ERole::Tertiary, 0, TEXT("Overhead 90-degree tactical arena grid"))
-                            ]
-                            + SHorizontalBox::Slot().AutoWidth().Padding(2, 0)
-                            [
-                                Option(TEXT("CINEMATIC"), [this] { if (Scene.IsValid()) { Scene->SetCameraMode(5); Scene->SetFocusedShips(TacShip, TacTarget); } },
-                                    [this] { return Scene.IsValid() && Scene->GetCameraMode() == 5; }, ERole::Tertiary, 0, TEXT("Cinematic camera that follows the action of a round"))
-                            ]
-                            + SHorizontalBox::Slot().AutoWidth().Padding(4, 0, 0, 0)
-                            [
-                                Pill(TEXT("RESET CAM"), [this] { if (Scene.IsValid()) Scene->ResetCameraOrbit(); }, nullptr, ERole::Secondary, TEXT("Reset camera orbit and zoom (Home, Double-Click)"))
-                            ]
-                        ]
-                    ]
-                ]
-            ]
-            // 2: Left Overlay (Fleet Status / Ship Selection)
-            + SOverlay::Slot().VAlign(VAlign_Fill).HAlign(HAlign_Left).Padding(FMargin(10, 50, 0, 110))
-            [
-                SNew(SBox).WidthOverride(270)
-                [
-                    SNew(SBorder).BorderImage(FCoreStyle::Get().GetBrush("WhiteBrush"))
-                    .BorderBackgroundColor_Lambda([this] { return FSlateColor(BotfUi::Shade(P().Void, 0.78f, 0.88f)); })
-                    .Padding(FMargin(8, 6))
-                    [
-                        SNew(SVerticalBox)
-                        + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 4)
-                        [
-                            Heading(Txt(TEXT("FRIENDLY FLEET")), 10, &FPalette::Accent)
-                        ]
-                        + SVerticalBox::Slot().FillHeight(1.1f).Padding(0, 0, 0, 6)
-                        [
-                            Scroll(SAssignNew(TacFriendlyRows, SVerticalBox))
-                        ]
-                        + SVerticalBox::Slot().AutoHeight().Padding(0, 4, 0, 4)
-                        [
-                            Heading(Txt(TEXT("HOSTILE CONTACTS")), 10, &FPalette::Alert)
-                        ]
-                        + SVerticalBox::Slot().FillHeight(0.9f)
-                        [
-                            Scroll(SAssignNew(TacHostileRows, SVerticalBox))
-                        ]
-                    ]
-                ]
-            ]
-            // 3: Right Overlay (Tactical Radar + Target Card + Orders Grid)
-            + SOverlay::Slot().VAlign(VAlign_Fill).HAlign(HAlign_Right).Padding(FMargin(0, 50, 10, 110))
-            [
-                SNew(SBox).WidthOverride(290)
-                [
-                    SNew(SBorder).BorderImage(FCoreStyle::Get().GetBrush("WhiteBrush"))
-                    .BorderBackgroundColor_Lambda([this] { return FSlateColor(BotfUi::Shade(P().Void, 0.78f, 0.88f)); })
-                    .Padding(FMargin(8, 6))
-                    [
-                        SNew(SVerticalBox)
-                        + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 4)
-                        [
-                            Heading(Txt(TEXT("TACTICAL RADAR")), 10, &FPalette::Secondary)
-                        ]
+        const auto SideCount = [this](bool bMine) {
+            return [this, bMine]() -> FString { const FSideTotals T = SideTotals(bMine); return FString::Printf(TEXT("%d / %d"), T.Active, T.Ships); };
+        };
+        const TSharedRef<SWidget> TopBar = SNew(SBox).HeightOverride(58)
+            [ SNew(BotfUi::SBotfSurface)
+                .Look([this] {
+                    BotfUi::FSurfaceLook L; const FPalette& Pal = P();
+                    L.Top = BotfUi::WithAlpha(BotfUi::Mix(Pal.FieldHi, Pal.Void, 0.5f), 0.94f); L.Fill = BotfUi::WithAlpha(Pal.Void, 0.86f); L.Radius = FVector4(0, 0, 0, 0); return L; })
+                .Padding(FMargin(16, 0, 14, 0)).VAlign(VAlign_Center)
+                [ SNew(SHorizontalBox)
+                    + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0, 0, 12, 0) [ Icon(BotfUi::EIcon::Combat, 22, &FPalette::Alert) ]
+                    + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+                    [ SNew(SVerticalBox)
+                        + SVerticalBox::Slot().AutoHeight() [ SNew(STextBlock).Text(Txt(TEXT("TACTICAL ENGAGEMENT"))).Font(BotfUi::Caption(6)).ColorAndOpacity(C(&FPalette::Muted)) ]
                         + SVerticalBox::Slot().AutoHeight()
-                        [
-                            SNew(SBox).HeightOverride(155)
-                            [
-                                SNew(SBorder).BorderImage_Lambda([this] { return BotfUi::Styles().Get(ThemeEmpire(), EShape::Block); })
-                                .BorderBackgroundColor_Lambda([this] { return FSlateColor(BotfUi::Shade(P().Secondary, 0.45f)); }).Padding(2)
-                                [
-                                    SNew(BotfUi::STacticalRadar, &Session.pending, &State.playerEmpire, &TacShip, &TacTarget, TacPickCallback())
-                                ]
-                            ]
-                        ]
-                        + SVerticalBox::Slot().AutoHeight().Padding(0, 2, 0, 4)
-                        [
-                            Para(Txt(TEXT("Click blip to target/select  |  Drag 3D to orbit")), 8, &FPalette::Muted)
-                        ]
-                        + SVerticalBox::Slot().AutoHeight().Padding(0, 4, 0, 0)
-                        [
-                            Section(Dyn([this] {
-                                if (bTacOrderAll) return FString(TEXT("ORDERS  /  ALL SHIPS"));
-                                return TEXT("ORDERS  /  ") + TacShipName(TacShip).ToUpper() + (TacTarget ? TEXT("  >  #") + FString::FromInt(TacTarget) : FString());
-                            }), SNew(SVerticalBox)
-                            + SVerticalBox::Slot().AutoHeight()
-                            [
-                                Grid({
-                                    ManeuverButton(TEXT("ENGAGE"), botf::tactical::TacticalManeuver::Engage, TEXT("Close to firing range and fire (1)")),
-                                    ManeuverButton(TEXT("CHARGE"), botf::tactical::TacticalManeuver::Charge, TEXT("Point-blank: +20% beams, more damage taken (2)")),
-                                    ManeuverButton(TEXT("CIRCLE"), botf::tactical::TacticalManeuver::Circle, TEXT("Stand off and evade: -25% damage taken, weaker beams (3)")),
-                                    ManeuverButton(TEXT("ASSAULT"), botf::tactical::TacticalManeuver::Assault, TEXT("Forward charge with +20% beam burst (6)")),
-                                    ManeuverButton(TEXT("STRAFE"), botf::tactical::TacticalManeuver::Strafe, TEXT("High-speed passing attack: +25% beam damage, +1 speed (9)")),
-                                    ManeuverButton(TEXT("FLYBY"), botf::tactical::TacticalManeuver::Flyby, TEXT("Fast medium-range pass: -15% incoming damage, +1 speed (8)")),
-                                    ManeuverButton(TEXT("HARRY"), botf::tactical::TacticalManeuver::Harry, TEXT("Close harassment: -20% incoming damage (7)")),
-                                    ManeuverButton(TEXT("EVADE"), botf::tactical::TacticalManeuver::Evade, TEXT("Defensive posture: -35% damage taken (0)")),
-                                    ManeuverButton(TEXT("HOLD"), botf::tactical::TacticalManeuver::Hold, TEXT("Hold position and brace: -20% damage taken, shields do not recharge (4)"), ERole::Secondary),
-                                    ManeuverButton(TEXT("RAM"), botf::tactical::TacticalManeuver::Ram, TEXT("Collide when within one cell: the target takes your hull as damage and you take its hull plus shields; usually both die (R)"), ERole::Alert),
-                                    ManeuverButton(TEXT("HAIL"), botf::tactical::TacticalManeuver::Hail, TEXT("Offer a truce: it holds when every ship of yours hails and the enemy accepts (H)"), ERole::Secondary),
-                                    ManeuverButton(TEXT("RETREAT"), botf::tactical::TacticalManeuver::Retreat, TEXT("Disengage: one round under fire with weapons offline (-25% damage taken), then escape if still retreating (5)"), ERole::Tertiary),
-                                    Control(TEXT("ALL SHIPS"), [this] { bTacOrderAll = !bTacOrderAll; }, nullptr, [this] { return bTacOrderAll; },
-                                        ERole::Secondary, FMargin(6, 6), false, 9, TEXT("Give the next order to every active ship")),
-                                    DynControl(Dyn([this] { return Scene.IsValid() ? Scene->GetCameraModeName() : FString(TEXT("CAM")); }),
-                                        [this] { if (Scene.IsValid()) Scene->CycleCameraMode(); }, nullptr, nullptr,
-                                        ERole::Tertiary, FMargin(6, 6), false, 9, TEXT("Cycle 3D Combat Camera (C)")) }, 2)
-                            ])
-                        ]
-                    ]
-                ]
-            ]
-            // 4: Bottom HUD Bar (Telemetry Log on left, Command Execution Controls on right)
+                        [ SNew(STextBlock).Text(Dyn([this] { return Session.pending ? FString::Printf(TEXT("SECTOR %d,%d"), Session.pending->sectorX, Session.pending->sectorY) : FString(); }))
+                            .Font(BotfUi::Display(13)).ColorAndOpacity(C(&FPalette::Accent)) ] ]
+                    + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(28, 0, 0, 0)
+                    [ SNew(SVerticalBox)
+                        + SVerticalBox::Slot().AutoHeight() [ SNew(STextBlock).Text(Txt(TEXT("ROUND"))).Font(BotfUi::Caption(6)).ColorAndOpacity(C(&FPalette::Muted)) ]
+                        + SVerticalBox::Slot().AutoHeight()
+                        [ SNew(STextBlock).Text(Dyn([this] { return Session.pending ? FString::Printf(TEXT("%d  /  %d"), Session.pending->currentRound, Session.pending->maxRounds) : FString(); }))
+                            .Font(BotfUi::Display(13)).ColorAndOpacity(C(&FPalette::Text)) ] ]
+                    + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(12, 6, 0, 0)
+                    [ SNew(SBox).WidthOverride(150).HeightOverride(5)
+                        [ SNew(BotfUi::SBotfMeter).Height(5).Fill(C(&FPalette::Info))
+                            .Value_Lambda([this] { return Session.pending && Session.pending->maxRounds > 0 ? static_cast<float>(Session.pending->currentRound) / Session.pending->maxRounds : 0.f; }) ] ]
+                    + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(20, 0, 0, 0)
+                    [ SNew(SBox).Visibility_Lambda([this] { return Session.pending && Session.pending->isFinished ? EVisibility::Collapsed : EVisibility::Visible; })
+                        [ Badge(Txt(TEXT("TACTICAL PHASE")), &FPalette::Info, 6) ] ]
+                    + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(20, 0, 0, 0)
+                    [ SNew(SBox).Visibility_Lambda([this] { return Session.pending && Session.pending->isFinished ? EVisibility::Visible : EVisibility::Collapsed; })
+                        [ Badge(Txt(TEXT("BATTLE OVER")), &FPalette::Good, 6) ] ]
+                    + SHorizontalBox::Slot().FillWidth(1) [ SNullWidget::NullWidget ]
+                    // Camera presets: the active one is the solid segment.
+                    + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0, 0, 10, 0)
+                    [ SNew(SHorizontalBox)
+                        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0, 0, 8, 0) [ Icon(BotfUi::EIcon::Camera, 18, &FPalette::Text2) ]
+                        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center) [ SNew(STextBlock).Text(Txt(TEXT("CAMERA"))).Font(BotfUi::Caption(6)).ColorAndOpacity(C(&FPalette::Muted)) ] ]
+                    + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+                    [ Capsule(SNew(SHorizontalBox)
+                        + SHorizontalBox::Slot().AutoWidth() [ CameraOption(TEXT("OVERVIEW"), 0, false, TEXT("Tactical overview perspective (C cycles the camera)")) ]
+                        + SHorizontalBox::Slot().AutoWidth() [ CameraOption(TEXT("CHASE"), 1, false, TEXT("Dynamic salvo and dogfight chase camera")) ]
+                        + SHorizontalBox::Slot().AutoWidth() [ CameraOption(TEXT("SHIP"), 2, true, TEXT("Track the selected friendly ship")) ]
+                        + SHorizontalBox::Slot().AutoWidth() [ CameraOption(TEXT("TARGET"), 3, true, TEXT("Track the designated hostile target")) ]
+                        + SHorizontalBox::Slot().AutoWidth() [ CameraOption(TEXT("TOP-DOWN"), 4, false, TEXT("Overhead 90-degree tactical arena grid")) ]
+                        + SHorizontalBox::Slot().AutoWidth() [ CameraOption(TEXT("CINEMATIC"), 5, true, TEXT("Cinematic camera that follows the action of a round")) ]) ]
+                    + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(8, 0, 0, 0)
+                    [ Control(TEXT("RESET"), [this] { if (Scene.IsValid()) Scene->ResetCameraOrbit(); }, nullptr, nullptr, ERole::Secondary, FMargin(12, 6), false, 8,
+                        TEXT("Reset camera orbit and zoom (double-click the view)"), 0, TEXT("Home")) ] ] ];
+        const TSharedRef<SWidget> FleetDock = SNew(SBox).WidthOverride(330)
+            [ Glass(SNew(SVerticalBox)
+                + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 8) [ FleetHeader(TEXT("FRIENDLY FLEET"), &FPalette::Accent, SideCount(true)) ]
+                + SVerticalBox::Slot().FillHeight(1.15f).Padding(0, 0, 0, 8) [ SNew(SScrollBox).ScrollBarThickness(FVector2D(5, 5)) + SScrollBox::Slot() [ SAssignNew(TacFriendlyRows, SVerticalBox) ] ]
+                + SVerticalBox::Slot().AutoHeight().Padding(0, 2, 0, 8) [ FleetHeader(TEXT("HOSTILE CONTACTS"), &FPalette::Alert, SideCount(false)) ]
+                + SVerticalBox::Slot().FillHeight(0.85f) [ SNew(SScrollBox).ScrollBarThickness(FVector2D(5, 5)) + SScrollBox::Slot() [ SAssignNew(TacHostileRows, SVerticalBox) ] ],
+                FMargin(12, 12, 8, 12)) ];
+        using M = botf::tactical::TacticalManeuver;
+        using I = BotfUi::EIcon;
+        const auto Group = [this](const TCHAR* Title, std::initializer_list<TSharedRef<SWidget>> Tiles) {
+            return SNew(SVerticalBox)
+                + SVerticalBox::Slot().AutoHeight().Padding(0, 8, 0, 5) [ Caption(Title) ]
+                + SVerticalBox::Slot().AutoHeight() [ Grid(Tiles, 2) ];
+        };
+        const TSharedRef<SWidget> OrdersPanel = SNew(SVerticalBox)
+            + SVerticalBox::Slot().AutoHeight()
+            [ SNew(SHorizontalBox)
+                + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0, 0, 8, 0) [ Bar(EShape::Block, &FPalette::Secondary, 3, 13) ]
+                + SHorizontalBox::Slot().FillWidth(1).VAlign(VAlign_Center)
+                [ SNew(STextBlock).Text(Dyn([this] {
+                        if (bTacOrderAll) return FString(TEXT("ORDERS  /  ALL SHIPS"));
+                        return TEXT("ORDERS  /  ") + TacShipName(TacShip).ToUpper() + (TacTarget ? TEXT("  >  #") + FString::FromInt(TacTarget) : FString()); }))
+                    .Font(BotfUi::Caption(7)).ColorAndOpacity(C(&FPalette::Secondary)).OverflowPolicy(ETextOverflowPolicy::Ellipsis) ] ]
+            + SVerticalBox::Slot().AutoHeight().Padding(0, 8, 0, 0)
+            [ Capsule(SNew(SHorizontalBox)
+                + SHorizontalBox::Slot().FillWidth(1)
+                [ Control(TEXT("THIS SHIP"), [this] { bTacOrderAll = false; }, nullptr, [this] { return !bTacOrderAll; }, ERole::Segment, FMargin(8, 6), false, 8,
+                    TEXT("Give the next order to the selected ship only")) ]
+                + SHorizontalBox::Slot().FillWidth(1)
+                [ Control(TEXT("ALL SHIPS"), [this] { bTacOrderAll = true; }, nullptr, [this] { return bTacOrderAll; }, ERole::Segment, FMargin(8, 6), false, 8,
+                    TEXT("Give the next order to every active ship")) ]) ]
+            + SVerticalBox::Slot().AutoHeight()
+            [ Group(TEXT("ATTACK"), {
+                ManeuverButton(TEXT("ENGAGE"), M::Engage, TEXT("Close to firing range and fire"), ERole::Primary, I::Target, TEXT("1")),
+                ManeuverButton(TEXT("CHARGE"), M::Charge, TEXT("Point-blank: +20% beams, more damage taken"), ERole::Primary, I::Bolt, TEXT("2")),
+                ManeuverButton(TEXT("ASSAULT"), M::Assault, TEXT("Forward charge with +20% beam burst"), ERole::Primary, I::Combat, TEXT("6")),
+                ManeuverButton(TEXT("STRAFE"), M::Strafe, TEXT("High-speed passing attack: +25% beam damage, +1 speed"), ERole::Primary, I::ChevronRight, TEXT("9")),
+                ManeuverButton(TEXT("RAM"), M::Ram, TEXT("Collide when within one cell: the target takes your hull as damage and you take its hull plus shields; usually both die"), ERole::Alert, I::Alert, TEXT("R")) }) ]
+            + SVerticalBox::Slot().AutoHeight()
+            [ Group(TEXT("MANOEUVRE"), {
+                ManeuverButton(TEXT("CIRCLE"), M::Circle, TEXT("Stand off and evade: -25% damage taken, weaker beams"), ERole::Secondary, I::System, TEXT("3")),
+                ManeuverButton(TEXT("FLYBY"), M::Flyby, TEXT("Fast medium-range pass: -15% incoming damage, +1 speed"), ERole::Secondary, I::ChevronUp, TEXT("8")),
+                ManeuverButton(TEXT("HARRY"), M::Harry, TEXT("Close harassment: -20% incoming damage"), ERole::Secondary, I::Eye, TEXT("7")),
+                ManeuverButton(TEXT("EVADE"), M::Evade, TEXT("Defensive posture: -35% damage taken"), ERole::Secondary, I::Shield, TEXT("0")) }) ]
+            + SVerticalBox::Slot().AutoHeight()
+            [ Group(TEXT("POSTURE"), {
+                ManeuverButton(TEXT("HOLD"), M::Hold, TEXT("Hold position and brace: -20% damage taken, shields do not recharge"), ERole::Tertiary, I::Dot, TEXT("4")),
+                ManeuverButton(TEXT("HAIL"), M::Hail, TEXT("Offer a truce: it holds when every ship of yours hails and the enemy accepts"), ERole::Tertiary, I::Diplomacy, TEXT("H")),
+                ManeuverButton(TEXT("RETREAT"), M::Retreat, TEXT("Disengage: one round under fire with weapons offline (-25% damage taken), then escape if still retreating"), ERole::Tertiary, I::ChevronLeft, TEXT("5")) }) ];
+        const TSharedRef<SWidget> RightDock = SNew(SBox).WidthOverride(310)
+            [ SNew(SScrollBox).ScrollBarThickness(FVector2D(5, 5))
+                + SScrollBox::Slot()
+                [ Stack({
+                    Glass(SNew(SVerticalBox)
+                        + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 8)
+                        [ SNew(SHorizontalBox)
+                            + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0, 0, 8, 0) [ Bar(EShape::Block, &FPalette::Secondary, 3, 13) ]
+                            + SHorizontalBox::Slot().FillWidth(1).VAlign(VAlign_Center)
+                            [ SNew(STextBlock).Text(Txt(TEXT("TACTICAL RADAR"))).Font(BotfUi::Caption(7)).ColorAndOpacity(C(&FPalette::Secondary)) ]
+                            + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+                            [ SNew(STextBlock).Text(Txt(TEXT("click a blip to select or target"))).Font(BotfUi::Font(5)).ColorAndOpacity(C(&FPalette::Muted)) ] ]
+                        + SVerticalBox::Slot().AutoHeight()
+                        [ SNew(SBox).HeightOverride(165)
+                            [ SNew(BotfUi::SBotfSurface).Padding(FMargin(3))
+                                .Look([this] {
+                                    BotfUi::FSurfaceLook L; L.Fill = BotfUi::WithAlpha(FLinearColor::Black, 0.35f); L.Outline = P().Line; L.Radius = FVector4(10, 10, 10, 10); return L; })
+                                [ SNew(BotfUi::STacticalRadar, &Session.pending, &State.playerEmpire, &TacShip, &TacTarget, TacPickCallback()) ] ] ],
+                        FMargin(12, 12)),
+                    Glass(OrdersPanel, FMargin(12, 12)) }, 8) ] ];
+        // Command box: advance the round, or continue the turn once the battle is over.
+        const TSharedRef<SWidget> CommandBox = SNew(SBox).WidthOverride(330)
+            [ Glass(SNew(SWidgetSwitcher).WidgetIndex_Lambda([this] { return (Session.pending && Session.pending->isFinished) ? 1 : 0; })
+                + SWidgetSwitcher::Slot()
+                [ SNew(SVerticalBox)
+                    + SVerticalBox::Slot().FillHeight(1)
+                    [ Control(TEXT("NEXT ROUND"), [this] { TacNextRound(); }, [this] { return Session.pending && !Session.pending->isFinished; }, nullptr,
+                        ERole::Accent, FMargin(10, 10), false, 13, TEXT("Resolve one tactical round. Ships without orders act on their own."), 0, TEXT("Space")) ]
+                    + SVerticalBox::Slot().AutoHeight().Padding(0, 6, 0, 0)
+                    [ Control(TEXT("AUTO FINISH"), [this] { TacAuto(); }, [this] { return Session.pending && !Session.pending->isFinished; }, nullptr,
+                        ERole::Secondary, FMargin(6, 7), false, 9, TEXT("Hand the rest of the battle to automatic command"), 0, TEXT("A")) ] ]
+                + SWidgetSwitcher::Slot()
+                [ SNew(SVerticalBox)
+                    + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 6) [ Para(Txt(TEXT("The battle is over. Review the log, then continue the turn.")), 8, &FPalette::Text2) ]
+                    + SVerticalBox::Slot().FillHeight(1)
+                    [ Control(TEXT("CONTINUE TURN"), [this] { TacContinue(); }, [this] { return Session.pending && Session.pending->isFinished; }, nullptr,
+                        ERole::Accent, FMargin(10, 14), false, 13, TEXT("Apply the result and continue the turn"), 0, TEXT("Space")) ] ],
+                FMargin(10, 10)) ];
+        const TSharedRef<SWidget> TelemetryPanel = Glass(SNew(SVerticalBox)
+            + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 5)
+            [ SNew(SHorizontalBox)
+                + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0, 0, 8, 0) [ Bar(EShape::Block, &FPalette::Tertiary, 3, 13) ]
+                + SHorizontalBox::Slot().FillWidth(1).VAlign(VAlign_Center)
+                [ SNew(STextBlock).Text(Txt(TEXT("COMBAT TELEMETRY"))).Font(BotfUi::Caption(7)).ColorAndOpacity(C(&FPalette::Tertiary)) ]
+                + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+                [ SNew(STextBlock).Visibility_Lambda([this] { return Status.StartsWith(TEXT("Order rejected")) ? EVisibility::Visible : EVisibility::Collapsed; })
+                    .Text(Dyn([this] { return Status; })).Font(BotfUi::Font(7, true)).ColorAndOpacity(C(&FPalette::Alert)) ] ]
+            + SVerticalBox::Slot().FillHeight(1)
+            [ SNew(SScrollBox).ScrollBarThickness(FVector2D(5, 5)) + SScrollBox::Slot() [ SAssignNew(TelemetryRows, SVerticalBox) ] ],
+            FMargin(12, 9, 8, 9));
+        return SNew(SOverlay)
+            // 0: full-screen 3D combat viewport (mouse orbit drag and wheel zoom)
+            + SOverlay::Slot() [ SNew(BotfUi::STacticalViewport, Scene, &BattleBrush, [this] { return Scene.IsValid() && Session.pending; }) ]
+            + SOverlay::Slot().VAlign(VAlign_Top).HAlign(HAlign_Fill) [ TopBar ]
+            + SOverlay::Slot().VAlign(VAlign_Fill).HAlign(HAlign_Left).Padding(FMargin(10, 66, 0, 128)) [ FleetDock ]
+            + SOverlay::Slot().VAlign(VAlign_Fill).HAlign(HAlign_Right).Padding(FMargin(0, 66, 10, 128)) [ RightDock ]
             + SOverlay::Slot().VAlign(VAlign_Bottom).HAlign(HAlign_Fill).Padding(FMargin(10, 0, 10, 10))
-            [
-                SNew(SBox).HeightOverride(100)
-                [
-                    SNew(SHorizontalBox)
-                    + SHorizontalBox::Slot().FillWidth(1).Padding(0, 0, 10, 0)
-                    [
-                        SNew(SBorder).BorderImage(FCoreStyle::Get().GetBrush("WhiteBrush"))
-                        .BorderBackgroundColor_Lambda([this] { return FSlateColor(BotfUi::Shade(P().Void, 0.82f, 0.90f)); })
-                        .Padding(FMargin(10, 6))
-                        [
-                            SNew(SVerticalBox)
-                            + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 2)
-                            [
-                                SNew(SHorizontalBox)
-                                + SHorizontalBox::Slot().AutoWidth() [ Heading(Txt(TEXT("COMBAT TELEMETRY")), 9, &FPalette::Tertiary) ]
-                                + SHorizontalBox::Slot().FillWidth(1) [ SNullWidget::NullWidget ]
-                                + SHorizontalBox::Slot().AutoWidth()
-                                [
-                                    SNew(STextBlock).Visibility_Lambda([this] { return Status.StartsWith(TEXT("Order rejected")) ? EVisibility::Visible : EVisibility::Collapsed; })
-                                    .Text(Dyn([this] { return Status; })).Font(BotfUi::Font(9, true)).ColorAndOpacity(C(&FPalette::Alert))
-                                ]
-                            ]
-                            + SVerticalBox::Slot().FillHeight(1)
-                            [
-                                Scroll(Para(Dyn([this] { return TacLog; }), 9, &FPalette::Text))
-                            ]
-                        ]
-                    ]
-                    + SHorizontalBox::Slot().AutoWidth()
-                    [
-                        SNew(SBox).WidthOverride(290)
-                        [
-                            SNew(SBorder).BorderImage(FCoreStyle::Get().GetBrush("WhiteBrush"))
-                            .BorderBackgroundColor_Lambda([this] { return FSlateColor(BotfUi::Shade(P().Void, 0.85f, 0.92f)); })
-                            .Padding(FMargin(10, 8))
-                            [
-                                SNew(SVerticalBox)
-                                + SVerticalBox::Slot().FillHeight(1)
-                                [
-                                    SNew(SWidgetSwitcher).WidgetIndex_Lambda([this] { return (Session.pending && Session.pending->isFinished) ? 1 : 0; })
-                                    + SWidgetSwitcher::Slot()
-                                    [
-                                        SNew(SVerticalBox)
-                                        + SVerticalBox::Slot().FillHeight(1)
-                                        [
-                                            Control(TEXT("NEXT ROUND"), [this] { TacNextRound(); }, [this] { return Session.pending && !Session.pending->isFinished; }, nullptr,
-                                                ERole::Accent, FMargin(10, 10), false, 12, TEXT("Resolve one tactical round (Space). Ships without orders act on their own."))
-                                        ]
-                                        + SVerticalBox::Slot().AutoHeight().Padding(0, 4, 0, 0)
-                                        [
-                                            Control(TEXT("AUTO FINISH"), [this] { TacAuto(); }, [this] { return Session.pending && !Session.pending->isFinished; }, nullptr,
-                                                ERole::Secondary, FMargin(6, 6), false, 10, TEXT("Hand the rest of the battle to automatic command (A)"))
-                                        ]
-                                    ]
-                                    + SWidgetSwitcher::Slot()
-                                    [
-                                        Control(TEXT("CONTINUE TURN"), [this] { TacContinue(); }, [this] { return Session.pending && Session.pending->isFinished; }, nullptr,
-                                            ERole::Accent, FMargin(10, 14), false, 13, TEXT("Apply the result and continue the turn (Space)"))
-                                    ]
-                                ]
-                            ]
-                        ]
-                    ]
-                ]
-            ];
+            [ SNew(SBox).HeightOverride(110)
+                [ SNew(SHorizontalBox)
+                    + SHorizontalBox::Slot().FillWidth(1).Padding(0, 0, 10, 0) [ TelemetryPanel ]
+                    + SHorizontalBox::Slot().AutoWidth() [ CommandBox ] ] ];
+    }
+    // Parses the round log into rows: a round header, then one row per order line (ship, manoeuvre, target, damage).
+    void RefreshTelemetry() {
+        if (!TelemetryRows.IsValid()) return;
+        TelemetryRows->ClearChildren();
+        TArray<FString> Lines;
+        TacLog.ParseIntoArrayLines(Lines, false);
+        const auto OwnerOf = [this](const FString& Name) -> int {
+            FString Head, Tail;
+            if (!Session.pending || !Name.Split(TEXT("#"), &Head, &Tail, ESearchCase::CaseSensitive, ESearchDir::FromEnd)) return 0;
+            const auto* S = Session.pending->getShip(FCString::Atoi(*Tail));
+            return S ? S->ownerId : 0;
+        };
+        for (const FString& Line : Lines) {
+            if (Line.IsEmpty()) continue;
+            if (Line.StartsWith(TEXT("ROUND "))) {
+                TelemetryRows->AddSlot().AutoHeight().Padding(0, 0, 0, 4)
+                    [ SNew(SHorizontalBox)
+                        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center) [ Badge(Txt(Line), &FPalette::Info, 6) ]
+                        + SHorizontalBox::Slot().FillWidth(1).VAlign(VAlign_Center).Padding(8, 0, 0, 0) [ Divider() ] ];
+                continue;
+            }
+            FString Left, Right, Move, Target, Damage;
+            if (Line.Split(TEXT(": "), &Left, &Right) && Right.Split(TEXT(" > "), &Move, &Target)) {
+                if (Target.Split(TEXT(", "), &Target, &Damage)) {}
+                const int Owner = OwnerOf(Left);
+                const FLinearColor Side = Owner ? BotfUi::FactionColor(Owner) : FLinearColor(0.6f, 0.65f, 0.75f);
+                auto Row = SNew(SHorizontalBox)
+                    + SHorizontalBox::Slot().AutoWidth().Padding(0, 0, 8, 0) [ SNew(SBox).WidthOverride(3).HeightOverride(15) [ SNew(SBorder).BorderImage(BotfUi::Styles().Get(1, EShape::Block)).BorderBackgroundColor(Side) ] ]
+                    + SHorizontalBox::Slot().FillWidth(1.2f).VAlign(VAlign_Center)
+                    [ SNew(STextBlock).Text(Txt(Left)).Font(BotfUi::Font(6, true)).ColorAndOpacity(C(&FPalette::Text)).OverflowPolicy(ETextOverflowPolicy::Ellipsis) ]
+                    + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(8, 0, 8, 0) [ Badge(Txt(Move.ToUpper()), &FPalette::Secondary, 6) ]
+                    + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0, 0, 8, 0) [ Icon(BotfUi::EIcon::ChevronRight, 11, &FPalette::Muted) ]
+                    + SHorizontalBox::Slot().FillWidth(1.2f).VAlign(VAlign_Center)
+                    [ SNew(STextBlock).Text(Txt(Target)).Font(BotfUi::Font(6)).ColorAndOpacity(C(&FPalette::Text2)).OverflowPolicy(ETextOverflowPolicy::Ellipsis) ];
+                FString Beam, Torpedo;
+                if (Damage.Split(TEXT(" beam + "), &Beam, &Torpedo)) {
+                    Row->AddSlot().AutoWidth().VAlign(VAlign_Center).Padding(8, 0, 0, 0) [ Badge(Txt(Beam + TEXT(" BEAM")), &FPalette::Warn, 6) ];
+                    if (FCString::Atoi(*Torpedo) > 0)
+                        Row->AddSlot().AutoWidth().VAlign(VAlign_Center).Padding(4, 0, 0, 0) [ Badge(Txt(FString::FromInt(FCString::Atoi(*Torpedo)) + TEXT(" TORP")), &FPalette::Info, 6) ];
+                } else if (!Damage.IsEmpty())
+                    Row->AddSlot().AutoWidth().VAlign(VAlign_Center).Padding(8, 0, 0, 0) [ SNew(STextBlock).Text(Txt(Damage)).Font(BotfUi::Font(6)).ColorAndOpacity(C(&FPalette::Warn)) ];
+                TelemetryRows->AddSlot().AutoHeight().Padding(0, 0, 0, 3) [ Row ];
+            } else {
+                TelemetryRows->AddSlot().AutoHeight().Padding(0, 0, 0, 3)
+                    [ SNew(SHorizontalBox)
+                        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0, 0, 8, 0) [ Icon(BotfUi::EIcon::Dot, 10, &FPalette::Muted) ]
+                        + SHorizontalBox::Slot().FillWidth(1) [ SNew(STextBlock).Text(Txt(Line)).Font(BotfUi::Font(6)).ColorAndOpacity(C(&FPalette::Text2)).AutoWrapText(true) ] ];
+            }
+        }
     }
     void RefreshTactical() {
         if (TacRows.IsValid()) TacRows->ClearChildren();
         if (TacFriendlyRows.IsValid()) TacFriendlyRows->ClearChildren();
         if (TacHostileRows.IsValid()) TacHostileRows->ClearChildren();
+        RefreshTelemetry();
+        RefreshContact();
         if (!Session.pending) return;
         const auto& E = *Session.pending;
 
@@ -4351,98 +4979,62 @@ private:
             const auto Ordered = E.getOrder(S.fleetId);
             const bool HasOrder = std::any_of(E.pendingOrders.begin(), E.pendingOrders.end(), [&](const botf::tactical::Order& O) { return O.fleetId == S.fleetId; });
             const auto* Grp = E.getGroupForShip(S.fleetId);
-            const FString GrpTag = Grp ? FString::Printf(TEXT("[%s] "), *Str(botf::tactical::tacticalGroupClassName(Grp->groupClass))) : FString();
-            const FString CloakTag = S.isCloaked ? TEXT(" [CLOAKED]") : FString();
-            FString State_ = !S.isAlive ? FString(TEXT("DESTROYED")) : S.retreated ? FString(TEXT("WITHDRAWN"))
+            const FString GrpTag = Grp ? Str(botf::tactical::tacticalGroupClassName(Grp->groupClass)).ToUpper() : FString();
+            FString OrderLine = !S.isAlive ? FString(TEXT("DESTROYED")) : S.retreated ? FString(TEXT("WITHDRAWN"))
                 : Mine ? (HasOrder ? Str(botf::tactical::maneuverName(Ordered.maneuver)).ToUpper() + (Ordered.targetFleetId ? FString::Printf(TEXT(" > #%d"), Ordered.targetFleetId) : FString())
                                    : E.standingOrders.count(S.fleetId) ? TEXT("STANDING: ") + Str(botf::tactical::maneuverName(Ordered.maneuver)).ToUpper()
                                    : FString(TEXT("NO ORDER: THE TACTICAL AI DECIDES")))
                 : FString::Printf(TEXT("at %d,%d"), S.position.x, S.position.y);
-            // Rules 2 state: disengaging, no retreat route, unarmed; and what the ship actually did last round.
+            // Rules 2 state: disengaging, no retreat route, unarmed; and what the ship actually did last round (kept for the tooltip).
+            FString Detail = OrderLine;
             if (S.isAlive && !S.retreated) {
                 std::vector<std::string> Tags = botf::view::shipTags(E, S);
                 Tags.erase(std::remove_if(Tags.begin(), Tags.end(), [](const std::string& ShipTag) { return ShipTag.rfind("CLOAKED", 0) == 0; }), Tags.end());
-                if (!Tags.empty()) State_ += TEXT("\n") + Str(botf::view::joinTags(Tags));
+                if (!Tags.empty()) Detail += TEXT("\n") + Str(botf::view::joinTags(Tags));
                 const std::string Last = botf::view::executedOrderText(E, S.fleetId);
-                if (!Last.empty()) State_ += TEXT("\nLast round: ") + Str(Last);
+                if (!Last.empty()) Detail += TEXT("\nLast round: ") + Str(Last);
             }
-
             const bool bSelected = Mine ? (TacShip == S.fleetId) : (TacTarget == S.fleetId);
-            const FLinearColor FrameColor = bSelected ? (Mine ? P().Accent : P().Alert) : BotfUi::Shade(P().Secondary, 0.25f);
-
-            auto CardWidget = SNew(SBorder)
-                .BorderImage(FCoreStyle::Get().GetBrush("WhiteBrush"))
-                .BorderBackgroundColor(FSlateColor(bSelected ? BotfUi::Shade(FrameColor, 0.4f, 0.85f) : BotfUi::Shade(P().Void, 0.65f, 0.75f)))
-                .Padding(FMargin(6, 4))
-                [
-                    SNew(SVerticalBox)
-                    + SVerticalBox::Slot().AutoHeight()
-                    [
-                        SNew(SHorizontalBox)
-                        + SHorizontalBox::Slot().AutoWidth().Padding(0, 0, 6, 0)
-                        [
-                            SNew(SBox).WidthOverride(6) [ Swatch(S.ownerId, 0) ]
-                        ]
-                        + SHorizontalBox::Slot().FillWidth(1)
-                        [
-                            SNew(STextBlock).Text(FText::FromString(FString::Printf(TEXT("%s%s #%d%s"), *GrpTag, *Str(S.name), S.fleetId, *CloakTag)))
-                            .Font(BotfUi::Font(9, true))
-                            .ColorAndOpacity(FSlateColor(bSelected ? FrameColor : P().Text))
-                        ]
-                        + SHorizontalBox::Slot().AutoWidth()
-                        [
-                            SNew(STextBlock).Text(FText::FromString(bSelected ? (Mine ? TEXT("[ACTIVE]") : TEXT("[TARGET]")) : FString()))
-                            .Font(BotfUi::Font(8, true))
-                            .ColorAndOpacity(FSlateColor(FrameColor))
-                        ]
-                    ]
-                    + SVerticalBox::Slot().AutoHeight().Padding(0, 2, 0, 0)
-                    [
-                        SNew(SHorizontalBox)
-                        + SHorizontalBox::Slot().AutoWidth()
-                        [
-                            SNew(STextBlock)
-                            .Text(FText::FromString(FString::Printf(TEXT("H:%d/%d S:%d/%d"), S.hull, S.maxHull, S.shields, S.maxShields)))
-                            .Font(BotfUi::Font(8))
-                            .ColorAndOpacity(FSlateColor(P().Muted))
-                        ]
-                        + SHorizontalBox::Slot().FillWidth(1).Padding(6, 1, 0, 1)
-                        [
-                            SNew(BotfUi::SShipStatusBar)
-                            .Hull(S.hull).MaxHull(S.maxHull)
-                            .Shields(S.shields).MaxShields(S.maxShields)
-                            .Empire(S.ownerId)
-                        ]
-                    ]
-                    + SVerticalBox::Slot().AutoHeight().Padding(0, 2, 0, 0)
-                    [
-                        SNew(STextBlock).Text(FText::FromString(State_))
-                        .Font(BotfUi::Font(8))
-                        .ColorAndOpacity(FSlateColor(!S.isAlive ? P().Alert : S.retreated ? P().Muted : P().Secondary))
-                    ]
-                ];
-
-            auto RowButton = SNew(SButton)
-                .ButtonStyle(&FCoreStyle::Get().GetWidgetStyle<FButtonStyle>("NoBorder"))
-                .ContentPadding(FMargin(0, 0, 0, 3))
-                .OnClicked_Lambda([this, Id = S.fleetId]() {
-                    TacPick(Id);
-                    RefreshAll();
-                    return FReply::Handled();
-                })
-                .ToolTipText(FText::FromString(Mine ? TEXT("Select to give orders (or click radar blip)") : TEXT("Designate as target (or click radar blip)")))
-                [
-                    CardWidget
-                ];
-
-            if (Mine && TacFriendlyRows.IsValid())
-            {
-                TacFriendlyRows->AddSlot().AutoHeight() [ RowButton ];
+            const bool bDown = !S.isAlive || S.retreated;
+            const int Owner = S.ownerId;
+            auto Head = SNew(SHorizontalBox)
+                + SHorizontalBox::Slot().FillWidth(1).VAlign(VAlign_Center)
+                [ SNew(STextBlock).Text(Txt(FString::Printf(TEXT("%s #%d"), *Str(S.name), S.fleetId))).Font(BotfUi::Font(7, true))
+                    .ColorAndOpacity(FSlateColor(bDown ? P().Muted : P().Text)).OverflowPolicy(ETextOverflowPolicy::Ellipsis) ];
+            if (S.isCloaked) Head->AddSlot().AutoWidth().VAlign(VAlign_Center).Padding(4, 0, 0, 0) [ Badge(Txt(TEXT("CLOAKED")), &FPalette::Shield, 5) ];
+            if (bSelected) Head->AddSlot().AutoWidth().VAlign(VAlign_Center).Padding(4, 0, 0, 0) [ Badge(Txt(Mine ? TEXT("ACTIVE") : TEXT("TARGET")), Mine ? &FPalette::Accent : &FPalette::Alert, 5) ];
+            auto Body = SNew(SVerticalBox)
+                + SVerticalBox::Slot().AutoHeight() [ Head ];
+            if (!bDown) {
+                Body->AddSlot().AutoHeight().Padding(0, 5, 0, 0)
+                    [ SNew(SHorizontalBox)
+                        + SHorizontalBox::Slot().FillWidth(1).VAlign(VAlign_Center)
+                        [ SNew(SBox).HeightOverride(12) [ SNew(BotfUi::SShipStatusBar).Hull(S.hull).MaxHull(S.maxHull).Shields(S.shields).MaxShields(S.maxShields).Empire(Owner) ] ]
+                        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(8, 0, 0, 0)
+                        [ SNew(SBox).MinDesiredWidth(82)
+                            [ SNew(STextBlock).Text(Txt(FString::Printf(TEXT("%d / %d\n%d / %d"), S.hull, S.maxHull, S.shields, S.maxShields))).Font(BotfUi::Font(5))
+                                .ColorAndOpacity(C(&FPalette::Text2)).Justification(ETextJustify::Right) ] ] ];
             }
-            else if (!Mine && TacHostileRows.IsValid())
-            {
-                TacHostileRows->AddSlot().AutoHeight() [ RowButton ];
-            }
+            Body->AddSlot().AutoHeight().Padding(0, 3, 0, 0)
+                [ SNew(STextBlock).Text(Txt(GrpTag.IsEmpty() ? OrderLine : GrpTag + TEXT("   ") + OrderLine)).Font(BotfUi::Font(5))
+                    .ColorAndOpacity(FSlateColor(!S.isAlive ? P().Alert : S.retreated ? P().Muted : (Mine ? P().Secondary : P().Text2))).OverflowPolicy(ETextOverflowPolicy::Ellipsis) ];
+            const TSharedRef<SWidget> Card = CardButton(SNew(SHorizontalBox)
+                    + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Top).Padding(0, 1, 9, 0) [ SNew(BotfUi::SBotfEmblem).Empire(Owner).Size(17) ]
+                    + SHorizontalBox::Slot().FillWidth(1) [ Body ],
+                [this, Mine, bSelected, bDown](bool Hover, bool Pressed, bool Focus, bool) {
+                    const FPalette& Pal = P(); const FLinearColor Edge = Mine ? Pal.Accent : Pal.Alert;
+                    BotfUi::FSurfaceLook L; L.Radius = FVector4(9, 9, 9, 9);
+                    L.Fill = bSelected ? BotfUi::WithAlpha(BotfUi::Mix(Pal.FieldHi, Edge, 0.16f), 0.97f) : BotfUi::WithAlpha(Pal.Field, bDown ? 0.4f : (Hover ? 0.92f : 0.66f));
+                    if (Pressed) L.Fill = BotfUi::Shade(L.Fill, 0.85f, L.Fill.A);
+                    L.Outline = Focus ? Pal.Accent : (bSelected ? BotfUi::WithAlpha(Edge, 0.9f) : (Hover ? Pal.LineHi : Pal.Line));
+                    L.OutlineWidth = bSelected || Focus ? 1.5f : 1.f;
+                    L.Stripe = bSelected ? Edge : FLinearColor::Transparent;
+                    return L; },
+                [this, Id = S.fleetId] { TacPick(Id); }, nullptr,
+                Detail + TEXT("\n") + (Mine ? TEXT("Select to give orders (or click a radar blip)") : TEXT("Designate as target (or click a radar blip)")),
+                FMargin(14, 7, 8, 7));
+            if (Mine && TacFriendlyRows.IsValid()) TacFriendlyRows->AddSlot().AutoHeight().Padding(0, 0, 0, 5) [ Card ];
+            else if (!Mine && TacHostileRows.IsValid()) TacHostileRows->AddSlot().AutoHeight().Padding(0, 0, 0, 5) [ Card ];
         }
     }
     TSharedRef<SWidget> BuildCombatScreen() {
@@ -5049,73 +5641,150 @@ private:
             ERole::Secondary, FMargin(10, 6), false, 10,
             FString::Printf(TEXT("Start campaign in the %s era"), *Name));
     }
+    TSharedRef<SWidget> FactionCard(int Id) {
+        const FFactionInfo& Info = FactionInfo(Id);
+        auto Traits = SNew(SVerticalBox);
+        for (const TCHAR* Trait : Info.Traits)
+            Traits->AddSlot().AutoHeight().Padding(0, 3, 0, 0)
+                [ SNew(SHorizontalBox)
+                    + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0, 0, 8, 0)
+                    [ SNew(SBox).WidthOverride(5).HeightOverride(5) [ Fill(EShape::Pill, &FPalette::Secondary) ] ]
+                    + SHorizontalBox::Slot().FillWidth(1) [ SNew(STextBlock).Text(Txt(Trait)).Font(BotfUi::Font(8)).ColorAndOpacity(C(&FPalette::Text2)) ] ];
+        return CardButton(SNew(SVerticalBox)
+            + SVerticalBox::Slot().AutoHeight()
+            [ SNew(SHorizontalBox)
+                + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0, 0, 12, 0) [ SNew(BotfUi::SBotfEmblem).Empire(Id).Size(46) ]
+                + SHorizontalBox::Slot().FillWidth(1).VAlign(VAlign_Center)
+                [ SNew(SVerticalBox)
+                    + SVerticalBox::Slot().AutoHeight()
+                    [ SNew(STextBlock).Text(Txt(Str(botf::empireName(Id)).ToUpper())).Font(BotfUi::Display(14)).ColorAndOpacity(C(&FPalette::Text))
+                        .OverflowPolicy(ETextOverflowPolicy::Ellipsis) ]
+                    + SVerticalBox::Slot().AutoHeight().Padding(0, 1, 0, 0)
+                    [ SNew(STextBlock).Text(Txt(FString(TEXT("CAPITAL  /  ")) + FString(Info.Capital).ToUpper())).Font(BotfUi::Caption(7)).ColorAndOpacity(C(&FPalette::Muted)) ] ] ]
+            + SVerticalBox::Slot().AutoHeight().Padding(0, 10, 0, 0)
+            [ SNew(STextBlock).Text(Txt(FString(TEXT("“")) + Info.Motto + TEXT("”"))).Font(BotfUi::Font(8)).ColorAndOpacity(C(&FPalette::Text2)).AutoWrapText(true) ]
+            + SVerticalBox::Slot().AutoHeight().Padding(0, 6, 0, 0) [ Traits ],
+            [this, Id](bool Hover, bool Pressed, bool Focus, bool) {
+                const FLinearColor F = BotfUi::FactionColor(Id); const bool Sel = SetupPlayer == Id; const FPalette& Pal = P();
+                BotfUi::FSurfaceLook L;
+                L.Radius = FVector4(16, 16, 16, 16);
+                L.Top = BotfUi::WithAlpha(BotfUi::Mix(Pal.FieldHi, F, Sel ? 0.24f : (Hover ? 0.12f : 0.05f)), 0.96f);
+                L.Fill = BotfUi::WithAlpha(BotfUi::Mix(Pal.Field, F, Sel ? 0.10f : 0.02f), 0.96f);
+                L.Outline = Sel ? F : (Hover ? BotfUi::WithAlpha(F, 0.7f) : Pal.Line);
+                L.OutlineWidth = Sel || Focus ? 2.f : 1.f;
+                L.Sheen = BotfUi::WithAlpha(F, Sel ? 0.9f : 0.15f);
+                if (Sel) { L.Glow = BotfUi::WithAlpha(F, 0.55f); L.GlowSize = 12.f; }
+                if (Pressed) L.Fill = BotfUi::Shade(L.Fill, 0.8f, L.Fill.A);
+                return L; },
+            [this, Id] { SetupPlayer = Id; SetupEmpires = std::max(SetupEmpires, Id); }, nullptr,
+            FString::Printf(TEXT("Lead the %s"), *Str(botf::empireName(Id))), FMargin(16, 14));
+    }
+    // Caption above a control group.
+    TSharedRef<SWidget> Caption(const FString& Text) const {
+        return SNew(STextBlock).Text(Txt(Text)).Font(BotfUi::Caption(7)).ColorAndOpacity(C(&FPalette::Muted));
+    }
+    TSharedRef<SWidget> SetupLine(BotfUi::EIcon Glyph, std::function<FString()> Value) const {
+        return SNew(SHorizontalBox)
+            + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Top).Padding(0, 1, 10, 0) [ Icon(Glyph, 15, &FPalette::Primary) ]
+            + SHorizontalBox::Slot().FillWidth(1) [ Para(Dyn(Value), 9, &FPalette::Text) ];
+    }
     TSharedRef<SWidget> BuildCampaignControls() {
         auto Factions = SNew(SHorizontalBox);
-        for (int Id = 1; Id <= 5; ++Id) Factions->AddSlot().FillWidth(1).Padding(0, 0, Id < 5 ? 6 : 0, 0)
-            [ SNew(SVerticalBox)
-                + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 4) [ Swatch(Id, 5) ]
-                + SVerticalBox::Slot().AutoHeight()
-                [ Option(Str(botf::empireName(Id)).ToUpper(), [this, Id] { SetupPlayer = Id; SetupEmpires = std::max(SetupEmpires, Id); },
-                    [this, Id] { return SetupPlayer == Id; }, ERole::Primary, Id) ] ];
+        for (int Id = 1; Id <= 5; ++Id) Factions->AddSlot().FillWidth(1).Padding(0, 0, Id < 5 ? 12 : 0, 0) [ FactionCard(Id) ];
         auto OptionRow = [](std::initializer_list<TSharedRef<SWidget>> Items) {
             auto Box = SNew(SHorizontalBox);
-            for (const auto& Item : Items) Box->AddSlot().AutoWidth().Padding(0, 0, 5, 0) [ Item ];
+            for (const auto& Item : Items) Box->AddSlot().AutoWidth().Padding(0, 0, 6, 0) [ Item ];
             return Box;
         };
-        return Stack({
-            Section(Dyn([this] { return TEXT("EMPIRE  /  ") + Str(botf::empireName(SetupPlayer)).ToUpper(); }), Factions),
-            Section(Dyn([this] { return TEXT("GAMEPLAY  /  ") + Str(botf::rulesetPresetName(SetupPresetValue())).ToUpper(); }), SNew(SVerticalBox)
-                + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 6)
-                [ OptionRow({ Option(TEXT("REMASTERED"), [this] { SetupPreset = static_cast<int>(botf::RulesetPreset::Remastered); },
-                                  [this] { return SetupPresetValue() == botf::RulesetPreset::Remastered; }, TEXT("Every remaster gameplay layer (recommended)")),
-                              Option(TEXT("CLASSIC"), [this] { SetupPreset = static_cast<int>(botf::RulesetPreset::Classic); },
-                                  [this] { return SetupPresetValue() == botf::RulesetPreset::Classic; }, TEXT("Original-like rules")) }) ]
-                + SVerticalBox::Slot().AutoHeight()
-                [ Para(Dyn([this] { return Str(botf::view::presetSummary(SetupPresetValue()))
-                    + TEXT(" Both place minor races from the 30-race roster, scaled to the galaxy size."); }), 10, &FPalette::Muted) ]),
-            Section(Txt(TEXT("CATALOGUE")), SNew(SVerticalBox)
-                + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 6)
-                [ OptionRow({ Option(TEXT("CLASSIC CATALOGUE"), [this] { SetupRuleset = 1; }, [this] { return SetupRuleset == 1; }),
-                              Option(TEXT("PROTOTYPE GALAXY"), [this] { SetupRuleset = 0; }, [this] { return SetupRuleset == 0; }) }) ]
-                + SVerticalBox::Slot().AutoHeight()
-                [ Para(Dyn([this] { return SetupRuleset
-                    ? FString(TEXT("Original technology names and costs, faction starships and structures, delayed diplomacy and combat stances."))
-                    : FString(TEXT("A smaller, simplified early ruleset.")); }), 10, &FPalette::Muted) ]),
-            Section(Dyn([this] { return FString::Printf(TEXT("STARTING ERA  /  %s"), *FString(botf::startingEraName(static_cast<botf::StartingEra>(SetupEra))).ToUpper()); }),
-                SNew(SVerticalBox)
-                + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 6)
-                [ OptionRow({
-                    EraOption(botf::StartingEra::Early),
-                    EraOption(botf::StartingEra::Developed),
-                    EraOption(botf::StartingEra::Expanded),
-                    EraOption(botf::StartingEra::Advanced),
-                    EraOption(botf::StartingEra::Supreme)
-                }) ]
-                + SVerticalBox::Slot().AutoHeight()
-                [ Para(Dyn([this] { return SetupEraNote(); }), 10, &FPalette::Muted) ]),
-            Section(Txt(TEXT("GALAXY")), SNew(SVerticalBox)
-                + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 8)
-                [ Para(Dyn([this] {
-                    return FString::Printf(TEXT("%d major powers  |  %s  |  seed %s  |  random events %s"),
-                        SetupEmpires, SetupSize ? TEXT("large galaxy, 20x15, 42 systems") : TEXT("standard galaxy, 16x12, 28 systems"),
-                        SetupSeed == 0 ? TEXT("1999") : SetupSeed == 1 ? TEXT("24680") : TEXT("101010"), SetupEvents ? TEXT("on") : TEXT("off"));
-                }), 12, &FPalette::Text) ]
-                + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 6)
-                [ OptionRow({ PowersOption(2), PowersOption(3), PowersOption(4), PowersOption(5) }) ]
-                + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 6)
-                [ Para(Dyn([this] { return SetupPowersNote(); }), 9, &FPalette::Muted) ]
-                + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 6)
-                [ OptionRow({ Option(TEXT("STANDARD"), [this] { SetupSize = 0; }, [this] { return SetupSize == 0; }),
-                              Option(TEXT("LARGE"), [this] { SetupSize = 1; }, [this] { return SetupSize == 1; }),
-                              Option(TEXT("RANDOM EVENTS"), [this] { SetupEvents = !SetupEvents; }, [this] { return SetupEvents; }, ERole::Tertiary) }) ]
-                + SVerticalBox::Slot().AutoHeight()
-                [ OptionRow({ Option(TEXT("SEED 1999"), [this] { SetupSeed = 0; }, [this] { return SetupSeed == 0; }),
-                              Option(TEXT("SEED 24680"), [this] { SetupSeed = 1; }, [this] { return SetupSeed == 1; }),
-                              Option(TEXT("SEED 101010"), [this] { SetupSeed = 2; }, [this] { return SetupSeed == 2; }) }) ]),
-            SNew(SHorizontalBox)
-                + SHorizontalBox::Slot().AutoWidth()
-                [ Control(TEXT("BEGIN CAMPAIGN"), [this] { RequestAction(EPendingAction::StartCampaign); }, nullptr, nullptr,
-                    ERole::Accent, FMargin(28, 12), false, 13, FString()) ] });
+        const TSharedRef<SWidget> Galaxy = Section(Txt(TEXT("GALAXY")), SNew(SVerticalBox)
+            + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 5) [ Caption(TEXT("SIZE")) ]
+            + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 12)
+            [ OptionRow({ Option(TEXT("STANDARD  16x12"), [this] { SetupSize = 0; }, [this] { return SetupSize == 0; }, TEXT("Standard galaxy: 16x12 sectors, 28 systems")),
+                          Option(TEXT("LARGE  20x15"), [this] { SetupSize = 1; }, [this] { return SetupSize == 1; }, TEXT("Large galaxy: 20x15 sectors, 42 systems")) }) ]
+            + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 5) [ Caption(TEXT("POWERS IN PLAY")) ]
+            + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 4)
+            [ OptionRow({ PowersOption(2), PowersOption(3), PowersOption(4), PowersOption(5) }) ]
+            + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 12) [ Para(Dyn([this] { return SetupPowersNote(); }), 8, &FPalette::Muted) ]
+            + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 5) [ Caption(TEXT("SEED")) ]
+            + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 12)
+            [ OptionRow({ Option(TEXT("1999"), [this] { SetupSeed = 0; }, [this] { return SetupSeed == 0; }, TEXT("Reference galaxy seed")),
+                          Option(TEXT("24680"), [this] { SetupSeed = 1; }, [this] { return SetupSeed == 1; }),
+                          Option(TEXT("101010"), [this] { SetupSeed = 2; }, [this] { return SetupSeed == 2; }) }) ]
+            + SVerticalBox::Slot().AutoHeight()
+            [ OptionRow({ Option(TEXT("RANDOM EVENTS"), [this] { SetupEvents = !SetupEvents; }, [this] { return SetupEvents; }, ERole::Tertiary, 0,
+                              TEXT("Random and galactic events during the campaign")) }) ]);
+        auto Eras = SNew(SVerticalBox);
+        static const int TechLevels[5] = { 1, 3, 5, 7, 10 };
+        const botf::StartingEra EraList[5] = { botf::StartingEra::Early, botf::StartingEra::Developed, botf::StartingEra::Expanded,
+            botf::StartingEra::Advanced, botf::StartingEra::Supreme };
+        for (int I = 0; I < 5; ++I) {
+            const int EraVal = static_cast<int>(EraList[I]);
+            Eras->AddSlot().AutoHeight().Padding(0, 0, 0, 4)
+                [ Control(FString(botf::startingEraName(EraList[I])).ToUpper() + FString::Printf(TEXT("     TECH LEVEL %d"), TechLevels[I]),
+                    [this, EraVal] { SetupEra = EraVal; }, nullptr, [this, EraVal] { return SetupEra == EraVal; }, ERole::Primary, FMargin(4, 7, 8, 7), true, 10,
+                    FString::Printf(TEXT("Start the campaign in the %s era"), *FString(botf::startingEraName(EraList[I])))) ];
+        }
+        const TSharedRef<SWidget> EraCard = Section(Txt(TEXT("STARTING ERA")), SNew(SVerticalBox)
+            + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 6) [ Eras ]
+            + SVerticalBox::Slot().AutoHeight() [ Para(Dyn([this] { return SetupEraNote(); }), 8, &FPalette::Muted) ]);
+        const TSharedRef<SWidget> Rules = Section(Txt(TEXT("RULES")), SNew(SVerticalBox)
+            + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 5) [ Caption(TEXT("GAMEPLAY")) ]
+            + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 4)
+            [ OptionRow({ Option(TEXT("REMASTERED"), [this] { SetupPreset = static_cast<int>(botf::RulesetPreset::Remastered); },
+                              [this] { return SetupPresetValue() == botf::RulesetPreset::Remastered; }, TEXT("Every remaster gameplay layer (recommended)")),
+                          Option(TEXT("CLASSIC"), [this] { SetupPreset = static_cast<int>(botf::RulesetPreset::Classic); },
+                              [this] { return SetupPresetValue() == botf::RulesetPreset::Classic; }, TEXT("Original-like rules")) }) ]
+            + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 12)
+            [ Para(Dyn([this] { return Str(botf::view::presetSummary(SetupPresetValue()))
+                + TEXT(" Both place minor races from the 30-race roster, scaled to the galaxy size."); }), 8, &FPalette::Muted) ]
+            + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 5) [ Caption(TEXT("CATALOGUE")) ]
+            + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 4)
+            [ OptionRow({ Option(TEXT("CLASSIC CATALOGUE"), [this] { SetupRuleset = 1; }, [this] { return SetupRuleset == 1; }),
+                          Option(TEXT("PROTOTYPE GALAXY"), [this] { SetupRuleset = 0; }, [this] { return SetupRuleset == 0; }) }) ]
+            + SVerticalBox::Slot().AutoHeight()
+            [ Para(Dyn([this] { return SetupRuleset
+                ? FString(TEXT("Original technology names and costs, faction starships and structures, delayed diplomacy and combat stances."))
+                : FString(TEXT("A smaller, simplified early ruleset.")); }), 8, &FPalette::Muted) ]);
+        const TSharedRef<SWidget> Summary = Fill(EShape::Row, &FPalette::FieldHi, SNew(SVerticalBox)
+            + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 12)
+            [ SNew(SHorizontalBox)
+                + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0, 0, 12, 0)
+                [ SNew(BotfUi::SBotfEmblem).Empire_Lambda([this] { return SetupPlayer; }).Size(44) ]
+                + SHorizontalBox::Slot().FillWidth(1).VAlign(VAlign_Center)
+                [ SNew(SVerticalBox)
+                    + SVerticalBox::Slot().AutoHeight()
+                    [ SNew(STextBlock).Text(Dyn([this] { return Str(botf::empireName(SetupPlayer)).ToUpper(); })).Font(BotfUi::Display(16)).ColorAndOpacity(C(&FPalette::Accent)) ]
+                    + SVerticalBox::Slot().AutoHeight()
+                    [ SNew(STextBlock).Text(Dyn([this] { return FString(TEXT("FROM ")) + FString(FactionInfo(SetupPlayer).Capital).ToUpper(); }))
+                        .Font(BotfUi::Caption(7)).ColorAndOpacity(C(&FPalette::Muted)) ] ] ]
+            + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 10) [ Divider() ]
+            + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 7)
+            [ SetupLine(BotfUi::EIcon::Empire, [this] { return FString::Printf(TEXT("%d major powers in play"), SetupEmpires); }) ]
+            + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 7)
+            [ SetupLine(BotfUi::EIcon::System, [this] { return SetupSize ? FString(TEXT("Large galaxy: 20x15 sectors, 42 systems"))
+                : FString(TEXT("Standard galaxy: 16x12 sectors, 28 systems")); }) ]
+            + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 7)
+            [ SetupLine(BotfUi::EIcon::Research, [this] { return FString::Printf(TEXT("%s era, %s rules"),
+                *FString(botf::startingEraName(static_cast<botf::StartingEra>(SetupEra))), SetupRuleset ? TEXT("classic catalogue") : TEXT("prototype")); }) ]
+            + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 7)
+            [ SetupLine(BotfUi::EIcon::Bolt, [this] { return Str(botf::rulesetPresetName(SetupPresetValue())) + TEXT(" gameplay"); }) ]
+            + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 16)
+            [ SetupLine(BotfUi::EIcon::Star, [this] { return FString::Printf(TEXT("Seed %s, random events %s"),
+                SetupSeed == 0 ? TEXT("1999") : SetupSeed == 1 ? TEXT("24680") : TEXT("101010"), SetupEvents ? TEXT("on") : TEXT("off")); }) ]
+            + SVerticalBox::Slot().AutoHeight()
+            [ Control(TEXT("BEGIN CAMPAIGN"), [this] { RequestAction(EPendingAction::StartCampaign); }, nullptr, nullptr,
+                ERole::Accent, FMargin(24, 13), false, 12, TEXT("Generate the galaxy and start the campaign"), 0, TEXT("Enter")) ],
+            FMargin(16, 16));
+        return SNew(SVerticalBox)
+            + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 14) [ Factions ]
+            + SVerticalBox::Slot().AutoHeight()
+            [ SNew(SHorizontalBox)
+                + SHorizontalBox::Slot().FillWidth(1).Padding(0, 0, 12, 0) [ SNew(SVerticalBox) + SVerticalBox::Slot().AutoHeight() [ Galaxy ] ]
+                + SHorizontalBox::Slot().FillWidth(1).Padding(0, 0, 12, 0)
+                [ SNew(SVerticalBox)
+                    + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 12) [ EraCard ]
+                    + SVerticalBox::Slot().AutoHeight() [ Rules ] ]
+                + SHorizontalBox::Slot().AutoWidth() [ SNew(SBox).WidthOverride(330) [ Summary ] ] ];
     }
     void StartCampaign() {
         const std::uint64_t Seed = SetupSeed == 0 ? 1999 : SetupSeed == 1 ? 24680 : 101010;
@@ -5148,30 +5817,85 @@ private:
     }
 
     // ---- Save / load ----
-    TSharedRef<SWidget> BuildSnapshotBrowser() {
-        return SNew(SVerticalBox)
-            + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 8)
+    const FBotfSnapshotInfo* SelectedSave() const {
+        const int Index = Saves.IndexOfByKey(SavePath);
+        return SaveInfos.IsValidIndex(Index) ? &SaveInfos[Index] : nullptr;
+    }
+    TSharedRef<SWidget> SaveStat(BotfUi::EIcon Glyph, const FString& Caption, std::function<FString()> Value) const {
+        return SNew(BotfUi::SBotfSurface).Padding(FMargin(10, 6, 12, 7))
+            .Look([this] {
+                BotfUi::FSurfaceLook L; L.Fill = BotfUi::WithAlpha(FLinearColor::White, 0.03f); L.Outline = P().Line; L.Radius = FVector4(10, 10, 10, 10); return L; })
             [ SNew(SHorizontalBox)
-                + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0, 0, 12, 0)
-                [ Label(Txt(TEXT("SAVED CAMPAIGNS")), 14, &FPalette::Tertiary, true) ]
-                + SHorizontalBox::Slot().AutoWidth().Padding(0, 0, 4, 0)
-                [ Button(TEXT("REFRESH"), [this] { RefreshSaves(); }, [] { return true; }, 6, FString(), ERole::Tertiary) ]
-                + SHorizontalBox::Slot().AutoWidth().Padding(0, 0, 4, 0)
-                [ Button(TEXT("PREVIOUS"), [this] { SavePage = std::max(0, SavePage - 1); },
-                    [this] { return SavePage > 0; }, 6, FString(), ERole::Secondary) ]
-                + SHorizontalBox::Slot().AutoWidth().Padding(0, 0, 8, 0)
-                [ Button(TEXT("NEXT"), [this] { ++SavePage; },
-                    [this] { return (SavePage + 1) * 8 < SaveInfos.Num(); }, 6, FString(), ERole::Secondary) ]
-                + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-                [ Label(Dyn([this] { return FString::Printf(TEXT("PAGE %d / %d"), SavePage + 1,
-                    std::max(1, (SaveInfos.Num() + 7) / 8)); }), 10, &FPalette::Muted) ] ]
-            + SVerticalBox::Slot().FillHeight(1)
-            [ SNew(SScrollBox) + SScrollBox::Slot() [ SAssignNew(SaveRows, SVerticalBox) ] ]
-            + SVerticalBox::Slot().AutoHeight().Padding(0, 8, 0, 8)
-            [ Section(Txt(TEXT("SELECTED SAVE")), Para(Dyn([this] { return SnapshotPreview(); }), 10, &FPalette::Text)) ]
-            + SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Right)
-            [ Control(TEXT("LOAD SELECTED SAVE"), [this] { RequestAction(EPendingAction::LoadCampaign); }, [this] { return !SavePath.IsEmpty(); },
-                nullptr, ERole::Accent, FMargin(22, 10), false, 12, FString()) ];
+                + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0, 0, 9, 0) [ Icon(Glyph, 17, &FPalette::Primary) ]
+                + SHorizontalBox::Slot().FillWidth(1).VAlign(VAlign_Center)
+                [ SNew(SVerticalBox)
+                    + SVerticalBox::Slot().AutoHeight() [ SNew(STextBlock).Text(Txt(Caption)).Font(BotfUi::Caption(7)).ColorAndOpacity(C(&FPalette::Muted)) ]
+                    + SVerticalBox::Slot().AutoHeight() [ SNew(STextBlock).Text(Dyn(Value)).Font(BotfUi::Display(12)).ColorAndOpacity(C(&FPalette::Text)) ] ] ];
+    }
+    TSharedRef<SWidget> BuildSnapshotBrowser() {
+        const TSharedRef<SWidget> Details = Section(Txt(TEXT("SELECTED SAVE")), SNew(SVerticalBox)
+            + SVerticalBox::Slot().AutoHeight()
+            [ SNew(SBox).Visibility_Lambda([this] { return SelectedSave() ? EVisibility::Collapsed : EVisibility::Visible; })
+                [ Para(Txt(TEXT("No save selected. Damaged or incompatible saves are not listed.")), 9, &FPalette::Muted) ] ]
+            + SVerticalBox::Slot().AutoHeight()
+            [ SNew(SVerticalBox).Visibility_Lambda([this] { return SelectedSave() ? EVisibility::Visible : EVisibility::Collapsed; })
+                + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 10)
+                [ SNew(SHorizontalBox)
+                    + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0, 0, 12, 0)
+                    [ SNew(BotfUi::SBotfEmblem).Empire_Lambda([this] { const auto* Info = SelectedSave(); return Info ? Info->Empire : 1; }).Size(40) ]
+                    + SHorizontalBox::Slot().FillWidth(1).VAlign(VAlign_Center)
+                    [ SNew(SVerticalBox)
+                        + SVerticalBox::Slot().AutoHeight()
+                        [ SNew(STextBlock).Text(Dyn([this] { const auto* Info = SelectedSave(); return Info ? Str(botf::empireName(Info->Empire)).ToUpper() : FString(); }))
+                            .Font(BotfUi::Display(15)).ColorAndOpacity(C(&FPalette::Accent)) ]
+                        + SVerticalBox::Slot().AutoHeight()
+                        [ SNew(STextBlock).Text(Dyn([this] { const auto* Info = SelectedSave(); return Info ? Info->Modified.ToString() : FString(); }))
+                            .Font(BotfUi::Font(8)).ColorAndOpacity(C(&FPalette::Muted)) ] ] ]
+                + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 6)
+                [ SNew(SHorizontalBox)
+                    + SHorizontalBox::Slot().FillWidth(1).Padding(0, 0, 6, 0)
+                    [ SaveStat(BotfUi::EIcon::Clock, TEXT("TURN"), [this] { const auto* Info = SelectedSave(); return Info ? FString::FromInt(Info->Turn) : FString(); }) ]
+                    + SHorizontalBox::Slot().FillWidth(1)
+                    [ SaveStat(BotfUi::EIcon::System, TEXT("SYSTEMS"), [this] { const auto* Info = SelectedSave(); return Info ? FString::FromInt(Info->Colonies) : FString(); }) ] ]
+                + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 10)
+                [ SNew(SHorizontalBox)
+                    + SHorizontalBox::Slot().FillWidth(1).Padding(0, 0, 6, 0)
+                    [ SaveStat(BotfUi::EIcon::Orders, TEXT("ORDERS WAITING"), [this] { const auto* Info = SelectedSave(); return Info ? FString::FromInt(Info->Pending) : FString(); }) ]
+                    + SHorizontalBox::Slot().FillWidth(1)
+                    [ SaveStat(BotfUi::EIcon::Star, TEXT("SEED"), [this] { const auto* Info = SelectedSave(); return Info ? FString::Printf(TEXT("%llu"), static_cast<unsigned long long>(Info->Seed)) : FString(); }) ] ]
+                + SVerticalBox::Slot().AutoHeight()
+                [ SNew(SHorizontalBox)
+                    + SHorizontalBox::Slot().AutoWidth().Padding(0, 0, 6, 0)
+                    [ Badge(Dyn([this] { const auto* Info = SelectedSave();
+                        return Info && Info->Ruleset == botf::Ruleset::Reference ? FString(TEXT("CLASSIC CATALOGUE")) : FString(TEXT("PROTOTYPE")); }), &FPalette::Primary) ]
+                    + SHorizontalBox::Slot().AutoWidth()
+                    [ SNew(SBox).Visibility_Lambda([this] { const auto* Info = SelectedSave(); return Info && Info->bBattle ? EVisibility::Visible : EVisibility::Collapsed; })
+                        [ Badge(Dyn([this] { const auto* Info = SelectedSave();
+                            return Info ? FString::Printf(TEXT("SAVED MID-BATTLE, ROUND %d"), Info->BattleRound) : FString(); }), &FPalette::Alert) ] ] ] ]);
+        return SNew(SHorizontalBox)
+            + SHorizontalBox::Slot().FillWidth(1).Padding(0, 0, 14, 0)
+            [ SNew(SVerticalBox)
+                + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 10)
+                [ SNew(SHorizontalBox)
+                    + SHorizontalBox::Slot().FillWidth(1).VAlign(VAlign_Center)
+                    [ SNew(STextBlock).Text(Txt(TEXT("SAVED CAMPAIGNS"))).Font(BotfUi::Condensed(12)).ColorAndOpacity(C(&FPalette::Secondary)) ]
+                    + SHorizontalBox::Slot().AutoWidth().Padding(0, 0, 6, 0)
+                    [ Button(TEXT("REFRESH"), [this] { RefreshSaves(); }, [] { return true; }, 6, TEXT("Rescan the saves folder"), ERole::Tertiary) ]
+                    + SHorizontalBox::Slot().AutoWidth().Padding(0, 0, 6, 0)
+                    [ Button(TEXT("PREVIOUS"), [this] { SavePage = std::max(0, SavePage - 1); }, [this] { return SavePage > 0; }, 6, FString(), ERole::Secondary) ]
+                    + SHorizontalBox::Slot().AutoWidth().Padding(0, 0, 10, 0)
+                    [ Button(TEXT("NEXT"), [this] { ++SavePage; }, [this] { return (SavePage + 1) * 8 < SaveInfos.Num(); }, 6, FString(), ERole::Secondary) ]
+                    + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+                    [ Label(Dyn([this] { return FString::Printf(TEXT("PAGE %d / %d"), SavePage + 1, std::max(1, (SaveInfos.Num() + 7) / 8)); }), 8, &FPalette::Muted, true) ] ]
+                + SVerticalBox::Slot().FillHeight(1)
+                [ SNew(SScrollBox) + SScrollBox::Slot() [ SAssignNew(SaveRows, SVerticalBox) ] ] ]
+            + SHorizontalBox::Slot().AutoWidth()
+            [ SNew(SBox).WidthOverride(400)
+                [ SNew(SVerticalBox)
+                    + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 12) [ Details ]
+                    + SVerticalBox::Slot().AutoHeight()
+                    [ Control(TEXT("LOAD SELECTED SAVE"), [this] { RequestAction(EPendingAction::LoadCampaign); }, [this] { return !SavePath.IsEmpty(); },
+                        nullptr, ERole::Accent, FMargin(22, 13), false, 12, TEXT("Load this campaign; you are asked first if progress would be lost")) ] ] ];
     }
     // A snapshot is either an ordinary campaign or a BOTF_TURN_SESSION envelope saved mid-turn, both complete in one
     // file. Reading, listing, verification and publishing live in FBotfCampaign.
@@ -5187,24 +5911,43 @@ private:
         SaveRows->ClearChildren();
         if (SaveInfos.IsEmpty()) {
             SaveRows->AddSlot().AutoHeight().Padding(0, 6)
-                [ Para(Txt(TEXT("No saved campaigns yet. Save from the campaign menu at any time.")), 11, &FPalette::Muted) ];
+                [ Para(Txt(TEXT("No saved campaigns yet. Save from the campaign menu at any time.")), 10, &FPalette::Muted) ];
             return;
         }
         SavePage = std::clamp(SavePage, 0, (SaveInfos.Num() - 1) / 8);
         for (int Index = SavePage * 8; Index < std::min(SaveInfos.Num(), (SavePage + 1) * 8); ++Index) {
             const auto& Info = SaveInfos[Index];
-            const FString Label = FString::Printf(TEXT("TURN %d  /  %s  /  %s%s\n%s  /  %d orders waiting"), Info.Turn,
-                *Str(botf::empireName(Info.Empire)), Info.Ruleset == botf::Ruleset::Reference ? TEXT("CLASSIC") : TEXT("PROTOTYPE"),
-                Info.bBattle ? *FString::Printf(TEXT("  /  BATTLE, ROUND %d"), Info.BattleRound) : TEXT(""),
-                *Info.Modified.ToString(), Info.Pending);
-            SaveRows->AddSlot().AutoHeight().Padding(0, 0, 0, 3)
-                [ SNew(SHorizontalBox)
-                    + SHorizontalBox::Slot().AutoWidth().Padding(0, 0, 4, 0) [ SNew(SBox).WidthOverride(6) [ Swatch(Info.Empire, 0) ] ]
-                    + SHorizontalBox::Slot().FillWidth(1)
-                    [ Row(Label, [this, Index] {
+            const int Empire = Info.Empire;
+            const FString Title = FString::Printf(TEXT("TURN %d   /   %s"), Info.Turn, *Str(botf::empireName(Info.Empire)).ToUpper());
+            const FString Sub = FString::Printf(TEXT("%s   /   %d orders waiting"), *Info.Modified.ToString(), Info.Pending);
+            auto Tags = SNew(SHorizontalBox);
+            Tags->AddSlot().AutoWidth().VAlign(VAlign_Center).Padding(6, 0, 0, 0)
+                [ Badge(Txt(Info.Ruleset == botf::Ruleset::Reference ? TEXT("CLASSIC") : TEXT("PROTOTYPE")), &FPalette::Muted) ];
+            if (Info.bBattle)
+                Tags->AddSlot().AutoWidth().VAlign(VAlign_Center).Padding(6, 0, 0, 0)
+                    [ Badge(Txt(FString::Printf(TEXT("BATTLE R%d"), Info.BattleRound)), &FPalette::Alert) ];
+            SaveRows->AddSlot().AutoHeight().Padding(0, 0, 0, 6)
+                [ CardButton(SNew(SHorizontalBox)
+                    + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0, 0, 12, 0) [ SNew(BotfUi::SBotfEmblem).Empire(Empire).Size(30) ]
+                    + SHorizontalBox::Slot().FillWidth(1).VAlign(VAlign_Center)
+                    [ SNew(SVerticalBox)
+                        + SVerticalBox::Slot().AutoHeight() [ SNew(STextBlock).Text(Txt(Title)).Font(BotfUi::Condensed(11)).ColorAndOpacity(C(&FPalette::Text)) ]
+                        + SVerticalBox::Slot().AutoHeight().Padding(0, 2, 0, 0) [ SNew(STextBlock).Text(Txt(Sub)).Font(BotfUi::Font(8)).ColorAndOpacity(C(&FPalette::Muted)) ] ]
+                    + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center) [ Tags ],
+                    [this, Index](bool Hover, bool, bool Focus, bool) {
+                        const FPalette& Pal = P();
+                        const bool Sel = SaveInfos.IsValidIndex(Index) && SaveInfos[Index].Path == SavePath;
+                        BotfUi::FSurfaceLook L;
+                        L.Radius = FVector4(12, 12, 12, 12);
+                        L.Fill = Sel ? BotfUi::WithAlpha(Pal.FieldHi, 0.98f) : BotfUi::WithAlpha(Pal.Field, Hover ? 0.9f : 0.6f);
+                        L.Outline = Sel ? BotfUi::WithAlpha(Pal.Primary, 0.8f) : (Hover ? Pal.LineHi : Pal.Line);
+                        L.OutlineWidth = Focus ? 2.f : 1.f;
+                        L.Stripe = Sel ? Pal.Primary : FLinearColor::Transparent;
+                        return L; },
+                    [this, Index] {
                         SavePath = SaveInfos[Index].Path;
                         Status = TEXT("Save selected. Review it, then choose Load Selected Save.");
-                    }, [this, Index] { return SaveInfos.IsValidIndex(Index) && SaveInfos[Index].Path == SavePath; }) ] ];
+                    }, nullptr, FString(), FMargin(18, 10, 12, 10)) ];
         }
     }
     FString SnapshotPreview() const {

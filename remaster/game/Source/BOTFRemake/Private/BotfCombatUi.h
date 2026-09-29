@@ -129,29 +129,31 @@ public:
     }
 
     virtual FVector2D ComputeDesiredSize(float) const override {
-        return FVector2D(120, 14);
+        return FVector2D(120, 12);
     }
 
     virtual int32 OnPaint(const FPaintArgs&, const FGeometry& Geometry, const FSlateRect&,
                          FSlateWindowElementList& Elements, int32 Layer, const FWidgetStyle&, bool) const override {
-        const FVector2D Size = Geometry.GetLocalSize();
-        const FSlateBrush* White = FCoreStyle::Get().GetBrush("WhiteBrush");
+        const FVector2f Size = Geometry.GetLocalSize();
         const FPalette& Pal = Palette(Empire);
-
-        const double BarH = FMath::Max(2.0, (Size.Y - 2.0) * 0.5);
-        const double BarW = Size.X;
+        const float Gap = 3.f;
+        const float BarH = FMath::Max(3.f, (Size.Y - Gap) * 0.5f);
+        const float R = BarH * 0.5f;
+        const FVector4 Round(R, R, R, R);
         const float HullFrac = FMath::Clamp(static_cast<float>(Hull) / MaxHull, 0.f, 1.f);
-        const FLinearColor HullColor = (HullFrac > 0.5f) ? Pal.Good : (HullFrac > 0.25f) ? Pal.Tertiary : Pal.Alert;
+        const FLinearColor HullColor = (HullFrac > 0.5f) ? Pal.Good : (HullFrac > 0.25f) ? Pal.Warn : Pal.Alert;
+        const FLinearColor Track = WithAlpha(Pal.FieldHi, 0.95f);
 
-        // Background & Hull Bar
-        FSlateDrawElement::MakeBox(Elements, Layer, Geometry.ToPaintGeometry(FVector2D(BarW, BarH), FSlateLayoutTransform(FVector2D(0, 0))), White, ESlateDrawEffect::None, Shade(Pal.Void, 0.45f));
-        FSlateDrawElement::MakeBox(Elements, Layer + 1, Geometry.ToPaintGeometry(FVector2D(BarW * HullFrac, BarH), FSlateLayoutTransform(FVector2D(0, 0))), White, ESlateDrawEffect::None, HullColor);
-
-        // Shields Bar
+        PaintRounded(Elements, Layer, Geometry, FVector2f::ZeroVector, FVector2f(Size.X, BarH), Round, Track);
+        if (HullFrac > 0.f)
+            PaintGradient(Elements, Layer + 1, Geometry, FVector2f::ZeroVector, FVector2f(FMath::Max(BarH, Size.X * HullFrac), BarH), Round,
+                Lift(HullColor, 0.25f), Shade(HullColor, 0.85f));
         if (MaxShields > 0) {
             const float ShieldFrac = FMath::Clamp(static_cast<float>(Shields) / MaxShields, 0.f, 1.f);
-            FSlateDrawElement::MakeBox(Elements, Layer, Geometry.ToPaintGeometry(FVector2D(BarW, BarH), FSlateLayoutTransform(FVector2D(0, BarH + 2.0))), White, ESlateDrawEffect::None, Shade(Pal.Void, 0.45f));
-            FSlateDrawElement::MakeBox(Elements, Layer + 1, Geometry.ToPaintGeometry(FVector2D(BarW * ShieldFrac, BarH), FSlateLayoutTransform(FVector2D(0, BarH + 2.0))), White, ESlateDrawEffect::None, Pal.Secondary);
+            PaintRounded(Elements, Layer, Geometry, FVector2f(0.f, BarH + Gap), FVector2f(Size.X, BarH), Round, Track);
+            if (ShieldFrac > 0.f)
+                PaintGradient(Elements, Layer + 1, Geometry, FVector2f(0.f, BarH + Gap), FVector2f(FMath::Max(BarH, Size.X * ShieldFrac), BarH), Round,
+                    Lift(Pal.Shield, 0.25f), Shade(Pal.Shield, 0.85f));
         }
         return Layer + 2;
     }
