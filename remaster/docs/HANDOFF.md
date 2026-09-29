@@ -111,3 +111,7 @@ Run9 (editor `-game`, 1080p offscreen): avg 6.05 ms (165 fps), p95 7.78 ms, p99 
   progress on branch `claude/ui-redesign` (worktree `C:\Dev\botf-remake-ui`), to be merged after review.
 - The Unreal Insights 24-v-24 profile has not been done yet. The showcase frame report stands in for it.
 - A separate session pushed `remaster/godot` (a 4-file Godot skeleton, 87d898e) to this branch during this session.
+- Packaged proof (a0ad5c8, Development): `Package-Windows.ps1 -SkipCoreTests -RunUiTests` packaged in 11 min, and the
+  packaged `BOTFRemake.exe -BotfShowcase=<dir> -RenderOffscreen` ran the whole showcase with the generated art cooked
+  in (`DirectoriesToAlwaysCook` includes /Game/Generated). 3 turns, 50-ship encounter, save/load at round 7,
+  avg 6.29 ms (159 fps), p95 9.27 ms, p99 12.38 ms.
