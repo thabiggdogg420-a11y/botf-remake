@@ -73,6 +73,12 @@ func _prepare(s: String) -> void:
 			app.select_fleet(int(f["id"]))
 			if scr.has_method("open_context_menu_at_cell"):
 				scr.open_context_menu_at_cell(int(f["x"]) + 2, int(f["y"]) + 1)
+		"frontier":
+			app.start_drill("newFrontierDrill", "Frontier drill")
+			app.close_all_modals()
+			var st: Array = app.view.get("stations", [])
+			if st.size() > 0:
+				app.select_cell(int(st[0]["y"]) * app.width() + int(st[0]["x"]))
 		"combat":
 			app.start_drill("newBattleDrill", "Tactical drill")
 			app.end_turn()
