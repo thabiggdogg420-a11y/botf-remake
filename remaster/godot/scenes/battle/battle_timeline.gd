@@ -712,9 +712,10 @@ class Director:
 	var subject := 0
 	var other := 0
 	var since := 0.0
+	var kind := -1 ## Job kind that motivated the current shot (not in the C++ director; -1 = none).
 
 	func reset() -> void:
-		subject = 0; other = 0; since = 0.0
+		subject = 0; other = 0; since = 0.0; kind = -1
 
 	## Returns true when the shot changed.
 	func update(tl: BattleTimeline, t: float, preferred := 0) -> bool:
@@ -741,5 +742,5 @@ class Director:
 		var urgent: bool = best.kind == Job.EXPLOSION and subject != next_subject
 		if subject != 0 and t - since < min_shot_seconds and not urgent:
 			return false
-		subject = next_subject; other = next_other; since = t
+		subject = next_subject; other = next_other; since = t; kind = best.kind
 		return true
