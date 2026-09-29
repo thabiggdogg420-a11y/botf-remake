@@ -161,11 +161,22 @@ in wings; upgrade each model's own textures, plating for untextured ones.
   - The showcase adds three shots: `battle-follow-escort`, `battle-follow-enemy` and `battle-free-zoom`.
   - Proof: UE build succeeded; showcase 6v6 at 170 fps avg, p99 9.6 ms.
   - Screenshots: `pc-screens/battle-camera-overview.png`, `battle-camera-follow.png`, `battle-camera-target.png`.
+- **Sister classes and hull look.**
+  - `hero-ships.json` `variant` derives a class from its base model: `proportions`, plus `modules` copied from a length
+    band, scaled, seated on the hull (`onTop` / `below`) and optionally `mirror`ed.
+  - Keldon: a Galor, beamier, with the bow section as a raised dorsal module, and its own paint.
+  - Nagus: a D'Kora at 520 m with outboard aft pods and greener bronze.
+  - `bcTint` repaints a bake; D'Kora and Nagus are brightened because their source paint is near-black.
+  - Paint-derived normals are 2.5x instead of 6x and roughness is at least 0.32: this fixes the hull sparkle.
+  - `MetallicScale` is 0.35: painted hulls. The capture has no reflection environment, so metal rendered black.
+  - A camera-following fill light (`FillLight`) is added.
+  - The title sun is a three-quarter front key (it was backlight).
+  - Proof: 16/16 heroes built and imported; titles `pc-screens/title-cardassian.png`, `title-ferengi.png`; showcase 6v6 220 fps.
 - **Open.**
-  - Keldon and Nagus still use generated hulls; plan: variants of the Galor and D'Kora.
-  - The Klingon plating reads low-contrast.
-  - The Sovereign's window texture sparkles at a distance.
+  - Klingon plating is still flat next to textured hulls.
   - The Vor'Cha Pack NIFs are unused: no diffuse textures.
+  - The Romulan D'deridex paint is very dark green by source.
+  - Preview top/front renders crop wide hulls (preview only).
 
 ## PC session 2026-09-29: Godot (Windows 11, RTX 4090)
 

@@ -150,6 +150,14 @@ void ABotfCombatScene::SetupEnvironment()
     RimLight->SetLightColor(FLinearColor(0.45f, 0.62f, 1.0f));
     RimLight->SetCastShadows(false);
     RimLight->RegisterComponent();
+    // Dark hulls (the Ferengi bronze, Klingon green) seen from the unlit side read as silhouettes; a gentle fill that
+    // travels with the camera (AnimateCamera) keeps their panelling legible without flattening the key and rim.
+    FillLight = NewObject<UDirectionalLightComponent>(this);
+    FillLight->SetupAttachment(RootComponent);
+    FillLight->SetIntensity(1.6f);
+    FillLight->SetLightColor(FLinearColor(0.80f, 0.86f, 1.0f));
+    FillLight->SetCastShadows(false);
+    FillLight->RegisterComponent();
 }
 
 void ABotfCombatScene::SetCameraMode(int InMode)
@@ -465,7 +473,7 @@ void ABotfCombatScene::ConfigureTitleScene(int EmpireId)
     }
     // Title lighting: the sun from the side so the gas giant shows a terminator and hulls get a hard rim; the planet
     // drawn larger. ConfigureBattle restores both.
-    if (SunLight) SunLight->SetRelativeRotation(FRotator(-18.f, 178.f, 0.f));
+    if (SunLight) SunLight->SetRelativeRotation(FRotator(-22.f, -8.f, 0.f)); // three-quarter key from the left of the view: the hulls face the light
     if (Planet) Planet->SetRelativeScale3D(BodyScale(Planet, 8200.f));
     Capture->PostProcessSettings.LensFlareIntensity = 0.f; // flare ghosts read as smudges on a still backdrop
     CameraMode = Cam_Cinematic;
@@ -1243,6 +1251,7 @@ void ABotfCombatScene::AnimateCamera(float DeltaSeconds)
         Capture->SetRelativeRotation(FMath::RInterpTo(Capture->GetRelativeRotation(), DesiredRotation, DeltaSeconds, 1.2f));
         const FVector Eye = Capture->GetRelativeLocation();
         if (SkyDome) SkyDome->SetRelativeLocation(Eye);
+        if (FillLight) FillLight->SetRelativeRotation(Capture->GetRelativeRotation() + FRotator(-14.f, 8.f, 0.f));
         // Side points screen-left: the gas giant hangs lower right, partly out of frame; the moon upper left.
         if (Planet) Planet->SetRelativeLocation(Eye + (View - Side * 0.62f - FVector::UpVector * 0.40f).GetSafeNormal() * 26000.f);
         if (Moon) Moon->SetRelativeLocation(Eye + (View + Side * 0.55f + FVector::UpVector * 0.28f).GetSafeNormal() * 30000.f);
@@ -1403,6 +1412,8 @@ void ABotfCombatScene::AnimateCamera(float DeltaSeconds)
     // up to them, and they never show parallax or the dome's edge.
     const FVector Eye = Capture->GetRelativeLocation();
     if (SkyDome) SkyDome->SetRelativeLocation(Eye);
+    // The fill shines along the view from a little above it (screen up), so lit faces keep some shape.
+    if (FillLight) FillLight->SetRelativeRotation(FRotationMatrix::MakeFromXZ(ToScene(CamView->forward - CamView->up * 0.25), ToScene(CamView->up)).Rotator());
     if (Planet) Planet->SetRelativeLocation(Eye + FVector(0.30f, 0.92f, -0.25f).GetSafeNormal() * 26000.f);    if (Moon) Moon->SetRelativeLocation(Eye + FVector(-0.42f, 0.88f, 0.10f).GetSafeNormal() * 30000.f);
 }
 

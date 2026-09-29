@@ -141,6 +141,7 @@ private:
     UPROPERTY() TObjectPtr<UStaticMeshComponent> Moon;
     UPROPERTY() TObjectPtr<UDirectionalLightComponent> SunLight;
     UPROPERTY() TObjectPtr<UDirectionalLightComponent> RimLight;
+    UPROPERTY() TObjectPtr<UDirectionalLightComponent> FillLight; // soft, from just above the camera: no hull face goes black
     void SetupEnvironment();
     UPROPERTY() TArray<TObjectPtr<UStaticMeshComponent>> Ships;
     UPROPERTY() TArray<TObjectPtr<UStaticMeshComponent>> ShieldShells;

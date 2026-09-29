@@ -203,9 +203,13 @@ def import_ship(folder, master):
                 MEL.set_material_instance_texture_parameter_value(mi, pname, tex)
         if not slot.get("bc") and slot.get("tint"):
             MEL.set_material_instance_vector_parameter_value(mi, "Tint", C(*slot["tint"], 1.0))
+        # Starship hulls are painted plating, mostly dielectric: the battle capture has no reflection environment, so a
+        # strongly metallic hull reflects nothing and renders near black. A third of the baked metalness keeps a sheen.
         if not slot.get("orm"):
             MEL.set_material_instance_scalar_parameter_value(mi, "RoughnessScale", 0.45)
-            MEL.set_material_instance_scalar_parameter_value(mi, "MetallicScale", slot.get("metallic", 0.5))
+            MEL.set_material_instance_scalar_parameter_value(mi, "MetallicScale", 0.35 * slot.get("metallic", 0.5))
+        else:
+            MEL.set_material_instance_scalar_parameter_value(mi, "MetallicScale", 0.35)
         if slot.get("e"):
             MEL.set_material_instance_scalar_parameter_value(mi, "EmissiveStrength", 1.5 * max(1.0, slot.get("emissive", 1.0)))
         EAL.save_loaded_asset(mi)

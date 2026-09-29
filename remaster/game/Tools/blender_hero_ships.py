@@ -124,6 +124,64 @@ def orient_and_scale(hull, ship):
     hull.data.update()
 
 
+def apply_variant(hull, ship):
+    """Derives a sister class from its base model (hull oriented, centred, canon length along X, metres).
+
+    "proportions": [sx, sy, sz] rescales the beam and height about the centre; the length stays canon.
+    "modules": each copies the faces lying wholly inside the length band "from" [x0, x1] (fractions of the length,
+    -0.5 = stern, 0.5 = bow), scales the copy by "scale" about its own centre, moves it by "offset" [x, y, z]
+    (fractions of the length) and, with "onTop" / "below", seats it on the hull's dorsal or ventral surface over its
+    footprint. "mirror": true adds a second copy reflected across the centreline (outboard pods)."""
+    v = ship.get("variant")
+    if not v:
+        return
+    sx, sy, sz = v.get("proportions", [1.0, 1.0, 1.0])
+    hull.data.transform(Matrix.Diagonal((sx, sy, sz, 1.0)))
+    co, lo, hi = bounds(hull)
+    length = float(hi[0] - lo[0])
+    for m in v.get("modules", []):
+        x0, x1 = (np.array(m["from"], dtype=np.float64) + 0.5) * length + lo[0]
+        bm = bmesh.new()
+        bm.from_mesh(hull.data)
+        bm.verts.ensure_lookup_table()
+        faces = [f for f in bm.faces if all(x0 <= vv.co.x <= x1 for vv in f.verts)]
+        if not faces:
+            bm.free()
+            raise RuntimeError("variant module %s selects no faces" % m["from"])
+        copies = [1.0, -1.0] if m.get("mirror") else [1.0]
+        for side in copies:
+            dup = bmesh.ops.duplicate(bm, geom=faces)
+            verts = [g for g in dup["geom"] if isinstance(g, bmesh.types.BMVert)]
+            pts = np.array([vv.co[:] for vv in verts])
+            centre = Vector(((pts.min(axis=0) + pts.max(axis=0)) / 2).tolist())
+            k = float(m.get("scale", 1.0))
+            ox, oy, oz = [c * length for c in m.get("offset", [0.0, 0.0, 0.0])]
+            for vv in verts:
+                p = (vv.co - centre) * k
+                vv.co = Vector((centre.x + p.x + ox, (centre.y + p.y + oy) * side, centre.z + p.z + oz))
+            if m.get("onTop") or m.get("below"):
+                # Seat the copy on the hull surface under (or over) its footprint, sunk a fifth of its own height.
+                mz = np.array([vv.co.z for vv in verts])
+                mx = np.array([vv.co.x for vv in verts])
+                band = co[(co[:, 0] >= mx.min()) & (co[:, 0] <= mx.max())]
+                if len(band) == 0:
+                    band = co
+                depth = mz.max() - mz.min()
+                shift = (band[:, 2].max() - mz.min() - 0.2 * depth) if m.get("onTop") else (band[:, 2].min() - mz.max() + 0.2 * depth)
+                for vv in verts:
+                    vv.co.z += shift
+            if side < 0:
+                # A reflected copy turns inside out; flip it back.
+                bmesh.ops.reverse_faces(bm, faces=[g for g in dup["geom"] if isinstance(g, bmesh.types.BMFace)])
+        bm.to_mesh(hull.data)
+        bm.free()
+    # Recentre and hold the canon length (a module may overhang the ends).
+    _, lo, hi = bounds(hull)
+    hull.data.transform(Matrix.Translation(Vector((-(lo + hi) / 2).tolist())))
+    hull.data.transform(Matrix.Scale(ship["lengthMeters"] / max(float(hi[0] - lo[0]), 1e-9), 4))
+    hull.data.update()
+
+
 def clean(hull, max_tris):
     length = float(np.ptp(bounds(hull)[0][:, 0]))
     bm = bmesh.new()
@@ -218,7 +276,7 @@ def save_png(arr, path, colour):
     bpy.data.images.remove(img)
 
 
-def build_textures(slot, src, out_dir, stem, metallic):
+def build_textures(slot, src, out_dir, stem, metallic, tint=None):
     """Writes the slot's BC/N/ORM/E maps. Returns the file names (None where a map is absent)."""
     files = {"bc": None, "n": None, "orm": None, "e": None}
     if not src["bc"]:
@@ -227,6 +285,9 @@ def build_textures(slot, src, out_dir, stem, metallic):
     h, w = bc.shape[:2]
     step = max(1, int(math.ceil(max(w, h) / MAX_TEX)))
     bc = bc[::step, ::step]
+    if tint:
+        # A sister class wears its own paint: the base colour multiplied by the variant's tint.
+        bc = np.clip(bc * np.array(tint, dtype=np.float32), 0.0, 1.0)
     h, w = bc.shape[:2]
     files["bc"] = f"{stem}_{slot}_BC.png"
     save_png(bc, os.path.join(out_dir, files["bc"]), True)
@@ -243,7 +304,8 @@ def build_textures(slot, src, out_dir, stem, metallic):
             n = n[ys][:, xs]
     else:
         height = fine - broad
-        strength = 6.0 * (w / 1024.0)
+        # Kept gentle: a steep relief from paint makes hull highlights sparkle at a distance (seen on the Sovereign).
+        strength = 2.5 * (w / 1024.0)
         dx = (np.roll(height, -1, 1) - np.roll(height, 1, 1)) * strength
         dy = (np.roll(height, -1, 0) - np.roll(height, 1, 0)) * strength
         n = np.stack([-dx, dy, np.ones_like(dx)], axis=-1)
@@ -260,7 +322,7 @@ def build_textures(slot, src, out_dir, stem, metallic):
         rough, metal = mr[..., 1], mr[..., 2]
     else:
         # Paint drives roughness: darker, dirtier plating is rougher; bright trim and cavities differ.
-        rough = np.clip(0.58 - (lum - lum.mean()) * 0.55 + cavity * 0.25, 0.22, 0.92)
+        rough = np.clip(0.58 - (lum - lum.mean()) * 0.55 + cavity * 0.25, 0.32, 0.92)
         metal = np.full_like(lum, metallic)
     files["orm"] = f"{stem}_{slot}_ORM.png"
     save_png(np.stack([ao, rough, metal], axis=-1), os.path.join(out_dir, files["orm"]), False)
@@ -490,6 +552,7 @@ def build(ship, defaults, preview_dir):
     os.makedirs(out_dir, exist_ok=True)
     hull = import_source(ship)
     orient_and_scale(hull, ship)
+    apply_variant(hull, ship)
     tris_in = clean(hull, ship.get("maxTriangles", defaults["maxTriangles"]))
     length = float(ship["lengthMeters"])
     metallic = float(ship.get("metallic", defaults["metallic"]))
@@ -502,7 +565,7 @@ def build(ship, defaults, preview_dir):
     else:
         slot_files = []
         for name, src in merge_slots(hull):
-            files = build_textures(name, src, out_dir, stem, metallic)
+            files = build_textures(name, src, out_dir, stem, metallic, ship.get("bcTint"))
             slots.append({"name": name, **files, "tint": None if files["bc"] else list(src["tint"]),
                           "metallic": metallic, "emissive": src["estrength"]})
             slot_files.append((name, files, src["tint"]))

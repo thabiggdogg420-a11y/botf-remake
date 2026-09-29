@@ -20,7 +20,7 @@ Status markers: `[ ]` pending, `[x]` done (paste the result or log into the PR/s
    - `python remaster\game\Tools\Extract-BotfAudio.py` against your own install, if you want the original voice lines alongside.
 4. [ ] **Asset downloads.** 2026-09-30: 14 hero ship models downloaded (logged-in browser) and imported through
    `Tools/blender_hero_ships.py` + `Tools/ue_import_hero_ships.py`; see HANDOFF.md "PC session 2026-09-30". Still
-   open: Keldon, Nagus and the remaining classes use generated hulls.
+   open: the remaining classes use generated hulls (Keldon and Nagus are now hero variants, 2026-09-30).
    - Download candidates from `remaster/docs/ASSET-SOURCES.md` into one folder, then run `remaster\game\Import-Assets.ps1 -Downloads <folder>`.
    - Requires Blender (with NifTools for .nif), ffmpeg and 7-Zip.
    - `-UnrealImport` imports into `/Game/Local`.
