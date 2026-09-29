@@ -5,11 +5,15 @@
 
 .DESCRIPTION
     Steps, each skippable:
-      1. Textures   python Tools\generate_space_art.py, generate_hull_textures.py, generate_fx_textures.py
-      2. Ships      Blender (headless) Tools\blender_generate_ships.py: 159 hulls as FBX plus generated-ships.json
+      1. Textures   python Tools\generate_space_art.py, generate_hull_textures.py (plus faction plating from
+                    ArtSource\Gemini), generate_fx_textures.py
+      2. Ships      Blender (headless) Tools\blender_generate_ships.py: 159 hulls as FBX plus generated-ships.json,
+                    then blender_blueprint_ships.py: hero hulls from ArtSource\Blueprints\<faction>\<slug>.svg replace
+                    the kit hull of the same key
       3. Unreal     UnrealEditor-Cmd -run=pythonscript: ue_build_environment.py, ue_import_generated_ships.py,
                     ue_build_vfx.py (in that order: the debris material instances the ship hull material)
-    Needs Python 3 with numpy and Pillow, Blender 5.x, and the UE 5.8 editor. Nothing here is third-party art.
+    Needs Python 3 with numpy and Pillow, Blender 5.x, and the UE 5.8 editor. Nothing here is third-party art: the
+    blueprints are original drawings and ArtSource\Gemini holds images generated with Gemini for this project.
 
 .EXAMPLE
     .\Build-GeneratedArt.ps1
@@ -55,6 +59,14 @@ if (-not $SkipShips) {
         & $Blender --background --factory-startup --python (Join-Path $tools 'blender_generate_ships.py') *> $log
         $summary = Select-String -LiteralPath $log -Pattern '^generated \d+/\d+' | Select-Object -Last 1
         if (-not $summary) { throw "Ship generation did not finish (see $log)" }
+        Write-Host "   $($summary.Line)"
+    }
+    $log = Join-Path $logDir 'blueprints.log'
+    Invoke-Step 'Blueprint hulls (Blender)' {
+        $ErrorActionPreference = 'Continue'  # Blender warnings on stderr are not failures; the summary line decides
+        & $Blender --background --factory-startup --python (Join-Path $tools 'blender_blueprint_ships.py') -- --preview *> $log
+        $summary = Select-String -LiteralPath $log -Pattern '^blueprints (\d+)/(\d+)' | Select-Object -Last 1
+        if (-not $summary -or $summary.Matches[0].Groups[1].Value -ne $summary.Matches[0].Groups[2].Value) { throw "Blueprint hulls failed (see $log)" }
         Write-Host "   $($summary.Line)"
     }
 }

@@ -2,13 +2,19 @@
 
     python generate_hull_textures.py [--out ../ArtSource/Generated/Ships] [--size 2048]
 
-Writes two seamless tiles (the ships' box UVs repeat them every max(4, L/14) metres):
+Writes two seamless tiles (the ships' UVs repeat them every max(4, L/14) metres):
   T_HullPanels.png  RGBA data, not colour:
                     R panel tone, G seam/cavity, B lit window cells, A roughness
   T_HullNormal.png  tangent-space normal from the same panel height field (grooves, raised plates, hatches)
 ue_import_generated_ships.py imports them into /Game/Generated/Ships and builds M_ShipHull on them.
 Deterministic (fixed seed).
+
+Faction plating: every ArtSource/Gemini/<faction>-plating.(png|jpg) (a plating tile generated with Gemini for this
+project) is converted to the same channel layout as T_HullPanels_<faction>.png and T_HullNormal_<faction>.png: tone
+and height from its luminance, grooves as cavity, the window cells shared with the default tile. Tiles that do not wrap
+cleanly are made seamless with a half-offset cross-fade. The importer gives that faction's material these textures.
 """
+import glob
 import argparse
 import os
 
@@ -61,6 +67,65 @@ def dilate(mask, r):
         for dx in range(-r, r + 1):
             out |= np.roll(np.roll(mask, dy, 0), dx, 1)
     return out
+
+
+def seamless(img):
+    """Cross-fade with a copy rolled by half a tile: the copy is continuous where the original has its edges."""
+    n = img.shape[0]
+    rolled = np.roll(np.roll(img, n // 2, 0), n // 2, 1)
+    ramp = np.minimum(np.arange(n), np.arange(n)[::-1]).astype(np.float32) / (n * 0.25)
+    w1 = np.clip(ramp, 0, 1)
+    w = np.minimum(w1[:, None], w1[None, :])
+    if img.ndim == 3:
+        w = w[..., None]
+    return img * w + rolled * (1 - w)
+
+
+def box_blur(a, r):
+    out = a.copy()
+    for _ in range(2):
+        acc = np.zeros_like(out)
+        for d in range(-r, r + 1):
+            acc += np.roll(out, d, 0)
+        out = acc / (2 * r + 1)
+        acc = np.zeros_like(out)
+        for d in range(-r, r + 1):
+            acc += np.roll(out, d, 1)
+        out = acc / (2 * r + 1)
+    return out
+
+
+def write_normal(height, path, strength=6.0):
+    blur = height
+    for _ in range(2):
+        blur = (blur + np.roll(blur, 1, 0) + np.roll(blur, -1, 0) + np.roll(blur, 1, 1) + np.roll(blur, -1, 1)) / 5
+    dx = (np.roll(blur, -1, 1) - np.roll(blur, 1, 1)) * strength
+    dy = (np.roll(blur, -1, 0) - np.roll(blur, 1, 0)) * strength
+    nz = np.ones_like(dx)
+    ln = np.sqrt(dx * dx + dy * dy + nz * nz)
+    normal = np.stack([-dx / ln, dy / ln, nz / ln], -1)  # +Y up in UE tangent space (image rows grow downward)
+    Image.fromarray(((normal * 0.5 + 0.5) * 255 + 0.5).astype(np.uint8), "RGB").save(path)
+
+
+def faction_plating(src, n, win, out_dir, fac):
+    lum = np.asarray(Image.open(src).convert("L").resize((n, n), Image.LANCZOS)).astype(np.float32) / 255.0
+    lo, hi = np.percentile(lum, 2), np.percentile(lum, 98)
+    lum = np.clip((lum - lo) / max(1e-3, hi - lo), 0, 1)
+    edge = max(abs(lum[0] - lum[-1]).mean(), abs(lum[:, 0] - lum[:, -1]).mean())
+    inner = min(abs(lum[1:] - lum[:-1]).mean(), abs(lum[:, 1:] - lum[:, :-1]).mean())
+    if edge > inner * 1.3:
+        lum = seamless(lum)
+    local = box_blur(lum, max(2, n // 128))
+    cavity = np.clip((local - lum) * 4.0, 0, 1)
+    tone = np.clip(0.2 + lum * 0.6, 0, 1)
+    # Rougher than the kit tile: a generated image carries photographic grain, which as a glossy normal map glitters.
+    rough = np.clip(0.62 + (0.5 - lum) * 0.2 + cavity * 0.2, 0.05, 1)
+    rgba = np.stack([tone, cavity, win, rough], -1)
+    Image.fromarray((rgba * 255 + 0.5).astype(np.uint8), "RGBA").save(os.path.join(out_dir, "T_HullPanels_%s.png" % fac))
+    # Height from the plate structure only: the grain is blurred out before the normal is taken.
+    height = box_blur(lum, max(1, n // 512)) * 0.6 - box_blur(cavity, max(1, n // 1024)) * 0.6 - (win > 0) * 0.3
+    write_normal(height, os.path.join(out_dir, "T_HullNormal_%s.png" % fac), 2.5)
+    print("plating", fac, "from", os.path.basename(src), "(made seamless)" if edge > inner * 1.3 else "")
 
 
 def main():
@@ -131,16 +196,11 @@ def main():
     Image.fromarray((rgba * 255 + 0.5).astype(np.uint8), "RGBA").save(os.path.join(a.out, "T_HullPanels.png"))
 
     # Normal from the height field (central differences, wrapped, so the tile stays seamless).
-    blur = height
-    for _ in range(2):
-        blur = (blur + np.roll(blur, 1, 0) + np.roll(blur, -1, 0) + np.roll(blur, 1, 1) + np.roll(blur, -1, 1)) / 5
-    strength = 6.0
-    dx = (np.roll(blur, -1, 1) - np.roll(blur, 1, 1)) * strength
-    dy = (np.roll(blur, -1, 0) - np.roll(blur, 1, 0)) * strength
-    nz = np.ones_like(dx)
-    ln = np.sqrt(dx * dx + dy * dy + nz * nz)
-    normal = np.stack([-dx / ln, dy / ln, nz / ln], -1)  # +Y up in UE tangent space (image rows grow downward)
-    Image.fromarray(((normal * 0.5 + 0.5) * 255 + 0.5).astype(np.uint8), "RGB").save(os.path.join(a.out, "T_HullNormal.png"))
+    write_normal(height, os.path.join(a.out, "T_HullNormal.png"))
+    gemini = os.path.join(here, "..", "ArtSource", "Gemini")
+    for src in sorted(glob.glob(os.path.join(gemini, "*-plating.*"))):
+        fac = os.path.basename(src).split("-plating")[0]
+        faction_plating(src, n, win, a.out, fac)
     print("wrote", os.path.abspath(a.out))
 
 

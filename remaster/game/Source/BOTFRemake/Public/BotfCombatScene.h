@@ -170,6 +170,7 @@ private:
     float Elapsed = 0.f;
     bool bTitleScene = false;
     FString TitleShotPath; // dev builds: -BotfTitleShot=<png> renders the title scene, saves one frame and quits
+    TArray<FString> TitleShipOverride; // dev builds: -BotfTitleShips=<key,key,key> replaces the empire's hero classes
     float RoundAnimElapsed = 0.f;
     float RoundDuration = 2.4f;
     bool bIsRoundAnimating = false;

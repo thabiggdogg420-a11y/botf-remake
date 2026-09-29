@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Vor'cha-class attack cruiser: original three-view blueprint for blender_blueprint_ships.py (BOTF Remastered, private).
+     Units: the ship is 1000 long (scaled to its canon length on export). Each view group is drawn in its own frame; the
+     group transform only lays the sheet out for viewing and is ignored by the builder.
+       top   : x = ship X (0 tail .. 1000 nose), y = -ship Y (port is up)
+       side  : x = ship X, y = -ship Z (up is up)
+       front : x = ship Y (port is right), y = -ship Z
+     A solid part is the intersection of its outlines extruded through the views it appears in (data-part matches
+     across views). data-mirror="y" also builds the starboard copy. data-mask paints the part (windows, warm, cool,
+     accent); paint volumes (data-paint) colour whatever hull falls inside them without adding geometry. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2000 1200" width="2000" height="1200">
+  <desc id="botf">{"key": "ship.kli.vorcha", "voxel": 1.5, "triangles": 90000, "sockets": [
+    ["WPN_Pulse", 586, 351, -58, "mirror"],
+    ["WPN_Beam", 965, 42, -18, "mirror"],
+    ["WPN_Torp", 1005, 0, -6],
+    ["ENG", 44, 0, -2]]}</desc>
+  <style>
+    path, ellipse, rect, polygon { fill: #2d3a33; fill-opacity: 0.35; stroke: #9fd0b0; stroke-width: 1.5 }
+    [data-paint], [data-mask="warm"] { fill: #ff7a2a; stroke: #ff7a2a }
+    [data-mask="windows"], [data-paint="windows"] { fill: #fff2a8; stroke: #fff2a8 }
+    [data-paint="accent"] { fill: #8a2020; stroke: #c04040 }
+    [data-paint="cool"] { fill: #ff4a20; stroke: #ff4a20 }
+    text { fill: #9fd0b0; font: 20px monospace }
+  </style>
+  <rect x="0" y="0" width="2000" height="1200" style="fill:#0b1016;stroke:none;fill-opacity:1"/>
+  <text x="40" y="40">VOR'CHA ATTACK CRUISER - TOP / SIDE / FRONT</text>
+
+  <g id="top" transform="translate(40,440)">
+    <path data-part="head" d="M 1000,0 C 985,-30 950,-58 900,-62 C 860,-64 830,-55 805,-38 L 790,-20 L 790,20 L 805,38 C 830,55 860,64 900,62 C 950,58 985,30 1000,0 Z"/>
+    <path data-part="neck" d="M 815,-24 L 600,-46 L 600,46 L 815,24 Z"/>
+    <path data-part="hull" d="M 640,-50 C 560,-70 470,-120 400,-150 C 340,-170 250,-165 170,-140 C 120,-125 80,-95 55,-60 L 55,60 C 80,95 120,125 170,140 C 250,165 340,170 400,150 C 470,120 560,70 640,50 Z"/>
+    <path data-part="spine" d="M 520,-18 C 470,-30 420,-42 360,-44 L 200,-38 L 200,38 L 360,44 C 420,42 470,30 520,18 Z"/>
+    <path data-part="wing" data-mirror="y" d="M 450,-118 L 478,-330 C 478,-345 468,-352 452,-352 L 372,-352 C 358,-350 350,-341 346,-328 L 150,-124 Z"/>
+    <rect data-part="cannon" data-mirror="y" x="330" y="-367" width="242" height="32"/>
+    <rect data-part="cannon_tip" data-mirror="y" data-mask="warm" x="566" y="-362" width="18" height="22"/>
+    <rect data-part="impulse" data-mask="warm" x="46" y="-46" width="16" height="92"/>
+    <rect data-part="torp" data-mask="warm" x="986" y="-9" width="18" height="18"/>
+    <rect data-part="rib1" x="628" y="-48" width="16" height="96"/>
+    <rect data-part="rib2" x="673" y="-43" width="16" height="86"/>
+    <rect data-part="rib3" x="718" y="-39" width="16" height="78"/>
+    <rect data-part="rib4" x="763" y="-34" width="16" height="68"/>
+    <ellipse data-part="dome" cx="905" cy="0" rx="26" ry="18"/>
+    <rect data-part="engine" data-mirror="y" x="60" y="-98" width="210" height="42"/>
+    <rect data-part="exhaust" data-mirror="y" data-mask="warm" x="52" y="-94" width="12" height="34"/>
+    <rect data-part="turret" data-mirror="y" x="440" y="-104" width="34" height="24"/>
+    <!-- paint volumes -->    <path data-paint="windows" d="M 955,-40 L 840,-60 L 840,60 L 955,40 Z"/>
+    <path data-paint="windows" d="M 520,-120 L 250,-160 L 250,160 L 520,120 Z"/>
+    <path data-paint="accent" data-mirror="y" d="M 446,-128 L 476,-332 L 460,-340 L 418,-128 Z"/>
+    <path data-paint="accent" d="M 700,-40 L 620,-52 L 620,52 L 700,40 Z"/>
+    <path data-paint="cool" data-mirror="y" d="M 380,-150 L 410,-310 L 380,-310 L 320,-150 Z"/>
+  </g>
+
+  <g id="side" transform="translate(40,900)">
+    <path data-part="head" d="M 1000,5 C 990,-15 960,-35 910,-38 C 860,-40 825,-30 792,-18 L 790,22 C 830,40 880,52 930,40 C 970,30 995,20 1000,5 Z"/>
+    <path data-part="neck" d="M 815,-14 L 600,-30 L 600,22 L 815,14 Z"/>
+    <path data-part="hull" d="M 640,-32 C 560,-40 480,-50 420,-58 C 300,-60 160,-50 55,-34 L 55,24 C 160,36 300,46 420,40 C 520,34 590,26 640,22 Z"/>
+    <path data-part="spine" d="M 520,-40 C 470,-60 430,-86 390,-92 C 340,-96 300,-90 260,-74 L 200,-50 L 200,-20 L 520,-20 Z"/>
+    <path data-part="wing" d="M 450,-12 L 450,10 L 478,64 L 346,64 L 150,12 L 150,-12 Z"/>
+    <rect data-part="cannon" x="330" y="42" width="242" height="32"/>
+    <rect data-part="cannon_tip" x="566" y="47" width="18" height="22"/>
+    <rect data-part="impulse" x="46" y="-14" width="16" height="30"/>
+    <rect data-part="torp" x="986" y="-2" width="18" height="16"/>
+    <rect data-part="rib1" x="628" y="-33" width="16" height="59"/>
+    <rect data-part="rib2" x="673" y="-29" width="16" height="53"/>
+    <rect data-part="rib3" x="718" y="-26" width="16" height="49"/>
+    <rect data-part="rib4" x="763" y="-23" width="16" height="44"/>
+    <ellipse data-part="dome" cx="905" cy="-38" rx="26" ry="13"/>
+    <path data-part="engine" d="M 60,-62 L 250,-58 L 270,-42 L 250,-24 L 60,-20 Z"/>
+    <rect data-part="exhaust" x="52" y="-58" width="12" height="34"/>
+    <rect data-part="turret" x="440" y="-66" width="34" height="26"/>    <!-- paint volumes: window rows on the head flanks and the hull shoulders -->
+    <rect data-paint="windows" x="820" y="-8" width="150" height="7"/>
+    <rect data-paint="windows" x="250" y="-40" width="270" height="6"/>
+    <rect data-paint="accent" x="380" y="-40" width="340" height="120"/>
+    <rect data-paint="cool" x="280" y="0" width="100" height="80"/>
+  </g>
+
+  <g id="front" transform="translate(1500,440)">
+    <ellipse data-part="head" cx="0" cy="5" rx="64" ry="47"/>
+    <ellipse data-part="neck" cx="0" cy="-2" rx="48" ry="28"/>
+    <path data-part="hull" d="M -172,-8 C -160,-36 -90,-56 0,-60 C 90,-56 160,-36 172,-8 C 160,18 90,38 0,42 C -90,38 -160,18 -172,-8 Z"/>
+    <path data-part="spine" d="M -50,-20 C -48,-60 -30,-92 0,-96 C 30,-92 48,-60 50,-20 Z"/>
+    <path data-part="wing" d="M 100,-14 L 350,46 L 352,66 L 100,8 Z"/>
+    <ellipse data-part="cannon" cx="351" cy="58" rx="17" ry="17"/>
+    <ellipse data-part="cannon_tip" cx="351" cy="58" rx="12" ry="12"/>
+    <rect data-part="impulse" x="-46" y="-14" width="92" height="30"/>
+    <rect data-part="torp" x="-9" y="-2" width="18" height="16"/>
+    <rect data-part="rib1" x="-60" y="-40" width="120" height="75"/>
+    <rect data-part="rib2" x="-60" y="-40" width="120" height="75"/>
+    <rect data-part="rib3" x="-60" y="-40" width="120" height="75"/>
+    <rect data-part="rib4" x="-60" y="-40" width="120" height="75"/>
+    <ellipse data-part="dome" cx="0" cy="-38" rx="20" ry="13"/>
+    <ellipse data-part="engine" cx="77" cy="-41" rx="23" ry="21"/>
+    <ellipse data-part="exhaust" cx="77" cy="-41" rx="17" ry="16"/>
+    <path data-part="turret" d="M 78,-40 L 84,-66 L 98,-66 L 104,-40 Z"/>    <!-- windows only on the upper flanks; cool grilles on the wing undersides -->
+    <rect data-paint="windows" x="-200" y="-70" width="400" height="140"/>
+    <path data-paint="accent" d="M 90,-40 L 380,30 L 380,52 L 90,-10 Z"/>
+    <path data-paint="accent" d="M -90,-40 L -380,30 L -380,52 L -90,-10 Z"/>
+    <path data-paint="cool" d="M 100,2 L 352,60 L 352,72 L 100,14 Z"/>
+    <path data-paint="cool" d="M -100,2 L -352,60 L -352,72 L -100,14 Z"/>
+  </g>
+</svg>

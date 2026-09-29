@@ -286,7 +286,9 @@ void ABotfCombatScene::ConfigureTitleScene(int EmpireId)
     {
         auto* Ship = Ships[Index].Get();
         if (!Ship) continue;
-        const FString Path = UTF8_TO_TCHAR(botf::assets::generatedShipPath(TCHAR_TO_UTF8(Heroes[Faction - 1][Index])).c_str());
+        FString Key = Heroes[Faction - 1][Index];
+        if (TitleShipOverride.IsValidIndex(Index)) Key = TitleShipOverride[Index];
+        const FString Path = UTF8_TO_TCHAR(botf::assets::generatedShipPath(TCHAR_TO_UTF8(*Key)).c_str());
         UStaticMesh* Mesh = !Path.IsEmpty() && FPackageName::DoesPackageExist(FSoftObjectPath(Path).GetLongPackageName())
             ? Cast<UStaticMesh>(FSoftObjectPath(Path).TryLoad()) : nullptr;
         if (Mesh) Ship->SetStaticMesh(Mesh);
@@ -1231,6 +1233,9 @@ void ABotfCombatScene::BeginPlay()
     {
         int32 Empire = 1;
         FParse::Value(FCommandLine::Get(), TEXT("BotfTitleEmpire="), Empire);
+        // -BotfTitleShips=ship.kli.vorcha,ship.kli.neghvar,ship.kli.bop puts other classes in the formation (art review).
+        FString Keys;
+        if (FParse::Value(FCommandLine::Get(), TEXT("BotfTitleShips="), Keys, false)) Keys.ParseIntoArray(TitleShipOverride, TEXT(","));
         ConfigureTitleScene(Empire);
         SetPresentationActive(true);
     }

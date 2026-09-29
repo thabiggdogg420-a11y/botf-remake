@@ -186,6 +186,13 @@ def build_hull_material(panels, normal):
     return mat
 
 
+def faction_textures(prefix):
+    """T_HullPanels_<faction> / T_HullNormal_<faction> (generate_hull_textures.py, from ArtSource/Gemini plating)."""
+    if not os.path.exists(os.path.join(ART, "T_HullPanels_%s.png" % prefix)):
+        return None
+    return import_texture("T_HullPanels_" + prefix, False), import_texture("T_HullNormal_" + prefix, True)
+
+
 def hull_instance(prefix, parent):
     name = "MI_Hull_" + ("generic" if prefix == "_" else prefix)
     path = f"{DEST}/{name}"
@@ -200,6 +207,11 @@ def hull_instance(prefix, parent):
     MEL.set_material_instance_vector_parameter_value(mi, "CoolColor", cool)
     MEL.set_material_instance_scalar_parameter_value(mi, "PanelContrast", contrast)
     MEL.set_material_instance_scalar_parameter_value(mi, "Metallic", metallic)
+    own = faction_textures(prefix)
+    if own:
+        MEL.set_material_instance_texture_parameter_value(mi, "Panels", own[0])
+        MEL.set_material_instance_texture_parameter_value(mi, "Normal", own[1])
+        unreal.log_warning("BOTF ships: %s uses its own plating" % name)
     EAL.save_loaded_asset(mi)
     return mi
 
