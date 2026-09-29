@@ -148,6 +148,18 @@ inline double uniformScaleFor(double lengthMeters, double meshBoundsRadius) {
     return displayRadiusForLength(lengthMeters) / std::max(1.0, meshBoundsRadius);
 }
 
+// Object path of the procedural stand-in for a ship key (Tools/ue_import_generated_ships.py, original art):
+// "ship.fed.explorer" -> "/Game/Generated/Ships/fed/SM_explorer.SM_explorer". Empty for a non-ship key.
+inline std::string generatedShipPath(const std::string& key) {
+    if (key.rfind("ship.", 0) != 0) return {};
+    const auto dot = key.find('.', 5);
+    if (dot == std::string::npos || dot == 5 || dot + 1 >= key.size()) return {};
+    std::string name = "SM_" + key.substr(dot + 1);
+    for (char& c : name)
+        if (!((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_')) c = '_';
+    return "/Game/Generated/Ships/" + key.substr(5, dot - 5) + "/" + name + "." + name;
+}
+
 // ---------------------------------------------------------------------------------------------------------------
 // Resolved manifest
 // ---------------------------------------------------------------------------------------------------------------

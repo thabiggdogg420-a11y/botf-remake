@@ -130,6 +130,8 @@ private:
     UPROPERTY() TArray<TObjectPtr<UMaterialInstanceDynamic>> FxOrbMats;
     UPROPERTY() TArray<TObjectPtr<UStaticMeshComponent>> FxBubbles;
     UPROPERTY() TArray<TObjectPtr<UMaterialInstanceDynamic>> FxBubbleMats;
+    UPROPERTY() TArray<TObjectPtr<UStaticMeshComponent>> FxFireballs; // M_FxFireball (Generated/VFX), eroded by Age
+    UPROPERTY() TArray<TObjectPtr<UMaterialInstanceDynamic>> FxFireballMats;
     UPROPERTY() TArray<TObjectPtr<UStaticMeshComponent>> FxDebris;
     UPROPERTY() TArray<TObjectPtr<UPointLightComponent>> FxLights;
     UPROPERTY() TMap<FString, TObjectPtr<UNiagaraSystem>> NiagaraCache;
@@ -175,6 +177,7 @@ private:
     void SetupEffectPools();
     // Swaps a slot to its class mesh by asset key (UBotfAssetRegistry), scale-normalised by canon length.
     void ApplyShipMesh(int VisualIndex, int ReferenceShipId, int OwnerFaction, bool bLegacyDestroyer);
+    void ApplyStationMesh(int VisualIndex, int OwnerFaction);
     void AnimateRoundKinematics(float DeltaSeconds, float NormTime);
     void AnimateWeaponSalvos(float NormTime);
     void AnimateShieldsAndDamage(float DeltaSeconds, float NormTime);

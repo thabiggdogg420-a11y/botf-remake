@@ -15,6 +15,7 @@
 #include "Engine/StaticMesh.h"
 #include "Materials/MaterialInterface.h"
 #include "Materials/MaterialInstanceDynamic.h"
+#include "Misc/PackageName.h"
 
 namespace
 {
@@ -312,7 +313,7 @@ void ABotfCombatScene::ConfigureBattle(int AttackerFaction, int DefenderFaction,
     }
 
     ClearTimelineFx();
-    for (const auto* Pool : {&FxBeams, &FxOrbs, &FxBubbles, &FxDebris})
+    for (const auto* Pool : {&FxBeams, &FxOrbs, &FxBubbles, &FxFireballs, &FxDebris})
         for (const auto& Fx : *Pool) if (Fx)
         {
             Capture->RemoveShowOnlyComponent(Fx);
@@ -320,7 +321,7 @@ void ABotfCombatScene::ConfigureBattle(int AttackerFaction, int DefenderFaction,
         }
     for (const auto& Light : FxLights) if (Light) Light->DestroyComponent();
     FxBeams.Reset(); FxBeamMats.Reset(); FxOrbs.Reset(); FxOrbMats.Reset(); FxBubbles.Reset(); FxBubbleMats.Reset();
-    FxDebris.Reset(); FxLights.Reset();
+    FxFireballs.Reset(); FxFireballMats.Reset(); FxDebris.Reset(); FxLights.Reset();
     bTimelinePlaying = false;
     TrackSlot.Reset(); SlotSockets.Reset(); SlotSocketNames.clear();
 
@@ -451,6 +452,19 @@ void ABotfCombatScene::ApplyShipMesh(int VisualIndex, int ReferenceShipId, int O
         const auto Resolution = Registry->GetCatalog().resolveShip(ReferenceShipId, OwnerFaction);
         if (!Resolution.placeholder && Resolution.resolvedKey.rfind("study.", 0) != 0)
             Mesh = Registry->LoadShipMesh(ReferenceShipId, OwnerFaction, LengthMeters, Key);
+        else
+        {
+            // No local model: the class's procedural hull when Build-GeneratedArt.ps1 has made it (/Game/Generated).
+            const FString Generated = UTF8_TO_TCHAR(botf::assets::generatedShipPath(Resolution.requestedKey).c_str());
+            if (!Generated.IsEmpty() && FPackageName::DoesPackageExist(FSoftObjectPath(Generated).GetLongPackageName()))
+                Mesh = Cast<UStaticMesh>(FSoftObjectPath(Generated).TryLoad());
+            if (Mesh)
+            {
+                Key = UTF8_TO_TCHAR(Resolution.requestedKey.c_str());
+                LengthMeters = Resolution.targetLengthMeters > 0.0 ? Resolution.targetLengthMeters
+                    : Mesh->GetBounds().BoxExtent.GetMax() * 2.0 / 100.0; // Blender metres import as centimetres
+            }
+        }
     }
     // Interim art kept from the prototype: Federation destroyers without a local model use the community Ulysses mesh.
     if (!Mesh && bLegacyDestroyer && OwnerFaction == 1)
@@ -463,6 +477,28 @@ void ABotfCombatScene::ApplyShipMesh(int VisualIndex, int ReferenceShipId, int O
     if (Kinematics.IsValidIndex(VisualIndex)) Kinematics[VisualIndex].BaseScale = BaseScale;
     CacheSlotSockets(VisualIndex);
     if (!Key.IsEmpty()) UE_LOG(LogTemp, Verbose, TEXT("BOTF battle: ship %d uses %s"), ReferenceShipId, *Key);
+}
+
+void ABotfCombatScene::ApplyStationMesh(int VisualIndex, int OwnerFaction)
+{
+    // The faction's procedural starbase (or outpost) when Build-GeneratedArt.ps1 has made one; else the disc stays.
+    if (!Ships.IsValidIndex(VisualIndex) || !Ships[VisualIndex]) return;
+    const std::string Prefix = botf::assets::ownerFactionPrefix(OwnerFaction);
+    UStaticMesh* Mesh = nullptr;
+    for (const char* Kind : {".starbase", ".outpost"})
+    {
+        const FString Path = UTF8_TO_TCHAR(botf::assets::generatedShipPath("ship." + Prefix + Kind).c_str());
+        if (!Path.IsEmpty() && FPackageName::DoesPackageExist(FSoftObjectPath(Path).GetLongPackageName()))
+            Mesh = Cast<UStaticMesh>(FSoftObjectPath(Path).TryLoad());
+        if (Mesh) break;
+    }
+    if (!Mesh) return;
+    auto* Station = Ships[VisualIndex].Get();
+    Station->SetStaticMesh(Mesh);
+    const FVector BaseScale(170.f / FMath::Max(1.f, Mesh->GetBounds().SphereRadius)); // the disc's footprint
+    Station->SetRelativeScale3D(BaseScale);
+    if (Kinematics.IsValidIndex(VisualIndex)) Kinematics[VisualIndex].BaseScale = BaseScale;
+    CacheSlotSockets(VisualIndex);
 }
 
 void ABotfCombatScene::SetPresentationActive(bool bActive)
@@ -684,6 +720,8 @@ void ABotfCombatScene::ConfigureBattleReport(const botf::CombatReport& Report, i
             // mesh). Stations keep their disc; participants without a class id keep the faction placeholder.
             if (!botf::isStationCombatant(Participant.fleetId))
                 ApplyShipMesh(VisualIndex, Participant.referenceShipId, FactionId, Participant.shipClass == botf::Building::Destroyer);
+            else
+                ApplyStationMesh(VisualIndex, FactionId);
 
             int Hull = Participant.initialHull;
             int Shields = Participant.initialShields;
@@ -1146,6 +1184,7 @@ namespace
     constexpr int32 FxBeamPool = 48;
     constexpr int32 FxOrbPool = 64;
     constexpr int32 FxBubblePool = 16;
+    constexpr int32 FxFireballPool = 24;
     constexpr int32 FxDebrisPool = 40;
     constexpr int32 FxLightPool = 8;
     constexpr int32 DebrisPerExplosion = 8;
@@ -1165,11 +1204,22 @@ void ABotfCombatScene::SetupTimelinePools()
     auto* CylinderMesh = LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Cylinder.Cylinder"));
     auto* SphereMesh = LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Sphere.Sphere"));
     auto* CubeMesh = LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Cube.Cube"));
-    auto* GlowMaterial = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/Presentation/M_SpaceGlow.M_SpaceGlow"));
+    // Generated effect materials (Tools/ue_build_vfx.py) when built: additive light instead of solid shapes.
+    const auto LoadGenerated = [](const TCHAR* Path) -> UMaterialInterface*
+    {
+        return FPackageName::DoesPackageExist(FSoftObjectPath(Path).GetLongPackageName())
+            ? Cast<UMaterialInterface>(FSoftObjectPath(Path).TryLoad()) : nullptr;
+    };
+    auto* GlowMaterial = LoadGenerated(TEXT("/Game/Generated/VFX/M_FxGlow.M_FxGlow"));
+    if (!GlowMaterial) GlowMaterial = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/Presentation/M_SpaceGlow.M_SpaceGlow"));
+    auto* FireballMaterial = LoadGenerated(TEXT("/Game/Generated/VFX/M_FxFireball.M_FxFireball"));
     auto* ShieldMaterial = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/Presentation/M_ShieldShell.M_ShieldShell"));
     auto* LitMaterial = LoadObject<UMaterialInterface>(nullptr, TEXT("/Engine/EngineMaterials/DefaultMaterial.DefaultMaterial"));
+    auto* DebrisMaterial = LoadGenerated(TEXT("/Game/Generated/VFX/MI_FxDebris.MI_FxDebris"));
     if (!GlowMaterial) GlowMaterial = LitMaterial;
+    if (!FireballMaterial) FireballMaterial = GlowMaterial;
     if (!ShieldMaterial) ShieldMaterial = GlowMaterial;
+    if (!DebrisMaterial) DebrisMaterial = LitMaterial;
 
     const auto Make = [this](UStaticMesh* Mesh, UMaterialInterface* Material, bool bDynamic,
         TArray<TObjectPtr<UStaticMeshComponent>>& Pool, TArray<TObjectPtr<UMaterialInstanceDynamic>>* Mats, int32 Count)
@@ -1194,7 +1244,8 @@ void ABotfCombatScene::SetupTimelinePools()
     Make(CylinderMesh ? CylinderMesh : CubeMesh, GlowMaterial, true, FxBeams, &FxBeamMats, FxBeamPool);
     Make(SphereMesh, GlowMaterial, true, FxOrbs, &FxOrbMats, FxOrbPool);
     Make(SphereMesh, ShieldMaterial, true, FxBubbles, &FxBubbleMats, FxBubblePool);
-    Make(CubeMesh, LitMaterial, false, FxDebris, nullptr, FxDebrisPool);
+    Make(SphereMesh, FireballMaterial, true, FxFireballs, &FxFireballMats, FxFireballPool);
+    Make(CubeMesh, DebrisMaterial, false, FxDebris, nullptr, FxDebrisPool);
     for (int32 Index = 0; Index < FxLightPool; ++Index)
     {
         auto* Light = NewObject<UPointLightComponent>(this);
@@ -1218,7 +1269,7 @@ void ABotfCombatScene::ClearTimelineFx()
         }
     JobNiagara.Reset();
     NiagaraTried.Reset();
-    for (const auto* Pool : {&FxBeams, &FxOrbs, &FxBubbles, &FxDebris})
+    for (const auto* Pool : {&FxBeams, &FxOrbs, &FxBubbles, &FxFireballs, &FxDebris})
         for (const auto& Fx : *Pool) if (Fx) Fx->SetVisibility(false);
     for (const auto& Light : FxLights) if (Light) { Light->SetIntensity(0.f); Light->SetVisibility(false); }
 }
@@ -1448,10 +1499,10 @@ void ABotfCombatScene::TickTimeline(float DeltaSeconds)
     }
 
     // Effects: every frame the pools are handed out again in job order.
-    for (const auto* Pool : {&FxBeams, &FxOrbs, &FxBubbles, &FxDebris})
+    for (const auto* Pool : {&FxBeams, &FxOrbs, &FxBubbles, &FxFireballs, &FxDebris})
         for (const auto& Fx : *Pool) if (Fx) Fx->SetVisibility(false);
     for (const auto& Light : FxLights) if (Light) Light->SetVisibility(false);
-    int32 BeamIndex = 0, OrbIndex = 0, BubbleIndex = 0, DebrisIndex = 0, LightIndex = 0;
+    int32 BeamIndex = 0, OrbIndex = 0, BubbleIndex = 0, FireballIndex = 0, DebrisIndex = 0, LightIndex = 0;
 
     const auto DrawSegment = [&](const FVector& A, const FVector& B, float Width, const FLinearColor& Color)
     {
@@ -1495,6 +1546,22 @@ void ABotfCombatScene::TickTimeline(float DeltaSeconds)
             Mat->SetVectorParameterValue(TEXT("Color"), Color);
         }
         Bubble->SetVisibility(true);
+    };
+    const auto DrawFireball = [&](const FVector& At, float Scale, float Age, const FLinearColor& Color, const FQuat& Rotation)
+    {
+        if (!FxFireballs.IsValidIndex(FireballIndex)) return;
+        UStaticMeshComponent* Ball = FxFireballs[FireballIndex];
+        UMaterialInstanceDynamic* Mat = FxFireballMats.IsValidIndex(FireballIndex) ? FxFireballMats[FireballIndex].Get() : nullptr;
+        ++FireballIndex;
+        if (!Ball || Scale <= 0.001f || Age >= 1.f) return;
+        Ball->SetRelativeLocationAndRotation(At, Rotation);
+        Ball->SetRelativeScale3D(FVector(Scale));
+        if (Mat)
+        {
+            Mat->SetScalarParameterValue(TEXT("Age"), Age);
+            Mat->SetVectorParameterValue(TEXT("Color"), Color);
+        }
+        Ball->SetVisibility(true);
     };
     const auto Flash = [&](const FVector& At, float Intensity, float Radius, const FLinearColor& Color)
     {
@@ -1636,9 +1703,18 @@ void ABotfCombatScene::TickTimeline(float DeltaSeconds)
             const FVector Center = ShipPos(FromSlot);
             const float Radius = ShipRadius(FromSlot);
             if (UpdateJobNiagara(JobIndex, Job, Center, Center, U)) break;
-            const float Grow = 0.4f + 2.6f * FMath::Sqrt(U);
-            DrawOrb(Center, FVector(Radius / 50.f * Grow * (1.f - 0.6f * U)), FLinearColor(1.f, 0.55f + 0.3f * (1.f - U), 0.2f) * (1.f - U), NoRotation);
-            DrawOrb(Center, FVector(Radius / 50.f * 0.6f * (1.f - U)), FLinearColor(1.f, 1.f, 0.9f), NoRotation);
+            // A blinding core, two turbulent fireballs burning out at different rates, and a flat shockwave ring.
+            FRandomStream Random(JobIndex * 7349 + Job.fleetId);
+            const float Unit = Radius / 50.f;
+            const float Grow = 0.45f + 1.9f * FMath::Sqrt(U);
+            const float Core = FMath::Max(0.f, 1.f - U * 3.f);
+            DrawOrb(Center, FVector(Unit * (0.5f + 0.6f * U) * Core), FLinearColor(1.f, 0.92f, 0.75f), NoRotation);
+            DrawFireball(Center, Unit * Grow, U, FLinearColor::White, FRotator(Random.FRandRange(0.f, 360.f), Random.FRandRange(0.f, 360.f), 0.f).Quaternion());
+            DrawFireball(Center + Random.GetUnitVector() * Radius * 0.35f, Unit * Grow * 0.7f, FMath::Min(1.f, U * 1.25f),
+                FLinearColor(1.f, 0.85f, 0.7f), FRotator(Random.FRandRange(0.f, 360.f), Random.FRandRange(0.f, 360.f), 0.f).Quaternion());
+            const FQuat RingTilt = FRotator(Random.FRandRange(-25.f, 25.f), 0.f, Random.FRandRange(-25.f, 25.f)).Quaternion();
+            const float Ring = Unit * (0.6f + 7.f * FMath::Sqrt(U));
+            DrawOrb(Center, FVector(Ring, Ring, Unit * 0.04f), FLinearColor(0.55f, 0.7f, 1.f, (1.f - U) * (1.f - U)), RingTilt);
             Flash(Center, 250000.f * (1.f - U) * (1.f - U), 2200.f, FLinearColor(1.f, 0.7f, 0.35f));
             Debris(Center, JobIndex * 104729 + Job.fleetId, DebrisPerExplosion, Radius * 4.f, Radius / 50.f * 0.18f, U);
             break;
