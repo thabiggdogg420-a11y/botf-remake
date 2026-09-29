@@ -195,6 +195,7 @@ func rebuild() -> void:
 
 func _set_field(sprite: Sprite2D, img: Image, g: Vector2i) -> void:
 	sprite.texture = ImageTexture.create_from_image(img)
+	(sprite.material as ShaderMaterial).set_shader_parameter("field_tex", sprite.texture)
 	sprite.scale = Vector2(CELL, CELL)
 	(sprite.material as ShaderMaterial).set_shader_parameter("cells", Vector2(g))
 
@@ -415,6 +416,13 @@ class MapDrawer extends Node2D:
 		var app := map.app
 		var fog: String = v["fog"]
 		var accent := Lcars.accent()
+		# Darken space outside the charted grid.
+		var big := 4000.0
+		var outside := Color(0.0, 0.0, 0.01, 0.55)
+		draw_rect(Rect2(-big, -big, g.x * C + 2 * big, big), outside)
+		draw_rect(Rect2(-big, g.y * C, g.x * C + 2 * big, big), outside)
+		draw_rect(Rect2(-big, 0, big, g.y * C), outside)
+		draw_rect(Rect2(g.x * C, 0, big, g.y * C), outside)
 		# Grid
 		if map.layers.get("grid", true):
 			var gc := Color(0.55, 0.67, 0.9, 0.06)

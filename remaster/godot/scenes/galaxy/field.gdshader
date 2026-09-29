@@ -6,12 +6,13 @@ shader_type canvas_item;
 //   mode 1: fog of war (a = darkness), cloudy noise
 
 uniform int mode = 0;
+uniform sampler2D field_tex : filter_linear, repeat_disable;
 uniform float fill = 0.16;
 uniform float edge = 0.55;
 uniform float edge_width = 0.03;
 uniform float noise_amount = 0.06;
 uniform vec2 cells = vec2(16.0, 12.0);
-uniform vec4 fog_color : source_color = vec4(0.012, 0.02, 0.045, 1.0);
+uniform vec4 fog_color : source_color = vec4(0.035, 0.045, 0.085, 1.0);
 
 float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 float noise(vec2 p) {
@@ -35,7 +36,7 @@ vec4 cubic(float v) {
 	float w = 6.0 - x - y - z;
 	return vec4(x, y, z, w) * (1.0 / 6.0);
 }
-vec4 smooth_sample(sampler2D tex, vec2 uv) {
+vec4 smooth_sample(vec2 uv) {
 	vec2 tex_size = cells;
 	vec2 inv = 1.0 / tex_size;
 	uv = uv * tex_size - 0.5;
@@ -47,10 +48,10 @@ vec4 smooth_sample(sampler2D tex, vec2 uv) {
 	vec4 s = vec4(xc.xz + xc.yw, yc.xz + yc.yw);
 	vec4 off = c + vec4(xc.yw, yc.yw) / s;
 	off *= inv.xxyy;
-	vec4 s0 = texture(tex, off.xz);
-	vec4 s1 = texture(tex, off.yz);
-	vec4 s2 = texture(tex, off.xw);
-	vec4 s3 = texture(tex, off.yw);
+	vec4 s0 = texture(field_tex, off.xz);
+	vec4 s1 = texture(field_tex, off.yz);
+	vec4 s2 = texture(field_tex, off.xw);
+	vec4 s3 = texture(field_tex, off.yw);
 	float sx = s.x / (s.x + s.y);
 	float sy = s.z / (s.z + s.w);
 	return mix(mix(s3, s2, sx), mix(s1, s0, sx), sy);
@@ -59,11 +60,12 @@ vec4 smooth_sample(sampler2D tex, vec2 uv) {
 void fragment() {
 	vec2 p = UV * cells;
 	float n = fbm(p * 1.3 + TIME * 0.05) - 0.5;
-	vec4 v = smooth_sample(TEXTURE, UV);
+	vec4 v = smooth_sample(UV);
 	if (mode == 1) {
 		float d = clamp(v.a + n * noise_amount * 2.0, 0.0, 1.0);
 		float cloud = fbm(p * 0.8 - TIME * 0.02);
-		vec3 col = fog_color.rgb + vec3(0.03, 0.04, 0.09) * cloud;
+		float wisps = fbm(p * 2.3 + vec2(TIME * 0.03, 0.0));
+		vec3 col = fog_color.rgb + vec3(0.06, 0.08, 0.16) * cloud + vec3(0.05, 0.06, 0.12) * smoothstep(0.55, 0.9, wisps);
 		COLOR = vec4(col, d);
 	} else {
 		float a = v.a + n * noise_amount;

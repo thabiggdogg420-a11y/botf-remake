@@ -9,6 +9,8 @@ signal selection_changed
 signal screen_changed(id: String)
 
 static var i: App
+## Test hook: "fixture" forces the fixture backend, "" picks BotfCore when present.
+static var forced_backend := ""
 
 const GAME_SCREENS := [
 	{"id": "galaxy", "label": "Galaxy", "key": "F1", "hint": "Star chart, fleets and orders", "script": "res://scenes/galaxy/galaxy_screen.gd"},
@@ -58,7 +60,7 @@ func _init() -> void:
 func _ready() -> void:
 	set_anchors_preset(Control.PRESET_FULL_RECT)
 	_load_settings()
-	core = CoreClient.create()
+	core = CoreClient.create("fixture" if forced_backend == "fixture" else "auto")
 	var m: Variant = core.request("meta")
 	meta = m if m is Dictionary else {}
 	_apply_theme(1)

@@ -26,8 +26,13 @@ func _run() -> void:
 	await _wait(4)
 	for s in shots:
 		await _prepare(s)
+		for t in app.get_node("Toasts").get_children():
+			t.queue_free()
 		await _wait(10)
 		var img := root.get_viewport().get_texture().get_image()
+		# Committed screenshots are kept small: 960x540.
+		if OS.get_environment("SHOT_FULL") == "":
+			img.resize(960, 540, Image.INTERPOLATE_LANCZOS)
 		var path := "%s/ui-%s.png" % [out_dir, s]
 		img.save_png(path)
 		print("saved ", path)
