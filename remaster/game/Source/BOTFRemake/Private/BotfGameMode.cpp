@@ -58,6 +58,9 @@
 #include <tuple>
 #if WITH_DEV_AUTOMATION_TESTS
 #include "Misc/AutomationTest.h"
+#include "Containers/Ticker.h"
+#include "Misc/CommandLine.h"
+#include "UnrealClient.h"
 #endif
 
 namespace {
@@ -83,6 +86,7 @@ enum : int { PanelGalaxy = 0, PanelSystem = 1, PanelResearch = 2, PanelDiplomacy
 
 #if WITH_DEV_AUTOMATION_TESTS
 class FBotfUiShellAutomationTest;
+class FBotfShowcase;
 #endif
 class SBotfInterface final : public SCompoundWidget {
 public:
@@ -271,6 +275,7 @@ public:
 private:
 #if WITH_DEV_AUTOMATION_TESTS
     friend class FBotfUiShellAutomationTest;
+    friend class FBotfShowcase;
     FString TestSnapshotFolder;
 #endif
     enum class EUiView : int { Title, Game, Setup, Load, Settings, Menu, Confirm };
@@ -5257,6 +5262,194 @@ private:
 };
 
 #if WITH_DEV_AUTOMATION_TESTS
+// Offscreen presentation showcase (development builds only, never Shipping).
+//   BOTFRemake.exe -BotfShowcase=<folder> [-BotfShowcaseShips=24] -RenderOffscreen -ResX=1920 -ResY=1080
+// walks the title, setup, every command-deck sheet, three peaceful turns, a Remastered (rules 3) battle of N ships per
+// side in every camera mode and a mid-battle save/load. Each step writes <folder>\NN-name.png; the battle's frame times
+// go to <folder>\showcase-report.txt. Saves go to <folder>\saves, never the player's save folder. The process exits
+// when done. It drives the same entry points as the controls and BOTF.UI.Shell, so it also works as a smoke test.
+class FBotfShowcase : public TSharedFromThis<FBotfShowcase> {
+public:
+    static void Start(const TSharedRef<SBotfInterface>& InUi, ABotfCombatScene* InScene, const FString& InFolder, int32 InShips) {
+        TSharedRef<FBotfShowcase> Self = MakeShared<FBotfShowcase>();
+        Self->Ui = InUi; Self->Scene = InScene; Self->Folder = InFolder; Self->ShipsPerSide = FMath::Clamp(InShips, 1, ABotfCombatScene::MaxShipsPerSide);
+        IFileManager::Get().MakeDirectory(*Self->Folder, true);
+        InUi->TestSnapshotFolder = Self->Folder / TEXT("saves");
+        InUi->Campaign.FolderOverride = InUi->TestSnapshotFolder;
+        Self->Handle = FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateSP(Self, &FBotfShowcase::Tick));
+        Self->Log(FString::Printf(TEXT("BOTF_SHOWCASE start folder=%s ships=%d"), *Self->Folder, Self->ShipsPerSide));
+        Keep = Self;
+    }
+private:
+    static inline TSharedPtr<FBotfShowcase> Keep;
+    TWeakPtr<SBotfInterface> Ui;
+    TWeakObjectPtr<ABotfCombatScene> Scene;
+    FString Folder;
+    int32 ShipsPerSide = 24;
+    FTSTicker::FDelegateHandle Handle;
+    int32 Step = 0;
+    float Wait = 3.f;          // seconds before the current step runs (the first lets the shell settle)
+    int32 ShotCount = 0;
+    bool bMeasuring = false;
+    TArray<float> Frames;
+    TArray<FString> Lines;
+
+    void Log(const FString& Line) { UE_LOG(LogTemp, Display, TEXT("%s"), *Line); Lines.Add(Line); }
+    void Capture(const TCHAR* Name) {
+        const FString Path = Folder / FString::Printf(TEXT("%02d-%s.png"), ++ShotCount, Name);
+        FScreenshotRequest::RequestScreenshot(Path, true, false);
+        Log(FString::Printf(TEXT("BOTF_SHOWCASE shot %s"), *Path));
+    }
+    // A Remastered war in the player's home sector: N catalogue warships per side, newest designs first.
+    static botf::GameState BattleFixture(int32 PerSide, int32& OutHomeCell) {
+        botf::GameState S = botf::generateReferenceCampaign(1999, 2, 16, 12, 28, 1);
+        botf::applyRulesetPreset(S, botf::RulesetPreset::Remastered);
+        S.eventsEnabled = false; S.aiAggressionEnabled = false; S.credits = 100000;
+        const auto Home = std::find_if(S.colonies.begin(), S.colonies.end(), [&S](const botf::Colony& C) { return C.ownerId == S.playerEmpire; });
+        if (Home == S.colonies.end()) throw std::runtime_error("Showcase: player has no colony");
+        const auto System = std::find_if(S.systems.begin(), S.systems.end(), [&](const botf::System& X) { return X.id == Home->systemId; });
+        OutHomeCell = System->y * S.width + System->x;
+        const int Enemy = S.playerEmpire == 1 ? 2 : 1;
+        const auto AddShips = [&S, System](int Owner, int Count) {
+            static constexpr std::array<int, 6> RaceOf{-1, 1, 3, 4, 0, 2};   // empire id -> catalogue race id
+            std::vector<const botf::referenceData::ShipRecord*> Picks;
+            for (const auto& Ship : botf::referenceData::ShipCatalogue)
+                if (Owner >= 1 && Owner <= 5 && Ship.raceId == RaceOf[Owner] && Ship.role >= 1 && Ship.role <= 4 && Ship.attack > 0) Picks.push_back(&Ship);
+            std::sort(Picks.begin(), Picks.end(), [](const auto* A, const auto* B) { return A->industryCost > B->industryCost; });
+            for (int I = 0; I < Count; ++I) {
+                botf::Fleet F; F.id = S.nextFleetId++; F.ownerId = Owner; F.shipClass = botf::Building::Destroyer;
+                F.x = F.targetX = System->x; F.y = F.targetY = System->y;
+                if (!Picks.empty()) F.referenceShipId = Picks[static_cast<std::size_t>(I) % Picks.size()]->id;
+                F.hull = botf::fleetMaxHull(F); F.shields = botf::fleetMaxShields(F);
+                S.fleets.push_back(F);
+            }
+        };
+        AddShips(S.playerEmpire, PerSide);
+        AddShips(Enemy, PerSide);
+        const int First = std::min(S.playerEmpire, Enemy), Second = std::max(S.playerEmpire, Enemy);
+        auto Relation = std::find_if(S.majorRelations.begin(), S.majorRelations.end(), [&](const botf::MajorRelation& R) { return R.first == First && R.second == Second; });
+        if (Relation == S.majorRelations.end()) throw std::runtime_error("Showcase: no relation between the two empires");
+        Relation->contact = true; Relation->atWar = true; Relation->tradeTreaty = false; Relation->warStartTurn = S.turn;
+        const auto Rival = std::find_if(S.rivals.begin(), S.rivals.end(), [Enemy](const botf::EmpireState& E) { return E.id == Enemy; });
+        if (Rival == S.rivals.end()) throw std::runtime_error("Showcase: enemy empire state missing");
+        const auto At = std::lower_bound(Rival->explored.begin(), Rival->explored.end(), OutHomeCell);
+        if (At == Rival->explored.end() || *At != OutHomeCell) Rival->explored.insert(At, OutHomeCell);
+        botf::validate(S);
+        return S;
+    }
+    void Install(SBotfInterface& U, botf::GameState&& S, int32 HomeCell) {
+        U.ShowView(SBotfInterface::EUiView::Game);
+        U.State = std::move(S); U.Session = botf::session::TurnSession();
+        U.bHasActiveCampaign = true; U.bHasSavedBaseline = false; U.SavedSessionText.Empty();
+        U.bIntelDraft = false; U.DraftIntelBudget.clear();
+        U.SelectedTaskForce = 0; U.FormSelection.clear(); U.bEncounterChoice = false; U.ActivePanel = PanelGalaxy;
+        ++U.StateVersion;
+        U.SelectCell(HomeCell); U.RefreshAll();
+    }
+    void Report() {
+        Frames.Sort();
+        const int32 N = Frames.Num();
+        if (N > 0) {
+            double Sum = 0; for (float F : Frames) Sum += F;
+            const float Avg = static_cast<float>(Sum / N);
+            const float P95 = Frames[FMath::Min(N - 1, N * 95 / 100)], P99 = Frames[FMath::Min(N - 1, N * 99 / 100)];
+            Log(FString::Printf(TEXT("BOTF_SHOWCASE frames=%d avg=%.2fms (%.1f fps) p95=%.2fms p99=%.2fms max=%.2fms ships=%dv%d"),
+                N, Avg * 1000.f, Avg > 0 ? 1.f / Avg : 0.f, P95 * 1000.f, P99 * 1000.f, Frames.Last() * 1000.f, ShipsPerSide, ShipsPerSide));
+        }
+        FFileHelper::SaveStringToFile(FString::Join(Lines, TEXT("\n")) + TEXT("\n"), *(Folder / TEXT("showcase-report.txt")));
+    }
+    void Finish() {
+        Report();
+        FTSTicker::GetCoreTicker().RemoveTicker(Handle);
+        FPlatformMisc::RequestExit(false);
+        Keep.Reset();
+    }
+    bool Tick(float Delta) {
+        if (bMeasuring) Frames.Add(Delta);
+        Wait -= Delta;
+        if (Wait > 0.f) return true;
+        const TSharedPtr<SBotfInterface> U = Ui.Pin();
+        if (!U.IsValid()) { Finish(); return false; }
+        bool bDone = true;
+        try { bDone = RunStep(*U); }
+        catch (const std::exception& Error) { Log(FString::Printf(TEXT("BOTF_SHOWCASE_ERROR step %d: %s"), Step, UTF8_TO_TCHAR(Error.what()))); Wait = 0.5f; bShotTaken = false; }
+        // Controls run their action through RunGuarded, which refreshes every list; the showcase does the same.
+        if (bDone) { ++Step; if (U.IsValid()) U->RefreshAll(); }
+        return true;
+    }
+    // A step that shows something first asks for its screenshot and returns; the screenshot is taken when the frame
+    // is drawn, so the step's own action (which changes the view) only runs on the next pass.
+    bool bShotTaken = false;
+    bool Shot(const FString& Name) {
+        if (bShotTaken) { bShotTaken = false; return false; }
+        Capture(*Name); bShotTaken = true; Wait = 0.35f; return true;
+    }
+    bool RunStep(SBotfInterface& U) {
+        using V = SBotfInterface::EUiView;
+        Wait = 1.2f;
+        switch (Step) {
+        case 0: U.ShowView(V::Title); break;
+        case 1: if (Shot(TEXT("title"))) return false; U.OpenSubPage(V::Setup); break;
+        case 2: if (Shot(TEXT("setup"))) return false; U.RequestAction(SBotfInterface::EPendingAction::StartCampaign); break;
+        case 3: if (Shot(TEXT("galaxy"))) return false; U.GoPanel(PanelSystem); break;
+        case 4: if (Shot(TEXT("system"))) return false; U.GoPanel(PanelResearch); break;
+        case 5: if (Shot(TEXT("research"))) return false; U.GoPanel(PanelDiplomacy); break;
+        case 6: if (Shot(TEXT("diplomacy"))) return false; U.GoPanel(PanelIntel); break;
+        case 7: if (Shot(TEXT("intel"))) return false; U.GoPanel(PanelEmpire); break;
+        case 8: if (Shot(TEXT("empire"))) return false; U.GoPanel(PanelGalaxy);
+            for (int Turn = 0; Turn < 3; ++Turn) { U.EndTurn(); U.bSummaryOpen = false; }
+            Log(FString::Printf(TEXT("BOTF_SHOWCASE turns ok turn=%d"), U.State.turn)); break;
+        case 9: if (Shot(TEXT("galaxy-turn4"))) return false; U.OpenSubPage(V::Settings); break;
+        case 10: if (Shot(TEXT("settings"))) return false; U.ShowView(V::Game); {
+                int32 HomeCell = 0;
+                Install(U, BattleFixture(ShipsPerSide, HomeCell), HomeCell);
+                U.EndTurn();
+                if (!U.Session.pending) throw std::runtime_error("the battle fixture produced no encounter");
+                Log(FString::Printf(TEXT("BOTF_SHOWCASE encounter ships=%d"), static_cast<int>(U.Session.pending->ships.size())));
+            } break;
+        case 11: if (Shot(TEXT("battle-contact"))) return false;
+            U.bEncounterChoice = false; U.bTacOrderAll = true;
+            U.TacOrder(botf::tactical::TacticalManeuver::Engage);
+            U.TacNextRound();
+            Frames.Reset(); bMeasuring = true;
+            if (Scene.IsValid()) Scene->SetCameraMode(ABotfCombatScene::Cam_Overview);
+            Wait = 2.0f; break;
+        default: {
+            // Steps 12..23: two shots per camera mode across the round's playback.
+            const int32 Index = Step - 12;
+            if (Index < ABotfCombatScene::Cam_Count * 2) {
+                const int32 Mode = Index / 2;
+                if (Scene.IsValid()) {
+                    if (Shot(FString::Printf(TEXT("battle-%s-%d"), *Scene->GetCameraModeName().ToLower().Replace(TEXT(" "), TEXT("-")), Index % 2))) return false;
+                    if (Index % 2 == 1) {
+                        Scene->SetCameraMode((Mode + 1) % ABotfCombatScene::Cam_Count);
+                        // A fresh round per camera mode keeps the playback busy.
+                        if (U.Session.pending && !U.Session.pending->isFinished) {
+                            try { U.TacOrder(botf::tactical::TacticalManeuver::Engage); } catch (const std::exception&) {}
+                            U.TacNextRound();
+                        }
+                    }
+                }
+                Wait = 1.5f; break;
+            }
+            if (Index == ABotfCombatScene::Cam_Count * 2) {
+                bMeasuring = false;
+                U.Save();
+                U.OpenSubPage(V::Load);
+                U.RequestAction(SBotfInterface::EPendingAction::LoadCampaign);
+                if (U.Shell == V::Confirm) U.ConfirmAction(false);
+                Log(FString::Printf(TEXT("BOTF_SHOWCASE save/load ok battle=%s round=%d"), U.Session.pending ? TEXT("yes") : TEXT("no"),
+                    U.Session.pending ? U.Session.pending->currentRound : -1));
+                break;
+            }
+            if (Index == ABotfCombatScene::Cam_Count * 2 + 1) { if (Shot(TEXT("battle-after-load"))) return false; Wait = 0.5f; break; }
+            Finish();
+        }
+        }
+        return true;
+    }
+};
+
 // Test-only campaign fixture: a generated classic campaign with two extra player destroyers co-located at the
 // home system, a spare unstaffed farm, ample credits and, optionally, a legal war with an enemy destroyer in the
 // same (supplied) sector. Validated by core before use; never reachable from production code.
@@ -6201,6 +6394,15 @@ void ABotfGameMode::BeginPlay() {
             Input.SetWidgetToFocus(Interface); Input.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
             PC->SetInputMode(Input);
         }
+#if WITH_DEV_AUTOMATION_TESTS
+        FString ShowcaseFolder;
+        if (FParse::Value(FCommandLine::Get(), TEXT("BotfShowcase="), ShowcaseFolder)) {
+            int32 Ships = ABotfCombatScene::MaxShipsPerSide;
+            FParse::Value(FCommandLine::Get(), TEXT("BotfShowcaseShips="), Ships);
+            FBotfShowcase::Start(StaticCastSharedRef<SBotfInterface>(Interface.ToSharedRef()), CombatScene.Get(),
+                FPaths::ConvertRelativePathToFull(ShowcaseFolder), Ships);
+        }
+#endif
     }
 }
 void ABotfGameMode::EndPlay(const EEndPlayReason::Type Reason) {

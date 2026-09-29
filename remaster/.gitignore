@@ -5,3 +5,7 @@
 /game/Content/Local/
 # Package-Windows.ps1 logs and packages
 /game/Build/
+# Original procedural art (Tools\generate_space_art.py, blender_generate_ships.py): rebuilt by Build-GeneratedArt.ps1,
+# kept out of git to stay inside the LFS quota.
+/game/ArtSource/Generated/
+/game/Content/Generated/

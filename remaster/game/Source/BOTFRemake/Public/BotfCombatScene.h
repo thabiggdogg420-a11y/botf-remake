@@ -11,6 +11,7 @@ class UStaticMeshComponent;
 class UMaterialInstanceDynamic;
 class UMaterialInterface;
 class UPointLightComponent;
+class UDirectionalLightComponent;
 class UNiagaraSystem;
 class UNiagaraComponent;
 namespace botf { struct CombatReport; struct CombatEvent; }
@@ -104,6 +105,14 @@ private:
     UPROPERTY() TObjectPtr<UTextureRenderTarget2D> BattleTexture;
     UPROPERTY() TObjectPtr<USceneCaptureComponent2D> Capture;
     UPROPERTY() TArray<TObjectPtr<UStaticMeshComponent>> Stars;
+    // Environment (original generated art, /Game/Generated/Environment; Build-GeneratedArt.ps1): sky dome centred on the capture, a gas giant and a
+    // moon far behind the arena, a warm key sun and a cool rim light. Missing assets fall back to the sphere starfield.
+    UPROPERTY() TObjectPtr<UStaticMeshComponent> SkyDome;
+    UPROPERTY() TObjectPtr<UStaticMeshComponent> Planet;
+    UPROPERTY() TObjectPtr<UStaticMeshComponent> Moon;
+    UPROPERTY() TObjectPtr<UDirectionalLightComponent> SunLight;
+    UPROPERTY() TObjectPtr<UDirectionalLightComponent> RimLight;
+    void SetupEnvironment();
     UPROPERTY() TArray<TObjectPtr<UStaticMeshComponent>> Ships;
     UPROPERTY() TArray<TObjectPtr<UStaticMeshComponent>> ShieldShells;
     UPROPERTY() TArray<TObjectPtr<UMaterialInstanceDynamic>> ShieldMaterials;
