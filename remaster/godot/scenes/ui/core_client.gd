@@ -4,7 +4,7 @@ extends RefCounted
 ## web bridge (`botf_call(method, argsJson)` in remaster/web/bridge/WebBridge.cpp).
 ##
 ## Backends:
-##  - "native":  the BotfCore GDExtension singleton (`BotfCore.call(method, args) -> Dictionary`).
+##  - "native":  the BotfCore GDExtension singleton (`BotfCore.request(method, args) -> Dictionary`).
 ##  - "fixture": JSON recorded from the wasm core by scenes/ui/fixtures/record_fixtures.mjs.
 ##    It is a small stateful stub: orders become pending entries, endTurn advances the turn.
 ##
@@ -52,7 +52,7 @@ func _native_call(method: String, args: Dictionary) -> Dictionary:
 	if _native.has_method("botf_call"):
 		out = _native.callv("botf_call", [method, args])
 	else:
-		out = _native.callv("call", [method, args])
+		out = _native.callv("request", [method, args])
 	if out is String:
 		out = JSON.parse_string(out)
 	if out is Dictionary and out.has("ok"):

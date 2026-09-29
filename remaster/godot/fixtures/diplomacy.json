@@ -1,0 +1,57 @@
+{
+ "method": "diplomacy",
+ "args": {},
+ "result": {
+  "modern": true,
+  "advancedRules": true,
+  "empires": [
+   {
+    "empire": 2,
+    "name": "Klingon Empire",
+    "contact": false,
+    "eliminated": false
+   },
+   {
+    "empire": 3,
+    "name": "Romulan Star Empire",
+    "contact": false,
+    "eliminated": false
+   },
+   {
+    "empire": 4,
+    "name": "Cardassian Union",
+    "contact": false,
+    "eliminated": false
+   },
+   {
+    "empire": 5,
+    "name": "Ferengi Alliance",
+    "contact": false,
+    "eliminated": false
+   }
+  ],
+  "minors": [],
+  "eligibility": [],
+  "proposals": [],
+  "treaties": [],
+  "events": [],
+  "news": [],
+  "majorOffers": [],
+  "minorOffers": [],
+  "dossiers": [],
+  "standing": {
+   "betrayals": 0,
+   "lastBetrayalTurn": -1
+  },
+  "callsToArms": [],
+  "treatyHistory": [],
+  "victory": {
+   "bloc": 40,
+   "galaxy": 350,
+   "achieved": false,
+   "allies": [],
+   "memberMinors": []
+  },
+  "turn": 0
+ }
+}

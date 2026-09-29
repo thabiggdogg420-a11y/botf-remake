@@ -1,0 +1,3201 @@
+{
+ "method": "research",
+ "args": {},
+ "result": {
+  "fields": [
+   {
+    "field": 0,
+    "name": "Biotech",
+    "level": 1,
+    "progress": 0,
+    "allocation": 17,
+    "committedAllocation": 17,
+    "current": "Hydroponics",
+    "levels": [
+     {
+      "level": 0,
+      "name": "Basic Biotech",
+      "cost": 0,
+      "description": "Everything that lives, grows or feeds a colony. Every Biotech level raises colony food output by 5% and underpins terraforming.",
+      "ships": [],
+      "structures": []
+     },
+     {
+      "level": 1,
+      "name": "Hydroponics",
+      "cost": 0,
+      "description": "Soil-free agriculture in nutrient solutions under artificial light. The first step toward feeding colonies far from home.",
+      "ships": [
+       {
+        "id": 22,
+        "name": "Edward Colony Ship",
+        "cost": 1210,
+        "othersMet": true,
+        "requires": [
+         1,
+         1,
+         1,
+         1,
+         1,
+         1
+        ]
+       },
+       {
+        "id": 28,
+        "name": "Outpost  Outpost",
+        "cost": 1480,
+        "othersMet": true,
+        "requires": [
+         1,
+         1,
+         1,
+         1,
+         1,
+         1
+        ]
+       },
+       {
+        "id": 30,
+        "name": "Miranda Destroyer",
+        "cost": 1410,
+        "othersMet": false,
+        "requires": [
+         1,
+         1,
+         2,
+         2,
+         2,
+         1
+        ]
+       },
+       {
+        "id": 35,
+        "name": "Oberth Science Vessel",
+        "cost": 490,
+        "othersMet": true,
+        "requires": [
+         1,
+         1,
+         1,
+         1,
+         1,
+         1
+        ]
+       },
+       {
+        "id": 39,
+        "name": "London Troop Transport",
+        "cost": 1030,
+        "othersMet": true,
+        "requires": [
+         1,
+         1,
+         1,
+         1,
+         1,
+         1
+        ]
+       },
+       {
+        "id": 43,
+        "name": "Ambassador Light Cruiser",
+        "cost": 3100,
+        "othersMet": false,
+        "requires": [
+         1,
+         2,
+         3,
+         3,
+         2,
+         3
+        ]
+       }
+      ],
+      "structures": [
+       {
+        "id": 60,
+        "name": "Harvesting Complex",
+        "cost": 2000,
+        "energy": 50
+       },
+       {
+        "id": 72,
+        "name": "Mintakan Farm",
+        "cost": 2000,
+        "energy": 0
+       },
+       {
+        "id": 77,
+        "name": "Bioengineering Center",
+        "cost": 3500,
+        "energy": 200
+       },
+       {
+        "id": 144,
+        "name": "Type 1 Automated Farm",
+        "cost": 60,
+        "energy": 0
+       }
+      ]
+     },
+     {
+      "level": 2,
+      "name": "Bionics",
+      "cost": 200,
+      "description": "Artificial organs and grafts that the body accepts as its own. Medicine improves, and so does knowledge of how bodies cope with alien worlds.",
+      "ships": [
+       {
+        "id": 29,
+        "name": "Outpost  Outpost II",
+        "cost": 2280,
+        "othersMet": false,
+        "requires": [
+         2,
+         3,
+         3,
+         3,
+         1,
+         2
+        ]
+       },
+       {
+        "id": 31,
+        "name": "Miranda Destroyer II",
+        "cost": 2660,
+        "othersMet": false,
+        "requires": [
+         2,
+         3,
+         4,
+         4,
+         4,
+         3
+        ]
+       }
+      ],
+      "structures": [
+       {
+        "id": 145,
+        "name": "Type 2 Automated Farm",
+        "cost": 165,
+        "energy": 0
+       }
+      ]
+     },
+     {
+      "level": 3,
+      "name": "Genetics",
+      "cost": 1100,
+      "description": "Organisms designed rather than bred. Engineered microbes become the terraformer's first dependable tool.",
+      "ships": [
+       {
+        "id": 20,
+        "name": "Nebula Strike Cruiser",
+        "cost": 5400,
+        "othersMet": false,
+        "requires": [
+         3,
+         4,
+         5,
+         5,
+         3,
+         5
+        ]
+       },
+       {
+        "id": 24,
+        "name": "Galaxy Command Cruiser",
+        "cost": 5320,
+        "othersMet": false,
+        "requires": [
+         3,
+         3,
+         4,
+         4,
+         3,
+         4
+        ]
+       },
+       {
+        "id": 44,
+        "name": "Ambassador Light Cruiser II",
+        "cost": 5250,
+        "othersMet": false,
+        "requires": [
+         3,
+         4,
+         5,
+         5,
+         4,
+         5
+        ]
+       }
+      ],
+      "structures": [
+       {
+        "id": 8,
+        "name": "Aquaculture Center",
+        "cost": 300,
+        "energy": 0
+       },
+       {
+        "id": 146,
+        "name": "Type 3 Automated Farm",
+        "cost": 320,
+        "energy": 0
+       }
+      ]
+     },
+     {
+      "level": 4,
+      "name": "Metagenics",
+      "cost": 4000,
+      "description": "Seed stocks of self-assembling proto-life that can colonize a lifeless world within a generation.",
+      "ships": [
+       {
+        "id": 32,
+        "name": "Constellation Heavy Destroyer",
+        "cost": 5000,
+        "othersMet": false,
+        "requires": [
+         4,
+         5,
+         6,
+         6,
+         6,
+         5
+        ]
+       },
+       {
+        "id": 40,
+        "name": "London Troop Transport II",
+        "cost": 3520,
+        "othersMet": false,
+        "requires": [
+         4,
+         4,
+         5,
+         5,
+         4,
+         1
+        ]
+       }
+      ],
+      "structures": [
+       {
+        "id": 34,
+        "name": "Genesis Research Lab",
+        "cost": 2500,
+        "energy": 100
+       },
+       {
+        "id": 147,
+        "name": "Type 4 Automated Farm",
+        "cost": 630,
+        "energy": 0
+       }
+      ]
+     },
+     {
+      "level": 5,
+      "name": "Climate Control",
+      "cost": 9000,
+      "description": "Orbital mirrors and atmospheric processors steer weather at planetary scale. Harvests stabilize, and terraformers stop fighting the sky.",
+      "ships": [
+       {
+        "id": 21,
+        "name": "Nebula Strike Cruiser II",
+        "cost": 11410,
+        "othersMet": false,
+        "requires": [
+         5,
+         6,
+         8,
+         8,
+         6,
+         8
+        ]
+       },
+       {
+        "id": 23,
+        "name": "Edward Colony Ship II",
+        "cost": 4680,
+        "othersMet": false,
+        "requires": [
+         5,
+         4,
+         5,
+         5,
+         3,
+         1
+        ]
+       },
+       {
+        "id": 25,
+        "name": "Galaxy Command Cruiser II",
+        "cost": 8520,
+        "othersMet": false,
+        "requires": [
+         5,
+         5,
+         6,
+         6,
+         5,
+         6
+        ]
+       },
+       {
+        "id": 36,
+        "name": "Oberth Science Vessel II",
+        "cost": 1990,
+        "othersMet": false,
+        "requires": [
+         5,
+         5,
+         5,
+         5,
+         4,
+         3
+        ]
+       },
+       {
+        "id": 37,
+        "name": "Starbase  Starbase",
+        "cost": 11120,
+        "othersMet": false,
+        "requires": [
+         5,
+         6,
+         6,
+         6,
+         4,
+         5
+        ]
+       },
+       {
+        "id": 41,
+        "name": "Galaxy-X Heavy Cruiser",
+        "cost": 9730,
+        "othersMet": false,
+        "requires": [
+         5,
+         6,
+         7,
+         7,
+         6,
+         7
+        ]
+       }
+      ],
+      "structures": [
+       {
+        "id": 148,
+        "name": "Type 5 Automated Farm",
+        "cost": 1040,
+        "energy": 0
+       }
+      ]
+     },
+     {
+      "level": 6,
+      "name": "Air Conversion",
+      "cost": 15400,
+      "description": "Planet-scale processors that rebalance an alien atmosphere one gas at a time. Marginal worlds become worth settling.",
+      "ships": [
+       {
+        "id": 33,
+        "name": "Constellation Heavy Destroyer II",
+        "cost": 8140,
+        "othersMet": false,
+        "requires": [
+         6,
+         7,
+         8,
+         8,
+         8,
+         7
+        ]
+       }
+      ],
+      "structures": [
+       {
+        "id": 149,
+        "name": "Type 6 Automated Farm",
+        "cost": 1705,
+        "energy": 0
+       }
+      ]
+     },
+     {
+      "level": 7,
+      "name": "Biofiltration",
+      "cost": 25800,
+      "description": "Transporter-linked filters strip disease from anything that passes through them. Crowded colonies stop fearing plague.",
+      "ships": [
+       {
+        "id": 26,
+        "name": "Sovereign Dreadnought",
+        "cost": 14620,
+        "othersMet": false,
+        "requires": [
+         7,
+         7,
+         8,
+         8,
+         7,
+         8
+        ]
+       },
+       {
+        "id": 38,
+        "name": "Starbase  Starbase II",
+        "cost": 17580,
+        "othersMet": false,
+        "requires": [
+         7,
+         8,
+         8,
+         8,
+         6,
+         7
+        ]
+       },
+       {
+        "id": 42,
+        "name": "Galaxy-X Heavy Cruiser II",
+        "cost": 15090,
+        "othersMet": false,
+        "requires": [
+         7,
+         8,
+         9,
+         9,
+         8,
+         9
+        ]
+       }
+      ],
+      "structures": [
+       {
+        "id": 150,
+        "name": "Type 7 Automated Farm",
+        "cost": 2520,
+        "energy": 0
+       }
+      ]
+     },
+     {
+      "level": 8,
+      "name": "Eco-Modification",
+      "cost": 39100,
+      "description": "Terraforming plans now anticipate how every change ripples through a biosphere. Projects finish faster and fail less often.",
+      "ships": [
+       {
+        "id": 34,
+        "name": "Defiant Heavy Escort",
+        "cost": 18270,
+        "othersMet": false,
+        "requires": [
+         8,
+         9,
+         9,
+         10,
+         10,
+         10
+        ]
+       }
+      ],
+      "structures": [
+       {
+        "id": 151,
+        "name": "Type 8 Automated Farm",
+        "cost": 3690,
+        "energy": 0
+       }
+      ]
+     },
+     {
+      "level": 9,
+      "name": "Xenobiology",
+      "cost": 58400,
+      "description": "Cataloguing thousands of alien biochemistries turns up solutions no home ecology ever tried. Bioengineers borrow them freely.",
+      "ships": [
+       {
+        "id": 27,
+        "name": "Sovereign Dreadnought II",
+        "cost": 21830,
+        "othersMet": false,
+        "requires": [
+         9,
+         9,
+         10,
+         10,
+         9,
+         10
+        ]
+       }
+      ],
+      "structures": [
+       {
+        "id": 152,
+        "name": "Type 9 Automated Farm",
+        "cost": 5060,
+        "energy": 0
+       }
+      ]
+     },
+     {
+      "level": 10,
+      "name": "Silicobiology",
+      "cost": 81700,
+      "description": "Contact with silicon-based and energy-based beings completes the picture of what life can be. Few secrets of living matter remain.",
+      "ships": [],
+      "structures": []
+     }
+    ]
+   },
+   {
+    "field": 1,
+    "name": "Computers",
+    "level": 1,
+    "progress": 0,
+    "allocation": 17,
+    "committedAllocation": 17,
+    "current": "Microtape Storage",
+    "levels": [
+     {
+      "level": 0,
+      "name": "Basic Computers",
+      "cost": 0,
+      "description": "Information science, from data storage to artificial reasoning. Every Computers level raises empire research by 5% and sharpens intelligence work.",
+      "ships": [],
+      "structures": []
+     },
+     {
+      "level": 1,
+      "name": "Microtape Storage",
+      "cost": 0,
+      "description": "Dense magnetic microtape holds a library on a spool the size of a thumb. Ship computers finally carry the data their crews need.",
+      "ships": [
+       {
+        "id": 22,
+        "name": "Edward Colony Ship",
+        "cost": 1210,
+        "othersMet": true,
+        "requires": [
+         1,
+         1,
+         1,
+         1,
+         1,
+         1
+        ]
+       },
+       {
+        "id": 28,
+        "name": "Outpost  Outpost",
+        "cost": 1480,
+        "othersMet": true,
+        "requires": [
+         1,
+         1,
+         1,
+         1,
+         1,
+         1
+        ]
+       },
+       {
+        "id": 30,
+        "name": "Miranda Destroyer",
+        "cost": 1410,
+        "othersMet": false,
+        "requires": [
+         1,
+         1,
+         2,
+         2,
+         2,
+         1
+        ]
+       },
+       {
+        "id": 35,
+        "name": "Oberth Science Vessel",
+        "cost": 490,
+        "othersMet": true,
+        "requires": [
+         1,
+         1,
+         1,
+         1,
+         1,
+         1
+        ]
+       },
+       {
+        "id": 39,
+        "name": "London Troop Transport",
+        "cost": 1030,
+        "othersMet": true,
+        "requires": [
+         1,
+         1,
+         1,
+         1,
+         1,
+         1
+        ]
+       }
+      ],
+      "structures": [
+       {
+        "id": 66,
+        "name": "Planetary Computer",
+        "cost": 2500,
+        "energy": 150
+       },
+       {
+        "id": 70,
+        "name": "Ktarian Game Studio",
+        "cost": 3500,
+        "energy": 100
+       }
+      ]
+     },
+     {
+      "level": 2,
+      "name": "Linguistics",
+      "cost": 200,
+      "description": "Adaptive translation matrices let computers follow spoken requests and parse unfamiliar languages. They also lay the foundation for the universal translator.",
+      "ships": [
+       {
+        "id": 43,
+        "name": "Ambassador Light Cruiser",
+        "cost": 3100,
+        "othersMet": false,
+        "requires": [
+         1,
+         2,
+         3,
+         3,
+         2,
+         3
+        ]
+       }
+      ],
+      "structures": [
+       {
+        "id": 12,
+        "name": "Subspace Scanner",
+        "cost": 500,
+        "energy": 50
+       }
+      ]
+     },
+     {
+      "level": 3,
+      "name": "Data Imaging",
+      "cost": 1300,
+      "description": "Scanners fine enough to capture the arrangement of every molecule in a sample. The groundwork for replication and pattern storage is laid.",
+      "ships": [
+       {
+        "id": 24,
+        "name": "Galaxy Command Cruiser",
+        "cost": 5320,
+        "othersMet": false,
+        "requires": [
+         3,
+         3,
+         4,
+         4,
+         3,
+         4
+        ]
+       },
+       {
+        "id": 29,
+        "name": "Outpost  Outpost II",
+        "cost": 2280,
+        "othersMet": false,
+        "requires": [
+         2,
+         3,
+         3,
+         3,
+         1,
+         2
+        ]
+       },
+       {
+        "id": 31,
+        "name": "Miranda Destroyer II",
+        "cost": 2660,
+        "othersMet": false,
+        "requires": [
+         2,
+         3,
+         4,
+         4,
+         4,
+         3
+        ]
+       }
+      ],
+      "structures": [
+       {
+        "id": 4,
+        "name": "Communications Grid",
+        "cost": 300,
+        "energy": 10
+       },
+       {
+        "id": 17,
+        "name": "Trade Center",
+        "cost": 500,
+        "energy": 20
+       }
+      ]
+     },
+     {
+      "level": 4,
+      "name": "Duotronics",
+      "cost": 4500,
+      "description": "Daystrom's breakthrough architecture outperforms every electronic computer before it. Fully automated starship systems become practical.",
+      "ships": [
+       {
+        "id": 20,
+        "name": "Nebula Strike Cruiser",
+        "cost": 5400,
+        "othersMet": false,
+        "requires": [
+         3,
+         4,
+         5,
+         5,
+         3,
+         5
+        ]
+       },
+       {
+        "id": 23,
+        "name": "Edward Colony Ship II",
+        "cost": 4680,
+        "othersMet": false,
+        "requires": [
+         5,
+         4,
+         5,
+         5,
+         3,
+         1
+        ]
+       },
+       {
+        "id": 40,
+        "name": "London Troop Transport II",
+        "cost": 3520,
+        "othersMet": false,
+        "requires": [
+         4,
+         4,
+         5,
+         5,
+         4,
+         1
+        ]
+       },
+       {
+        "id": 44,
+        "name": "Ambassador Light Cruiser II",
+        "cost": 5250,
+        "othersMet": false,
+        "requires": [
+         3,
+         4,
+         5,
+         5,
+         4,
+         5
+        ]
+       }
+      ],
+      "structures": [
+       {
+        "id": 35,
+        "name": "Daystrom Institute",
+        "cost": 2500,
+        "energy": 100
+       }
+      ]
+     },
+     {
+      "level": 5,
+      "name": "Crystal Memory",
+      "cost": 10300,
+      "description": "Data etched into crystal holds for centuries and loads instantly. Research databases and sensor logs grow by orders of magnitude.",
+      "ships": [
+       {
+        "id": 25,
+        "name": "Galaxy Command Cruiser II",
+        "cost": 8520,
+        "othersMet": false,
+        "requires": [
+         5,
+         5,
+         6,
+         6,
+         5,
+         6
+        ]
+       },
+       {
+        "id": 32,
+        "name": "Constellation Heavy Destroyer",
+        "cost": 5000,
+        "othersMet": false,
+        "requires": [
+         4,
+         5,
+         6,
+         6,
+         6,
+         5
+        ]
+       },
+       {
+        "id": 36,
+        "name": "Oberth Science Vessel II",
+        "cost": 1990,
+        "othersMet": false,
+        "requires": [
+         5,
+         5,
+         5,
+         5,
+         4,
+         3
+        ]
+       }
+      ],
+      "structures": [
+       {
+        "id": 13,
+        "name": "Listening Post",
+        "cost": 2000,
+        "energy": 100
+       }
+      ]
+     },
+     {
+      "level": 6,
+      "name": "Quadritronics",
+      "cost": 17600,
+      "description": "The successor to duotronics, so dense that engineers coined a new measure, the quad. Ship computers begin to anticipate their operators.",
+      "ships": [
+       {
+        "id": 21,
+        "name": "Nebula Strike Cruiser II",
+        "cost": 11410,
+        "othersMet": false,
+        "requires": [
+         5,
+         6,
+         8,
+         8,
+         6,
+         8
+        ]
+       },
+       {
+        "id": 37,
+        "name": "Starbase  Starbase",
+        "cost": 11120,
+        "othersMet": false,
+        "requires": [
+         5,
+         6,
+         6,
+         6,
+         4,
+         5
+        ]
+       },
+       {
+        "id": 41,
+        "name": "Galaxy-X Heavy Cruiser",
+        "cost": 9730,
+        "othersMet": false,
+        "requires": [
+         5,
+         6,
+         7,
+         7,
+         6,
+         7
+        ]
+       }
+      ],
+      "structures": []
+     },
+     {
+      "level": 7,
+      "name": "Isolinear Optics",
+      "cost": 29500,
+      "description": "Optical data chips, slotted by the hundred into every console. The standard of every modern computer core.",
+      "ships": [
+       {
+        "id": 26,
+        "name": "Sovereign Dreadnought",
+        "cost": 14620,
+        "othersMet": false,
+        "requires": [
+         7,
+         7,
+         8,
+         8,
+         7,
+         8
+        ]
+       },
+       {
+        "id": 33,
+        "name": "Constellation Heavy Destroyer II",
+        "cost": 8140,
+        "othersMet": false,
+        "requires": [
+         6,
+         7,
+         8,
+         8,
+         8,
+         7
+        ]
+       }
+      ],
+      "structures": []
+     },
+     {
+      "level": 8,
+      "name": "Circuit Distortion",
+      "cost": 44600,
+      "description": "Computer cores wrapped in their own subspace bubble, where signals are no longer bound by lightspeed. Calculations that took hours now finish in moments.",
+      "ships": [
+       {
+        "id": 38,
+        "name": "Starbase  Starbase II",
+        "cost": 17580,
+        "othersMet": false,
+        "requires": [
+         7,
+         8,
+         8,
+         8,
+         6,
+         7
+        ]
+       },
+       {
+        "id": 42,
+        "name": "Galaxy-X Heavy Cruiser II",
+        "cost": 15090,
+        "othersMet": false,
+        "requires": [
+         7,
+         8,
+         9,
+         9,
+         8,
+         9
+        ]
+       }
+      ],
+      "structures": [
+       {
+        "id": 14,
+        "name": "Isolinear Scanner",
+        "cost": 8000,
+        "energy": 150
+       }
+      ]
+     },
+     {
+      "level": 9,
+      "name": "Ultraconduction",
+      "cost": 66800,
+      "description": "Circuitry that runs cooler the harder it works. Enormous computer cores now draw a fraction of their old power.",
+      "ships": [
+       {
+        "id": 27,
+        "name": "Sovereign Dreadnought II",
+        "cost": 21830,
+        "othersMet": false,
+        "requires": [
+         9,
+         9,
+         10,
+         10,
+         9,
+         10
+        ]
+       },
+       {
+        "id": 34,
+        "name": "Defiant Heavy Escort",
+        "cost": 18270,
+        "othersMet": false,
+        "requires": [
+         8,
+         9,
+         9,
+         10,
+         10,
+         10
+        ]
+       }
+      ],
+      "structures": []
+     },
+     {
+      "level": 10,
+      "name": "Positronics",
+      "cost": 93400,
+      "description": "The positronic brain, the architecture of true artificial minds. The line between tool and mind begins to blur.",
+      "ships": [],
+      "structures": []
+     }
+    ]
+   },
+   {
+    "field": 2,
+    "name": "Construction",
+    "level": 1,
+    "progress": 0,
+    "allocation": 17,
+    "committedAllocation": 17,
+    "current": "Gamma Welding",
+    "levels": [
+     {
+      "level": 0,
+      "name": "Basic Construction",
+      "cost": 0,
+      "description": "Engineering, materials science and industrial method. Every Construction level raises colony industry by 5% and yields sturdier hulls and stations.",
+      "ships": [],
+      "structures": []
+     },
+     {
+      "level": 1,
+      "name": "Gamma Welding",
+      "cost": 0,
+      "description": "High-energy welding that fuses hull plates without softening the metal around the seam. Spaceframes become lighter and more reliable.",
+      "ships": [
+       {
+        "id": 22,
+        "name": "Edward Colony Ship",
+        "cost": 1210,
+        "othersMet": true,
+        "requires": [
+         1,
+         1,
+         1,
+         1,
+         1,
+         1
+        ]
+       },
+       {
+        "id": 28,
+        "name": "Outpost  Outpost",
+        "cost": 1480,
+        "othersMet": true,
+        "requires": [
+         1,
+         1,
+         1,
+         1,
+         1,
+         1
+        ]
+       },
+       {
+        "id": 35,
+        "name": "Oberth Science Vessel",
+        "cost": 490,
+        "othersMet": true,
+        "requires": [
+         1,
+         1,
+         1,
+         1,
+         1,
+         1
+        ]
+       },
+       {
+        "id": 39,
+        "name": "London Troop Transport",
+        "cost": 1030,
+        "othersMet": true,
+        "requires": [
+         1,
+         1,
+         1,
+         1,
+         1,
+         1
+        ]
+       }
+      ],
+      "structures": [
+       {
+        "id": 6,
+        "name": "Dilithium Refinery",
+        "cost": 500,
+        "energy": 30
+       },
+       {
+        "id": 62,
+        "name": "Architectural Center",
+        "cost": 2500,
+        "energy": 100
+       },
+       {
+        "id": 63,
+        "name": "Industrial Center",
+        "cost": 5000,
+        "energy": 100
+       },
+       {
+        "id": 134,
+        "name": "Type 1 Mass Replicator",
+        "cost": 110,
+        "energy": 0
+       }
+      ]
+     },
+     {
+      "level": 2,
+      "name": "Integrity Fields",
+      "cost": 300,
+      "description": "Integrity fields carry loads no alloy could bear on its own. Larger ships and taller orbital structures become possible.",
+      "ships": [
+       {
+        "id": 30,
+        "name": "Miranda Destroyer",
+        "cost": 1410,
+        "othersMet": false,
+        "requires": [
+         1,
+         1,
+         2,
+         2,
+         2,
+         1
+        ]
+       }
+      ],
+      "structures": [
+       {
+        "id": 135,
+        "name": "Type 2 Mass Replicator",
+        "cost": 270,
+        "energy": 0
+       }
+      ]
+     },
+     {
+      "level": 3,
+      "name": "Epitaxy",
+      "cost": 1600,
+      "description": "Materials grown atom by atom, free of the flaws that weaken cast metal. The resulting composites reinforce everything from habitats to hulls.",
+      "ships": [
+       {
+        "id": 29,
+        "name": "Outpost  Outpost II",
+        "cost": 2280,
+        "othersMet": false,
+        "requires": [
+         2,
+         3,
+         3,
+         3,
+         1,
+         2
+        ]
+       },
+       {
+        "id": 43,
+        "name": "Ambassador Light Cruiser",
+        "cost": 3100,
+        "othersMet": false,
+        "requires": [
+         1,
+         2,
+         3,
+         3,
+         2,
+         3
+        ]
+       }
+      ],
+      "structures": [
+       {
+        "id": 2,
+        "name": "Bunker Network",
+        "cost": 300,
+        "energy": 10
+       },
+       {
+        "id": 136,
+        "name": "Type 3 Mass Replicator",
+        "cost": 520,
+        "energy": 0
+       }
+      ]
+     },
+     {
+      "level": 4,
+      "name": "Phase Transition",
+      "cost": 5700,
+      "description": "A bonding method that briefly shifts one part out of phase and lets it settle into another. Joints stop being the weak point of a design.",
+      "ships": [
+       {
+        "id": 24,
+        "name": "Galaxy Command Cruiser",
+        "cost": 5320,
+        "othersMet": false,
+        "requires": [
+         3,
+         3,
+         4,
+         4,
+         3,
+         4
+        ]
+       },
+       {
+        "id": 31,
+        "name": "Miranda Destroyer II",
+        "cost": 2660,
+        "othersMet": false,
+        "requires": [
+         2,
+         3,
+         4,
+         4,
+         4,
+         3
+        ]
+       }
+      ],
+      "structures": [
+       {
+        "id": 137,
+        "name": "Type 4 Mass Replicator",
+        "cost": 990,
+        "energy": 0
+       }
+      ]
+     },
+     {
+      "level": 5,
+      "name": "Warp Fields",
+      "cost": 12900,
+      "description": "Low-power warp fields replace brute-force integrity generators. Very large structures become cheaper to hold together.",
+      "ships": [
+       {
+        "id": 20,
+        "name": "Nebula Strike Cruiser",
+        "cost": 5400,
+        "othersMet": false,
+        "requires": [
+         3,
+         4,
+         5,
+         5,
+         3,
+         5
+        ]
+       },
+       {
+        "id": 23,
+        "name": "Edward Colony Ship II",
+        "cost": 4680,
+        "othersMet": false,
+        "requires": [
+         5,
+         4,
+         5,
+         5,
+         3,
+         1
+        ]
+       },
+       {
+        "id": 36,
+        "name": "Oberth Science Vessel II",
+        "cost": 1990,
+        "othersMet": false,
+        "requires": [
+         5,
+         5,
+         5,
+         5,
+         4,
+         3
+        ]
+       },
+       {
+        "id": 40,
+        "name": "London Troop Transport II",
+        "cost": 3520,
+        "othersMet": false,
+        "requires": [
+         4,
+         4,
+         5,
+         5,
+         4,
+         1
+        ]
+       },
+       {
+        "id": 44,
+        "name": "Ambassador Light Cruiser II",
+        "cost": 5250,
+        "othersMet": false,
+        "requires": [
+         3,
+         4,
+         5,
+         5,
+         4,
+         5
+        ]
+       }
+      ],
+      "structures": [
+       {
+        "id": 38,
+        "name": "Utopia Planitia",
+        "cost": 7000,
+        "energy": 100
+       },
+       {
+        "id": 138,
+        "name": "Type 5 Mass Replicator",
+        "cost": 1640,
+        "energy": 0
+       }
+      ]
+     },
+     {
+      "level": 6,
+      "name": "Diffusion Bonding",
+      "cost": 22000,
+      "description": "A refinement of phase bonding that leaves no seam at all, only one continuous part. Complex assemblies come out stronger than their pieces.",
+      "ships": [
+       {
+        "id": 25,
+        "name": "Galaxy Command Cruiser II",
+        "cost": 8520,
+        "othersMet": false,
+        "requires": [
+         5,
+         5,
+         6,
+         6,
+         5,
+         6
+        ]
+       },
+       {
+        "id": 32,
+        "name": "Constellation Heavy Destroyer",
+        "cost": 5000,
+        "othersMet": false,
+        "requires": [
+         4,
+         5,
+         6,
+         6,
+         6,
+         5
+        ]
+       },
+       {
+        "id": 37,
+        "name": "Starbase  Starbase",
+        "cost": 11120,
+        "othersMet": false,
+        "requires": [
+         5,
+         6,
+         6,
+         6,
+         4,
+         5
+        ]
+       }
+      ],
+      "structures": [
+       {
+        "id": 139,
+        "name": "Type 6 Mass Replicator",
+        "cost": 2640,
+        "energy": 0
+       }
+      ]
+     },
+     {
+      "level": 7,
+      "name": "Nuclear Epitaxy",
+      "cost": 36900,
+      "description": "Heavy, durable alloys built up nucleus by nucleus at industrial scale. Premium construction materials become plentiful.",
+      "ships": [
+       {
+        "id": 41,
+        "name": "Galaxy-X Heavy Cruiser",
+        "cost": 9730,
+        "othersMet": false,
+        "requires": [
+         5,
+         6,
+         7,
+         7,
+         6,
+         7
+        ]
+       }
+      ],
+      "structures": [
+       {
+        "id": 140,
+        "name": "Type 7 Mass Replicator",
+        "cost": 3920,
+        "energy": 0
+       }
+      ]
+     },
+     {
+      "level": 8,
+      "name": "Electron Bonding",
+      "cost": 55800,
+      "description": "A cold welding process that leaves no heat scar and no weak zone. Assembly lines speed up, and repairs are as strong as new work.",
+      "ships": [
+       {
+        "id": 21,
+        "name": "Nebula Strike Cruiser II",
+        "cost": 11410,
+        "othersMet": false,
+        "requires": [
+         5,
+         6,
+         8,
+         8,
+         6,
+         8
+        ]
+       },
+       {
+        "id": 26,
+        "name": "Sovereign Dreadnought",
+        "cost": 14620,
+        "othersMet": false,
+        "requires": [
+         7,
+         7,
+         8,
+         8,
+         7,
+         8
+        ]
+       },
+       {
+        "id": 33,
+        "name": "Constellation Heavy Destroyer II",
+        "cost": 8140,
+        "othersMet": false,
+        "requires": [
+         6,
+         7,
+         8,
+         8,
+         8,
+         7
+        ]
+       },
+       {
+        "id": 38,
+        "name": "Starbase  Starbase II",
+        "cost": 17580,
+        "othersMet": false,
+        "requires": [
+         7,
+         8,
+         8,
+         8,
+         6,
+         7
+        ]
+       }
+      ],
+      "structures": [
+       {
+        "id": 141,
+        "name": "Type 8 Mass Replicator",
+        "cost": 5670,
+        "energy": 0
+       }
+      ]
+     },
+     {
+      "level": 9,
+      "name": "Quantum Epitaxy",
+      "cost": 83500,
+      "description": "Fabrication precise to the quantum level. If a material can exist, a factory can now make it.",
+      "ships": [
+       {
+        "id": 34,
+        "name": "Defiant Heavy Escort",
+        "cost": 18270,
+        "othersMet": false,
+        "requires": [
+         8,
+         9,
+         9,
+         10,
+         10,
+         10
+        ]
+       },
+       {
+        "id": 42,
+        "name": "Galaxy-X Heavy Cruiser II",
+        "cost": 15090,
+        "othersMet": false,
+        "requires": [
+         7,
+         8,
+         9,
+         9,
+         8,
+         9
+        ]
+       }
+      ],
+      "structures": [
+       {
+        "id": 142,
+        "name": "Type 9 Mass Replicator",
+        "cost": 7810,
+        "energy": 0
+       }
+      ]
+     },
+     {
+      "level": 10,
+      "name": "Holographics",
+      "cost": 116800,
+      "description": "Hard-light tools and work crews that exist only as long as a job needs them. Industry adapts at the speed of a software update.",
+      "ships": [
+       {
+        "id": 27,
+        "name": "Sovereign Dreadnought II",
+        "cost": 21830,
+        "othersMet": false,
+        "requires": [
+         9,
+         9,
+         10,
+         10,
+         9,
+         10
+        ]
+       }
+      ],
+      "structures": []
+     }
+    ]
+   },
+   {
+    "field": 3,
+    "name": "Energy",
+    "level": 1,
+    "progress": 0,
+    "allocation": 17,
+    "committedAllocation": 17,
+    "current": "Force Fields",
+    "levels": [
+     {
+      "level": 0,
+      "name": "Basic Energy",
+      "cost": 0,
+      "description": "Power generation, containment and field physics. Every Energy level raises colony energy output by 5% and strengthens starship shields.",
+      "ships": [],
+      "structures": []
+     },
+     {
+      "level": 1,
+      "name": "Force Fields",
+      "cost": 0,
+      "description": "Invisible barriers that can hold, push or seal off matter. The first deflectors and containment fields appear.",
+      "ships": [
+       {
+        "id": 22,
+        "name": "Edward Colony Ship",
+        "cost": 1210,
+        "othersMet": true,
+        "requires": [
+         1,
+         1,
+         1,
+         1,
+         1,
+         1
+        ]
+       },
+       {
+        "id": 28,
+        "name": "Outpost  Outpost",
+        "cost": 1480,
+        "othersMet": true,
+        "requires": [
+         1,
+         1,
+         1,
+         1,
+         1,
+         1
+        ]
+       },
+       {
+        "id": 35,
+        "name": "Oberth Science Vessel",
+        "cost": 490,
+        "othersMet": true,
+        "requires": [
+         1,
+         1,
+         1,
+         1,
+         1,
+         1
+        ]
+       },
+       {
+        "id": 39,
+        "name": "London Troop Transport",
+        "cost": 1030,
+        "othersMet": true,
+        "requires": [
+         1,
+         1,
+         1,
+         1,
+         1,
+         1
+        ]
+       }
+      ],
+      "structures": [
+       {
+        "id": 78,
+        "name": "Physics Institute",
+        "cost": 2000,
+        "energy": 200
+       },
+       {
+        "id": 79,
+        "name": "Defense Network",
+        "cost": 3000,
+        "energy": 150
+       },
+       {
+        "id": 162,
+        "name": "Type 1 Plasma Reactor",
+        "cost": 60,
+        "energy": 0
+       }
+      ]
+     },
+     {
+      "level": 2,
+      "name": "Subspace Physics",
+      "cost": 100,
+      "description": "The physics of the layer beneath normal space. Faster-than-light sensors and communications follow.",
+      "ships": [
+       {
+        "id": 30,
+        "name": "Miranda Destroyer",
+        "cost": 1410,
+        "othersMet": false,
+        "requires": [
+         1,
+         1,
+         2,
+         2,
+         2,
+         1
+        ]
+       }
+      ],
+      "structures": [
+       {
+        "id": 19,
+        "name": "Wind Turbines",
+        "cost": 200,
+        "energy": 0
+       },
+       {
+        "id": 163,
+        "name": "Type 2 Plasma Reactor",
+        "cost": 165,
+        "energy": 0
+       }
+      ]
+     },
+     {
+      "level": 3,
+      "name": "Matter Conversion",
+      "cost": 900,
+      "description": "Matter and energy exchanged directly, on demand. The theory behind replicators and transporters is in place.",
+      "ships": [
+       {
+        "id": 29,
+        "name": "Outpost  Outpost II",
+        "cost": 2280,
+        "othersMet": false,
+        "requires": [
+         2,
+         3,
+         3,
+         3,
+         1,
+         2
+        ]
+       },
+       {
+        "id": 43,
+        "name": "Ambassador Light Cruiser",
+        "cost": 3100,
+        "othersMet": false,
+        "requires": [
+         1,
+         2,
+         3,
+         3,
+         2,
+         3
+        ]
+       }
+      ],
+      "structures": [
+       {
+        "id": 5,
+        "name": "Orbital Battery",
+        "cost": 500,
+        "energy": 50
+       },
+       {
+        "id": 164,
+        "name": "Type 3 Plasma Reactor",
+        "cost": 320,
+        "energy": 0
+       }
+      ]
+     },
+     {
+      "level": 4,
+      "name": "Graviton Physics",
+      "cost": 3400,
+      "description": "Controlled graviton emission yields artificial gravity, tractor beams and inertial dampers. Crews no longer feel every burn of the engines.",
+      "ships": [
+       {
+        "id": 24,
+        "name": "Galaxy Command Cruiser",
+        "cost": 5320,
+        "othersMet": false,
+        "requires": [
+         3,
+         3,
+         4,
+         4,
+         3,
+         4
+        ]
+       },
+       {
+        "id": 31,
+        "name": "Miranda Destroyer II",
+        "cost": 2660,
+        "othersMet": false,
+        "requires": [
+         2,
+         3,
+         4,
+         4,
+         4,
+         3
+        ]
+       }
+      ],
+      "structures": [
+       {
+        "id": 20,
+        "name": "Shield Generator",
+        "cost": 500,
+        "energy": 50
+       },
+       {
+        "id": 165,
+        "name": "Type 4 Plasma Reactor",
+        "cost": 630,
+        "energy": 0
+       }
+      ]
+     },
+     {
+      "level": 5,
+      "name": "Power Distribution",
+      "cost": 7700,
+      "description": "Plasma conduits that carry power across a city as easily as through a starship. Colony grids grow larger and more efficient.",
+      "ships": [
+       {
+        "id": 20,
+        "name": "Nebula Strike Cruiser",
+        "cost": 5400,
+        "othersMet": false,
+        "requires": [
+         3,
+         4,
+         5,
+         5,
+         3,
+         5
+        ]
+       },
+       {
+        "id": 23,
+        "name": "Edward Colony Ship II",
+        "cost": 4680,
+        "othersMet": false,
+        "requires": [
+         5,
+         4,
+         5,
+         5,
+         3,
+         1
+        ]
+       },
+       {
+        "id": 36,
+        "name": "Oberth Science Vessel II",
+        "cost": 1990,
+        "othersMet": false,
+        "requires": [
+         5,
+         5,
+         5,
+         5,
+         4,
+         3
+        ]
+       },
+       {
+        "id": 40,
+        "name": "London Troop Transport II",
+        "cost": 3520,
+        "othersMet": false,
+        "requires": [
+         4,
+         4,
+         5,
+         5,
+         4,
+         1
+        ]
+       },
+       {
+        "id": 44,
+        "name": "Ambassador Light Cruiser II",
+        "cost": 5250,
+        "othersMet": false,
+        "requires": [
+         3,
+         4,
+         5,
+         5,
+         4,
+         5
+        ]
+       }
+      ],
+      "structures": [
+       {
+        "id": 3,
+        "name": "Charge Collectors",
+        "cost": 500,
+        "energy": 0
+       },
+       {
+        "id": 53,
+        "name": "Federation Replicator",
+        "cost": 500,
+        "energy": 10
+       },
+       {
+        "id": 166,
+        "name": "Type 5 Plasma Reactor",
+        "cost": 1040,
+        "energy": 0
+       }
+      ]
+     },
+     {
+      "level": 6,
+      "name": "Antimatter Fusion",
+      "cost": 13200,
+      "description": "Reactors that burn heavier forms of antimatter for a far richer yield. Power plants become smaller, safer and more productive.",
+      "ships": [
+       {
+        "id": 25,
+        "name": "Galaxy Command Cruiser II",
+        "cost": 8520,
+        "othersMet": false,
+        "requires": [
+         5,
+         5,
+         6,
+         6,
+         5,
+         6
+        ]
+       },
+       {
+        "id": 32,
+        "name": "Constellation Heavy Destroyer",
+        "cost": 5000,
+        "othersMet": false,
+        "requires": [
+         4,
+         5,
+         6,
+         6,
+         6,
+         5
+        ]
+       },
+       {
+        "id": 37,
+        "name": "Starbase  Starbase",
+        "cost": 11120,
+        "othersMet": false,
+        "requires": [
+         5,
+         6,
+         6,
+         6,
+         4,
+         5
+        ]
+       }
+      ],
+      "structures": [
+       {
+        "id": 11,
+        "name": "Subatomic Simulators",
+        "cost": 600,
+        "energy": 80
+       },
+       {
+        "id": 167,
+        "name": "Type 6 Plasma Reactor",
+        "cost": 1705,
+        "energy": 0
+       }
+      ]
+     },
+     {
+      "level": 7,
+      "name": "Virtual Particles",
+      "cost": 22100,
+      "description": "Stand-ins for rare elements, conjured from the quantum vacuum when a process needs them. Advanced shield and reactor designs stop waiting on the mines.",
+      "ships": [
+       {
+        "id": 41,
+        "name": "Galaxy-X Heavy Cruiser",
+        "cost": 9730,
+        "othersMet": false,
+        "requires": [
+         5,
+         6,
+         7,
+         7,
+         6,
+         7
+        ]
+       }
+      ],
+      "structures": [
+       {
+        "id": 168,
+        "name": "Type 7 Plasma Reactor",
+        "cost": 2520,
+        "energy": 0
+       }
+      ]
+     },
+     {
+      "level": 8,
+      "name": "Ultraconductors",
+      "cost": 33500,
+      "description": "The physics behind materials that strengthen the current they carry. Power grids and shield emitters grow more efficient.",
+      "ships": [
+       {
+        "id": 21,
+        "name": "Nebula Strike Cruiser II",
+        "cost": 11410,
+        "othersMet": false,
+        "requires": [
+         5,
+         6,
+         8,
+         8,
+         6,
+         8
+        ]
+       },
+       {
+        "id": 26,
+        "name": "Sovereign Dreadnought",
+        "cost": 14620,
+        "othersMet": false,
+        "requires": [
+         7,
+         7,
+         8,
+         8,
+         7,
+         8
+        ]
+       },
+       {
+        "id": 33,
+        "name": "Constellation Heavy Destroyer II",
+        "cost": 8140,
+        "othersMet": false,
+        "requires": [
+         6,
+         7,
+         8,
+         8,
+         8,
+         7
+        ]
+       },
+       {
+        "id": 38,
+        "name": "Starbase  Starbase II",
+        "cost": 17580,
+        "othersMet": false,
+        "requires": [
+         7,
+         8,
+         8,
+         8,
+         6,
+         7
+        ]
+       }
+      ],
+      "structures": [
+       {
+        "id": 169,
+        "name": "Type 8 Plasma Reactor",
+        "cost": 3690,
+        "energy": 0
+       }
+      ]
+     },
+     {
+      "level": 9,
+      "name": "Wave Analysis",
+      "cost": 50100,
+      "description": "Instruments that measure the probability waves behind every particle. Physicists begin to read the universe at its root.",
+      "ships": [
+       {
+        "id": 42,
+        "name": "Galaxy-X Heavy Cruiser II",
+        "cost": 15090,
+        "othersMet": false,
+        "requires": [
+         7,
+         8,
+         9,
+         9,
+         8,
+         9
+        ]
+       }
+      ],
+      "structures": [
+       {
+        "id": 170,
+        "name": "Type 9 Plasma Reactor",
+        "cost": 5060,
+        "energy": 0
+       }
+      ]
+     },
+     {
+      "level": 10,
+      "name": "Determinacy",
+      "cost": 70000,
+      "description": "The art of nudging quantum outcomes toward the one you want. Its limits are not yet known.",
+      "ships": [
+       {
+        "id": 27,
+        "name": "Sovereign Dreadnought II",
+        "cost": 21830,
+        "othersMet": false,
+        "requires": [
+         9,
+         9,
+         10,
+         10,
+         9,
+         10
+        ]
+       },
+       {
+        "id": 34,
+        "name": "Defiant Heavy Escort",
+        "cost": 18270,
+        "othersMet": false,
+        "requires": [
+         8,
+         9,
+         9,
+         10,
+         10,
+         10
+        ]
+       }
+      ],
+      "structures": []
+     }
+    ]
+   },
+   {
+    "field": 4,
+    "name": "Propulsion",
+    "level": 1,
+    "progress": 0,
+    "allocation": 16,
+    "committedAllocation": 16,
+    "current": "Warp Drive",
+    "levels": [
+     {
+      "level": 0,
+      "name": "Basic Propulsion",
+      "cost": 0,
+      "description": "Engines of every kind, from impulse thrusters to warp coils. Every two Propulsion levels extend fleet supply range by one sector, and new hulls fly faster.",
+      "ships": [],
+      "structures": []
+     },
+     {
+      "level": 1,
+      "name": "Warp Drive",
+      "cost": 0,
+      "description": "The first engine to break the light barrier, crude but revolutionary. The nearest stars are finally within reach.",
+      "ships": [
+       {
+        "id": 22,
+        "name": "Edward Colony Ship",
+        "cost": 1210,
+        "othersMet": true,
+        "requires": [
+         1,
+         1,
+         1,
+         1,
+         1,
+         1
+        ]
+       },
+       {
+        "id": 28,
+        "name": "Outpost  Outpost",
+        "cost": 1480,
+        "othersMet": true,
+        "requires": [
+         1,
+         1,
+         1,
+         1,
+         1,
+         1
+        ]
+       },
+       {
+        "id": 29,
+        "name": "Outpost  Outpost II",
+        "cost": 2280,
+        "othersMet": false,
+        "requires": [
+         2,
+         3,
+         3,
+         3,
+         1,
+         2
+        ]
+       },
+       {
+        "id": 35,
+        "name": "Oberth Science Vessel",
+        "cost": 490,
+        "othersMet": true,
+        "requires": [
+         1,
+         1,
+         1,
+         1,
+         1,
+         1
+        ]
+       },
+       {
+        "id": 39,
+        "name": "London Troop Transport",
+        "cost": 1030,
+        "othersMet": true,
+        "requires": [
+         1,
+         1,
+         1,
+         1,
+         1,
+         1
+        ]
+       }
+      ],
+      "structures": [
+       {
+        "id": 71,
+        "name": "Kinetics Laboratory",
+        "cost": 3000,
+        "energy": 150
+       },
+       {
+        "id": 75,
+        "name": "Collection Facility",
+        "cost": 1500,
+        "energy": 150
+       }
+      ]
+     },
+     {
+      "level": 2,
+      "name": "Distortion",
+      "cost": 200,
+      "description": "Coils that bend space itself rather than pushing against it. Trips between neighboring systems shrink from years to days.",
+      "ships": [
+       {
+        "id": 30,
+        "name": "Miranda Destroyer",
+        "cost": 1410,
+        "othersMet": false,
+        "requires": [
+         1,
+         1,
+         2,
+         2,
+         2,
+         1
+        ]
+       },
+       {
+        "id": 43,
+        "name": "Ambassador Light Cruiser",
+        "cost": 3100,
+        "othersMet": false,
+        "requires": [
+         1,
+         2,
+         3,
+         3,
+         2,
+         3
+        ]
+       }
+      ],
+      "structures": []
+     },
+     {
+      "level": 3,
+      "name": "Plasma Injection",
+      "cost": 1400,
+      "description": "A new plasma feed that drives warp coils harder and more precisely. Warp fields grow stronger and easier to shape.",
+      "ships": [
+       {
+        "id": 20,
+        "name": "Nebula Strike Cruiser",
+        "cost": 5400,
+        "othersMet": false,
+        "requires": [
+         3,
+         4,
+         5,
+         5,
+         3,
+         5
+        ]
+       },
+       {
+        "id": 23,
+        "name": "Edward Colony Ship II",
+        "cost": 4680,
+        "othersMet": false,
+        "requires": [
+         5,
+         4,
+         5,
+         5,
+         3,
+         1
+        ]
+       },
+       {
+        "id": 24,
+        "name": "Galaxy Command Cruiser",
+        "cost": 5320,
+        "othersMet": false,
+        "requires": [
+         3,
+         3,
+         4,
+         4,
+         3,
+         4
+        ]
+       }
+      ],
+      "structures": []
+     },
+     {
+      "level": 4,
+      "name": "Microdistortion",
+      "cost": 5100,
+      "description": "Miniature warp coils for probes, shuttles and precision station-keeping. Larger ships maneuver more nimbly as well.",
+      "ships": [
+       {
+        "id": 31,
+        "name": "Miranda Destroyer II",
+        "cost": 2660,
+        "othersMet": false,
+        "requires": [
+         2,
+         3,
+         4,
+         4,
+         4,
+         3
+        ]
+       },
+       {
+        "id": 36,
+        "name": "Oberth Science Vessel II",
+        "cost": 1990,
+        "othersMet": false,
+        "requires": [
+         5,
+         5,
+         5,
+         5,
+         4,
+         3
+        ]
+       },
+       {
+        "id": 37,
+        "name": "Starbase  Starbase",
+        "cost": 11120,
+        "othersMet": false,
+        "requires": [
+         5,
+         6,
+         6,
+         6,
+         4,
+         5
+        ]
+       },
+       {
+        "id": 40,
+        "name": "London Troop Transport II",
+        "cost": 3520,
+        "othersMet": false,
+        "requires": [
+         4,
+         4,
+         5,
+         5,
+         4,
+         1
+        ]
+       },
+       {
+        "id": 44,
+        "name": "Ambassador Light Cruiser II",
+        "cost": 5250,
+        "othersMet": false,
+        "requires": [
+         3,
+         4,
+         5,
+         5,
+         4,
+         5
+        ]
+       }
+      ],
+      "structures": []
+     },
+     {
+      "level": 5,
+      "name": "Field Manipulation",
+      "cost": 11600,
+      "description": "Carefully timed coil firings make a warp field far larger than the power spent on it. Big ships reach high warp without ruinous power demands.",
+      "ships": [
+       {
+        "id": 25,
+        "name": "Galaxy Command Cruiser II",
+        "cost": 8520,
+        "othersMet": false,
+        "requires": [
+         5,
+         5,
+         6,
+         6,
+         5,
+         6
+        ]
+       }
+      ],
+      "structures": []
+     },
+     {
+      "level": 6,
+      "name": "Field Geometry",
+      "cost": 19800,
+      "description": "Computer-optimized nacelle placement and hull lines. Every new design is shaped around its warp field.",
+      "ships": [
+       {
+        "id": 21,
+        "name": "Nebula Strike Cruiser II",
+        "cost": 11410,
+        "othersMet": false,
+        "requires": [
+         5,
+         6,
+         8,
+         8,
+         6,
+         8
+        ]
+       },
+       {
+        "id": 32,
+        "name": "Constellation Heavy Destroyer",
+        "cost": 5000,
+        "othersMet": false,
+        "requires": [
+         4,
+         5,
+         6,
+         6,
+         6,
+         5
+        ]
+       },
+       {
+        "id": 38,
+        "name": "Starbase  Starbase II",
+        "cost": 17580,
+        "othersMet": false,
+        "requires": [
+         7,
+         8,
+         8,
+         8,
+         6,
+         7
+        ]
+       },
+       {
+        "id": 41,
+        "name": "Galaxy-X Heavy Cruiser",
+        "cost": 9730,
+        "othersMet": false,
+        "requires": [
+         5,
+         6,
+         7,
+         7,
+         6,
+         7
+        ]
+       }
+      ],
+      "structures": []
+     },
+     {
+      "level": 7,
+      "name": "Superconduction",
+      "cost": 33200,
+      "description": "Better magnetic bottles for antimatter let a warp core run hotter in safety. Engine output climbs across the fleet.",
+      "ships": [
+       {
+        "id": 26,
+        "name": "Sovereign Dreadnought",
+        "cost": 14620,
+        "othersMet": false,
+        "requires": [
+         7,
+         7,
+         8,
+         8,
+         7,
+         8
+        ]
+       }
+      ],
+      "structures": []
+     },
+     {
+      "level": 8,
+      "name": "Field Compression",
+      "cost": 50200,
+      "description": "Tighter, sleeker warp fields that spend less energy on empty space. Ships go faster on the same fuel.",
+      "ships": [
+       {
+        "id": 33,
+        "name": "Constellation Heavy Destroyer II",
+        "cost": 8140,
+        "othersMet": false,
+        "requires": [
+         6,
+         7,
+         8,
+         8,
+         8,
+         7
+        ]
+       },
+       {
+        "id": 42,
+        "name": "Galaxy-X Heavy Cruiser II",
+        "cost": 15090,
+        "othersMet": false,
+        "requires": [
+         7,
+         8,
+         9,
+         9,
+         8,
+         9
+        ]
+       }
+      ],
+      "structures": []
+     },
+     {
+      "level": 9,
+      "name": "Charge Reversal",
+      "cost": 75100,
+      "description": "Onboard antimatter production from ordinary matter. Expensive, but fleets can operate far longer between refuelings.",
+      "ships": [
+       {
+        "id": 27,
+        "name": "Sovereign Dreadnought II",
+        "cost": 21830,
+        "othersMet": false,
+        "requires": [
+         9,
+         9,
+         10,
+         10,
+         9,
+         10
+        ]
+       }
+      ],
+      "structures": []
+     },
+     {
+      "level": 10,
+      "name": "Ultraconductivity",
+      "cost": 105100,
+      "description": "Coils that feed on the energy of the very field they generate. The summit of warp engineering.",
+      "ships": [
+       {
+        "id": 34,
+        "name": "Defiant Heavy Escort",
+        "cost": 18270,
+        "othersMet": false,
+        "requires": [
+         8,
+         9,
+         9,
+         10,
+         10,
+         10
+        ]
+       }
+      ],
+      "structures": []
+     }
+    ]
+   },
+   {
+    "field": 5,
+    "name": "Weapons",
+    "level": 1,
+    "progress": 0,
+    "allocation": 16,
+    "committedAllocation": 16,
+    "current": "Beam Emitters",
+    "levels": [
+     {
+      "level": 0,
+      "name": "Basic Weapons",
+      "cost": 0,
+      "description": "Everything that makes a phaser hurt and a torpedo explode. Every Weapons level adds to the striking power of fleets, troops and invasions.",
+      "ships": [],
+      "structures": []
+     },
+     {
+      "level": 1,
+      "name": "Beam Emitters",
+      "cost": 0,
+      "description": "The phaser's ancestor: a directed-energy weapon strong and accurate enough for ship-to-ship combat.",
+      "ships": [
+       {
+        "id": 22,
+        "name": "Edward Colony Ship",
+        "cost": 1210,
+        "othersMet": true,
+        "requires": [
+         1,
+         1,
+         1,
+         1,
+         1,
+         1
+        ]
+       },
+       {
+        "id": 23,
+        "name": "Edward Colony Ship II",
+        "cost": 4680,
+        "othersMet": false,
+        "requires": [
+         5,
+         4,
+         5,
+         5,
+         3,
+         1
+        ]
+       },
+       {
+        "id": 28,
+        "name": "Outpost  Outpost",
+        "cost": 1480,
+        "othersMet": true,
+        "requires": [
+         1,
+         1,
+         1,
+         1,
+         1,
+         1
+        ]
+       },
+       {
+        "id": 30,
+        "name": "Miranda Destroyer",
+        "cost": 1410,
+        "othersMet": false,
+        "requires": [
+         1,
+         1,
+         2,
+         2,
+         2,
+         1
+        ]
+       },
+       {
+        "id": 35,
+        "name": "Oberth Science Vessel",
+        "cost": 490,
+        "othersMet": true,
+        "requires": [
+         1,
+         1,
+         1,
+         1,
+         1,
+         1
+        ]
+       },
+       {
+        "id": 39,
+        "name": "London Troop Transport",
+        "cost": 1030,
+        "othersMet": true,
+        "requires": [
+         1,
+         1,
+         1,
+         1,
+         1,
+         1
+        ]
+       },
+       {
+        "id": 40,
+        "name": "London Troop Transport II",
+        "cost": 3520,
+        "othersMet": false,
+        "requires": [
+         4,
+         4,
+         5,
+         5,
+         4,
+         1
+        ]
+       }
+      ],
+      "structures": [
+       {
+        "id": 58,
+        "name": "Super Soldier Academy",
+        "cost": 3000,
+        "energy": 60
+       },
+       {
+        "id": 68,
+        "name": "Gladiatorial Arena",
+        "cost": 2500,
+        "energy": 50
+       }
+      ]
+     },
+     {
+      "level": 2,
+      "name": "Torpedo Hardening",
+      "cost": 300,
+      "description": "Torpedo casings that punch through a deflector before they detonate. More of each blast reaches the hull.",
+      "ships": [
+       {
+        "id": 29,
+        "name": "Outpost  Outpost II",
+        "cost": 2280,
+        "othersMet": false,
+        "requires": [
+         2,
+         3,
+         3,
+         3,
+         1,
+         2
+        ]
+       }
+      ],
+      "structures": []
+     },
+     {
+      "level": 3,
+      "name": "Beam Hardening",
+      "cost": 1800,
+      "description": "Beam emitters tuned to pierce deflectors rather than splash across them. Shields shed far less of every shot.",
+      "ships": [
+       {
+        "id": 31,
+        "name": "Miranda Destroyer II",
+        "cost": 2660,
+        "othersMet": false,
+        "requires": [
+         2,
+         3,
+         4,
+         4,
+         4,
+         3
+        ]
+       },
+       {
+        "id": 36,
+        "name": "Oberth Science Vessel II",
+        "cost": 1990,
+        "othersMet": false,
+        "requires": [
+         5,
+         5,
+         5,
+         5,
+         4,
+         3
+        ]
+       },
+       {
+        "id": 43,
+        "name": "Ambassador Light Cruiser",
+        "cost": 3100,
+        "othersMet": false,
+        "requires": [
+         1,
+         2,
+         3,
+         3,
+         2,
+         3
+        ]
+       }
+      ],
+      "structures": []
+     },
+     {
+      "level": 4,
+      "name": "Matter Packets",
+      "cost": 6200,
+      "description": "An improved warhead design that turns more of its antimatter into blast. Every torpedo hits harder.",
+      "ships": [
+       {
+        "id": 24,
+        "name": "Galaxy Command Cruiser",
+        "cost": 5320,
+        "othersMet": false,
+        "requires": [
+         3,
+         3,
+         4,
+         4,
+         3,
+         4
+        ]
+       }
+      ],
+      "structures": []
+     },
+     {
+      "level": 5,
+      "name": "Multifreq. Beams",
+      "cost": 14200,
+      "description": "Beams that shift frequency faster than a shield can adapt. Deflectors lose their tuning advantage.",
+      "ships": [
+       {
+        "id": 20,
+        "name": "Nebula Strike Cruiser",
+        "cost": 5400,
+        "othersMet": false,
+        "requires": [
+         3,
+         4,
+         5,
+         5,
+         3,
+         5
+        ]
+       },
+       {
+        "id": 32,
+        "name": "Constellation Heavy Destroyer",
+        "cost": 5000,
+        "othersMet": false,
+        "requires": [
+         4,
+         5,
+         6,
+         6,
+         6,
+         5
+        ]
+       },
+       {
+        "id": 37,
+        "name": "Starbase  Starbase",
+        "cost": 11120,
+        "othersMet": false,
+        "requires": [
+         5,
+         6,
+         6,
+         6,
+         4,
+         5
+        ]
+       },
+       {
+        "id": 44,
+        "name": "Ambassador Light Cruiser II",
+        "cost": 5250,
+        "othersMet": false,
+        "requires": [
+         3,
+         4,
+         5,
+         5,
+         4,
+         5
+        ]
+       }
+      ],
+      "structures": []
+     },
+     {
+      "level": 6,
+      "name": "Subspace Guidance",
+      "cost": 24200,
+      "description": "Self-guided torpedoes that track their targets through subspace. Fewer shots go wide.",
+      "ships": [
+       {
+        "id": 25,
+        "name": "Galaxy Command Cruiser II",
+        "cost": 8520,
+        "othersMet": false,
+        "requires": [
+         5,
+         5,
+         6,
+         6,
+         5,
+         6
+        ]
+       }
+      ],
+      "structures": []
+     },
+     {
+      "level": 7,
+      "name": "Micropulsing",
+      "cost": 40600,
+      "description": "Pulse-modulated beams that hit shields harder than a steady stream of the same power.",
+      "ships": [
+       {
+        "id": 33,
+        "name": "Constellation Heavy Destroyer II",
+        "cost": 8140,
+        "othersMet": false,
+        "requires": [
+         6,
+         7,
+         8,
+         8,
+         8,
+         7
+        ]
+       },
+       {
+        "id": 38,
+        "name": "Starbase  Starbase II",
+        "cost": 17580,
+        "othersMet": false,
+        "requires": [
+         7,
+         8,
+         8,
+         8,
+         6,
+         7
+        ]
+       },
+       {
+        "id": 41,
+        "name": "Galaxy-X Heavy Cruiser",
+        "cost": 9730,
+        "othersMet": false,
+        "requires": [
+         5,
+         6,
+         7,
+         7,
+         6,
+         7
+        ]
+       }
+      ],
+      "structures": []
+     },
+     {
+      "level": 8,
+      "name": "Compression",
+      "cost": 61400,
+      "description": "Denser antimatter storage that packs far more yield into the same torpedo casing.",
+      "ships": [
+       {
+        "id": 21,
+        "name": "Nebula Strike Cruiser II",
+        "cost": 11410,
+        "othersMet": false,
+        "requires": [
+         5,
+         6,
+         8,
+         8,
+         6,
+         8
+        ]
+       },
+       {
+        "id": 26,
+        "name": "Sovereign Dreadnought",
+        "cost": 14620,
+        "othersMet": false,
+        "requires": [
+         7,
+         7,
+         8,
+         8,
+         7,
+         8
+        ]
+       }
+      ],
+      "structures": []
+     },
+     {
+      "level": 9,
+      "name": "Quantum Shielding",
+      "cost": 91800,
+      "description": "Shaped warheads that focus a torpedo's full yield on its target. Nothing is wasted.",
+      "ships": [
+       {
+        "id": 42,
+        "name": "Galaxy-X Heavy Cruiser II",
+        "cost": 15090,
+        "othersMet": false,
+        "requires": [
+         7,
+         8,
+         9,
+         9,
+         8,
+         9
+        ]
+       }
+      ],
+      "structures": []
+     },
+     {
+      "level": 10,
+      "name": "Ultra. Emitters",
+      "cost": 128500,
+      "description": "The finest beam emitters ever built. The ultimate directed-energy weapon technology.",
+      "ships": [
+       {
+        "id": 27,
+        "name": "Sovereign Dreadnought II",
+        "cost": 21830,
+        "othersMet": false,
+        "requires": [
+         9,
+         9,
+         10,
+         10,
+         9,
+         10
+        ]
+       },
+       {
+        "id": 34,
+        "name": "Defiant Heavy Escort",
+        "cost": 18270,
+        "othersMet": false,
+        "requires": [
+         8,
+         9,
+         9,
+         10,
+         10,
+         10
+        ]
+       }
+      ],
+      "structures": []
+     }
+    ]
+   }
+  ],
+  "output": 10,
+  "reserve": 0,
+  "blockers": [
+   {
+    "product": "Farm",
+    "name": "Farm",
+    "blocker": ""
+   },
+   {
+    "product": "Factory",
+    "name": "Factory",
+    "blocker": ""
+   },
+   {
+    "product": "Laboratory",
+    "name": "Laboratory",
+    "blocker": ""
+   },
+   {
+    "product": "Shipyard",
+    "name": "Shipyard",
+    "blocker": ""
+   },
+   {
+    "product": "Scout",
+    "name": "Scout",
+    "blocker": ""
+   },
+   {
+    "product": "ColonyShip",
+    "name": "Colony ship",
+    "blocker": ""
+   },
+   {
+    "product": "PowerPlant",
+    "name": "Power plant",
+    "blocker": ""
+   },
+   {
+    "product": "FusionPlant",
+    "name": "Fusion plant",
+    "blocker": ""
+   },
+   {
+    "product": "ResearchInstitute",
+    "name": "Research institute",
+    "blocker": ""
+   },
+   {
+    "product": "Destroyer",
+    "name": "Destroyer",
+    "blocker": ""
+   },
+   {
+    "product": "Transport",
+    "name": "Transport",
+    "blocker": ""
+   },
+   {
+    "product": "DefenseBattery",
+    "name": "Defense battery",
+    "blocker": ""
+   }
+  ]
+ }
+}
