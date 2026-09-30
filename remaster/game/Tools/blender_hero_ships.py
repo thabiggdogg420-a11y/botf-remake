@@ -331,6 +331,9 @@ def build_textures(slot, src, out_dir, stem, metallic, tint=None):
         if e.max() > 0.02:
             files["e"] = f"{stem}_{slot}_E.png"
             save_png(e, os.path.join(out_dir, files["e"]), True)
+            # Share of the map that glows: windows are a few percent, but some sources light whole panels or grilles,
+            # which read as flat stickers at full strength. The importer dims the slot by it.
+            files["eCoverage"] = round(float((e.max(axis=-1) > 0.15).mean()), 4)
     return files
 
 

@@ -1253,12 +1253,15 @@ void ABotfCombatScene::AnimateCamera(float DeltaSeconds)
         const float T = Elapsed * 0.08f;
         const FVector View = FVector(0.58f, 0.81f, -0.02f).GetSafeNormal(); // planet sits lower right of centre
         const FVector Side = FVector::CrossProduct(View, FVector::UpVector).GetSafeNormal();
-        FocusPoint = FVector(-60.f, 60.f, -10.f) - Side * 80.f + Side * FMath::Sin(T) * 40.f; // ships left of centre
-        DesiredLocation = FocusPoint - View * (700.f + FMath::Sin(T * 0.6f) * 70.f) + Side * FMath::Sin(T) * 180.f + FVector(0.f, 0.f, 90.f);
+        // The menu sets the title at the left and its buttons at the right: the fleet flies right of centre, between them.
+        FocusPoint = FVector(-60.f, 60.f, -10.f) + Side * 150.f + Side * FMath::Sin(T) * 30.f;
+        DesiredLocation = FocusPoint - View * (1180.f + FMath::Sin(T * 0.6f) * 80.f) + Side * FMath::Sin(T) * 120.f + FVector(0.f, 0.f, 140.f);
         DesiredRotation = (FocusPoint - DesiredLocation).Rotation();
         DesiredRotation.Roll = FMath::Sin(T * 0.8f) * 3.f;
-        Capture->SetRelativeLocation(FMath::VInterpTo(Capture->GetRelativeLocation(), DesiredLocation, DeltaSeconds, 1.2f));
-        Capture->SetRelativeRotation(FMath::RInterpTo(Capture->GetRelativeRotation(), DesiredRotation, DeltaSeconds, 1.2f));
+        // The first frames cut straight to the shot (the menu opens on it); after that the camera drifts.
+        const float Follow = Elapsed < 0.25f ? 1000.f : 1.2f;
+        Capture->SetRelativeLocation(FMath::VInterpTo(Capture->GetRelativeLocation(), DesiredLocation, DeltaSeconds, Follow));
+        Capture->SetRelativeRotation(FMath::RInterpTo(Capture->GetRelativeRotation(), DesiredRotation, DeltaSeconds, Follow));
         const FVector Eye = Capture->GetRelativeLocation();
         if (SkyDome) SkyDome->SetRelativeLocation(Eye);
         if (FillLight) FillLight->SetRelativeRotation(Capture->GetRelativeRotation() + FRotator(-14.f, 8.f, 0.f));

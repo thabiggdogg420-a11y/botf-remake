@@ -17,14 +17,18 @@ namespace BotfUi {
 class SBattleImage final : public SLeafWidget {
 public:
     SLATE_BEGIN_ARGS(SBattleImage) {} SLATE_END_ARGS()
-    void Construct(const FArguments&, const FSlateBrush* InBrush, std::function<bool()> InShow) { Brush = InBrush; Show = MoveTemp(InShow); }
+    // Cover fills the widget and crops the overflow (a full-bleed backdrop); otherwise the image is letterboxed.
+    void Construct(const FArguments&, const FSlateBrush* InBrush, std::function<bool()> InShow, bool bInCover = false) {
+        Brush = InBrush; Show = MoveTemp(InShow); bCover = bInCover;
+        if (bCover) SetClipping(EWidgetClipping::ClipToBounds);
+    }
     virtual FVector2D ComputeDesiredSize(float) const override { return FVector2D(320, 180); }
     virtual int32 OnPaint(const FPaintArgs&, const FGeometry& Geometry, const FSlateRect&,
                          FSlateWindowElementList& Elements, int32 Layer, const FWidgetStyle&, bool) const override {
         if (!Brush || !Brush->GetResourceObject() || (Show && !Show())) return Layer;
         const FVector2D Size = Geometry.GetLocalSize();
         const FVector2D Image = Brush->ImageSize.X > 0 && Brush->ImageSize.Y > 0 ? FVector2D(Brush->ImageSize) : FVector2D(16, 9);
-        const double Scale = FMath::Min(Size.X / Image.X, Size.Y / Image.Y);
+        const double Scale = bCover ? FMath::Max(Size.X / Image.X, Size.Y / Image.Y) : FMath::Min(Size.X / Image.X, Size.Y / Image.Y);
         const FVector2D Fit = Image * Scale;
         FSlateDrawElement::MakeBox(Elements, Layer, Geometry.ToPaintGeometry(Fit, FSlateLayoutTransform((Size - Fit) * 0.5)),
             Brush, ESlateDrawEffect::IgnoreTextureAlpha, FLinearColor::White);
@@ -32,6 +36,43 @@ public:
     }
 private:
     const FSlateBrush* Brush = nullptr;
+    std::function<bool()> Show;
+    bool bCover = false;
+};
+
+// Legibility scrim over a live backdrop: the left third darkens toward the title, the right edge under the menu, and
+// a band along the bottom, so text reads over any shot while the middle of the frame stays clear.
+class SBotfScrim final : public SLeafWidget {
+public:
+    SLATE_BEGIN_ARGS(SBotfScrim) {} SLATE_END_ARGS()
+    void Construct(const FArguments&, std::function<bool()> InShow) { Show = MoveTemp(InShow); }
+    virtual FVector2D ComputeDesiredSize(float) const override { return FVector2D(64, 64); }
+    virtual int32 OnPaint(const FPaintArgs&, const FGeometry& Geometry, const FSlateRect&,
+                         FSlateWindowElementList& Elements, int32 Layer, const FWidgetStyle&, bool) const override {
+        if (Show && !Show()) return Layer;
+        const FVector2f Size = Geometry.GetLocalSize();
+        // Near-black, not the theme navy: the live scene is darker than the UI's void and a navy wash would lift it.
+        // Drawn as fine strips with a smoothstep ramp, which blends cleanly over the scene texture.
+        const FLinearColor Shadow(0.004f, 0.006f, 0.014f, 1.f);
+        const auto Ramp = [](float T) { T = FMath::Clamp(T, 0.f, 1.f); return T * T * (3.f - 2.f * T); };
+        // Strips on whole units, edge to edge: overlapping or fractional edges show as seams.
+        const auto Band = [&](float From, float Length, bool bVertical, float Peak, bool bRising) {
+            constexpr int32 Strips = 64;
+            for (int32 I = 0; I < Strips; ++I) {
+                const float A = FMath::RoundToFloat(From + Length * I / Strips), B2 = FMath::RoundToFloat(From + Length * (I + 1) / Strips);
+                if (B2 <= A) continue;
+                const float T = (I + 0.5f) / Strips;
+                const FLinearColor C = WithAlpha(Shadow, Peak * Ramp(bRising ? T : 1.f - T));
+                if (bVertical) PaintRect(Elements, Layer, Geometry, FVector2f(0.f, A), FVector2f(Size.X, B2 - A), C);
+                else PaintRect(Elements, Layer, Geometry, FVector2f(A, 0.f), FVector2f(B2 - A, Size.Y), C);
+            }
+        };
+        Band(0.f, Size.X * 0.52f, false, 0.78f, false);              // left: under the title, fading toward the centre
+        Band(Size.X * 0.70f, Size.X * 0.30f, false, 0.55f, true);    // right: under the menu
+        Band(Size.Y * 0.74f, Size.Y * 0.26f, true, 0.65f, true);     // bottom band
+        return Layer;
+    }
+private:
     std::function<bool()> Show;
 };
 

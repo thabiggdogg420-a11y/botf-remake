@@ -3852,6 +3852,32 @@ std::string constructionBlocker(const GameState& s, const Colony& c) {
     return {};
 }
 
+namespace {
+// Names for generated systems, in placement order after Sol: real proper names of stars (public astronomical
+// names, several of them familiar from Star Trek charts). None is a capital or a minor race's homeworld, which
+// rename their systems on placement. Past the list, systems take Gliese catalogue designations, as real
+// unnamed stars do.
+static constexpr const char* StarNames[] = {
+    "Aldebaran", "Altair", "Antares", "Arcturus", "Rigel", "Vega", "Capella", "Sirius", "Procyon", "Regulus",
+    "Spica", "Canopus", "Pollux", "Castor", "Betelgeuse", "Bellatrix", "Fomalhaut", "Achernar", "Algol", "Alnitak",
+    "Denebola", "Tau Ceti", "Wolf 359", "Epsilon Eridani", "Alpha Centauri", "Barnard's Star", "Proxima", "Polaris",
+    "Mira", "Thuban", "Kochab", "Dubhe", "Merak", "Alkaid", "Alcor", "Alphard", "Hamal", "Enif", "Markab", "Scheat",
+    "Mirach", "Almach", "Sadr", "Albireo", "Tarazed", "Alshain", "Rasalhague", "Sabik", "Shaula", "Sargas",
+    "Nunki", "Ascella", "Kaus", "Zubenelgenubi", "Unukalhai", "Izar", "Muphrid", "Vindemiatrix", "Zosma", "Algieba",
+    "Adhara", "Wezen", "Aludra", "Mirzam", "Saiph", "Alnilam", "Elnath", "Menkalinan", "Alhena", "Tejat",
+    "Mebsuta", "Wasat", "Propus", "Gomeisa", "Suhail", "Avior", "Miaplacidus", "Atria", "Hadar", "Gacrux",
+    "Mimosa", "Acrux", "Menkent", "Ankaa", "Diphda", "Menkar", "Zaurak", "Cursa", "Phact", "Naos",
+    "Eltanin", "Rastaban", "Errai", "Caph", "Ruchbah", "Schedar", "Sheratan", "Mesarthim", "Botein", "Electra",
+    "Maia", "Merope", "Taygeta", "Alcyone", "Atlas", "Pleione", "Kornephoros", "Rasalgethi", "Marfik", "Yed Prior",
+    "Lesath", "Alniyat", "Nashira", "Skat", "Sadalmelik", "Sadalsuud", "Alrescha", "Fumalsamakah", "Alderamin", "Alfirk",
+};
+constexpr std::size_t StarNameCount = sizeof(StarNames) / sizeof(StarNames[0]);
+inline std::string generatedSystemName(int index) {   // index 1 = the first system after Sol
+    const auto i = static_cast<std::size_t>(index - 1);
+    return i < StarNameCount ? std::string(StarNames[i]) : "Gliese " + std::to_string(100 + 7 * static_cast<int>(i - StarNameCount));
+}
+} // namespace
+
 GameState generate(std::uint64_t seed, int width, int height, int total) {
     require(width >= 2 && width <= 64 && height >= 2 && height <= 64, "Invalid map dimensions");
     require(total >= 1 && total <= MaxSystems && total <= width * height, "Invalid system count");
@@ -3864,7 +3890,7 @@ GameState generate(std::uint64_t seed, int width, int height, int total) {
         const auto j = static_cast<std::size_t>(i) + bounded(s.rngState, cells.size() - i);
         std::swap(cells[static_cast<std::size_t>(i)], cells[j]);
         const auto cell = cells[static_cast<std::size_t>(i)];
-        const std::string name = i == 0 ? "Sol" : "System-" + std::to_string(i + 1);
+        const std::string name = i == 0 ? "Sol" : generatedSystemName(i);
         s.systems.push_back({i + 1, cell % width, cell / width, name});
         s.systems.back().planets = generateSystemPlanets(seed, i + 1, name, i == 0);
     }

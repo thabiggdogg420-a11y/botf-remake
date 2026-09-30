@@ -12,6 +12,8 @@
 #include "BotfGameplayViewModel.h"
 #include "Simulation.h"
 #include "InputCoreTypes.h"
+#include "Engine/Texture2D.h"
+#include "UObject/StrongObjectPtr.h"
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
@@ -36,6 +38,22 @@ struct FMapView {
 };
 
 inline FString MapStr(const std::string& Value) { return UTF8_TO_TCHAR(Value.c_str()); }
+
+// A star's look on the chart: a spectral class drawn from the system id and the galaxy seed (presentation only, it
+// consumes no simulation randomness), with its colour and a size factor. Sol is a G star.
+struct FStarLook { FLinearColor Colour; float Size; };
+inline FStarLook StarLook(std::uint64_t Seed, int SystemId) {
+    if (SystemId == 1) return { FLinearColor(1.f, 0.90f, 0.64f), 1.f };
+    std::uint64_t H = Seed ^ (static_cast<std::uint64_t>(SystemId) * 0x9e3779b97f4a7c15ULL);
+    H ^= H >> 31; H *= 0xbf58476d1ce4e5b9ULL; H ^= H >> 29;
+    const int Roll = static_cast<int>(H % 100);
+    if (Roll < 6)  return { FLinearColor(0.62f, 0.76f, 1.00f), 1.25f };   // O/B blue giant
+    if (Roll < 16) return { FLinearColor(0.84f, 0.90f, 1.00f), 1.10f };   // A white
+    if (Roll < 30) return { FLinearColor(1.00f, 0.97f, 0.88f), 1.00f };   // F yellow-white
+    if (Roll < 52) return { FLinearColor(1.00f, 0.90f, 0.62f), 0.95f };   // G yellow
+    if (Roll < 78) return { FLinearColor(1.00f, 0.70f, 0.42f), 0.88f };   // K orange
+    return { FLinearColor(1.00f, 0.50f, 0.34f), 0.80f };                   // M red dwarf
+}
 
 // A trade route is shown only when the player could know both ends: both charted, and for a rival's route both in
 // sensor range now. A line must never point at a system the chart does not show.
@@ -70,6 +88,13 @@ public:
     void Construct(const FArguments&, const FBinding& In) {
         B = In;
         SetClipping(EWidgetClipping::ClipToBounds);
+        // The painted deep-space panorama (generate_space_art.py) the battle sky also uses; the chart shows a band of it.
+        if (UTexture2D* Nebula = LoadObject<UTexture2D>(nullptr, TEXT("/Game/Generated/Environment/T_SpaceNebula.T_SpaceNebula"))) {
+            NebulaTexture.Reset(Nebula);
+            NebulaBrush.SetResourceObject(Nebula);
+            NebulaBrush.ImageSize = FVector2D(Nebula->GetSizeX(), Nebula->GetSizeY());
+            NebulaBrush.DrawAs = ESlateBrushDrawType::Image;
+        }
     }
     static constexpr double Margin = 24;
     int HoveredCell() const { return HoverCell; }
@@ -143,6 +168,8 @@ public:
         std::vector<botf::view::FeatureMark> Features;
         std::vector<botf::view::StationMark> Stations;
         std::vector<std::pair<int, int>> Assembling;
+        // Territory: the owner of each sector (0 = none), as far as the player knows it.
+        std::vector<int> Territory;
     };
     mutable FPaintCache Cache;
     void RefreshPaintCache(const botf::GameState& Draft, const botf::Fleet* Ship) const {
@@ -160,6 +187,34 @@ public:
         Cache.Stations = botf::view::chartStations(*B.State);
         for (const auto& F : Draft.fleets)
             if (F.ownerId == Draft.playerEmpire && F.buildingOutpost) Cache.Assembling.push_back({F.x, F.y});
+        Cache.Territory = TerritoryOf(*B.State);
+    }
+    // Each known colony claims the explored sectors around it (two sectors for a developed world, one otherwise);
+    // a sector goes to the nearest claimant, and one that two empires claim at the same distance stays contested.
+    static std::vector<int> TerritoryOf(const botf::GameState& State) {
+        const int W = State.width, H = State.height;
+        std::vector<int> Owner(static_cast<std::size_t>(W * H), 0), Best(static_cast<std::size_t>(W * H), 99);
+        for (const auto& Sys : State.systems) {
+            const auto* Col = botf::colonyAt(State, Sys.id);
+            if (!Col || !botf::explored(State, Sys.x, Sys.y)) continue;
+            if (Col->ownerId != State.playerEmpire && !botf::visible(State, State.playerEmpire, Sys.x, Sys.y)) continue;
+            const int Reach = Col->population >= 50 ? 2 : 1;
+            for (int Y = FMath::Max(0, Sys.y - Reach); Y <= FMath::Min(H - 1, Sys.y + Reach); ++Y)
+                for (int X = FMath::Max(0, Sys.x - Reach); X <= FMath::Min(W - 1, Sys.x + Reach); ++X) {
+                    if (!botf::explored(State, X, Y)) continue;
+                    const int D = FMath::Max(FMath::Abs(X - Sys.x), FMath::Abs(Y - Sys.y));
+                    const std::size_t I = static_cast<std::size_t>(Y * W + X);
+                    if (D < Best[I]) { Best[I] = D; Owner[I] = Col->ownerId; }
+                    else if (D == Best[I] && Owner[I] != Col->ownerId) Owner[I] = -1;
+                }
+        }
+        for (int& O : Owner) if (O < 0) O = 0;
+        return Owner;
+    }
+    int TerritoryAt(int X, int Y) const {
+        if (!B.State || X < 0 || Y < 0 || X >= B.State->width || Y >= B.State->height) return 0;
+        const std::size_t I = static_cast<std::size_t>(Y * B.State->width + X);
+        return I < Cache.Territory.size() ? Cache.Territory[I] : 0;
     }
     bool CachedSupplied(int X, int Y) const {
         if (!B.State || X < 0 || Y < 0 || X >= B.State->width || Y >= B.State->height) return false;
@@ -210,8 +265,20 @@ public:
 
         const auto F2 = [](FVector2D V) { return FVector2f(static_cast<float>(V.X), static_cast<float>(V.Y)); };
         // Deep-space backdrop: a vertical wash, two soft nebula clouds that drift a little with the pan, then the starfield.
-        BotfUi::PaintGradient(Elements, Layer, Geometry, FVector2f(0.f, 0.f), F2(Size), FVector4(0, 0, 0, 0),
-            BotfUi::Mix(Pal.Void, Pal.FieldHi, 0.30f), Shade(Pal.Void, 0.8f));
+        // (Slate does not order different element kinds within one layer, so the wash is skipped under the panorama.)
+        if (!NebulaTexture.IsValid())
+            BotfUi::PaintGradient(Elements, Layer, Geometry, FVector2f(0.f, 0.f), F2(Size), FVector4(0, 0, 0, 0),
+                BotfUi::Mix(Pal.Void, Pal.FieldHi, 0.30f), Shade(Pal.Void, 0.8f));
+        // The painted panorama: a band of the galactic plane, cropped to the widget's aspect, drifting with the pan.
+        if (NebulaTexture.IsValid()) {
+            const double Aspect = Size.X / FMath::Max(1.0, Size.Y);
+            const double VH = 0.46, UW = FMath::Min(0.96, VH * Aspect * 0.5);
+            const FVector2D Drift = -B.View->Pan / FMath::Max(1.0, Size.X) * 0.05;
+            const double U0 = FMath::Clamp(0.10 + Drift.X, 0.0, 1.0 - UW), V0 = FMath::Clamp(0.27 + Drift.Y, 0.0, 1.0 - VH);
+            NebulaBrush.SetUVRegion(FBox2f(FVector2f(U0, V0), FVector2f(U0 + UW, V0 + VH)));
+            FSlateDrawElement::MakeBox(Elements, Layer, Geometry.ToPaintGeometry(Size, FSlateLayoutTransform()), &NebulaBrush,
+                ESlateDrawEffect::None, FLinearColor(0.62f, 0.64f, 0.72f, 1.f));
+        }
         BotfUi::PaintGlow(Elements, Layer, Geometry, F2(Size * FVector2D(0.28, 0.30) + B.View->Pan * 0.05), static_cast<float>(Size.X * 0.42),
             BotfUi::WithAlpha(Pal.Primary, 0.06f));
         BotfUi::PaintGlow(Elements, Layer, Geometry, F2(Size * FVector2D(0.74, 0.70) + B.View->Pan * 0.05), static_cast<float>(Size.X * 0.36),
@@ -223,7 +290,7 @@ public:
             for (int I = 0; I < 8; ++I) {
                 const FLinearColor Tint = I % 3 == 0 ? FLinearColor(0.55f, 0.28f, 0.85f) : (I % 3 == 1 ? Pal.Primary : FLinearColor(0.25f, 0.65f, 0.75f));
                 BotfUi::PaintGlow(Elements, Layer, Geometry, F2(Size * FVector2D(Cloud[I][0], Cloud[I][1]) + B.View->Pan * 0.04), static_cast<float>(FMath::Max(Size.X, Size.Y) * Cloud[I][2]),
-                    BotfUi::WithAlpha(Tint, Cloud[I][3] * 1.9f));
+                    BotfUi::WithAlpha(Tint, Cloud[I][3] * (NebulaTexture.IsValid() ? 0.7f : 1.9f)));
             }
         }
         // Fixed decorative starfield with slight parallax; consumes no simulation randomness.
@@ -240,26 +307,44 @@ public:
         {
             const FVector2D O = Offset(Size);
             BotfUi::PaintRounded(Elements, Layer + 1, Geometry, F2(O - FVector2D(6, 6)), F2(FVector2D(CS * W + 12, CS * State.height + 12)),
-                FVector4(14, 14, 14, 14), BotfUi::WithAlpha(Pal.Void, 0.55f), BotfUi::WithAlpha(Pal.LineHi, 0.75f), 1.f);
+                FVector4(14, 14, 14, 14), BotfUi::WithAlpha(Pal.Void, 0.62f), BotfUi::WithAlpha(Pal.LineHi, 0.75f), 1.f);
         }
+        const bool Military = B.View->Mode == EMapMode::Military;
+        const botf::Fleet* Ship = OwnShip(Draft);
+        RefreshPaintCache(Draft, Ship);
         // Sectors: explored space is lit, sensor coverage brighter, colonised sectors carry their owner's tint.
         for (int Y = 0; Y < State.height; ++Y) for (int X = 0; X < W; ++X) {
             const FVector2D A = Origin(X, Y, Size);
             if (!OnScreen(A) || !botf::explored(State, X, Y)) continue;
             const int Id = Y * W + X;
-            FLinearColor Fill = BotfUi::WithAlpha(Pal.Field, 0.85f);
-            if (botf::visible(State, State.playerEmpire, X, Y)) Fill = BotfUi::WithAlpha(BotfUi::Mix(Pal.FieldHi, Pal.Primary, 0.10f), 0.92f);
+            // Charted space lets the panorama through; sensor coverage is a shade brighter.
+            FLinearColor Fill = BotfUi::WithAlpha(Pal.Field, 0.30f);
+            if (botf::visible(State, State.playerEmpire, X, Y)) Fill = BotfUi::WithAlpha(BotfUi::Mix(Pal.FieldHi, Pal.Primary, 0.10f), 0.42f);
             if (HoverCell == Id) Fill = Lift(Fill, 0.08f);
             Box(1, A, FVector2D(CS, CS), Fill);
+        }
+        // Territory: each empire's claimed sectors carry a wash of its colour and a border where the claim ends, the
+        // way a strategic chart shows spheres of influence.
+        for (int Y = 0; Y < State.height; ++Y) for (int X = 0; X < W; ++X) {
+            const int Owner = TerritoryAt(X, Y);
+            if (Owner <= 0) continue;
+            const FVector2D A = Origin(X, Y, Size);
+            if (!OnScreen(A)) continue;
+            const FLinearColor Tone = FactionColor(Owner);
+            Box(1, A, FVector2D(CS, CS), BotfUi::WithAlpha(Tone, 0.13f));
+            const FLinearColor Edge = BotfUi::WithAlpha(Lift(Tone, 0.1f), 0.75f);
+            const double In = 1.0;
+            if (TerritoryAt(X - 1, Y) != Owner) Line(2, A + FVector2D(In, 0), A + FVector2D(In, CS), Edge, 2.f);
+            if (TerritoryAt(X + 1, Y) != Owner) Line(2, A + FVector2D(CS - In, 0), A + FVector2D(CS - In, CS), Edge, 2.f);
+            if (TerritoryAt(X, Y - 1) != Owner) Line(2, A + FVector2D(0, In), A + FVector2D(CS, In), Edge, 2.f);
+            if (TerritoryAt(X, Y + 1) != Owner) Line(2, A + FVector2D(0, CS - In), A + FVector2D(CS, CS - In), Edge, 2.f);
         }
         for (const auto& Sys : State.systems) {
             const auto* Col = botf::colonyAt(State, Sys.id);
             if (!Col || !botf::explored(State, Sys.x, Sys.y)) continue;
             if (Col->ownerId != State.playerEmpire && !botf::visible(State, State.playerEmpire, Sys.x, Sys.y)) continue;
-            const FLinearColor Owner = FactionColor(Col->ownerId);
             const FVector2D A = Origin(Sys.x, Sys.y, Size);
-            BotfUi::PaintGlow(Elements, Layer + 1, Geometry, F2(A + FVector2D(CS, CS) * 0.5), static_cast<float>(CS * 1.5), BotfUi::WithAlpha(Owner, 0.20f));
-            Box(1, A, FVector2D(CS, CS), Shade(Owner, 0.6f, 0.16f));
+            BotfUi::PaintGlow(Elements, Layer + 1, Geometry, F2(A + FVector2D(CS, CS) * 0.5), static_cast<float>(CS * 1.3), BotfUi::WithAlpha(FactionColor(Col->ownerId), 0.16f));
         }
         if (B.View->bGrid || CS >= 34) {
             const FLinearColor Grid = Shade(Pal.Secondary, 0.28f, B.View->bGrid ? 0.55f : 0.16f);
@@ -271,9 +356,6 @@ public:
                 for (int Y = 0; Y < State.height; ++Y) Text(2, O + FVector2D(-20, Y * CS + 2), FString::FromInt(Y), 7, false, Pal.Muted);
             }
         }
-        const bool Military = B.View->Mode == EMapMode::Military;
-        const botf::Fleet* Ship = OwnShip(Draft);
-        RefreshPaintCache(Draft, Ship);
         auto Circle = [&](int L, FVector2D C, double Radius, const FLinearColor& Color, float Thick) {
             TArray<FVector2D> Pts;
             for (int I = 0; I <= 24; ++I) { const double A = I * 6.283185307 / 24; Pts.Add(C + FVector2D(std::cos(A), std::sin(A)) * Radius); }
@@ -401,7 +483,7 @@ public:
         if (HoverCell >= 0 && HoverCell != *B.Cell)
             Outline(5, Origin(HoverCell % W, HoverCell / W, Size), CS, B.View->bPlotting ? Pal.Good : Shade(Pal.Text, 0.6f, 0.35f), 1.f);
 
-        const float Star = FMath::Clamp(static_cast<float>(CS) * 0.2f, 4.f, 14.f);
+        const float StarBase = FMath::Clamp(static_cast<float>(CS) * 0.2f, 4.f, 14.f);
         for (const auto& S : State.systems) {
             if (!botf::explored(State, S.x, S.y)) continue;
             const FVector2D P = Centre(S.x, S.y, Size);
@@ -410,11 +492,15 @@ public:
             const bool Own = Colony && Colony->ownerId == State.playerEmpire;
             const bool Seen = Colony && (Own || botf::visible(State, State.playerEmpire, S.x, S.y));
             const auto Minor = botf::minorAt(State, S.id);
-            const FLinearColor Color = Seen ? FactionColor(Colony->ownerId) : Minor && Minor->contact[State.playerEmpire]
-                ? FLinearColor(0.85f, 0.85f, 0.95f) : FLinearColor(0.95f, 0.88f, 0.72f);
+            // The star keeps its spectral colour; an owner shows in the territory, a ring and the name.
+            const FStarLook Look = StarLook(State.seed, S.id);
+            const FLinearColor Color = Look.Colour;
+            const FLinearColor OwnerTone = Seen ? FactionColor(Colony->ownerId) : Color;
+            const float Star = StarBase * Look.Size;
             // Corona, halo and a hot core; a four-point flare on the larger stars.
-            BotfUi::PaintGlow(Elements, Layer + 6, Geometry, F2(P), Star * 3.4f, BotfUi::WithAlpha(Color, 0.30f));
+            BotfUi::PaintGlow(Elements, Layer + 6, Geometry, F2(P), Star * 3.6f, BotfUi::WithAlpha(Color, 0.26f));
             BotfUi::PaintGlow(Elements, Layer + 6, Geometry, F2(P), Star * 1.7f, BotfUi::WithAlpha(Color, 0.55f));
+            if (Seen) Circle(6, P, Star + 4.0, BotfUi::WithAlpha(OwnerTone, 0.9f), 1.5f);
             if (*B.Selected == S.id) {
                 TArray<FVector2D> Ring;
                 for (int I = 0; I <= 40; ++I) { const double A = I * 6.283185307 / 40; Ring.Add(P + FVector2D(std::cos(A), std::sin(A)) * (Star + 6)); }
@@ -434,7 +520,7 @@ public:
                 const FString Name = MapStr(S.name);
                 const int Pt = CS >= 48 ? 9 : 8;
                 Text(8, At + FVector2D(1, 1), Name, Pt, Own, FLinearColor(0.f, 0.f, 0.f, 0.85f));
-                Text(8, At, Name, Pt, Own, Seen ? Lift(Color, 0.25f) : Pal.Text2);
+                Text(8, At, Name, Pt, Own, Seen ? Lift(OwnerTone, 0.25f) : Pal.Text2);
                 if (!Military && Own && CS >= 40) {
                     const auto E = botf::economy(State, *Colony);
                     Text(8, At + FVector2D(0, 13), FString::Printf(TEXT("pop %d  ind %d"), Colony->population, E.industry), 7, false, Pal.Muted);
@@ -611,6 +697,8 @@ public:
     }
 private:
     FBinding B;
+    TStrongObjectPtr<UTexture2D> NebulaTexture;
+    mutable FSlateBrush NebulaBrush;
     int HoverCell = -1;
     FVector2D HoverLocal = FVector2D::ZeroVector, PressLocal = FVector2D::ZeroVector, LastLocal = FVector2D::ZeroVector;
     bool bPressed = false, bDragged = false, bMiddle = false;

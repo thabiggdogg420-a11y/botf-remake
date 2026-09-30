@@ -294,6 +294,7 @@ public:
             + SWidgetSwitcher::Slot() [ BuildMenuScreen() ]
             + SWidgetSwitcher::Slot() [ BuildConfirmScreen() ] ] ];
         RefreshAll();
+        UpdateScene();   // the title menu starts its live backdrop
         UE_LOG(LogTemp, Display, TEXT("BOTF_INTERFACE_READY seed=1999 campaign=2 systems=%d"), static_cast<int>(State.systems.size()));
     }
 private:
@@ -716,8 +717,20 @@ private:
         BattleBrush.SetResourceObject(nullptr);
         if (Scene.IsValid()) BattleBrush.SetResourceObject(Scene->GetBattleTexture());
     }
+    // The main menu films an empire's hero fleet live behind it: the player's own in a campaign, else a different
+    // power on each start. A pending encounter keeps the scene for itself.
+    bool TitleSceneShown() const { return Shell == EUiView::Title && Scene.IsValid() && Scene->IsTitleScene() && !Session.pending; }
     void UpdateScene() {
         if (!Scene.IsValid()) { BindBattleTexture(); return; }
+        if (Shell == EUiView::Title && !Session.pending) {
+            if (!Scene->IsTitleScene()) {
+                Scene->ConfigureTitleScene(bHasActiveCampaign ? State.playerEmpire : FMath::RandRange(1, 5));
+                ShownBattle = FShownBattle();   // the scene no longer holds a battle record
+            }
+            BindBattleTexture();
+            Scene->SetPresentationActive(true);
+            return;
+        }
         if (Session.pending && ActivePanel == PanelCombat) {
             Scene->SetPlayerEmpire(State.playerEmpire);
             Scene->ConfigureEncounter(*Session.pending);
@@ -811,6 +824,8 @@ private:
                     }), 9, &FPalette::Text2) ] ], FMargin(18, 16)) ];
         return SNew(SOverlay)
             + SOverlay::Slot() [ SNew(BotfUi::SBotfBackdrop).Horizon(true) ]
+            + SOverlay::Slot() [ SNew(BotfUi::SBattleImage, &BattleBrush, [this] { return TitleSceneShown(); }, true) ]
+            + SOverlay::Slot() [ SNew(BotfUi::SBotfScrim, [this] { return TitleSceneShown(); }) ]
             + SOverlay::Slot().HAlign(HAlign_Left).VAlign(VAlign_Center).Padding(90, 0, 0, 70) [ Hero ]
             + SOverlay::Slot().HAlign(HAlign_Right).VAlign(VAlign_Center).Padding(0, 0, 90, 70) [ Menu ]
             + SOverlay::Slot().HAlign(HAlign_Left).VAlign(VAlign_Bottom).Padding(90, 0, 0, 26)

@@ -397,6 +397,18 @@ foreach ($taskFile in @('README-original.txt', 'conversion-manifest.json')) {
 }
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'ASSET-CREDITS.md') -Destination (Join-Path $taskWindows 'Credits') -Force
 
+# Local content: the cooked /Game/Local assets resolve through LocalAssets/resolved-manifest.json at run time
+# (BotfAssetRegistry reads it from the project dir), so a package that cooked them needs the manifest beside them.
+# Such a package holds third-party content: private use only, never distributed.
+$taskLocalManifest = Join-Path $PSScriptRoot 'LocalAssets\resolved-manifest.json'
+$taskLocalContent = Test-Path -LiteralPath $taskLocalManifest
+if ($taskLocalContent) {
+    $taskLocalDestination = Join-Path $taskWindows 'BOTFRemake\LocalAssets'
+    New-Item -ItemType Directory -Path $taskLocalDestination -Force | Out-Null
+    Copy-Item -LiteralPath $taskLocalManifest -Destination $taskLocalDestination -Force
+    Add-BotfWarning 'This package includes local (third-party) content: private use only, do not distribute.'
+}
+
 $taskInputsAfter = Get-BotfInputHashes
 $taskInputsStable = (($taskInputsBefore | ConvertTo-Json -Compress) -eq ($taskInputsAfter | ConvertTo-Json -Compress))
 if (-not $taskInputsStable) {
@@ -416,6 +428,7 @@ $taskManifest = [ordered]@{
     gameConfigurationsBuilt = @($(if ($SkipGameBuild) { @() } else { $GameConfigurations }))
     coreTests = $(if ($SkipCoreTests) { 'skipped' } else { 'passed' })
     uiTests = $(if ($RunUiTests -and -not $SkipEditorBuild) { 'passed' } else { 'not run' })
+    localContent = $taskLocalContent
     # Path of the real game binary relative to this manifest (the top-level BOTFRemake.exe is a launcher stub).
     runtimeExecutable = Get-BotfRelativePath $taskWindows $taskRuntime[0].FullName
     executableSha256 = (Get-FileHash -LiteralPath $taskRuntime[0].FullName -Algorithm SHA256).Hash

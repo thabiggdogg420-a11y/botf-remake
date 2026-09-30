@@ -184,6 +184,28 @@ in wings; upgrade each model's own textures, plating for untextured ones.
   - Headless checks can't see vertex colours: `has_vertex_colors` is always False in the commandlet, which has no render data.
     The title shot now logs `BOTF_TITLE_MESH <key> <path> colours=<n>` from the render data instead.
   - Proof: `pc-screens/title-klingon-plated.png`, where the Negh'Var shows deep olive with rust undersides and AO.
+- **Beta milestone** (Simon, 30 Sep: "a playable beta … that matches a pre release AAA quality game beta").
+  - **Live title menu.** The main menu now films the hero fleet live behind it: the player's empire during a
+    campaign, otherwise a random power. It uses `ConfigureTitleScene` and `SBattleImage` in cover mode, with an
+    `SBotfScrim` (a smoothstep ramp in whole-unit strips) so the text stays readable. The camera opens straight on
+    the shot, and the fleet flies right of centre, between the title and the menu.
+  - **Galaxy map.**
+    - The painted panorama (`T_SpaceNebula`) shows behind the chart, and charted sectors are translucent.
+    - Stars take a spectral class from the system id and seed (`StarLook`, presentation only).
+    - Empires show territory: a wash plus borders. Known colonies claim sectors within 1, or 2 at population ≥ 50,
+      and a tie between empires stays contested.
+  - **Star names.** `generate()` names systems from real star names (`generatedSystemName`), then Gliese
+    designations once those run out. No capital or minor-race homeworld is among them. Saves keep their stored
+    names.
+  - **Emissive coverage.** `blender_hero_ships.py` records each slot's `eCoverage`, and the importer dims slots
+    with more than 5% lit by 0.05/coverage (minimum 0.2). The Galor/Keldon panel map is 46% lit.
+  - **Packaging.**
+    - `DefaultGame.ini` always cooks `/Game/Local`.
+    - `Package-Windows.ps1` stages `LocalAssets/resolved-manifest.json` into the package and marks it
+      `localContent` (private use only).
+    - The first cook failed on a ShaderCompileWorker crash (0xC0000005) in one `M_ShipHero` permutation.
+  - Proof: `pc-screens/title-menu-live.png`, `galaxy-nebula-territory.png`. Core suites pass (112 / 25 / 14 / 34).
+    Showcase: 46 shots, no errors.
 - **Open.**
   - The Vor'Cha Pack NIFs are unused: no diffuse textures.
   - The Romulan D'deridex paint is very dark green by source.

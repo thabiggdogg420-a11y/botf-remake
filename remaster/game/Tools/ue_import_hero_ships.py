@@ -283,7 +283,9 @@ def import_ship(folder, master, plated):
         else:
             MEL.set_material_instance_scalar_parameter_value(mi, "MetallicScale", 0.35)
         if slot.get("e"):
-            MEL.set_material_instance_scalar_parameter_value(mi, "EmissiveStrength", 1.5 * max(1.0, slot.get("emissive", 1.0)))
+            # A slot whose emissive map lights more than ~5% of its area (whole panels, not windows) is dimmed in proportion.
+            dim = min(1.0, max(0.2, 0.05 / max(slot.get("eCoverage", 0.0), 1e-4)))
+            MEL.set_material_instance_scalar_parameter_value(mi, "EmissiveStrength", 1.5 * dim * max(1.0, slot.get("emissive", 1.0)))
         EAL.save_loaded_asset(mi)
         mesh.set_material(index, mi)
     set_lods(mesh)
