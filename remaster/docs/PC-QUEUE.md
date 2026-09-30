@@ -16,8 +16,9 @@ Status markers: `[ ]` pending, `[x]` done (paste the result or log into the PR/s
 2. [ ] **Online audio downloads** (the main audio route; see AUDIO-SOURCES-ONLINE.md, "Recommended acquisition order"). Partly done 2026-09-29: the no-login TrekCore and archive.org clips are in `C:\Dev\botf-downloads`, 22 keys resolved and 121 sounds imported; the voice packs still need logins (item 0).
    - TrekCore audio library, archive.org Sound Source Interactive TOS/TNG AudioClips, the voice packs from Armada Fleet Command's BOTF Ultimate Mod 5, and LCARS UI-sound repos.
    - Save them into the same downloads folder as item 4. `Import-Assets.ps1` converts and indexes them.
-3. [ ] **Optional: original BOTF audio extraction.** This is a fallback now.
-   - `python remaster\game\Tools\Extract-BotfAudio.py` against your own install, if you want the original voice lines alongside.
+3. [x] **Original BOTF audio extraction.** Done 2026-09-30 from archive.org copies (no install needed): 1364 voice
+   lines, 151 music segments and 163 effects in `LocalAssets/botf-original/audio`, voice transcribed. Mapping to cue
+   keys is next (docs/VOICE-PLAN.md §4).
 4. [ ] **Asset downloads.** 2026-09-30: 14 hero ship models downloaded (logged-in browser) and imported through
    `Tools/blender_hero_ships.py` + `Tools/ue_import_hero_ships.py`; see HANDOFF.md "PC session 2026-09-30". Still
    open: the remaining classes use generated hulls (Keldon and Nagus are now hero variants, 2026-09-30).

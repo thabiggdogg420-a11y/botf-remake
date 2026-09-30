@@ -242,6 +242,23 @@ in wings; upgrade each model's own textures, plating for untextured ones.
   - The Vor'Cha Pack NIFs are unused: no diffuse textures.
   - The Romulan D'deridex paint is very dark green by source.
   - Preview top/front renders crop wide hulls (preview only).
+- **Voice work started, then development paused** (Simon, 30 Sep: "when whatever is being done now, finishes,
+  pause development for now").
+  - Committed: `a9b4856` (old saves adopt real star names; 113 sim tests pass; editor build succeeds) and
+    `6882fdd` (voice tools and `docs/VOICE-PLAN.md`).
+  - Local only (gitignored `LocalAssets/`):
+    - Original BOTF audio, from archive.org items `botf_20240331` and `birthof-fed`:
+      `botf-original/audio/{english 1364, music 151 segments, sfx 163}`.
+    - `english/transcripts.json`: Whisper small.en over all 1364 voice clips.
+    - `voice/subs/{ds9,voy,tos}`: English SubRip text per episode.
+  - Found, not yet mined: Bridge Commander crew lines on `H:\Games` (Tactical, Helm, Engineering, Science, XO,
+    Korbus); TNG and ENT on `D:\TV Shows` have image subtitles only, so they need Whisper.
+  - **Resume at** VOICE-PLAN.md §4 step 1: map the BOTF transcripts to `vo.*` keys. Run heavy jobs at Idle priority
+    while Simon plays (Whisper, ffmpeg and builds pushed his CPU to 100%).
+  - Waiting on Simon: beta 0.2.0 playtest notes (fix these first), the Ferengi markings call, and the sign-ups in
+    PC-QUEUE item 0. Don't merge to main yet.
+  - Also queued: more ship models for the classes on generated hulls (downloads pre-approved), the 24-v-24 Insights
+    profile (item 9), and the fresh-clone check (item 11, near the end). The second combat engine stays parked.
 
 ## PC session 2026-09-29: Godot (Windows 11, RTX 4090)
 
