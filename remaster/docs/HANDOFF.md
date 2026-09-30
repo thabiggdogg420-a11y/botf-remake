@@ -206,6 +206,38 @@ in wings; upgrade each model's own textures, plating for untextured ones.
     - The first cook failed on a ShaderCompileWorker crash (0xC0000005) in one `M_ShipHero` permutation.
   - Proof: `pc-screens/title-menu-live.png`, `galaxy-nebula-territory.png`. Core suites pass (112 / 25 / 14 / 34).
     Showcase: 46 shots, no errors.
+- **Beta 0.2.0 delivered** (commit `cf1e116`).
+  - Package: `game\Build\Packages\0.2.0-cf1e116f78-Development-20260930-103414\Windows\BOTFRemake.exe`.
+    It is gitignored and private: it holds local third-party content.
+  - `README.txt` inside the package covers how to start, what to try, known issues, and where saves and logs are.
+  - Packaged smoke run:
+    - The showcase gives 47 shots, 0 errors, about 110 fps (p99 11 ms), with 279 local asset keys.
+    - A plain launch reaches the live title menu and runs 40 s cleanly.
+    - The "unverified" flag comes only from the engine writing `SecurityToken=` into `DefaultEngine.ini` during
+      the cook.
+  - Also in this pass:
+    - A controls overlay (`?`).
+    - The title camera cuts straight to its shot.
+    - The new-campaign turn number matches the top bar.
+- **Parked suggestion: a second combat engine** (Simon, 30 Sep: "park the 2nd combat engine as a suggestion to
+  visit at the end"). Chosen at game start and not a replacement: a New Campaign "Combat" selector (Turn-based /
+  Real-time / Real-time + Helm), stored with the campaign.
+  1. **Real-time**, moderate, about one to two sessions.
+     - The rules stay round-based. Rounds run back to back with no Next Round stop, so ship actions play
+       continuously in the 3D scene.
+     - Orders apply from the next round boundary (6 s at most). Space pauses; speed runs 1x / 2x / 4x.
+     - Optional auto-pause when a ship is lost or a new contact appears.
+     - Determinism, mid-battle saves, replays and battle records are unchanged.
+     - Fully continuous rules are not recommended: they would mean a new combat model and would break replays
+       and saves.
+  2. **Helm (Bridge Commander style)**, large, about four to eight sessions plus tuning.
+     - Built on the real-time mode: you fly one ship and the AI flies the rest.
+     - Needs direct flight (throttle, turn, pitch), chase and bridge cameras, and weapon arcs with per-weapon
+       charge and reload.
+     - Needs per-facing shields, a power-allocation panel, a real-time dogfight AI and a targeting HUD.
+     - The result feeds back into the campaign through the same combat report.
+     - Existing parts to reuse: true-scale hero models with weapon/engine sockets, the camera rig, beam and
+       torpedo effects, shield and explosion effects.
 - **Open.**
   - The Vor'Cha Pack NIFs are unused: no diffuse textures.
   - The Romulan D'deridex paint is very dark green by source.
