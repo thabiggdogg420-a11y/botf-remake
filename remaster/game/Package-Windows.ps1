@@ -396,6 +396,7 @@ foreach ($taskFile in @('README-original.txt', 'conversion-manifest.json')) {
     if (Test-Path -LiteralPath $taskPath) { Copy-Item -LiteralPath $taskPath -Destination $taskCreditDestination -Force }
 }
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'ASSET-CREDITS.md') -Destination (Join-Path $taskWindows 'Credits') -Force
+Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'BETA-README.txt') -Destination (Join-Path $taskWindows 'README.txt') -Force
 
 # Local content: the cooked /Game/Local assets resolve through LocalAssets/resolved-manifest.json at run time
 # (BotfAssetRegistry reads it from the project dir), so a package that cooked them needs the manifest beside them.
