@@ -126,8 +126,8 @@ public:
             // Escape unwinds one layer at a time: the end-of-game overlay, transient mode, popups, the open sheet, the unit
             // selection, then the menu.
             if (Shell == EUiView::Game && OutcomeOverlayVisible()) bOutcomeDismissed = true;
-            else if (Shell == EUiView::Game && (MapView.bPlotting || bMenuOpen || bSummaryOpen || bEndTurnCheck || bEventsOpen)) {
-                MapView.bPlotting = false; bMenuOpen = false; bSummaryOpen = false; bEndTurnCheck = false; bEventsOpen = false;
+            else if (Shell == EUiView::Game && (MapView.bPlotting || bMenuOpen || bSummaryOpen || bEndTurnCheck || bEventsOpen || bHelpOpen)) {
+                MapView.bPlotting = false; bMenuOpen = false; bSummaryOpen = false; bEndTurnCheck = false; bEventsOpen = false; bHelpOpen = false;
             }
             else if (Shell == EUiView::Game && ActivePanel != PanelGalaxy && !(ActivePanel == PanelCombat && Session.pending)) GoPanel(PanelGalaxy);
             else if (Shell == EUiView::Game && (SelectedFleet || SelectedTaskForce)) { SelectedFleet = 0; SelectedTaskForce = 0; RefreshAll(); }
@@ -155,6 +155,7 @@ public:
             if (Key == EKeys::Enter && !Event.IsControlDown()) return Guarded([this] { ConfirmEndTurn(); });
             return FReply::Handled();
         }
+        if (Key == EKeys::Slash) { bHelpOpen = !bHelpOpen; return FReply::Handled(); }
         if (Key == EKeys::F1) return Guarded([this] { GoPanel(PanelGalaxy); });
         if (Key == EKeys::F2) return Guarded([this] { GoPanel(PanelSystem); });
         if (Key == EKeys::F3) return Guarded([this] { GoPanel(PanelResearch); });
@@ -274,6 +275,7 @@ public:
                 .Padding(TAttribute<FMargin>::CreateLambda([this] { return FMargin(MenuAt.X, MenuAt.Y, 0, 0); })) [ BuildSectorMenu() ]
             + SOverlay::Slot().HAlign(HAlign_Center).VAlign(VAlign_Center).Padding(60) [ BuildSummaryWindow() ]
             + SOverlay::Slot().HAlign(HAlign_Center).VAlign(VAlign_Center).Padding(60) [ BuildEventCard() ]
+            + SOverlay::Slot().HAlign(HAlign_Center).VAlign(VAlign_Center).Padding(60) [ BuildHelpCard() ]
             + SOverlay::Slot() [ BuildEndTurnCheck() ]
             + SOverlay::Slot() [ BuildOutcomeOverlay() ];
         // The engine scales by the shortest screen side, which overflows the width on 16:10 and squarer windows. The layout is
@@ -342,6 +344,7 @@ private:
     int SetupPreset = static_cast<int>(botf::RulesetPreset::Remastered);   // new campaigns default to Remastered
     // Schema-13 gameplay layer presentation state (all ids are campaign-local; ResetCampaignSelection drops them).
     bool bEventsOpen = false;               // galactic event card
+    bool bHelpOpen = false;                 // controls reference (?)
     bool bOutcomeDismissed = false;         // the end-of-game overlay was closed to review the galaxy
     int UpgradeFunder = 0;                  // colony chosen to fund a starbase upgrade (0 = nearest that can)
     int SelectedTemplate = 0;               // build template picked on the Solar System sheet
@@ -1480,8 +1483,8 @@ private:
         if (MapView.bPlotting) return TEXT("PLOT COURSE: left-click a destination. Right-click or Esc cancels.");
         if (MapView.Mode == BotfUi::EMapMode::Economic)
             return TEXT("Trade: select your system, Set as Source, then a rival colony, Route to Here  |  Right-click: route options  |  M: military map");
-        if (Fleet()) return TEXT("Right-click: order unit there  |  Shift+right-click: all options  |  Click: select  |  Double-click: open  |  Tab: next unit");
-        return TEXT("Click: select  |  Double-click: open system or dossier  |  Right-click: options  |  Drag: pan  |  Wheel: zoom");
+        if (Fleet()) return TEXT("Right-click: order unit there  |  Shift+right-click: all options  |  Click: select  |  Double-click: open  |  Tab: next unit  |  ?: controls");
+        return TEXT("Click: select  |  Double-click: open system or dossier  |  Right-click: options  |  Drag: pan  |  Wheel: zoom  |  ?: controls");
     }
     // A group of controls in one rounded capsule (segmented switch).
     TSharedRef<SWidget> Capsule(const TSharedRef<SWidget>& Content) const {
@@ -2207,6 +2210,67 @@ private:
     }
 
     // ---- Galactic event card (schema 13 curated events): decisions with options and a deadline ----
+    // Controls reference: every shortcut the command deck and the battle viewport answer to, grouped by where they apply.
+    TSharedRef<SWidget> BuildHelpCard() {
+        using FRowSpec = TPair<const TCHAR*, const TCHAR*>;
+        const auto Column = [this](const TCHAR* Title, std::initializer_list<FRowSpec> Rows) {
+            auto Box = SNew(SVerticalBox);
+            Box->AddSlot().AutoHeight().Padding(0, 0, 0, 8)
+                [ SNew(STextBlock).Text(Txt(Title)).Font(BotfUi::Caption(8)).ColorAndOpacity(C(&FPalette::Secondary)) ];
+            for (const FRowSpec& Row : Rows)
+                Box->AddSlot().AutoHeight().Padding(0, 0, 0, 5)
+                    [ SNew(SHorizontalBox)
+                        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0, 0, 10, 0)
+                        [ SNew(SBox).MinDesiredWidth(118) [ Badge(Txt(Row.Key), &FPalette::Primary, 8) ] ]
+                        + SHorizontalBox::Slot().FillWidth(1).VAlign(VAlign_Center) [ Para(Txt(Row.Value), 9, &FPalette::Text2) ] ];
+            return Box;
+        };
+        return SNew(SBox).Visibility_Lambda([this] { return bHelpOpen && Shell == EUiView::Game ? EVisibility::Visible : EVisibility::Collapsed; })
+            .MinDesiredWidth(1040).MaxDesiredWidth(1180)
+            [ Fill(EShape::Row, &FPalette::Void, SNew(SVerticalBox)
+                + SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 12) [ ModalHeader(TEXT("CONTROLS"), [this] { bHelpOpen = false; }) ]
+                + SVerticalBox::Slot().AutoHeight()
+                [ SNew(SHorizontalBox)
+                    + SHorizontalBox::Slot().FillWidth(1).Padding(0, 0, 22, 0)
+                    [ Column(TEXT("GALAXY MAP"), {
+                        FRowSpec(TEXT("CLICK"), TEXT("Select a sector; again cycles its units")),
+                        FRowSpec(TEXT("DOUBLE-CLICK"), TEXT("Open the system or race dossier")),
+                        FRowSpec(TEXT("RIGHT-CLICK"), TEXT("Order the selected unit there")),
+                        FRowSpec(TEXT("SHIFT+RIGHT"), TEXT("Every option for the sector")),
+                        FRowSpec(TEXT("DRAG / WHEEL"), TEXT("Pan / zoom about the cursor")),
+                        FRowSpec(TEXT("ARROWS  ENTER"), TEXT("Move the selection / open it")),
+                        FRowSpec(TEXT("TAB"), TEXT("Next unit")),
+                        FRowSpec(TEXT("P"), TEXT("Plot a course")),
+                        FRowSpec(TEXT("C  HOME  + -"), TEXT("Centre / fit / zoom")),
+                        FRowSpec(TEXT("M"), TEXT("Military or economic map")),
+                        FRowSpec(TEXT("N  R  G"), TEXT("Names, supply range, grid")),
+                        FRowSpec(TEXT("[  ]"), TEXT("Inspector and turn inbox")) }) ]
+                    + SHorizontalBox::Slot().FillWidth(1).Padding(0, 0, 22, 0)
+                    [ Column(TEXT("EMPIRE AND TURN"), {
+                        FRowSpec(TEXT("F1 - F7"), TEXT("Galaxy, System, Research, Diplomacy, Intel, Empire, Battles")),
+                        FRowSpec(TEXT("Q  E"), TEXT("Previous / next colony (System)")),
+                        FRowSpec(TEXT("S"), TEXT("Summary: events, relationships, systems")),
+                        FRowSpec(TEXT("~"), TEXT("Sector menu")),
+                        FRowSpec(TEXT("BACKSPACE"), TEXT("Back to the previous screen")),
+                        FRowSpec(TEXT("CTRL+ENTER"), TEXT("End the turn")),
+                        FRowSpec(TEXT("CTRL+S"), TEXT("Save the campaign")),
+                        FRowSpec(TEXT("ESC"), TEXT("Close, deselect, then the game menu")),
+                        FRowSpec(TEXT("?"), TEXT("This reference")) }) ]
+                    + SHorizontalBox::Slot().FillWidth(1)
+                    [ Column(TEXT("BATTLE"), {
+                        FRowSpec(TEXT("F  A  H"), TEXT("At contact: fight, auto-resolve, hail")),
+                        FRowSpec(TEXT("1 - 0  R"), TEXT("Manoeuvres; R rams")),
+                        FRowSpec(TEXT("TAB  T"), TEXT("Next own ship / next target")),
+                        FRowSpec(TEXT("SPACE"), TEXT("Next round, or continue when over")),
+                        FRowSpec(TEXT("LEFT-DRAG"), TEXT("Orbit the camera; click selects")),
+                        FRowSpec(TEXT("RIGHT-DRAG / WHEEL"), TEXT("Pan / zoom toward the cursor")),
+                        FRowSpec(TEXT("DOUBLE-CLICK"), TEXT("Follow a ship, or fly to a point")),
+                        FRowSpec(TEXT("F  G"), TEXT("Follow your ship / the target")),
+                        FRowSpec(TEXT("C  HOME"), TEXT("Camera mode / frame the battle")),
+                        FRowSpec(TEXT("ARROWS  + -"), TEXT("Orbit / zoom")),
+                        FRowSpec(TEXT("L"), TEXT("Taller combat telemetry")) }) ] ],
+                FMargin(22, 16)) ];
+    }
     TSharedRef<SWidget> BuildEventCard() {
         return SNew(SBox).Visibility_Lambda([this] { return bEventsOpen && Shell == EUiView::Game ? EVisibility::Visible : EVisibility::Collapsed; })
             .MinDesiredWidth(560).MaxDesiredWidth(760).MaxDesiredHeight(620)
@@ -6363,8 +6427,9 @@ private:
         bMenuOpen = bSummaryOpen = bEndTurnCheck = false; MapView = BotfUi::FMapView(); RefreshAll(); ActivePanel = PanelGalaxy;
         if (Chart.IsValid()) Chart->CentreOn(SelectedCell);
         if (Scene.IsValid()) Scene->SetPresentationActive(false);
-        Status = FString::Printf(TEXT("The %s awaits your orders. Turn 1. %s ruleset, %d minor races in the galaxy."),
-            *Str(botf::empireName(State.playerEmpire)), *Str(botf::view::rulesetLabel(State)), static_cast<int>(State.minors.size()));
+        // Same turn number as the top bar and the turn reports (the simulation counts completed turns from 0).
+        Status = FString::Printf(TEXT("The %s awaits your orders. Turn %d. %s ruleset, %d minor races in the galaxy."),
+            *Str(botf::empireName(State.playerEmpire)), State.turn,*Str(botf::view::rulesetLabel(State)), static_cast<int>(State.minors.size()));
     }
 
     // ---- Save / load ----
@@ -6803,8 +6868,9 @@ private:
             }
             Wait = 2.5f; break;
         case 17: if (Shot(TEXT("battle-records"))) return false; U.SelectBattleRoundAbsolute(1); Wait = 2.0f; break;
-        case 18: if (Shot(TEXT("battle-records-round"))) return false; U.GoPanel(PanelGalaxy); U.OpenSubPage(V::Setup); U.SetupEmpires = 4; U.SetupSize = 1; U.SetupSeed = 1; break;
-        case 19: if (Shot(TEXT("setup-large"))) return false; U.ShowView(V::Title); break;
+        case 18: if (Shot(TEXT("battle-records-round"))) return false; U.GoPanel(PanelGalaxy); U.bHelpOpen = true; break;
+        case 19: if (Shot(TEXT("controls-help"))) return false; U.bHelpOpen = false; U.OpenSubPage(V::Setup); U.SetupEmpires = 4; U.SetupSize = 1; U.SetupSeed = 1; break;
+        case 20: if (Shot(TEXT("setup-large"))) return false; U.ShowView(V::Title); break;
         default: Finish();
         }
         return true;

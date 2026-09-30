@@ -58,7 +58,7 @@ Status markers: `[ ]` pending, `[x]` done (paste the result or log into the PR/s
 8. [x] **Editor-side audio setup (optional polish).** Not needed (2026-09-29): the 21 mapped cues measure -17.8 to -24.2 dB RMS, within 7 dB, so the per-category gains are enough. If imported WAVs play too loud or too quiet relative to each other, create Sound Classes (Voice, SFX, UI, Music) and a Sound Mix under `/Game/Audio` and report their paths; the subsystem currently sets per-component volume only.
 
 9. [ ] **Unreal Insights profile of a 24-v-24 battle** (`Run-Showcase.ps1` plus `-trace=cpu,gpu,frame`); record the top costs in HANDOFF.md.
-10. [ ] **Merge the Slate UI redesign** from `claude/ui-redesign` after review of its showcase screenshots.
+10. [x] **Merge the Slate UI redesign** from `claude/ui-redesign` after review of its showcase screenshots. Already merged: `origin/claude/ui-redesign` is an ancestor of the working branch (checked 2026-09-30).
 11. [ ] **Fresh-clone check:** run `game\Build-GeneratedArt.ps1` on a clean checkout (needs Python with numpy and Pillow, and Blender 5.x). The generated art is gitignored.
 
 ## Blocked cloud work (waiting on the items above)

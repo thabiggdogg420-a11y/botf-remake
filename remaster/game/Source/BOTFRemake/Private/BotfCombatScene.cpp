@@ -489,6 +489,7 @@ void ABotfCombatScene::ConfigureTitleScene(int EmpireId)
     CameraMode = Cam_Cinematic;
     ResetCameraOrbit();
     Elapsed = 0.f;
+    bTitleCut = true;   // the first frame cuts to the shot, however long the load hitch before it
 }
 
 void ABotfCombatScene::ConfigureBattle(int AttackerFaction, int DefenderFaction, int AttackerCount, int DefenderCount, uint32 Seed, uint64 StationSlots)
@@ -1259,7 +1260,8 @@ void ABotfCombatScene::AnimateCamera(float DeltaSeconds)
         DesiredRotation = (FocusPoint - DesiredLocation).Rotation();
         DesiredRotation.Roll = FMath::Sin(T * 0.8f) * 3.f;
         // The first frames cut straight to the shot (the menu opens on it); after that the camera drifts.
-        const float Follow = Elapsed < 0.25f ? 1000.f : 1.2f;
+        const float Follow = bTitleCut ? 1000.f : 1.2f;
+        bTitleCut = false;
         Capture->SetRelativeLocation(FMath::VInterpTo(Capture->GetRelativeLocation(), DesiredLocation, DeltaSeconds, Follow));
         Capture->SetRelativeRotation(FMath::RInterpTo(Capture->GetRelativeRotation(), DesiredRotation, DeltaSeconds, Follow));
         const FVector Eye = Capture->GetRelativeLocation();
