@@ -70,6 +70,26 @@ def read_entries(data):
     return entries
 
 
+def read_music(data):
+    """music.snd in the retail/abandonware installs starts with a track table, not a map offset: pairs of
+    uint32 (segment count, directory offset) from byte 0 up to the first payload; each directory holds that many
+    16-byte segment entries (address, size, frames, unknown). The game chains a track's segments; entries are
+    returned as (track, segment, address, size, frames, unknown)."""
+    tracks = []
+    pos, first_payload = 0, len(data)
+    while pos + 8 <= min(first_payload, len(data)):
+        count, directory = struct.unpack_from("<II", data, pos)
+        if count == 0 or count > 256 or directory + 16 * count > len(data):
+            break
+        segs = [struct.unpack_from("<IIII", data, directory + 16 * k) for k in range(count)]
+        if any(a + s > len(data) for a, s, _, _ in segs):
+            raise ValueError("music track %d points beyond EOF" % len(tracks))
+        first_payload = min([first_payload] + [a for a, _, _, _ in segs])
+        tracks.append(segs)
+        pos += 8
+    return [(t, k, a, s, f, u) for t, segs in enumerate(tracks) for k, (a, s, f, u) in enumerate(segs)]
+
+
 def wav_header(fmt_tag, channels, rate, bits, block_align, spb, data_len, frames):
     if fmt_tag == 1:
         fmt = struct.pack("<HHIIHH", 1, channels, rate, rate * block_align, block_align, bits)
@@ -90,23 +110,30 @@ def extract(path, out_dir, ffmpeg):
     stem = name.split(".")[0]
     with open(path, "rb") as f:
         data = f.read()
-    entries = read_entries(data)
+    try:
+        entries = [(None, None) + e for e in read_entries(data)]
+    except ValueError:
+        if kind != "music":
+            raise
+        entries = read_music(data)
     target = os.path.join(out_dir, stem)
     os.makedirs(target, exist_ok=True)
     index = []
-    for i, (addr, size, frames, unknown) in enumerate(entries):
+    for i, (track, seg, addr, size, frames, unknown) in enumerate(entries):
         payload = data[addr:addr + size]
         if payload[:4] == b"RIFF":
             blob = payload
         else:
             blob = wav_header(tag, ch, rate, bits, align, spb, len(payload), frames) + payload + (b"\0" if len(payload) & 1 else b"")
-        fn = "%s_%04d.wav" % (stem, i)
+        fn = "%s_%04d.wav" % (stem, i) if track is None else "%s_t%02d_s%02d.wav" % (stem, track, seg)
         with open(os.path.join(target, fn), "wb") as w:
             w.write(blob)
         rec = {"index": i, "file": fn, "kind": kind, "offset": addr, "size": size, "frames": frames,
                "unknown": unknown, "sha256": hashlib.sha256(blob).hexdigest()}
+        if track is not None:
+            rec["track"], rec["segment"] = track, seg
         if ffmpeg:
-            out48 = os.path.join(target, "%s_%04d.48k.wav" % (stem, i))
+            out48 = os.path.join(target, fn[:-4] + ".48k.wav")
             r = subprocess.run([ffmpeg, "-v", "error", "-y", "-i", os.path.join(target, fn), "-ar", "48000",
                                 "-acodec", "pcm_s16le", out48], capture_output=True, text=True)
             rec["converted"] = os.path.basename(out48) if r.returncode == 0 else None
