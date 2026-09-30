@@ -338,6 +338,25 @@ void remasterScenarios(int& passed) {
         }
     }, passed);
 
+    run("old System-N names adopt the star-name table, planets included, without clashes", [] {
+        const auto fresh = botf::generate(4242, 16, 12, 30);
+        auto old = fresh;
+        for (auto& sys : old.systems) {
+            if (sys.id == 1) continue;
+            const std::string name = "System-" + std::to_string(sys.id);
+            for (auto& planet : sys.planets) planet.name = name + planet.name.substr(sys.name.size());
+            sys.name = name;
+        }
+        old.systems[2].name = fresh.systems[3].name;   // a clash: that system keeps its old name
+        const int renamed = botf::adoptStarNames(old);
+        check(renamed == static_cast<int>(fresh.systems.size()) - 3, "every System-N but the clash renamed");
+        check(old.systems[1].name == fresh.systems[1].name && old.systems[1].planets.front().name == fresh.systems[1].planets.front().name,
+              "renamed system and planets match a fresh campaign");
+        check(old.systems[3].name == "System-" + std::to_string(old.systems[3].id), "a name already in use is not taken twice");
+        check(botf::adoptStarNames(old) == 0, "adopting twice changes nothing");
+        const auto reloaded = botf::deserialize(botf::serialize(old));
+        check(reloaded.systems[1].name == old.systems[1].name, "renamed campaign saves and reloads");
+    }, passed);
     run("regression: loading a save is pure and never re-runs colony governors", [] {
         auto s = botf::generateReferenceCampaign(1999);
         auto& home = playerHome(s);

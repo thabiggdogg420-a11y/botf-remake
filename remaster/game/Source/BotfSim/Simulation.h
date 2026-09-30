@@ -549,6 +549,9 @@ std::vector<StartingEra> availableStartingEras();
 StartingEra campaignStartingEra(const GameState& state);
 
 GameState generate(std::uint64_t seed, int width = 12, int height = 8, int count = 12);
+// Campaigns generated before the star-name table named their systems System-<id>; this gives each such system (and its
+// planets) the name generate() now gives that id, unless another system already has it. Returns the systems renamed.
+int adoptStarNames(GameState& s);
 GameState generateCampaign(std::uint64_t seed, int empires = 2, int width = 16, int height = 12, int systems = 28, int playerEmpire = 1, StartingEra era = StartingEra::Early);
 GameState generateReferenceCampaign(std::uint64_t seed, int empires = 2, int width = 16, int height = 12, int systems = 28, int playerEmpire = 1, StartingEra era = StartingEra::Early);
 GameState generateCampaignWithEra(std::uint64_t seed, StartingEra era, int empires = 2, int width = 16, int height = 12, int systems = 28, int playerEmpire = 1);

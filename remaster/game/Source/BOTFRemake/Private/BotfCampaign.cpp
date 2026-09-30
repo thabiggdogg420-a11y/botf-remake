@@ -321,6 +321,9 @@ FString FBotfCampaign::SaveSnapshot(const std::optional<botf::Command>& FinalOrd
 void FBotfCampaign::LoadSnapshot(const FString& Path)
 {
     FBotfSnapshot Snapshot = ReadSnapshot(Path);
+    // Campaigns from before the star-name table get it now (a mid-battle save keeps its names until the battle is
+    // done: its baseline must stay byte-identical). The next save writes the new names; this is not unsaved progress.
+    if (!Snapshot.Session) botf::adoptStarNames(Snapshot.State);
     SavePath = Path;
     Session = Snapshot.Session ? std::move(*Snapshot.Session) : botf::session::TurnSession();
     ReplaceState(std::move(Snapshot.State));

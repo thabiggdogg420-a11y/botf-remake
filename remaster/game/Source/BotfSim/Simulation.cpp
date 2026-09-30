@@ -3878,6 +3878,25 @@ inline std::string generatedSystemName(int index) {   // index 1 = the first sys
 }
 } // namespace
 
+int adoptStarNames(GameState& s) {
+    std::set<std::string> used;
+    for (const auto& sys : s.systems) used.insert(sys.name);
+    int renamed = 0;
+    for (auto& sys : s.systems) {
+        const std::string old = "System-" + std::to_string(sys.id);
+        if (sys.id < 2 || sys.name != old) continue;
+        const std::string name = generatedSystemName(sys.id - 1);
+        if (used.count(name)) continue;
+        for (auto& planet : sys.planets)
+            if (planet.name.rfind(old + " ", 0) == 0) planet.name = name + planet.name.substr(old.size());
+        used.erase(old);
+        used.insert(name);
+        sys.name = name;
+        ++renamed;
+    }
+    return renamed;
+}
+
 GameState generate(std::uint64_t seed, int width, int height, int total) {
     require(width >= 2 && width <= 64 && height >= 2 && height <= 64, "Invalid map dimensions");
     require(total >= 1 && total <= MaxSystems && total <= width * height, "Invalid system count");
