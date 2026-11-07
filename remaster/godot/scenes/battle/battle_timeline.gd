@@ -301,27 +301,47 @@ static func spacing_offsets(bodies: Array, iterations := 10, vertical_bias := 2.
 	var off: Array[Vector3] = []
 	off.resize(n)
 	off.fill(Vector3.ZERO)
+	# Unpack the live bodies once (flat arrays, original indices kept): the pair loop below runs iterations x n^2 / 2
+	# times, and 24 v 24 ships spent ~10 ms a frame on dictionary lookups when this read the dictionaries per pair.
+	var ids := PackedInt32Array()
+	var px := PackedFloat64Array()
+	var py := PackedFloat64Array()
+	var pa := PackedFloat64Array()
+	var pr := PackedFloat64Array()
+	for i in n:
+		var bi: Dictionary = bodies[i]
+		if not bi.get("active", true) or float(bi.radius) <= 0.0:
+			continue
+		ids.append(i)
+		px.append(float(bi.x))
+		py.append(float(bi.y))
+		pa.append(float(bi.alt))
+		pr.append(float(bi.radius))
+	var m := ids.size()
+	var ox := PackedFloat64Array()
+	var oy := PackedFloat64Array()
+	var oa := PackedFloat64Array()
+	ox.resize(m)
+	oy.resize(m)
+	oa.resize(m)
 	for pass_i in iterations:
 		var moved := false
-		for i in n:
-			var bi: Dictionary = bodies[i]
-			if not bi.get("active", true) or float(bi.radius) <= 0.0:
-				continue
-			for j in range(i + 1, n):
-				var bj: Dictionary = bodies[j]
-				if not bj.get("active", true) or float(bj.radius) <= 0.0:
+		for a in m:
+			for b in range(a + 1, m):
+				var dx: float = (px[b] + ox[b]) - (px[a] + ox[a])
+				var dy: float = (py[b] + oy[b]) - (py[a] + oy[a])
+				var da: float = (pa[b] + oa[b]) - (pa[a] + oa[a])
+				var need: float = pr[a] + pr[b]
+				var d2 := dx * dx + dy * dy + da * da
+				if d2 >= need * need:
 					continue
-				var dx: float = (bj.x + off[j].x) - (bi.x + off[i].x)
-				var dy: float = (bj.y + off[j].y) - (bi.y + off[i].y)
-				var da: float = (bj.alt + off[j].z) - (bi.alt + off[i].z)
-				var dist := sqrt(dx * dx + dy * dy + da * da)
-				var need: float = bi.radius + bj.radius
+				var dist := sqrt(d2)
 				if dist >= need:
 					continue
 				# Push direction: the current separation with height weighted up and tilted at least ~27 degrees out of
 				# the plane (level neighbours stack rather than shove sideways); straight up/down when coincident.
 				var flat := sqrt(dx * dx + dy * dy)
-				var up := 1.0 if da > 1e-9 else (-1.0 if da < -1e-9 else (1.0 if (i + j) % 2 == 0 else -1.0))
+				var up := 1.0 if da > 1e-9 else (-1.0 if da < -1e-9 else (1.0 if (ids[a] + ids[b]) % 2 == 0 else -1.0))
 				var u := Vector3(dx, dy, up * maxf(absf(da) * vertical_bias, 0.5 * flat))
 				if u.length() < 1e-9:
 					u = Vector3(0.0, 0.0, up)
@@ -330,14 +350,22 @@ static func spacing_offsets(bodies: Array, iterations := 10, vertical_bias := 2.
 				# cruiser moves less than the escort beside it.
 				var along := maxf(0.3, (u.x * dx + u.y * dy + u.z * da) / maxf(dist, 1e-9))
 				var gap := (need - dist) / (1.0 if dist < 1e-9 else along)
-				off[i] -= u * gap * (float(bj.radius) / need)
-				off[j] += u * gap * (float(bi.radius) / need)
+				var ka := gap * (pr[b] / need)
+				var kb := gap * (pr[a] / need)
+				ox[a] -= u.x * ka
+				oy[a] -= u.y * ka
+				oa[a] -= u.z * ka
+				ox[b] += u.x * kb
+				oy[b] += u.y * kb
+				oa[b] += u.z * kb
 				moved = true
 		if not moved:
 			break
-	for k in n:
-		if off[k].length() > max_shift:
-			off[k] *= max_shift / off[k].length()
+	for k in m:
+		var v := Vector3(ox[k], oy[k], oa[k])
+		if v.length() > max_shift:
+			v *= max_shift / v.length()
+		off[ids[k]] = v
 	return off
 
 

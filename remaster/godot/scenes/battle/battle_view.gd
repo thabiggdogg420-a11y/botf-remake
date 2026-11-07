@@ -20,6 +20,8 @@ static func encounter_key(e: Dictionary) -> String:
 func load_encounter(e: Dictionary) -> void:
 	var rounds: Array = e.get("rounds", [])
 	var key := encounter_key(e)
+	if key != _encounter_key and assets != null:
+		assets.warm(BattleAssets.encounter_keys(e)) # every hull parses in parallel, not one after another on this frame
 	if rounds.is_empty():
 		if key != _encounter_key:
 			_encounter_key = key

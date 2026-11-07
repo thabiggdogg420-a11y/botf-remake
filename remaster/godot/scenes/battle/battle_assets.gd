@@ -167,13 +167,14 @@ func instantiate_ship(keys: PackedStringArray) -> Node3D:
 
 
 ## A new instance of the hero glb for `key` (meta botf_hero / botf_hero_key / botf_hero_root), or null.
+## The parsed model is shared by every BattleAssets (a PackedScene per glb path) and loaded once, on a worker thread when
+## warm() asked for it earlier, so a battle opening with 24 ships a side does not parse each hull one after another.
 func instantiate_hero(key: String) -> Node3D:
 	if not _hero_scenes.has(key):
-		_hero_scenes[key] = null
 		var e := hero(key)
-		if not e.is_empty():
-			_hero_scenes[key] = _load_model(hero_glb_path(e))
-			if _hero_scenes[key] == null:
+		_hero_scenes[key] = _shared_model(hero_glb_path(e)) if not e.is_empty() else null
+		if e.is_empty() or _hero_scenes[key] == null:
+			if not e.is_empty():
 				push_warning("BattleAssets: hero %s glb did not load (%s)" % [key, hero_glb_path(e)])
 	var packed: PackedScene = _hero_scenes[key]
 	if packed == null:
@@ -183,6 +184,84 @@ func instantiate_hero(key: String) -> Node3D:
 	node.set_meta("botf_hero_key", key)
 	node.set_meta("botf_hero_root", hero_root)
 	return node
+
+
+## Starts loading the hero models for these asset keys on worker threads (one task per distinct glb; already loaded or
+## loading ones are skipped). instantiate_hero waits for a task still running, so calling this early only helps.
+## Returns the number of loads started.
+func warm(keys: PackedStringArray) -> int:
+	var started := 0
+	for key in keys:
+		var e := hero(key)
+		if e.is_empty():
+			continue
+		var path := hero_glb_path(e)
+		if _shared.has(path) or _tasks.has(path):
+			continue
+		_tasks[path] = WorkerThreadPool.add_task(_load_job.bind(path), false, "botf hero " + key.get_file())
+		started += 1
+	return started
+
+
+static var _instance: BattleAssets
+
+## One BattleAssets for callers that only want to warm models early (the galaxy screen warms the player's own classes
+## so the first battle opens without parsing them).
+static func shared() -> BattleAssets:
+	if _instance == null:
+		_instance = BattleAssets.new()
+	return _instance
+
+
+## Asset keys of every ship in a tactical encounter (the first key of each that has a hero glb is the one drawn).
+static func encounter_keys(encounter: Dictionary) -> PackedStringArray:
+	var out := PackedStringArray()
+	return ships_keys(encounter.get("ships", []))
+
+
+## Asset keys of ships or fleets (anything with owner and name: a tactical ship, a campaign-view fleet).
+static func ships_keys(ships: Array) -> PackedStringArray:
+	var out := PackedStringArray()
+	for s in ships:
+		if s is Dictionary:
+			out.append_array(BattleShip.asset_keys_for(s))
+	return out
+
+
+## True while any worker-thread model load started by warm() is still running.
+static func loading() -> bool:
+	for path in _tasks:
+		if not WorkerThreadPool.is_task_completed(_tasks[path]):
+			return true
+	return false
+
+
+static var _shared := {}   ## glb path -> PackedScene or null (a failed load)
+static var _tasks := {}    ## glb path -> WorkerThreadPool task id still to be collected
+static var _results := {}  ## glb path -> PackedScene, written by the worker, collected on the main thread
+static var _mutex := Mutex.new()
+
+
+static func _load_job(path: String) -> void:
+	var packed := _load_model(path)
+	_mutex.lock()
+	_results[path] = packed
+	_mutex.unlock()
+
+
+static func _shared_model(path: String) -> PackedScene:
+	if path == "":
+		return null
+	if _tasks.has(path):
+		WorkerThreadPool.wait_for_task_completion(_tasks[path])
+		_tasks.erase(path)
+		_mutex.lock()
+		_shared[path] = _results.get(path)
+		_results.erase(path)
+		_mutex.unlock()
+	if not _shared.has(path):
+		_shared[path] = _load_model(path)
+	return _shared[path]
 
 
 static func _load_model(path: String) -> PackedScene:

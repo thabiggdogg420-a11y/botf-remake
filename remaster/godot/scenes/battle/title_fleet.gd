@@ -66,6 +66,12 @@ static func lengths_for(canon: Array) -> Array:
 
 func _build_ships() -> void:
 	var picks: Array = HEROES[empire]
+	if assets != null:
+		# The three hulls parse in parallel on worker threads (a Galaxy alone is ~2 s), not one after another.
+		var keys := PackedStringArray()
+		for p in picks:
+			keys.append(p[0])
+		assets.warm(keys)
 	var canon := []
 	for p in picks:
 		var l := float(p[2])
