@@ -15,7 +15,13 @@ extends Node3D
 signal round_finished(round_index: int)
 signal cue(key: String, keys: PackedStringArray, priority: int, fleet_id: int)
 
-const CELL := 14.0              ## World units per tactical cell.
+## World units per tactical cell. Ships are drawn at true scale against it (BattleShip.display_length): Unreal's
+## CellUnits doubled to 170 with the true-scale hulls, so this doubled from 14 with them (a Galaxy spans 1.3 cells).
+const CELL := 28.0
+const SPACING_EASE := 2.5       ## 1/s: how fast the presentation spacing offsets follow their target.
+## Each round's timeline starts a ship at its home height, and a wing joined at the round start puts it on station;
+## the pose it was last shown at eases into the new one over this long, so nothing jumps between rounds.
+const ROUND_JOIN_SECONDS := 1.5
 const FINISH_TAIL := 0.6        ## Seconds after the last job before round_finished.
 
 @export var round_seconds := 6.0
@@ -23,7 +29,7 @@ const FINISH_TAIL := 0.6        ## Seconds after the last job before round_finis
 @export var player_empire := 0  ## 0 = the encounter's own ships (ships[].mine), barks only for them.
 @export var play_audio := true  ## Play cues through BattleAudio (local files or generated tones).
 @export var generated_tones := true
-@export var formation_spread := 1.0 ## Scales the per-ship offsets that spread ships sharing a cell.
+@export var formation_spread := 1.0 ## Scales the spacing offsets that keep true-scale hulls apart (0 = off).
 
 var encounter: Dictionary = {}
 var round_index := -1
@@ -44,6 +50,8 @@ var _bark_i := 0
 var _env := {}
 var _prewarmed := false
 var _ship_jobs := {}             ## fleet_id -> the round's cloak/decloak/explosion/warp jobs for that ship
+var _shown := {}                 ## fleet_id -> Pose the ship was last shown at (before spacing and station-keeping)
+var _carry := {}                 ## fleet_id -> Vector4(x, y, altitude, facing) eased out at the start of the round
 
 
 func _ready() -> void:
@@ -52,7 +60,7 @@ func _ready() -> void:
 	camera = BattleCamera.new()
 	camera.name = "Camera"
 	add_child(camera)
-	camera.global_position = Vector3(0, 60, 110)
+	camera.global_position = Vector3(0, 120, 220)
 	camera.look_at(Vector3.ZERO)
 	fx = BattleFx.new()
 	fx.name = "Fx"
@@ -81,14 +89,26 @@ func play_round(p_encounter: Dictionary, p_round_index: int) -> void:
 	cfg.round_seconds = round_seconds
 	cfg.player_empire = _player_empire()
 	var info := BattleTimeline.round_ship_info(encounter, round_index)
+	_sync_ships(info)
+	# Flight style and wings follow the length of the class actually shown (the local manifest may know it).
+	for i in info:
+		var node: BattleShip = _ships.get(int(i.fleetId))
+		if node != null:
+			i["lengthMeters"] = node.length_meters
 	timeline = BattleTimeline.build(rounds[round_index].get("events", []), info, cfg)
+	_carry.clear()
+	for track in timeline.ships:
+		var was: BattleTimeline.Pose = _shown.get(track.fleet_id)
+		if was != null:
+			var now := timeline.pose_of(track, 0.0)
+			_carry[track.fleet_id] = Vector4(was.x - now.x, was.y - now.y, was.altitude - now.altitude,
+				BattleTimeline.shortest_turn(now.facing, was.facing))
 	_ship_jobs.clear()
 	for j in timeline.jobs:
 		if j.kind in [BattleTimeline.Job.CLOAK, BattleTimeline.Job.DECLOAK, BattleTimeline.Job.EXPLOSION, BattleTimeline.Job.WARP]:
 			if not _ship_jobs.has(j.fleet_id):
 				_ship_jobs[j.fleet_id] = []
 			_ship_jobs[j.fleet_id].append(j)
-	_sync_ships(info)
 	for s in _ships.values():
 		s.clear_effects()
 	fx.reset(timeline)
@@ -128,8 +148,15 @@ func ship_node(fleet_id: int) -> BattleShip:
 	return _ships.get(fleet_id)
 
 
-func cell_to_world(x: float, y: float) -> Vector3:
-	return Vector3((x - _arena.x * 0.5 + 0.5) * CELL, 0.0, (y - _arena.y * 0.5 + 0.5) * CELL)
+func cell_to_world(x: float, y: float, altitude := 0.0) -> Vector3:
+	return Vector3((x - _arena.x * 0.5 + 0.5) * CELL, altitude * CELL, (y - _arena.y * 0.5 + 0.5) * CELL)
+
+
+## Ship orientation for a pose: yaw (facing 0 = +x, 90 = +z), then pitch (nose up +) about the ship's starboard axis,
+## then roll (bank + = right wing down) about its bow.
+static func pose_basis(facing: float, pitch: float, bank: float) -> Basis:
+	return Basis(Vector3.UP, -deg_to_rad(facing)) * Basis(Vector3(0, 0, 1), deg_to_rad(pitch)) \
+		* Basis(Vector3(1, 0, 0), deg_to_rad(bank))
 
 
 # ------------------------------------------------------------------------------------------------------------------
@@ -176,6 +203,7 @@ func _sync_ships(info: Array) -> void:
 		if not present.has(fid):
 			_ships[fid].queue_free()
 			_ships.erase(fid)
+			_shown.erase(fid)
 
 
 static func _owner_from_info(info: Array, fid: int) -> int:
@@ -185,15 +213,41 @@ static func _owner_from_info(info: Array, fid: int) -> int:
 	return 0
 
 
-## Fixed per-ship offset inside its cell so ships sharing a cell fly in loose formation (constant across rounds).
-func _formation_offset(fid: int, ship: BattleShip) -> Vector3:
-	var h := hash(fid)
-	var a := float(h % 6283) / 1000.0
-	var r := CELL * (0.22 + 0.22 * float((h / 7) % 100) / 100.0)
-	var y := (float((h / 11) % 100) / 100.0 - 0.5) * CELL * 0.45
-	if ship.is_station:
-		return Vector3(0, -CELL * 0.2, 0)
-	return Vector3(cos(a) * r, y, sin(a) * r) * formation_spread
+## The timeline pose (own flight or wing station) plus what is left of the round-start carry.
+func _round_pose(track: BattleTimeline.ShipTrack, t: float) -> BattleTimeline.Pose:
+	var p := timeline.pose_of(track, t)
+	if _carry.has(track.fleet_id):
+		var c: Vector4 = _carry[track.fleet_id] * (1.0 - BattleTimeline.smoothstep01(t / ROUND_JOIN_SECONDS))
+		p.x += c.x
+		p.y += c.y
+		p.altitude += c.z
+		p.facing = BattleTimeline.wrap_degrees(p.facing + c.w)
+	return p
+
+
+## True-scale hulls can overlap on the grid: shift the visible ones apart (mostly in height) with
+## BattleTimeline.spacing_offsets, eased so the formation drifts rather than jumps. A zero-length step snaps only a
+## ship that has no spacing yet (a fresh scene). Rules positions are untouched; this is presentation only.
+func _update_spacing(t: float, delta: float, poses: Dictionary) -> void:
+	var bodies := []
+	var tracks := []
+	for track in timeline.ships:
+		var ship: BattleShip = _ships.get(track.fleet_id)
+		var p: BattleTimeline.Pose = poses.get(track.fleet_id)
+		var active := ship != null and p != null and track.visibility_at(t) > 0.05
+		# Bounding spheres of flat hulls may overlap a little (ABotfCombatScene: 0.75 of the radius).
+		bodies.append({"x": p.x if active else 0.0, "y": p.y if active else 0.0, "alt": p.altitude if active else 0.0,
+			"radius": 0.75 * ship.half_extents.length() / CELL if active else 0.0, "active": active})
+		tracks.append(track)
+	var offsets := BattleTimeline.spacing_offsets(bodies)
+	var ease := 1.0 if delta <= 0.0 else 1.0 - exp(-SPACING_EASE * delta)
+	for k in tracks.size():
+		if not bodies[k].active:
+			continue
+		var ship: BattleShip = _ships[tracks[k].fleet_id]
+		var o: Vector3 = offsets[k] * formation_spread
+		var target := Vector3(o.x, o.z, o.y) * CELL # plane x -> world x, altitude -> y, plane y -> z
+		ship.spacing = ship.spacing.lerp(target, 0.0 if delta <= 0.0 and ship.spacing != Vector3.ZERO else ease)
 
 
 func _fire_cues() -> void:
@@ -232,13 +286,20 @@ func _apply(t: float, delta: float) -> void:
 	var n_theirs := 0
 	var ours_lo := Vector3(INF, INF, INF)
 	var ours_hi := -ours_lo
+	var poses := {}
+	for track in timeline.ships:
+		if _ships.has(track.fleet_id):
+			poses[track.fleet_id] = _round_pose(track, t)
+	_update_spacing(t, delta, poses) # wall-clock easing: the drift reads the same at any playback speed
 	for track in timeline.ships:
 		var ship: BattleShip = _ships.get(track.fleet_id)
 		if ship == null:
 			continue
-		var p := track.pose_at(t)
-		var pos := cell_to_world(p.x, p.y) + _formation_offset(track.fleet_id, ship)
-		ship.transform = Transform3D(Basis.from_euler(Vector3(deg_to_rad(p.bank), -deg_to_rad(p.facing), 0.0)), pos)
+		var p: BattleTimeline.Pose = poses[track.fleet_id]
+		_shown[track.fleet_id] = p
+		var idle := BattleTimeline.station_keeping(track, t, timeline.round_seconds) # holding position still breathes
+		var pos := cell_to_world(p.x, p.y, p.altitude + idle.x) + ship.spacing
+		ship.transform = Transform3D(pose_basis(p.facing, p.pitch + idle.z, p.bank + idle.y), pos)
 		ship.model.transform = Transform3D.IDENTITY
 		var vis := track.visibility_at(t)
 		var shimmer := 0.0
@@ -257,7 +318,7 @@ func _apply(t: float, delta: float) -> void:
 				BattleTimeline.Job.WARP:
 					var s := 1.0 + 12.0 * u * u * u
 					ship.model.transform = Transform3D(Basis.from_scale(Vector3(s, 1.0 - 0.5 * u, 1.0 - 0.5 * u)),
-						Vector3(ship.half_extents.x * (s - 1.0) + 40.0 * pow(u, 4.0), 0, 0))
+						Vector3(ship.half_extents.x * (s - 1.0) + 3.0 * CELL * pow(u, 4.0), 0, 0))
 		ship.set_visibility(vis, shimmer)
 		ship.update_shield(t)
 		if vis > 0.0 and (track.hide_at < 0.0 or t < track.hide_at):
@@ -278,7 +339,7 @@ func _apply(t: float, delta: float) -> void:
 		centroid /= count
 	else:
 		centroid = Vector3.ZERO
-	var spread := (hi - lo).length() if count > 1 else 60.0
+	var spread := (hi - lo).length() if count > 1 else 120.0
 	if camera != null:
 		# Establishing shots frame the player's fleet with the enemy beyond it when both sides are on screen.
 		camera.has_sides = n_ours > 0 and n_theirs > 0

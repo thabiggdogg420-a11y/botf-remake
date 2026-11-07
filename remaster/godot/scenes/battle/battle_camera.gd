@@ -9,7 +9,7 @@ enum Mode { CINEMATIC, ORBIT }
 signal mode_changed(mode: int)
 
 @export var mode := Mode.CINEMATIC
-@export var orbit_distance := 120.0
+@export var orbit_distance := 240.0
 @export var orbit_yaw := -35.0
 @export var orbit_pitch := -28.0
 @export var orbit_focus := Vector3.ZERO
@@ -45,7 +45,7 @@ func set_mode(m: int) -> void:
 	if mode == Mode.ORBIT:
 		# Start the orbit from where the camera is.
 		var off := global_position - orbit_focus
-		orbit_distance = clampf(off.length(), 15.0, 600.0)
+		orbit_distance = clampf(off.length(), 30.0, 1200.0)
 		orbit_yaw = rad_to_deg(atan2(off.x, off.z))
 		orbit_pitch = -rad_to_deg(asin(clampf(off.y / maxf(off.length(), 1e-3), -1.0, 1.0)))
 	_snap = mode == Mode.CINEMATIC
@@ -58,10 +58,10 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event is InputEventMouseButton:
 		if event.button_index == MOUSE_BUTTON_WHEEL_UP and event.pressed:
 			set_mode(Mode.ORBIT)
-			orbit_distance = maxf(12.0, orbit_distance * 0.9)
+			orbit_distance = maxf(24.0, orbit_distance * 0.9)
 		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN and event.pressed:
 			set_mode(Mode.ORBIT)
-			orbit_distance = minf(800.0, orbit_distance * 1.1)
+			orbit_distance = minf(1600.0, orbit_distance * 1.1)
 		elif event.button_index in [MOUSE_BUTTON_LEFT, MOUSE_BUTTON_RIGHT]:
 			_dragging = event.button_index if event.pressed else 0
 	elif event is InputEventMouseMotion and _dragging != 0:
@@ -99,20 +99,20 @@ func frame(delta: float, shot_key: String, kind: int, subject: Vector3, subject_
 	var lift := rng.randf_range(0.15, 0.45)
 	var dist_k := rng.randf_range(0.85, 1.25)
 	var drift := (time - _shot_start) * 0.05
-	if kind < 0 and has_sides and side_ours.distance_to(side_theirs) > 40.0:
+	if kind < 0 and has_sides and side_ours.distance_to(side_theirs) > 80.0:
 		# Fleets apart (the opening rounds): behind and above the player's formation, looking at the enemy, so our
 		# ships read as ships rather than specks at the arena edge.
 		var to_enemy := side_theirs - side_ours
 		to_enemy.y = 0.0
 		var fwd := to_enemy.normalized() if to_enemy.length() > 1e-3 else Vector3(1, 0, 0)
 		var side := fwd.cross(Vector3.UP).normalized() * side_sign
-		var r := clampf(side_ours_spread * 0.9 + 28.0, 30.0, 85.0)
+		var r := clampf(side_ours_spread * 0.9 + 56.0, 60.0, 170.0)
 		var base := -fwd * r + side * r * 0.5 + Vector3.UP * r * (0.3 + lift * 0.4)
 		_desired_pos = side_ours + base.rotated(Vector3.UP, drift * 0.5)
 		_desired_look = side_ours.lerp(side_theirs, 0.35)
 	elif kind < 0:
 		# Establishing shot: slow orbit around the battle, high enough to read the formations.
-		var r := clampf(spread * 0.6, 35.0, 90.0)
+		var r := clampf(spread * 0.6, 70.0, 180.0)
 		var a := time * 0.04 + float(_shot_seed % 628) / 100.0
 		_desired_pos = centroid + Vector3(sin(a), 0.0, cos(a)) * r + Vector3.UP * r * 0.3
 		_desired_look = centroid
@@ -123,7 +123,7 @@ func frame(delta: float, shot_key: String, kind: int, subject: Vector3, subject_
 			to_other = Vector3(1, 0, 0)
 		var fwd := to_other.normalized()
 		var side := fwd.cross(Vector3.UP).normalized() * side_sign
-		var dist := maxf(subject_size * 2.6, 10.0) * dist_k
+		var dist := maxf(subject_size * 2.6, 20.0) * dist_k
 		var shooter_shot := kind in [BattleTimeline.Job.BEAM, BattleTimeline.Job.PULSE, BattleTimeline.Job.TORPEDO, BattleTimeline.Job.RAM]
 		if shooter_shot:
 			# Over the shoulder: behind and beside the shooter, looking down the line of fire.

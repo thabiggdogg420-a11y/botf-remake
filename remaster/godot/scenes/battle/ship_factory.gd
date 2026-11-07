@@ -21,7 +21,66 @@ const LOOK := {
 		"engine": Color(0.3, 1.0, 0.5), "accent_glow": Color(1.0, 0.7, 0.2), "metal": 0.65, "rough": 0.35},
 }
 
+## Canon length in metres per ship asset key (the class catalogue), resolved as the Unreal client sizes a hull
+## (BotfAssetCatalog.h Catalog::resolve / BotfCombatScene.cpp ApplyShipMesh): the key's own targetLengthMeters in
+## remaster/assets/manifest.json, else the generated hull's spec length (game/Tools/blender_generate_ships.py SPECS,
+## then ROLE_LENGTH by the class role), else the first length along the manifest fallback chain.
+## Regenerate when those files change. A local resolved-manifest.json overrides this at runtime (BattleShip).
+const CANON_LENGTHS := {
+	"ship.and.kumari": 350, "ship.baj.assault": 250, "ship.baj.lightship": 90, "ship.borg.cube": 3000,
+	"ship.borg.diamond": 1000, "ship.borg.probe": 400, "ship.borg.scout": 100, "ship.borg.sphere": 600,
+	"ship.borg.tactical_cube": 3100, "ship.breen.breen_warship": 400, "ship.car.atr4107": 150, "ship.car.galor": 371,
+	"ship.car.groumall": 200, "ship.car.hideki": 80, "ship.car.keldon": 371, "ship.car.kraxon": 280,
+	"ship.car.nerok": 420, "ship.car.netel": 300, "ship.car.neterok": 450, "ship.car.nor": 1450,
+	"ship.car.outpost": 300, "ship.car.platform": 50, "ship.car.ranol": 200, "ship.car.scout": 60,
+	"ship.car.starbase": 1100, "ship.car.telok": 520, "ship.car.toran": 500, "ship.devore.warship": 350,
+	"ship.dom.attack_ship": 68, "ship.dom.battlecruiser": 680, "ship.dom.battleship": 1000, "ship.fed.akira": 464,
+	"ship.fed.ambassador": 526, "ship.fed.centaur": 237, "ship.fed.challenger": 325, "ship.fed.cheyenne": 359,
+	"ship.fed.constellation": 310, "ship.fed.constitution": 289, "ship.fed.constitution_kelvin": 725,
+	"ship.fed.constitution_refit": 305, "ship.fed.curry": 295, "ship.fed.daedalus": 105, "ship.fed.danube": 23,
+	"ship.fed.defiant": 171, "ship.fed.edward": 280, "ship.fed.excelsior": 467, "ship.fed.freedom": 240,
+	"ship.fed.galaxy": 642, "ship.fed.galaxy_x": 700, "ship.fed.intrepid": 344, "ship.fed.k7": 500,
+	"ship.fed.kelvin_type": 240, "ship.fed.london": 350, "ship.fed.luna": 450, "ship.fed.miranda": 233,
+	"ship.fed.nebula": 442, "ship.fed.new_orleans": 348, "ship.fed.niagara": 467, "ship.fed.norway": 364,
+	"ship.fed.nova": 165, "ship.fed.nx": 225, "ship.fed.oberth": 120, "ship.fed.olympic": 310, "ship.fed.outpost": 300,
+	"ship.fed.peregrine": 30, "ship.fed.prometheus": 415, "ship.fed.ranger": 300, "ship.fed.raven": 36,
+	"ship.fed.rhode_island": 345, "ship.fed.saber": 196, "ship.fed.sovereign": 685, "ship.fed.soyuz": 260,
+	"ship.fed.spacedock": 1800, "ship.fed.springfield": 365, "ship.fed.starbase": 1000, "ship.fed.steamrunner": 245,
+	"ship.fed.sydney": 97, "ship.fed.vengeance": 965, "ship.fed.wells": 450, "ship.fed.yclass": 60,
+	"ship.fed.yeager": 150, "ship.fer.bronta": 450, "ship.fer.dkora": 350, "ship.fer.glantor": 500,
+	"ship.fer.goront": 550, "ship.fer.nagus": 600, "ship.fer.ngort": 400, "ship.fer.ooron": 250,
+	"ship.fer.outpost": 300, "ship.fer.pod": 45, "ship.fer.scout": 60, "ship.fer.shuttle": 20, "ship.fer.starbase": 800,
+	"ship.fer.tokorn": 120, "ship.fer.tomax": 300, "ship.gorn.cruiser": 350, "ship.hiro.hunter": 250,
+	"ship.hiro.warship": 450, "ship.kazon.carrier": 800, "ship.kazon.raider": 120, "ship.kli.bop": 110,
+	"ship.kli.bop_ent": 145, "ship.kli.brel": 110, "ship.kli.charghwi": 500, "ship.kli.d12": 210, "ship.kli.d4": 180,
+	"ship.kli.d5": 190, "ship.kli.d7": 228, "ship.kli.ktinga": 228, "ship.kli.kvort": 350, "ship.kli.liwi": 260,
+	"ship.kli.mayduj": 260, "ship.kli.neghtev": 720, "ship.kli.neghvar": 682, "ship.kli.outpost": 300,
+	"ship.kli.qang": 350, "ship.kli.raptor": 90, "ship.kli.starbase": 900, "ship.kli.vorcha": 481,
+	"ship.krenim.timeship": 500, "ship.krenim.warship": 250, "ship.malon.freighter": 150, "ship.maquis.raider": 120,
+	"ship.nau.raider": 120, "ship.orion.interceptor": 120, "ship.reman.scimitar": 900, "ship.rom.bop": 150,
+	"ship.rom.bop_ent": 200, "ship.rom.bop_tos": 131, "ship.rom.dderidex": 1041, "ship.rom.ddredar": 900,
+	"ship.rom.drenet": 420, "ship.rom.dretex": 240, "ship.rom.dridren": 330, "ship.rom.drone": 120,
+	"ship.rom.mogai": 500, "ship.rom.narada": 8000, "ship.rom.norexan": 310, "ship.rom.outpost": 300,
+	"ship.rom.rdaran": 700, "ship.rom.rderex": 600, "ship.rom.rtan": 150, "ship.rom.science": 250, "ship.rom.scout": 60,
+	"ship.rom.starbase": 900, "ship.rom.valdore": 800, "ship.s8472.bioship": 350, "ship.sona.battleship": 700,
+	"ship.sul.cell_ship": 150, "ship.tal.observer": 90, "ship.thol.web_spinner": 250, "ship.vid.warship": 350,
+	"ship.vul.dkyr": 350, "ship.vul.suurok": 300, "ship.xindi.aquatic": 700, "ship.xindi.insectoid": 250,
+	"ship.xindi.primate": 250, "ship.xindi.reptilian": 350, "ship.xindi.weapon": 500
+}
+
+
 static var _cache := {}
+
+
+## Canon length in metres of a tactical ship's class from the catalogue: the first of its asset keys
+## (BattleShip.asset_keys_for) the table knows. 0 = unknown (stations, classes without art keys).
+static func canon_length_meters(ship: Dictionary) -> float:
+	if BattleShip.is_station_ship(ship):
+		return 0.0
+	for key in BattleShip.asset_keys_for(ship):
+		if CANON_LENGTHS.has(key):
+			return float(CANON_LENGTHS[key])
+	return 0.0
 
 
 static func look(owner: int) -> Dictionary:

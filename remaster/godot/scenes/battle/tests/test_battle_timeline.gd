@@ -172,8 +172,226 @@ func _init() -> void:
 				t += 1.0 / 30.0
 		return true)
 
+	# ---- 3D flight and true scale (ports of the matching client-logic-tests.cpp checks) ----
+
+	run("unit_hash matches the C++ unitHash bits", func():
+		# Reference values printed by BotfCombatTimeline.h unitHash.
+		for ref in [[1, 1, 0.2298816442489624], [7, 1, 0.6673729419708252], [10, 101, 0.41475707292556763],
+				[2000001, 7, 0.5847245454788208], [123456, 102, 0.69641011953353882], [99, 0, 0.42720115184783936]]:
+			check(absf(BattleTimeline.unit_hash(ref[0], ref[1]) - ref[2]) < 1e-12, "unit_hash(%d, %d)" % [ref[0], ref[1]])
+		return true)
+
+	run("true scale: displayLengthForLength and the catalogue", func():
+		check(absf(BattleShip.display_length_ue(350) - 120.0) < 1e-9, "350 m = 120 units")
+		check(absf(BattleShip.display_length_ue(642) / BattleShip.display_length_ue(170) - 642.0 / 170.0) < 1e-9, "relative sizes kept")
+		check(BattleShip.display_length_ue(15) == BattleShip.display_length_ue(60), "60 m floor")
+		check(absf(BattleShip.display_length_ue(100000) - 1000.0) < 1e-9, "1000-unit cap")
+		check(absf(BattleShip.display_length(642) / BattleScene.CELL - 642.0 * 120.0 / 350.0 / 170.0) < 1e-9, "Galaxy spans 1.3 cells")
+		var ships := {}
+		for s in encounter.ships:
+			ships[int(s.id)] = s
+		check(ShipFactory.canon_length_meters(ships[7]) == 642.0, "Galaxy 642 m")
+		check(ShipFactory.canon_length_meters(ships[3]) == 110.0, "B'rel 110 m (apostrophes dropped from the key)")
+		check(ShipFactory.canon_length_meters(ships[9]) == 228.0, "K't'inga 228 m")
+		check(ShipFactory.canon_length_meters(ships[2000001]) == 0.0, "stations have no class length")
+		check(ShipFactory.canon_length_meters({"id": 4, "owner": 1, "assetKey": "ship.fed.defiant"}) == 171.0, "roster assetKey first")
+		check(ShipFactory.canon_length_meters({"id": 4, "owner": 9, "name": "Nobody"}) == 0.0, "unknown class")
+		check(BattleShip.length_for(ships[7]) > BattleShip.length_for(ships[5]) * 2.5, "a Galaxy is 2.75 Mirandas long")
+		var info := BattleTimeline.round_ship_info(encounter, 0)
+		check(info.all(func(i): return i.has("lengthMeters")), "round info carries lengthMeters")
+		return true)
+
+	run("3D flight: home heights are deterministic, sides sit in layers, small craft spread more", func():
+		var cfg := BattleTimeline.Config.new()
+		check(BattleTimeline.home_height(7, 110, true) == BattleTimeline.home_height(7, 110, true), "deterministic")
+		var cap_max := 0.0
+		var small_max := 0.0
+		var first_sum := 0.0
+		var other_sum := 0.0
+		for id in range(1, 401):
+			cap_max = maxf(cap_max, absf(BattleTimeline.home_height(id, 650, true) - cfg.side_height_offset))
+			small_max = maxf(small_max, absf(BattleTimeline.home_height(id, 110, true) - cfg.side_height_offset))
+			first_sum += BattleTimeline.home_height(id, 650, true)
+			other_sum += BattleTimeline.home_height(id, 650, false)
+		check(cap_max <= cfg.capital_height_spread + 1e-9, "capital ships stay near the plane")
+		check(small_max > 1.0, "small craft spread wider")
+		check(first_sum > other_sum, "the first side flies above the other")
+		# Fixture: both sides hold their own layer.
+		var tl := _build(encounter, 0)
+		var first_owner := int(BattleTimeline.round_ship_info(encounter, 0)[0].ownerId)
+		var alt := {true: 0.0, false: 0.0}
+		var n := {true: 0, false: 0}
+		for s in tl.ships:
+			alt[s.owner_id == first_owner] += s.initial.altitude
+			n[s.owner_id == first_owner] += 1
+		check(alt[true] / n[true] > alt[false] / n[false], "fixture layers")
+		return true)
+
+	run("3D flight: climbs pitch the nose, escorts bank harder, heights change smoothly", func():
+		var cfg := BattleTimeline.Config.new()
+		var ev := _flight_events()
+		var small := BattleTimeline.build(ev, _flight_info(110.0), cfg)
+		var s1 := small.track(1)
+		check(s1.small_craft and s1.segments.size() == 1, "escort with one segment")
+		var seg: BattleTimeline.Segment = s1.segments[0]
+		check(s1.pose_at(0.0).altitude == seg.from.altitude and s1.pose_at(6.0).altitude == seg.to.altitude, "heights at the ends")
+		check(s1.pose_at(6.0).pitch == 0.0 and absf(seg.pitch_peak) <= cfg.max_pitch_degrees, "pitch levels out")
+		if absf(seg.to.altitude - seg.from.altitude) > 0.05:
+			check((seg.pitch_peak > 0.0) == (seg.to.altitude > seg.from.altitude), "climbing noses up")
+		check(s1.pose_at(0.0).plane_equals(BattleTimeline.Pose.new(0, 0, 0, 0)), "plane pose at start")
+		check(s1.pose_at(2.0).plane_equals(BattleTimeline.Pose.new(2, 1, 45, 0)), "plane pose at the end")
+		var max_climb := 0.0
+		var t := 0.001
+		while t <= 6.0:
+			max_climb = maxf(max_climb, absf(s1.pose_at(t).altitude - s1.pose_at(t - 0.001).altitude))
+			t += 0.001
+		check(max_climb < 0.02, "smooth climb (%.4f)" % max_climb)
+		var big := BattleTimeline.build(ev, _flight_info(650.0), cfg)
+		check(absf(small.track(1).segments[0].bank_peak) > absf(big.track(1).segments[0].bank_peak), "escorts roll harder")
+		check(not big.track(1).small_craft and big.track(1).wing_leader == 0, "capital ships fly alone")
+		check(absf(small.track(1).segments[0].bank_peak) <= cfg.max_bank_degrees * cfg.small_bank_scale, "bank limit")
+		return true)
+
+	run("wings: finger-four on the lowest id, wingmen peel off when the leader dies", func():
+		var cfg := BattleTimeline.Config.new()
+		var fleet := []
+		for s in [[10, 1, 2, 5, 110], [11, 1, 2, 6, 120], [12, 1, 3, 4, 90], [13, 1, 1, 5, 150], [14, 1, 2, 7, 100],
+				[15, 1, 12, 2, 110], [16, 2, 3, 5, 110], [17, 1, 2, 4, 650]]:
+			fleet.append({"fleetId": s[0], "ownerId": s[1], "x": s[2], "y": s[3], "facing": 0, "lengthMeters": s[4], "maxShields": 10})
+		var w := BattleTimeline.build([{"tick": 6, "kind": "Destroyed", "fleetId": 10, "x": 2, "y": 5, "facing": 0}], fleet, cfg)
+		check(w.track(10).wing_leader == 0 and w.track(11).wing_leader == 10 and w.track(12).wing_leader == 10 \
+			and w.track(13).wing_leader == 10, "wing on 10")
+		check(w.track(14).wing_leader == 0, "the wing is full (4)")
+		check(w.track(15).wing_leader == 0 and w.track(16).wing_leader == 0 and w.track(17).wing_leader == 0,
+			"far-off, other side and capital fly alone")
+		var lead := w.track(10).pose_at(0.5)
+		var mate := w.pose_of(w.track(11), 0.5)
+		check(absf(mate.x - (lead.x - cfg.wing_spacing_cells)) < 1e-9 and absf(mate.y - (lead.y + cfg.wing_spacing_cells)) < 1e-9,
+			"station aft and to port")
+		check(mate.altitude > lead.altitude and mate.facing == lead.facing, "station above, same heading")
+		check(w.track(10).hide_at > 0.0, "leader destroyed")
+		var after := w.track(10).hide_at + 3.0 * w.tick_seconds
+		check(w.pose_of(w.track(11), after).plane_equals(w.track(11).pose_at(after)), "wingman back on its own track")
+		# Peeling off is smooth.
+		var prev := w.pose_of(w.track(11), 0.0)
+		var t := 1.0 / 240.0
+		while t <= w.end_seconds:
+			var p := w.pose_of(w.track(11), t)
+			check(Vector3(p.x - prev.x, p.y - prev.y, p.altitude - prev.altitude).length() < 0.1, "peel-off step at %.2f" % t)
+			prev = p
+			t += 1.0 / 240.0
+		return true)
+
+	run("spacing: overlapping hulls are pushed apart, mostly in height", func():
+		var clear := BattleTimeline.spacing_offsets([_body(0, 0, 0, 0.5), _body(3, 0, 0, 0.5)])
+		check(clear[0] == Vector3.ZERO and clear[1] == Vector3.ZERO, "clear hulls stay put")
+		var level := [_body(0, 0, 0, 1.2), _body(1, 0, 0, 1.2)]
+		var lv := BattleTimeline.spacing_offsets(level)
+		check(_gap(level, lv, 0, 1) > -1e-6, "level pair separated")
+		check(absf(lv[0].z) > 0.2 and absf(lv[1].z) > 0.2 and lv[0].z * lv[1].z < 0.0, "they stack")
+		var same := [_body(2, 2, 0, 0.8), _body(2, 2, 0, 0.8)]
+		var sm := BattleTimeline.spacing_offsets(same)
+		check(_gap(same, sm, 0, 1) > -1e-6 and sm[0].x == 0.0 and sm[0].y == 0.0, "coincident hulls split vertically")
+		var again := BattleTimeline.spacing_offsets(same)
+		check(again[0].z == sm[0].z and again[1].z == sm[1].z, "deterministic")
+		var mixed := [_body(0, 0, 0, 1.4), _body(0.5, 0.3, 0.1, 0.3)]
+		var mx := BattleTimeline.spacing_offsets(mixed)
+		check(_gap(mixed, mx, 0, 1) > -1e-6 and mx[1].length() > 2.0 * mx[0].length(), "the escort moves further")
+		var crowd := []
+		for i in 8:
+			crowd.append(_body(i % 2, 0.2 * (i / 2), 0.1 * i, 1.0))
+		var idle := _body(0, 0, 0, 1.0)
+		idle.active = false
+		crowd.append(idle)
+		var cr := BattleTimeline.spacing_offsets(crowd, 40)
+		var worst := 0.0
+		for i in 8:
+			for j in range(i + 1, 8):
+				worst = minf(worst, _gap(crowd, cr, i, j))
+		check(worst > -0.15, "eight capitals settle apart (%.3f)" % worst)
+		check(cr[8] == Vector3.ZERO, "inactive hull ignored")
+		return true)
+
+	run("station-keeping: still at maneuver and round edges, gentle while holding", func():
+		var hold := BattleTimeline.ShipTrack.new()
+		hold.fleet_id = 21
+		var seg := BattleTimeline.Segment.new()
+		seg.t0 = 0.0
+		seg.t1 = 2.0
+		hold.segments.append(seg)
+		var escort := BattleTimeline.ShipTrack.new()
+		escort.fleet_id = 21
+		escort.small_craft = true
+		escort.segments.append(seg)
+		var mag := func(o: Vector3) -> float: return absf(o.x) + absf(o.y) + absf(o.z)
+		check(mag.call(BattleTimeline.station_keeping(hold, 1.0, 6.0)) == 0.0 and mag.call(BattleTimeline.station_keeping(hold, 2.0, 6.0)) == 0.0, "none while flying")
+		check(mag.call(BattleTimeline.station_keeping(hold, 6.0, 6.0)) == 0.0 and mag.call(BattleTimeline.station_keeping(hold, 0.0, 6.0)) == 0.0, "none at the round edges")
+		check(mag.call(BattleTimeline.station_keeping(hold, 2.0 + 1e-4, 6.0)) < 1e-3 and mag.call(BattleTimeline.station_keeping(hold, 6.0 - 1e-4, 6.0)) < 1e-3, "fades in and out")
+		var cap_peak := 0.0
+		var small_peak := 0.0
+		var t := 2.0
+		while t < 6.0:
+			cap_peak = maxf(cap_peak, absf(BattleTimeline.station_keeping(hold, t, 6.0).y))
+			small_peak = maxf(small_peak, absf(BattleTimeline.station_keeping(escort, t, 6.0).y))
+			t += 0.05
+		check(cap_peak > 0.5 and cap_peak <= 2.4 + 1e-9 and small_peak > cap_peak, "small craft move more (%.2f / %.2f)" % [cap_peak, small_peak])
+		check(absf(BattleTimeline.station_keeping(escort, 4.0, 6.0).x) <= 0.12 + 1e-9, "bob amplitude")
+		return true)
+
+	run("no pose jumps in 3D: wings, heights, pitch and station-keeping (fixture)", func():
+		for r in rounds.size():
+			var tl := _build(encounter, r)
+			var dt := 1.0 / 240.0
+			for s in tl.ships:
+				var prev := _shown(tl, s, 0.0)
+				var t := dt
+				while t <= tl.end_seconds:
+					var p := _shown(tl, s, t)
+					var step := Vector3(p.x - prev.x, p.y - prev.y, p.altitude - prev.altitude).length()
+					check(step < 0.1, "round %d ship %d moved %.3f cells at %.2f" % [r, s.fleet_id, step, t])
+					check(absf(BattleTimeline.shortest_turn(prev.facing, p.facing)) < 4.0, "round %d ship %d facing jump" % [r, s.fleet_id])
+					check(absf(p.bank - prev.bank) < 2.0 and absf(p.pitch - prev.pitch) < 2.0, "round %d ship %d bank/pitch jump" % [r, s.fleet_id])
+					prev = p
+					t += dt
+				check(absf(s.pose_at(tl.end_seconds).pitch) < 1e-6, "ends level")
+		return true)
+
 	print("%d passed, %d failures" % [passed, failures])
 	quit(1 if failures > 0 else 0)
+
+
+## What the scene shows (before spacing): own flight or wing station plus station-keeping.
+func _shown(tl: BattleTimeline, s: BattleTimeline.ShipTrack, t: float) -> BattleTimeline.Pose:
+	var p := tl.pose_of(s, t)
+	var idle := BattleTimeline.station_keeping(s, t, tl.round_seconds)
+	p.altitude += idle.x
+	p.bank += idle.y
+	p.pitch += idle.z
+	return p
+
+
+## Ship 1 slides one cell while turning to 45 degrees; ship 2 turns from 180 to 135 (client-logic-tests' round).
+func _flight_events() -> Array:
+	return [
+		{"tick": 0, "kind": "ManeuverStart", "fleetId": 1, "x": 0, "y": 0, "facing": 0, "maneuver": "Strafe"},
+		{"tick": 0, "kind": "ManeuverStart", "fleetId": 2, "x": 6, "y": 0, "facing": 180, "maneuver": "Engage"},
+		{"tick": 4, "kind": "ManeuverEnd", "fleetId": 1, "x": 2, "y": 1, "facing": 45, "maneuver": "Strafe", "value": 1},
+		{"tick": 4, "kind": "ManeuverEnd", "fleetId": 2, "x": 5, "y": 0, "facing": 135, "maneuver": "Engage"}]
+
+
+func _flight_info(length_meters: float) -> Array:
+	return [{"fleetId": 1, "ownerId": 1, "x": 0, "y": 0, "facing": 0, "lengthMeters": length_meters, "maxShields": 10},
+		{"fleetId": 2, "ownerId": 2, "x": 6, "y": 0, "facing": 180, "lengthMeters": length_meters, "maxShields": 10}]
+
+
+func _body(x: float, y: float, alt: float, radius: float) -> Dictionary:
+	return {"x": x, "y": y, "alt": alt, "radius": radius, "active": true}
+
+
+func _gap(b: Array, o: Array, i: int, j: int) -> float:
+	var d := Vector3(b[j].x + o[j].x - b[i].x - o[i].x, b[j].y + o[j].y - b[i].y - o[i].y,
+		b[j].alt + o[j].z - b[i].alt - o[i].z)
+	return d.length() - (b[i].radius + b[j].radius)
 
 
 func _build(encounter: Dictionary, r: int) -> BattleTimeline:
