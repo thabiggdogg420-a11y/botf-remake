@@ -68,6 +68,9 @@ var side_ours_spread := 0.0
 var auto_orbit_speed := 0.0
 
 var _prev_mode := Mode.OVERVIEW
+var _cut_pose := []          ## The accepted cutaway [eye, look]; empty on the tactical view.
+var _tactical := []          ## The tactical [eye, look] for this round.
+var _tactical_t := -1.0
 var _prev_free := false
 var _shot_key := ""
 var _shot_seed := 0
@@ -594,63 +597,234 @@ func snap() -> void:
 	_snap_next = true
 
 
-## The cinematic director's framing: [eye, look]. shot.kind < 0 is a wide shot of the battle.
+## Pushes the eye back along the view line until it is outside every hull's shield shell (1.6 radii). A cut to a
+## close shot of a small ship used to put the lens inside a neighbour's shield: the 8 Nov close strip opened white.
+func _clear_of_hulls(eye: Vector3, look: Vector3) -> Vector3:
+	var back := (eye - look).normalized()
+	if back.length() < 0.5:
+		return eye
+	for pass_i in 4:
+		var moved := false
+		for b in bodies:
+			var c: Vector3 = b.center
+			var r: float = float(b.radius) * 2.4
+			if eye.distance_to(c) < r:
+				eye += back * (r - eye.distance_to(c) + 2.0)
+				moved = true
+		if not moved:
+			break
+	return eye
+
+
+## Screen fit of a bounding sphere seen from eye toward look: [inside (with margin), height fraction of the frame].
+func _sphere_fit(eye: Vector3, look: Vector3, c: Vector3, r: float, aspect: float, margin := 0.9) -> Array:
+	var b := Basis.looking_at(look - eye, Vector3.UP)
+	var v := b.inverse() * (c - eye)
+	var z := -v.z
+	if z <= r * 1.05:
+		return [false, 1.0]
+	var th := tan(deg_to_rad(fov) * 0.5)
+	var y := v.y / (z * th)
+	var x := v.x / (z * th * aspect)
+	var ry := r / (z * th)
+	var rx := ry / aspect
+	return [absf(x) + rx <= margin and absf(y) + ry <= margin, ry]
+
+
+## R3.5 pass 3 (coordinator, 8 Nov): the default is the TACTICAL view. Every live ship fitted from a raised three-quarter
+## angle with about 10% margin, recomputed each round and eased. A station far bigger than the ships is left out of the
+## fit (it may sit part-framed) so the ships stay readable; the distance is capped so a ship never falls below a
+## minimum size on screen.
+func _tactical_pose(aspect: float, side_sign: float) -> Array:
+	var live := []
+	var radii := []
+	for b in bodies:
+		if float(b.radius) > 0.0:
+			live.append(b)
+			radii.append(float(b.radius))
+	if live.is_empty():
+		return [Vector3(0, 200, 300), Vector3.ZERO]
+	radii.sort()
+	var median: float = radii[radii.size() / 2]
+	var fit := live.duplicate()
+	var th0 := tan(deg_to_rad(fov) * 0.5)
+	var tmp := _fit_distance(fit, aspect, side_sign)
+	if median / (tmp[1] * th0) < 0.022:
+		# A station far bigger than the ships would leave them specks: fit the ships and let the station sit part-framed.
+		fit = []
+		for b in live:
+			if float(b.radius) <= median * 3.0 or live.size() <= 2:
+				fit.append(b)
+	var res := _fit_distance(fit, aspect, side_sign)
+	return [res[0] + res[2] * res[1], res[0]]
+
+
+## [mid, distance, dir]: the nearest raised three-quarter view holding every body in fit whole with ~10% margin.
+func _fit_distance(fit: Array, aspect: float, side_sign: float) -> Array:
+	var lo := Vector3(INF, INF, INF)
+	var hi := -lo
+	for b in fit:
+		var c: Vector3 = b.center
+		lo = lo.min(c)
+		hi = hi.max(c)
+	var mid := (lo + hi) * 0.5
+	# Look across the line between the fleets, from the player's side and above.
+	var ours := Vector3.ZERO
+	var theirs := Vector3.ZERO
+	var no := 0
+	var nt := 0
+	for b in fit:
+		if b.get("mine", false):
+			ours += b.center
+			no += 1
+		else:
+			theirs += b.center
+			nt += 1
+	var fwd := Vector3(1, 0, 0)
+	if no > 0 and nt > 0:
+		var d: Vector3 = theirs / nt - ours / no
+		d.y = 0.0
+		if d.length() > 1e-3:
+			fwd = d.normalized()
+	var side := fwd.cross(Vector3.UP).normalized() * side_sign
+	var dir := (side * 0.85 - fwd * 0.45 + Vector3.UP * 0.75).normalized()
+	# Smallest distance at which every fitted hull is inside the frame with ~10% margin.
+	var dist := 20.0
+	for i in 160:
+		var ok := true
+		for b in fit:
+			if not _sphere_fit(mid + dir * dist, mid, b.center, float(b.radius), aspect, 0.88)[0]:
+				ok = false
+				break
+		if ok:
+			break
+		dist *= 1.05
+	return [mid, dist, dir]
+
+
+## A cutaway candidate is accepted only if shooter and target are both whole in frame and neither fills more than 40%
+## of the frame height (and no other hull sits between the lens and them).
+func _shot_ok(eye: Vector3, look: Vector3, a: Vector3, ar: float, b: Vector3, br: float, aspect: float) -> bool:
+	for s in [[a, ar], [b, br]]:
+		var f: Array = _sphere_fit(eye, look, s[0], s[1], aspect, 0.92)
+		if not f[0] or f[1] > 0.40:
+			return false
+	# Any other hull is either whole in frame or wholly out of it (a big one crossing the edge is a crop), never
+	# around the lens, and never a near hull filling more than 40% of the frame.
+	for o in bodies:
+		var c: Vector3 = o.center
+		var orad: float = float(o.radius)
+		if c.distance_to(a) < 0.1 or c.distance_to(b) < 0.1 or orad <= 0.0:
+			continue
+		if eye.distance_to(c) < orad * 1.6:
+			return false
+		var f2: Array = _sphere_fit(eye, look, c, orad, aspect, 1.0)
+		if f2[1] > 0.40:
+			return false
+		var is_station := int(o.get("id", 0)) >= 2000000 # a station may sit part-framed (coordinator, 8 Nov)
+		if not is_station and not f2[0] and f2[1] > 0.10 and not _sphere_outside(eye, look, c, orad, aspect):
+			return false
+	return true
+
+
+## The cinematic director's framing: [eye, look]. Tactical by default; a cutaway only when the scene offers one
+## (about 1 round in 4, or a kill) and one of the candidate angles passes _shot_ok. A bad shot is rejected, never patched.
 func _cinematic_shot(_delta: float, shot: Dictionary, time: float) -> Array:
 	var key: String = shot.get("key", "")
 	var kind: int = shot.get("kind", -1)
-	var centroid: Vector3 = shot.get("centroid", Vector3.ZERO)
-	var subject: Vector3 = shot.get("subject", centroid)
-	var subject_size: float = shot.get("subject_size", 10.0)
-	var other: Vector3 = shot.get("other", centroid)
-	var spread: float = shot.get("spread", 60.0)
+	var aspect := 16.0 / 9.0
+	var vsize := get_viewport().get_visible_rect().size if is_inside_tree() else Vector2.ZERO
+	if vsize.y > 0.0:
+		aspect = vsize.x / vsize.y
 	if key != _shot_key:
+		var was_tactical := _shot_key.begins_with("wide") or _shot_key == "" or _cut_pose.is_empty()
 		_shot_key = key
 		_shot_seed = hash(key)
 		_shot_start = time
-		_cut = true
-	var rng := RandomNumberGenerator.new()
-	rng.seed = _shot_seed
-	var side_sign := 1.0 if rng.randf() < 0.5 else -1.0
-	var lift := rng.randf_range(0.15, 0.45)
-	var dist_k := rng.randf_range(0.85, 1.25)
-	var drift := (time - _shot_start) * 0.05
-	var eye: Vector3
-	var look: Vector3
-	if kind < 0 and has_sides and side_ours.distance_to(side_theirs) > 40.0:
-		# Fleets apart (the opening rounds): behind and above the player's formation, looking at the enemy, so our
-		# ships read as ships rather than specks at the arena edge.
-		var to_enemy := side_theirs - side_ours
-		to_enemy.y = 0.0
-		var fwd := to_enemy.normalized() if to_enemy.length() > 1e-3 else Vector3(1, 0, 0)
-		var side := fwd.cross(Vector3.UP).normalized() * side_sign
-		var r := clampf(side_ours_spread * 0.9 + 28.0, 30.0, 85.0)
-		var base := -fwd * r + side * r * 0.5 + Vector3.UP * r * (0.3 + lift * 0.4)
-		eye = side_ours + base.rotated(Vector3.UP, drift * 0.5)
-		look = side_ours.lerp(side_theirs, 0.35)
-	elif kind < 0:
-		# Establishing shot: slow orbit around the battle, high enough to read the formations.
-		var r := clampf(spread * 0.6, 35.0, 90.0)
-		var a := time * 0.04 + float(_shot_seed % 628) / 100.0
-		eye = centroid + Vector3(sin(a), 0.0, cos(a)) * r + Vector3.UP * r * 0.3
-		look = centroid
-	else:
-		var to_other := other - subject
-		to_other.y = 0.0
-		if to_other.length() < 1e-3:
-			to_other = Vector3(1, 0, 0)
-		var fwd := to_other.normalized()
-		var side := fwd.cross(Vector3.UP).normalized() * side_sign
-		var dist := maxf(subject_size * 2.6, 10.0) * dist_k
-		var shooter_shot := kind in [BattleTimeline.Job.BEAM, BattleTimeline.Job.PULSE, BattleTimeline.Job.TORPEDO, BattleTimeline.Job.RAM]
-		if shooter_shot:
-			# Over the shoulder: behind and beside the shooter, looking down the line of fire.
-			var base := -fwd * dist + side * dist * 0.55 + Vector3.UP * dist * lift
-			eye = subject + base.rotated(Vector3.UP, drift)
-			look = subject.lerp(other, 0.45)
-		else:
-			# Reverse angle on the struck ship, from the attacker's side.
-			var k := 1.6 if kind == BattleTimeline.Job.EXPLOSION else 1.0
-			var base := fwd * dist * k + side * dist * 0.7 * k + Vector3.UP * dist * lift * k
-			eye = subject + base.rotated(Vector3.UP, drift)
-			look = subject
-	return [eye, look]
+		_cut_pose = []
+		if kind >= 0:
+			var subject: Vector3 = shot.get("subject", Vector3.ZERO)
+			var other: Vector3 = shot.get("other", subject)
+			var sr: float = _radius_near(subject, float(shot.get("subject_size", 10.0)) * 0.5)
+			var orr: float = _radius_near(other, float(shot.get("other_size", 10.0)) * 0.5)
+			var line := other - subject
+			var flat := Vector3(line.x, 0.0, line.z)
+			var fwd := flat.normalized() if flat.length() > 1e-3 else Vector3(1, 0, 0)
+			var mid := subject.lerp(other, 0.5)
+			var single := other.distance_to(subject) < 0.1
+			# Over the shooter's shoulder first: at fire range a two-ship side view leaves both hulls as specks, so the
+			# shooter is held large and whole with the target whole beyond it. A shot where neither ship reaches 6% of
+			# the frame height is rejected like any other bad shot.
+			if not single:
+				# From behind either end of the line of fire (the shooter's shoulder, then the reverse from behind the
+				# target), so a crowded formation round one of them can fall wholly out of frame.
+				for ends in [[subject, sr, other, 1.0], [other, orr, subject, -1.0]]:
+					var near_p: Vector3 = ends[0]
+					var near_r: float = ends[1]
+					var far_p: Vector3 = ends[2]
+					var fw: Vector3 = fwd * float(ends[3])
+					for sgn in [0.45, -0.45, 1.0, -1.0, 0.15, -0.15, 1.8, -1.8]:
+						for up in [0.35, 0.6, 0.15, 0.9, -0.2]:
+							for dmul in [7.0, 10.0, 14.0, 5.0]:
+								if not _cut_pose.is_empty():
+									continue
+								var side0: Vector3 = fw.cross(Vector3.UP).normalized() * float(sgn)
+								var d0: Vector3 = (-fw + side0 + Vector3.UP * float(up)).normalized()
+								var eye0: Vector3 = near_p + d0 * near_r * float(dmul)
+								var look0: Vector3 = near_p.lerp(far_p, 0.45)
+								if _shot_ok(eye0, look0, subject, sr, other, orr, aspect) and _big_enough(eye0, look0, subject, sr, other, orr, aspect):
+									_cut_pose = [eye0, look0]
+			for elev_deg in [22.0, 35.0, 12.0, 50.0]:
+				for sgn in [1.0, -1.0]:
+					for lean in [-0.3, 0.0, 0.3]:
+						for dk in [1.0, 1.3, 1.7]:
+							if not _cut_pose.is_empty():
+								continue
+							var side: Vector3 = fwd.cross(Vector3.UP).normalized() * float(sgn)
+							var e: float = deg_to_rad(float(elev_deg))
+							var dir: Vector3 = (side * cos(e) + fwd * float(lean) + Vector3.UP * sin(e)).normalized()
+							var r: float = maxf(sr, orr) * 2.0 if single else line.length() * 0.5 + maxf(sr, orr)
+							var dist: float = CameraRig.frame_distance(r, fov, aspect, 1.15) * float(dk)
+							var eye: Vector3 = mid + dir * dist
+							if _shot_ok(eye, mid, subject, sr, other, orr, aspect) and _big_enough(eye, mid, subject, sr, other, orr, aspect):
+								_cut_pose = [eye, mid]
+		if not _cut_pose.is_empty() or not was_tactical:
+			_cut = true
+	if not _cut_pose.is_empty():
+		var drift := (time - _shot_start) * 0.03
+		var e0: Vector3 = _cut_pose[0]
+		var l0: Vector3 = _cut_pose[1]
+		return [l0 + (e0 - l0).rotated(Vector3.UP, drift), l0]
+	if _tactical.is_empty() or time - _tactical_t > 1.0 or time < _tactical_t:
+		_tactical_t = time
+		_tactical = _tactical_pose(aspect, 1.0)
+	return _tactical
+
+
+func _sphere_outside(eye: Vector3, look: Vector3, c: Vector3, r: float, aspect: float) -> bool:
+	var bs := Basis.looking_at(look - eye, Vector3.UP)
+	var v := bs.inverse() * (c - eye)
+	var z := -v.z
+	if z < -r:
+		return true
+	if z <= 0.0:
+		return false
+	var th := tan(deg_to_rad(fov) * 0.5)
+	var ry := r / (z * th)
+	return absf(v.x / (z * th * aspect)) - ry / aspect > 1.0 or absf(v.y / (z * th)) - ry > 1.0
+
+
+func _big_enough(eye: Vector3, look: Vector3, a: Vector3, ar: float, b: Vector3, br: float, aspect: float) -> bool:
+	return maxf(_sphere_fit(eye, look, a, ar, aspect)[1], _sphere_fit(eye, look, b, br, aspect)[1]) >= 0.06
+
+
+## The hull radius of the body nearest p (the director passes hull lengths; the camera fits bounding spheres).
+func _radius_near(p: Vector3, fallback: float) -> float:
+	var best := INF
+	var r := fallback
+	for b in bodies:
+		var d: float = (b.center as Vector3).distance_to(p)
+		if d < best:
+			best = d
+			r = float(b.radius)
+	return r if best < 1.0 else fallback

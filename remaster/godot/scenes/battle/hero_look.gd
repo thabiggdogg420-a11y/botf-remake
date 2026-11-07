@@ -50,6 +50,25 @@ static func slot_for(slots: Array, material_name: String, surface: int) -> Dicti
 	return {}
 
 
+## A glb loaded at runtime brings its images without mipmaps, so a hull seen from afar sampled the full-size texture
+## and its window dots and panel lines aliased into black speckle (R3.5, title close-ups). Builds the mip chain once
+## per texture (cached), compressed-format images are left as they are.
+static var _mipped := {}
+static func mipmapped(t: Texture2D) -> Texture2D:
+	if t == null:
+		return null
+	var id := t.get_instance_id()
+	if _mipped.has(id):
+		return _mipped[id]
+	var out: Texture2D = t
+	var img := t.get_image()
+	if img != null and not img.has_mipmaps() and not img.is_compressed():
+		img.generate_mipmaps()
+		out = ImageTexture.create_from_image(img)
+	_mipped[id] = out
+	return out
+
+
 static func material_for(slot: Dictionary, src: Material, hero: Dictionary, root_dir: String) -> ShaderMaterial:
 	var m := ShaderMaterial.new()
 	var std := src as BaseMaterial3D
@@ -90,20 +109,20 @@ static func material_for(slot: Dictionary, src: Material, hero: Dictionary, root
 		# Godot's glTF import puts BC in albedo, the normal map in normal, metallicRoughness (our ORM image: G
 		# roughness, B metallic, and R occlusion) in roughness / metallic, occlusion in ao, and E in emission.
 		if std.albedo_texture != null:
-			m.set_shader_parameter("bc_tex", std.albedo_texture)
+			m.set_shader_parameter("bc_tex", HeroLook.mipmapped(std.albedo_texture))
 		elif tint == null:
 			var c := std.albedo_color.srgb_to_linear()
 			m.set_shader_parameter("tint", Vector3(c.r, c.g, c.b))
 		if std.normal_enabled and std.normal_texture != null:
-			m.set_shader_parameter("normal_tex", std.normal_texture)
+			m.set_shader_parameter("normal_tex", HeroLook.mipmapped(std.normal_texture))
 			m.set_shader_parameter("has_normal", true)
 		var orm: Texture2D = std.roughness_texture if std.roughness_texture != null else std.metallic_texture
 		if orm == null:
 			orm = std.ao_texture
 		if orm != null:
-			m.set_shader_parameter("orm_tex", orm)
+			m.set_shader_parameter("orm_tex", HeroLook.mipmapped(orm))
 		if std.emission_enabled and std.emission_texture != null:
-			m.set_shader_parameter("emissive_tex", std.emission_texture)
+			m.set_shader_parameter("emissive_tex", HeroLook.mipmapped(std.emission_texture))
 		else:
 			m.set_shader_parameter("emissive_strength", 0.0)
 	return m

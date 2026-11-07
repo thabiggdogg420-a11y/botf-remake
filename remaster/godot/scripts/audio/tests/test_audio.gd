@@ -53,8 +53,17 @@ func _registry() -> void:
 	check(BotfAudioCues.cue_for("victory", "rom", "", "scientific").voice[0] == "vo.victory.scientific.rom", "victory voice by type")
 	check(BotfAudioCues.cue_for("war_declared", "fed", "car").sfx == PackedStringArray(["sfx.alert.red"]), "war declared sounds the red alert")
 	check(BotfAudioCues.cue_for("nonsense").is_empty(), "unknown cue is silent")
-	check(BotfAudioCues.cooldown_for("weapon.x", "Effects") == 0.08 and BotfAudioCues.cooldown_for("sfx.alert.red", "Effects") == 3.0
+	check(BotfAudioCues.cooldown_for("weapon.x", "Effects") == 0.25 and BotfAudioCues.cooldown_for("sfx.alert.red", "Effects") == 3.0
 		and BotfAudioCues.cooldown_for("sfx.ui.click", "Interface") == 0.12 and BotfAudioCues.cooldown_for("vo.x", "Voice") == 4.0, "cooldown table")
+	# Salvo (R3.5): 8 torpedoes in a quarter second play 4 overlapping launches, then the key rests.
+	var sal := BotfCueScheduler.new()
+	var played := 0
+	for k in 8:
+		if sal.request_sfx("weapon.generic.torpedo", "Effects", 3, 1.0 + k * 0.025).play:
+			played += 1
+	check(played == 4, "a torpedo salvo plays as 4 overlapping launches (%d)" % played)
+	var ui := BotfCueScheduler.new()
+	check(ui.request_sfx("sfx.ui.click", "Interface", 1, 1.0).play and not ui.request_sfx("sfx.ui.click", "Interface", 1, 1.01).play, "non-weapon keys still play once per cooldown")
 	check(BotfAudioCues.bus_for_key("vo.advisor.fed") == "Voice" and BotfAudioCues.bus_for_key("sfx.ui.click") == "Interface"
 		and BotfAudioCues.bus_for_key("weapon.a.b") == "Effects" and BotfAudioCues.bus_for_key("mus.botf.all") == "Music", "bus by key family")
 	for ctx in BotfAudioCues.MUSIC:

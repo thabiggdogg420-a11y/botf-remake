@@ -103,8 +103,9 @@ func _stage_environment() -> void:
 	sun.directional_shadow_max_distance = 400.0
 	# Gas giant: large, low on the right, behind the fleet.
 	var planet: MeshInstance3D = env.planet
-	planet.scale = Vector3.ONE * 300.0
-	planet.position = Vector3(470.0, -250.0, -720.0)
+	# True scale (Simon, 8 Nov 2026): the planet is a distant backdrop, never a ball beside the hulls.
+	planet.scale = Vector3.ONE * 1500.0
+	planet.position = Vector3(2900.0, -1500.0, -4200.0)
 	planet.rotation_degrees = Vector3(14.0, 20.0, 12.0)
 	# Paler cream-and-umber bands than the battle's: the backdrop sits behind text and must not shout.
 	var pm := (planet.material_override as ShaderMaterial).duplicate() as ShaderMaterial

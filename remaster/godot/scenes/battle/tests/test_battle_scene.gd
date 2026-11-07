@@ -46,7 +46,7 @@ func _run() -> void:
 					last.erase(fid)
 					continue
 				if last.has(fid):
-					check(s.global_position.distance_to(last[fid]) < BattleScene.CELL * 0.5, "round %d ship %d jumped %.1f units" % [r, fid, s.global_position.distance_to(last[fid])])
+					check(s.global_position.distance_to(last[fid]) < BattleScene.CELL * BattleScene.SPREAD * 0.5, "round %d ship %d jumped %.1f units" % [r, fid, s.global_position.distance_to(last[fid])])
 				last[fid] = s.global_position
 		check(finished.has(r), "round %d finished (frames %d)" % [r, frames])
 		var fires: Array = encounter.rounds[r].events.filter(func(e): return e.kind == "Fire")

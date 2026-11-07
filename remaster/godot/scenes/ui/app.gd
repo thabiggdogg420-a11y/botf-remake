@@ -60,6 +60,8 @@ func _init() -> void:
 func _ready() -> void:
 	set_anchors_preset(Control.PRESET_FULL_RECT)
 	_load_settings()
+	DisplaySettings.fill_defaults(settings)
+	DisplaySettings.apply(settings, get_tree())   # window mode, resolution, vsync, FPS cap, render scale, AA, shadows
 	BotfAudioSystem.attach(self)   # audio: shares settings, listens to screen changes (music, screen cue)
 	core = CoreClient.create("fixture" if forced_backend == "fixture" else "auto")
 	var m: Variant = core.request("meta")
@@ -684,6 +686,16 @@ func close_all_modals() -> void:
 
 func has_modal() -> bool:
 	return not _modals.is_empty()
+
+## Quits the program (title Quit, menu Quit game). Tests set quit_hook to observe it instead.
+var quit_hook: Callable
+func quit_game() -> void:
+	if quit_hook.is_valid():
+		quit_hook.call()
+		return
+	if settings.get("autosave", true) and not view.is_empty():
+		save_game("Autosave")
+	get_tree().quit()
 
 ## Named overlays: briefing, events, victory, end, menu, settings, help.
 func open_overlay(kind: String) -> Control:

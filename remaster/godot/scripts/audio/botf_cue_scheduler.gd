@@ -10,6 +10,7 @@ var max_voice_queue := 4
 var voice_gap := 0.6
 var voice_timeout := 6.0
 var history_seconds := 10.0
+var salvo_voices := 4
 
 var _played: Array = []     ## [{key, at}] recent plays, for cooldowns
 var _sfx: Array = []        ## [{handle, priority, at}]
@@ -131,7 +132,12 @@ func _prune(now: float, max_seconds := 12.0) -> void:
 func _off_cooldown(key: String, bus: String, now: float) -> bool:
 	var cd := BotfAudioCues.cooldown_for(key, bus)
 	_played = _played.filter(func(p): return now - p.at <= history_seconds)
+	# Salvos (R3.5, Simon: "no sounds for weapons"): a weapon or impact key may overlap itself up to salvo_voices
+	# times inside its cooldown, so 8 torpedoes from a broadside sound as a ripple, not one blip. Other keys still
+	# play once per cooldown.
+	var allowed := salvo_voices if (key.begins_with("weapon.") or key.begins_with("sfx.shield") or key.begins_with("sfx.explosion")) else 1
+	var recent := 0
 	for p in _played:
 		if p.key == key and now - p.at < cd:
-			return false
-	return true
+			recent += 1
+	return recent < allowed

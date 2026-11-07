@@ -74,7 +74,7 @@ func _run() -> void:
 		await _wait(10)
 		_report_fps(s)
 		var img := root.get_viewport().get_texture().get_image()
-		if s == "battle-closeup" and app._current != null and app._current.get("host") != null and app._current.host.view_node != null:
+		if (s == "battle-closeup" or (s.begins_with("battle-volley") or s.begins_with("battle-strip") or s == "battle-campaign")) and app._current != null and app._current.get("host") != null and app._current.host.view_node != null:
 			img = app._current.host.view_node.get_viewport().get_texture().get_image() # the 3D view alone, no panels
 		# Committed screenshots are kept small: 960x540.
 		if OS.get_environment("SHOT_FULL") == "":
@@ -193,6 +193,59 @@ func _prepare(s: String) -> void:
 					push_warning("battle-closeup: no ship of class %s in the battle" % want)
 			if s != "battle-closeup":
 				await _wait(int(OS.get_environment("SHOT_BATTLE_FRAMES")) if OS.get_environment("SHOT_BATTLE_FRAMES") != "" else 120)
+		"battle-volley", "battle-volley-close", "battle-campaign":
+			# Mid-volley: the starbase drill (SHOT_DRILL_SHIPS a side) plays a round until the most weapon jobs are in
+			# flight, then holds that instant. -close parks the free camera beside a ship that is firing.
+			await _volley_drill(s == "battle-campaign")
+			var view: Node = app._current.host.view_node
+			var cam: BattleCamera = view.camera
+			if s == "battle-volley-close":
+				var shot := _live_shot(view)
+				var shooter: BattleShip = view.ship_node(int(shot.get("fleet_id", 0))) if not shot.is_empty() else null
+				if shooter != null:
+					var target: BattleShip = view.ship_node(int(shot.get("target_fleet_id", 0)))
+					cam.detach_to_free_cam()
+					cam.free_distance = maxf(shooter.length * 2.2, 10.0)
+					cam.add_orbit(-30.0, -6.0)
+					for n in 20:
+						var focus: Vector3 = shooter.global_position
+						if target != null:
+							focus = focus.lerp(target.global_position, 0.25)
+						cam.free_focus = focus
+						cam.transition = 0.0
+						cam.snap()
+						await _wait(1)
+			await _wait(6)
+			print("VOLLEY ", s, ": ", _volley_count(view), " weapon jobs live at t=", snappedf(view.time, 0.01))
+			if OS.get_environment("SHOT_FXDEBUG") != "":
+				var fx: BattleFx = view.fx
+				print("FXDBG active=", fx._active.size(), " children=", fx.get_child_count(), " cam=", view.camera.global_position)
+				for k in fx._active:
+					var j: Dictionary = view.timeline.jobs[k]
+					var nodes: Array = fx._active[k].nodes
+					for nd in nodes:
+						if nd is Node3D and is_instance_valid(nd):
+							var extra = nd.get_instance_shader_parameter("beam_intensity") if nd is GeometryInstance3D else null
+							print("  job ", k, " kind ", j.kind, " u ", snappedf((view.time - j.start) / j.duration, 0.01), " ", nd.global_position, " scale ", nd.global_basis.get_scale(), " vis ", nd.is_visible_in_tree(), " bi ", extra)
+		"battle-strip", "battle-strip-close":
+			# Motion check: 10 frames 0.25 s of round time apart around the busiest volley, saved from the 3D view as
+			# ui-<shot>-NN.png (the final ui-<shot>.png is the last frame). -close holds a free camera near a shooter.
+			await _volley_drill(OS.get_environment("SHOT_CAMPAIGN") != "")
+			var view: Node = app._current.host.view_node
+			var cam: BattleCamera = view.camera
+			var t0: float = maxf(0.0, view.time - 1.25)
+			var shot := _live_shot(view)
+			view.force_cutaway = s == "battle-strip-close"
+			view.seek(t0)
+			# -close: the director's own two-ship framing of the busiest beam exchange (no free camera).
+			view.playback_speed = 1.0
+			for k in 10:
+				while view.time < t0 + 0.25 * k:
+					await _wait(1)
+				var im: Image = view.get_viewport().get_texture().get_image()
+				im.resize(640, 360, Image.INTERPOLATE_LANCZOS)
+				im.save_png("%s/ui-%s-%02d.png" % [out_dir, s, k])
+			print("STRIP ", s, " t ", snappedf(t0, 0.01), " .. ", snappedf(view.time, 0.01), " mode ", cam.mode, " director ", view.director.kind, " subj ", view.director.subject, " playing ", view.is_playing())
 		"galaxy-open":
 			app.view = {}
 			_campaign()
@@ -232,3 +285,128 @@ func _prepare(s: String) -> void:
 		_:
 			_campaign()
 			app.goto(s)
+
+
+## Starts the starbase drill (or, with campaign=true, plays the reference campaign until a battle), takes command,
+## resolves rounds until one has weapon fire, and holds playback at that round's busiest instant.
+func _volley_drill(campaign := false) -> void:
+	if campaign:
+		app.view = {}
+		# A small, crowded quadrant: empires meet within a few turns (a real campaign contact, not a drill).
+		app.start_campaign({"faction": 1, "seed": 424242, "era": 3, "ruleset": "reference", "width": 10, "height": 8, "systems": 14, "preset": "remastered", "events": true, "aiAggression": true})
+		var st := ""
+		for n in 80:
+			_force_contact()
+			st = app.end_turn()
+			if OS.get_environment("SHOT_FXDEBUG") != "" and n % 5 == 0:
+				var e0: Dictionary = app.view.get("empires", [{}])[0] if app.view.get("empires", []).size() > 0 else {}
+				print("TURN ", n, " st=", st, " contacts=", app.view.get("contacts", []).size(), " battles=", app.view.get("battles", []).size(), " fleets=", app.view.get("fleets", []).map(func(f): return [f.x, f.y]), " empire0=", str(e0).left(300))
+			await _wait(1)
+			if st == "battle":
+				break
+			app.close_all_modals()
+		print("CAMPAIGN battle status=", st, " turn=", app.view.get("meta", {}).get("turn", 0))
+	else:
+		var drill := {"station": true}
+		if OS.get_environment("SHOT_DRILL_SHIPS") != "":
+			drill["ships"] = int(OS.get_environment("SHOT_DRILL_SHIPS"))
+		app.start_drill("newBattleDrill", "Starbase drill", drill)
+		app.end_turn()
+	await _wait(4)
+	app.close_all_modals()
+	var view: Node = app._current.host.view_node
+	var best := -1
+	var best_t := 0.0
+	var best_end := 0.0
+	for r in 8:
+		if app.encounter.get("finished", false):
+			break
+		app._current._round()
+		await _wait(4)
+		if view.timeline == null:
+			continue
+		var want_beam := OS.get_environment("SHOT_WANT_BEAM") != "" and r < 7
+		var has_beam := false
+		for j in view.timeline.jobs:
+			has_beam = has_beam or j.kind in [BattleTimeline.Job.BEAM, BattleTimeline.Job.PULSE]
+		if want_beam and not has_beam:
+			continue
+		best = -1
+		for k in 120:
+			var t: float = view.timeline.round_seconds * k / 120.0
+			var n := 0
+			for j in view.timeline.jobs:
+				if j.kind in [BattleTimeline.Job.BEAM, BattleTimeline.Job.PULSE, BattleTimeline.Job.TORPEDO] and t >= j.start + 0.25 * j.duration and t <= j.start + 0.7 * j.duration:
+					n += (20 if OS.get_environment("SHOT_WANT_BEAM") != "" else 3) if j.kind == BattleTimeline.Job.BEAM else 1
+			if n > best:
+				best = n
+				best_t = t
+				best_end = t
+			elif n == best:
+				best_end = t
+		if best > 0:
+			var kinds := {}
+			for j in view.timeline.jobs:
+				kinds[BattleTimeline.JOB_NAMES[j.kind]] = kinds.get(BattleTimeline.JOB_NAMES[j.kind], 0) + 1
+			print("VOLLEY round ", r + 1, " jobs ", kinds, " best ", best, " at ", best_t, "-", best_end)
+			if OS.get_environment("SHOT_FXDEBUG") != "":
+				for j in view.timeline.jobs:
+					if j.kind == BattleTimeline.Job.BEAM:
+						print("  beam start ", snappedf(j.start, 0.01), " dur ", snappedf(j.duration, 0.01))
+			best_t = lerpf(best_t, best_end, 0.5) # mid-volley: shots in flight, not just leaving the hull
+			break
+	var guard := 0
+	while view.time < best_t - 0.4 and guard < 2000:
+		guard += 1
+		await _wait(1)
+	view.playback_speed = 0.0
+	view.seek(best_t)
+	await _wait(2)
+
+func _volley_count(view: Node) -> int:
+	var n := 0
+	for j in view.timeline.jobs:
+		if j.kind in [BattleTimeline.Job.BEAM, BattleTimeline.Job.PULSE, BattleTimeline.Job.TORPEDO] and view.time >= j.start and view.time <= j.start + j.duration:
+			n += 1
+	return n
+
+func _live_shot(view: Node) -> Dictionary:
+	for j in view.timeline.jobs:
+		if j.kind in [BattleTimeline.Job.BEAM, BattleTimeline.Job.PULSE] and view.time >= j.start + j.duration * 0.15 and view.time <= j.start + j.duration * 0.7:
+			return j
+	return {}
+
+
+## Campaign proof route: send every fleet of the player toward the nearest system another empire owns (or, with no
+## foreign system known, the far side of the map), so a real campaign contact happens within a few dozen turns.
+func _force_contact() -> void:
+	var me := app.player()
+	# At war with every empire we have met, so a meeting is a battle (BOTF powers start at peace).
+	for e in app.view.get("empires", []):
+		var id := int(e.get("empire", e.get("id", 0)))
+		if e.get("atWar", false) or not e.get("contact", false):
+			continue
+		if id != 0 and id != me and id <= 5:
+			app.core.invoke("submit", {"command": {"type": "DeclareWar", "targetEmpire": id}, "cancelIds": []})
+	var fleets: Array = app.view.get("fleets", [])
+	var targets := []
+	for c in app.view.get("contacts", []):
+		targets.append(Vector2i(int(c.get("x", 0)), int(c.get("y", 0))))
+	for sy in app.view.get("systems", []):
+		var o := int(sy.get("owner", 0))
+		if o != 0 and o != me:
+			targets.append(Vector2i(int(sy.get("x", 0)), int(sy.get("y", 0))))
+	for f in fleets:
+		if int(f.get("owner", me)) != me:
+			continue
+		var at := Vector2i(int(f.get("x", 0)), int(f.get("y", 0)))
+		var best := Vector2i(app.width() - 1 - at.x, at.y)
+		var bd := INF
+		for t in targets:
+			var d := Vector2(t - at).length()
+			if d < bd:
+				bd = d
+				best = t
+		var r: Dictionary = app.core.invoke("submit", {"command": {"type": "MoveFleet", "fleetId": int(f.get("id", 0)), "targetX": best.x, "targetY": best.y}, "cancelIds": []})
+		if not r.get("ok", false) and OS.get_environment("SHOT_FXDEBUG") != "":
+			print("move refused: ", r.get("error", ""))

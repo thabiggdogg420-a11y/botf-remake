@@ -38,9 +38,9 @@ class Config:
 	var beam_emitter_stagger_ticks := 0.08
 	var pulse_stagger_ticks := 0.16
 	var pulse_flight_ticks := 0.35
-	var min_torpedo_flight_ticks := 0.6
+	var min_torpedo_flight_ticks := 1.6 ## R3.5: 0.6 crossed the arena in 0.3 s, too fast to follow
 	var torpedo_stagger_ticks := 0.1
-	var torpedo_arc_cells := 0.35
+	var torpedo_arc_cells := 0.12 ## R3.5: a slight curve, not a lob
 	var miss_overshoot_cells := 2.5
 	var intercept_fraction := 0.78
 	var impact_ticks := 0.6
@@ -56,8 +56,8 @@ class Config:
 	var capital_height_spread := 0.45
 	var small_height_spread := 1.5
 	var side_height_offset := 0.3    ## The first side holds a little above the plane, the other below.
-	var capital_climb_cells := 0.3   ## Height change per maneuver around the ship's home height.
-	var small_climb_cells := 1.1
+	var capital_climb_cells := 0.0   ## Height change per maneuver around the home height: capital ships hold altitude (R3.5).
+	var small_climb_cells := 0.35   ## Escorts change level a little, nose pitched with the climb.
 	var max_pitch_degrees := 32.0
 	var small_bank_scale := 1.6      ## Small craft roll hard into turns; capital ships lumber.
 	var capital_bank_scale := 0.7
@@ -369,10 +369,13 @@ static func spacing_offsets(bodies: Array, iterations := 10, vertical_bias := 2.
 	return off
 
 
-## Station-keeping between maneuvers (presentation only). A ship holding position still lives: it bobs, rolls and
-## nods a little, small craft more than capital ships, each on its own phase. The motion fades in and out over
-## fade_seconds at every maneuver edge and at the round's start and end, so poses at those instants are untouched and
-## rounds join seamlessly. Returns Vector3(altitude cells, bank degrees, pitch degrees), added on top of pose_of.
+## Station-keeping between maneuvers (presentation only). Simon, 8 Nov 2026: "the ships bob up and down like boats".
+## A ship holding position keeps a steady heading and altitude: no roll, no nodding, only a slow, barely visible
+## altitude drift (at most IDLE_DRIFT_CELLS, about a third of a world unit, on a 9-11 s period), each on its own phase.
+## Banking happens only in turns (Segment.bank_peak). The drift fades in and out over fade_seconds at every maneuver
+## edge and at the round's start and end, so poses at those instants are untouched and rounds join seamlessly.
+## Returns Vector3(altitude cells, bank degrees, pitch degrees), added on top of pose_of; bank and pitch are always 0.
+const IDLE_DRIFT_CELLS := 0.012
 static func station_keeping(s: ShipTrack, t: float, round_secs: float, fade_seconds := 0.6) -> Vector3:
 	if t <= 0.0 or t >= round_secs:
 		return Vector3.ZERO
@@ -383,10 +386,8 @@ static func station_keeping(s: ShipTrack, t: float, round_secs: float, fade_seco
 		edge = minf(edge, minf(absf(t - seg.t0), absf(t - seg.t1)))
 	var env := smoothstep01(edge / maxf(1e-6, fade_seconds))
 	var phase := unit_hash(s.fleet_id, 7) * TAU
-	var amp := 1.0 if s.small_craft else 0.4
-	return Vector3(env * amp * 0.12 * sin(TAU * t / 3.4 + phase),
-		env * amp * 6.0 * sin(TAU * t / 4.1 + phase * 1.7),
-		env * amp * 2.5 * sin(TAU * t / 2.9 + phase * 0.6))
+	var period := 9.0 + 2.0 * unit_hash(s.fleet_id, 8)
+	return Vector3(env * IDLE_DRIFT_CELLS * sin(TAU * t / period + phase), 0.0, 0.0)
 
 
 # ------------------------------------------------------------------------------------------------------------------
@@ -767,7 +768,8 @@ static func build(events: Array, info: Array, cfg: Config = null) -> BattleTimel
 							j.duration = flight
 						add_job.call(j, i)
 						impact_time = maxf(impact_time, j.start + flight)
-					add_sound.call(t0, "TorpedoLaunch", keys, 3, i)
+						# One launch sound per tube, on its own stagger: the salvo ripples (R3.5).
+						add_sound.call(j.start, "TorpedoLaunch", keys, 3, i)
 					if cfg.player_empire > 0 and owner == cfg.player_empire and not ctx.torpedo_barked:
 						tl.barks.append({"time": t0, "detail": "torpedo", "priority": 3, "fleet_id": fid})
 						ctx.torpedo_barked = true
@@ -831,6 +833,8 @@ static func build(events: Array, info: Array, cfg: Config = null) -> BattleTimel
 				var j := new_job(Job.DISENGAGE, t0, maxi(1, cfg.move_end_tick) * tk)
 				j.fleet_id = fid; j.color = Color(0.7, 0.85, 1.0)
 				add_job.call(j, i)
+				# The ship leaves the fight: its warp-out sounds as it goes (R3.5: the job had no cue).
+				add_sound.call(t0 + j.duration * 0.85, "Disengage", cue_keys("Retreat", 0), CUE_PRIORITY.Retreat, i)
 			"Truce":
 				add_job.call(new_job(Job.TRUCE, t0, tk), i)
 
@@ -965,6 +969,9 @@ class Director:
 	var other := 0
 	var since := 0.0
 	var kind := -1 ## Job kind that motivated the current shot (not in the C++ director; -1 = none).
+	## fleet_id -> 0..3, how far a ship sits on the outside of its formation (set by the scene). Among equally
+	## interesting jobs the director prefers an outside shooter: a clean cutaway angle exists for it.
+	var outer := {}
 
 	func reset() -> void:
 		subject = 0; other = 0; since = 0.0; kind = -1
@@ -978,7 +985,7 @@ class Director:
 				break
 			if t > j.start + j.duration or j.fleet_id == 0:
 				continue
-			var score := BattleTimeline.job_interest(j.kind) * 4
+			var score := BattleTimeline.job_interest(j.kind) * 4 + int(outer.get(j.fleet_id, 0))
 			if preferred != 0 and (j.fleet_id == preferred or j.target_fleet_id == preferred):
 				score += 2
 			if score > best_score:

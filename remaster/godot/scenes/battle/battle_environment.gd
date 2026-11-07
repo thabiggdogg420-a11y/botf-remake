@@ -24,7 +24,7 @@ static func build(parent: Node3D, arena_size: Vector2) -> Dictionary:
 	env.reflected_light_source = Environment.REFLECTION_SOURCE_SKY
 	env.tonemap_mode = Environment.TONE_MAPPER_ACES
 	env.tonemap_exposure = 1.0
-	env.tonemap_white = 6.0
+	env.tonemap_white = 8.0
 	env.glow_enabled = true
 	env.glow_normalized = false
 	env.set_glow_level(0, 0.0)
@@ -34,12 +34,12 @@ static func build(parent: Node3D, arena_size: Vector2) -> Dictionary:
 	env.set_glow_level(4, 0.6)
 	env.set_glow_level(5, 0.5)
 	env.set_glow_level(6, 0.3)
-	env.glow_intensity = 0.55
+	env.glow_intensity = 0.4 # R3.5: clamped so stacked fire never whites out the frame
 	env.glow_strength = 1.0
 	env.glow_bloom = 0.0
 	env.glow_blend_mode = Environment.GLOW_BLEND_MODE_SCREEN
-	env.glow_hdr_threshold = 1.4
-	env.glow_hdr_scale = 2.0
+	env.glow_hdr_threshold = 1.8
+	env.glow_hdr_scale = 1.2
 	env.volumetric_fog_enabled = true
 	env.volumetric_fog_density = 0.0
 	env.volumetric_fog_albedo = Color(0.6, 0.55, 0.8)
@@ -60,8 +60,12 @@ static func build(parent: Node3D, arena_size: Vector2) -> Dictionary:
 	sun.name = "Sun"
 	sun.light_color = Color(1.0, 0.93, 0.82)
 	sun.light_energy = 2.6
-	sun.shadow_enabled = true
+	sun.shadow_enabled = DisplaySettings.shadows_enabled # Settings > Shadow quality: Off
 	sun.directional_shadow_max_distance = 320.0
+	# R3.5: the default biases left shadow acne as black speckle over the hero hulls (title close-ups).
+	sun.shadow_bias = 0.08
+	sun.shadow_normal_bias = 2.5
+	sun.shadow_blur = 1.5
 	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
 	sun.light_angular_distance = 0.6
 	parent.add_child(sun)
@@ -89,8 +93,10 @@ static func build(parent: Node3D, arena_size: Vector2) -> Dictionary:
 	pm.shader = PLANET_SHADER
 	planet.material_override = pm
 	planet.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	planet.scale = Vector3.ONE * 520.0
-	planet.position = Vector3(380.0, -520.0, -900.0)
+	# True scale (Simon, 8 Nov 2026: "the ships look huge compared to the nearby planet"): a gas giant is tens of
+	# thousands of km across, so it is a backdrop, pushed far beyond the arena where it never sits beside a hull.
+	planet.scale = Vector3.ONE * 700.0
+	planet.position = Vector3(-2600.0, -350.0, -4600.0) # level with the arena, far behind it: off the downward views
 	planet.rotation_degrees = Vector3(12.0, 30.0, 18.0)
 	parent.add_child(planet)
 	out.planet = planet

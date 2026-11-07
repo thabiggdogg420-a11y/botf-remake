@@ -19,8 +19,12 @@ signal ship_picked(ship_id: int) ## A ship clicked in the view (BattleCamera); t
 ## World units per tactical cell. Ships are drawn at true scale against it (BattleShip.display_length): Unreal's
 ## CellUnits doubled to 170 with the true-scale hulls, so this doubled from 14 with them (a Galaxy spans 1.3 cells).
 const CELL := 28.0
+## Presentation spread (Simon, 8 Nov 2026: "the battle should be a little more spread out"): grid positions and heights
+## are drawn this many times further apart than a cell while hulls keep their true-scale length against CELL, so ships
+## sit several lengths apart and the engagement range reads. Rules positions are untouched.
+const SPREAD := 1.3
 const SPACING_EASE := 2.5       ## 1/s: how fast the presentation spacing offsets relax toward a smaller target.
-const SPACING_PUSH_EASE := 12.0 ## 1/s: how fast they grow when hulls close in (no ship passes through another).
+const SPACING_PUSH_EASE := 5.0  ## 1/s: how fast they grow when hulls close in (12 heaved hulls up and down; R3.5).
 ## Each round's timeline starts a ship at its home height, and a wing joined at the round start puts it on station;
 ## the pose it was last shown at eases into the new one over this long, so nothing jumps between rounds.
 const ROUND_JOIN_SECONDS := 1.5
@@ -56,6 +60,7 @@ var _prewarmed := false
 var _spacing_clock := 0.0
 var _spacing_cache: Array[Vector3] = []
 var _ship_jobs := {}             ## fleet_id -> the round's cloak/decloak/explosion/warp jobs for that ship
+var force_cutaway := false      ## Tools: offer the director's cutaway every round (the close-up strip).
 var _shown := {}                 ## fleet_id -> Pose the ship was last shown at (before spacing and station-keeping)
 var _carry := {}                 ## fleet_id -> Vector4(x, y, altitude, facing) eased out at the start of the round
 
@@ -156,7 +161,7 @@ func ship_node(fleet_id: int) -> BattleShip:
 
 
 func cell_to_world(x: float, y: float, altitude := 0.0) -> Vector3:
-	return Vector3((x - _arena.x * 0.5 + 0.5) * CELL, altitude * CELL, (y - _arena.y * 0.5 + 0.5) * CELL)
+	return Vector3((x - _arena.x * 0.5 + 0.5) * CELL, altitude * CELL, (y - _arena.y * 0.5 + 0.5) * CELL) * SPREAD
 
 
 ## Ship orientation for a pose: yaw (facing 0 = +x, 90 = +z), then pitch (nose up +) about the ship's starboard axis,
@@ -245,7 +250,7 @@ func _update_spacing(t: float, delta: float, poses: Dictionary) -> void:
 		var active := ship != null and p != null and track.visibility_at(t) > 0.05
 		# Bounding spheres of flat hulls may overlap a little (ABotfCombatScene: 0.75 of the radius).
 		bodies.append({"x": p.x if active else 0.0, "y": p.y if active else 0.0, "alt": p.altitude if active else 0.0,
-			"radius": 0.75 * ship.half_extents.length() / CELL if active else 0.0, "active": active})
+			"radius": 0.75 * ship.half_extents.length() / (CELL * SPREAD) if active else 0.0, "active": active})
 		tracks.append(track)
 	# The relaxation is the dearest per-frame job at 24 v 24, and the offsets only drift slowly: solve it at 20 Hz and
 	# ease every frame (a zero-length step, the first frame of a round or a seek, always solves).
@@ -263,7 +268,7 @@ func _update_spacing(t: float, delta: float, poses: Dictionary) -> void:
 			continue
 		var ship: BattleShip = _ships[tracks[k].fleet_id]
 		var o: Vector3 = offsets[k] * formation_spread
-		var target := Vector3(o.x, o.z, o.y) * CELL # plane x -> world x, altitude -> y, plane y -> z
+		var target := Vector3(o.x, o.z, o.y) * CELL * SPREAD # plane x -> world x, altitude -> y, plane y -> z
 		var rate := push if target.length() > ship.spacing.length() + 0.01 else ease
 		ship.spacing = ship.spacing.lerp(target, 0.0 if delta <= 0.0 and ship.spacing != Vector3.ZERO else rate)
 
@@ -273,7 +278,7 @@ func _fire_cues() -> void:
 		var s: Dictionary = timeline.sounds[_sound_i]
 		_sound_i += 1
 		var ev: Dictionary = encounter.rounds[round_index].events[s.event_index] if s.event_index >= 0 else {}
-		_emit_cue(s.keys, s.priority, int(ev.get("fleetId", 0)))
+		_emit_cue(s.keys, s.priority, int(ev.get("fleetId", 0)), str(s.get("cue", "")))
 	while _bark_i < timeline.barks.size() and timeline.barks[_bark_i].time <= time:
 		var b: Dictionary = timeline.barks[_bark_i]
 		_bark_i += 1
@@ -286,10 +291,22 @@ func _fire_cues() -> void:
 			_emit_cue(keys, b.priority, b.fleet_id)
 
 
-func _emit_cue(keys: PackedStringArray, priority: int, fleet_id: int) -> void:
+## Event-to-cue trace for proof runs ($BOTF_CUE_TRACE=1): one "CUE" line per cue with the round time, the event
+## kind, the most specific key, the key and file that resolved, and what played ("" = dropped or silent).
+var cue_trace := OS.get_environment("BOTF_CUE_TRACE") != ""
+
+func _emit_cue(keys: PackedStringArray, priority: int, fleet_id: int, event := "bark") -> void:
 	cue.emit(keys[0], keys, priority, fleet_id)
+	var played := ""
 	if play_audio and audio != null:
-		audio.play(keys, priority)
+		played = audio.play(keys, priority)
+	if cue_trace:
+		var file := ""
+		if BotfAudioSystem.instance != null:
+			var r: Dictionary = BotfAudioSystem.instance.library.resolve_files(keys, assets)
+			if not r.is_empty():
+				file = "%s -> %s" % [r.key, str(r.files[0]).get_file() if r.files.size() > 0 else "?"]
+		print("CUE t=%.2f round=%d event=%s key=%s file=%s played=%s" % [time, round_index, event, keys[0], file if file != "" else "(none: generated tone)", played])
 
 
 func _apply(t: float, delta: float) -> void:
@@ -379,6 +396,7 @@ func set_selection(ship: int, target: int) -> void:
 func _update_camera(t: float, delta: float, centroid: Vector3, spread: float) -> void:
 	if camera == null:
 		return
+	director.outer = _outer_scores()
 	director.update(timeline, t)
 	var me := _player_empire()
 	var by_id := {}
@@ -421,8 +439,34 @@ func _update_camera(t: float, delta: float, centroid: Vector3, spread: float) ->
 	var shot := {"key": "wide_%d" % round_index, "kind": -1, "centroid": centroid, "spread": spread}
 	var subject: BattleShip = _ships.get(director.subject)
 	var other: BattleShip = _ships.get(director.other)
-	if subject != null and (_playing or not _finished_sent):
+	# Cutaways are occasional (coordinator, 8 Nov): about one round in four, or a kill; otherwise the tactical view.
+	var cutaway_round := force_cutaway or round_index % 4 == 2 or director.kind == BattleTimeline.Job.EXPLOSION
+	if subject != null and cutaway_round and (_playing or not _finished_sent):
 		shot = {"key": "%d_%d_%d_%.2f" % [round_index, director.subject, director.other, director.since],
 			"kind": director.kind, "subject": subject.global_position, "subject_size": subject.length,
-			"other": other.global_position if other != null else centroid, "centroid": centroid, "spread": spread}
+			"other": other.global_position if other != null else centroid, "other_size": other.length if other != null else subject.length, "centroid": centroid, "spread": spread}
 	camera.film(delta, t, bodies, chase, shot)
+
+
+## fleet_id -> 0..3: distance from the ship's own side's centre, as a share of that side's widest member.
+func _outer_scores() -> Dictionary:
+	var sums := {}
+	for fid in _ships:
+		var sh: BattleShip = _ships[fid]
+		var k: int = sh.owner_id
+		if not sums.has(k):
+			sums[k] = [Vector3.ZERO, 0]
+		sums[k][0] += sh.global_position
+		sums[k][1] += 1
+	var far := {}
+	var dist := {}
+	for fid in _ships:
+		var sh: BattleShip = _ships[fid]
+		var c: Vector3 = sums[sh.owner_id][0] / float(sums[sh.owner_id][1])
+		dist[fid] = sh.global_position.distance_to(c)
+		far[sh.owner_id] = maxf(far.get(sh.owner_id, 0.0), dist[fid])
+	var out := {}
+	for fid in _ships:
+		var sh: BattleShip = _ships[fid]
+		out[fid] = int(round(3.0 * dist[fid] / maxf(1e-3, far[sh.owner_id])))
+	return out

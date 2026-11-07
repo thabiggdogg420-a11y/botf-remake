@@ -57,6 +57,13 @@ func _draw() -> void:
 		if large and not key:
 			continue
 		var alpha := 0.95 if key else remap(clampf(r, 14.0, 110.0), 14.0, 110.0, 0.75, 0.16)
+		# R3.5: at 24 v 24 a bracket on every hull drew a red fence over the enemy line; in a crowd only the selected,
+		# targeted and hovered ships get brackets, the rest a faint pip.
+		var crowded: bool = camera.bodies.size() > 12
+		if crowded and not key:
+			var pip := Color(base, 0.45)
+			draw_circle(c, 2.2, pip)
+			continue
 		var col := Color(base.lightened(0.15 if key else 0.0), alpha)
 		var h := minf(r * 0.55, size.y * 0.2) if large else maxf(r * 1.08, 9.0)
 		var l := clampf(h * 0.32, 4.0, 22.0)
@@ -71,14 +78,13 @@ func _draw() -> void:
 			var d := 3.5
 			draw_polyline(PackedVector2Array([c + Vector2(0, -d), c + Vector2(d, 0), c + Vector2(0, d), c + Vector2(-d, 0), c + Vector2(0, -d)]), col, 1.6, true)
 		# Selection and target rings.
-		var ring := maxf(h * 1.32, 14.0)
+		var ring := maxf(h * 1.08, 12.0) # R3.5: subtle, close to the hull, never a hoop that hides it
 		if sel:
-			draw_arc(c, ring + 1.5 * sin(t * 4.0), 0, TAU, 48, Color(selected_color(), 0.85), 1.6, true)
+			draw_arc(c, ring, 0, TAU, 48, Color(selected_color(), 0.35), 1.0, true)
 		if tgt:
-			draw_arc(c, ring, 0, TAU, 48, Color(target_color(), 0.9), 1.6, true)
-			for k in 4: # reticle ticks
+			for k in 4: # reticle ticks only: the ring itself hid small targets
 				var dir := Vector2.from_angle(k * PI * 0.5 + PI * 0.25)
-				draw_line(c + dir * (ring - 4.0), c + dir * (ring + 6.0), Color(target_color(), 0.9), 1.6, true)
+				draw_line(c + dir * (ring - 2.0), c + dir * (ring + 6.0), Color(target_color(), 0.75), 1.4, true)
 		if not key:
 			continue
 		# Name above the bracket, bars below it.
