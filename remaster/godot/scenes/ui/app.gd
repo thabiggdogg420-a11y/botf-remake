@@ -40,7 +40,7 @@ var selection := {"cell": -1, "systemId": 0, "fleetId": 0, "taskForceId": 0}
 var briefing: Variant = null
 var encounter: Variant = null
 var save_name := ""
-var settings := {"uiScale": 1.0, "colorblind": false, "reducedMotion": false, "autosave": true, "confirmEndTurn": false, "volume": 0.7, "showGrid": true}
+var settings := {"uiScale": 1.0, "colorblind": false, "reducedMotion": false, "autosave": true, "confirmEndTurn": false, "showGrid": true}  ## plus vol_* (BotfAudioMix)
 var map_layers := {"territory": true, "supply": true, "routes": true, "trade": true, "grid": true, "labels": true, "fog": true}
 
 var _background: ColorRect
@@ -60,6 +60,7 @@ func _init() -> void:
 func _ready() -> void:
 	set_anchors_preset(Control.PRESET_FULL_RECT)
 	_load_settings()
+	BotfAudioSystem.attach(self)   # audio: shares settings, listens to screen changes (music, screen cue)
 	core = CoreClient.create("fixture" if forced_backend == "fixture" else "auto")
 	var m: Variant = core.request("meta")
 	meta = m if m is Dictionary else {}
@@ -487,6 +488,7 @@ func request_end_turn() -> void:
 	if EndTurnCheck.should_prompt(self, check):
 		EndTurnCheck.open(self, check)
 		return
+	BotfAudioSystem.cue_now("end_turn")
 	end_turn()
 
 ## Shows the end-turn check without ending the turn (what the turn will do, and what is left idle).
@@ -507,10 +509,12 @@ func end_turn() -> String:
 		var e: Variant = core.request("tactical")
 		encounter = e
 		goto("combat")
+		BotfAudioSystem.on_battle_joined()
 		toast("Battle joined. Issue maneuvers or let the tactical AI command.", "warn")
 		return "battle"
 	briefing = res.get("briefing")
 	refresh()
+	BotfAudioSystem.on_turn_briefing(briefing, view)
 	if screen == "combat":
 		goto("galaxy", false)
 	autosave()
@@ -642,6 +646,7 @@ func open_modal(content: Control, title: String = "", min_size: Vector2 = Vector
 	host.add_child(content)
 	_overlay.add_child(backdrop)
 	_modals.append(backdrop)
+	BotfAudioSystem.cue_now("ui_open")
 	backdrop.gui_input.connect(func(ev):
 		if ev is InputEventMouseButton and ev.pressed and ev.button_index == MOUSE_BUTTON_LEFT:
 			close_modal(backdrop))

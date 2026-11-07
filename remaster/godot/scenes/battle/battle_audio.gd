@@ -1,8 +1,11 @@
 class_name BattleAudio
 extends Node
-## Plays BattleScene cues: the first key with a local file (BattleAssets), else a short generated tone for sfx and
-## weapon cues when `generated_tones` is on. Voice barks (vo.*) play only from files. Up to `voices` sounds at
-## once; the lowest priority is dropped first, and a key repeats at most every `repeat_gap` seconds.
+## Plays BattleScene cues. With the BotfAudio autoload present (always, in the game) every cue goes through it:
+## the cue scheduler (cooldowns, voice queue), the Effects and Voice buses, ducking, and local files or generated
+## tones. Without it (a scene run on its own) the old local path below plays: the first key with a local file
+## (BattleAssets), else a short generated tone for sfx and weapon cues when `generated_tones` is on. Voice barks
+## (vo.*) play only from files. Up to `voices` sounds at once; the lowest priority is dropped first, and a key
+## repeats at most every `repeat_gap` seconds.
 
 @export var generated_tones := true
 @export var voices := 16
@@ -19,6 +22,8 @@ const RATE := 22050
 
 
 func _ready() -> void:
+	if BotfAudioSystem.instance != null:
+		return   # the autoload plays everything; no local pool needed
 	for i in voices:
 		var p := AudioStreamPlayer.new()
 		p.volume_db = volume_db
@@ -28,7 +33,11 @@ func _ready() -> void:
 
 ## Plays a cue. keys are tried in order; returns the key that played ("" when nothing).
 func play(keys: PackedStringArray, priority := 1) -> String:
-	if keys.is_empty() or _players.is_empty():
+	if keys.is_empty():
+		return ""
+	if BotfAudioSystem.instance != null:
+		return BotfAudioSystem.instance.play_keys(keys, priority, assets, generated_tones)
+	if _players.is_empty():
 		return ""
 	var now := Time.get_ticks_msec() / 1000.0
 	if now - float(_last.get(keys[0], -10.0)) < repeat_gap:
@@ -66,11 +75,20 @@ func _free_player(priority: int) -> AudioStreamPlayer:
 
 
 func _tone(key: String) -> AudioStreamWAV:
-	var kind := "beam"
+	var kind := BattleAudio.battle_kind_for(key)
+	if kind == "":
+		return null
+	if not _tones.has(kind):
+		_tones[kind] = BattleAudio.synth(kind)
+	return _tones[kind]
+
+
+## The generated-effect kind for a battle sound key ("" when it has none).
+static func battle_kind_for(key: String) -> String:
+	var kind := ""
 	if key.begins_with("weapon."):
 		var t := key.get_slice(".", 1)
-		kind = "torpedo" if BattleTimeline.TORPEDO_TYPES.has(t) or t == "generic" and key.ends_with("torpedo") \
-			else ("pulse" if t in ["PhaseCannon", "PulsePhaser", "DisruptorCannon", "PlasmaCannon"] else "beam")
+		kind = "torpedo" if BattleTimeline.TORPEDO_TYPES.has(t) or t == "generic" and key.ends_with("torpedo") 			else ("pulse" if t in ["PhaseCannon", "PulsePhaser", "DisruptorCannon", "PlasmaCannon"] else "beam")
 		if t in ["Disruptor", "DisruptorCannon", "PlasmaCannon"]:
 			kind += "_d"
 	elif key.begins_with("sfx.shield"):
@@ -83,11 +101,7 @@ func _tone(key: String) -> AudioStreamWAV:
 		kind = "cloak"
 	elif key.begins_with("sfx.warp"):
 		kind = "warp"
-	else:
-		return null
-	if not _tones.has(kind):
-		_tones[kind] = BattleAudio.synth(kind)
-	return _tones[kind]
+	return kind
 
 
 ## Small synthesised effects so the scene is audible without any local audio.
