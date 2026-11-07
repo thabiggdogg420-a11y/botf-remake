@@ -476,6 +476,17 @@ func _dossier() -> Control:
 				if minor.has("techLevel"):
 					g2.add_child(Lcars.stat("Tech level", minor["techLevel"]))
 				body.add_child(g2)
+			if is_minor and not minor.is_empty():
+				body.add_child(_minor_standing(minor))
+			elif not is_minor and rel.get("tradeTreaty", false):
+				var tp := Lcars.pill("Manage trade routes", "secondary", func():
+					app.goto("empire")
+					var es := app.current_screen()
+					if es:
+						es.tab = "trade"
+						es.refresh(), "", "Link your colonies to theirs; each route pays 5 + a tenth of the smaller population")
+				tp.name = "ManageTrade"
+				body.add_child(tp)
 			var dossiers: Array = d.get("dossiers", []).filter(func(x): return int(x["target"]) == tid) if not is_minor else []
 			if dossiers.size() > 0:
 				body.add_child(Lcars.para("Intelligence (turn %d): %d known colonies, about ¢%s in reserve." % [int(dossiers[0]["turn"]), int(dossiers[0]["knownColonies"]), Lcars.fmt(dossiers[0]["estimatedCredits"])]))
@@ -606,4 +617,24 @@ func _negotiate(is_minor: bool, tid: int, rel: Dictionary) -> Control:
 		p.name = "Dip_" + str(cmd["type"])
 		row.add_child(p)
 	col.add_child(row)
+	return col
+
+
+## Membership and secession in numbers: the rules from MINOR-RACES.md / DIPLOMACY.md section 6, with this minor's values.
+func _minor_standing(minor: Dictionary) -> Control:
+	var att := int(minor.get("attitude", 0))
+	var col := Lcars.vbox(4)
+	col.name = "MinorStanding"
+	col.add_child(Lcars.caption("Membership"))
+	if int(minor.get("memberOf", 0)) == app.player():
+		var margin := att - EmpireTabs.SECESSION_LINE
+		col.add_child(Lcars.label("Member of your empire. It secedes if its attitude falls below %d (you must keep another colony): now %d, %d point%s of margin." % [EmpireTabs.SECESSION_LINE, att, margin, "" if abs(margin) == 1 else "s"], "", 14, Lcars.GOOD if margin >= 15 else Lcars.ALERT))
+		col.add_child(Lcars.para("Each 5 turns: -2 for rising expectations, +2 if its morale is 70+, -2 per extra war you fight. Gifts raise attitude by 4 per 1,000 credits.", Lcars.TEXT3, 12))
+	elif int(minor.get("memberOf", 0)) != 0:
+		col.add_child(Lcars.label("Member of %s. A gift to it lowers its attitude toward its owner by half the gain." % app.empire_name(int(minor["memberOf"])), "", 14, Lcars.TEXT2))
+	else:
+		var friend := bool(minor.get("friendship", false))
+		col.add_child(Lcars.label("%s Attitude %d of %d needed" % ["✓" if att >= EmpireTabs.JOIN_LINE else "✗", att, EmpireTabs.JOIN_LINE], "", 14, Lcars.GOOD if att >= EmpireTabs.JOIN_LINE else Lcars.TEXT2))
+		col.add_child(Lcars.label("%s Friendship signed in an earlier turn" % ("✓" if friend else "✗"), "", 14, Lcars.GOOD if friend else Lcars.TEXT2))
+		col.add_child(Lcars.para("A gift raises attitude by 4 per 1,000 credits. A friendship class treaty adds +2 per review (every 5 turns); rivals with a friendship take -2.", Lcars.TEXT3, 12))
 	return col

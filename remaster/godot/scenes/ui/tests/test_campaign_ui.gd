@@ -141,6 +141,9 @@ func _workflow(backend: String) -> void:
 		check(app.current_screen() != null and app.current_screen().get_child_count() > 0, "%s screen renders" % id)
 	check(find(app.current_screen(), "ShipEntry") != null, "database shows a ship entry")
 
+	# ---- R2 gameplay surface
+	await _r2_surface(backend)
+
 	# ---- Overlays
 	for o in ["events", "victory", "menu", "settings", "help"]:
 		app.open_overlay(o)
@@ -203,3 +206,155 @@ func _workflow(backend: String) -> void:
 		check(app.encounter.get("finished", false), "battle finished")
 		check(app.end_turn() == "complete", "turn completes after the battle")
 		await frames()
+
+## R2: trade routes, retreat, terraform preview, end-turn check, empire managers.
+func _r2_surface(backend: String) -> void:
+	app.close_all_modals()
+	# Empire tabs all render with their panels
+	app.goto("empire")
+	await frames()
+	var es := app.current_screen()
+	for pair in [["trade", "TradePanel"], ["governors", "GovernorManager"], ["templates", "TemplateManager"], ["stations", "StationManager"], ["members", "MemberManager"]]:
+		es.tab = pair[0]
+		es.refresh()
+		await frames()
+		check(find(es, pair[1]) != null, "empire tab %s shows %s" % [pair[0], pair[1]])
+	# Governors: set every colony to Balanced workforce from the empire screen
+	es.tab = "governors"
+	es.refresh()
+	await frames()
+	var allb: Button = find(es, "All_workforce_Balanced")
+	check(allb != null and not allb.disabled, "empire governors offers a set-all button")
+	if allb:
+		allb.pressed.emit()
+		await frames()
+		check(app.view["pending"].any(func(p): return p["type"] == "SetColonyGovernor"), "SetColonyGovernor order is pending from the empire screen")
+	# Templates: save a queue as a template
+	es = app.current_screen()
+	es.tab = "templates"
+	es.refresh()
+	await frames()
+	var tn: LineEdit = find(es, "TemplateName")
+	var sv: Button = find(es, "SaveTemplate")
+	check(tn != null and sv != null, "empire templates has a save-from-queue form")
+	if tn and sv:
+		tn.text = "R2 test"
+		sv.pressed.emit()
+		await frames()
+		check(app.view["pending"].any(func(p): return p["type"] == "DefineBuildTemplate"), "DefineBuildTemplate order is pending from the empire screen")
+
+	# Trade routes: the query and the command wire format
+	var tr: Variant = app.core.request("tradeRoutes")
+	check(tr is Dictionary and tr.has("routes") and tr.has("candidates"), "tradeRoutes query answers with routes and candidates")
+	var contact := 0
+	for e in app.view["empires"]:
+		if e.get("contact", false):
+			contact = int(e["empire"])
+	if backend == "native" and contact != 0:
+		var cmd := {"type": "EstablishTradeRoute", "systemId": int(app.view["colonies"][0]["systemId"]), "targetSystemId": 999, "targetEmpire": contact}
+		var why := app.dry_run(cmd)
+		check(why != "" and not why.begins_with("Invalid"), "core accepts the EstablishTradeRoute shape (answers: %s)" % why)
+		var cc := {"type": "CancelTradeRoute", "systemId": int(app.view["colonies"][0]["systemId"]), "targetEmpire": contact}
+		var why2 := app.dry_run(cc)
+		check(why2.contains("No trade route"), "core accepts the CancelTradeRoute shape (answers: %s)" % why2)
+	if backend == "fixture":
+		for e in app.core._view["empires"]:
+			e["tradeTreaty"] = true
+			e["contact"] = true
+		app.refresh()
+		app.goto("empire")
+		await frames()
+		es = app.current_screen()
+		es.tab = "trade"
+		es.refresh()
+		await frames()
+		var est: Button = find(es, "EstablishRoute")
+		check(est != null and not est.disabled, "trade panel offers a live Establish button with its value")
+		if est:
+			est.pressed.emit()
+			await frames()
+			check(app.view["pending"].any(func(p): return p["type"] == "EstablishTradeRoute"), "EstablishTradeRoute order is pending")
+			check(app.view["tradeRoutes"].size() > 0, "established route is listed")
+			es = app.current_screen()
+			es.tab = "trade"
+			es.refresh()
+			await frames()
+			check(find(es, "CancelRoute_%d" % int(app.view["tradeRoutes"][0]["from"])) != null, "established route offers Cancel")
+
+	# Retreat order from the unit's order list
+	app.goto("galaxy")
+	await frames()
+	var fl: Array = app.view.get("fleets", [])
+	if fl.size() > 0:
+		var f: Dictionary = fl[0]
+		for cand in fl:
+			if str(GalaxyOrders.retreat_action(app, cand, "")["disabled"]) == "":
+				f = cand
+				break
+		app.select_fleet(int(f["id"]))
+		var acts := GalaxyOrders.cell_actions(app, int(f["y"]) * app.width() + int(f["x"]))
+		var ret: Dictionary = {}
+		for a in acts:
+			if a["id"] == "retreat":
+				ret = a
+		check(not ret.is_empty(), "order list offers Retreat")
+		if not ret.is_empty():
+			check(str(ret["detail"]).contains("falls back to") or str(ret["disabled"]) != "", "retreat names where the ship falls back to (%s)" % ret["detail"])
+			if str(ret["disabled"]) == "":
+				ret["run"].call()
+				await frames()
+				check(app.view["pending"].any(func(p): return p["type"] == "RetreatFleet"), "RetreatFleet order is pending")
+				var uf := app.find_by_id("fleets", int(f["id"]))
+				if backend == "native":
+					check(uf.get("retreat", false), "core marks the fleet retreating")
+				check(GalaxyOrders.order_text(app, uf).to_lower().contains("retreat") or backend == "fixture", "order text reads: %s" % GalaxyOrders.order_text(app, uf))
+				app.cancel_orders(app.unit_order_ids(int(f["id"]), 0))
+	if backend == "native" and fl.size() > 0:
+		# Every ship starts at home, where Retreat is refused as pointless; drive the core order itself.
+		check(app.issue({"type": "RetreatFleet", "fleetId": int(fl[0]["id"])}, app.unit_order_ids(int(fl[0]["id"]), int(fl[0].get("taskForceId", 0)))), "core accepts RetreatFleet for an own ship")
+		check(app.find_by_id("fleets", int(fl[0]["id"])).get("retreat", false), "core marks the fleet retreating")
+		app.cancel_orders(app.unit_order_ids(int(fl[0]["id"]), 0))
+	# Terraform preview: every planet of the colony ship's system gets an action, with a reason when refused
+	var ship: Dictionary = {}
+	for f2 in fl:
+		if f2.get("colonyShip", false):
+			ship = f2
+	if not ship.is_empty():
+		app.select_fleet(int(ship["id"]))
+		var acts2 := GalaxyOrders.cell_actions(app, int(ship["y"]) * app.width() + int(ship["x"]))
+		var sysd := app.system_at(int(ship["x"]), int(ship["y"]))
+		var tf_acts := acts2.filter(func(a): return str(a["id"]).begins_with("terraform-"))
+		if not sysd.is_empty() and app.view["meta"].get("campaignExpansion", false):
+			check(tf_acts.size() == sysd["planets"].size(), "terraform preview lists every planet (%d)" % tf_acts.size())
+			var refused := tf_acts.filter(func(a): return str(a["disabled"]) != "")
+			check(tf_acts.all(func(a): return str(a["detail"]).contains("supports")), "terraform preview states capacity gain")
+			print("    terraform: %d refused with reasons: %s" % [refused.size(), ", ".join(refused.map(func(a): return a["disabled"]))])
+			if backend == "native":
+				for a in tf_acts:
+					var idx := int(str(a["id"]).trim_prefix("terraform-"))
+					var allowed: Variant = app.core.request("canTerraform", {"fleetId": int(ship["id"]), "systemId": int(sysd["id"]), "planetIndex": idx})
+					check(allowed == true or str(a["disabled"]) != "", "terraform-%d: core says %s, UI says '%s'" % [idx, str(allowed), a["disabled"]])
+	# Minor race standing: membership checklist / secession margin on the dossier
+	var dip: Variant = app.core.request("diplomacy")
+	if dip is Dictionary and dip["minors"].size() > 0:
+		app.set_meta("diplomacy_focus", {"minor": true, "id": int(dip["minors"][0]["systemId"])})
+		app.goto("diplomacy")
+		await frames()
+		check(find(app.current_screen(), "MinorStanding") != null, "minor dossier shows membership / secession numbers")
+	# End-turn check: forecast, describeTurn and dryRunMany reach the panel
+	var chk := EndTurnCheck.build(app)
+	check(chk["forecast"].has("credits") and chk["forecast"].has("creditsAfter"), "end-turn check carries the core forecast")
+	check(chk["warnings"] is Array, "end-turn check lists warnings (%d)" % chk["warnings"].size())
+	app.preview_turn()
+	await frames()
+	check(find(app, "TurnForecast") != null and find(app, "EndTurnCheck") != null, "turn preview shows the forecast")
+	app.close_all_modals()
+	var fake := {"warnings": [{"kind": "x", "tone": "alert", "text": "x", "screen": "empire", "system": 0, "fleet": 0}], "forecast": chk["forecast"], "last_turn": {}, "alerts": 1}
+	check(EndTurnCheck.should_prompt(app, fake), "an alert stops the end-turn button with the check")
+	var calm := {"warnings": [{"kind": "x", "tone": "warn", "text": "x", "screen": "empire", "system": 0, "fleet": 0}], "forecast": {}, "last_turn": {}, "alerts": 0}
+	app.settings["confirmEndTurn"] = false
+	check(not EndTurnCheck.should_prompt(app, calm), "a warning alone does not stop the turn when confirmation is off")
+	app.settings["confirmEndTurn"] = true
+	check(EndTurnCheck.should_prompt(app, calm), "a warning stops the turn when confirmation is on")
+	app.settings["confirmEndTurn"] = false
+	app.close_all_modals()

@@ -207,6 +207,13 @@ func _fixture_call(method: String, args: Dictionary) -> Dictionary:
 			return _fixture(method)
 		"diplomacy":
 			return _fixture("diplomacy")
+		"describeTurn":
+			var bf := _fixture("briefing")
+			return _ok(JSON.stringify(bf["result"]) if bf["ok"] else "")
+		"canTerraform":
+			return _ok(_can_terraform(int(args.get("fleetId", 0)), int(args.get("systemId", 0)), int(args.get("planetIndex", 0))))
+		"tradeRoutes":
+			return _ok(_trade_routes())
 		"endTurn":
 			if _view.is_empty():
 				return _fail("No campaign in progress")
@@ -254,6 +261,80 @@ func _cancel(ids: Array) -> void:
 			keep.append(p)
 	_view["pending"] = keep
 
+## Stand-in for the core's canTerraformPlanet: same conditions, from the recorded view.
+func _can_terraform(fleet_id: int, system_id: int, planet_index: int) -> bool:
+	if _view.is_empty() or not _view["meta"].get("campaignExpansion", false):
+		return false
+	var f := _find_fleet(fleet_id)
+	if f.is_empty() or not f.get("colonyShip", false) or f.get("retreat", false) or int(f.get("attackTarget", 0)) != 0 or f.get("colonize", false):
+		return false
+	for s in _view["systems"]:
+		if int(s["id"]) != system_id:
+			continue
+		if int(s["x"]) != int(f["x"]) or int(s["y"]) != int(f["y"]):
+			return false
+		for p in s.get("planets", []):
+			if int(p["index"]) == planet_index:
+				return not (str(p["class"]) in ["GasGiant", "Asteroids"] or str(p["terraformState"]) in ["Terraformed", "Uninhabitable"])
+	return false
+
+## Stand-in for the bridge's tradeRoutes query (fixtures carry no foreign populations: 60 is assumed).
+func _trade_routes() -> Dictionary:
+	var me := int(_view["meta"]["player"])
+	var advanced: bool = _view["meta"].get("advancedRules", false)
+	var rel := func(owner: int) -> Dictionary:
+		for e in _view["empires"]:
+			if int(e["empire"]) == owner:
+				return e
+		return {}
+	var blocker := func(owner: int) -> String:
+		var r: Dictionary = rel.call(owner)
+		if r.is_empty() or not r.get("contact", false):
+			return "No contact with that empire"
+		if r.get("atWar", false):
+			return "War blocks trade"
+		if advanced and not r.get("tradeTreaty", false):
+			return "An accepted trade treaty is required"
+		return ""
+	var sys_name := func(id: int) -> String:
+		for s in _view["systems"]:
+			if int(s["id"]) == id:
+				return str(s["name"])
+		return "System %d" % id
+	var pop_of := func(id: int) -> int:
+		for c in _view["colonies"]:
+			if int(c["systemId"]) == id:
+				return int(c["population"])
+		return 60
+	var routes := []
+	var used := {}
+	for t in _view.get("tradeRoutes", []):
+		if int(t["owner"]) != me:
+			continue
+		used[int(t["from"])] = true
+		var dst_owner := 0
+		for s in _view["systems"]:
+			if int(s["id"]) == int(t["to"]):
+				dst_owner = int(s["owner"])
+		var b: String = blocker.call(dst_owner)
+		routes.append({"from": t["from"], "to": t["to"], "fromName": sys_name.call(int(t["from"])), "toName": sys_name.call(int(t["to"])), "partner": dst_owner, "partnerName": empire_label(dst_owner), "value": 5 + mini(pop_of.call(int(t["from"])), 60) / 10, "blocker": b, "active": b == ""})
+	var cands := []
+	for c in _view["colonies"]:
+		if used.has(int(c["systemId"])):
+			continue
+		for s in _view["systems"]:
+			var o := int(s["owner"])
+			if o == 0 or o == me or not s.get("visible", false) or rel.call(o).is_empty():
+				continue
+			cands.append({"from": c["systemId"], "to": s["id"], "fromName": c["name"], "toName": s["name"], "partner": o, "partnerName": empire_label(o), "value": 5 + mini(int(c["population"]), 60) / 10, "blocker": blocker.call(o)})
+	return {"advancedRules": advanced, "routes": routes, "candidates": cands}
+
+func empire_label(id: int) -> String:
+	for e in _load("campaign", "meta").get("empires", []):
+		if int(e["id"]) == id:
+			return str(e["name"])
+	return "Empire %d" % id
+
 func _find_fleet(id: int) -> Dictionary:
 	for f in _view.get("fleets", []):
 		if int(f["id"]) == id:
@@ -276,6 +357,15 @@ func _apply_locally(c: Dictionary) -> void:
 			var alloc: Array = c.get("researchAllocation", [])
 			for i in range(min(alloc.size(), _view["empire"]["techs"].size())):
 				_view["empire"]["techs"][i]["allocation"] = alloc[i]
+		"RetreatFleet":
+			var f3 := _find_fleet(int(c["fleetId"]))
+			if not f3.is_empty():
+				f3["retreat"] = true
+				f3["hasOrders"] = true
+		"EstablishTradeRoute":
+			_view["tradeRoutes"].append({"owner": int(_view["meta"]["player"]), "from": int(c["systemId"]), "to": int(c["targetSystemId"])})
+		"CancelTradeRoute":
+			_view["tradeRoutes"] = _view["tradeRoutes"].filter(func(t): return not (int(t["owner"]) == int(_view["meta"]["player"]) and int(t["from"]) == int(c["systemId"])))
 		"SetTacticalStance":
 			var f2 := _find_fleet(int(c["fleetId"]))
 			if not f2.is_empty():
