@@ -4,21 +4,60 @@ extends SceneTree
 ##     -s res://scenes/ui/tools/screenshot.gd -- <out_dir> [shot ...]
 ## Shots: title new galaxy galaxy-menu system research fleets empire diplomacy intel database combat briefing events victory end settings saves
 ## Battle: battle-r1 battle-r3, and the camera modes battle-overview battle-chase battle-ship battle-target battle-topdown
-## battle-cinematic battle-free (BattleCamera).
+## battle-cinematic battle-free (BattleCamera), and the close-ups battle-closeup (the player's flagship fills the frame;
+## SHOT_CLASS=<ship class name> frames the first ship of that class instead, e.g. Galaxy or "Negh'Var").
+## SHOT_FPS=1 prints a "FPS" line per battle shot (avg fps, p99 and worst frame, over the whole drill and over the last
+## 100 frames); SHOT_NOVSYNC=1 turns vsync off so the average is the real frame cost, not the display refresh.
 
 var app: App
 var out_dir := "res://docs/screens"
 var shots: Array = []
+var _ft: Array = []   ## frame times (ms) recorded while SHOT_FPS is set
+var _last_us := 0
+var _recording := false
 
 func _initialize() -> void:
 	var args := OS.get_cmdline_user_args()
 	if args.size() > 0:
 		out_dir = args[0]
 	shots = args.slice(1) if args.size() > 1 else ["title", "new", "galaxy", "galaxy-menu", "system", "research", "fleets", "empire", "diplomacy", "intel", "database", "combat", "briefing", "events", "victory", "end", "settings", "saves"]
+	if OS.get_environment("SHOT_NOVSYNC") != "":
+		DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
+	process_frame.connect(_on_frame)
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(out_dir) if out_dir.begins_with("res://") else out_dir)
 	app = load("res://scenes/ui/app.tscn").instantiate()
 	root.add_child(app)
 	_run.call_deferred()
+
+func _on_frame() -> void:
+	var now := Time.get_ticks_usec()
+	if _recording and _last_us > 0:
+		_ft.append((now - _last_us) / 1000.0)
+	_last_us = now
+
+static func fps_line(ft: Array) -> String:
+	if ft.is_empty():
+		return "no frames"
+	var sorted := ft.duplicate()
+	sorted.sort()
+	var total := 0.0
+	for v in ft:
+		total += v
+	return "%d frames, %.0f fps avg, p99 %.1f ms, worst %.1f ms" % [ft.size(), 1000.0 * ft.size() / total,
+		sorted[mini(sorted.size() - 1, int(sorted.size() * 0.99))], sorted[sorted.size() - 1]]
+
+func _report_fps(label: String) -> void:
+	if not _recording:
+		return
+	for i in _ft.size():
+		if _ft[i] > 80.0:
+			print("FPS spike ", label, " frame ", i, ": ", snappedf(_ft[i], 0.1), " ms")
+	print("FPS ", label, ": ", fps_line(_ft), " | last 100: ", fps_line(_ft.slice(maxi(0, _ft.size() - 100))))
+	print("FPS render ", label, ": draw calls ", int(Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME)),
+		", objects ", int(Performance.get_monitor(Performance.RENDER_TOTAL_OBJECTS_IN_FRAME)),
+		", primitives ", int(Performance.get_monitor(Performance.RENDER_TOTAL_PRIMITIVES_IN_FRAME)),
+		", video mem ", int(Performance.get_monitor(Performance.RENDER_VIDEO_MEM_USED) / 1048576.0), " MB")
+	_recording = false
 
 func _wait(frames: int = 8) -> void:
 	for n in frames:
@@ -31,6 +70,7 @@ func _run() -> void:
 		for t in app.get_node("Toasts").get_children():
 			t.queue_free()
 		await _wait(10)
+		_report_fps(s)
 		var img := root.get_viewport().get_texture().get_image()
 		# Committed screenshots are kept small: 960x540.
 		if OS.get_environment("SHOT_FULL") == "":
@@ -90,6 +130,8 @@ func _prepare(s: String) -> void:
 			var drill := {"station": true}
 			if OS.get_environment("SHOT_DRILL_SHIPS") != "":
 				drill["ships"] = int(OS.get_environment("SHOT_DRILL_SHIPS"))
+			_recording = OS.get_environment("SHOT_FPS") != ""
+			_ft.clear()
 			app.start_drill("newBattleDrill", "Starbase drill", drill)
 			app.end_turn()
 			await _wait(4)
