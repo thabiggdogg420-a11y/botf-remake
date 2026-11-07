@@ -60,6 +60,7 @@ var _prewarmed := false
 var _spacing_clock := 0.0
 var _spacing_cache: Array[Vector3] = []
 var _ship_jobs := {}             ## fleet_id -> the round's cloak/decloak/explosion/warp jobs for that ship
+var force_cutaway := false      ## Tools: offer the director's cutaway every round (the close-up strip).
 var _shown := {}                 ## fleet_id -> Pose the ship was last shown at (before spacing and station-keeping)
 var _carry := {}                 ## fleet_id -> Vector4(x, y, altitude, facing) eased out at the start of the round
 
@@ -437,7 +438,9 @@ func _update_camera(t: float, delta: float, centroid: Vector3, spread: float) ->
 	var shot := {"key": "wide_%d" % round_index, "kind": -1, "centroid": centroid, "spread": spread}
 	var subject: BattleShip = _ships.get(director.subject)
 	var other: BattleShip = _ships.get(director.other)
-	if subject != null and (_playing or not _finished_sent):
+	# Cutaways are occasional (coordinator, 8 Nov): about one round in four, or a kill; otherwise the tactical view.
+	var cutaway_round := force_cutaway or round_index % 4 == 2 or director.kind == BattleTimeline.Job.EXPLOSION
+	if subject != null and cutaway_round and (_playing or not _finished_sent):
 		shot = {"key": "%d_%d_%d_%.2f" % [round_index, director.subject, director.other, director.since],
 			"kind": director.kind, "subject": subject.global_position, "subject_size": subject.length,
 			"other": other.global_position if other != null else centroid, "other_size": other.length if other != null else subject.length, "centroid": centroid, "spread": spread}

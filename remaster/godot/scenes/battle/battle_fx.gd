@@ -482,7 +482,7 @@ func _animate(i: int, j: Dictionary, t: float) -> void:
 			_floor_flare(st.nodes[2], 36.0 * UE, MIN_FLARE_PX)
 			var hit: bool = j.outcome == BattleTimeline.Outcome.HIT and reach >= 1.0
 			# Several beams on one hull used to stack their impact glare into a white frame (close strip, 8 Nov).
-			var share := 1.0 / sqrt(float(maxi(1, _hits_on.get(j.target_fleet_id, 1))))
+			var share := 1.0 / float(maxi(1, _hits_on.get(j.target_fleet_id, 1))) # total glare per target is capped
 			st.nodes[2].set_instance_shader_parameter("flare_intensity", env * (0.5 * share if hit else 0.0))
 			st.nodes[2].set_instance_shader_parameter("flare_rotation", t * 3.0)
 		Job.PULSE:
@@ -544,7 +544,7 @@ func _animate(i: int, j: Dictionary, t: float) -> void:
 				return
 			st.nodes[0].global_position = st.point
 			_floor_flare(st.nodes[0], st.get("size", 6.0), MIN_FLARE_PX * 1.5)
-			var tshare := 1.0 / sqrt(float(maxi(1, _hits_on.get(j.target_fleet_id, 1))))
+			var tshare := 1.0 / float(maxi(1, _hits_on.get(j.target_fleet_id, 1)))
 			st.nodes[0].set_instance_shader_parameter("flare_intensity", 0.8 * tshare * pow(1.0 - u, 2.5))
 		Job.RAM:
 			var a := _ship(j.fleet_id)

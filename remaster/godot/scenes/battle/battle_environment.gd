@@ -24,7 +24,7 @@ static func build(parent: Node3D, arena_size: Vector2) -> Dictionary:
 	env.reflected_light_source = Environment.REFLECTION_SOURCE_SKY
 	env.tonemap_mode = Environment.TONE_MAPPER_ACES
 	env.tonemap_exposure = 1.0
-	env.tonemap_white = 6.0
+	env.tonemap_white = 8.0
 	env.glow_enabled = true
 	env.glow_normalized = false
 	env.set_glow_level(0, 0.0)
@@ -34,12 +34,12 @@ static func build(parent: Node3D, arena_size: Vector2) -> Dictionary:
 	env.set_glow_level(4, 0.6)
 	env.set_glow_level(5, 0.5)
 	env.set_glow_level(6, 0.3)
-	env.glow_intensity = 0.55
+	env.glow_intensity = 0.4 # R3.5: clamped so stacked fire never whites out the frame
 	env.glow_strength = 1.0
 	env.glow_bloom = 0.0
 	env.glow_blend_mode = Environment.GLOW_BLEND_MODE_SCREEN
-	env.glow_hdr_threshold = 1.4
-	env.glow_hdr_scale = 2.0
+	env.glow_hdr_threshold = 1.8
+	env.glow_hdr_scale = 1.2
 	env.volumetric_fog_enabled = true
 	env.volumetric_fog_density = 0.0
 	env.volumetric_fog_albedo = Color(0.6, 0.55, 0.8)

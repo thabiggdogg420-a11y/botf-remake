@@ -235,6 +235,7 @@ func _prepare(s: String) -> void:
 			var cam: BattleCamera = view.camera
 			var t0: float = maxf(0.0, view.time - 1.25)
 			var shot := _live_shot(view)
+			view.force_cutaway = s == "battle-strip-close"
 			view.seek(t0)
 			# -close: the director's own two-ship framing of the busiest beam exchange (no free camera).
 			view.playback_speed = 1.0
