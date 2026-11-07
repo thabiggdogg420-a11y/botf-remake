@@ -208,7 +208,7 @@
     "id": 20,
     "x": 12,
     "y": 3,
-    "name": "System-20",
+    "name": "Algol",
     "visible": true,
     "owner": 0,
     "capacity": 40,
@@ -216,7 +216,7 @@
     "planets": [
      {
       "index": 0,
-      "name": "System-20 I",
+      "name": "Algol I",
       "class": "K",
       "className": "Class K (Barren)",
       "terraformState": "Untouched",
@@ -228,7 +228,7 @@
      },
      {
       "index": 1,
-      "name": "System-20 II",
+      "name": "Algol II",
       "class": "L",
       "className": "Class L (Jungle)",
       "terraformState": "Untouched",

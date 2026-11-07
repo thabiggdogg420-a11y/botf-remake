@@ -208,7 +208,7 @@
     "id": 17,
     "x": 5,
     "y": 4,
-    "name": "System-17",
+    "name": "Bellatrix",
     "visible": true,
     "owner": 0,
     "capacity": 80,
@@ -216,7 +216,7 @@
     "planets": [
      {
       "index": 0,
-      "name": "System-17 I",
+      "name": "Bellatrix I",
       "class": "H",
       "className": "Class H (Desert)",
       "terraformState": "Untouched",
@@ -228,7 +228,7 @@
      },
      {
       "index": 1,
-      "name": "System-17 II",
+      "name": "Bellatrix II",
       "class": "Asteroids",
       "className": "Asteroids",
       "terraformState": "Uninhabitable",
@@ -240,7 +240,7 @@
      },
      {
       "index": 2,
-      "name": "System-17 III",
+      "name": "Bellatrix III",
       "class": "L",
       "className": "Class L (Jungle)",
       "terraformState": "Untouched",
@@ -252,7 +252,7 @@
      },
      {
       "index": 3,
-      "name": "System-17 IV",
+      "name": "Bellatrix IV",
       "class": "Asteroids",
       "className": "Asteroids",
       "terraformState": "Uninhabitable",
@@ -264,7 +264,7 @@
      },
      {
       "index": 4,
-      "name": "System-17 V",
+      "name": "Bellatrix V",
       "class": "L",
       "className": "Class L (Jungle)",
       "terraformState": "Untouched",
