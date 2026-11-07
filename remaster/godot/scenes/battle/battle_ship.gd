@@ -2,6 +2,17 @@ class_name BattleShip
 extends Node3D
 ## One ship in the battle scene: a model (imported by asset key, else a procedural faction hull), its shield bubble,
 ## hardpoints and scorch decals. The local frame is x forward, y up, z starboard; the ship is `length` units long.
+##
+## True scale (BotfAssetCatalog.h displayLengthForLength): a hull is drawn at its class's canon length, 350 m = 120
+## Unreal units with a 60 m floor (runabouts and fighters stay visible) and a 1000-unit cap, on Unreal's 170-unit cell,
+## mapped to this scene's BattleScene.CELL. A 642 m Galaxy spans 1.3 cells.
+
+const UE_UNITS_PER_METER := 120.0 / 350.0
+const UE_CELL_UNITS := 170.0       ## ABotfCombatScene::CellUnits.
+const MIN_DISPLAY_METERS := 60.0
+const MAX_DISPLAY_UE_UNITS := 1000.0
+const UNKNOWN_DISPLAY_METERS := 470.0 ## Unknown class: Unreal's interim 80-unit bounding radius (about a 470 m cruiser).
+const STATION_CELLS := 2.0         ## Stations: Unreal's 170-unit-radius disc footprint.
 
 const HULL_SHADER := preload("res://scenes/battle/shaders/hull.gdshader")
 const SHIELD_SHADER := preload("res://scenes/battle/shaders/shield.gdshader")
@@ -12,7 +23,9 @@ var fleet_id := 0
 var owner_id := 0
 var ship_name := ""
 var length := 4.0
+var length_meters := 0.0   ## Canon length of the shown class (0 = unknown): flight style, wings and true scale.
 var is_station := false
+var spacing := Vector3.ZERO  ## Eased presentation offset that keeps true-scale hulls apart (world units).
 var model: Node3D          ## Holds the hull (scaled to `length`); tumbles and stretches for explosions / warp-outs.
 var shield: MeshInstance3D
 var half_extents := Vector3(0.5, 0.15, 0.3) ## In ship units (after scaling to `length`).
@@ -44,8 +57,17 @@ func setup(ship: Dictionary, assets: BattleAssets = null) -> void:
 	fleet_id = int(ship.get("id", 0))
 	owner_id = int(ship.get("owner", 0))
 	ship_name = str(ship.get("name", ""))
-	is_station = fleet_id >= 2000000 or int(ship.get("referenceShipId", 0)) < 0 or bool(ship.get("station", false))
-	length = BattleShip.length_for(ship)
+	is_station = BattleShip.is_station_ship(ship)
+	length_meters = BattleShip.length_meters_for(ship, assets)
+	if not is_station and assets != null:
+		# A hero model's own canon length wins: the hull is drawn at the size its glb was built for.
+		var hero_m := assets.hero_length(BattleShip.asset_keys_for(ship))
+		if hero_m > 0.0:
+			length_meters = hero_m
+	if float(ship.get("displayLength", 0.0)) > 0.0:
+		length = float(ship.displayLength) # explicit override (the title fleet, tests)
+	else:
+		length = STATION_CELLS * BattleScene.CELL if is_station else BattleShip.display_length(length_meters)
 	name = "Ship_%d" % fleet_id
 	model = Node3D.new()
 	model.name = "Model"
@@ -73,20 +95,44 @@ func setup(ship: Dictionary, assets: BattleAssets = null) -> void:
 	_cloak_mat.shader = CLOAK_SHADER
 
 
-## Hull length in world units: square-root compressed by hull strength (class size), stations largest. A ship
-## Dictionary may set "displayLength" (world units) to override it (the title fleet does).
+static func is_station_ship(ship: Dictionary) -> bool:
+	return int(ship.get("id", 0)) >= 2000000 or int(ship.get("referenceShipId", 0)) < 0 or bool(ship.get("station", false))
+
+
+## Hull length in world units at true scale (stations: their footprint), from the catalogue only.
+## A ship Dictionary may set "displayLength" (world units) to override it (the title fleet does).
 static func length_for(ship: Dictionary) -> float:
 	if float(ship.get("displayLength", 0.0)) > 0.0:
 		return float(ship.displayLength)
-	var fid := int(ship.get("id", 0))
-	if fid >= 2000000 or int(ship.get("referenceShipId", 0)) < 0 or bool(ship.get("station", false)):
-		return 11.0
-	var hull := float(ship.get("maxHull", ship.get("initialHull", 60)))
-	var klass := str(ship.get("shipClass", ""))
-	var base := 2.0 + sqrt(maxf(hull, 1.0)) * 0.36
-	if klass == "Scout":
-		base *= 0.75
-	return clampf(base, 2.0, 8.5)
+	if BattleShip.is_station_ship(ship):
+		return STATION_CELLS * BattleScene.CELL
+	return BattleShip.display_length(ShipFactory.canon_length_meters(ship))
+
+
+## Displayed length in Unreal scene units (BotfAssetCatalog.h displayLengthForLength): canon metres at 120 units per
+## 350 m, never below a 60 m ship, never above 1000 units.
+static func display_length_ue(meters: float) -> float:
+	return clampf(meters, MIN_DISPLAY_METERS, MAX_DISPLAY_UE_UNITS / UE_UNITS_PER_METER) * UE_UNITS_PER_METER
+
+
+## Displayed length in this scene's world units (0 or less = unknown class).
+static func display_length(meters: float) -> float:
+	var m := meters if meters > 0.0 else UNKNOWN_DISPLAY_METERS
+	return BattleShip.display_length_ue(m) / UE_CELL_UNITS * BattleScene.CELL
+
+
+## Canon length in metres of the class shown for `ship`, as the Unreal client gets lengthMeters (the catalogue's
+## targetLengthMeters for the class): the local asset manifest's value for the class key when one is loaded and
+## carries it, else the catalogue (ShipFactory.canon_length_meters). 0 = unknown.
+static func length_meters_for(ship: Dictionary, assets: BattleAssets = null) -> float:
+	if BattleShip.is_station_ship(ship):
+		return 0.0
+	if assets != null and assets.has_manifest():
+		for key in BattleShip.asset_keys_for(ship):
+			var rec = assets.assets.get(key)
+			if rec is Dictionary and rec.get("targetLengthMeters") != null and float(rec.targetLengthMeters) > 0.0:
+				return float(rec.targetLengthMeters)
+	return ShipFactory.canon_length_meters(ship)
 
 
 ## Asset keys to try: the core's assetKey when present, then ship.<fac>.<class slug>, then the faction study.
@@ -103,10 +149,13 @@ static func asset_keys_for(ship: Dictionary) -> PackedStringArray:
 	return keys
 
 
+## Asset-key slug (assets/check_asset_keys.py slug): lower-case, apostrophes dropped, other separators one '_'.
 static func _slug(s: String) -> String:
 	var out := ""
 	var sep := false
 	for c in s.to_lower():
+		if c == "'":
+			continue
 		if (c >= "a" and c <= "z") or (c >= "0" and c <= "9"):
 			if sep and out != "":
 				out += "_"

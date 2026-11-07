@@ -51,19 +51,39 @@ class Config:
 	var bank_per_slide_cell := 14.0
 	var max_bank_degrees := 35.0
 	var player_empire := 0 ## Barks only for this empire's ships (0 = none).
+	# 3D flight. Presentation only: the rules stay on BOTF's 2D grid. Heights are cells above (+) or below the plane.
+	var small_ship_meters := 260.0   ## Escorts and smaller fly livelier and form wings; unknown length counts as capital.
+	var capital_height_spread := 0.45
+	var small_height_spread := 1.5
+	var side_height_offset := 0.3    ## The first side holds a little above the plane, the other below.
+	var capital_climb_cells := 0.3   ## Height change per maneuver around the ship's home height.
+	var small_climb_cells := 1.1
+	var max_pitch_degrees := 32.0
+	var small_bank_scale := 1.6      ## Small craft roll hard into turns; capital ships lumber.
+	var capital_bank_scale := 0.7
+	var wing_radius_cells := 2.5     ## Small ships of one side starting this close together fly as a wing...
+	var wing_size := 4               ## ...of up to this many, in finger-four on the first (lowest id) ship.
+	var wing_spacing_cells := 0.55
 
 
-## Pose in the tactical plane: x, y in cells, facing in degrees (0 = +x, 90 = +y), bank = roll (+ = right wing down).
+## Pose in the tactical plane: x, y in cells, facing in degrees (0 = +x, 90 = +y), bank = roll (+ = right wing down),
+## altitude = cells above (+) or below the plane and pitch = nose up (+) in degrees (both presentation only).
 class Pose:
 	var x := 0.0
 	var y := 0.0
 	var facing := 0.0
 	var bank := 0.0
-	func _init(px := 0.0, py := 0.0, pf := 0.0, pb := 0.0) -> void:
-		x = px; y = py; facing = pf; bank = pb
+	var altitude := 0.0
+	var pitch := 0.0
+	func _init(px := 0.0, py := 0.0, pf := 0.0, pb := 0.0, pa := 0.0, pp := 0.0) -> void:
+		x = px; y = py; facing = pf; bank = pb; altitude = pa; pitch = pp
 	func copy() -> Pose:
-		return Pose.new(x, y, facing, bank)
+		return Pose.new(x, y, facing, bank, altitude, pitch)
 	func equals(o: Pose) -> bool:
+		return x == o.x and y == o.y and facing == o.facing and bank == o.bank and altitude == o.altitude \
+			and pitch == o.pitch
+	## The plane part only (height and pitch are the 3D flight layer).
+	func plane_equals(o: Pose) -> bool:
 		return x == o.x and y == o.y and facing == o.facing and bank == o.bank
 
 
@@ -75,6 +95,7 @@ class Segment:
 	var tan0 := Vector2.ZERO
 	var tan1 := Vector2.ZERO
 	var bank_peak := 0.0
+	var pitch_peak := 0.0
 	var slide_cells := 0
 	var maneuver := ""
 
@@ -89,7 +110,14 @@ class ShipTrack:
 	var decloak_at := -1.0
 	var hide_at := -1.0
 	var cloak_seconds := 1.0
+	var length_meters := 0.0
+	var small_craft := false  ## Escort size or smaller (Config.small_ship_meters).
+	var wing_leader := 0      ## Fleet id of the wing leader this ship holds station on, 0 = flies its own track.
+	var wing_back := 0.0      ## Station in the leader's frame (cells: aft, port, up).
+	var wing_side := 0.0
+	var wing_up := 0.0
 
+	## The ship's own flight (BattleTimeline.pose_of adds wing stations).
 	func pose_at(t: float) -> Pose:
 		var p := initial.copy()
 		for s in segments:
@@ -98,6 +126,7 @@ class ShipTrack:
 			if t >= s.t1:
 				p = s.to.copy()
 				p.bank = 0.0
+				p.pitch = 0.0
 				continue
 			var u := (t - s.t0) / maxf(1e-9, s.t1 - s.t0)
 			var e := BattleTimeline.smoothstep01(u)
@@ -112,6 +141,8 @@ class ShipTrack:
 			p.facing = BattleTimeline.wrap_degrees(s.from.facing + BattleTimeline.shortest_turn(s.from.facing, s.to.facing) * e)
 			var sn := sin(PI * clampf(u, 0.0, 1.0))
 			p.bank = s.bank_peak * sn * sn
+			p.altitude = s.from.altitude + (s.to.altitude - s.from.altitude) * e
+			p.pitch = s.pitch_peak * sn * sn
 			return p
 		return p
 
@@ -160,6 +191,30 @@ func track(fleet_id: int) -> ShipTrack:
 	return null
 
 
+## Where `s` is at time t: its own flight, or its station in its leader's wing. When the leader is gone (destroyed,
+## warped out) the wingman peels off back to its own track over two ticks.
+func pose_of(s: ShipTrack, t: float) -> Pose:
+	var own := s.pose_at(t)
+	var lead := track(s.wing_leader) if s.wing_leader != 0 else null
+	if lead == null:
+		return own
+	var w := 1.0
+	if lead.hide_at >= 0.0 and t > lead.hide_at:
+		w = 1.0 - smoothstep01((t - lead.hide_at) / maxf(1e-6, 2.0 * tick_seconds))
+	if w <= 0.0:
+		return own
+	var lp := lead.pose_at(t)
+	var f := deg_to_rad(lp.facing)
+	var p := Pose.new()
+	p.x = own.x + (lp.x - cos(f) * s.wing_back - sin(f) * s.wing_side - own.x) * w
+	p.y = own.y + (lp.y - sin(f) * s.wing_back + cos(f) * s.wing_side - own.y) * w
+	p.altitude = own.altitude + (lp.altitude + s.wing_up - own.altitude) * w
+	p.facing = wrap_degrees(own.facing + shortest_turn(own.facing, lp.facing) * w)
+	p.bank = own.bank + (lp.bank - own.bank) * w
+	p.pitch = own.pitch + (lp.pitch - own.pitch) * w
+	return p
+
+
 func all_consumed() -> bool:
 	for c in consumed:
 		if c <= 0:
@@ -195,6 +250,115 @@ static func shortest_turn(a: float, b: float) -> float:
 static func smoothstep01(u: float) -> float:
 	u = clampf(u, 0.0, 1.0)
 	return u * u * (3.0 - 2.0 * u)
+
+
+# ------------------------------------------------------------------------------------------------------------------
+# 3D flight (presentation only)
+# ------------------------------------------------------------------------------------------------------------------
+
+const _U32 := 0xFFFFFFFF
+
+
+## Deterministic value in [0, 1) for a ship and a salt (heights must not flicker between replays of a round). Same
+## bits as BotfCombatTimeline.h unitHash (32-bit unsigned arithmetic).
+static func unit_hash(a: int, b: int) -> float:
+	var h := _mul32(a & _U32, 0x9E3779B1) ^ _mul32((b + 0x7F4A7C15) & _U32, 0x85EBCA77)
+	h ^= h >> 15
+	h = _mul32(h, 0x2C1B3C6D)
+	h ^= h >> 12
+	h = _mul32(h, 0x297A2D39)
+	h ^= h >> 15
+	return float(h & 0xFFFFFF) / float(0x1000000)
+
+
+## x * k modulo 2^32 for 32-bit unsigned x and k, without overflowing a 64-bit int.
+static func _mul32(x: int, k: int) -> int:
+	return (x * (k & 0xFFFF) + (((x * (k >> 16)) & 0xFFFF) << 16)) & _U32
+
+
+static func is_small_ship(length_meters: float, cfg: Config = null) -> bool:
+	var limit := cfg.small_ship_meters if cfg != null else 260.0
+	return length_meters > 0.0 and length_meters <= limit
+
+
+## The height a ship holds between maneuvers: capital ships near the plane, small craft spread well above and below,
+## each side offset so the two fleets read as layers.
+static func home_height(fleet_id: int, length_meters: float, first_side: bool, cfg: Config = null) -> float:
+	if cfg == null:
+		cfg = Config.new()
+	var spread := cfg.small_height_spread if is_small_ship(length_meters, cfg) else cfg.capital_height_spread
+	return (unit_hash(fleet_id, 1) * 2.0 - 1.0) * spread + (cfg.side_height_offset if first_side else -cfg.side_height_offset)
+
+
+## Presentation-only spacing. Ships are drawn at true scale, so a capital ship spans more than a grid cell and hulls
+## that share or neighbour a cell would pass through each other. bodies: Array of {x, y, alt, radius, active} (cells).
+## Returns, per body, the smallest shift Vector3(plane x, plane y, altitude) in cells that keeps every pair of active
+## hulls at least (ra + rb) apart, preferring height over sideways moves (vertical_bias) so the grid positions the
+## rules use stay readable from above. Deterministic: pairs resolve in index order, coincident hulls split by index.
+## The scene eases toward the result; rules positions are untouched.
+static func spacing_offsets(bodies: Array, iterations := 10, vertical_bias := 2.5, max_shift := 3.0) -> Array[Vector3]:
+	var n := bodies.size()
+	var off: Array[Vector3] = []
+	off.resize(n)
+	off.fill(Vector3.ZERO)
+	for pass_i in iterations:
+		var moved := false
+		for i in n:
+			var bi: Dictionary = bodies[i]
+			if not bi.get("active", true) or float(bi.radius) <= 0.0:
+				continue
+			for j in range(i + 1, n):
+				var bj: Dictionary = bodies[j]
+				if not bj.get("active", true) or float(bj.radius) <= 0.0:
+					continue
+				var dx: float = (bj.x + off[j].x) - (bi.x + off[i].x)
+				var dy: float = (bj.y + off[j].y) - (bi.y + off[i].y)
+				var da: float = (bj.alt + off[j].z) - (bi.alt + off[i].z)
+				var dist := sqrt(dx * dx + dy * dy + da * da)
+				var need: float = bi.radius + bj.radius
+				if dist >= need:
+					continue
+				# Push direction: the current separation with height weighted up and tilted at least ~27 degrees out of
+				# the plane (level neighbours stack rather than shove sideways); straight up/down when coincident.
+				var flat := sqrt(dx * dx + dy * dy)
+				var up := 1.0 if da > 1e-9 else (-1.0 if da < -1e-9 else (1.0 if (i + j) % 2 == 0 else -1.0))
+				var u := Vector3(dx, dy, up * maxf(absf(da) * vertical_bias, 0.5 * flat))
+				if u.length() < 1e-9:
+					u = Vector3(0.0, 0.0, up)
+				u = u.normalized()
+				# The push along u must close the gap along the true separation; split by the other hull's size so a
+				# cruiser moves less than the escort beside it.
+				var along := maxf(0.3, (u.x * dx + u.y * dy + u.z * da) / maxf(dist, 1e-9))
+				var gap := (need - dist) / (1.0 if dist < 1e-9 else along)
+				off[i] -= u * gap * (float(bj.radius) / need)
+				off[j] += u * gap * (float(bi.radius) / need)
+				moved = true
+		if not moved:
+			break
+	for k in n:
+		if off[k].length() > max_shift:
+			off[k] *= max_shift / off[k].length()
+	return off
+
+
+## Station-keeping between maneuvers (presentation only). A ship holding position still lives: it bobs, rolls and
+## nods a little, small craft more than capital ships, each on its own phase. The motion fades in and out over
+## fade_seconds at every maneuver edge and at the round's start and end, so poses at those instants are untouched and
+## rounds join seamlessly. Returns Vector3(altitude cells, bank degrees, pitch degrees), added on top of pose_of.
+static func station_keeping(s: ShipTrack, t: float, round_secs: float, fade_seconds := 0.6) -> Vector3:
+	if t <= 0.0 or t >= round_secs:
+		return Vector3.ZERO
+	var edge := minf(t, round_secs - t)
+	for seg in s.segments:
+		if t > seg.t0 and t < seg.t1:
+			return Vector3.ZERO # flying a maneuver
+		edge = minf(edge, minf(absf(t - seg.t0), absf(t - seg.t1)))
+	var env := smoothstep01(edge / maxf(1e-6, fade_seconds))
+	var phase := unit_hash(s.fleet_id, 7) * TAU
+	var amp := 1.0 if s.small_craft else 0.4
+	return Vector3(env * amp * 0.12 * sin(TAU * t / 3.4 + phase),
+		env * amp * 6.0 * sin(TAU * t / 4.1 + phase * 1.7),
+		env * amp * 2.5 * sin(TAU * t / 2.9 + phase * 0.6))
 
 
 # ------------------------------------------------------------------------------------------------------------------
@@ -323,7 +487,8 @@ static func _num(e: Dictionary, key: String, fallback = 0):
 
 
 ## events: the round's `events` array. info: Array of {fleetId, ownerId, shields, maxShields, startsCloaked, x, y,
-## facing} for the ships that are in the round (what the stream does not carry).
+## facing, lengthMeters} for the ships that are in the round (what the stream does not carry). lengthMeters is the
+## canon length of the shown class (0 = unknown): it picks the flight style and wings.
 static func build(events: Array, info: Array, cfg: Config = null) -> BattleTimeline:
 	if cfg == null:
 		cfg = Config.new()
@@ -418,9 +583,66 @@ static func build(events: Array, info: Array, cfg: Config = null) -> BattleTimel
 		if slide > 0 and length > 1e-9:
 			var cross := cos(fa) * d.y - sin(fa) * d.x
 			bank += (-1.0 if cross > 0 else 1.0) * cfg.bank_per_slide_cell * slide
-		s.bank_peak = clampf(bank, -cfg.max_bank_degrees, cfg.max_bank_degrees)
+		# Small craft roll harder (and may exceed the capital-ship limit); capital ships lumber.
+		var max_bank := cfg.max_bank_degrees
+		var meters := float(info_by_id[fid].get("lengthMeters", 0.0)) if info_by_id.has(fid) else 0.0
+		if meters > 0.0:
+			var small := is_small_ship(meters, cfg)
+			bank *= cfg.small_bank_scale if small else cfg.capital_bank_scale
+			if small:
+				max_bank *= cfg.small_bank_scale
+		s.bank_peak = clampf(bank, -max_bank, max_bank)
 		t.segments.append(s)
 		tl.consumed[i] += 1
+
+	# Heights (3D flight): each ship holds a home height and climbs or dives around it with every maneuver, pitching
+	# its nose with the climb. A ship sitting still (no horizontal run) rises or sinks level on thrusters.
+	var first_owner := int(info[0].get("ownerId", 0)) if not info.is_empty() else 0
+	for t in tl.ships:
+		t.length_meters = float(info_by_id[t.fleet_id].get("lengthMeters", 0.0)) if info_by_id.has(t.fleet_id) else 0.0
+		t.small_craft = is_small_ship(t.length_meters, cfg)
+		var home := home_height(t.fleet_id, t.length_meters, t.owner_id == first_owner, cfg)
+		var climb := cfg.small_climb_cells if t.small_craft else cfg.capital_climb_cells
+		var h := home
+		t.initial.altitude = h
+		for k in t.segments.size():
+			var seg: Segment = t.segments[k]
+			seg.from.altitude = h
+			h = home + (unit_hash(t.fleet_id, 101 + k) * 2.0 - 1.0) * climb
+			seg.to.altitude = h
+			var run := Vector2(seg.to.x - seg.from.x, seg.to.y - seg.from.y).length()
+			seg.pitch_peak = clampf(rad_to_deg(atan2(seg.to.altitude - seg.from.altitude, run)) * 1.5,
+				-cfg.max_pitch_degrees, cfg.max_pitch_degrees) if run > 0.3 else 0.0
+
+	# Wings: escort-size ships of one side that start close together fly finger-four on the lowest-id ship among them
+	# (wingman aft-port, element lead aft-starboard, its wingman further aft-starboard).
+	var stations := [[1.0, 1.0, 0.25], [1.0, -1.0, -0.25], [2.0, -2.0, 0.0]] # aft, port, up
+	var pool: Array[ShipTrack] = []
+	for t in tl.ships:
+		if t.small_craft:
+			pool.append(t)
+	pool.sort_custom(func(a, b): return a.fleet_id < b.fleet_id)
+	var used := []
+	used.resize(pool.size())
+	used.fill(false)
+	for i in pool.size():
+		if used[i]:
+			continue
+		used[i] = true
+		var members := 1
+		var j := i + 1
+		while j < pool.size() and members < maxi(1, cfg.wing_size):
+			var mate := pool[j]
+			if not used[j] and mate.owner_id == pool[i].owner_id \
+					and Vector2(mate.initial.x - pool[i].initial.x, mate.initial.y - pool[i].initial.y).length() <= cfg.wing_radius_cells:
+				used[j] = true
+				var st: Array = stations[members - 1]
+				mate.wing_leader = pool[i].fleet_id
+				mate.wing_back = st[0] * cfg.wing_spacing_cells
+				mate.wing_side = st[1] * cfg.wing_spacing_cells
+				mate.wing_up = st[2] * cfg.wing_spacing_cells
+				members += 1
+			j += 1
 
 	# Weapon, impact and state jobs.
 	var impacts: Array = []
@@ -629,6 +851,8 @@ static func build(events: Array, info: Array, cfg: Config = null) -> BattleTimel
 ## Ship info for round `round_index` (index into encounter.rounds) of a tactical encounter as returned by
 ## botf_call("tactical") / ("tacticalRound"): owner, shields at round start, cloak state carried from earlier rounds
 ## and a fallback pose. Ships already destroyed or gone before the round are left out.
+## lengthMeters is the class's canon length from the catalogue (ShipFactory.canon_length_meters); BattleScene overrides
+## it from the local asset manifest when one is present.
 static func round_ship_info(encounter: Dictionary, round_index: int) -> Array:
 	var rounds: Array = encounter.get("rounds", [])
 	var rnd: Dictionary = rounds[round_index]
@@ -657,7 +881,7 @@ static func round_ship_info(encounter: Dictionary, round_index: int) -> Array:
 		out.append({"fleetId": fid, "ownerId": int(rs.get("owner", ship.get("owner", 0))),
 			"shields": int(rs.get("shieldBefore", 0)), "maxShields": int(ship.get("maxShields", 0)),
 			"startsCloaked": cloaked.has(fid), "x": float(pos.x), "y": float(pos.y),
-			"facing": float(rs.get("yaw", 0))})
+			"facing": float(rs.get("yaw", 0)), "lengthMeters": ShipFactory.canon_length_meters(ship)})
 	return out
 
 

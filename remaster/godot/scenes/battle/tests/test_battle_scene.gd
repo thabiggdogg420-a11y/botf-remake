@@ -1,6 +1,7 @@
 extends SceneTree
 ## Headless smoke test of BattleScene: every fixture round plays to round_finished, emits weapon / sfx cues with
-## the expected keys, and ship nodes follow the timeline without jumps.
+## the expected keys, and ship nodes follow the timeline without jumps, within a round and from one round to the next
+## (true-scale spacing and 3D heights included).
 ##   godot --headless --path remaster/godot -s res://scenes/battle/tests/test_battle_scene.gd
 
 const FIXTURE := "res://scenes/battle/fixtures/rules3_battle.json"
@@ -30,11 +31,11 @@ func _run() -> void:
 	scene.cue.connect(func(key, keys, priority, fleet): cues.append([key, keys, priority, fleet]))
 	scene.round_finished.connect(func(i): finished.append(i))
 	scene.playback_speed = 8.0
+	var last := {}
 	for r in encounter.rounds.size():
 		cues.clear()
 		scene.play_round(encounter, r)
 		check(scene.is_playing(), "round %d playing" % r)
-		var last := {}
 		var frames := 0
 		while scene.is_playing() and frames < 2000:
 			await process_frame
@@ -42,9 +43,10 @@ func _run() -> void:
 			for fid in [5, 7, 8, 10]:
 				var s := scene.ship_node(fid)
 				if s == null or not s.visible:
+					last.erase(fid)
 					continue
 				if last.has(fid):
-					check(s.global_position.distance_to(last[fid]) < BattleScene.CELL * 0.5, "round %d ship %d jumped" % [r, fid])
+					check(s.global_position.distance_to(last[fid]) < BattleScene.CELL * 0.5, "round %d ship %d jumped %.1f units" % [r, fid, s.global_position.distance_to(last[fid])])
 				last[fid] = s.global_position
 		check(finished.has(r), "round %d finished (frames %d)" % [r, frames])
 		var fires: Array = encounter.rounds[r].events.filter(func(e): return e.kind == "Fire")
