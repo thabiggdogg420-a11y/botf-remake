@@ -38,3 +38,12 @@ The reference is the frozen Unreal client (`remaster/game/Source`, mainly BotfCo
 - These edits are in the local, uncommitted `game/LocalAssets/audio/cues.json`; the original is archived at `~\_archive\2026-11\botf-audio-cues-pre-r35\`. `tools/build_audio_cues.py` lines 90 and 100 still hold the old numbers, and that file is outside R3.5 ownership.
 - **Trace:** `BOTF_CUE_TRACE=1` with `scenes/battle/tools/cue_trace.gd` logs one line per cue. Every beam, torpedo, shield hit, hull hit, explosion, cloak and decloak fires a cue, and disengage now does too. The scheduler's per-key cooldown drops about 70% of them in salvos, because 8 torpedoes launched in the same instant play once. That behaviour lives in `scripts/audio`, outside this round.
 - **Guesses for Simon's ear:** every `sfx.*` and `weapon.*` pick (build_audio_cues.py chose them by length and spectrum), plus music tracks 11-15.
+
+## R3.5 pass 3 (8 Nov 2026)
+- Camera: tactical fit by default; validated cutaways; outside-shooter preference (Godot goes beyond Unreal's free director here).
+- Glare and bloom capped (Godot only).
+- Event-to-cue trace after the salvo change:
+  - every event resolves to a file;
+  - 24 of 42 torpedo launches play, the rest are dropped by the 4-voice salvo cap;
+  - 29 of 41 shield hits play;
+  - 19 of 20 hull hits play.

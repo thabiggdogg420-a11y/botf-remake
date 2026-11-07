@@ -969,6 +969,9 @@ class Director:
 	var other := 0
 	var since := 0.0
 	var kind := -1 ## Job kind that motivated the current shot (not in the C++ director; -1 = none).
+	## fleet_id -> 0..3, how far a ship sits on the outside of its formation (set by the scene). Among equally
+	## interesting jobs the director prefers an outside shooter: a clean cutaway angle exists for it.
+	var outer := {}
 
 	func reset() -> void:
 		subject = 0; other = 0; since = 0.0; kind = -1
@@ -982,7 +985,7 @@ class Director:
 				break
 			if t > j.start + j.duration or j.fleet_id == 0:
 				continue
-			var score := BattleTimeline.job_interest(j.kind) * 4
+			var score := BattleTimeline.job_interest(j.kind) * 4 + int(outer.get(j.fleet_id, 0))
 			if preferred != 0 and (j.fleet_id == preferred or j.target_fleet_id == preferred):
 				score += 2
 			if score > best_score:

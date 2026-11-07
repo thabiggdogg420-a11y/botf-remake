@@ -396,6 +396,7 @@ func set_selection(ship: int, target: int) -> void:
 func _update_camera(t: float, delta: float, centroid: Vector3, spread: float) -> void:
 	if camera == null:
 		return
+	director.outer = _outer_scores()
 	director.update(timeline, t)
 	var me := _player_empire()
 	var by_id := {}
@@ -445,3 +446,27 @@ func _update_camera(t: float, delta: float, centroid: Vector3, spread: float) ->
 			"kind": director.kind, "subject": subject.global_position, "subject_size": subject.length,
 			"other": other.global_position if other != null else centroid, "other_size": other.length if other != null else subject.length, "centroid": centroid, "spread": spread}
 	camera.film(delta, t, bodies, chase, shot)
+
+
+## fleet_id -> 0..3: distance from the ship's own side's centre, as a share of that side's widest member.
+func _outer_scores() -> Dictionary:
+	var sums := {}
+	for fid in _ships:
+		var sh: BattleShip = _ships[fid]
+		var k: int = sh.owner_id
+		if not sums.has(k):
+			sums[k] = [Vector3.ZERO, 0]
+		sums[k][0] += sh.global_position
+		sums[k][1] += 1
+	var far := {}
+	var dist := {}
+	for fid in _ships:
+		var sh: BattleShip = _ships[fid]
+		var c: Vector3 = sums[sh.owner_id][0] / float(sums[sh.owner_id][1])
+		dist[fid] = sh.global_position.distance_to(c)
+		far[sh.owner_id] = maxf(far.get(sh.owner_id, 0.0), dist[fid])
+	var out := {}
+	for fid in _ships:
+		var sh: BattleShip = _ships[fid]
+		out[fid] = int(round(3.0 * dist[fid] / maxf(1e-3, far[sh.owner_id])))
+	return out

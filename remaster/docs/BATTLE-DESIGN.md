@@ -30,3 +30,14 @@ Each proposal is marked P (presentation, Godot only, can be built now) or R (rul
 | 10 | **Subsystem targeting.** Engines, weapons and shields targeted as subsystems, each with its own effect. | R | Simon decides |
 | 11 | **Simultaneous plan then resolve.** Orders from both sides commit, then resolve together. | R (the core already resolves per round; this changes order timing) | Simon decides |
 | 12 | **Range bands and arcs as rules.** Firing arcs and range bands that change to-hit and damage. | R | Simon decides |
+
+## R3.5 pass 3 build notes (8 Nov 2026)
+- P built: tactical camera is the default. It fits every live ship from a raised three-quarter angle with about 10% margin, re-fits every second and eases. A station only drops out of the fit when it would push the ships under about 2.2% of frame height.
+- P built: cutaways are occasional, on round 2, then every fourth round, or on a kill. A candidate shot is accepted only when:
+  - shooter and target are whole in frame;
+  - neither fills more than 40% of frame height;
+  - one of them fills at least 6%;
+  - no other hull over 10% of frame height is cut by the frame edge.
+
+  Rejected shots fall back to tactical. The director prefers shooters on the outside of their formation.
+- P built: beams on one target share one glare budget. Bloom: intensity 0.4, HDR threshold 1.8, scale 1.2; tonemap white 8. Brightest strip frames measured 0.07-0.78% near-white pixels.

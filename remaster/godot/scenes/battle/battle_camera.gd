@@ -646,10 +646,21 @@ func _tactical_pose(aspect: float, side_sign: float) -> Array:
 		return [Vector3(0, 200, 300), Vector3.ZERO]
 	radii.sort()
 	var median: float = radii[radii.size() / 2]
-	var fit := []
-	for b in live:
-		if float(b.radius) <= median * 3.0 or live.size() <= 2:
-			fit.append(b)
+	var fit := live.duplicate()
+	var th0 := tan(deg_to_rad(fov) * 0.5)
+	var tmp := _fit_distance(fit, aspect, side_sign)
+	if median / (tmp[1] * th0) < 0.022:
+		# A station far bigger than the ships would leave them specks: fit the ships and let the station sit part-framed.
+		fit = []
+		for b in live:
+			if float(b.radius) <= median * 3.0 or live.size() <= 2:
+				fit.append(b)
+	var res := _fit_distance(fit, aspect, side_sign)
+	return [res[0] + res[2] * res[1], res[0]]
+
+
+## [mid, distance, dir]: the nearest raised three-quarter view holding every body in fit whole with ~10% margin.
+func _fit_distance(fit: Array, aspect: float, side_sign: float) -> Array:
 	var lo := Vector3(INF, INF, INF)
 	var hi := -lo
 	for b in fit:
@@ -679,20 +690,16 @@ func _tactical_pose(aspect: float, side_sign: float) -> Array:
 	var dir := (side * 0.85 - fwd * 0.45 + Vector3.UP * 0.75).normalized()
 	# Smallest distance at which every fitted hull is inside the frame with ~10% margin.
 	var dist := 20.0
-	for i in 60:
+	for i in 160:
 		var ok := true
 		for b in fit:
-			if not _sphere_fit(mid + dir * dist, mid, b.center, float(b.radius), aspect, 0.82)[0]:
+			if not _sphere_fit(mid + dir * dist, mid, b.center, float(b.radius), aspect, 0.88)[0]:
 				ok = false
 				break
 		if ok:
 			break
-		dist *= 1.12
-	# Minimum ship size: the median hull at least ~2.2% of the frame height.
-	var th := tan(deg_to_rad(fov) * 0.5)
-	var max_dist := median / (0.022 * th)
-	dist = minf(dist, maxf(max_dist, 20.0))
-	return [mid + dir * dist, mid]
+		dist *= 1.05
+	return [mid, dist, dir]
 
 
 ## A cutaway candidate is accepted only if shooter and target are both whole in frame and neither fills more than 40%
@@ -710,16 +717,12 @@ func _shot_ok(eye: Vector3, look: Vector3, a: Vector3, ar: float, b: Vector3, br
 		if c.distance_to(a) < 0.1 or c.distance_to(b) < 0.1 or orad <= 0.0:
 			continue
 		if eye.distance_to(c) < orad * 1.6:
-			if OS.get_environment("SHOT_CAMDEBUG") != "":
-				print("   lens inside ", o.get("id"))
 			return false
 		var f2: Array = _sphere_fit(eye, look, c, orad, aspect, 1.0)
 		if f2[1] > 0.40:
 			return false
 		var is_station := int(o.get("id", 0)) >= 2000000 # a station may sit part-framed (coordinator, 8 Nov)
-		if not is_station and not f2[0] and f2[1] > 0.03 and not _sphere_outside(eye, look, c, orad, aspect):
-			if OS.get_environment("SHOT_CAMDEBUG") != "":
-				print("   edge-crop by ", o.get("id"), " size ", f2[1])
+		if not is_station and not f2[0] and f2[1] > 0.10 and not _sphere_outside(eye, look, c, orad, aspect):
 			return false
 	return true
 
@@ -785,8 +788,6 @@ func _cinematic_shot(_delta: float, shot: Dictionary, time: float) -> Array:
 							var eye: Vector3 = mid + dir * dist
 							if _shot_ok(eye, mid, subject, sr, other, orr, aspect) and _big_enough(eye, mid, subject, sr, other, orr, aspect):
 								_cut_pose = [eye, mid]
-			if OS.get_environment("SHOT_CAMDEBUG") != "":
-				print("CUTAWAY key=", key, " kind=", kind, " sr=", sr, " or=", orr, " line=", line.length(), " accepted=", not _cut_pose.is_empty())
 		if not _cut_pose.is_empty() or not was_tactical:
 			_cut = true
 	if not _cut_pose.is_empty():
