@@ -463,9 +463,9 @@ static void testCombatTimeline() {
         EXPECT(capMax <= TimelineConfig{}.capitalHeightSpread + 1e-9 && smallMax > 1.0 && firstSum > otherSum);
         auto sized = ships;
         for (auto& s : sized) s.lengthMeters = 110.0; // both escorts
-        const auto t3 = buildRoundTimeline(events, sized, cfg);
-        const auto* s1 = t3.track(1);
-        EXPECT(s1 && s1->small && s1->segments.size() == 1);
+        const auto tSmall = buildRoundTimeline(events, sized, cfg);
+        const auto* s1 = tSmall.track(1);
+        EXPECT(s1 && s1->smallCraft && s1->segments.size() == 1);
         const auto& seg = s1->segments[0];
         EXPECT(s1->poseAt(0.0).altitude == seg.from.altitude && s1->poseAt(6.0).altitude == seg.to.altitude);
         EXPECT(s1->poseAt(6.0).pitch == 0.0 && std::fabs(seg.pitchPeak) <= cfg.maxPitchDegrees);
@@ -477,9 +477,9 @@ static void testCombatTimeline() {
         // Escorts roll harder than the same maneuver flown by a capital ship.
         auto big = ships;
         for (auto& s : big) s.lengthMeters = 650.0;
-        const auto t4 = buildRoundTimeline(events, big, cfg);
-        EXPECT(std::fabs(t3.track(1)->segments[0].bankPeak) > std::fabs(t4.track(1)->segments[0].bankPeak));
-        EXPECT(!t4.track(1)->small && t4.track(1)->wingLeader == 0);
+        const auto tBig = buildRoundTimeline(events, big, cfg);
+        EXPECT(std::fabs(tSmall.track(1)->segments[0].bankPeak) > std::fabs(tBig.track(1)->segments[0].bankPeak));
+        EXPECT(!tBig.track(1)->smallCraft && tBig.track(1)->wingLeader == 0);
     }
 
     // Wings: escorts of one side starting close together fly finger-four on the lowest id; a far-off escort, another
@@ -518,8 +518,8 @@ static void testCombatTimeline() {
             return std::sqrt(dx * dx + dy * dy + da * da) - (b[i].radius + b[j].radius);
         };
         std::vector<SpacingBody> clear = {{0, 0, 0, 0.5}, {3, 0, 0, 0.5}};
-        const auto none = spacingOffsets(clear);
-        EXPECT(none[0].x == 0.0 && none[0].alt == 0.0 && none[1].x == 0.0 && none[1].alt == 0.0);
+        const auto noneOff = spacingOffsets(clear);
+        EXPECT(noneOff[0].x == 0.0 && noneOff[0].alt == 0.0 && noneOff[1].x == 0.0 && noneOff[1].alt == 0.0);
         std::vector<SpacingBody> level = {{0, 0, 0, 1.2}, {1, 0, 0, 1.2}};
         const auto lv = spacingOffsets(level);
         EXPECT(gapOf(level, lv, 0, 1) > -1e-6);
@@ -527,8 +527,8 @@ static void testCombatTimeline() {
         std::vector<SpacingBody> same = {{2, 2, 0, 0.8}, {2, 2, 0, 0.8}};
         const auto sm = spacingOffsets(same);
         EXPECT(gapOf(same, sm, 0, 1) > -1e-6 && sm[0].x == 0.0 && sm[0].y == 0.0);
-        const auto again = spacingOffsets(same);
-        EXPECT(again[0].alt == sm[0].alt && again[1].alt == sm[1].alt);
+        const auto againOff = spacingOffsets(same);
+        EXPECT(againOff[0].alt == sm[0].alt && againOff[1].alt == sm[1].alt);
         // A cruiser beside an escort: the escort moves further.
         std::vector<SpacingBody> mixed = {{0, 0, 0, 1.4}, {0.5, 0.3, 0.1, 0.3}};
         const auto mx = spacingOffsets(mixed);
@@ -548,9 +548,9 @@ static void testCombatTimeline() {
     // Station-keeping: nothing during a maneuver or at the round's edges (rounds join seamlessly), gentle motion while
     // holding, more for small craft, deterministic.
     {
-        ShipTrack hold; hold.fleetId = 21; hold.small = false;
+        ShipTrack hold; hold.fleetId = 21; hold.smallCraft = false;
         FlightSegment seg; seg.t0 = 0.0; seg.t1 = 2.0; hold.segments.push_back(seg);
-        ShipTrack escort = hold; escort.small = true;
+        ShipTrack escort = hold; escort.smallCraft = true;
         const auto mag = [](const IdleOffset& o) { return std::fabs(o.altitude) + std::fabs(o.bank) + std::fabs(o.pitch); };
         EXPECT(mag(stationKeeping(hold, 1.0, 6.0)) == 0.0 && mag(stationKeeping(hold, 2.0, 6.0)) == 0.0);
         EXPECT(mag(stationKeeping(hold, 6.0, 6.0)) == 0.0 && mag(stationKeeping(hold, 0.0, 6.0)) == 0.0);
@@ -570,23 +570,23 @@ static void testCombatTimeline() {
     // along the short way round and arcs out on long moves.
     {
         namespace cam = botf::camera;
-        const auto near = [](double a, double b, double eps = 1e-6) { return std::fabs(a - b) < eps; };
+        const auto approx = [](double a, double b, double eps = 1e-6) { return std::fabs(a - b) < eps; };
         cam::Rig rig; rig.focus = {100, -50, 20}; rig.distance = 1500; rig.azimuth = -90; rig.elevation = 58;
         const cam::View v = cam::viewOf(rig, 55.0, 16.0 / 9.0);
-        EXPECT(near(cam::length(v.forward), 1) && near(cam::length(v.right), 1) && near(cam::length(v.up), 1));
-        EXPECT(near(cam::dot(v.forward, v.right), 0) && near(cam::dot(v.forward, v.up), 0) && near(cam::dot(v.right, v.up), 0));
-        EXPECT(v.eye.z > rig.focus.z && v.eye.y < rig.focus.y && near(cam::length(v.eye - rig.focus), 1500, 1e-6));
+        EXPECT(approx(cam::length(v.forward), 1) && approx(cam::length(v.right), 1) && approx(cam::length(v.up), 1));
+        EXPECT(approx(cam::dot(v.forward, v.right), 0) && approx(cam::dot(v.forward, v.up), 0) && approx(cam::dot(v.right, v.up), 0));
+        EXPECT(v.eye.z > rig.focus.z && v.eye.y < rig.focus.y && approx(cam::length(v.eye - rig.focus), 1500, 1e-6));
         EXPECT(v.up.z > 0.0); // screen up leans away from the plane, never upside down
         const auto centre = cam::project(v, rig.focus);
-        EXPECT(centre.visible && near(centre.u, 0.5) && near(centre.v, 0.5));
+        EXPECT(centre.visible && approx(centre.u, 0.5) && approx(centre.v, 0.5));
         EXPECT(cam::project(v, rig.focus + v.right * 50.0).u > 0.5 && cam::project(v, rig.focus + v.up * 50.0).v < 0.5);
         EXPECT(!cam::project(v, v.eye - v.forward * 10.0).visible);
         const cam::Vec3 somewhere{180, 40, -30};
         const auto sp = cam::project(v, somewhere);
         const cam::Vec3 along = cam::rayThrough(v, sp.u, sp.v);
-        EXPECT(near(cam::length(cam::cross(along, cam::normalized(somewhere - v.eye))), 0, 1e-9));
+        EXPECT(approx(cam::length(cam::cross(along, cam::normalized(somewhere - v.eye))), 0, 1e-9));
         cam::Vec3 ground;
-        EXPECT(cam::rayPlane(v, 0.5, 0.5, rig.focus.z, ground) && near(ground.x, rig.focus.x, 1e-6) && near(ground.y, rig.focus.y, 1e-6));
+        EXPECT(cam::rayPlane(v, 0.5, 0.5, rig.focus.z, ground) && approx(ground.x, rig.focus.x, 1e-6) && approx(ground.y, rig.focus.y, 1e-6));
         // Framing: at frameDistance a sphere's projected radius is half the image height over the margin.
         const double d = cam::frameDistance(40.0, 55.0, 16.0 / 9.0, 1.0);
         cam::Rig framed; framed.distance = d;
@@ -601,17 +601,17 @@ static void testCombatTimeline() {
         const auto sk = cam::project(v, speck[0].center, 1.0);
         EXPECT(cam::pick(v, sk.u + 0.004, sk.v, speck) == 4 && cam::pick(v, sk.u + 0.2, sk.v, speck) == 0);
         const auto all = cam::boundsOf({{1, {0, 0, 0}, 10}, {2, {100, 0, 0}, 20}});
-        EXPECT(near(all.center.x, 55) && near(all.radius, 65));
+        EXPECT(approx(all.center.x, 55) && approx(all.radius, 65));
         // Easing.
-        EXPECT(near(cam::angleDelta(170, -170), 20) && near(cam::angleDelta(-170, 170), -20));
-        EXPECT(near(cam::approachAngle(170, -170, 1.0, 1.0), 180) && cam::approach(0, 10, 0.0, 1.0) == 0.0);
+        EXPECT(approx(cam::angleDelta(170, -170), 20) && approx(cam::angleDelta(-170, 170), -20));
+        EXPECT(approx(cam::approachAngle(170, -170, 1.0, 1.0), 180) && cam::approach(0, 10, 0.0, 1.0) == 0.0);
         cam::RigSmoother smooth; cam::Rig a; a.distance = 100; smooth.snap(a);
         cam::Rig b = a; b.focus = {1000, 0, 0}; b.distance = 400;
         const cam::Rig first = smooth.step(b, 0.1, 0.3);
         EXPECT(first.distance > 400.0 * 0.5 + 0.35 * 500.0); // lifted while the focus travels
         for (int i = 0; i < 200; ++i) smooth.step(b, 0.05, 0.3);
         const cam::Rig settled = smooth.step(b, 0.05, 0.3);
-        EXPECT(near(settled.focus.x, 1000, 1e-3) && near(settled.distance, 400, 1e-3));
+        EXPECT(approx(settled.focus.x, 1000, 1e-3) && approx(settled.distance, 400, 1e-3));
         EXPECT(cam::zoomFactorAfter(1.0, 2) < cam::zoomFactorAfter(1.0, 1) && cam::zoomFactorAfter(1.0, -1) > 1.0);
     }
 

@@ -130,7 +130,7 @@ struct ShipTrack {
     double hideAt = -1.0;    // Ship vanishes (explosion swallowed it, or it warped out), -1 = never.
     double cloakSeconds = 1.0;
     double lengthMeters = 0.0;
-    bool small = false;      // Escort size or smaller (TimelineConfig::smallShipMeters).
+    bool smallCraft = false; // Escort size or smaller (TimelineConfig::smallShipMeters).
     int wingLeader = 0;      // Fleet id of the wing leader this ship holds station on, 0 = flies its own track.
     double wingBack = 0.0, wingSide = 0.0, wingUp = 0.0; // Station in the leader's frame (cells: aft, port, up).
 
@@ -486,7 +486,7 @@ inline IdleOffset stationKeeping(const ShipTrack& track, double t, double roundS
     }
     const double env = smoothstep(edge / std::max(1e-6, fadeSeconds));
     const double phase = unitHash(track.fleetId, 7) * 2.0 * kPiValue;
-    const double amp = track.small ? 1.0 : 0.4;
+    const double amp = track.smallCraft ? 1.0 : 0.4;
     IdleOffset o;
     o.altitude = env * amp * 0.12 * std::sin(2.0 * kPiValue * t / 3.4 + phase);
     o.bank = env * amp * 6.0 * std::sin(2.0 * kPiValue * t / 4.1 + phase * 1.7);
@@ -595,9 +595,9 @@ inline RoundTimeline buildRoundTimeline(const std::vector<CombatEvent>& events, 
         // Small craft roll harder (and may exceed the capital-ship limit); capital ships lumber.
         double maxBank = cfg.maxBankDegrees;
         if (const auto* si = infoFor(e.fleetId); si && si->lengthMeters > 0.0) {
-            const bool small = isSmallShip(si->lengthMeters, cfg);
-            bank *= small ? cfg.smallBankScale : cfg.capitalBankScale;
-            if (small) maxBank *= cfg.smallBankScale;
+            const bool isSmall = isSmallShip(si->lengthMeters, cfg);
+            bank *= isSmall ? cfg.smallBankScale : cfg.capitalBankScale;
+            if (isSmall) maxBank *= cfg.smallBankScale;
         }
         s.bankPeak = std::clamp(bank, -maxBank, maxBank);
         t.segments.push_back(s);
@@ -610,10 +610,10 @@ inline RoundTimeline buildRoundTimeline(const std::vector<CombatEvent>& events, 
     for (auto& t : tl.ships) {
         const auto* si = infoFor(t.fleetId);
         t.lengthMeters = si ? si->lengthMeters : 0.0;
-        t.small = isSmallShip(t.lengthMeters, cfg);
+        t.smallCraft = isSmallShip(t.lengthMeters, cfg);
         const bool firstSide = t.ownerId == firstOwner;
         const double home = homeHeight(t.fleetId, t.lengthMeters, firstSide, cfg);
-        const double climb = t.small ? cfg.smallClimbCells : cfg.capitalClimbCells;
+        const double climb = t.smallCraft ? cfg.smallClimbCells : cfg.capitalClimbCells;
         double h = home;
         t.initial.altitude = h;
         for (std::size_t k = 0; k < t.segments.size(); ++k) {
@@ -633,7 +633,7 @@ inline RoundTimeline buildRoundTimeline(const std::vector<CombatEvent>& events, 
     {
         static constexpr double kStations[3][3] = {{1.0, 1.0, 0.25}, {1.0, -1.0, -0.25}, {2.0, -2.0, 0.0}}; // aft, port, up
         std::vector<ShipTrack*> pool;
-        for (auto& t : tl.ships) if (t.small) pool.push_back(&t);
+        for (auto& t : tl.ships) if (t.smallCraft) pool.push_back(&t);
         std::sort(pool.begin(), pool.end(), [](const ShipTrack* a, const ShipTrack* b) { return a->fleetId < b->fleetId; });
         std::vector<bool> used(pool.size(), false);
         for (std::size_t i = 0; i < pool.size(); ++i) {
