@@ -78,14 +78,13 @@ func _draw() -> void:
 			var d := 3.5
 			draw_polyline(PackedVector2Array([c + Vector2(0, -d), c + Vector2(d, 0), c + Vector2(0, d), c + Vector2(-d, 0), c + Vector2(0, -d)]), col, 1.6, true)
 		# Selection and target rings.
-		var ring := maxf(h * 1.32, 14.0)
+		var ring := maxf(h * 1.08, 12.0) # R3.5: subtle, close to the hull, never a hoop that hides it
 		if sel:
-			draw_arc(c, ring + 1.5 * sin(t * 4.0), 0, TAU, 48, Color(selected_color(), 0.85), 1.6, true)
+			draw_arc(c, ring, 0, TAU, 48, Color(selected_color(), 0.35), 1.0, true)
 		if tgt:
-			draw_arc(c, ring, 0, TAU, 48, Color(target_color(), 0.9), 1.6, true)
-			for k in 4: # reticle ticks
+			for k in 4: # reticle ticks only: the ring itself hid small targets
 				var dir := Vector2.from_angle(k * PI * 0.5 + PI * 0.25)
-				draw_line(c + dir * (ring - 4.0), c + dir * (ring + 6.0), Color(target_color(), 0.9), 1.6, true)
+				draw_line(c + dir * (ring - 2.0), c + dir * (ring + 6.0), Color(target_color(), 0.75), 1.4, true)
 		if not key:
 			continue
 		# Name above the bracket, bars below it.

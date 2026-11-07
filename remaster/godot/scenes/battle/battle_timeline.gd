@@ -768,7 +768,8 @@ static func build(events: Array, info: Array, cfg: Config = null) -> BattleTimel
 							j.duration = flight
 						add_job.call(j, i)
 						impact_time = maxf(impact_time, j.start + flight)
-					add_sound.call(t0, "TorpedoLaunch", keys, 3, i)
+						# One launch sound per tube, on its own stagger: the salvo ripples (R3.5).
+						add_sound.call(j.start, "TorpedoLaunch", keys, 3, i)
 					if cfg.player_empire > 0 and owner == cfg.player_empire and not ctx.torpedo_barked:
 						tl.barks.append({"time": t0, "detail": "torpedo", "priority": 3, "fleet_id": fid})
 						ctx.torpedo_barked = true

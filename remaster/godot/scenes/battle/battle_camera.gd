@@ -594,6 +594,25 @@ func snap() -> void:
 	_snap_next = true
 
 
+## Pushes the eye back along the view line until it is outside every hull's shield shell (1.6 radii). A cut to a
+## close shot of a small ship used to put the lens inside a neighbour's shield: the 8 Nov close strip opened white.
+func _clear_of_hulls(eye: Vector3, look: Vector3) -> Vector3:
+	var back := (eye - look).normalized()
+	if back.length() < 0.5:
+		return eye
+	for pass_i in 4:
+		var moved := false
+		for b in bodies:
+			var c: Vector3 = b.center
+			var r: float = float(b.radius) * 2.4
+			if eye.distance_to(c) < r:
+				eye += back * (r - eye.distance_to(c) + 2.0)
+				moved = true
+		if not moved:
+			break
+	return eye
+
+
 ## The cinematic director's framing: [eye, look]. shot.kind < 0 is a wide shot of the battle.
 func _cinematic_shot(_delta: float, shot: Dictionary, time: float) -> Array:
 	var key: String = shot.get("key", "")
@@ -616,41 +635,75 @@ func _cinematic_shot(_delta: float, shot: Dictionary, time: float) -> Array:
 	var drift := (time - _shot_start) * 0.05
 	var eye: Vector3
 	var look: Vector3
-	if kind < 0 and has_sides and side_ours.distance_to(side_theirs) > 40.0:
-		# Fleets apart (the opening rounds): behind and above the player's formation, looking at the enemy, so our
-		# ships read as ships rather than specks at the arena edge.
+	var aspect := 16.0 / 9.0
+	var vsize := get_viewport().get_visible_rect().size if is_inside_tree() else Vector2.ZERO
+	if vsize.y > 0.0:
+		aspect = vsize.x / vsize.y
+	# R3.5 framing (coordinator review of the 8 Nov strips: hulls cropped at the edges, specks in a void): every shot
+	# frames whole hulls. Two-ship shots keep shooter and target both inside the frame with margin; wide shots hold
+	# both fleets side-on from a raised three-quarter angle; no shot puts the lens inside a hull or its shield.
+	if kind < 0 and has_sides:
 		var to_enemy := side_theirs - side_ours
 		to_enemy.y = 0.0
 		var fwd := to_enemy.normalized() if to_enemy.length() > 1e-3 else Vector3(1, 0, 0)
 		var side := fwd.cross(Vector3.UP).normalized() * side_sign
-		var r := clampf(side_ours_spread * 0.9 + 28.0, 30.0, 85.0)
-		var base := -fwd * r + side * r * 0.5 + Vector3.UP * r * (0.3 + lift * 0.4)
-		eye = side_ours + base.rotated(Vector3.UP, drift * 0.5)
-		look = side_ours.lerp(side_theirs, 0.35)
+		var mid := (side_ours + side_theirs) * 0.5
+		var r := to_enemy.length() * 0.5 + side_ours_spread * 0.5 + 20.0
+		var dist := CameraRig.frame_distance(r, fov, aspect, 1.0) * 0.9
+		var elev := deg_to_rad(28.0 + lift * 20.0)
+		# Side-on to the line between the fleets, a little behind ours so the player's ships sit nearer the lens.
+		var dir := (side * cos(elev) - fwd * 0.35 + Vector3.UP * sin(elev)).normalized()
+		eye = mid + dir.rotated(Vector3.UP, drift * 0.3) * dist
+		look = mid.lerp(side_ours, 0.12)
 	elif kind < 0:
-		# Establishing shot: slow orbit around the battle, high enough to read the formations.
-		var r := clampf(spread * 0.6, 35.0, 90.0)
+		var r := clampf(spread * 0.6, 35.0, 400.0)
 		var a := time * 0.04 + float(_shot_seed % 628) / 100.0
-		eye = centroid + Vector3(sin(a), 0.0, cos(a)) * r + Vector3.UP * r * 0.3
+		var dist := CameraRig.frame_distance(r, fov, aspect, 1.0)
+		eye = centroid + (Vector3(sin(a), 0.0, cos(a)) * cos(0.55) + Vector3.UP * sin(0.55)) * dist
 		look = centroid
 	else:
-		var to_other := other - subject
-		to_other.y = 0.0
-		if to_other.length() < 1e-3:
-			to_other = Vector3(1, 0, 0)
-		var fwd := to_other.normalized()
+		var other_size: float = shot.get("other_size", subject_size)
+		var line := other - subject
+		var flat := Vector3(line.x, 0.0, line.z)
+		if flat.length() < 1e-3:
+			flat = Vector3(1, 0, 0)
+		var fwd := flat.normalized()
 		var side := fwd.cross(Vector3.UP).normalized() * side_sign
-		var dist := maxf(subject_size * 2.6, 10.0) * dist_k
-		var shooter_shot := kind in [BattleTimeline.Job.BEAM, BattleTimeline.Job.PULSE, BattleTimeline.Job.TORPEDO, BattleTimeline.Job.RAM]
-		if shooter_shot:
-			# Over the shoulder: behind and beside the shooter, looking down the line of fire.
-			var base := -fwd * dist + side * dist * 0.55 + Vector3.UP * dist * lift
-			eye = subject + base.rotated(Vector3.UP, drift)
-			look = subject.lerp(other, 0.45)
-		else:
-			# Reverse angle on the struck ship, from the attacker's side.
-			var k := 1.6 if kind == BattleTimeline.Job.EXPLOSION else 1.0
-			var base := fwd * dist * k + side * dist * 0.7 * k + Vector3.UP * dist * lift * k
-			eye = subject + base.rotated(Vector3.UP, drift)
+		var two := kind in [BattleTimeline.Job.BEAM, BattleTimeline.Job.PULSE, BattleTimeline.Job.TORPEDO, BattleTimeline.Job.RAM,
+			BattleTimeline.Job.SHIELD, BattleTimeline.Job.HULL, BattleTimeline.Job.INTERCEPT]
+		var shooter_kind := kind in [BattleTimeline.Job.BEAM, BattleTimeline.Job.PULSE, BattleTimeline.Job.TORPEDO, BattleTimeline.Job.RAM]
+		var far := line.length() > 7.0 * maxf(subject_size, other_size)
+		if two and far and shooter_kind:
+			# Long range: over the shooter's shoulder. The shooter is whole and large in frame, the launch leaves its
+			# tubes toward a target small but visible beyond it (the director cuts to the target for the impact).
+			# Sized so the shooter's whole hull sits in the lower third of the frame with margin, the line of fire
+			# running away from it toward the target.
+			var dist := CameraRig.frame_distance(subject_size * 1.5, fov, aspect, 1.0) * dist_k
+			var dir := (-fwd + side * 0.9 + Vector3.UP * (0.45 + lift * 0.4)).normalized()
+			eye = subject + dir.rotated(Vector3.UP, drift * 0.5) * dist
+			look = subject + (other - subject).normalized() * subject_size * 1.2
+		elif two and far:
+			# Long range impact: the struck ship whole, seen from the attacker's side so the shot arrives toward us.
+			var dist := maxf(subject_size * 2.8, 14.0) * dist_k
+			var dir := (fwd + side * 0.8 + Vector3.UP * (0.3 + lift * 0.5)).normalized()
+			eye = subject + dir.rotated(Vector3.UP, drift * 0.5) * dist
 			look = subject
+		elif two:
+			# Shooter and target together, seen across the line of fire: both hulls whole, the shot crossing the frame.
+			var shooter_shot := kind in [BattleTimeline.Job.BEAM, BattleTimeline.Job.PULSE, BattleTimeline.Job.TORPEDO, BattleTimeline.Job.RAM]
+			var r := line.length() * 0.5 + maxf(subject_size, other_size) * 0.75
+			var dist := CameraRig.frame_distance(r, fov, aspect, 1.15) * dist_k
+			var elev := deg_to_rad(16.0 + lift * 30.0)
+			var lean := -0.35 if shooter_shot else 0.35 # the camera leans toward the shooter (or the struck ship)
+			var dir := (side * cos(elev) + fwd * lean + Vector3.UP * sin(elev)).normalized()
+			look = subject.lerp(other, 0.5)
+			eye = look + dir.rotated(Vector3.UP, drift * 0.4) * dist
+		else:
+			# One ship (an explosion, a cloak): framed whole at about three hull lengths.
+			var k := 1.8 if kind == BattleTimeline.Job.EXPLOSION else 1.0
+			var dist := maxf(subject_size * 2.8, 12.0) * dist_k * k
+			var dir := (side + fwd * 0.6 + Vector3.UP * (0.25 + lift)).normalized()
+			eye = subject + dir.rotated(Vector3.UP, drift) * dist
+			look = subject
+	eye = _clear_of_hulls(eye, look)
 	return [eye, look]

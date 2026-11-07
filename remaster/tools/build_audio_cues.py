@@ -87,7 +87,8 @@ SFX = {
     "sfx.ui.turn": [59],
     "sfx.ui.research": [92],
     "sfx.ui.construction": [93],
-    "sfx.alert.red": [75],
+    # R3.5 (8 Nov 2026): 75 is a run of stepped UI beeps; 132 is the only rising harmonic whoop of the 163 (spectrogram).
+    "sfx.alert.red": [132],
     "sfx.warp.in": [1],
     "sfx.warp.out": [0],
     "sfx.cloak.rom": [16],
@@ -96,8 +97,8 @@ SFX = {
     "sfx.explosion.small": [33, 39, 36],
     "sfx.explosion.large": [32, 35, 38, 40, 41],
     "sfx.explosion.botf": [32, 35, 38],
-    "weapon.generic.beam": [131, 132, 135],
-    "weapon.generic.torpedo": [146, 162],
+    "weapon.generic.beam": [131, 135],
+    "weapon.generic.torpedo": [10],  # R3.5: a descending sweep; 146/162 were short blips. Still a guess for Simon's ear.
     "weapon.PulsePhaser": [76, 78, 79],
     "weapon.Disruptor": [133, 134],
 }

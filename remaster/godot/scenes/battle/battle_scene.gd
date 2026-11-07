@@ -22,7 +22,7 @@ const CELL := 28.0
 ## Presentation spread (Simon, 8 Nov 2026: "the battle should be a little more spread out"): grid positions and heights
 ## are drawn this many times further apart than a cell while hulls keep their true-scale length against CELL, so ships
 ## sit several lengths apart and the engagement range reads. Rules positions are untouched.
-const SPREAD := 1.7
+const SPREAD := 1.3
 const SPACING_EASE := 2.5       ## 1/s: how fast the presentation spacing offsets relax toward a smaller target.
 const SPACING_PUSH_EASE := 5.0  ## 1/s: how fast they grow when hulls close in (12 heaved hulls up and down; R3.5).
 ## Each round's timeline starts a ship at its home height, and a wing joined at the round start puts it on station;
@@ -440,5 +440,5 @@ func _update_camera(t: float, delta: float, centroid: Vector3, spread: float) ->
 	if subject != null and (_playing or not _finished_sent):
 		shot = {"key": "%d_%d_%d_%.2f" % [round_index, director.subject, director.other, director.since],
 			"kind": director.kind, "subject": subject.global_position, "subject_size": subject.length,
-			"other": other.global_position if other != null else centroid, "centroid": centroid, "spread": spread}
+			"other": other.global_position if other != null else centroid, "other_size": other.length if other != null else subject.length, "centroid": centroid, "spread": spread}
 	camera.film(delta, t, bodies, chase, shot)

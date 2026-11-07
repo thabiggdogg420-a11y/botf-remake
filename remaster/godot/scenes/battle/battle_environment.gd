@@ -62,6 +62,10 @@ static func build(parent: Node3D, arena_size: Vector2) -> Dictionary:
 	sun.light_energy = 2.6
 	sun.shadow_enabled = DisplaySettings.shadows_enabled # Settings > Shadow quality: Off
 	sun.directional_shadow_max_distance = 320.0
+	# R3.5: the default biases left shadow acne as black speckle over the hero hulls (title close-ups).
+	sun.shadow_bias = 0.08
+	sun.shadow_normal_bias = 2.5
+	sun.shadow_blur = 1.5
 	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
 	sun.light_angular_distance = 0.6
 	parent.add_child(sun)
@@ -91,8 +95,8 @@ static func build(parent: Node3D, arena_size: Vector2) -> Dictionary:
 	planet.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	# True scale (Simon, 8 Nov 2026: "the ships look huge compared to the nearby planet"): a gas giant is tens of
 	# thousands of km across, so it is a backdrop, pushed far beyond the arena where it never sits beside a hull.
-	planet.scale = Vector3.ONE * 1900.0
-	planet.position = Vector3(1500.0, -2300.0, -4300.0)
+	planet.scale = Vector3.ONE * 700.0
+	planet.position = Vector3(-2600.0, -350.0, -4600.0) # level with the arena, far behind it: off the downward views
 	planet.rotation_degrees = Vector3(12.0, 30.0, 18.0)
 	parent.add_child(planet)
 	out.planet = planet

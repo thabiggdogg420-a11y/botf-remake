@@ -236,14 +236,7 @@ func _prepare(s: String) -> void:
 			var t0: float = maxf(0.0, view.time - 1.25)
 			var shot := _live_shot(view)
 			view.seek(t0)
-			if s == "battle-strip-close" and not shot.is_empty():
-				var shooter: BattleShip = view.ship_node(int(shot.fleet_id))
-				cam.detach_to_free_cam()
-				cam.free_distance = maxf(shooter.length * 3.0, 14.0)
-				cam.add_orbit(-30.0, -8.0)
-				cam.free_focus = shooter.global_position
-				cam.transition = 0.0
-				cam.snap()
+			# -close: the director's own two-ship framing of the busiest beam exchange (no free camera).
 			view.playback_speed = 1.0
 			for k in 10:
 				while view.time < t0 + 0.25 * k:
@@ -251,7 +244,7 @@ func _prepare(s: String) -> void:
 				var im: Image = view.get_viewport().get_texture().get_image()
 				im.resize(640, 360, Image.INTERPOLATE_LANCZOS)
 				im.save_png("%s/ui-%s-%02d.png" % [out_dir, s, k])
-			print("STRIP ", s, " t ", snappedf(t0, 0.01), " .. ", snappedf(view.time, 0.01))
+			print("STRIP ", s, " t ", snappedf(t0, 0.01), " .. ", snappedf(view.time, 0.01), " mode ", cam.mode, " director ", view.director.kind, " subj ", view.director.subject, " playing ", view.is_playing())
 		"galaxy-open":
 			app.view = {}
 			_campaign()
@@ -298,10 +291,15 @@ func _prepare(s: String) -> void:
 func _volley_drill(campaign := false) -> void:
 	if campaign:
 		app.view = {}
-		app.start_campaign({"faction": 1, "seed": 424242, "era": 3, "ruleset": "reference", "width": 22, "height": 16, "systems": 48, "preset": "remastered", "events": true, "aiAggression": true})
+		# A small, crowded quadrant: empires meet within a few turns (a real campaign contact, not a drill).
+		app.start_campaign({"faction": 1, "seed": 424242, "era": 3, "ruleset": "reference", "width": 10, "height": 8, "systems": 14, "preset": "remastered", "events": true, "aiAggression": true})
 		var st := ""
 		for n in 80:
+			_force_contact()
 			st = app.end_turn()
+			if OS.get_environment("SHOT_FXDEBUG") != "" and n % 5 == 0:
+				var e0: Dictionary = app.view.get("empires", [{}])[0] if app.view.get("empires", []).size() > 0 else {}
+				print("TURN ", n, " st=", st, " contacts=", app.view.get("contacts", []).size(), " battles=", app.view.get("battles", []).size(), " fleets=", app.view.get("fleets", []).map(func(f): return [f.x, f.y]), " empire0=", str(e0).left(300))
 			await _wait(1)
 			if st == "battle":
 				break
@@ -376,3 +374,38 @@ func _live_shot(view: Node) -> Dictionary:
 		if j.kind in [BattleTimeline.Job.BEAM, BattleTimeline.Job.PULSE] and view.time >= j.start + j.duration * 0.15 and view.time <= j.start + j.duration * 0.7:
 			return j
 	return {}
+
+
+## Campaign proof route: send every fleet of the player toward the nearest system another empire owns (or, with no
+## foreign system known, the far side of the map), so a real campaign contact happens within a few dozen turns.
+func _force_contact() -> void:
+	var me := app.player()
+	# At war with every empire we have met, so a meeting is a battle (BOTF powers start at peace).
+	for e in app.view.get("empires", []):
+		var id := int(e.get("empire", e.get("id", 0)))
+		if e.get("atWar", false) or not e.get("contact", false):
+			continue
+		if id != 0 and id != me and id <= 5:
+			app.core.invoke("submit", {"command": {"type": "DeclareWar", "targetEmpire": id}, "cancelIds": []})
+	var fleets: Array = app.view.get("fleets", [])
+	var targets := []
+	for c in app.view.get("contacts", []):
+		targets.append(Vector2i(int(c.get("x", 0)), int(c.get("y", 0))))
+	for sy in app.view.get("systems", []):
+		var o := int(sy.get("owner", 0))
+		if o != 0 and o != me:
+			targets.append(Vector2i(int(sy.get("x", 0)), int(sy.get("y", 0))))
+	for f in fleets:
+		if int(f.get("owner", me)) != me:
+			continue
+		var at := Vector2i(int(f.get("x", 0)), int(f.get("y", 0)))
+		var best := Vector2i(app.width() - 1 - at.x, at.y)
+		var bd := INF
+		for t in targets:
+			var d := Vector2(t - at).length()
+			if d < bd:
+				bd = d
+				best = t
+		var r: Dictionary = app.core.invoke("submit", {"command": {"type": "MoveFleet", "fleetId": int(f.get("id", 0)), "targetX": best.x, "targetY": best.y}, "cancelIds": []})
+		if not r.get("ok", false) and OS.get_environment("SHOT_FXDEBUG") != "":
+			print("move refused: ", r.get("error", ""))
