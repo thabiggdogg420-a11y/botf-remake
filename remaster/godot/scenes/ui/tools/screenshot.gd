@@ -6,6 +6,8 @@ extends SceneTree
 ## Battle: battle-r1 battle-r3, and the camera modes battle-overview battle-chase battle-ship battle-target battle-topdown
 ## battle-cinematic battle-free (BattleCamera), and the close-ups battle-closeup (the player's flagship fills the frame;
 ## SHOT_CLASS=<ship class name> frames the first ship of that class instead, e.g. Galaxy or "Negh'Var").
+## Galaxy: galaxy-open (as it opens), galaxy-features (one of each feature type across a revealed chart), and
+## galaxy-nebula galaxy-ion galaxy-rift galaxy-wormhole galaxy-blackhole galaxy-neutron (zoomed on that feature).
 ## SHOT_FPS=1 prints a "FPS" line per battle shot (avg fps, p99 and worst frame, over the whole drill and over the last
 ## 100 frames); SHOT_NOVSYNC=1 turns vsync off so the average is the real frame cost, not the display refresh.
 
@@ -72,6 +74,8 @@ func _run() -> void:
 		await _wait(10)
 		_report_fps(s)
 		var img := root.get_viewport().get_texture().get_image()
+		if s == "battle-closeup" and app._current != null and app._current.get("host") != null and app._current.host.view_node != null:
+			img = app._current.host.view_node.get_viewport().get_texture().get_image() # the 3D view alone, no panels
 		# Committed screenshots are kept small: 960x540.
 		if OS.get_environment("SHOT_FULL") == "":
 			img.resize(960, 540, Image.INTERPOLATE_LANCZOS)
@@ -79,6 +83,15 @@ func _run() -> void:
 		img.save_png(path)
 		print("saved ", path)
 	quit(0)
+
+## The first ship in the battle view whose name starts with `klass` ("Galaxy" finds "Galaxy — Command Cruiser").
+func _find_ship(klass: String) -> BattleShip:
+	var view: Node = app._current.host.view_node
+	for fid in view._ships:
+		var ship: BattleShip = view._ships[fid]
+		if ship.ship_name.begins_with(klass):
+			return ship
+	return null
 
 func _campaign() -> void:
 	if app.view.is_empty() or app.view.get("session", {}).get("active", false):
@@ -140,7 +153,7 @@ func _prepare(s: String) -> void:
 				app._current._round()
 				await _wait(4)
 			await _wait(int(OS.get_environment("SHOT_BATTLE_FRAMES")) if OS.get_environment("SHOT_BATTLE_FRAMES") != "" else 150)
-		"battle-overview", "battle-chase", "battle-ship", "battle-target", "battle-topdown", "battle-cinematic", "battle-free":
+		"battle-overview", "battle-chase", "battle-ship", "battle-target", "battle-topdown", "battle-cinematic", "battle-free", "battle-closeup":
 			# The battle camera modes on the starbase drill after round 2 (BattleCamera; the mode bar shows the mode).
 			if not (app._current != null and app._current.get("host") != null and app._current.host.view_node != null):
 				app.start_drill("newBattleDrill", "Starbase drill", {"station": true})
@@ -152,14 +165,61 @@ func _prepare(s: String) -> void:
 					await _wait(4)
 			var cam: BattleCamera = app._current.host.view_node.camera
 			var mode: int = {"battle-overview": 0, "battle-chase": 1, "battle-ship": 2, "battle-target": 3, "battle-topdown": 4,
-				"battle-cinematic": 5, "battle-free": 0}[s]
+				"battle-cinematic": 5, "battle-free": 0, "battle-closeup": 0}[s]
 			cam.set_mode(mode)
 			if s == "battle-free":
 				# Zoomed toward a point left of centre, then orbited round: the free camera.
 				await _wait(60)
 				cam.zoom_at(4.0, Vector2(0.35, 0.55))
 				cam.add_orbit(-40.0, -15.0)
-			await _wait(int(OS.get_environment("SHOT_BATTLE_FRAMES")) if OS.get_environment("SHOT_BATTLE_FRAMES") != "" else 120)
+			if s == "battle-closeup":
+				# A named class fills the frame: the free camera sits 1.15 hull lengths from it at a three-quarter angle.
+				# Saved from the battle's own viewport (no LCARS panels around it). SHOT_CLASS defaults to Galaxy.
+				await _wait(60)
+				var want := OS.get_environment("SHOT_CLASS") if OS.get_environment("SHOT_CLASS") != "" else "Galaxy"
+				var target := _find_ship(want)
+				if target != null:
+					app._current.host.view_node.playback_speed = 0.0 # hold the moment: the ship must stay in frame
+					await _wait(4)
+					cam.detach_to_free_cam()
+					cam.free_distance = maxf(target.length * 1.15, 6.0)
+					cam.add_orbit(-35.0, -4.0)
+					for n in 30:
+						cam.free_focus = target.global_position
+						cam.transition = 0.0
+						cam.snap()
+						await _wait(1)
+				else:
+					push_warning("battle-closeup: no ship of class %s in the battle" % want)
+			if s != "battle-closeup":
+				await _wait(int(OS.get_environment("SHOT_BATTLE_FRAMES")) if OS.get_environment("SHOT_BATTLE_FRAMES") != "" else 120)
+		"galaxy-open":
+			app.view = {}
+			_campaign()
+			app.goto("galaxy")
+		"galaxy-features", "galaxy-nebula", "galaxy-ion", "galaxy-rift", "galaxy-wormhole", "galaxy-blackhole", "galaxy-neutron":
+			_campaign()
+			app.goto("galaxy")
+			await _wait(4)
+			var types := ["Nebula", "IonStorm", "SubspaceRift", "Wormhole", "BlackHole", "NeutronStar"]
+			var pick := {"galaxy-nebula": 0, "galaxy-ion": 1, "galaxy-rift": 2, "galaxy-wormhole": 3, "galaxy-blackhole": 4, "galaxy-neutron": 5}
+			var gm: GalaxyMap = app.current_screen().map
+			var gsz := gm.grid_size()
+			var cx := int(gsz.x / 2)
+			var cy := int(gsz.y / 2)
+			var feats := []
+			for k in types.size():
+				feats.append({"id": k + 1, "type": types[k], "x": cx - 5 + 2 * k, "y": cy, "surveyed": true})
+			feats[3]["pairId"] = 9
+			feats[3]["exit"] = {"x": cx + 4, "y": cy + 3}
+			app.view["features"] = feats
+			app.view["fog"] = "2".repeat(gsz.x * gsz.y)
+			gm.rebuild()
+			if pick.has(s):
+				gm.focus_cell(int(feats[pick[s]]["x"]), cy, 2.2, false)
+			else:
+				gm.frame_known()
+			await _wait(4)
 		"briefing", "events", "victory", "end", "settings":
 			_campaign()
 			app.goto("galaxy")

@@ -247,7 +247,23 @@ func _run() -> void:
 		if r == 1:
 			await shot("pc-10-battle-round2")
 		if r == 2:
+			# The battle opens in the cinematic camera, so C toggles it OFF (to overview) and a second C back on.
+			# (The first smoke runs pressed C once and filmed the overview as "cinematic": HANDOFF bug 4.)
+			var cam: BattleCamera = cs.host.view_node.camera
+			check(cam.mode == BattleCamera.Mode.CINEMATIC, "battle opens in the cinematic camera")
 			await key(KEY_C)
+			await wait(2)
+			check(cam.mode == BattleCamera.Mode.OVERVIEW, "C key (real window) leaves cinematic")
+			await shot("pc-11a-battle-overview")
+			var cbtn: Control = find(cs, "CamCINEMATIC")
+			check(cbtn != null, "CINEMATIC button on the camera bar")
+			if cbtn:
+				await click(cbtn)
+				await wait(2)
+			check(cam.mode == BattleCamera.Mode.CINEMATIC, "CINEMATIC button (clicked) selects cinematic")
+			await key(KEY_C)
+			await key(KEY_C)
+			check(cam.mode == BattleCamera.Mode.CINEMATIC, "C twice returns to cinematic")
 			await measure("battle cinematic", 3.0)
 			await shot("pc-11-battle-cinematic")
 		cs = app.current_screen()
@@ -277,8 +293,7 @@ func _run() -> void:
 		await measure("24v24 round %d" % (r + 1), 4.0, t_r)
 		big = app.current_screen()
 		if r == 2:
-			await key(KEY_C)
-			await measure("24v24 cinematic", 4.0)
+			await measure("24v24 cinematic", 4.0) # the opening mode is cinematic
 			await shot("pc-13-24v24-cinematic")
 	check(int(app.encounter.get("ships", []).size()) >= 48, "24v24 encounter has %d ships" % app.encounter.get("ships", []).size())
 

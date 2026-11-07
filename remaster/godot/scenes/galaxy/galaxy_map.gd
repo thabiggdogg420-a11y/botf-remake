@@ -129,7 +129,9 @@ func focus_cell(x: int, y: int, z: float = -1.0, animate: bool = true) -> void:
 		_apply_camera()
 
 ## Frames every surveyed or sensed sector inside the part of the map the host's panels leave visible.
-## Early in a campaign only a few sectors are known, so the span has a floor and the zoom may go up to 2.4.
+## Early in a campaign only a few sectors are known (often one), so the framed span has a floor of half the galaxy
+## (at least 9 x 7 sectors): the chart opens on a neighbourhood with its nebulae and edges, not on one sector at 2.4x.
+## The view never runs past the galaxy's own edge.
 func frame_known() -> void:
 	var v := view()
 	if v.is_empty():
@@ -146,13 +148,23 @@ func frame_known() -> void:
 	if lo.x == INF:
 		lo = Vector2.ZERO
 		hi = Vector2(g.x - 1, g.y - 1)
-	var span := (hi - lo + Vector2(1.6, 1.6)).max(Vector2(5.0, 4.0)) * CELL
+	var floor_span := Vector2(maxf(9.0, g.x * 0.5), maxf(7.0, g.y * 0.5)).min(Vector2(g))
+	var span := (hi - lo + Vector2(1.6, 1.6)).max(floor_span) * CELL
 	var avail := Vector2(size.x - view_insets.x - view_insets.z, size.y - view_insets.y - view_insets.w)
 	avail = avail.max(Vector2(200, 160))
-	zoom = clamp(min(avail.x / span.x, avail.y / span.y), 0.35, 2.4)
+	zoom = clamp(min(avail.x / span.x, avail.y / span.y), 0.35, 1.6)
 	# Centre of the visible area, in screen space, relative to the control's centre.
 	var shift := Vector2(view_insets.x - view_insets.z, view_insets.y - view_insets.w) * 0.5
-	cam = (lo + hi + Vector2.ONE) * 0.5 * CELL - shift / zoom
+	var centre := (lo + hi + Vector2.ONE) * 0.5 * CELL
+	# Keep the visible area inside the galaxy (centred when the galaxy is smaller than the view).
+	var half := avail * 0.5 / zoom
+	var world := Vector2(g) * CELL
+	for axis in 2:
+		if half[axis] * 2.0 >= world[axis]:
+			centre[axis] = world[axis] * 0.5
+		else:
+			centre[axis] = clampf(centre[axis], half[axis], world[axis] - half[axis])
+	cam = centre - shift / zoom
 	_target_cam = cam
 	_target_zoom = zoom
 	_apply_camera()
