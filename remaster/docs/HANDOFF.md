@@ -260,6 +260,46 @@ in wings; upgrade each model's own textures, plating for untextured ones.
   - Also queued: more ship models for the classes on generated hulls (downloads pre-approved), the 24-v-24 Insights
     profile (item 9), and the fresh-clone check (item 11, near the end). The second combat engine stays parked.
 
+## Cloud session 2026-11-07: resumed after the pause
+
+Development restarted from `700e1c6` (the 30 Sep pause point) in a fresh cloud container. Every toolchain was
+rebuilt from scratch: core CMake, Godot 4.5 with godot-cpp and the Linux extension, emsdk, and the web `npm ci`.
+
+- **Verified green:**
+  - Core: 11/11 ctest suites, soak included.
+  - Unreal stand-in check: 541 client-logic checks, 0 failures, after the fixes below.
+  - Asset keys: 203 required, 279 entries, 0 errors.
+  - Web: 20 bridge tests.
+  - Godot: core tests 10/10 (MSVC/native and wasm fingerprints agree again), UI 85/0, battle timeline 9/0, battle scene 0 failures.
+- **Repaired:**
+  - `remaster/godot/docs/screens/*.png` were plain blobs although `.gitattributes` routes PNGs through LFS. They are
+    now LFS objects, so a fresh clone no longer shows them as modified.
+  - The stand-in check had been red since the 30 Sep 3D-flight work:
+    - `ShipTrack::small` → `smallCraft` (Windows `small` macro).
+    - Shadowed locals and a lambda named `near` (another Windows macro) in the client-logic tests.
+    - PC-QUEUE item 12 asks for a UE rebuild.
+  - The browser wasm predated the 30 Sep real-star-names change: rebuilt. The Godot fixtures, which are recorded
+    from it, were re-dumped.
+- **Godot fixes for the PC smoke-test bugs** (`f1050f3`; the bug list is in the next section):
+  - Bugs 2, 4 and 7 shared one cause. The combat screen rebuilt the whole 3D battle view on every refresh (each
+    order, pick and round): the camera reset, effects recompiled, and frames spiked. The view is now created once
+    and re-parented.
+  - The effects also prewarm once per battle.
+  - Bug 3: opening rounds frame our formation from behind with the enemy beyond. Between rounds the camera holds
+    that wide shot.
+  - Bug 5: the galaxy fits the known sectors into the area the inspector and toolbar leave visible.
+  - Bug 6: an empty Events window is a compact note.
+  - Also new:
+    - ships shown at their deployment cells before round 1;
+    - a CAMERA mode button over the 3D view;
+    - a Starbase drill on the title screen (Remastered rules, the full 3D battle).
+  - PC-QUEUE item 13 asks for a PC rebuild and smoke run.
+- **Still waiting on Simon** (unchanged from 30 Sep):
+  - beta 0.2.0 playtest notes;
+  - the Ferengi markings call;
+  - the sign-ups (PC-QUEUE item 0).
+- **Voice mapping** (VOICE-PLAN.md §4) needs the local `LocalAssets/` audio on the PC.
+
 ## PC session 2026-09-29: Godot (Windows 11, RTX 4090)
 
 The cloud's Godot 4.5 client, built natively on Windows and run for the first time here. The mingw DLL was not needed.
