@@ -419,23 +419,14 @@ static func settings(app: App) -> Control:
 		cb.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		r.add_child(cb)
 		root.add_child(r)
-	var vr := Lcars.hbox(12)
-	vr.add_child(_setting_text("Sound volume", "Interface cues (the Godot client uses the master bus)."))
-	var vol := HSlider.new()
-	vol.max_value = 1.0
-	vol.step = 0.05
-	vol.value = float(s.get("volume", 0.7))
-	vol.custom_minimum_size.x = 220
-	vol.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	vol.value_changed.connect(func(val):
-		s["volume"] = val
-		AudioServer.set_bus_volume_db(0, linear_to_db(max(0.001, val))))
-	vol.drag_ended.connect(func(_c): app.save_settings())
-	vr.add_child(vol)
-	root.add_child(vr)
+	BotfAudioMix.fill_defaults(s)
+	for bus in BotfAudioCues.BUSES:
+		root.add_child(_volume_row(app, s, bus))
 	var acts := Lcars.hbox(8)
 	acts.add_child(Lcars.pill("Reset to defaults", "ghost", func():
-		app.settings = {"uiScale": 1.0, "colorblind": false, "reducedMotion": false, "autosave": true, "confirmEndTurn": false, "volume": 0.7, "showGrid": true}
+		app.settings = {"uiScale": 1.0, "colorblind": false, "reducedMotion": false, "autosave": true, "confirmEndTurn": false, "showGrid": true}
+		BotfAudioMix.fill_defaults(app.settings)
+		BotfAudioSystem.attach(app)
 		app.save_settings()
 		app.close_modal()
 		settings(app)))
@@ -444,6 +435,36 @@ static func settings(app: App) -> Control:
 	root.add_child(acts)
 	root.add_child(Lcars.label("Core backend: %s" % app.core.backend, "Mono", 12, Lcars.TEXT3))
 	return app.open_modal(root, "Settings", Vector2(720, 0))
+
+## One audio slider (Master, Effects, Voice, Interface, Music): applied live, saved on release, with a sample sound.
+static func _volume_row(app: App, s: Dictionary, bus: String) -> Control:
+	var vr := Lcars.hbox(12)
+	vr.name = "Volume_" + bus
+	var lab: Array = BotfAudioMix.LABELS[bus]
+	vr.add_child(_setting_text(lab[0], lab[1]))
+	var vol := HSlider.new()
+	vol.name = "Slider"
+	vol.max_value = 1.0
+	vol.step = 0.05
+	vol.value = BotfAudioMix.volume_of(s, bus)
+	vol.custom_minimum_size.x = 220
+	vol.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	var pct := Lcars.label("%d%%" % int(vol.value * 100), "Mono")
+	pct.custom_minimum_size.x = 52
+	pct.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	vol.value_changed.connect(func(val):
+		pct.text = "%d%%" % int(val * 100)
+		s[BotfAudioMix.key_for(bus)] = val
+		if BotfAudioSystem.instance != null:
+			BotfAudioSystem.instance.set_volume(bus, val))
+	vol.drag_ended.connect(func(_c):
+		app.save_settings()
+		if BotfAudioSystem.instance != null:
+			BotfAudioSystem.instance.preview(bus))
+	vol.focus_exited.connect(func(): app.save_settings())
+	vr.add_child(vol)
+	vr.add_child(pct)
+	return vr
 
 static func _setting_text(title: String, detail: String) -> Control:
 	var v := Lcars.vbox(0)
