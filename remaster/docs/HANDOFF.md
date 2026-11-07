@@ -486,3 +486,15 @@ exists. The gaps are mostly sound, onboarding, art content and polish.
 | R6 Ship it | Display settings (resolution, fullscreen, vsync, with confirm-or-revert). App icon. Multi-slot autosaves with thumbnails. A test of a full-game AI-vs-AI soak through to each victory type. An exported exe that Simon plays from the desktop. | Simon plays a full campaign on the exported build |
 
 Paused 7 Nov 2026 on Simon's word, just after R1-R3 started. No commits had been made. The worktrees `wt-r1-sound`, `wt-r2-gameplay` and `wt-r3-present` (branches `godot/r1-*`, `godot/r2-*`, `godot/r3-*`) may hold uncommitted partial edits. Check them before resuming. Builder rules: `docs/GODOT-ROUND-BRIEF.md`.
+
+**R1-R3 merged on 7 Nov 2026** (`f226148` R2, `4e5677b` R3, `ce1909e` R1). After the merge, every suite passes:
+- core 11/0, UI 137/0, scene 0, camera 67/0, timeline 17/0, heroes 0, title 0, galaxy 0, audio 179/0;
+- 24v24 smoke: 87-88 fps avg, cinematic 109 fps.
+
+Open from the rounds:
+- A round-start spike of 150-250 ms at 24v24. The cause is `combat_screen.refresh()` rebuilding 48 cards; an incremental refresh would fix it.
+- The sound effect map was guessed from length and spectrum (`build_audio_cues.py` SFX), and music tracks 11-15 are unidentified. Both need Simon's ears.
+- Tactical order voice acknowledgements are not hooked to the order buttons.
+- `app.start_campaign` ignores the `empire` option.
+- The ion-storm shader shows blocky artefacts.
+- Trade routes are untested natively, because no drill has a visible foreign colony.
