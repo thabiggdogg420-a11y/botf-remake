@@ -3,6 +3,8 @@ extends SceneTree
 ##   godot --path remaster/godot --rendering-driver opengl3 --resolution 1920x1080 \
 ##     -s res://scenes/ui/tools/screenshot.gd -- <out_dir> [shot ...]
 ## Shots: title new galaxy galaxy-menu system research fleets empire diplomacy intel database combat briefing events victory end settings saves
+## Battle: battle-r1 battle-r3, and the camera modes battle-overview battle-chase battle-ship battle-target battle-topdown
+## battle-cinematic battle-free (BattleCamera).
 
 var app: App
 var out_dir := "res://docs/screens"
@@ -92,6 +94,26 @@ func _prepare(s: String) -> void:
 				app._current._round()
 				await _wait(4)
 			await _wait(int(OS.get_environment("SHOT_BATTLE_FRAMES")) if OS.get_environment("SHOT_BATTLE_FRAMES") != "" else 150)
+		"battle-overview", "battle-chase", "battle-ship", "battle-target", "battle-topdown", "battle-cinematic", "battle-free":
+			# The battle camera modes on the starbase drill after round 2 (BattleCamera; the mode bar shows the mode).
+			if not (app._current != null and app._current.get("host") != null and app._current.host.view_node != null):
+				app.start_drill("newBattleDrill", "Starbase drill", {"station": true})
+				app.end_turn()
+				await _wait(4)
+				app.close_all_modals()
+				for n in 2:
+					app._current._round()
+					await _wait(4)
+			var cam: BattleCamera = app._current.host.view_node.camera
+			var mode: int = {"battle-overview": 0, "battle-chase": 1, "battle-ship": 2, "battle-target": 3, "battle-topdown": 4,
+				"battle-cinematic": 5, "battle-free": 0}[s]
+			cam.set_mode(mode)
+			if s == "battle-free":
+				# Zoomed toward a point left of centre, then orbited round: the free camera.
+				await _wait(60)
+				cam.zoom_at(4.0, Vector2(0.35, 0.55))
+				cam.add_orbit(-40.0, -15.0)
+			await _wait(int(OS.get_environment("SHOT_BATTLE_FRAMES")) if OS.get_environment("SHOT_BATTLE_FRAMES") != "" else 120)
 		"briefing", "events", "victory", "end", "settings":
 			_campaign()
 			app.goto("galaxy")
