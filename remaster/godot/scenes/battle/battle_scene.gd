@@ -14,6 +14,7 @@ extends Node3D
 
 signal round_finished(round_index: int)
 signal cue(key: String, keys: PackedStringArray, priority: int, fleet_id: int)
+signal ship_picked(ship_id: int) ## A ship clicked in the view (BattleCamera); the host updates its selection.
 
 ## World units per tactical cell. Ships are drawn at true scale against it (BattleShip.display_length): Unreal's
 ## CellUnits doubled to 170 with the true-scale hulls, so this doubled from 14 with them (a Galaxy spans 1.3 cells).
@@ -62,6 +63,7 @@ func _ready() -> void:
 	add_child(camera)
 	camera.global_position = Vector3(0, 120, 220)
 	camera.look_at(Vector3.ZERO)
+	camera.ship_picked.connect(func(id): ship_picked.emit(id))
 	fx = BattleFx.new()
 	fx.name = "Fx"
 	fx.scene = self
@@ -352,18 +354,59 @@ func _apply(t: float, delta: float) -> void:
 	_update_camera(t, delta, centroid, spread)
 
 
+## The selected ship and target (BattleHost contract): the camera follows and rings them.
+func set_selection(ship: int, target: int) -> void:
+	if camera != null:
+		camera.set_selection(ship, target)
+
+
 func _update_camera(t: float, delta: float, centroid: Vector3, spread: float) -> void:
 	if camera == null:
 		return
 	director.update(timeline, t)
+	var me := _player_empire()
+	var by_id := {}
+	for s in encounter.get("ships", []):
+		by_id[int(s.get("id", 0))] = s
+	# Hull and shields as the round shows them: before it, then after it once it has played.
+	var state := {}
+	var rounds: Array = encounter.get("rounds", [])
+	if round_index >= 0 and round_index < rounds.size():
+		var done := _finished_sent and not _playing
+		for rs in rounds[round_index].get("ships", []):
+			state[int(rs.get("id", 0))] = [float(rs.get("hullAfter" if done else "hullBefore", rs.get("hullBefore", 1))),
+				float(rs.get("shieldAfter" if done else "shieldBefore", rs.get("shieldBefore", 0)))]
+	# What the camera can frame, follow, mark and pick: every ship not cloaked away or destroyed.
+	var bodies := []
+	for fid in _ships:
+		var ship: BattleShip = _ships[fid]
+		if not ship.visible or ship.is_queued_for_deletion():
+			continue
+		var track := timeline.track(fid)
+		if track != null and (track.visibility_at(t) < 0.35 or (track.hide_at >= 0.0 and t >= track.hide_at)):
+			continue
+		var info: Dictionary = by_id.get(fid, {})
+		var hs: Array = state.get(fid, [float(info.get("hull", 1)), float(info.get("shields", 0))])
+		var bow := ship.global_basis.x
+		bodies.append({"id": fid, "center": ship.global_position, "radius": camera.hull_radius(ship), "owner": ship.owner_id,
+			"mine": info.get("mine", ship.owner_id == me), "heading": rad_to_deg(atan2(bow.z, bow.x)),
+			"name": str(info.get("name", ship.ship_name)).split(" — ")[0],
+			"hull": hs[0] / maxf(1.0, float(info.get("maxHull", hs[0]))),
+			"shields": hs[1] / maxf(1.0, float(info.get("maxShields", hs[1])))})
+	# CHASE: the latest exchange of fire.
+	var chase := []
+	for j in timeline.jobs:
+		if j.start > t:
+			break
+		if j.fleet_id != 0 and j.target_fleet_id != 0 and j.kind in [BattleTimeline.Job.BEAM, BattleTimeline.Job.PULSE, BattleTimeline.Job.TORPEDO, BattleTimeline.Job.RAM]:
+			chase = [j.fleet_id, j.target_fleet_id]
+	# CINEMATIC: the director's shot. Between rounds (orders are being chosen) it pulls back to the formations
+	# instead of holding the last close-up.
+	var shot := {"key": "wide_%d" % round_index, "kind": -1, "centroid": centroid, "spread": spread}
 	var subject: BattleShip = _ships.get(director.subject)
 	var other: BattleShip = _ships.get(director.other)
-	if not _playing and _finished_sent:
-		# Between rounds (orders are being chosen) pull back to the formations instead of holding the last close-up.
-		subject = null
-	if subject == null:
-		camera.frame(delta, "wide_%d" % round_index, -1, centroid, 10.0, centroid, centroid, spread, t)
-		return
-	var other_pos := other.global_position if other != null else centroid
-	var key := "%d_%d_%d_%.2f" % [round_index, director.subject, director.other, director.since]
-	camera.frame(delta, key, director.kind, subject.global_position, subject.length, other_pos, centroid, spread, t)
+	if subject != null and (_playing or not _finished_sent):
+		shot = {"key": "%d_%d_%d_%.2f" % [round_index, director.subject, director.other, director.since],
+			"kind": director.kind, "subject": subject.global_position, "subject_size": subject.length,
+			"other": other.global_position if other != null else centroid, "centroid": centroid, "spread": spread}
+	camera.film(delta, t, bodies, chase, shot)

@@ -50,26 +50,53 @@ func attach(node: Node) -> void:
 	view_node = node
 	if node.has_signal("ship_picked"):
 		node.connect("ship_picked", func(id): ship_picked.emit(id))
-	_add_camera_toggle.call_deferred()
+	_add_camera_bar.call_deferred()
 
-## A small "Camera: cinematic / free · C" button over the 3D view. Free orbit starts from the cinematic framing, so
-## without it the C toggle looks like it did nothing.
-func _add_camera_toggle() -> void:
-	if view_node == null or not ("camera" in view_node) or view_node.camera == null:
+## The camera mode bar over the 3D view (as the Unreal combat screen): OVERVIEW CHASE SHIP TARGET TOP-DOWN CINEMATIC,
+## then RESET (Home). The lit button follows the camera, whichever way its mode changed (keys, double-click, pan).
+func _add_camera_bar() -> void:
+	if view_node == null or not ("camera" in view_node) or view_node.camera == null or has_node("CameraBar"):
 		return
-	var cam: Object = view_node.camera
+	var cam: BattleCamera = view_node.camera
+	var bar := HBoxContainer.new()
+	bar.name = "CameraBar"
+	bar.add_theme_constant_override("separation", 2)
+	bar.position = Vector2(10, 10)
+	bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var group := ButtonGroup.new()
+	var buttons := []
+	for m in BattleCamera.MODE_NAMES.size():
+		var b := _camera_button(BattleCamera.MODE_NAMES[m], BattleCamera.MODE_HINTS[m])
+		b.name = "Cam" + BattleCamera.MODE_NAMES[m].replace("-", "")
+		b.toggle_mode = true
+		b.button_group = group
+		b.button_pressed = int(cam.mode) == m
+		b.pressed.connect(func(): cam.set_mode(m))
+		bar.add_child(b)
+		buttons.append(b)
+	var sep := Control.new()
+	sep.custom_minimum_size = Vector2(8, 0)
+	sep.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	bar.add_child(sep)
+	var reset := _camera_button("RESET  ·  HOME", "Frame the whole battle. Wheel zooms toward the cursor, left-drag orbits, right-drag pans; click a ship to select it, double-click to follow it or fly to empty space. F / G follow ship / target, +/- zoom, C cinematic.")
+	reset.name = "CamReset"
+	reset.pressed.connect(func(): cam.frame_battle())
+	bar.add_child(reset)
+	cam.mode_changed.connect(func(m):
+		for i in buttons.size():
+			buttons[i].set_pressed_no_signal(i == m))
+	add_child(bar)
+
+
+func _camera_button(text: String, tip: String) -> Button:
 	var b := Button.new()
-	b.name = "CameraMode"
+	b.text = text
+	b.tooltip_text = tip
 	b.theme_type_variation = "GhostButton"
-	b.focus_mode = Control.FOCUS_NONE
-	b.position = Vector2(12, 12)
-	b.tooltip_text = "Cinematic follows the action; free camera: drag to rotate, wheel to zoom, right-drag to pan."
-	var label := func(m: int) -> String:
-		return "CAMERA: %s  ·  C" % ("CINEMATIC" if m == 0 else "FREE")
-	b.text = label.call(int(cam.mode))
-	b.pressed.connect(func(): cam.set_mode(1 - int(cam.mode)))
-	cam.mode_changed.connect(func(m): b.text = label.call(m))
-	add_child(b)
+	b.focus_mode = Control.FOCUS_NONE # keys stay with the battle view
+	b.add_theme_font_size_override("font_size", 11)
+	b.custom_minimum_size = Vector2(0, 24)
+	return b
 
 func load_encounter(e: Dictionary) -> void:
 	if view_node and view_node.has_method("load_encounter"):

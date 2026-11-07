@@ -312,6 +312,27 @@ rebuilt from scratch: core CMake, Godot 4.5 with godot-cpp and the Linux extensi
   - the sign-ups (PC-QUEUE item 0).
 - **Voice mapping** (VOICE-PLAN.md §4) needs the local `LocalAssets/` audio on the PC.
 
+### Godot port of the Unreal battle look (7 Nov, merged)
+
+- **True scale and 3D flight** (from BotfCombatTimeline.h): `CELL` is 28, ships are sized by canon length
+  (`ShipFactory.CANON_LENGTHS`), and the scene has layers, climbs, banking, finger-four wings, spacing and
+  station-keeping. Ships ease between rounds instead of popping.
+  - Deviation: a class's own `targetLengthMeters` beats the manifest fallback chain. Unreal may want the same fix:
+    it currently gives a Glantor 60 m and a Cardassian starbase 50 m.
+- **Camera** (from BotfCameraRig.h): `camera_rig.gd`, a rewritten `battle_camera.gd` and `battle_markers.gd`.
+  - Modes OVERVIEW, CHASE, SHIP, TARGET, TOP-DOWN and CINEMATIC; zoom to the cursor, pan and orbit.
+  - Click to select, double-click to follow a ship or fly to a spot, F / G / Home / C.
+  - Faction brackets, selection and target rings, and a radar.
+- **Hero models and title:**
+  - `blender_hero_ships.py --gltf` writes a `.glb` per hero plus `godot-hero-manifest.json`. It is not run yet:
+    there is no Blender in the cloud.
+  - `hero_look.gd` provides the hero hull and plated materials.
+  - `title_fleet.gd`: the live 3D title menu.
+- **Tests:** camera rig 63/0, timeline 17/0, scene 0, hero models 0, title fleet 0, UI 85/0, core 10/10.
+- **Next, on the PC:** PC-QUEUE items 12-14. Rebuild both clients, export the hero glbs with `--gltf`, then
+  compare Godot and Unreal side by side.
+- Known: in the starbase drill, formation offsets can put the Oberth inside the Galaxy's bounding sphere.
+
 ## PC session 2026-09-29: Godot (Windows 11, RTX 4090)
 
 The cloud's Godot 4.5 client, built natively on Windows and run for the first time here. The mingw DLL was not needed.
