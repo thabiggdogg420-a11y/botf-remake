@@ -40,9 +40,12 @@ func _enc() -> Dictionary:
 	return app.encounter if app.encounter is Dictionary else {}
 
 func refresh() -> void:
+	# The 3D battle view survives refreshes. Rebuilding it on every order, ship pick and round reset the camera
+	# mode, recompiled the effects (a first-round freeze) and caused 40-60 ms frame spikes.
+	if host and is_instance_valid(host) and host.get_parent():
+		host.get_parent().remove_child(host)
 	for c in get_children():
 		c.queue_free()
-	host = null
 	var live: bool = app.view.get("session", {}).get("active", false) or app.view.get("session", {}).get("battlePending", false)
 	if live and _enc().is_empty():
 		var e: Variant = app.core.request("tactical")
@@ -51,6 +54,18 @@ func refresh() -> void:
 		_live(_enc())
 	else:
 		_archive()
+	if host and is_instance_valid(host) and not host.is_inside_tree():
+		host.queue_free()
+		host = null
+
+## The battle view, created once and re-parented into each rebuilt layout.
+func _battle_host() -> BattleHost:
+	if host == null or not is_instance_valid(host):
+		host = BattleHost.new()
+		host.ship_picked.connect(_pick)
+	host.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	host.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	return host
 
 func _unhandled_key_input(event: InputEvent) -> void:
 	var k := event as InputEventKey
@@ -115,9 +130,7 @@ func _live(e: Dictionary) -> void:
 	var hc := PanelContainer.new()
 	hc.add_theme_stylebox_override("panel", Lcars.box(Color(0, 0, 0, 0.4), 16, Color(Lcars.ALERT, 0.35), 1, Vector4(2, 2, 2, 2)))
 	hc.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	host = BattleHost.new()
-	host.ship_picked.connect(_pick)
-	hc.add_child(host)
+	hc.add_child(_battle_host())
 	mid.add_child(hc)
 	mid.add_child(_ship_list("Hostiles", foes, ships, target, true))
 	root.add_child(mid)
@@ -423,9 +436,7 @@ func _archive() -> void:
 	if archive_sel.get("kind", "") == "replay":
 		var e: Variant = app.core.request("replay", {"index": int(archive_sel["index"])})
 		if e is Dictionary:
-			host = BattleHost.new()
-			host.size_flags_vertical = Control.SIZE_EXPAND_FILL
-			rb.add_child(host)
+			rb.add_child(_battle_host())
 			host.load_encounter.call_deferred(e)
 			for line in round_log(e, e["rounds"].back() if e["rounds"].size() > 0 else {}):
 				rb.add_child(Lcars.para(line[1], Lcars.tone_color(line[0]), 13))

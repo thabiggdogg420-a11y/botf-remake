@@ -33,6 +33,8 @@ var _glow: Texture2D
 var _target_cam := Vector2.ZERO
 var _target_zoom := 1.0
 var _animating := false
+## Screen space covered by the host's panels (left, top, right, bottom). frame_known() fits the chart into the rest.
+var view_insets := Vector4.ZERO
 
 func _ready() -> void:
 	clip_contents = true
@@ -126,7 +128,8 @@ func focus_cell(x: int, y: int, z: float = -1.0, animate: bool = true) -> void:
 		zoom = _target_zoom
 		_apply_camera()
 
-## Frames every surveyed or sensed sector.
+## Frames every surveyed or sensed sector inside the part of the map the host's panels leave visible.
+## Early in a campaign only a few sectors are known, so the span has a floor and the zoom may go up to 2.4.
 func frame_known() -> void:
 	var v := view()
 	if v.is_empty():
@@ -143,9 +146,13 @@ func frame_known() -> void:
 	if lo.x == INF:
 		lo = Vector2.ZERO
 		hi = Vector2(g.x - 1, g.y - 1)
-	var span := (hi - lo + Vector2(2.5, 2.5)) * CELL
-	cam = (lo + hi + Vector2.ONE) * 0.5 * CELL
-	zoom = clamp(min(size.x / span.x, size.y / span.y), 0.35, 1.6)
+	var span := (hi - lo + Vector2(1.6, 1.6)).max(Vector2(5.0, 4.0)) * CELL
+	var avail := Vector2(size.x - view_insets.x - view_insets.z, size.y - view_insets.y - view_insets.w)
+	avail = avail.max(Vector2(200, 160))
+	zoom = clamp(min(avail.x / span.x, avail.y / span.y), 0.35, 2.4)
+	# Centre of the visible area, in screen space, relative to the control's centre.
+	var shift := Vector2(view_insets.x - view_insets.z, view_insets.y - view_insets.w) * 0.5
+	cam = (lo + hi + Vector2.ONE) * 0.5 * CELL - shift / zoom
 	_target_cam = cam
 	_target_zoom = zoom
 	_apply_camera()

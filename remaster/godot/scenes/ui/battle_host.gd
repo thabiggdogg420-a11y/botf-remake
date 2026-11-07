@@ -50,6 +50,26 @@ func attach(node: Node) -> void:
 	view_node = node
 	if node.has_signal("ship_picked"):
 		node.connect("ship_picked", func(id): ship_picked.emit(id))
+	_add_camera_toggle.call_deferred()
+
+## A small "Camera: cinematic / free · C" button over the 3D view. Free orbit starts from the cinematic framing, so
+## without it the C toggle looks like it did nothing.
+func _add_camera_toggle() -> void:
+	if view_node == null or not ("camera" in view_node) or view_node.camera == null:
+		return
+	var cam: Object = view_node.camera
+	var b := Button.new()
+	b.name = "CameraMode"
+	b.theme_type_variation = "GhostButton"
+	b.focus_mode = Control.FOCUS_NONE
+	b.position = Vector2(12, 12)
+	b.tooltip_text = "Cinematic follows the action; free camera: drag to rotate, wheel to zoom, right-drag to pan."
+	var label := func(m: int) -> String:
+		return "CAMERA: %s  ·  C" % ("CINEMATIC" if m == 0 else "FREE")
+	b.text = label.call(int(cam.mode))
+	b.pressed.connect(func(): cam.set_mode(1 - int(cam.mode)))
+	cam.mode_changed.connect(func(m): b.text = label.call(m))
+	add_child(b)
 
 func load_encounter(e: Dictionary) -> void:
 	if view_node and view_node.has_method("load_encounter"):

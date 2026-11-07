@@ -42,6 +42,8 @@ var _finished_sent := true
 var _sound_i := 0
 var _bark_i := 0
 var _env := {}
+var _prewarmed := false
+var _ship_jobs := {}             ## fleet_id -> the round's cloak/decloak/explosion/warp jobs for that ship
 
 
 func _ready() -> void:
@@ -80,6 +82,12 @@ func play_round(p_encounter: Dictionary, p_round_index: int) -> void:
 	cfg.player_empire = _player_empire()
 	var info := BattleTimeline.round_ship_info(encounter, round_index)
 	timeline = BattleTimeline.build(rounds[round_index].get("events", []), info, cfg)
+	_ship_jobs.clear()
+	for j in timeline.jobs:
+		if j.kind in [BattleTimeline.Job.CLOAK, BattleTimeline.Job.DECLOAK, BattleTimeline.Job.EXPLOSION, BattleTimeline.Job.WARP]:
+			if not _ship_jobs.has(j.fleet_id):
+				_ship_jobs[j.fleet_id] = []
+			_ship_jobs[j.fleet_id].append(j)
 	_sync_ships(info)
 	for s in _ships.values():
 		s.clear_effects()
@@ -91,6 +99,9 @@ func play_round(p_encounter: Dictionary, p_round_index: int) -> void:
 	_playing = true
 	_finished_sent = false
 	_apply(0.0, 0.0)
+	if not _prewarmed:
+		_prewarmed = true
+		fx.prewarm()
 
 
 ## Jumps to `seconds` into the current round without firing the cues before it.
@@ -214,6 +225,13 @@ func _apply(t: float, delta: float) -> void:
 	var count := 0
 	var lo := Vector3(INF, INF, INF)
 	var hi := -lo
+	var me := _player_empire()
+	var ours := Vector3.ZERO
+	var theirs := Vector3.ZERO
+	var n_ours := 0
+	var n_theirs := 0
+	var ours_lo := Vector3(INF, INF, INF)
+	var ours_hi := -ours_lo
 	for track in timeline.ships:
 		var ship: BattleShip = _ships.get(track.fleet_id)
 		if ship == null:
@@ -224,8 +242,8 @@ func _apply(t: float, delta: float) -> void:
 		ship.model.transform = Transform3D.IDENTITY
 		var vis := track.visibility_at(t)
 		var shimmer := 0.0
-		for j in timeline.jobs:
-			if j.fleet_id != track.fleet_id or j.start > t or t > j.start + j.duration:
+		for j in _ship_jobs.get(track.fleet_id, []):
+			if j.start > t or t > j.start + j.duration:
 				continue
 			var u: float = (t - j.start) / maxf(j.duration, 1e-4)
 			match j.kind:
@@ -247,12 +265,27 @@ func _apply(t: float, delta: float) -> void:
 			count += 1
 			lo = lo.min(pos)
 			hi = hi.max(pos)
+			if track.owner_id == me:
+				ours += pos
+				n_ours += 1
+				ours_lo = ours_lo.min(pos)
+				ours_hi = ours_hi.max(pos)
+			else:
+				theirs += pos
+				n_theirs += 1
 	fx.update(t)
 	if count > 0:
 		centroid /= count
 	else:
 		centroid = Vector3.ZERO
 	var spread := (hi - lo).length() if count > 1 else 60.0
+	if camera != null:
+		# Establishing shots frame the player's fleet with the enemy beyond it when both sides are on screen.
+		camera.has_sides = n_ours > 0 and n_theirs > 0
+		if camera.has_sides:
+			camera.side_ours = ours / n_ours
+			camera.side_theirs = theirs / n_theirs
+			camera.side_ours_spread = (ours_hi - ours_lo).length() if n_ours > 1 else 0.0
 	if camera != null and camera.mode == BattleCamera.Mode.ORBIT and camera.orbit_focus == Vector3.ZERO:
 		camera.orbit_focus = centroid
 	_update_camera(t, delta, centroid, spread)
@@ -264,6 +297,9 @@ func _update_camera(t: float, delta: float, centroid: Vector3, spread: float) ->
 	director.update(timeline, t)
 	var subject: BattleShip = _ships.get(director.subject)
 	var other: BattleShip = _ships.get(director.other)
+	if not _playing and _finished_sent:
+		# Between rounds (orders are being chosen) pull back to the formations instead of holding the last close-up.
+		subject = null
 	if subject == null:
 		camera.frame(delta, "wide_%d" % round_index, -1, centroid, 10.0, centroid, centroid, spread, t)
 		return

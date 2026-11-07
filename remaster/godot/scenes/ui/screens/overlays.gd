@@ -167,7 +167,10 @@ static func events(app: App) -> Control:
 			return a["awaitingChoice"]
 		return int(a["deadline"]) < int(b["deadline"]))
 	if evs.is_empty():
+		# A compact note, not an empty 1120x600 card grid.
 		root.add_child(Lcars.empty_note("No galactic events concern your empire right now. New events are drawn every few turns."))
+		root.add_child(Lcars.pill("Close", "ghost", func(): app.close_modal(), "", "", "Esc"))
+		return app.open_modal(root, "Galactic events", Vector2(560, 0), "secondary")
 	var grid := Lcars.grid(2)
 	grid.add_theme_constant_override("h_separation", 14)
 	grid.add_theme_constant_override("v_separation", 14)

@@ -50,8 +50,11 @@ func refresh() -> void:
 	menu.add_child(row)
 	var row2 := Lcars.hbox(10)
 	row2.add_child(_wide(Lcars.pill("Frontier drill", "tertiary", func(): app.start_drill("newFrontierDrill", "Frontier drill"), "", "Outposts, starbases, anomalies and galactic events")))
-	row2.add_child(_wide(Lcars.pill("Settings", "ghost", func(): app.open_overlay("settings"))))
+	row2.add_child(_wide(Lcars.pill("Starbase drill", "tertiary", func(): app.start_drill("newBattleDrill", "Starbase drill", {"station": true}), "", "The skirmish at Sol under Remastered rules: 3D flight, weapon arcs and a starbase in the fight")))
 	menu.add_child(row2)
+	var row3 := Lcars.hbox(10)
+	row3.add_child(_wide(Lcars.pill("Settings", "ghost", func(): app.open_overlay("settings"))))
+	menu.add_child(row3)
 	for b2 in menu.get_children():
 		if b2 is Button:
 			b2.custom_minimum_size.y = 46

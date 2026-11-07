@@ -81,6 +81,42 @@ static func _shader_mat(shader: Shader) -> ShaderMaterial:
 	return m
 
 
+## Draws one of every effect material once, tiny and just in front of the camera, then frees them. The first real
+## volley otherwise compiles its pipelines mid-round (a 1.35 s freeze on a fresh shader cache on the PC).
+func prewarm() -> void:
+	var cam := get_viewport().get_camera_3d()
+	if cam == null:
+		return
+	var at := cam.global_position - cam.global_basis.z * (cam.near + 2.0)
+	var nodes: Array[Node] = []
+	var beam := _beam_node(Color(1, 0.6, 0.2))
+	_orient_beam(beam, at, at + cam.global_basis.x * 0.01, 0.002)
+	nodes.append(beam)
+	var fl := _flare(Color(1, 0.5, 0.2), 0.01)
+	fl.global_position = at
+	nodes.append(fl)
+	var tr := _trail_node()
+	_draw_ribbon(tr, PackedVector3Array([at, at + cam.global_basis.x * 0.01]), 0.002, Color(1, 0.5, 0.2))
+	nodes.append(tr)
+	var ring := MeshInstance3D.new()
+	ring.mesh = _plane
+	ring.material_override = _shock_mat
+	ring.scale = Vector3.ONE * 0.005
+	add_child(ring)
+	ring.global_position = at
+	nodes.append(ring)
+	var before := get_child_count()
+	for kind in ["sparks", "sparks_small", "fire_small", "fireball", "smoke", "debris"]:
+		_burst(at, Color(1, 0.5, 0.2), kind, 1, 0.01)
+	for i in range(before, get_child_count()):
+		nodes.append(get_child(i))
+	for i in 3:
+		await get_tree().process_frame
+	for n in nodes:
+		if is_instance_valid(n):
+			n.queue_free()
+
+
 ## Clears job visuals (one-shot particles and decals finish on their own).
 func reset(tl: BattleTimeline) -> void:
 	for k in _active.keys():

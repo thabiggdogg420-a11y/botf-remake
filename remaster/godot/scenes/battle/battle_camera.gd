@@ -24,6 +24,11 @@ var _shot_start := 0.0
 var _idle := 0.0
 var _dragging := 0
 var _snap := true
+## Set by BattleScene each frame: the player's and the enemy's centroids, and the player's formation size.
+var has_sides := false
+var side_ours := Vector3.ZERO
+var side_theirs := Vector3.ZERO
+var side_ours_spread := 0.0
 
 
 func _ready() -> void:
@@ -94,9 +99,20 @@ func frame(delta: float, shot_key: String, kind: int, subject: Vector3, subject_
 	var lift := rng.randf_range(0.15, 0.45)
 	var dist_k := rng.randf_range(0.85, 1.25)
 	var drift := (time - _shot_start) * 0.05
-	if kind < 0:
+	if kind < 0 and has_sides and side_ours.distance_to(side_theirs) > 40.0:
+		# Fleets apart (the opening rounds): behind and above the player's formation, looking at the enemy, so our
+		# ships read as ships rather than specks at the arena edge.
+		var to_enemy := side_theirs - side_ours
+		to_enemy.y = 0.0
+		var fwd := to_enemy.normalized() if to_enemy.length() > 1e-3 else Vector3(1, 0, 0)
+		var side := fwd.cross(Vector3.UP).normalized() * side_sign
+		var r := clampf(side_ours_spread * 0.9 + 28.0, 30.0, 85.0)
+		var base := -fwd * r + side * r * 0.5 + Vector3.UP * r * (0.3 + lift * 0.4)
+		_desired_pos = side_ours + base.rotated(Vector3.UP, drift * 0.5)
+		_desired_look = side_ours.lerp(side_theirs, 0.35)
+	elif kind < 0:
 		# Establishing shot: slow orbit around the battle, high enough to read the formations.
-		var r := clampf(spread * 0.75, 45.0, 110.0)
+		var r := clampf(spread * 0.6, 35.0, 90.0)
 		var a := time * 0.04 + float(_shot_seed % 628) / 100.0
 		_desired_pos = centroid + Vector3(sin(a), 0.0, cos(a)) * r + Vector3.UP * r * 0.3
 		_desired_look = centroid

@@ -53,6 +53,9 @@ func _layout() -> void:
 	if _inspector:
 		_inspector.position = Vector2(size.x - 440, 14)
 		_inspector.size = Vector2(426, size.y - 28)
+	if map:
+		# Keep framed sectors clear of the inspector (right) and the layer toolbar (bottom).
+		map.view_insets = Vector4(0, 0, 440, 80)
 
 func focus_cell(x: int, y: int) -> void:
 	map.focus_cell(x, y, max(map.zoom, 1.3))

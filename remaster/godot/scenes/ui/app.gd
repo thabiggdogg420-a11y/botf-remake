@@ -470,8 +470,8 @@ func start_campaign(options: Dictionary) -> bool:
 	autosave()
 	return true
 
-func start_drill(method: String, label_: String) -> void:
-	var r := core.invoke(method, {})
+func start_drill(method: String, label_: String, args: Dictionary = {}) -> void:
+	var r := core.invoke(method, args)
 	if not r["ok"]:
 		report_error(r["error"])
 		return

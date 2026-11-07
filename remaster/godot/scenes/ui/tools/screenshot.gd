@@ -82,6 +82,16 @@ func _prepare(s: String) -> void:
 		"combat":
 			app.start_drill("newBattleDrill", "Tactical drill")
 			app.end_turn()
+		"battle-r1", "battle-r3":
+			# Starbase drill (Remastered rules 3): take command and resolve rounds, then let the 3D view play.
+			app.start_drill("newBattleDrill", "Starbase drill", {"station": true})
+			app.end_turn()
+			await _wait(4)
+			app.close_all_modals() # the deferred "Enemy contact" choice; Take command
+			for n in (1 if s == "battle-r1" else 3):
+				app._current._round()
+				await _wait(4)
+			await _wait(int(OS.get_environment("SHOT_BATTLE_FRAMES")) if OS.get_environment("SHOT_BATTLE_FRAMES") != "" else 150)
 		"briefing", "events", "victory", "end", "settings":
 			_campaign()
 			app.goto("galaxy")
