@@ -33,6 +33,7 @@ void fragment() {
 		spikes *= flare_spikes * (1.0 - smoothstep(0.8, 1.0, r));
 	}
 	vec3 col = flare_color.rgb * (glow * 1.5 + spikes * 2.0) + vec3(1.0, 0.98, 0.94) * core * 2.5;
-	ALBEDO = col * flare_intensity;
-	ALPHA = clamp((glow + core) * flare_intensity, 0.0, 1.0);
+	float near_fade = smoothstep(1.0, 8.0, -VERTEX.z); // no flare blinds a camera parked beside a hull
+	ALBEDO = col * flare_intensity * near_fade;
+	ALPHA = clamp((glow + core) * flare_intensity * near_fade, 0.0, 1.0);
 }

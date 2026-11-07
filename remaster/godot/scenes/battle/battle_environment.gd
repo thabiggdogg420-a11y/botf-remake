@@ -60,7 +60,7 @@ static func build(parent: Node3D, arena_size: Vector2) -> Dictionary:
 	sun.name = "Sun"
 	sun.light_color = Color(1.0, 0.93, 0.82)
 	sun.light_energy = 2.6
-	sun.shadow_enabled = true
+	sun.shadow_enabled = DisplaySettings.shadows_enabled # Settings > Shadow quality: Off
 	sun.directional_shadow_max_distance = 320.0
 	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
 	sun.light_angular_distance = 0.6
@@ -89,8 +89,10 @@ static func build(parent: Node3D, arena_size: Vector2) -> Dictionary:
 	pm.shader = PLANET_SHADER
 	planet.material_override = pm
 	planet.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	planet.scale = Vector3.ONE * 520.0
-	planet.position = Vector3(380.0, -520.0, -900.0)
+	# True scale (Simon, 8 Nov 2026: "the ships look huge compared to the nearby planet"): a gas giant is tens of
+	# thousands of km across, so it is a backdrop, pushed far beyond the arena where it never sits beside a hull.
+	planet.scale = Vector3.ONE * 1900.0
+	planet.position = Vector3(1500.0, -2300.0, -4300.0)
 	planet.rotation_degrees = Vector3(12.0, 30.0, 18.0)
 	parent.add_child(planet)
 	out.planet = planet

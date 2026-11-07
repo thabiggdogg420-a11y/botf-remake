@@ -381,16 +381,33 @@ static func menu(app: App) -> Control:
 			["Load campaign", "secondary", func(): app.close_modal(); app.goto("saves")],
 			["Settings", "tertiary", func(): app.close_modal(); app.open_overlay("settings")],
 			["Keyboard help", "tertiary", func(): app.close_modal(); app.open_overlay("help")],
-			["Quit to title", "alert", func(): app.close_modal(); app.view = {}; app.goto("title", false)]]:
+			["Quit to title", "alert", func(): app.close_modal(); confirm_quit_to_title(app)],
+			["Quit game", "ghost", func(): app.close_modal(); confirm_quit_game(app)]]:
 		var b := Lcars.pill(item[0], item[1], item[2])
+		b.name = str(item[0]).replace(" ", "")
 		b.custom_minimum_size.y = 42
 		root.add_child(b)
 	return app.open_modal(root, "Menu", Vector2(480, 0))
+
+## Quit to title from a campaign, after a confirm (unsaved progress since the last save is lost).
+static func confirm_quit_to_title(app: App) -> Control:
+	return app.confirm("Quit to title", "Leave this campaign and return to the title screen? Progress since your last save will be lost.",
+		"Quit to title", func(): app.view = {}; app.goto("title", false))
+
+## Quits the program, after a confirm. App.quit_hook (tests) replaces the real quit.
+static func confirm_quit_game(app: App) -> Control:
+	var body := "Close Birth of the Federation?"
+	if not app.view.is_empty():
+		body += " Progress since your last save will be lost."
+	return app.confirm("Quit game", body, "Quit", func(): app.quit_game())
 
 static func settings(app: App) -> Control:
 	var s := app.settings
 	var root := Lcars.vbox(14)
 	root.name = "Settings"
+	root.add_child(Lcars.caption("Display"))
+	_display_rows(app, s, root)
+	root.add_child(Lcars.caption("Interface and audio"))
 	var scale_row := Lcars.hbox(12)
 	scale_row.add_child(_setting_text("Interface scale", "Enlarges or shrinks text and controls (75-150%). The star chart keeps its own zoom."))
 	var sl := HSlider.new()
@@ -426,6 +443,8 @@ static func settings(app: App) -> Control:
 	acts.add_child(Lcars.pill("Reset to defaults", "ghost", func():
 		app.settings = {"uiScale": 1.0, "colorblind": false, "reducedMotion": false, "autosave": true, "confirmEndTurn": false, "showGrid": true}
 		BotfAudioMix.fill_defaults(app.settings)
+		DisplaySettings.fill_defaults(app.settings)
+		DisplaySettings.apply(app.settings, app.get_tree())
 		BotfAudioSystem.attach(app)
 		app.save_settings()
 		app.close_modal()
@@ -434,7 +453,20 @@ static func settings(app: App) -> Control:
 	acts.add_child(Lcars.pill("Close", "primary", func(): app.close_modal(), "", "", "Esc"))
 	root.add_child(acts)
 	root.add_child(Lcars.label("Core backend: %s" % app.core.backend, "Mono", 12, Lcars.TEXT3))
-	return app.open_modal(root, "Settings", Vector2(720, 0))
+	# The display rows made the panel taller than a 1080 screen (Close fell off the bottom): scroll the rows, keep
+	# the actions pinned below them.
+	root.remove_child(acts)
+	var scroll := ScrollContainer.new()
+	scroll.name = "SettingsScroll"
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.custom_minimum_size = Vector2(700, minf(760.0, app.get_viewport_rect().size.y - 260.0))
+	root.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(root)
+	var outer := Lcars.vbox(10)
+	outer.name = "SettingsPanel"
+	outer.add_child(scroll)
+	outer.add_child(acts)
+	return app.open_modal(outer, "Settings", Vector2(720, 0))
 
 ## One audio slider (Master, Effects, Voice, Interface, Music): applied live, saved on release, with a sample sound.
 static func _volume_row(app: App, s: Dictionary, bus: String) -> Control:
@@ -465,6 +497,62 @@ static func _volume_row(app: App, s: Dictionary, bus: String) -> Control:
 	vr.add_child(vol)
 	vr.add_child(pct)
 	return vr
+
+## Display rows: resolution, window mode, vsync, FPS cap, render scale, anti-aliasing, shadows. Each applies at once
+## and is saved to user://; App._ready applies them again at the next start.
+static func _display_rows(app: App, s: Dictionary, root: Control) -> void:
+	DisplaySettings.fill_defaults(s)
+	var changed := func(key: String, value) -> void:
+		s[key] = value
+		DisplaySettings.apply(s, app.get_tree())
+		app.save_settings()
+	var res_ids: Array = DisplaySettings.resolution_list()
+	var res_labels: Array = res_ids.map(func(r): return str(r).replace("x", " x "))
+	if not res_ids.has(str(s["display.resolution"])):
+		res_ids.push_front(str(s["display.resolution"]))
+		res_labels.push_front("Desktop size" if str(s["display.resolution"]) == "" else str(s["display.resolution"]))
+	root.add_child(_option_row("Resolution", "Window size in windowed mode. Borderless and fullscreen use the monitor's own size.",
+		"display.resolution", res_ids, res_labels, s, changed))
+	root.add_child(_option_row("Window mode", "Windowed, a borderless window covering the screen, or exclusive fullscreen.",
+		"display.windowMode", DisplaySettings.WINDOW_MODES.keys(), DisplaySettings.WINDOW_MODES.values(), s, changed))
+	var vr := Lcars.hbox(12)
+	vr.name = "Setting_display_vsync"
+	vr.add_child(_setting_text("Vertical sync", "Locks frames to the monitor refresh: no tearing, slightly more input delay."))
+	var vcb := CheckButton.new()
+	vcb.name = "Value"
+	vcb.button_pressed = bool(s["display.vsync"])
+	vcb.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	vcb.toggled.connect(func(on): changed.call("display.vsync", on))
+	vr.add_child(vcb)
+	root.add_child(vr)
+	root.add_child(_option_row("Frame rate cap", "Upper limit on frames per second (with vsync off, or above the refresh rate).",
+		"display.fpsCap", DisplaySettings.FPS_CAPS, DisplaySettings.FPS_CAPS.map(func(c): return DisplaySettings.fps_label(c)), s, changed))
+	root.add_child(_option_row("Render scale", "3D resolution as a share of the window, upscaled with FSR. Lower is faster.",
+		"display.renderScale", DisplaySettings.RENDER_SCALES, DisplaySettings.RENDER_SCALES.map(func(v): return "%d%%" % roundi(v * 100)), s, changed))
+	root.add_child(_option_row("Anti-aliasing", "Smooths jagged edges on ships and planets. MSAA is sharper; FXAA is cheaper.",
+		"display.antiAlias", DisplaySettings.ANTI_ALIAS.keys(), DisplaySettings.ANTI_ALIAS.values(), s, changed))
+	root.add_child(_option_row("Shadow quality", "Shadow map size and softness in the battle and title scenes. Off draws no shadows.",
+		"display.shadows", DisplaySettings.SHADOWS.keys(), DisplaySettings.SHADOWS.values(), s, changed))
+
+static func _option_row(title: String, detail: String, key: String, ids: Array, labels: Array, s: Dictionary, changed: Callable) -> Control:
+	var r := Lcars.hbox(12)
+	r.name = "Setting_" + key.replace(".", "_")
+	r.add_child(_setting_text(title, detail))
+	var ob := OptionButton.new()
+	ob.name = "Value"
+	ob.custom_minimum_size.x = 220
+	ob.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	var sel := 0
+	for k in ids.size():
+		ob.add_item(str(labels[k]), k)
+		var cur = s.get(key)
+		var num := (ids[k] is int or ids[k] is float) and (cur is int or cur is float)
+		if (num and absf(float(ids[k]) - float(cur)) < 0.001) or (not num and str(ids[k]) == str(cur)):
+			sel = k
+	ob.select(sel)
+	ob.item_selected.connect(func(k): changed.call(key, ids[k]))
+	r.add_child(ob)
+	return r
 
 static func _setting_text(title: String, detail: String) -> Control:
 	var v := Lcars.vbox(0)

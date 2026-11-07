@@ -61,6 +61,9 @@ func refresh() -> void:
 	menu.add_child(row2)
 	var row3 := Lcars.hbox(10)
 	row3.add_child(_wide(Lcars.pill("Settings", "ghost", func(): app.open_overlay("settings"))))
+	var quit := _wide(Lcars.pill("Quit", "ghost", func(): preload("res://scenes/ui/screens/overlays.gd").confirm_quit_game(app), "", "Close the game", "Alt+F4"))
+	quit.name = "Quit"
+	row3.add_child(quit)
 	menu.add_child(row3)
 	for b2 in menu.get_children():
 		if b2 is Button:
@@ -117,6 +120,8 @@ func _ensure_backdrop(empire: int) -> void:
 	var sv := SubViewport.new()
 	sv.own_world_3d = true
 	sv.msaa_3d = Viewport.MSAA_2X
+	if app != null:
+		DisplaySettings.apply_viewport(sv, app.settings)
 	svc.add_child(sv)
 	backdrop.add_child(svc)
 	fleet = TitleFleet.new()

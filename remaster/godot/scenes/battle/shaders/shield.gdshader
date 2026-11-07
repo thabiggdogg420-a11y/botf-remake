@@ -44,6 +44,7 @@ void fragment() {
 		float glow = (flash + ring + lattice) * fade + fres * 0.25 * fade;
 		col += hit_colors[i].rgb * glow;
 	}
-	ALBEDO = col * energy;
+	// R3.5: a close camera sat inside a flashing shell and the frame went white; fade it near the lens and cap it.
+	ALBEDO = min(col * energy * 0.35, vec3(1.2)) * smoothstep(2.0, 18.0, -VERTEX.z);
 	ALPHA = 1.0;
 }

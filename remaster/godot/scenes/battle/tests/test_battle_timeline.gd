@@ -248,6 +248,9 @@ func _init() -> void:
 		check(max_climb < 0.02, "smooth climb (%.4f)" % max_climb)
 		var big := BattleTimeline.build(ev, _flight_info(650.0), cfg)
 		check(absf(small.track(1).segments[0].bank_peak) > absf(big.track(1).segments[0].bank_peak), "escorts roll harder")
+		var bseg: BattleTimeline.Segment = big.track(1).segments[0]
+		check(bseg.from.altitude == bseg.to.altitude and bseg.pitch_peak == 0.0, "capital ships hold altitude through a maneuver")
+		check(absf(bseg.bank_peak) > 0.0, "capital ships still bank into the turn")
 		check(not big.track(1).small_craft and big.track(1).wing_leader == 0, "capital ships fly alone")
 		check(absf(small.track(1).segments[0].bank_peak) <= cfg.max_bank_degrees * cfg.small_bank_scale, "bank limit")
 		return true)
@@ -312,7 +315,7 @@ func _init() -> void:
 		check(cr[8] == Vector3.ZERO, "inactive hull ignored")
 		return true)
 
-	run("station-keeping: still at maneuver and round edges, gentle while holding", func():
+	run("station-keeping: still at maneuver and round edges, steady while holding", func():
 		var hold := BattleTimeline.ShipTrack.new()
 		hold.fleet_id = 21
 		var seg := BattleTimeline.Segment.new()
@@ -327,15 +330,19 @@ func _init() -> void:
 		check(mag.call(BattleTimeline.station_keeping(hold, 1.0, 6.0)) == 0.0 and mag.call(BattleTimeline.station_keeping(hold, 2.0, 6.0)) == 0.0, "none while flying")
 		check(mag.call(BattleTimeline.station_keeping(hold, 6.0, 6.0)) == 0.0 and mag.call(BattleTimeline.station_keeping(hold, 0.0, 6.0)) == 0.0, "none at the round edges")
 		check(mag.call(BattleTimeline.station_keeping(hold, 2.0 + 1e-4, 6.0)) < 1e-3 and mag.call(BattleTimeline.station_keeping(hold, 6.0 - 1e-4, 6.0)) < 1e-3, "fades in and out")
-		var cap_peak := 0.0
-		var small_peak := 0.0
+		# Simon, 8 Nov 2026 ("bob up and down like boats"): holding position keeps heading, bank, pitch and altitude;
+		# only a barely visible altitude drift remains, the same for every hull size.
+		var alt_peak := 0.0
+		var turn_peak := 0.0
 		var t := 2.0
 		while t < 6.0:
-			cap_peak = maxf(cap_peak, absf(BattleTimeline.station_keeping(hold, t, 6.0).y))
-			small_peak = maxf(small_peak, absf(BattleTimeline.station_keeping(escort, t, 6.0).y))
+			for tr in [hold, escort]:
+				var o: Vector3 = BattleTimeline.station_keeping(tr, t, 6.0)
+				alt_peak = maxf(alt_peak, absf(o.x))
+				turn_peak = maxf(turn_peak, absf(o.y) + absf(o.z))
 			t += 0.05
-		check(cap_peak > 0.5 and cap_peak <= 2.4 + 1e-9 and small_peak > cap_peak, "small craft move more (%.2f / %.2f)" % [cap_peak, small_peak])
-		check(absf(BattleTimeline.station_keeping(escort, 4.0, 6.0).x) <= 0.12 + 1e-9, "bob amplitude")
+		check(turn_peak == 0.0, "no roll or pitch while holding (%.3f)" % turn_peak)
+		check(alt_peak > 0.0 and alt_peak <= BattleTimeline.IDLE_DRIFT_CELLS + 1e-9 and alt_peak * BattleScene.CELL < 0.5, "drift barely visible (%.3f world units)" % (alt_peak * BattleScene.CELL))
 		return true)
 
 	run("no pose jumps in 3D: wings, heights, pitch and station-keeping (fixture)", func():

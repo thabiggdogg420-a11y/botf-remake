@@ -35,6 +35,8 @@ func _run() -> void:
 	for b in backends:
 		print("== backend: ", b)
 		await _workflow(b)
+	await _new_app("fixture")
+	await _r35_display_and_quit()
 	print("%d checks, %d failures" % [checks, failures])
 	quit(1 if failures > 0 else 0)
 
@@ -358,3 +360,78 @@ func _r2_surface(backend: String) -> void:
 	check(EndTurnCheck.should_prompt(app, calm), "a warning stops the turn when confirmation is on")
 	app.settings["confirmEndTurn"] = false
 	app.close_all_modals()
+
+
+## R3.5 (Simon, 8 Nov 2026): display settings persist and apply; Quit on the title and Quit to title both confirm.
+func _r35_display_and_quit() -> void:
+	DisplaySettings.dry_run = true
+	app.start_drill("newDiplomacyDrill", "Diplomacy drill")
+	await frames()
+	app.close_all_modals()
+	app.open_overlay("settings")
+	await frames()
+	for key in ["display.resolution", "display.windowMode", "display.vsync", "display.fpsCap", "display.renderScale", "display.antiAlias", "display.shadows"]:
+		check(find(app, "Setting_" + key.replace(".", "_")) != null, "settings row %s" % key)
+	var fps_row := find(app, "Setting_display_fpsCap")
+	var ob: OptionButton = fps_row.get_node("Value") if fps_row != null else null
+	if ob != null:
+		ob.select(1)
+		ob.item_selected.emit(1)
+	check(int(app.settings["display.fpsCap"]) == 60 and Engine.max_fps == 60, "FPS cap 60 applies (max_fps %d)" % Engine.max_fps)
+	for pair in [["display.windowMode", 1], ["display.antiAlias", 1], ["display.renderScale", 2], ["display.shadows", 0]]:
+		var row := find(app, "Setting_" + str(pair[0]).replace(".", "_"))
+		if row != null:
+			var o: OptionButton = row.get_node("Value")
+			o.select(pair[1])
+			o.item_selected.emit(pair[1])
+	check(app.settings["display.windowMode"] == "borderless" and app.settings["display.antiAlias"] == "fxaa", "window mode and AA chosen")
+	check(root.screen_space_aa == Viewport.SCREEN_SPACE_AA_FXAA and absf(root.scaling_3d_scale - 0.75) < 0.001, "FXAA and 75% render scale on the viewport")
+	check(not DisplaySettings.shadows_enabled, "shadows off")
+	var saved: Variant = JSON.parse_string(FileAccess.get_file_as_string(App.SETTINGS_PATH))
+	check(saved is Dictionary and int(saved.get("display.fpsCap", 0)) == 60 and saved.get("display.windowMode") == "borderless", "display settings persist to user://")
+	# Startup: a fresh App reads them back and applies them.
+	Engine.max_fps = 0
+	var again: App = load("res://scenes/ui/app.tscn").instantiate()
+	root.add_child(again)
+	await frames()
+	check(Engine.max_fps == 60 and DisplaySettings.last_applied.get("windowMode") == "borderless", "settings apply at startup")
+	again.queue_free()
+	App.i = app
+	# Restore defaults so other runs start clean.
+	for k in DisplaySettings.DEFAULTS:
+		app.settings[k] = DisplaySettings.DEFAULTS[k]
+	DisplaySettings.apply(app.settings, self)
+	app.save_settings()
+	app.close_all_modals()
+	# Quit to title (game menu) asks first; Cancel keeps the campaign.
+	app.open_menu()
+	await frames()
+	var qt := find(app, "Quittotitle") as Button
+	check(qt != null, "menu has Quit to title")
+	if qt != null:
+		qt.pressed.emit()
+		await frames()
+		check(find(app, "Confirm") != null and not app.view.is_empty(), "quit to title asks before leaving")
+		app.close_all_modals()
+		check(not app.view.is_empty(), "cancel keeps the campaign")
+		app.open_menu()
+		await frames()
+		(find(app, "Quittotitle") as Button).pressed.emit()
+		await frames()
+		(find(app, "ConfirmButton") as Button).pressed.emit()
+		await frames()
+		check(app.screen == "title" and app.view.is_empty(), "confirming returns to the title")
+	# Title Quit: confirm, then quit (hooked).
+	var quits := [0]
+	app.quit_hook = func(): quits[0] += 1
+	var qb := find(app.current_screen(), "Quit") as Button
+	check(qb != null, "title has a Quit button")
+	if qb != null:
+		qb.pressed.emit()
+		await frames()
+		check(find(app, "Confirm") != null and quits[0] == 0, "Quit asks first")
+		(find(app, "ConfirmButton") as Button).pressed.emit()
+		await frames()
+		check(quits[0] == 1, "confirming Quit quits the game")
+	app.quit_hook = Callable()
+	DisplaySettings.dry_run = false

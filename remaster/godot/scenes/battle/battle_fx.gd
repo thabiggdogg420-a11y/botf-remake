@@ -9,6 +9,19 @@ const FLARE_SHADER := preload("res://scenes/battle/shaders/flare.gdshader")
 const TRAIL_SHADER := preload("res://scenes/battle/shaders/trail.gdshader")
 const SHOCK_SHADER := preload("res://scenes/battle/shaders/shockwave.gdshader")
 const Job := BattleTimeline.Job
+## Effect sizes follow Unreal's TickTimeline (BotfCombatScene.cpp) in its scene units, converted with the cell size:
+## Unreal's 170-unit cell is BattleScene.CELL here. R3 doubled the cell and drew hulls at true scale but kept the R1
+## effect sizes, so a beam was about 1% of a Galaxy's length and torpedoes were specks (Simon, 8 Nov 2026: "no weapon
+## textures to fire"). Everything below is sized in these units, then held to a minimum on-screen size.
+const UE := BattleScene.CELL / 170.0
+const BEAM_CORE_UE := 2.6       ## Beam core radius (Unreal 0.05 x the 50-unit cylinder radius).
+const BEAM_HALO_UE := 8.0       ## Faction-coloured glow around the core.
+const PULSE_RADIUS_UE := 4.0    ## Unreal DrawSegment(Head - Dir * 70, Head, 0.08).
+const PULSE_LENGTH_UE := 70.0
+const TORPEDO_CORE_UE := 22.0   ## Torpedo head (Unreal orb 10-unit radius inside a 22-unit halo).
+const MIN_CORE_PX := 2.0        ## A beam core never draws thinner than this many pixels, however far the camera.
+const MIN_HALO_PX := 6.0
+const MIN_FLARE_PX := 10.0
 
 var scene: Node       ## BattleScene: ship_node(fleet_id), cell size, camera.
 var _active := {}     ## job index -> {nodes: Array, ...}
@@ -317,7 +330,22 @@ func _torpedo_path(j: Dictionary) -> Array:
 static func _path_pos(path: Array, u: float) -> Vector3:
 	var bow := 4.0 * u * (1.0 - u)
 	var arc: float = path[3]
-	return path[0] + path[1] * u + path[2] * arc * bow + Vector3.UP * absf(arc) * bow * 0.8
+	return path[0] + path[1] * u + path[2] * arc * bow + Vector3.UP * absf(arc) * bow * 0.3
+
+
+## World size of `px` pixels at point p for the active camera (0 when there is none).
+func _px_world(p: Vector3, px: float) -> float:
+	var cam := get_viewport().get_camera_3d()
+	if cam == null:
+		return 0.0
+	var h := float(get_viewport().get_visible_rect().size.y)
+	var dist := maxf(0.1, (p - cam.global_position).dot(-cam.global_basis.z))
+	return dist * 2.0 * tan(deg_to_rad(cam.fov) * 0.5) / maxf(h, 1.0) * px
+
+
+## Scales a flare to `size` world units, or to `px` on-screen pixels when that is larger (far-off wide shots).
+func _floor_flare(n: Node3D, size: float, px: float) -> void:
+	n.scale = Vector3.ONE * maxf(size, _px_world(n.global_position, px))
 
 
 # ------------------------------------------------------------------------------------------------------------------
@@ -331,30 +359,36 @@ func _spawn(i: int, j: Dictionary) -> void:
 		Job.BEAM:
 			var beam := _beam_node(col)
 			beam.set_instance_shader_parameter("beam_phase", float(i))
-			st.nodes = [beam, _flare(col, 0.6, 1.0, 0.4), _flare(col, 1.5, 1.0, 0.8)]
+			var halo := _beam_node(col)
+			halo.set_instance_shader_parameter("beam_phase", float(i))
+			halo.set_instance_shader_parameter("beam_halo", 1.0)
+			st.nodes = [beam, _flare(col, 14.0 * UE, 1.0, 0.4), _flare(col, 36.0 * UE, 1.0, 0.8), halo]
 		Job.PULSE:
 			var bolt := _beam_node(col)
-			st.nodes = [bolt, _flare(col, 1.6, 1.2), _flare(col, 1.4, 1.0, 0.8)]
+			var bolt_halo := _beam_node(col)
+			bolt_halo.set_instance_shader_parameter("beam_halo", 1.0)
+			st.nodes = [bolt, _flare(col, 30.0 * UE, 1.2), _flare(col, 30.0 * UE, 1.0, 0.8), bolt_halo]
 		Job.TORPEDO:
-			st.nodes = [_flare(col, 1.5, 1.2, 1.0), _trail_node(), _flare(col, 0.7, 1.0, 0.0)]
+			st.nodes = [_flare(col, TORPEDO_CORE_UE * 2.2 * UE, 1.2, 1.0), _trail_node(), _flare(col, 30.0 * UE, 1.0, 0.0)]
 			var shooter := _ship(j.fleet_id)
 			if shooter != null:
-				_flash_light(shooter.hardpoint(2, j.mount_index, j.index), col, 1.2, 6.0, 0.25)
+				_flash_light(shooter.hardpoint(2, j.mount_index, j.index), col, 2.0, 120.0 * UE, 0.25)
 		Job.INTERCEPT:
 			var tpos := _torpedo_pos(j, j.end_fraction if j.end_fraction < 1.0 else 0.78)
 			st.point = tpos
-			st.nodes = [_flare(Color(1.0, 0.8, 0.5), 5.0, 1.5, 1.2), _beam_node(Color(1.0, 0.6, 0.2)), _beam_node(Color(1.0, 0.6, 0.2))]
-			_burst(tpos, Color(1.0, 0.7, 0.3), "sparks", 40, 1.0)
-			_flash_light(tpos, Color(1.0, 0.7, 0.4), 8.0, 14.0, 0.4)
+			st.nodes = [_flare(Color(1.0, 0.8, 0.5), 60.0 * UE, 1.5, 1.2), _beam_node(Color(1.0, 0.6, 0.2)), _beam_node(Color(1.0, 0.6, 0.2))]
+			_burst(tpos, Color(1.0, 0.7, 0.3), "sparks", 40, 2.0)
+			_flash_light(tpos, Color(1.0, 0.7, 0.4), 8.0, 500.0 * UE, 0.4)
 		Job.SHIELD:
 			var target := _ship(j.target_fleet_id)
 			var source := _ship(j.source_fleet_id)
 			if target != null:
 				var from := source.global_position if source != null else target.global_position + Vector3(10, 0, 0)
-				target.add_shield_hit(from, j.start, j.duration * 1.8, col.lerp(Color(0.5, 0.8, 1.0), 0.45))
+				target.add_shield_hit(from, j.start, j.duration * 1.8, col.lerp(Color(0.5, 0.8, 1.0), 0.45) * 0.55)
 				st.point = target.shield_point(from)
-				st.nodes = [_flare(col.lerp(Color.WHITE, 0.3), 3.0, 1.0, 0.8)]
-				_burst(st.point, col.lerp(Color(0.6, 0.85, 1.0), 0.5), "sparks_small", 14, 0.6)
+				st.size = maxf(40.0 * UE, target.radius() * 0.35)
+				st.nodes = [_flare(col.lerp(Color.WHITE, 0.3), st.size, 1.0, 0.8)]
+				_burst(st.point, col.lerp(Color(0.6, 0.85, 1.0), 0.5), "sparks_small", 18, maxf(1.5, target.radius() * 0.08))
 		Job.HULL:
 			var target := _ship(j.target_fleet_id)
 			var source := _ship(j.source_fleet_id)
@@ -362,11 +396,14 @@ func _spawn(i: int, j: Dictionary) -> void:
 				var from := source.global_position if source != null else target.global_position + Vector3(10, 0, 0)
 				var p := target.hull_point(from, hash([j.event_index, 7]))
 				st.point = p
-				st.nodes = [_flare(Color(1.0, 0.6, 0.25), 3.5, 1.4, 1.0)]
+				st.size = maxf(50.0 * UE, target.radius() * 0.4)
+				st.nodes = [_flare(Color(1.0, 0.6, 0.25), st.size, 1.4, 1.0)]
 				var n: int = clampi(10 + j.hull_damage, 16, 70)
-				_burst(p, Color(1.0, 0.55, 0.15), "sparks", n, 1.0, (from - p).normalized())
-				_burst(p, Color(1.0, 0.4, 0.1), "fire_small", 10, 0.6)
-				_flash_light(p, Color(1.0, 0.55, 0.2), 3.0, 8.0, 0.5)
+				var k := maxf(1.5, target.radius() * 0.1)
+				_burst(p, Color(1.0, 0.55, 0.15), "sparks", n, k, (from - p).normalized())
+				_burst(p, Color(1.0, 0.4, 0.1), "fire_small", 12, k)
+				_burst(p, Color(0.35, 0.3, 0.28), "smoke", 6, k * 0.6)
+				_flash_light(p, Color(1.0, 0.55, 0.2), 6.0, 600.0 * UE, 0.5)
 				target.add_scorch(p, from, clampf(target.length * 0.18, 0.6, 2.2))
 		Job.RAM:
 			st.nodes = [_flare(Color(1.0, 0.6, 0.2), 4.0, 0.0, 1.0)]
@@ -422,14 +459,21 @@ func _animate(i: int, j: Dictionary, t: float) -> void:
 			var reach := clampf(u / 0.1, 0.0, 1.0)
 			var env := smoothstep(0.0, 0.06, u) * (1.0 - smoothstep(0.75, 1.0, u))
 			var end := src.lerp(dst, reach)
-			var width := 0.09 if j.weapon.begins_with("Phaser") else 0.12
-			_orient_beam(st.nodes[0], src, end, width * (0.7 + 0.3 * env) * 1.6)
-			st.nodes[0].set_instance_shader_parameter("beam_intensity", env * 1.3)
+			var width := (1.0 if j.weapon.begins_with("Phaser") else 1.3) * (0.7 + 0.3 * env)
+			var mid := src.lerp(end, 0.5)
+			_orient_beam(st.nodes[0], src, end, maxf(BEAM_CORE_UE * UE * width, _px_world(mid, MIN_CORE_PX) * 0.5))
+			st.nodes[0].set_instance_shader_parameter("beam_intensity", env * 1.0)
+			var core_r := maxf(BEAM_CORE_UE * UE * width, _px_world(mid, MIN_CORE_PX) * 0.5)
+			# The glow widens with distance (it carries the beam in wide shots) but stays tight close up.
+			_orient_beam(st.nodes[3], src, end, clampf(_px_world(mid, MIN_HALO_PX) * 0.5, core_r * 1.6, BEAM_HALO_UE * UE * width))
+			st.nodes[3].set_instance_shader_parameter("beam_intensity", env * 0.3)
 			st.nodes[1].global_position = src
-			st.nodes[1].set_instance_shader_parameter("flare_intensity", env * 0.8)
+			_floor_flare(st.nodes[1], 14.0 * UE, MIN_FLARE_PX)
+			st.nodes[1].set_instance_shader_parameter("flare_intensity", env * 1.2)
 			st.nodes[2].global_position = end
+			_floor_flare(st.nodes[2], 36.0 * UE, MIN_FLARE_PX)
 			var hit: bool = j.outcome == BattleTimeline.Outcome.HIT and reach >= 1.0
-			st.nodes[2].set_instance_shader_parameter("flare_intensity", env * (1.3 if hit else 0.0))
+			st.nodes[2].set_instance_shader_parameter("flare_intensity", env * (0.5 if hit else 0.0))
 			st.nodes[2].set_instance_shader_parameter("flare_rotation", t * 3.0)
 		Job.PULSE:
 			var shooter := _ship(j.fleet_id)
@@ -439,10 +483,14 @@ func _animate(i: int, j: Dictionary, t: float) -> void:
 			var src := shooter.hardpoint(1, j.mount_index, j.index)
 			var dst := _shot_end(j, src, target)
 			var head := src.lerp(dst, u)
-			var tail := src.lerp(dst, maxf(0.0, u - 0.18))
-			_orient_beam(st.nodes[0], tail, head, 0.16)
-			st.nodes[0].set_instance_shader_parameter("beam_intensity", 1.6)
+			var span := maxf((dst - src).length(), 1e-3)
+			var tail := src.lerp(dst, maxf(0.0, u - minf(0.3, PULSE_LENGTH_UE * UE / span)))
+			_orient_beam(st.nodes[0], tail, head, maxf(PULSE_RADIUS_UE * UE * 0.5, _px_world(head, MIN_CORE_PX) * 0.5))
+			st.nodes[0].set_instance_shader_parameter("beam_intensity", 1.8)
+			_orient_beam(st.nodes[3], tail, head, maxf(PULSE_RADIUS_UE * UE * 1.6, _px_world(head, MIN_HALO_PX) * 0.5))
+			st.nodes[3].set_instance_shader_parameter("beam_intensity", 0.4)
 			st.nodes[1].global_position = head
+			_floor_flare(st.nodes[1], 30.0 * UE, MIN_FLARE_PX)
 			st.nodes[2].global_position = src
 			st.nodes[2].set_instance_shader_parameter("flare_intensity", maxf(0.0, 1.0 - u * 5.0))
 		Job.TORPEDO:
@@ -452,14 +500,18 @@ func _animate(i: int, j: Dictionary, t: float) -> void:
 				return
 			var head := _path_pos(path, path_u)
 			st.nodes[0].global_position = head
+			_floor_flare(st.nodes[0], TORPEDO_CORE_UE * 2.2 * UE, MIN_FLARE_PX * 1.4)
 			var pulse := 1.0 + 0.3 * sin(t * 40.0 + i)
 			var fade := 1.0 - smoothstep(0.85, 1.0, u) if j.outcome == BattleTimeline.Outcome.MISS else 1.0
 			st.nodes[0].set_instance_shader_parameter("flare_intensity", pulse * fade)
 			st.nodes[0].set_instance_shader_parameter("flare_rotation", t * 2.0 + i)
 			var pts := PackedVector3Array()
+			# A short comet tail of about 14 Unreal hull-widths (~13 world units), not a streak over a third of the path.
+			var plen := maxf((path[1] as Vector3).length(), 1e-3)
+			var step := minf(0.018, 80.0 * UE / plen / 17.0)
 			for k in 18:
-				pts.append(_path_pos(path, maxf(0.0, path_u - k * 0.018)))
-			_draw_ribbon(st.nodes[1], pts, 0.35, col * fade)
+				pts.append(_path_pos(path, maxf(0.0, path_u - k * step)))
+			_draw_ribbon(st.nodes[1], pts, maxf(5.0 * UE, _px_world(head, 3.0) * 0.5), col * fade)
 			var shooter := _ship(j.fleet_id)
 			if shooter != null:
 				st.nodes[2].global_position = shooter.hardpoint(2, j.mount_index, j.index)
@@ -475,13 +527,14 @@ func _animate(i: int, j: Dictionary, t: float) -> void:
 					beam.visible = false
 					continue
 				var src := target.hardpoint(0, k, 0)
-				_orient_beam(beam, src, p, 0.06)
+				_orient_beam(beam, src, p, maxf(1.5 * UE, _px_world(p, MIN_CORE_PX) * 0.5))
 				beam.set_instance_shader_parameter("beam_intensity", 1.0 - u / 0.45)
 		Job.SHIELD, Job.HULL:
 			if st.nodes.is_empty():
 				return
 			st.nodes[0].global_position = st.point
-			st.nodes[0].set_instance_shader_parameter("flare_intensity", 1.6 * pow(1.0 - u, 2.5))
+			_floor_flare(st.nodes[0], st.get("size", 6.0), MIN_FLARE_PX * 1.5)
+			st.nodes[0].set_instance_shader_parameter("flare_intensity", 1.1 * pow(1.0 - u, 2.5))
 		Job.RAM:
 			var a := _ship(j.fleet_id)
 			var b := _ship(j.target_fleet_id)
@@ -648,7 +701,8 @@ func _burst(p: Vector3, color: Color, kind: String, amount: int, scale_factor :=
 	gp.fixed_fps = 0
 	gp.local_coords = false
 	gp.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	gp.visibility_aabb = AABB(Vector3(-40, -40, -40), Vector3(80, 80, 80))
+	var reach := 40.0 * maxf(1.0, scale_factor)
+	gp.visibility_aabb = AABB(-Vector3.ONE * reach, Vector3.ONE * reach * 2.0)
 	if e[2]:
 		gp.transform_align = GPUParticles3D.TRANSFORM_ALIGN_Z_BILLBOARD_Y_TO_VELOCITY
 	add_child(gp)

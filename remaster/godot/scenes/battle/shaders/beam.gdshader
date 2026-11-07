@@ -6,6 +6,7 @@ render_mode unshaded, blend_add, depth_draw_never, cull_disabled, shadows_disabl
 instance uniform vec4 beam_color : source_color = vec4(1.0, 0.45, 0.05, 1.0);
 instance uniform float beam_intensity = 1.0;
 instance uniform float beam_phase = 0.0;
+instance uniform float beam_halo = 0.0; // 1 = the wide outer glow cylinder: soft colour only, no white core
 uniform float core_power = 8.0;
 
 varying float end_on;
@@ -22,8 +23,14 @@ void fragment() {
 	float along = UV.y;
 	float pulse = 0.75 + 0.25 * sin(along * 60.0 - TIME * 40.0 + beam_phase * 7.0);
 	float flicker = 0.9 + 0.1 * sin(TIME * 93.0 + beam_phase * 13.0);
-	vec3 col = beam_color.rgb * halo * 1.4 * pulse + vec3(1.0, 0.97, 0.9) * core * 3.0;
-	float dim = mix(1.0, 0.2, smoothstep(0.75, 1.0, end_on));
+	vec3 col = beam_color.rgb * halo * 1.4 * pulse + vec3(1.0, 0.97, 0.9) * core * 1.6;
+	if (beam_halo > 0.5) {
+		halo = pow(facing, 3.0);
+		col = beam_color.rgb * halo * 0.9 * pulse;
+	}
+	float dim = mix(1.0, 0.12, smoothstep(0.6, 1.0, end_on));
+	// Fade the part of a beam that passes right by the lens: at true scale a close camera sat inside the glow.
+	dim *= smoothstep(4.0, 30.0, -VERTEX.z);
 	ALBEDO = col * beam_intensity * flicker * dim;
 	ALPHA = clamp(halo * beam_intensity, 0.0, 1.0);
 }

@@ -57,6 +57,13 @@ func _draw() -> void:
 		if large and not key:
 			continue
 		var alpha := 0.95 if key else remap(clampf(r, 14.0, 110.0), 14.0, 110.0, 0.75, 0.16)
+		# R3.5: at 24 v 24 a bracket on every hull drew a red fence over the enemy line; in a crowd only the selected,
+		# targeted and hovered ships get brackets, the rest a faint pip.
+		var crowded: bool = camera.bodies.size() > 12
+		if crowded and not key:
+			var pip := Color(base, 0.45)
+			draw_circle(c, 2.2, pip)
+			continue
 		var col := Color(base.lightened(0.15 if key else 0.0), alpha)
 		var h := minf(r * 0.55, size.y * 0.2) if large else maxf(r * 1.08, 9.0)
 		var l := clampf(h * 0.32, 4.0, 22.0)

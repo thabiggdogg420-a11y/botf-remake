@@ -34,6 +34,8 @@ func attach(node: Node) -> void:
 		svc.set_anchors_preset(Control.PRESET_FULL_RECT)
 		var sv := SubViewport.new()
 		sv.own_world_3d = true
+		if App.i != null:
+			DisplaySettings.apply_viewport(sv, App.i.settings) # render scale, anti-aliasing, shadow atlas
 		sv.add_child(node)
 		svc.add_child(sv)
 		add_child(svc)
