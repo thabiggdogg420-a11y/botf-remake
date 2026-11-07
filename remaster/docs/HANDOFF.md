@@ -466,3 +466,21 @@ The cloud's Godot 4.5 client, built natively on Windows and run for the first ti
 - Unzipped to `C:\Games\BOTF-Godot\`, with the desktop shortcut "BOTF Remastered (Godot)".
 - Logs: `%APPDATA%\Godot\app_userdata\BOTF Remastered (Godot)\logs`.
 - Screenshots: `remaster/godot/docs/screens/pc-*.png` (960x540).
+
+## Godot finish plan (from 7 Nov 2026)
+
+Simon chose Godot after the bake-off ("go with godot, and begin its development towards the full finished game").
+Unreal (`game/`) is frozen. The gap survey of 7 Nov drives the rounds below. Each round is one large build that Simon
+plays before the next one starts.
+
+The survey's starting point: 33 of the 36 bridge methods are already called from GDScript, and every strategic screen
+exists. The gaps are mostly sound, onboarding, art content and polish.
+
+| Round | Content | Done when |
+|---|---|---|
+| R1 Sound | A Godot audio system: a cue scheduler, ducking, and master/effects/voice/interface/music buses, as in Unreal's `UBotfAudioSubsystem`. Music on the title, galaxy and battle. UI, turn-end, research and construction cues. Hooks for advisor, diplomacy and victory voice. Five volume sliders in Settings. Rebuild the lost audio: rerun the BOTF extractor and the no-login downloads. | Every screen has sound, and the sliders persist |
+| R2 Gameplay surface | Trade routes (establish/cancel). A fleet retreat order. Terraform preview (`canTerraform`). Use `describeTurn` and `dryRunMany` in the end-turn check. An Empire screen with governors and templates. Check the depth of megaprojects, minor-race membership and station upgrades against GAMEPLAY-REMASTER.md and MINOR-RACES.md. | Every core feature is reachable from a screen |
+| R3 Battle and galaxy presentation | Prewarm the shaders (first-battle hitch), remove the 40-60 ms round spikes, and fix the exposure and glare found in the bake-off. Galaxy fits the view on open, and all feature types are drawn. Hero models in the fleet/system/database views. Drop the 2D battle fallback. | Simon passes a 24v24 play session |
+| R4 Art content | Hulls for the 27 BOTF-only classes (Starhelm library first, then fitted builds) and the Ferengi small craft. Planet and colony art on the System screen. | No procedural hull in a normal game |
+| R5 Onboarding | A first-run tutorial built on the drills, advisor hints, and the empty Events overlay fixed. | A new player can finish turn 10 unaided |
+| R6 Ship it | Display settings (resolution, fullscreen, vsync, with confirm-or-revert). App icon. Multi-slot autosaves with thumbnails. A test of a full-game AI-vs-AI soak through to each victory type. An exported exe that Simon plays from the desktop. | Simon plays a full campaign on the exported build |
