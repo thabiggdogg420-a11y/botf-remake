@@ -484,3 +484,5 @@ exists. The gaps are mostly sound, onboarding, art content and polish.
 | R4 Art content | Hulls for the 27 BOTF-only classes (Starhelm library first, then fitted builds) and the Ferengi small craft. Planet and colony art on the System screen. | No procedural hull in a normal game |
 | R5 Onboarding | A first-run tutorial built on the drills, advisor hints, and the empty Events overlay fixed. | A new player can finish turn 10 unaided |
 | R6 Ship it | Display settings (resolution, fullscreen, vsync, with confirm-or-revert). App icon. Multi-slot autosaves with thumbnails. A test of a full-game AI-vs-AI soak through to each victory type. An exported exe that Simon plays from the desktop. | Simon plays a full campaign on the exported build |
+
+Paused 7 Nov 2026 on Simon's word, just after R1-R3 started. No commits had been made. The worktrees `wt-r1-sound`, `wt-r2-gameplay` and `wt-r3-present` (branches `godot/r1-*`, `godot/r2-*`, `godot/r3-*`) may hold uncommitted partial edits. Check them before resuming. Builder rules: `docs/GODOT-ROUND-BRIEF.md`.
