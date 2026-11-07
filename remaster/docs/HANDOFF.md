@@ -294,6 +294,18 @@ rebuilt from scratch: core CMake, Godot 4.5 with godot-cpp and the Linux extensi
     - a CAMERA mode button over the 3D view;
     - a Starbase drill on the title screen (Remastered rules, the full 3D battle).
   - PC-QUEUE item 13 asks for a PC rebuild and smoke run.
+- **Hero ships in Godot, and the live title menu** (PC-QUEUE item 14 regenerates and checks them on the PC):
+  - `blender_hero_ships.py --gltf` (opt-in; the FBX path is unchanged) also writes `SM_<slug>.glb` per hero (bakes
+    embedded, `Col` as COLOR_0, `SOCKET_*` nodes, LOD1-3) and merges `LocalAssets/ships/godot-hero-manifest.json`:
+    glb path, canon length, sockets, LODs and the Unreal importer's material hints (`Tools/hero_gltf_manifest.py`,
+    offline test `Tools/test_hero_gltf_manifest.py`).
+  - Godot: `BattleAssets` loads those glbs by key; `BattleShip` scales them by canon length and fires from their
+    `WPN_*` sockets; `HeroLook` rebuilds M_ShipHero / M_ShipPlated as `hero_hull` / `hero_plated` shaders and sets LOD
+    visibility ranges. No model → procedural hull. `tests/test_hero_models.gd` proves it on synthetic glbs. Not
+    seen with the real models yet (they are not in the cloud).
+  - The title screen films `TitleFleet` live (the battle's environment and ships, no timeline): the campaign's or
+    latest save's empire, else a random power, right of centre past a gas giant under a front key, behind a scrim.
+    `tests/test_title_fleet.gd`; shot `godot/docs/screens/ui-title.png`.
 - **Still waiting on Simon** (unchanged from 30 Sep):
   - beta 0.2.0 playtest notes;
   - the Ferengi markings call;

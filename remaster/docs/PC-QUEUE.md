@@ -71,9 +71,30 @@ Status markers: `[ ]` pending, `[x]` done (paste the result or log into the PR/s
     - the CAMERA button and C switch between cinematic and free;
     - the galaxy opens filling the space left of the inspector;
     - the new Starbase drill on the title screen.
+14. [ ] **Hero ships as glTF for the Godot build, and the live title menu** (cloud, 7 Nov). Needs the hero sources in
+    `LocalAssets/incoming` (item 4) and Blender 5.x.
+    - Regenerate with the glTF output (the FBX, textures and `hero.json` come out exactly as before):
+      `blender -b --factory-startup --python remaster\game\Tools\blender_hero_ships.py -- --gltf`
+      (add `--keys ship.fed.*` for a subset, `--gltf-lods 0` to skip the LOD1-3 meshes). Each hero gains
+      `LocalAssets\ships\<key>\SM_<slug>.glb`; the log prints `HERO glTF <key> ... (n LODs)` and finally
+      `HERO glTF manifest ...\godot-hero-manifest.json: n new, n heroes`. Expect 16 heroes.
+    - Offline check first, no Blender needed: `python remaster\game\Tools\test_hero_gltf_manifest.py` (14 tests).
+    - Check one glb opens in Blender's glTF importer or <https://gltf-viewer.donmccurdy.com/>: nose +X, top up, length
+      in metres, the plated heroes (Negh'Var, Vor'cha, Defiant, Hideki) coloured from `COLOR_0`, `SOCKET_WPN_*`
+      nodes on the hull. Report any exporter warning about the ORM occlusion group or vertex colours (the option
+      names are filtered to what that Blender has; `gltf_export_kwargs` in the tool).
+    - Godot: the build finds `godot-hero-manifest.json` in `ships\` beside the resolved manifest (or
+      `$BOTF_HERO_MANIFEST`). Start the Starbase drill and a Klingon campaign battle: the hero hulls should replace
+      the procedural ones at their battle length, textured heroes lit like Unreal (no black metal, no sparkle),
+      plated ones olive / grey with panel seams, and beams and torpedoes leaving the `WPN_*` sockets. Report any hull
+      that is huge, rotated, black or white.
+    - Title: `SHOT_FULL=1 godot --path remaster\godot --resolution 1920x1080 -s res://scenes/ui/tools/screenshot.gd -- <out> title`
+      with `BOTF_TITLE_EMPIRE` = 1..5 set; compare with `pc-screens/title-menu-live.png`. The title films the hero
+      models when they are local, else the procedural hulls. Report the title frame rate on the PC.
 
 ## Blocked cloud work (waiting on the items above)
 
 - Keep the Unreal client compiling: every cloud change to `remaster/game/Source` should be followed by a PC build (`Build.bat BOTFRemakeEditor`) and a `Run-Showcase.ps1` run.
 - Tuning ship scale, weapon socket positions and VFX against the real models (needs 4 and 5).
+- Tuning the Godot hero materials and LOD distances against the real glbs (needs 14).
 - Automatic voice cue mapping, and tuning mixer levels against the real audio (needs 2).
