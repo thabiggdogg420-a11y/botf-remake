@@ -207,6 +207,7 @@ func _host_input() -> void:
 	await process_frame
 	await process_frame
 	check(host.view_node != null and "camera" in host.view_node, "host mounts the 3D view")
+	check(ResourceLoader.exists(BattleHost.BATTLE_SCENE) and not ("placeholder" in host), "no 2D placeholder fallback in the host")
 	var cam: BattleCamera = host.view_node.camera
 	host.view_node.play_audio = false
 	host.load_encounter(encounter)
@@ -228,6 +229,20 @@ func _host_input() -> void:
 	check(cam.mode == BattleCamera.Mode.CINEMATIC, "C key reaches the camera through the SubViewport")
 	if bar != null:
 		check((bar.get_node("CamCINEMATIC") as Button).button_pressed, "mode bar follows the camera")
+	# C is a toggle: pressed again it leaves cinematic for the mode it came from, and the CINEMATIC button returns to it.
+	var key_up := InputEventKey.new()
+	key_up.keycode = KEY_C
+	key_up.physical_keycode = KEY_C
+	key_up.pressed = false
+	root.push_input(key_up)
+	root.push_input(key)
+	await process_frame
+	check(cam.mode == BattleCamera.Mode.OVERVIEW, "second C leaves cinematic (toggle, not a one-way switch)")
+	if bar != null:
+		check((bar.get_node("CamOVERVIEW") as Button).button_pressed and not (bar.get_node("CamCINEMATIC") as Button).button_pressed,
+			"mode bar follows the C toggle back")
+		(bar.get_node("CamCINEMATIC") as Button).pressed.emit()
+		check(cam.mode == BattleCamera.Mode.CINEMATIC, "CINEMATIC button selects cinematic")
 	cam.set_mode(BattleCamera.Mode.OVERVIEW)
 	await create_timer(1.5).timeout
 	# Click the ship nearest the camera through the container.

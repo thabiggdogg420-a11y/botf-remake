@@ -105,6 +105,50 @@ func prewarm() -> void:
 	add_child(ring)
 	ring.global_position = at
 	nodes.append(ring)
+	# The ship-side effects (a shield flash, the cloak overlay, a scorch decal) and a flash light render for the first
+	# time mid-battle too, and each carries its own pipeline: draw them once now, tiny and out of the way.
+	var shield := MeshInstance3D.new()
+	var shield_mesh := SphereMesh.new()
+	shield_mesh.radial_segments = 48
+	shield_mesh.rings = 24
+	shield.mesh = shield_mesh
+	var shield_mat := ShaderMaterial.new()
+	shield_mat.shader = BattleShip.SHIELD_SHADER
+	shield_mat.set_shader_parameter("hits", [Vector4(1, 0, 0, 0.2), Vector4(1, 0, 0, -1), Vector4(1, 0, 0, -1),
+		Vector4(1, 0, 0, -1), Vector4(1, 0, 0, -1), Vector4(1, 0, 0, -1)])
+	shield_mat.set_shader_parameter("hit_colors", [Vector4(0.5, 0.8, 1, 1), Vector4.ZERO, Vector4.ZERO, Vector4.ZERO,
+		Vector4.ZERO, Vector4.ZERO])
+	shield.material_override = shield_mat
+	shield.scale = Vector3.ONE * 0.004
+	add_child(shield)
+	shield.global_position = at
+	nodes.append(shield)
+	var cloak := MeshInstance3D.new()
+	cloak.mesh = SphereMesh.new()
+	var cloak_mat := ShaderMaterial.new()
+	cloak_mat.shader = BattleShip.CLOAK_SHADER
+	cloak.material_overlay = cloak_mat
+	cloak.scale = Vector3.ONE * 0.004
+	add_child(cloak)
+	cloak.global_position = at
+	cloak.set_instance_shader_parameter("shimmer", 0.5)
+	cloak.transparency = 0.5
+	nodes.append(cloak)
+	var decal := Decal.new()
+	decal.texture_albedo = BattleShip.scorch_texture()
+	decal.texture_emission = BattleShip.ember_texture()
+	decal.emission_energy = 3.0
+	decal.size = Vector3.ONE * 0.01
+	add_child(decal)
+	decal.global_position = at
+	nodes.append(decal)
+	var light := OmniLight3D.new()
+	light.light_energy = 0.001
+	light.omni_range = 0.05
+	light.shadow_enabled = false
+	add_child(light)
+	light.global_position = at
+	nodes.append(light)
 	var before := get_child_count()
 	for kind in ["sparks", "sparks_small", "fire_small", "fireball", "smoke", "debris"]:
 		_burst(at, Color(1, 0.5, 0.2), kind, 1, 0.01)
@@ -247,10 +291,17 @@ func _draw_ribbon(mi: MeshInstance3D, points: PackedVector3Array, width: float, 
 
 
 func _torpedo_pos(j: Dictionary, u: float) -> Vector3:
+	var path := _torpedo_path(j)
+	return Vector3.ZERO if path.is_empty() else _path_pos(path, u)
+
+
+## The torpedo's flight as [source, displacement, side normal, arc height], found once per frame: the trail samples 18
+## points along it, and each used to repeat the hardpoint, shield and hull lookups.
+func _torpedo_path(j: Dictionary) -> Array:
 	var shooter := _ship(j.fleet_id)
 	var target := _ship(j.target_fleet_id)
 	if shooter == null:
-		return Vector3.ZERO
+		return []
 	var src := shooter.hardpoint(2, j.mount_index, j.index)
 	var dst := target.shield_point(src) if target != null else src + Vector3(20, 0, 0)
 	if j.outcome == BattleTimeline.Outcome.HIT and target != null and j.shield_damage <= 0 and j.hull_damage > 0:
@@ -260,10 +311,13 @@ func _torpedo_pos(j: Dictionary, u: float) -> Vector3:
 	if length > 1e-6 and j.overshoot_cells > 0.0:
 		dst = src + d * ((length + j.overshoot_cells * _cell()) / length)
 		d = dst - src
-	var n := d.cross(Vector3.UP).normalized()
+	return [src, d, d.cross(Vector3.UP).normalized(), j.arc_cells * _cell()]
+
+
+static func _path_pos(path: Array, u: float) -> Vector3:
 	var bow := 4.0 * u * (1.0 - u)
-	var arc: float = j.arc_cells * _cell()
-	return src + d * u + n * arc * bow + Vector3.UP * absf(arc) * bow * 0.8
+	var arc: float = path[3]
+	return path[0] + path[1] * u + path[2] * arc * bow + Vector3.UP * absf(arc) * bow * 0.8
 
 
 # ------------------------------------------------------------------------------------------------------------------
@@ -393,7 +447,10 @@ func _animate(i: int, j: Dictionary, t: float) -> void:
 			st.nodes[2].set_instance_shader_parameter("flare_intensity", maxf(0.0, 1.0 - u * 5.0))
 		Job.TORPEDO:
 			var path_u: float = u * j.end_fraction
-			var head := _torpedo_pos(j, path_u)
+			var path := _torpedo_path(j)
+			if path.is_empty():
+				return
+			var head := _path_pos(path, path_u)
 			st.nodes[0].global_position = head
 			var pulse := 1.0 + 0.3 * sin(t * 40.0 + i)
 			var fade := 1.0 - smoothstep(0.85, 1.0, u) if j.outcome == BattleTimeline.Outcome.MISS else 1.0
@@ -401,7 +458,7 @@ func _animate(i: int, j: Dictionary, t: float) -> void:
 			st.nodes[0].set_instance_shader_parameter("flare_rotation", t * 2.0 + i)
 			var pts := PackedVector3Array()
 			for k in 18:
-				pts.append(_torpedo_pos(j, maxf(0.0, path_u - k * 0.018)))
+				pts.append(_path_pos(path, maxf(0.0, path_u - k * 0.018)))
 			_draw_ribbon(st.nodes[1], pts, 0.35, col * fade)
 			var shooter := _ship(j.fleet_id)
 			if shooter != null:

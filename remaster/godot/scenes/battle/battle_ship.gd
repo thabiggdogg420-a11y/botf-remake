@@ -41,6 +41,7 @@ var _shield_mat: ShaderMaterial
 var _cloak_mat: ShaderMaterial
 var _hits: Array = []      ## [{dir: Vector3, start: float, duration: float, color: Color}]
 var _decals: Array[Decal] = []
+var _socket_pick := {}   ## (family, mount, emitter) key -> index into sockets (-1 = none): see hardpoint()
 var _center: Node3D
 
 static var _scorch_tex: Texture2D
@@ -281,10 +282,16 @@ func _clear_hits() -> void:
 ## bounds-based hardpoint (BattleTimeline.fallback_hardpoint).
 func hardpoint(family: int, mount_index: int, emitter_index: int) -> Vector3:
 	if not sockets.is_empty():
-		var names: Array[String] = []
-		for s in sockets:
-			names.append(BattleShip.socket_name(str(s.name)))
-		var pick := BattleShip.pick_socket(names, family, mount_index, emitter_index)
+		# The pick depends only on the key (sockets never change after setup): cached, since beams and torpedoes ask for
+		# their hardpoint every frame.
+		var key := (family * 1000 + maxi(0, mount_index)) * 1000 + maxi(0, emitter_index)
+		var pick: int = _socket_pick.get(key, -2)
+		if pick == -2:
+			var names: Array[String] = []
+			for s in sockets:
+				names.append(BattleShip.socket_name(str(s.name)))
+			pick = BattleShip.pick_socket(names, family, mount_index, emitter_index)
+			_socket_pick[key] = pick
 		if pick >= 0:
 			return sockets[pick].global_position
 	var hp := BattleTimeline.fallback_hardpoint(family, mount_index, emitter_index)

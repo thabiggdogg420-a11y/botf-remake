@@ -63,20 +63,26 @@ func click(c: Control, button: MouseButton = MOUSE_BUTTON_LEFT) -> void:
 		Input.parse_input_event(e)
 		await process_frame
 
-## Frame rate over `seconds` of real time: average and worst frame.
-func measure(label: String, seconds: float) -> void:
-	var t0 := Time.get_ticks_usec()
+## Frame rate over `seconds` of real time: average fps, p99 and worst frame. `from_us` (a Time.get_ticks_usec() taken
+## before the action under test) counts that action's own cost in the first frame, so a hitch in the call shows up.
+func measure(label: String, seconds: float, from_us := 0) -> void:
+	var t0 := from_us if from_us > 0 else Time.get_ticks_usec()
 	var last := t0
-	var frames := 0
-	var worst := 0
+	var times: Array = []
 	while Time.get_ticks_usec() - t0 < int(seconds * 1e6):
 		await process_frame
 		var now := Time.get_ticks_usec()
-		worst = maxi(worst, now - last)
+		times.append((now - last) / 1000.0)
 		last = now
-		frames += 1
-	var avg := frames / ((last - t0) / 1e6)
-	fps[label] = "%.0f fps avg, worst frame %.1f ms" % [avg, worst / 1000.0]
+	var sorted := times.duplicate()
+	sorted.sort()
+	var total := 0.0
+	for v in times:
+		total += v
+	var avg := 1000.0 * times.size() / maxf(total, 1.0)
+	var p99: float = sorted[mini(sorted.size() - 1, int(sorted.size() * 0.99))] if not sorted.is_empty() else 0.0
+	var worst: float = sorted[sorted.size() - 1] if not sorted.is_empty() else 0.0
+	fps[label] = "%.0f fps avg, p99 %.1f ms, worst frame %.1f ms" % [avg, p99, worst]
 	print("SMOKE fps  ", label, ": ", fps[label])
 
 func find(n: Node, name_: String) -> Node:
@@ -217,8 +223,9 @@ func _run() -> void:
 	# ---- Battle drill: Take command, several rounds with the 3D view, cinematic camera
 	app.start_drill("newBattleDrill", "Tactical drill")
 	await wait()
+	var t_open := Time.get_ticks_usec()
 	var status := app.end_turn()
-	await wait(10)
+	await measure("battle open (ships built, models loaded)", 1.0, t_open)
 	check(status == "battle" and app.screen == "combat", "drill opens the combat screen")
 	var take: Control = find(app, "TakeCommand")
 	check(take != null, "encounter offers Take command")
@@ -233,13 +240,30 @@ func _run() -> void:
 			break
 		cs.order("Engage" if r > 0 else "Charge")
 		await wait()
+		var t_round := Time.get_ticks_usec()
 		cs._round()
 		rounds += 1
-		await measure("battle round %d" % rounds, 3.0)
+		await measure("battle round %d" % rounds, 3.0, t_round)
 		if r == 1:
 			await shot("pc-10-battle-round2")
 		if r == 2:
+			# The battle opens in the cinematic camera, so C toggles it OFF (to overview) and a second C back on.
+			# (The first smoke runs pressed C once and filmed the overview as "cinematic": HANDOFF bug 4.)
+			var cam: BattleCamera = cs.host.view_node.camera
+			check(cam.mode == BattleCamera.Mode.CINEMATIC, "battle opens in the cinematic camera")
 			await key(KEY_C)
+			await wait(2)
+			check(cam.mode == BattleCamera.Mode.OVERVIEW, "C key (real window) leaves cinematic")
+			await shot("pc-11a-battle-overview")
+			var cbtn: Control = find(cs, "CamCINEMATIC")
+			check(cbtn != null, "CINEMATIC button on the camera bar")
+			if cbtn:
+				await click(cbtn)
+				await wait(2)
+			check(cam.mode == BattleCamera.Mode.CINEMATIC, "CINEMATIC button (clicked) selects cinematic")
+			await key(KEY_C)
+			await key(KEY_C)
+			check(cam.mode == BattleCamera.Mode.CINEMATIC, "C twice returns to cinematic")
 			await measure("battle cinematic", 3.0)
 			await shot("pc-11-battle-cinematic")
 		cs = app.current_screen()
@@ -250,6 +274,28 @@ func _run() -> void:
 	check(app.encounter.get("finished", false), "battle finished")
 	await shot("pc-12-battle-end")
 	check(app.end_turn() == "complete", "turn completes after the battle")
+
+	# ---- 24 v 24 starbase drill: the large-battle frame cost (each round from the call that starts it)
+	app.start_drill("newBattleDrill", "Starbase drill", {"station": true, "ships": 24})
+	await wait()
+	var t_big := Time.get_ticks_usec()
+	var big_status := app.end_turn()
+	await measure("24v24 open (ships built, models loaded)", 1.0, t_big)
+	check(big_status == "battle" and app.screen == "combat", "24v24 drill opens the combat screen")
+	app.close_all_modals()
+	await wait()
+	var big := app.current_screen()
+	for r in 4:
+		if app.encounter.get("finished", false):
+			break
+		var t_r := Time.get_ticks_usec()
+		big._round()
+		await measure("24v24 round %d" % (r + 1), 4.0, t_r)
+		big = app.current_screen()
+		if r == 2:
+			await measure("24v24 cinematic", 4.0) # the opening mode is cinematic
+			await shot("pc-13-24v24-cinematic")
+	check(int(app.encounter.get("ships", []).size()) >= 48, "24v24 encounter has %d ships" % app.encounter.get("ships", []).size())
 
 	print("SMOKE summary: %d failures" % failures)
 	for k in fps:

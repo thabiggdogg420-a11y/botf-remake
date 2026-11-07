@@ -25,6 +25,7 @@ const SPACING_PUSH_EASE := 12.0 ## 1/s: how fast they grow when hulls close in (
 ## the pose it was last shown at eases into the new one over this long, so nothing jumps between rounds.
 const ROUND_JOIN_SECONDS := 1.5
 const FINISH_TAIL := 0.6        ## Seconds after the last job before round_finished.
+const SPACING_SOLVE_INTERVAL := 0.05 ## Seconds between spacing solves (see _update_spacing).
 const MAX_FRAME_STEP := 0.05    ## Longest wall-clock step one frame may advance the timeline (a 20 fps floor).
 
 @export var round_seconds := 6.0
@@ -52,6 +53,8 @@ var _sound_i := 0
 var _bark_i := 0
 var _env := {}
 var _prewarmed := false
+var _spacing_clock := 0.0
+var _spacing_cache: Array[Vector3] = []
 var _ship_jobs := {}             ## fleet_id -> the round's cloak/decloak/explosion/warp jobs for that ship
 var _shown := {}                 ## fleet_id -> Pose the ship was last shown at (before spacing and station-keeping)
 var _carry := {}                 ## fleet_id -> Vector4(x, y, altitude, facing) eased out at the start of the round
@@ -244,7 +247,13 @@ func _update_spacing(t: float, delta: float, poses: Dictionary) -> void:
 		bodies.append({"x": p.x if active else 0.0, "y": p.y if active else 0.0, "alt": p.altitude if active else 0.0,
 			"radius": 0.75 * ship.half_extents.length() / CELL if active else 0.0, "active": active})
 		tracks.append(track)
-	var offsets := BattleTimeline.spacing_offsets(bodies)
+	# The relaxation is the dearest per-frame job at 24 v 24, and the offsets only drift slowly: solve it at 20 Hz and
+	# ease every frame (a zero-length step, the first frame of a round or a seek, always solves).
+	_spacing_clock += delta
+	if delta <= 0.0 or _spacing_clock >= SPACING_SOLVE_INTERVAL or _spacing_cache.size() != bodies.size():
+		_spacing_clock = 0.0
+		_spacing_cache = BattleTimeline.spacing_offsets(bodies)
+	var offsets := _spacing_cache
 	var ease := 1.0 if delta <= 0.0 else 1.0 - exp(-SPACING_EASE * delta)
 	# Ships closing on each other mid-maneuver need the push at once (a slow ease let an Oberth pass through a Galaxy
 	# in the starbase drill); a push that is no longer needed relaxes at the gentle rate.

@@ -12,6 +12,7 @@ var _menu: PanelContainer
 var _orders_open := false
 var _alerts_open := true
 var _framed := false
+var _warmed := false
 var _marks: Array = []
 
 func _ready() -> void:
@@ -65,6 +66,15 @@ func refresh() -> void:
 		return
 	_layout()
 	map.rebuild()
+	if not _warmed:
+		# Parse the hero models of the player's own ship classes on worker threads now, so the first battle opens
+		# without a multi-second stall (BattleAssets.warm; a no-op without local hero models).
+		_warmed = true
+		var mine: Array = []
+		for f in app.view.get("fleets", []):
+			if int(f.get("owner", 0)) == int(app.view.get("meta", {}).get("player", 0)):
+				mine.append(f)
+		BattleAssets.shared().warm(BattleAssets.ships_keys(mine))
 	if not _framed:
 		_framed = true
 		map.frame_known.call_deferred()
