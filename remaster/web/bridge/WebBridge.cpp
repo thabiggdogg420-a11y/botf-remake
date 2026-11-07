@@ -1488,6 +1488,71 @@ void writeForecast(Writer& w) {
     w.endObject();
 }
 
+// Trade routes with their value, and every route the player could still establish. The value is the
+// per-turn credit income the turn resolver pays for a route (5 + min(both populations) / 10), shown
+// even while a route is blocked so the client can say what it would be worth.
+void writeTradeRoutes(Writer& w) {
+    requireGame();
+    const auto& s = B.state;
+    const auto& d = draft();
+    const int me = d.playerEmpire;
+    const auto routeValue = [&](const botf::Colony& a, const botf::Colony& b) { return 5 + std::min(a.population, b.population) / 10; };
+    const auto blockerFor = [&](int partner) -> std::string {
+        const auto* rel = botf::majorRelation(d, me, partner);
+        if (!rel) return "No contact with that empire";
+        if (rel->atWar) return "War blocks trade";
+        if (d.advancedRulesEnabled && !rel->tradeTreaty) return "An accepted trade treaty is required";
+        return "";
+    };
+    const auto writePair = [&](const botf::Colony& a, const botf::Colony& b, const std::string& blocker) {
+        w.field("from", a.systemId).field("to", b.systemId);
+        w.field("fromName", systemLabel(s, a.systemId)).field("toName", systemLabel(s, b.systemId));
+        w.field("partner", b.ownerId).field("partnerName", empireLabel(b.ownerId));
+        w.field("value", routeValue(a, b)).field("blocker", blocker);
+    };
+    w.beginObject();
+    w.field("advancedRules", d.advancedRulesEnabled);
+    w.key("routes").beginArray();
+    for (const auto& route : d.tradeRoutes) {
+        if (route.ownerId != me) continue;
+        const auto* src = botf::colonyAt(d, route.fromSystemId);
+        const auto* dst = botf::colonyAt(d, route.toSystemId);
+        w.beginObject();
+        bool active = false;
+        if (!src || !dst) {
+            w.field("from", route.fromSystemId).field("to", route.toSystemId).field("fromName", systemLabel(s, route.fromSystemId))
+                .field("toName", systemLabel(s, route.toSystemId)).field("partner", 0).field("partnerName", "").field("value", 0)
+                .field("blocker", "One end is no longer a colony");
+        } else if (src->ownerId != me || dst->ownerId == me) {
+            writePair(*src, *dst, "A colony changed hands");
+        } else {
+            const std::string blocker = blockerFor(dst->ownerId);
+            writePair(*src, *dst, blocker);
+            active = blocker.empty();
+        }
+        w.field("active", active);
+        w.endObject();
+    }
+    w.endArray();
+    w.key("candidates").beginArray();
+    for (const auto& src : d.colonies) {
+        if (src.ownerId != me) continue;
+        if (std::any_of(d.tradeRoutes.begin(), d.tradeRoutes.end(), [&](const botf::TradeRoute& r) { return r.ownerId == me && r.fromSystemId == src.systemId; })) continue;
+        for (const auto& dst : d.colonies) {
+            if (dst.ownerId == me || dst.ownerId == 0) continue;
+            const auto* sys = systemById(s, dst.systemId);
+            if (!sys || !knownSystem(s, *sys) || !botf::visible(s, me, sys->x, sys->y)) continue;
+            const auto* rel = botf::majorRelation(d, me, dst.ownerId);
+            if (!rel || !rel->contact) continue;
+            w.beginObject();
+            writePair(src, dst, blockerFor(dst.ownerId));
+            w.endObject();
+        }
+    }
+    w.endArray();
+    w.endObject();
+}
+
 // ------------------------------------------------------------------------------------------------
 // Diplomacy & intelligence views
 // ------------------------------------------------------------------------------------------------
@@ -2782,6 +2847,7 @@ std::string dispatch(const std::string& method, const Value& a) {
     else if (method == "workforcePreview") writeWorkforcePreview(w, a);
     else if (method == "research") writeResearch(w);
     else if (method == "forecast") writeForecast(w);
+    else if (method == "tradeRoutes") writeTradeRoutes(w);
     else if (method == "diplomacy") writeDiplomacy(w);
     else if (method == "intel") writeIntel(w);
     else if (method == "canTerraform") {

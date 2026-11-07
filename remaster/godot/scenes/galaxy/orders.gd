@@ -80,6 +80,111 @@ static func upgrade_action(app: App, station: Dictionary, battle_lock: String) -
 			app.issue({"type": "UpgradeStation", "stationId": sid, "systemId": int(funder["systemId"])}, [], "%s: starbase upgrade funded by %s." % [station["name"], funder["name"]]),
 		"¢%s now, then %s industry from %s (its queue pauses)" % [str(cost.get("credits", "?")), str(cost.get("industry", "?")), funder.get("name", "a colony within 6 sectors")], reason)
 
+## Why this colony ship cannot terraform a planet, or "" when the core's canTerraform says it can.
+## The core answers with a bool only, so the reason is rebuilt from the same conditions, in the same order.
+static func terraform_blocker(app: App, fleet: Dictionary, system: Dictionary, planet: Dictionary) -> String:
+	var ok: Variant = app.core.request("canTerraform", {"fleetId": int(fleet["id"]), "systemId": int(system["id"]), "planetIndex": int(planet["index"])})
+	if ok == true:
+		return ""
+	var cls := str(planet.get("class", ""))
+	var state := str(planet.get("terraformState", ""))
+	if not app.view["meta"].get("campaignExpansion", false):
+		return "Terraforming needs the campaign expansion rules"
+	if not fleet.get("colonyShip", false):
+		return "Only colony ships terraform"
+	if int(fleet.get("hull", 1)) <= 0:
+		return "The ship is destroyed"
+	if fleet.get("retreat", false):
+		return "The ship is retreating - cancel the retreat first"
+	if int(fleet.get("attackTarget", 0)) != 0:
+		return "The ship is pursuing a target - cancel that order first"
+	if fleet.get("colonize", false):
+		return "The ship is about to colonize - cancel that order first"
+	var col := app.find_by_id("colonies", int(system["id"]), "systemId")
+	if col.is_empty() and int(system.get("owner", 0)) not in [0, app.player()]:
+		return "Another empire holds this system"
+	if int(fleet["x"]) != int(system["x"]) or int(fleet["y"]) != int(system["y"]):
+		return "The ship must be in this system"
+	if cls == "GasGiant":
+		return "Gas giants cannot be terraformed"
+	if cls == "Asteroids":
+		return "Asteroid belts cannot be terraformed"
+	if state == "Terraformed":
+		return "Already fully terraformed"
+	if state == "Uninhabitable":
+		return "Uninhabitable - this world cannot be terraformed"
+	return "The core refuses this terraforming order"
+
+## What a terraforming order buys: capacity now against capacity when finished, and the work needed.
+static func terraform_detail(p: Dictionary) -> String:
+	var base := int(p.get("baseCapacity", 0))
+	var top := int(p.get("maxCapacity", 0))
+	var txt := "%s: supports %d now, %d when terraformed (%s)" % [p.get("className", ""), base, top, Lcars.signed(top - base)]
+	if int(p.get("terraformNeeded", 0)) > 0:
+		txt += " - %d/%d work done" % [int(p.get("terraformWork", 0)), int(p["terraformNeeded"])]
+	return txt
+
+## Where RetreatFleet sends a ship, mirroring the core: the nearest own colony, except that a damaged ship
+## under advanced rules prefers a colony with a powered shipyard (repairs). Returns {} with no colony.
+static func retreat_target(app: App, fleet: Dictionary) -> Dictionary:
+	var damaged: bool = app.view["meta"].get("advancedRules", false) and int(fleet["hull"]) < int(fleet["maxHull"])
+	var best := {}
+	var best_d := 1 << 30
+	var best_yard := false
+	for c in app.view.get("colonies", []):
+		var s := app.find_by_id("systems", int(c["systemId"]))
+		if s.is_empty():
+			continue
+		var d: int = max(abs(int(fleet["x"]) - int(s["x"])), abs(int(fleet["y"]) - int(s["y"])))
+		var yard: bool = app.view["meta"].get("advancedRules", false) and c["economy"].get("shipyardPowered", false)
+		if damaged:
+			if (yard and not best_yard) or (yard == best_yard and d < best_d):
+				best = {"name": s["name"], "x": int(s["x"]), "y": int(s["y"]), "distance": d, "yard": yard}
+				best_d = d
+				best_yard = yard
+		elif d < best_d:
+			best = {"name": s["name"], "x": int(s["x"]), "y": int(s["y"]), "distance": d, "yard": yard}
+			best_d = d
+	return best
+
+## The retreat order for a unit: one RetreatFleet per ship (the core detaches each ship from its task force).
+static func retreat_action(app: App, fleet: Dictionary, battle_lock: String) -> Dictionary:
+	var tf := int(fleet.get("taskForceId", 0))
+	var ships := [fleet]
+	if tf != 0:
+		ships = app.view["fleets"].filter(func(m): return int(m.get("taskForceId", 0)) == tf)
+	var target := retreat_target(app, fleet)
+	var uname := unit_name(app, fleet)
+	var detail := "No colony to fall back to"
+	if not target.is_empty():
+		detail = "%s falls back to %s (%d sector%s)%s - it breaks off at turn end" % [uname, target["name"], int(target["distance"]), "" if int(target["distance"]) == 1 else "s", " for repairs at its powered shipyard" if target["yard"] and int(fleet["hull"]) < int(fleet["maxHull"]) else ""]
+		if tf != 0:
+			detail += "; the task force disbands"
+	var reason := battle_lock
+	if reason == "" and target.is_empty():
+		reason = "You have no colony to retreat to"
+	if reason == "" and not target.is_empty() and int(target["distance"]) == 0 and not (int(fleet["hull"]) < int(fleet["maxHull"]) and not target["yard"]):
+		reason = "Already at %s, your nearest colony" % target["name"]
+	if reason == "" and fleet.get("retreat", false) and int(fleet["targetX"]) == int(target.get("x", -1)) and int(fleet["targetY"]) == int(target.get("y", -1)):
+		reason = "Already retreating to %s" % target["name"]
+	if reason == "":
+		for m in ships:
+			reason = app.dry_run({"type": "RetreatFleet", "fleetId": int(m["id"])}, unit_order_ids_for(app, m))
+			if reason != "":
+				break
+	var run := func():
+		var done := 0
+		for m in ships:
+			if app.issue({"type": "RetreatFleet", "fleetId": int(m["id"])}, unit_order_ids_for(app, m)):
+				done += 1
+		if done > 0:
+			app.toast("%s retreating to %s." % [uname, target.get("name", "safety")], "good")
+	var act := _act("retreat", "Retreat to " + str(target.get("name", "?")), "orders", "alert", run, detail, reason)
+	return act
+
+static func unit_order_ids_for(app: App, f: Dictionary) -> Array:
+	return app.unit_order_ids(int(f["id"]), 0)
+
 static func cell_actions(app: App, cell: int) -> Array:
 	var v := app.view
 	if v.is_empty():
@@ -111,6 +216,7 @@ static func cell_actions(app: App, cell: int) -> Array:
 			if reason == "":
 				reason = app.dry_run(move_command(fleet, x, y), cancel_ids)
 			actions.append(_act("move", label, "orders", "primary", func(): plot_course(app, fleet, x, y), "%s moves when the turn ends" % uname, reason))
+		actions.append(retreat_action(app, fleet, battle_lock))
 		var n := 0
 		for c in v.get("contacts", []):
 			if int(c["x"]) != x or int(c["y"]) != y or n >= 3:
@@ -129,14 +235,14 @@ static func cell_actions(app: App, cell: int) -> Array:
 					"The colony ship is consumed to found a colony", battle_lock if battle_lock != "" else app.dry_run(cc, cancel_ids)))
 				if not system.is_empty() and v["meta"].get("campaignExpansion", false):
 					for p in system.get("planets", []):
-						if not str(p["terraformState"]) in ["Untouched", "In Progress", "InProgress"]:
-							continue
 						var t := {"type": "TerraformPlanet", "fleetId": int(fleet["id"]), "systemId": int(system["id"]), "planetIndex": int(p["index"])}
 						var pname: String = p["name"]
+						var why := battle_lock if battle_lock != "" else terraform_blocker(app, fleet, system, p)
+						if why == "":
+							why = app.dry_run(t, cancel_ids)
 						actions.append(_act("terraform-%d" % int(p["index"]), "Terraform " + pname, "orders", "secondary",
 							func(): app.issue(t, cancel_ids, "Terraforming %s begins at turn end." % pname),
-							"%s: capacity %d -> %d (%d/%d work)" % [p["className"], int(p["baseCapacity"]), int(p["maxCapacity"]), int(p["terraformWork"]), int(p["terraformNeeded"])],
-							battle_lock if battle_lock != "" else app.dry_run(t, cancel_ids)))
+							terraform_detail(p), why))
 			if fleet.get("shipClass", "") == "Transport" and v["meta"].get("rules", {}).get("stations", false):
 				var oc := {"type": "BuildOutpost", "fleetId": int(fleet["id"])}
 				var turns := int(v.get("outpostTurns", 3))
@@ -226,6 +332,8 @@ static func order_text(app: App, fleet: Dictionary) -> String:
 		return "Assembling an outpost (%d/%d turns)" % [int(fleet.get("outpostProgress", 0)), int(app.view.get("outpostTurns", 3))]
 	if fleet.get("terraforming", false):
 		return "Terraforming"
+	if fleet.get("retreat", false):
+		return "Retreating to %s" % str(retreat_target(app, fleet).get("name", "safety"))
 	if int(fleet.get("attackTarget", 0)) != 0:
 		return "Pursuing contact #%d" % int(fleet["attackTarget"])
 	if fleet.get("route", []).size() > 0:

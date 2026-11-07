@@ -483,7 +483,17 @@ func request_end_turn() -> void:
 		if screen != "combat" and view.get("session", {}).get("active", false):
 			goto("combat")
 		return
+	var check := EndTurnCheck.build(self)
+	if EndTurnCheck.should_prompt(self, check):
+		EndTurnCheck.open(self, check)
+		return
 	end_turn()
+
+## Shows the end-turn check without ending the turn (what the turn will do, and what is left idle).
+func preview_turn() -> void:
+	if view.is_empty():
+		return
+	EndTurnCheck.open(self, EndTurnCheck.build(self), true)
 
 ## Ends the turn. Returns the status ("battle" or "complete").
 func end_turn() -> String:

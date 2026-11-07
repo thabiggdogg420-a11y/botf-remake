@@ -4,6 +4,9 @@ extends Control
 
 var app: App
 var tab := "colonies"
+var tab_state := {}
+
+const TABS := [["colonies", "Colonies"], ["fleets", "Fleets"], ["trade", "Trade"], ["governors", "Governors"], ["templates", "Templates"], ["stations", "Stations"], ["members", "Member worlds"]]
 
 func refresh() -> void:
 	for c in get_children():
@@ -32,6 +35,10 @@ func refresh() -> void:
 	t.add_child(Lcars.caption("Turn %d · %d colonies · %d ships · %d contacts" % [int(v["meta"]["turn"]), v["colonies"].size(), v["fleets"].size(), contacts]))
 	h.add_child(t)
 	h.add_child(Lcars.spacer())
+	var pv := Lcars.pill("Preview turn", "secondary", func(): app.preview_turn(), "", "What the turn will do, and what is left idle")
+	pv.name = "PreviewTurn"
+	pv.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	h.add_child(pv)
 	var inc: Dictionary = e["income"]
 	h.add_child(Lcars.stat("Treasury", "%s  %s" % [Lcars.fmt(e["credits"]), Lcars.signed(inc["net"])], "secondary", "Colonies %s · trade %s · ship upkeep -%d" % [Lcars.signed(inc["colonies"]), Lcars.signed(inc["trade"]), int(inc["ships"])]))
 	h.add_child(Lcars.stat("Population", "%s/%s" % [Lcars.fmt(tot["pop"]), Lcars.fmt(tot["cap"])]))
@@ -41,13 +48,38 @@ func refresh() -> void:
 	h.add_child(Lcars.stat("Intelligence", Lcars.fmt(e["intelligence"]), "tertiary"))
 	root.add_child(h)
 	root.add_child(_members(v))
-	var f := Lcars.frame("Colonies" if tab == "colonies" else "Fleets", "click a row to open it", "primary")
+	var titles := {}
+	for tb in TABS:
+		titles[tb[0]] = tb[1]
+	var f := Lcars.frame(str(titles.get(tab, "Colonies")), "click a row to open it" if tab in ["colonies", "fleets"] else "", "primary")
 	f.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	var b := Lcars.body(f)
 	var tabs := Lcars.hbox(6)
-	tabs.add_child(Lcars.toggle("Colonies  %d" % v["colonies"].size(), tab == "colonies", func(_on): tab = "colonies"; refresh()))
-	tabs.add_child(Lcars.toggle("Fleets  %d" % v["fleets"].size(), tab == "fleets", func(_on): tab = "fleets"; refresh()))
+	for tb in TABS:
+		var id: String = tb[0]
+		var label: String = tb[1]
+		if id == "colonies":
+			label += "  %d" % v["colonies"].size()
+		elif id == "fleets":
+			label += "  %d" % v["fleets"].size()
+		elif id == "trade":
+			label += "  %d" % v.get("tradeRoutes", []).filter(func(r): return int(r["owner"]) == app.player()).size()
+		var tg := Lcars.toggle(label, tab == id, func(_on): tab = id; refresh())
+		tg.name = "Tab_" + id
+		tabs.add_child(tg)
 	b.add_child(tabs)
+	if not tab in ["colonies", "fleets"]:
+		var pane: Control
+		match tab:
+			"trade": pane = TradePanel.make(app)
+			"governors": pane = EmpireTabs.governors(app)
+			"templates": pane = EmpireTabs.templates(app, tab_state)
+			"stations": pane = EmpireTabs.stations(app)
+			_: pane = EmpireTabs.members(app)
+		pane.size_flags_vertical = Control.SIZE_EXPAND_FILL
+		b.add_child(pane if pane is ScrollContainer or pane is TradePanel else Lcars.scroll(pane))
+		root.add_child(f)
+		return
 	var table: DataTable
 	if tab == "colonies":
 		table = DataTable.make([

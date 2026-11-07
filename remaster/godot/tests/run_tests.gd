@@ -18,7 +18,7 @@ func _initialize() -> void:
 	for t in [
 		"test_meta", "test_new_campaign", "test_invalid_order", "test_orders", "test_forecast_and_turns",
 		"test_save_load_determinism", "test_battle_drill", "test_rules3_events", "test_diplomacy_drill",
-		"test_fixture_determinism",
+		"test_fixture_determinism", "test_gameplay_queries",
 	]:
 		current = t
 		var failures_before := failed
@@ -203,3 +203,29 @@ func test_fixture_determinism() -> void:
 	var raw: String = core.request_json("newCampaign", JSON.stringify(fx_view.args))
 	var reparsed: Dictionary = JSON.parse_string(raw)
 	check(JSON.stringify(reparsed.result) == JSON.stringify(fx_view.result), "new campaign view matches the wasm fixture")
+
+func test_gameplay_queries() -> void:
+	# R2 surface: queries the Godot screens depend on.
+	api("newCampaign", CAMPAIGN)
+	var routes: Dictionary = api("tradeRoutes")
+	check(routes.has("routes") and routes.has("candidates") and routes.has("advancedRules"), "tradeRoutes shape")
+	var view: Dictionary = api("view")
+	var sid: int = view.colonies[0].systemId
+	var contact := 0
+	for e in view.empires:
+		if e.contact:
+			contact = e.empire
+	var cancel := attempt("dryRun", {"command": {"type": "CancelTradeRoute", "systemId": sid, "targetEmpire": contact if contact else 2}})
+	check(cancel.ok and cancel.result is Dictionary, "dryRun answers a cancel-route command")
+	var retreat: Dictionary = api("dryRun", {"command": {"type": "RetreatFleet", "fleetId": view.fleets[0].id}})
+	check(retreat.ok, "RetreatFleet validates for an own ship: %s" % retreat.get("error", ""))
+	var many: Array = api("dryRunMany", {"items": [{"command": {"type": "RetreatFleet", "fleetId": view.fleets[0].id}}, {"command": {"type": "RetreatFleet", "fleetId": 987654}}]})
+	check(many.size() == 2 and many[0] == "" and many[1] != "", "dryRunMany answers one reason per item")
+	var ct = api("canTerraform", {"fleetId": view.fleets[0].id, "systemId": sid, "planetIndex": 0})
+	check(ct is bool, "canTerraform answers a bool")
+	var dt = api("describeTurn")
+	check(dt is String, "describeTurn answers the last briefing as a string")
+	end_turn()
+	var dt2 = api("describeTurn")
+	var parsed = JSON.parse_string(dt2) if dt2 is String and dt2 != "" else null
+	check(parsed is Dictionary and parsed.has("turn"), "describeTurn carries the resolved turn after endTurn")
