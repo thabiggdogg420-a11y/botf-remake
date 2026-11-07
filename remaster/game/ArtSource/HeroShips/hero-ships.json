@@ -1,24 +1,4284 @@
 {
- "_comment": "Hero ships built from third-party base models (private, local only). Sources are paths under LocalAssets/incoming (gitignored); nothing here is a binary. forward/up name the source axes (after import) that become the ship's nose (+X) and top (+Z). lengthMeters is canon length. Tools/blender_hero_ships.py builds them.",
- "defaults": {"maxTriangles": 160000, "metallic": 0.5},
+ "_comment": "Hero ships, written by Tools/stage_bc_heroes.py from bc-picks.json (Bridge Commander models converted by the Starhelm pipeline; private, local only). Sources are paths under LocalAssets/incoming (gitignored); nothing here is a binary. lengthMeters is canon length. Tools/blender_hero_ships.py builds them.",
+ "defaults": {
+  "maxTriangles": 160000,
+  "metallic": 0.5
+ },
  "ships": [
-  {"key": "ship.fed.sovereign", "source": "fed.sovereign/scene.gltf", "forward": "-Y", "up": "+Z", "lengthMeters": 685, "metallic": 0.55},
-  {"key": "ship.fed.galaxy", "source": "fed.galaxy/scene.gltf", "forward": "+Y", "up": "+Z", "lengthMeters": 642, "metallic": 0.55},
-  {"key": "ship.fed.defiant", "source": "fed.defiant/scene.gltf", "forward": "-Y", "up": "+Z", "lengthMeters": 170, "metallic": 0.55, "plating": "fed"},
-  {"key": "ship.kli.neghvar", "source": "kli.neghvar/scene.gltf", "forward": "-Y", "up": "+Z", "lengthMeters": 682, "metallic": 0.45, "plating": "kli"},
-  {"key": "ship.kli.bop", "source": "kli.bop/scene.gltf", "forward": "+Y", "up": "+Z", "lengthMeters": 110, "metallic": 0.45},
-  {"key": "ship.kli.vorcha", "source": "kli.vorcha.3ds/vorcha.obj", "objAxes": ["Y", "Z"], "forward": "+Y", "up": "+Z", "lengthMeters": 481, "metallic": 0.45, "plating": "kli"},
-  {"key": "ship.rom.dderidex", "source": "rom.dderidex/scene.gltf", "forward": "-Y", "up": "+Z", "lengthMeters": 1041, "metallic": 0.4},
-  {"key": "ship.rom.valdore", "source": "rom.valdore/scene.gltf", "forward": "-Y", "up": "+Z", "lengthMeters": 843, "metallic": 0.4},
-  {"key": "ship.rom.bop", "source": "rom.bop/scene.gltf", "forward": "+Y", "up": "+Z", "lengthMeters": 180, "metallic": 0.4},
-  {"key": "ship.car.galor", "source": "car.galor/scene.gltf", "forward": "-Y", "up": "+Z", "lengthMeters": 371, "metallic": 0.45},
-  {"key": "ship.car.hideki", "source": "car.hideki.3ds/hedeki.obj", "objAxes": ["Y", "Z"], "forward": "+Y", "up": "+Z", "lengthMeters": 80, "metallic": 0.45, "plating": "car"},
-  {"key": "ship.car.keldon", "source": "car.galor/scene.gltf", "forward": "-Y", "up": "+Z", "lengthMeters": 400, "metallic": 0.45, "bcTint": [0.9, 0.86, 0.78],
-   "variant": {"proportions": [1.0, 1.06, 1.15], "modules": [{"from": [0.22, 0.5], "scale": 0.5, "offset": [-0.5, 0.0, 0.0], "onTop": true}]}},
-  {"key": "ship.fer.nagus", "source": "fer.dkora.obj/Ferengi Marauder Full.obj", "forward": "+Y", "up": "+Z", "lengthMeters": 520, "metallic": 0.55, "bcTint": [1.3, 1.5, 1.15],
-   "variant": {"proportions": [1.0, 1.1, 1.12], "modules": [{"from": [-0.5, -0.18], "scale": 0.58, "offset": [0.08, 0.22, -0.03], "mirror": true}]}},
-  {"key": "ship.fer.dkora", "source": "fer.dkora.obj/Ferengi Marauder Full.obj", "forward": "+Y", "up": "+Z", "lengthMeters": 350, "metallic": 0.55, "bcTint": [1.7, 1.5, 1.25]},
-  {"key": "ship.fer.shuttle", "source": "fer.shuttle/scene.gltf", "forward": "-Y", "up": "+Z", "lengthMeters": 15, "metallic": 0.55},
-  {"key": "ship.fer.pod", "source": "fer.shuttle/scene.gltf", "forward": "-Y", "up": "+Z", "lengthMeters": 45, "metallic": 0.55}
+  {
+   "key": "ship.fed.galaxy",
+   "source": "bc/Galaxy/SM_Galaxy.fbx",
+   "forward": "+X",
+   "up": "+Z",
+   "lengthMeters": 642,
+   "metallic": 0.55,
+   "bcMaps": {
+    "M_sechull": {
+     "bc": "textures/sechull_basecolor_4x.png",
+     "e": "textures/sechull_emissive_4x.png"
+    },
+    "M_topsaucer": {
+     "bc": "textures/topsaucer_basecolor_4x.png",
+     "e": "textures/topsaucer_emissive_4x.png"
+    },
+    "M_bottomsaucer": {
+     "bc": "textures/bottomsaucer_basecolor_4x.png",
+     "e": "textures/bottomsaucer_emissive_4x.png"
+    }
+   },
+   "bcShip": "Galaxy",
+   "sockets": [
+    [
+     "ENG_01",
+     -0.0456,
+     0.2014,
+     0.0519
+    ],
+    [
+     "ENG_02",
+     -0.0456,
+     -0.2014,
+     0.0519
+    ],
+    [
+     "ENG_03",
+     -0.1888,
+     -0.0,
+     -0.0094
+    ],
+    [
+     "ENG_04",
+     -0.3304,
+     0.2022,
+     -0.0031
+    ],
+    [
+     "ENG_05",
+     -0.3304,
+     -0.2022,
+     -0.0031
+    ],
+    [
+     "WPN_Beam_01",
+     0.2006,
+     -0.0,
+     0.0818
+    ],
+    [
+     "WPN_Beam_02",
+     0.2006,
+     -0.0,
+     0.0327
+    ],
+    [
+     "WPN_Beam_03",
+     -0.0818,
+     0.1007,
+     0.0582
+    ],
+    [
+     "WPN_Beam_04",
+     -0.3918,
+     0.1739,
+     -0.0746
+    ],
+    [
+     "WPN_Beam_05",
+     -0.0818,
+     -0.1007,
+     0.0582
+    ],
+    [
+     "WPN_Beam_06",
+     -0.3918,
+     -0.1739,
+     -0.0746
+    ],
+    [
+     "WPN_Beam_07",
+     -0.4311,
+     0.0315,
+     -0.0695
+    ],
+    [
+     "WPN_Beam_08",
+     -0.4311,
+     -0.0315,
+     -0.0695
+    ],
+    [
+     "WPN_Beam_09",
+     -0.4311,
+     0.0283,
+     -0.0774
+    ],
+    [
+     "WPN_Beam_10",
+     -0.4311,
+     -0.0283,
+     -0.0774
+    ],
+    [
+     "WPN_Beam_11",
+     -0.1133,
+     -0.0,
+     -0.0865
+    ],
+    [
+     "WPN_Torp_01",
+     -0.0079,
+     -0.0,
+     -0.0252
+    ],
+    [
+     "WPN_Torp_02",
+     -0.0079,
+     -0.0,
+     -0.0252
+    ],
+    [
+     "WPN_Torp_03",
+     -0.0079,
+     -0.0,
+     -0.0252
+    ],
+    [
+     "WPN_Torp_04",
+     -0.0079,
+     -0.0,
+     -0.0252
+    ],
+    [
+     "WPN_Torp_05",
+     -0.0079,
+     -0.0,
+     -0.0252
+    ],
+    [
+     "WPN_Torp_06",
+     -0.0079,
+     -0.0,
+     -0.0252
+    ],
+    [
+     "WPN_Torp_07",
+     -0.0079,
+     -0.0,
+     -0.0252
+    ],
+    [
+     "WPN_Torp_08",
+     -0.4059,
+     -0.0,
+     -0.0692
+    ]
+   ]
+  },
+  {
+   "key": "ship.fed.galaxy_x",
+   "source": "bc/GalaxyX/SM_GalaxyX.fbx",
+   "forward": "+X",
+   "up": "+Z",
+   "lengthMeters": 700,
+   "metallic": 0.55,
+   "bcMaps": {
+    "M_AGTtopsaucer": {
+     "bc": "textures/AGTtopsaucer_basecolor.png",
+     "e": "textures/AGTtopsaucer_emissive.png"
+    },
+    "M_sechull": {
+     "bc": "textures/sechull_basecolor.png",
+     "e": "textures/sechull_emissive.png"
+    },
+    "M_AGTbits": {
+     "bc": "textures/AGTbits_basecolor.png",
+     "e": "textures/AGTbits_emissive.png"
+    },
+    "M_AGTbottomsaucer": {
+     "bc": "textures/AGTbottomsaucer_basecolor.png",
+     "e": "textures/AGTbottomsaucer_emissive.png"
+    },
+    "M_agtblankid": {
+     "bc": "textures/agtblankID_basecolor.png",
+     "e": "textures/agtblankID_emissive.png"
+    }
+   },
+   "bcShip": "GalaxyX",
+   "sockets": [
+    [
+     "ENG_01",
+     -0.3281,
+     0.198,
+     0.0129
+    ],
+    [
+     "ENG_02",
+     -0.3159,
+     -0.2022,
+     0.0127
+    ],
+    [
+     "ENG_03",
+     -0.1413,
+     -0.0005,
+     0.028
+    ],
+    [
+     "WPN_Beam_01",
+     0.1969,
+     -0.0015,
+     0.0674
+    ],
+    [
+     "WPN_Beam_02",
+     0.1969,
+     -0.0015,
+     0.0674
+    ],
+    [
+     "WPN_Beam_03",
+     0.1969,
+     -0.0015,
+     0.0674
+    ],
+    [
+     "WPN_Beam_04",
+     0.1969,
+     -0.0015,
+     0.0674
+    ],
+    [
+     "WPN_Beam_05",
+     0.1956,
+     -0.0015,
+     0.0177
+    ],
+    [
+     "WPN_Beam_06",
+     0.1956,
+     -0.0015,
+     0.0177
+    ],
+    [
+     "WPN_Beam_07",
+     0.1956,
+     -0.0015,
+     0.0177
+    ],
+    [
+     "WPN_Beam_08",
+     0.1956,
+     -0.0015,
+     0.0177
+    ],
+    [
+     "WPN_Beam_09",
+     -0.4204,
+     0.0302,
+     -0.0894
+    ],
+    [
+     "WPN_Beam_10",
+     -0.4209,
+     -0.024,
+     -0.0894
+    ],
+    [
+     "WPN_Beam_11",
+     -0.1106,
+     -0.0009,
+     -0.1167
+    ],
+    [
+     "WPN_Beam_12",
+     -0.3835,
+     0.1683,
+     -0.0865
+    ],
+    [
+     "WPN_Torp_01",
+     -0.0056,
+     -0.0015,
+     -0.038
+    ],
+    [
+     "WPN_Torp_02",
+     -0.0056,
+     -0.0015,
+     -0.038
+    ],
+    [
+     "WPN_Torp_03",
+     -0.0056,
+     -0.0015,
+     -0.038
+    ],
+    [
+     "WPN_Torp_04",
+     -0.0056,
+     -0.0015,
+     -0.038
+    ],
+    [
+     "WPN_Torp_05",
+     -0.0056,
+     -0.0015,
+     -0.038
+    ],
+    [
+     "WPN_Torp_06",
+     -0.0056,
+     -0.0015,
+     -0.038
+    ],
+    [
+     "WPN_Torp_07",
+     -0.0056,
+     -0.0015,
+     -0.038
+    ],
+    [
+     "WPN_Torp_08",
+     -0.4144,
+     -0.0015,
+     -0.0543
+    ],
+    [
+     "ENG_04",
+     -0.2794,
+     -0.0015,
+     0.1156
+    ]
+   ]
+  },
+  {
+   "key": "ship.fed.sovereign",
+   "source": "bc/DS9FXSovereign/SM_DS9FXSovereign.fbx",
+   "forward": "+X",
+   "up": "+Z",
+   "lengthMeters": 685,
+   "metallic": 0.55,
+   "bcMaps": {
+    "M_phasers": {
+     "bc": "textures/phasers_basecolor.png"
+    },
+    "M_yacht": {
+     "bc": "textures/yacht_basecolor.png"
+    },
+    "M_nacellesNEM": {
+     "bc": "textures/nacellesNEM_basecolor.png",
+     "e": "textures/nacellesNEM_emissive.png"
+    },
+    "M_engineeringNEM": {
+     "bc": "textures/engineeringNEM_basecolor.png",
+     "e": "textures/engineeringNEM_emissive.png"
+    },
+    "M_bottomsaucerNEM": {
+     "bc": "textures/bottomsaucerNEM_basecolor.png",
+     "e": "textures/bottomsaucerNEM_emissive.png"
+    },
+    "M_topsaucerNEM": {
+     "bc": "textures/topsaucerNEM_basecolor.png",
+     "e": "textures/topsaucerNEM_emissive.png"
+    }
+   },
+   "bcShip": "DS9FXSovereign",
+   "sockets": [
+    [
+     "WPN_Torp_01",
+     0.1057,
+     0.003,
+     -0.0469
+    ],
+    [
+     "WPN_Torp_02",
+     0.1057,
+     -0.0031,
+     -0.0468
+    ],
+    [
+     "WPN_Torp_03",
+     0.3118,
+     -0.0001,
+     0.0435
+    ],
+    [
+     "ENG_01",
+     0.0527,
+     0.0835,
+     0.0189
+    ],
+    [
+     "ENG_02",
+     0.0541,
+     -0.0837,
+     0.0192
+    ],
+    [
+     "ENG_03",
+     -0.2196,
+     0.132,
+     0.0355
+    ],
+    [
+     "ENG_04",
+     -0.2196,
+     -0.1322,
+     0.0355
+    ],
+    [
+     "WPN_Beam_01",
+     0.3929,
+     0.0891,
+     0.0063
+    ],
+    [
+     "WPN_Beam_02",
+     -0.2085,
+     -0.0597,
+     -0.0119
+    ],
+    [
+     "WPN_Beam_03",
+     -0.209,
+     0.0594,
+     -0.0118
+    ],
+    [
+     "WPN_Beam_04",
+     -0.2083,
+     -0.0595,
+     -0.0171
+    ],
+    [
+     "WPN_Beam_05",
+     -0.2088,
+     0.0596,
+     -0.0169
+    ],
+    [
+     "WPN_Pulse_01",
+     0.3036,
+     -0.0001,
+     -0.0105
+    ],
+    [
+     "WPN_Beam_06",
+     0.3929,
+     -0.0893,
+     0.0063
+    ],
+    [
+     "WPN_Beam_07",
+     0.2499,
+     -0.0001,
+     0.0063
+    ],
+    [
+     "WPN_Beam_08",
+     0.2499,
+     -0.0001,
+     0.0063
+    ],
+    [
+     "WPN_Beam_09",
+     0.2499,
+     -0.0001,
+     0.0063
+    ],
+    [
+     "WPN_Beam_10",
+     0.2499,
+     -0.0001,
+     0.0063
+    ],
+    [
+     "WPN_Beam_11",
+     0.2499,
+     -0.0001,
+     -0.0072
+    ],
+    [
+     "WPN_Beam_12",
+     0.2499,
+     -0.0001,
+     -0.0072
+    ],
+    [
+     "ENG_05",
+     0.3798,
+     -0.1489,
+     0.01
+    ],
+    [
+     "ENG_06",
+     0.3796,
+     0.1495,
+     0.0099
+    ],
+    [
+     "WPN_Pulse_02",
+     0.1169,
+     -0.0029,
+     -0.0501
+    ],
+    [
+     "WPN_Pulse_03",
+     0.1169,
+     0.0027,
+     -0.05
+    ],
+    [
+     "WPN_Pulse_04",
+     0.3102,
+     -0.0002,
+     0.0366
+    ],
+    [
+     "WPN_Torp_04",
+     -0.0535,
+     -0.0022,
+     -0.0624
+    ],
+    [
+     "WPN_Torp_05",
+     -0.0536,
+     0.0022,
+     -0.0623
+    ],
+    [
+     "WPN_Pulse_05",
+     -0.2447,
+     -0.0,
+     -0.0275
+    ],
+    [
+     "WPN_Pulse_06",
+     -0.1957,
+     0.0,
+     -0.004
+    ],
+    [
+     "WPN_Torp_06",
+     0.1362,
+     0.0017,
+     0.0488
+    ],
+    [
+     "WPN_Torp_07",
+     0.1362,
+     -0.0015,
+     0.0488
+    ]
+   ]
+  },
+  {
+   "key": "ship.fed.defiant",
+   "source": "bc/Defiant/SM_Defiant.fbx",
+   "forward": "+X",
+   "up": "+Z",
+   "lengthMeters": 170,
+   "metallic": 0.55,
+   "bcMaps": {
+    "M_3": {
+     "bc": "textures/3_basecolor.png",
+     "e": "textures/3_emissive.png"
+    },
+    "M_6": {
+     "bc": "textures/6_basecolor.png",
+     "e": "textures/6_emissive.png"
+    },
+    "M_1": {
+     "bc": "textures/1_basecolor.png"
+    },
+    "M_8": {
+     "bc": "textures/8_basecolor.png",
+     "e": "textures/8_emissive.png"
+    },
+    "M_warp": {
+     "bc": "textures/warp_basecolor.png",
+     "e": "textures/warp_emissive.png"
+    },
+    "M_7": {
+     "bc": "textures/7_basecolor.png"
+    },
+    "M_warp2": {
+     "bc": "textures/warp2_basecolor.png",
+     "e": "textures/warp2_emissive.png"
+    },
+    "M_5": {
+     "bc": "textures/5_basecolor.png",
+     "e": "textures/5_emissive.png"
+    },
+    "M_warp3": {
+     "bc": "textures/warp3_basecolor.png",
+     "e": "textures/warp3_emissive.png"
+    },
+    "M_4": {
+     "bc": "textures/4_basecolor.png"
+    },
+    "M_2": {
+     "bc": "textures/2_basecolor.png",
+     "e": "textures/2_emissive.png"
+    },
+    "M_e": {
+     "bc": "textures/e_basecolor.png"
+    },
+    "M_warp4": {
+     "bc": "textures/warp4_basecolor.png",
+     "e": "textures/warp4_emissive.png"
+    },
+    "M_im": {
+     "bc": "textures/im_basecolor.png",
+     "e": "textures/im_emissive.png"
+    },
+    "M_rg": {
+     "bc": "textures/rg_basecolor.png",
+     "e": "textures/rg_emissive.png"
+    },
+    "M_run": {
+     "bc": "textures/run_basecolor.png",
+     "e": "textures/run_emissive.png"
+    },
+    "M_6_2": {
+     "bc": "textures/6_basecolor.png",
+     "e": "textures/6_emissive.png"
+    },
+    "M_e_2": {
+     "bc": "textures/e_basecolor.png"
+    },
+    "M_e_3": {
+     "bc": "textures/e_basecolor.png"
+    }
+   },
+   "bcShip": "Defiant",
+   "sockets": [
+    [
+     "ENG_01",
+     -0.3114,
+     0.1852,
+     -0.0
+    ],
+    [
+     "ENG_02",
+     -0.3114,
+     -0.1852,
+     -0.0
+    ],
+    [
+     "ENG_03",
+     -0.1178,
+     0.2862,
+     -0.0101
+    ],
+    [
+     "ENG_04",
+     -0.1178,
+     -0.2862,
+     -0.0101
+    ],
+    [
+     "WPN_Pulse_01",
+     0.0572,
+     0.2575,
+     0.0337
+    ],
+    [
+     "WPN_Pulse_02",
+     0.0572,
+     -0.2575,
+     0.0337
+    ],
+    [
+     "WPN_Pulse_03",
+     0.0042,
+     0.2087,
+     -0.0623
+    ],
+    [
+     "WPN_Pulse_04",
+     0.0042,
+     -0.2087,
+     -0.0623
+    ],
+    [
+     "WPN_Beam_01",
+     -0.2188,
+     -0.0042,
+     0.0656
+    ],
+    [
+     "WPN_Torp_01",
+     0.2862,
+     -0.0,
+     0.0143
+    ],
+    [
+     "WPN_Torp_02",
+     0.2862,
+     -0.0,
+     0.0143
+    ],
+    [
+     "WPN_Pulse_05",
+     -0.3282,
+     0.1279,
+     -0.0354
+    ],
+    [
+     "WPN_Pulse_06",
+     -0.3282,
+     -0.1279,
+     -0.0354
+    ]
+   ]
+  },
+  {
+   "key": "ship.fed.nebula",
+   "source": "bc/Nebula/SM_Nebula.fbx",
+   "forward": "+X",
+   "up": "+Z",
+   "lengthMeters": 442,
+   "metallic": 0.55,
+   "bcMaps": {
+    "M_nebIDmap": {
+     "bc": "textures/nebIDmap_basecolor.png",
+     "e": "textures/nebIDmap_emissive.png"
+    },
+    "M_nebsechull": {
+     "bc": "textures/nebsechull_basecolor.png",
+     "e": "textures/nebsechull_emissive.png"
+    },
+    "M_nebbottomsaucer": {
+     "bc": "textures/nebbottomsaucer_basecolor.png",
+     "e": "textures/nebbottomsaucer_emissive.png"
+    },
+    "M_nebtopsaucer": {
+     "bc": "textures/nebtopsaucer_basecolor.png",
+     "e": "textures/nebtopsaucer_emissive.png"
+    }
+   },
+   "bcShip": "Nebula",
+   "sockets": [
+    [
+     "ENG_01",
+     -0.2608,
+     0.2781,
+     0.0196
+    ],
+    [
+     "ENG_02",
+     -0.2608,
+     -0.2781,
+     0.0196
+    ],
+    [
+     "ENG_03",
+     -0.2173,
+     0.2825,
+     -0.1086
+    ],
+    [
+     "ENG_04",
+     -0.2173,
+     -0.2825,
+     -0.1086
+    ],
+    [
+     "WPN_Beam_01",
+     0.0782,
+     0.0,
+     0.0604
+    ],
+    [
+     "WPN_Beam_02",
+     0.0782,
+     0.0,
+     -0.0074
+    ],
+    [
+     "WPN_Beam_03",
+     -0.1782,
+     0.0695,
+     0.1195
+    ],
+    [
+     "WPN_Beam_04",
+     -0.1782,
+     -0.0695,
+     0.1195
+    ],
+    [
+     "WPN_Beam_05",
+     -0.3238,
+     0.2477,
+     0.0052
+    ],
+    [
+     "WPN_Beam_06",
+     -0.2955,
+     0.1087,
+     0.035
+    ],
+    [
+     "WPN_Beam_07",
+     -0.3238,
+     -0.2477,
+     0.0052
+    ],
+    [
+     "WPN_Beam_08",
+     -0.2955,
+     -0.1087,
+     0.035
+    ],
+    [
+     "WPN_Beam_09",
+     -0.4781,
+     0.1391,
+     0.1195
+    ],
+    [
+     "WPN_Beam_10",
+     -0.4781,
+     -0.1391,
+     0.1195
+    ],
+    [
+     "WPN_Beam_11",
+     -0.0945,
+     0.0,
+     -0.0891
+    ],
+    [
+     "WPN_Torp_01",
+     -0.1543,
+     0.0174,
+     0.1195
+    ],
+    [
+     "WPN_Torp_02",
+     -0.1499,
+     -0.0174,
+     0.1195
+    ],
+    [
+     "WPN_Torp_03",
+     -0.4629,
+     0.0076,
+     0.1195
+    ],
+    [
+     "WPN_Torp_04",
+     -0.4629,
+     -0.0076,
+     0.1195
+    ]
+   ]
+  },
+  {
+   "key": "ship.fed.miranda",
+   "source": "bc/Miranda/SM_Miranda.fbx",
+   "forward": "+X",
+   "up": "+Z",
+   "lengthMeters": 233,
+   "metallic": 0.55,
+   "bcMaps": {
+    "M_SaucerTop": {
+     "bc": "textures/SaucerTop_basecolor.png",
+     "e": "textures/SaucerTop_emissive.png"
+    },
+    "M_SaucerBot": {
+     "bc": "textures/SaucerBot_basecolor.png",
+     "e": "textures/SaucerBot_emissive.png"
+    },
+    "M_Rim": {
+     "bc": "textures/Rim_basecolor.png",
+     "e": "textures/Rim_emissive.png"
+    },
+    "M_Hull": {
+     "bc": "textures/Hull_basecolor.png",
+     "e": "textures/Hull_emissive.png"
+    },
+    "M_Lantree": {
+     "bc": "textures/Lantree_basecolor.png",
+     "e": "textures/Lantree_emissive.png"
+    }
+   },
+   "bcShip": "Miranda",
+   "sockets": [
+    [
+     "ENG_01",
+     -0.2097,
+     0.0302,
+     0.0323
+    ],
+    [
+     "ENG_02",
+     -0.2097,
+     -0.0302,
+     0.0323
+    ],
+    [
+     "ENG_03",
+     -0.1532,
+     0.25,
+     -0.0968
+    ],
+    [
+     "ENG_04",
+     -0.1532,
+     -0.25,
+     -0.0968
+    ],
+    [
+     "WPN_Beam_01",
+     0.3226,
+     -0.0,
+     0.0222
+    ],
+    [
+     "WPN_Beam_02",
+     0.3226,
+     -0.0,
+     -0.0186
+    ],
+    [
+     "WPN_Beam_03",
+     0.0121,
+     0.1976,
+     0.0766
+    ],
+    [
+     "WPN_Beam_04",
+     0.0121,
+     -0.1976,
+     0.0766
+    ],
+    [
+     "WPN_Beam_05",
+     0.2097,
+     0.1129,
+     0.0222
+    ],
+    [
+     "WPN_Beam_06",
+     0.2097,
+     0.1129,
+     -0.0186
+    ],
+    [
+     "WPN_Beam_07",
+     0.2097,
+     -0.1129,
+     0.0222
+    ],
+    [
+     "WPN_Beam_08",
+     0.2097,
+     -0.1129,
+     -0.0186
+    ],
+    [
+     "WPN_Beam_09",
+     -0.0605,
+     0.1976,
+     0.0766
+    ],
+    [
+     "WPN_Beam_10",
+     -0.0605,
+     -0.1976,
+     0.0766
+    ],
+    [
+     "WPN_Torp_01",
+     -0.0524,
+     0.0121,
+     0.1089
+    ],
+    [
+     "WPN_Torp_02",
+     -0.0524,
+     -0.0121,
+     0.1089
+    ],
+    [
+     "WPN_Torp_03",
+     -0.1411,
+     0.027,
+     0.1109
+    ],
+    [
+     "WPN_Torp_04",
+     -0.1411,
+     -0.027,
+     0.1109
+    ]
+   ]
+  },
+  {
+   "key": "ship.fed.ambassador",
+   "source": "bc/Ambassador__km/SM_Ambassador__km.fbx",
+   "forward": "+X",
+   "up": "+Z",
+   "lengthMeters": 526,
+   "metallic": 0.55,
+   "bcMaps": {
+    "M_refithull1": {
+     "bc": "textures/refithull1_basecolor.png",
+     "e": "textures/refithull1_emissive.png"
+    },
+    "M_refithull2": {
+     "bc": "textures/refithull2_basecolor.png",
+     "e": "textures/refithull2_emissive.png"
+    }
+   },
+   "bcShip": "Ambassador__km",
+   "sockets": [
+    [
+     "ENG_01",
+     -0.2789,
+     0.1958,
+     0.0287
+    ],
+    [
+     "ENG_02",
+     -0.2789,
+     -0.1958,
+     0.0287
+    ],
+    [
+     "ENG_03",
+     -0.1054,
+     -0.0,
+     0.0279
+    ],
+    [
+     "WPN_Torp_01",
+     0.0325,
+     -0.0,
+     -0.0175
+    ],
+    [
+     "WPN_Beam_01",
+     0.1896,
+     -0.0,
+     0.0914
+    ],
+    [
+     "WPN_Beam_02",
+     0.1896,
+     -0.0,
+     0.0914
+    ],
+    [
+     "WPN_Beam_03",
+     0.1896,
+     -0.0,
+     0.0914
+    ],
+    [
+     "WPN_Beam_04",
+     0.1896,
+     -0.0,
+     0.0914
+    ],
+    [
+     "WPN_Beam_05",
+     0.1896,
+     -0.0,
+     0.0914
+    ],
+    [
+     "WPN_Beam_06",
+     0.1896,
+     -0.0,
+     0.0325
+    ],
+    [
+     "WPN_Beam_07",
+     0.1896,
+     -0.0,
+     0.0325
+    ],
+    [
+     "WPN_Beam_08",
+     0.1896,
+     -0.0,
+     0.0325
+    ],
+    [
+     "WPN_Beam_09",
+     -0.1122,
+     -0.0,
+     -0.1286
+    ],
+    [
+     "WPN_Torp_02",
+     0.0325,
+     -0.0,
+     -0.0175
+    ],
+    [
+     "WPN_Torp_03",
+     0.0325,
+     -0.0,
+     -0.0175
+    ],
+    [
+     "WPN_Torp_04",
+     0.0325,
+     -0.0,
+     -0.0175
+    ],
+    [
+     "WPN_Torp_05",
+     0.0325,
+     -0.0,
+     -0.0175
+    ],
+    [
+     "WPN_Torp_06",
+     -0.4028,
+     -0.0,
+     -0.0615
+    ],
+    [
+     "WPN_Torp_07",
+     -0.4028,
+     -0.0,
+     -0.0615
+    ],
+    [
+     "WPN_Torp_08",
+     -0.4028,
+     -0.0,
+     -0.0615
+    ],
+    [
+     "WPN_Beam_10",
+     -0.3052,
+     0.2045,
+     -0.0449
+    ],
+    [
+     "WPN_Beam_11",
+     -0.3052,
+     -0.2045,
+     -0.0449
+    ],
+    [
+     "WPN_Beam_12",
+     -0.3672,
+     0.0294,
+     -0.0318
+    ],
+    [
+     "ENG_04",
+     -0.3176,
+     0.1399,
+     -0.0504
+    ],
+    [
+     "ENG_05",
+     -0.3176,
+     -0.1399,
+     -0.0504
+    ]
+   ]
+  },
+  {
+   "key": "ship.fed.excelsior",
+   "source": "bc/Excelsior/SM_Excelsior.fbx",
+   "forward": "+X",
+   "up": "+Z",
+   "lengthMeters": 467,
+   "metallic": 0.55,
+   "bcMaps": {
+    "M_nacelleoff": {
+     "bc": "textures/nacelleoff_basecolor.png"
+    },
+    "M_deflector": {
+     "bc": "textures/deflector_basecolor.png",
+     "e": "textures/deflector_emissive.png"
+    },
+    "M_impulse": {
+     "bc": "textures/impulse_basecolor.png",
+     "e": "textures/impulse_emissive.png"
+    },
+    "M_sensorlight": {
+     "bc": "textures/sensorlight_basecolor.png",
+     "e": "textures/sensorlight_emissive.png"
+    },
+    "M_gray": {
+     "bc": "textures/gray_basecolor.png"
+    },
+    "M_blue": {
+     "bc": "textures/blue_basecolor.png"
+    },
+    "M_bmisc": {
+     "bc": "textures/bmisc_basecolor.png",
+     "e": "textures/bmisc_emissive.png"
+    },
+    "M_nmisc": {
+     "bc": "textures/nmisc_basecolor.png",
+     "e": "textures/nmisc_emissive.png"
+    },
+    "M_nacellegray": {
+     "bc": "textures/nacellegray_basecolor.png"
+    },
+    "M_blankid": {
+     "bc": "textures/blankID_basecolor.png",
+     "e": "textures/blankID_emissive.png"
+    },
+    "M_srimwinds2": {
+     "bc": "textures/srimwinds2_basecolor.png"
+    },
+    "M_tsaucerwin": {
+     "bc": "textures/tsaucerwin_basecolor.png",
+     "e": "textures/tsaucerwin_emissive.png"
+    },
+    "M_grayhull": {
+     "bc": "textures/grayhull_basecolor.png"
+    },
+    "M_bsaucer": {
+     "bc": "textures/bsaucer_basecolor.png",
+     "e": "textures/bsaucer_emissive.png"
+    },
+    "M_tsaucer": {
+     "bc": "textures/tsaucer_basecolor.png",
+     "e": "textures/tsaucer_emissive.png"
+    },
+    "M_srimwinds1": {
+     "bc": "textures/srimwinds1_basecolor.png",
+     "e": "textures/srimwinds1_emissive.png"
+    }
+   },
+   "bcShip": "Excelsior",
+   "sockets": [
+    [
+     "ENG_01",
+     0.0728,
+     0.0343,
+     0.061
+    ],
+    [
+     "ENG_02",
+     0.0728,
+     -0.0343,
+     0.061
+    ],
+    [
+     "ENG_03",
+     -0.2141,
+     0.1221,
+     0.06
+    ],
+    [
+     "ENG_04",
+     -0.2141,
+     -0.1221,
+     0.06
+    ],
+    [
+     "WPN_Beam_01",
+     0.378,
+     -0.0,
+     0.0642
+    ],
+    [
+     "WPN_Beam_02",
+     0.3801,
+     -0.0,
+     0.0332
+    ],
+    [
+     "WPN_Beam_03",
+     0.3576,
+     0.0503,
+     0.0642
+    ],
+    [
+     "WPN_Beam_04",
+     0.3437,
+     0.0621,
+     0.0332
+    ],
+    [
+     "WPN_Beam_05",
+     0.3073,
+     0.0713,
+     0.0642
+    ],
+    [
+     "WPN_Beam_06",
+     0.2698,
+     0.0621,
+     0.0338
+    ],
+    [
+     "WPN_Beam_07",
+     0.3576,
+     -0.0503,
+     0.0642
+    ],
+    [
+     "WPN_Beam_08",
+     0.3437,
+     -0.0621,
+     0.0332
+    ],
+    [
+     "WPN_Beam_09",
+     0.3073,
+     -0.0713,
+     0.0642
+    ],
+    [
+     "WPN_Beam_10",
+     0.2698,
+     -0.0621,
+     0.0338
+    ],
+    [
+     "WPN_Beam_11",
+     -0.2741,
+     -0.0,
+     0.0193
+    ],
+    [
+     "WPN_Beam_12",
+     0.06,
+     -0.0,
+     -0.0803
+    ],
+    [
+     "WPN_Torp_01",
+     0.1692,
+     0.0396,
+     -0.015
+    ],
+    [
+     "WPN_Torp_02",
+     0.1692,
+     -0.0396,
+     -0.015
+    ],
+    [
+     "WPN_Torp_03",
+     -0.257,
+     0.0236,
+     -0.0107
+    ],
+    [
+     "WPN_Torp_04",
+     -0.257,
+     -0.0236,
+     -0.0107
+    ]
+   ]
+  },
+  {
+   "key": "ship.fed.nova",
+   "source": "bc/Nova/SM_Nova.fbx",
+   "forward": "+X",
+   "up": "+Z",
+   "lengthMeters": 165,
+   "metallic": 0.55,
+   "bcMaps": {
+    "M_bottom": {
+     "bc": "textures/bottom_basecolor.png",
+     "e": "textures/bottom_emissive.png"
+    },
+    "M_bridge": {
+     "bc": "textures/bridge_basecolor.png",
+     "e": "textures/bridge_emissive.png"
+    },
+    "M_deflector": {
+     "bc": "textures/deflector_basecolor.png",
+     "e": "textures/deflector_emissive.png"
+    },
+    "M_lnacelle": {
+     "bc": "textures/lnacelle_basecolor.png"
+    },
+    "M_lpylon": {
+     "bc": "textures/lpylon_basecolor.png"
+    },
+    "M_misc": {
+     "bc": "textures/misc_basecolor.png",
+     "e": "textures/misc_emissive.png"
+    },
+    "M_misc2": {
+     "bc": "textures/misc2_basecolor.png"
+    },
+    "M_nacellemisc": {
+     "bc": "textures/nacellemisc_basecolor.png",
+     "e": "textures/nacellemisc_emissive.png"
+    },
+    "M_rnacelle": {
+     "bc": "textures/rnacelle_basecolor.png"
+    },
+    "M_rpylon": {
+     "bc": "textures/rpylon_basecolor.png"
+    },
+    "M_secondaryhull": {
+     "bc": "textures/secondaryhull_basecolor.png",
+     "e": "textures/secondaryhull_emissive.png"
+    },
+    "M_spine": {
+     "bc": "textures/spine_basecolor.png",
+     "e": "textures/spine_emissive.png"
+    },
+    "M_top": {
+     "bc": "textures/top_basecolor.png",
+     "e": "textures/top_emissive.png"
+    }
+   },
+   "bcShip": "Nova",
+   "sockets": [
+    [
+     "ENG_01",
+     -0.0138,
+     0.0,
+     0.0554
+    ],
+    [
+     "ENG_02",
+     -0.2308,
+     0.2123,
+     0.0738
+    ],
+    [
+     "ENG_03",
+     -0.2308,
+     -0.2123,
+     0.0738
+    ],
+    [
+     "WPN_Beam_01",
+     0.1938,
+     0.0692,
+     0.0277
+    ],
+    [
+     "WPN_Beam_02",
+     0.1938,
+     -0.0692,
+     0.0277
+    ],
+    [
+     "WPN_Beam_03",
+     0.1938,
+     0.0692,
+     -0.0194
+    ],
+    [
+     "WPN_Beam_04",
+     0.1938,
+     -0.0692,
+     -0.0194
+    ],
+    [
+     "WPN_Beam_05",
+     -0.2769,
+     0.0415,
+     0.0023
+    ],
+    [
+     "WPN_Beam_06",
+     -0.2769,
+     -0.0415,
+     0.0023
+    ],
+    [
+     "WPN_Beam_07",
+     0.0669,
+     0.1569,
+     0.0046
+    ],
+    [
+     "WPN_Beam_08",
+     0.0669,
+     -0.1569,
+     0.0046
+    ],
+    [
+     "WPN_Beam_09",
+     0.0715,
+     0.1569,
+     -0.0192
+    ],
+    [
+     "WPN_Beam_10",
+     0.0715,
+     -0.1615,
+     -0.0192
+    ],
+    [
+     "WPN_Beam_11",
+     0.0508,
+     0.0,
+     -0.0785
+    ],
+    [
+     "WPN_Torp_01",
+     0.4661,
+     0.0669,
+     -0.0
+    ],
+    [
+     "WPN_Torp_02",
+     0.4661,
+     -0.0669,
+     -0.0
+    ]
+   ]
+  },
+  {
+   "key": "ship.fed.constellation",
+   "source": "bc/Constellation/SM_Constellation.fbx",
+   "forward": "+X",
+   "up": "+Z",
+   "lengthMeters": 310,
+   "metallic": 0.55,
+   "bcMaps": {
+    "M_cn01": {
+     "bc": "textures/cn01_basecolor.png",
+     "e": "textures/cn01_emissive.png"
+    },
+    "M_cn02": {
+     "bc": "textures/cn02_basecolor.png",
+     "e": "textures/cn02_emissive.png"
+    },
+    "M_cn03": {
+     "bc": "textures/cn03_basecolor.png",
+     "e": "textures/cn03_emissive.png"
+    },
+    "M_cn04": {
+     "bc": "textures/cn04_basecolor.png",
+     "e": "textures/cn04_emissive.png"
+    },
+    "M_cn05": {
+     "bc": "textures/cn05_basecolor.png",
+     "e": "textures/cn05_emissive.png"
+    }
+   },
+   "bcShip": "Constellation",
+   "sockets": [
+    [
+     "ENG_01",
+     -0.1812,
+     0.0547,
+     0.0154
+    ],
+    [
+     "ENG_02",
+     -0.1812,
+     0.0547,
+     -0.0154
+    ],
+    [
+     "ENG_03",
+     -0.1812,
+     -0.0547,
+     0.0154
+    ],
+    [
+     "ENG_04",
+     -0.1812,
+     -0.0547,
+     -0.0154
+    ],
+    [
+     "ENG_05",
+     -0.2565,
+     0.0957,
+     0.1231
+    ],
+    [
+     "ENG_06",
+     -0.2565,
+     0.0957,
+     -0.1231
+    ],
+    [
+     "WPN_Beam_01",
+     0.3625,
+     -0.0,
+     0.041
+    ],
+    [
+     "WPN_Beam_02",
+     0.3522,
+     -0.0,
+     -0.0383
+    ],
+    [
+     "WPN_Beam_03",
+     0.2496,
+     0.1128,
+     0.041
+    ],
+    [
+     "WPN_Beam_04",
+     0.2496,
+     0.1026,
+     -0.0383
+    ],
+    [
+     "WPN_Beam_05",
+     0.2496,
+     -0.1128,
+     0.041
+    ],
+    [
+     "WPN_Beam_06",
+     0.2496,
+     -0.1026,
+     -0.0383
+    ],
+    [
+     "WPN_Beam_07",
+     -0.2736,
+     -0.0,
+     0.1248
+    ],
+    [
+     "WPN_Beam_08",
+     -0.2736,
+     -0.0,
+     -0.1248
+    ],
+    [
+     "WPN_Torp_01",
+     -0.1334,
+     0.0085,
+     0.1128
+    ],
+    [
+     "WPN_Torp_02",
+     -0.1334,
+     -0.0085,
+     0.1128
+    ],
+    [
+     "WPN_Torp_03",
+     -0.1334,
+     0.0085,
+     -0.1128
+    ],
+    [
+     "WPN_Torp_04",
+     -0.1334,
+     -0.0085,
+     -0.1128
+    ]
+   ]
+  },
+  {
+   "key": "ship.fed.oberth",
+   "source": "bc/Oberth/SM_Oberth.fbx",
+   "forward": "+X",
+   "up": "+Z",
+   "lengthMeters": 120,
+   "metallic": 0.55,
+   "bcMaps": {
+    "M_grissom": {
+     "bc": "textures/grissom_basecolor.png",
+     "e": "textures/grissom_emissive.png"
+    }
+   },
+   "bcShip": "Oberth",
+   "sockets": [
+    [
+     "ENG_01",
+     -0.025,
+     0.0,
+     0.0519
+    ],
+    [
+     "ENG_02",
+     0.1557,
+     0.212,
+     0.1045
+    ],
+    [
+     "ENG_03",
+     0.1557,
+     -0.2119,
+     0.1045
+    ],
+    [
+     "WPN_Beam_01",
+     0.412,
+     -0.0769,
+     0.1235
+    ],
+    [
+     "WPN_Beam_02",
+     0.412,
+     0.0769,
+     0.1235
+    ],
+    [
+     "WPN_Beam_03",
+     0.4061,
+     -0.0828,
+     0.1235
+    ],
+    [
+     "WPN_Beam_04",
+     0.4061,
+     0.0828,
+     0.1235
+    ],
+    [
+     "WPN_Torp_01",
+     0.389,
+     0.0,
+     0.0683
+    ]
+   ]
+  },
+  {
+   "key": "ship.fed.starbase",
+   "source": "bc/FedStarbase/SM_FedStarbase.fbx",
+   "forward": "+X",
+   "up": "+Z",
+   "lengthMeters": 1000,
+   "metallic": 0.5,
+   "bcMaps": {
+    "M_stardockantennae": {
+     "bc": "textures/StardockAntennae_basecolor.png",
+     "e": "textures/StardockAntennae_emissive.png"
+    },
+    "M_stardocklowerstalk": {
+     "bc": "textures/StardockLowerStalk_basecolor.png",
+     "e": "textures/StardockLowerStalk_emissive.png"
+    },
+    "M_stardockunderside": {
+     "bc": "textures/StardockUnderside_basecolor.png",
+     "e": "textures/StardockUnderside_emissive.png"
+    },
+    "M_stardockouterdome": {
+     "bc": "textures/StardockOuterDome_basecolor.png",
+     "e": "textures/StardockOuterDome_emissive.png"
+    },
+    "M_stardockinnerfloor": {
+     "bc": "textures/StardockInnerFloor_basecolor.png",
+     "e": "textures/StardockInnerFloor_emissive.png"
+    },
+    "M_stardockdocks": {
+     "bc": "textures/StardockDocks_basecolor.png",
+     "e": "textures/StardockDocks_emissive.png"
+    },
+    "M_stardockbottomstalk": {
+     "bc": "textures/StardockBottomStalk_basecolor.png",
+     "e": "textures/StardockBottomStalk_emissive.png"
+    },
+    "M_stardockupperstalk": {
+     "bc": "textures/StardockUpperStalk_basecolor.png",
+     "e": "textures/StardockUpperStalk_emissive.png"
+    },
+    "M_stardockinnerstalk": {
+     "bc": "textures/StardockInnerStalk_basecolor.png",
+     "e": "textures/StardockInnerStalk_emissive.png"
+    },
+    "M_stardockinnerdome": {
+     "bc": "textures/StardockInnerDome_basecolor.png",
+     "e": "textures/StardockInnerDome_emissive.png"
+    },
+    "M_stardockdome2": {
+     "bc": "textures/StardockDome2_basecolor.png",
+     "e": "textures/StardockDome2_emissive.png"
+    }
+   },
+   "bcShip": "FedStarbase",
+   "sockets": [
+    [
+     "WPN_Beam_01",
+     0.2181,
+     -0.2181,
+     0.4241
+    ],
+    [
+     "WPN_Beam_02",
+     0.2181,
+     0.2181,
+     0.4241
+    ],
+    [
+     "WPN_Beam_03",
+     -0.2181,
+     0.2181,
+     0.4241
+    ],
+    [
+     "WPN_Beam_04",
+     -0.2181,
+     -0.2181,
+     0.4241
+    ],
+    [
+     "WPN_Beam_05",
+     0.0891,
+     -0.0,
+     -0.257
+    ],
+    [
+     "WPN_Beam_06",
+     0.0,
+     0.0891,
+     -0.257
+    ],
+    [
+     "WPN_Beam_07",
+     -0.0891,
+     -0.0,
+     -0.257
+    ],
+    [
+     "WPN_Beam_08",
+     0.0,
+     -0.0891,
+     -0.257
+    ]
+   ]
+  },
+  {
+   "key": "ship.fed.outpost",
+   "source": "bc/FedOutpost/SM_FedOutpost.fbx",
+   "forward": "+X",
+   "up": "+Z",
+   "lengthMeters": 300,
+   "metallic": 0.5,
+   "bcMaps": {
+    "M_modules1": {
+     "bc": "textures/modules1_basecolor.png",
+     "e": "textures/modules1_emissive.png"
+    },
+    "M_core": {
+     "bc": "textures/core_basecolor.png",
+     "e": "textures/core_emissive.png"
+    },
+    "M_lounge": {
+     "bc": "textures/lounge_basecolor.png",
+     "e": "textures/lounge_emissive.png"
+    },
+    "M_girder": {
+     "bc": "textures/girder_basecolor.png",
+     "e": "textures/girder_emissive.png"
+    }
+   },
+   "bcShip": "FedOutpost",
+   "sockets": [
+    [
+     "WPN_Beam_01",
+     -0.0013,
+     -0.0047,
+     -0.1599
+    ],
+    [
+     "WPN_Beam_02",
+     -0.0013,
+     -0.0047,
+     -0.1599
+    ],
+    [
+     "WPN_Beam_03",
+     -0.0013,
+     -0.0047,
+     -0.1599
+    ],
+    [
+     "WPN_Beam_04",
+     -0.0013,
+     -0.0047,
+     -0.2758
+    ],
+    [
+     "WPN_Beam_05",
+     -0.0013,
+     -0.0047,
+     -0.2758
+    ],
+    [
+     "WPN_Beam_06",
+     -0.0013,
+     -0.0047,
+     -0.2758
+    ]
+   ]
+  },
+  {
+   "key": "ship.kli.neghvar",
+   "source": "bc/Neghvar/SM_Neghvar.fbx",
+   "forward": "+X",
+   "up": "+Z",
+   "lengthMeters": 682,
+   "metallic": 0.45,
+   "bcMaps": {
+    "M_mainhull": {
+     "bc": "textures/mainhull_basecolor.png",
+     "e": "textures/mainhull_emissive.png"
+    },
+    "M_misc": {
+     "bc": "textures/misc_basecolor.png",
+     "e": "textures/misc_emissive.png"
+    }
+   },
+   "bcShip": "Neghvar",
+   "sockets": [
+    [
+     "ENG_01",
+     -0.3258,
+     0.1629,
+     0.0074
+    ],
+    [
+     "ENG_02",
+     -0.3258,
+     -0.1629,
+     0.0074
+    ],
+    [
+     "ENG_03",
+     -0.074,
+     0.311,
+     0.0
+    ],
+    [
+     "ENG_04",
+     -0.074,
+     -0.311,
+     0.0
+    ],
+    [
+     "WPN_Pulse_01",
+     0.1659,
+     0.3162,
+     0.0
+    ],
+    [
+     "WPN_Pulse_02",
+     0.1659,
+     -0.3162,
+     0.0
+    ],
+    [
+     "WPN_Pulse_03",
+     0.0207,
+     0.1429,
+     -0.0711
+    ],
+    [
+     "WPN_Pulse_04",
+     0.0207,
+     -0.1429,
+     -0.0711
+    ],
+    [
+     "WPN_Beam_01",
+     0.468,
+     -0.0,
+     -0.0074
+    ],
+    [
+     "WPN_Beam_02",
+     0.4443,
+     0.0918,
+     0.0148
+    ],
+    [
+     "WPN_Beam_03",
+     0.4443,
+     -0.0918,
+     0.0148
+    ],
+    [
+     "WPN_Beam_04",
+     0.237,
+     0.0415,
+     0.0
+    ],
+    [
+     "WPN_Beam_05",
+     -0.2814,
+     0.0711,
+     0.074
+    ],
+    [
+     "WPN_Beam_06",
+     0.237,
+     -0.0415,
+     0.0
+    ],
+    [
+     "WPN_Beam_07",
+     -0.2814,
+     -0.0711,
+     0.074
+    ],
+    [
+     "WPN_Beam_08",
+     -0.3036,
+     0.2221,
+     0.0148
+    ],
+    [
+     "WPN_Beam_09",
+     -0.3036,
+     -0.2221,
+     0.0148
+    ],
+    [
+     "WPN_Beam_10",
+     -0.5035,
+     -0.0,
+     0.0711
+    ],
+    [
+     "WPN_Torp_01",
+     0.4739,
+     0.0015,
+     0.0138
+    ],
+    [
+     "WPN_Torp_02",
+     0.4739,
+     -0.0015,
+     0.0138
+    ],
+    [
+     "WPN_Torp_03",
+     -0.2962,
+     -0.0,
+     0.0452
+    ],
+    [
+     "WPN_Torp_04",
+     -0.2962,
+     -0.0,
+     0.0452
+    ]
+   ]
+  },
+  {
+   "key": "ship.kli.vorcha",
+   "source": "bc/Vorcha/SM_Vorcha.fbx",
+   "forward": "+X",
+   "up": "+Z",
+   "lengthMeters": 481,
+   "metallic": 0.45,
+   "bcMaps": {
+    "M_hull1": {
+     "bc": "textures/hull1_basecolor.png",
+     "e": "textures/hull1_emissive.png"
+    },
+    "M_hull2": {
+     "bc": "textures/hull2_basecolor.png",
+     "e": "textures/hull2_emissive.png"
+    }
+   },
+   "bcShip": "Vorcha",
+   "sockets": [
+    [
+     "ENG_01",
+     -0.3326,
+     0.0728,
+     -0.0146
+    ],
+    [
+     "ENG_02",
+     -0.3326,
+     -0.0728,
+     -0.0146
+    ],
+    [
+     "ENG_03",
+     -0.2495,
+     0.3326,
+     -0.0624
+    ],
+    [
+     "ENG_04",
+     -0.2495,
+     -0.3326,
+     -0.0624
+    ],
+    [
+     "WPN_Pulse_01",
+     -0.2079,
+     0.3056,
+     -0.0208
+    ],
+    [
+     "WPN_Pulse_02",
+     -0.2079,
+     -0.3056,
+     -0.0208
+    ],
+    [
+     "WPN_Pulse_03",
+     0.4054,
+     -0.0,
+     0.0021
+    ],
+    [
+     "WPN_Beam_01",
+     0.4574,
+     0.0073,
+     0.0021
+    ],
+    [
+     "WPN_Beam_02",
+     0.4574,
+     -0.0073,
+     0.0021
+    ],
+    [
+     "WPN_Beam_03",
+     0.1247,
+     0.0437,
+     0.0042
+    ],
+    [
+     "WPN_Beam_04",
+     -0.2807,
+     0.0686,
+     0.0769
+    ],
+    [
+     "WPN_Beam_05",
+     0.1247,
+     -0.0437,
+     0.0042
+    ],
+    [
+     "WPN_Beam_06",
+     -0.2807,
+     -0.0686,
+     0.0769
+    ],
+    [
+     "WPN_Beam_07",
+     -0.3264,
+     0.1559,
+     -0.0
+    ],
+    [
+     "WPN_Beam_08",
+     -0.3264,
+     -0.1559,
+     -0.0
+    ],
+    [
+     "WPN_Torp_01",
+     0.4886,
+     0.0291,
+     0.0031
+    ],
+    [
+     "WPN_Torp_02",
+     0.4886,
+     -0.0291,
+     0.0031
+    ],
+    [
+     "WPN_Torp_03",
+     -0.2807,
+     -0.0,
+     0.0031
+    ]
+   ]
+  },
+  {
+   "key": "ship.kli.ktinga",
+   "source": "bc/KTinga/SM_KTinga.fbx",
+   "forward": "+X",
+   "up": "+Z",
+   "lengthMeters": 228,
+   "metallic": 0.45,
+   "bcMaps": {
+    "M_main": {
+     "bc": "textures/main_basecolor.png",
+     "e": "textures/main_emissive.png"
+    },
+    "M_bridge": {
+     "bc": "textures/bridge_basecolor.png",
+     "e": "textures/bridge_emissive.png"
+    },
+    "M_nacelle": {
+     "bc": "textures/nacelle_basecolor.png",
+     "e": "textures/nacelle_emissive.png"
+    }
+   },
+   "bcShip": "KTinga",
+   "sockets": [
+    [
+     "ENG_01",
+     -0.2739,
+     0.0663,
+     0.0221
+    ],
+    [
+     "ENG_02",
+     -0.2739,
+     -0.0663,
+     0.0221
+    ],
+    [
+     "ENG_03",
+     -0.3314,
+     0.3535,
+     -0.106
+    ],
+    [
+     "ENG_04",
+     -0.3314,
+     -0.3535,
+     -0.106
+    ],
+    [
+     "WPN_Pulse_01",
+     0.0177,
+     0.1988,
+     0.0442
+    ],
+    [
+     "WPN_Pulse_02",
+     0.0177,
+     -0.1988,
+     0.0442
+    ],
+    [
+     "WPN_Beam_01",
+     -0.1635,
+     0.3491,
+     -0.106
+    ],
+    [
+     "WPN_Beam_02",
+     -0.1635,
+     -0.3491,
+     -0.106
+    ],
+    [
+     "WPN_Beam_03",
+     -0.3314,
+     0.3093,
+     0.0
+    ],
+    [
+     "WPN_Beam_04",
+     -0.3314,
+     -0.3093,
+     0.0
+    ],
+    [
+     "WPN_Beam_05",
+     -0.243,
+     -0.0,
+     0.0088
+    ],
+    [
+     "WPN_Torp_01",
+     0.4639,
+     -0.0,
+     0.0
+    ],
+    [
+     "WPN_Torp_02",
+     -0.2651,
+     -0.0,
+     0.0353
+    ]
+   ]
+  },
+  {
+   "key": "ship.kli.kvort",
+   "source": "bc/Kvort/SM_Kvort.fbx",
+   "forward": "+X",
+   "up": "+Z",
+   "lengthMeters": 350,
+   "metallic": 0.45,
+   "bcMaps": {
+    "M_rusty2": {
+     "bc": "textures/rusty2_basecolor.png"
+    },
+    "M_blocksfront": {
+     "bc": "textures/blocksfront_basecolor.png"
+    },
+    "M_hullventral": {
+     "bc": "textures/hullventral_basecolor.png"
+    },
+    "M_impulse": {
+     "bc": "textures/impulse_basecolor.png",
+     "e": "textures/impulse_emissive.png"
+    },
+    "M_RedPanels": {
+     "bc": "textures/RedPanels_basecolor.png"
+    },
+    "M_misc": {
+     "bc": "textures/misc_basecolor.png"
+    },
+    "M_runlights": {
+     "bc": "textures/runlights_basecolor.png",
+     "e": "textures/runlights_emissive.png"
+    },
+    "M_bridge": {
+     "bc": "textures/bridge_basecolor.png",
+     "e": "textures/bridge_emissive.png"
+    },
+    "M_bridge_2": {
+     "bc": "textures/bridge_basecolor.png",
+     "e": "textures/bridge_emissive.png"
+    },
+    "M_mischull": {
+     "bc": "textures/mischull_basecolor.png"
+    },
+    "M_Hull1": {
+     "bc": "textures/Hull1_basecolor.png"
+    },
+    "M_impulse2": {
+     "bc": "textures/impulse2_basecolor.png",
+     "e": "textures/impulse2_emissive.png"
+    },
+    "M_radiator": {
+     "bc": "textures/radiator_basecolor.png"
+    },
+    "M_botbridge": {
+     "bc": "textures/botbridge_basecolor.png"
+    },
+    "M_RadEnds": {
+     "bc": "textures/RadEnds_basecolor.png"
+    },
+    "M_hullventral2": {
+     "bc": "textures/hullventral2_basecolor.png"
+    },
+    "M_blocksfront_2": {
+     "bc": "textures/blocksfront_basecolor.png"
+    }
+   },
+   "bcShip": "Kvort",
+   "sockets": [
+    [
+     "ENG_01",
+     -0.4044,
+     -0.0002,
+     -0.0225
+    ],
+    [
+     "ENG_02",
+     -0.2019,
+     0.137,
+     0.0675
+    ],
+    [
+     "ENG_03",
+     -0.2019,
+     -0.1353,
+     0.0675
+    ],
+    [
+     "WPN_Pulse_01",
+     0.2801,
+     0.6478,
+     0.0289
+    ],
+    [
+     "WPN_Pulse_02",
+     0.2549,
+     -0.6505,
+     0.0293
+    ],
+    [
+     "WPN_Torp_01",
+     0.4056,
+     -0.0002,
+     -0.0585
+    ],
+    [
+     "WPN_Torp_02",
+     -0.3594,
+     -0.0002,
+     0.045
+    ]
+   ]
+  },
+  {
+   "key": "ship.kli.bop",
+   "source": "bc/D4_BOP/SM_D4_BOP.fbx",
+   "forward": "+X",
+   "up": "+Z",
+   "lengthMeters": 110,
+   "metallic": 0.45,
+   "bcMaps": {
+    "M_BOP_BARS": {
+     "bc": "textures/BOP_BARS_basecolor.png"
+    },
+    "M_BOP_Bridge": {
+     "bc": "textures/BOP_Bridge_basecolor.png",
+     "e": "textures/BOP_Bridge_emissive.png"
+    },
+    "M_GunH": {
+     "bc": "textures/GunH_basecolor.png"
+    },
+    "M_GunHR": {
+     "bc": "textures/GunHR_basecolor.png"
+    },
+    "M_Warp": {
+     "bc": "textures/Warp_basecolor.png"
+    },
+    "M_GunHW": {
+     "bc": "textures/GunHW_basecolor.png"
+    },
+    "M_BOPHead2": {
+     "bc": "textures/BOPHead2_basecolor.png"
+    },
+    "M_HeadN": {
+     "bc": "textures/HeadN_basecolor.png",
+     "e": "textures/HeadN_emissive.png"
+    },
+    "M_bop_headb": {
+     "bc": "textures/bop_headb_basecolor.png",
+     "e": "textures/bop_headb_emissive.png"
+    },
+    "M_BOP_Head4a": {
+     "bc": "textures/BOP_Head4a_basecolor.png"
+    },
+    "M_BOP_Head4b": {
+     "bc": "textures/BOP_Head4b_basecolor.png"
+    },
+    "M_bop_top3": {
+     "bc": "textures/bop_top3_basecolor.png"
+    },
+    "M_BOP_HullBack": {
+     "bc": "textures/BOP_HullBack_basecolor.png"
+    },
+    "M_bop_bottom": {
+     "bc": "textures/bop_bottom_basecolor.png"
+    },
+    "M_bop_topReactor": {
+     "bc": "textures/bop_topReactor_basecolor.png",
+     "e": "textures/bop_topReactor_emissive.png"
+    },
+    "M_Reactor": {
+     "bc": "textures/Reactor_basecolor.png",
+     "e": "textures/Reactor_emissive.png"
+    },
+    "M_Warp2": {
+     "bc": "textures/Warp2_basecolor.png",
+     "e": "textures/Warp2_emissive.png"
+    },
+    "M_Wing": {
+     "bc": "textures/Wing_basecolor.png"
+    },
+    "M_Guns": {
+     "bc": "textures/Guns_basecolor.png"
+    },
+    "M_BOP_WingGrill": {
+     "bc": "textures/BOP_WingGrill_basecolor.png"
+    },
+    "M_Wing2": {
+     "bc": "textures/Wing2_basecolor.png"
+    },
+    "M_HullMain": {
+     "bc": "textures/HullMain_basecolor.png"
+    },
+    "M_bop_top2": {
+     "bc": "textures/bop_top2_basecolor.png",
+     "e": "textures/bop_top2_emissive.png"
+    }
+   },
+   "bcShip": "D4_BOP",
+   "sockets": [
+    [
+     "ENG_01",
+     -0.4259,
+     -0.0001,
+     0.1539
+    ],
+    [
+     "WPN_Torp_01",
+     0.4097,
+     -0.0002,
+     0.0334
+    ],
+    [
+     "ENG_02",
+     -0.2971,
+     0.0657,
+     0.1919
+    ],
+    [
+     "ENG_03",
+     -0.3013,
+     -0.0661,
+     0.1901
+    ],
+    [
+     "WPN_Pulse_01",
+     -0.1047,
+     -0.5263,
+     -0.1891
+    ],
+    [
+     "WPN_Pulse_02",
+     -0.1047,
+     0.5261,
+     -0.1895
+    ],
+    [
+     "WPN_Pulse_03",
+     -0.0203,
+     -0.0508,
+     0.0008
+    ],
+    [
+     "WPN_Pulse_04",
+     -0.0203,
+     0.0511,
+     0.0008
+    ],
+    [
+     "WPN_Pulse_05",
+     0.3498,
+     -0.0694,
+     0.0303
+    ],
+    [
+     "WPN_Pulse_06",
+     0.3498,
+     0.0651,
+     0.0261
+    ],
+    [
+     "WPN_Beam_01",
+     -0.1231,
+     -0.5317,
+     -0.2132
+    ],
+    [
+     "WPN_Beam_02",
+     -0.1231,
+     0.5315,
+     -0.2134
+    ],
+    [
+     "WPN_Pulse_07",
+     0.3498,
+     -0.0652,
+     0.026
+    ],
+    [
+     "WPN_Pulse_08",
+     0.3498,
+     0.0692,
+     0.0304
+    ]
+   ]
+  },
+  {
+   "key": "ship.kli.starbase",
+   "source": "bc/KlingonStarbase/SM_KlingonStarbase.fbx",
+   "forward": "+X",
+   "up": "+Z",
+   "lengthMeters": 900,
+   "metallic": 0.45,
+   "bcMaps": {
+    "M_KlingonStarbase2": {
+     "bc": "textures/KlingonStarbase2_basecolor.png"
+    },
+    "M_KlingonStarbase1": {
+     "bc": "textures/KlingonStarbase1_basecolor.png",
+     "e": "textures/KlingonStarbase1_emissive.png"
+    },
+    "M_KlingonStarbase3": {
+     "bc": "textures/KlingonStarbase3_basecolor.png",
+     "e": "textures/KlingonStarbase3_emissive.png"
+    },
+    "M_KlingonStarbase4": {
+     "bc": "textures/KlingonStarbase4_basecolor.png",
+     "e": "textures/KlingonStarbase4_emissive.png"
+    }
+   },
+   "bcShip": "KlingonStarbase",
+   "sockets": [
+    [
+     "WPN_Beam_01",
+     0.1894,
+     -0.192,
+     0.1785
+    ],
+    [
+     "WPN_Beam_02",
+     0.1894,
+     0.192,
+     0.1785
+    ],
+    [
+     "WPN_Beam_03",
+     -0.1946,
+     0.192,
+     0.1785
+    ],
+    [
+     "WPN_Beam_04",
+     -0.1946,
+     -0.192,
+     0.1785
+    ],
+    [
+     "WPN_Beam_05",
+     0.5,
+     0.0,
+     0.4684
+    ],
+    [
+     "WPN_Beam_06",
+     -0.0026,
+     0.5,
+     0.4671
+    ],
+    [
+     "WPN_Beam_07",
+     -0.5052,
+     0.0,
+     0.4684
+    ],
+    [
+     "WPN_Beam_08",
+     -0.0026,
+     -0.5,
+     0.4671
+    ]
+   ]
+  },
+  {
+   "key": "ship.kli.outpost",
+   "source": "bc/K_TOS_OUTPOST/SM_K_TOS_OUTPOST.fbx",
+   "forward": "+X",
+   "up": "+Z",
+   "lengthMeters": 300,
+   "metallic": 0.45,
+   "bcMaps": {
+    "M_K_TOS_Outpost_A": {
+     "bc": "textures/K_TOS_Outpost_A_basecolor.png",
+     "e": "textures/K_TOS_Outpost_A_emissive.png"
+    }
+   },
+   "bcShip": "K_TOS_OUTPOST",
+   "sockets": [
+    [
+     "WPN_Pulse_01",
+     -0.0477,
+     0.0002,
+     0.7281
+    ],
+    [
+     "WPN_Pulse_02",
+     -0.0477,
+     0.0002,
+     0.7281
+    ],
+    [
+     "WPN_Pulse_03",
+     -0.0477,
+     0.0002,
+     0.7281
+    ],
+    [
+     "WPN_Pulse_04",
+     -0.0477,
+     0.0002,
+     0.7281
+    ],
+    [
+     "WPN_Pulse_05",
+     0.3092,
+     0.0002,
+     0.5153
+    ],
+    [
+     "WPN_Pulse_06",
+     -0.4046,
+     0.0002,
+     0.5153
+    ],
+    [
+     "WPN_Pulse_07",
+     -0.0477,
+     -0.3567,
+     0.5153
+    ],
+    [
+     "WPN_Pulse_08",
+     -0.0477,
+     0.3571,
+     0.5153
+    ]
+   ]
+  },
+  {
+   "key": "ship.rom.dderidex",
+   "source": "bc/Warbird/SM_Warbird.fbx",
+   "forward": "+X",
+   "up": "+Z",
+   "lengthMeters": 1041,
+   "metallic": 0.4,
+   "bcMaps": {
+    "M_warbirdaft": {
+     "bc": "textures/WarbirdAft_basecolor.png",
+     "e": "textures/WarbirdAft_emissive.png"
+    },
+    "M_warbirdhead": {
+     "bc": "textures/WarbirdHead_basecolor.png",
+     "e": "textures/WarbirdHead_emissive.png"
+    },
+    "M_warbirdjoin": {
+     "bc": "textures/WarbirdJoin_basecolor.png"
+    },
+    "M_warbirdlowerwings": {
+     "bc": "textures/WarbirdLowerWings_basecolor.png"
+    },
+    "M_warbirdnacelles": {
+     "bc": "textures/WarbirdNacelles_basecolor.png",
+     "e": "textures/WarbirdNacelles_emissive.png"
+    },
+    "M_warbirdtopwingdet": {
+     "bc": "textures/WarbirdTopWingDet_basecolor.png",
+     "e": "textures/WarbirdTopWingDet_emissive.png"
+    },
+    "M_warbirdupperwings": {
+     "bc": "textures/WarbirdUpperWings_basecolor.png",
+     "e": "textures/WarbirdUpperWings_emissive.png"
+    }
+   },
+   "bcShip": "Warbird",
+   "sockets": [
+    [
+     "ENG_01",
+     -0.1045,
+     0.3658,
+     0.0037
+    ],
+    [
+     "ENG_02",
+     -0.1045,
+     -0.3658,
+     0.0037
+    ],
+    [
+     "ENG_03",
+     -0.5001,
+     -0.0,
+     -0.0209
+    ],
+    [
+     "ENG_04",
+     0.0448,
+     0.3658,
+     0.0049
+    ],
+    [
+     "ENG_05",
+     0.0448,
+     -0.3658,
+     0.0049
+    ],
+    [
+     "WPN_Pulse_01",
+     0.209,
+     0.3658,
+     0.0261
+    ],
+    [
+     "WPN_Pulse_02",
+     0.209,
+     -0.3658,
+     0.0261
+    ],
+    [
+     "WPN_Pulse_03",
+     0.209,
+     0.3658,
+     -0.0149
+    ],
+    [
+     "WPN_Pulse_04",
+     0.209,
+     -0.3658,
+     -0.0149
+    ],
+    [
+     "WPN_Beam_01",
+     0.4255,
+     -0.0,
+     0.0914
+    ],
+    [
+     "WPN_Beam_02",
+     0.0093,
+     0.3546,
+     0.0597
+    ],
+    [
+     "WPN_Beam_03",
+     -0.0037,
+     0.3732,
+     -0.0373
+    ],
+    [
+     "WPN_Beam_04",
+     0.0093,
+     -0.3546,
+     0.0597
+    ],
+    [
+     "WPN_Beam_05",
+     -0.0037,
+     -0.3732,
+     -0.0373
+    ],
+    [
+     "WPN_Beam_06",
+     -0.4852,
+     -0.0,
+     0.0093
+    ],
+    [
+     "WPN_Beam_07",
+     -0.4964,
+     -0.0,
+     -0.0373
+    ],
+    [
+     "WPN_Beam_08",
+     0.0127,
+     -0.0,
+     0.1456
+    ],
+    [
+     "WPN_Beam_09",
+     0.4987,
+     -0.0,
+     -0.1194
+    ],
+    [
+     "WPN_Torp_01",
+     0.4957,
+     -0.0,
+     -0.0328
+    ],
+    [
+     "WPN_Torp_02",
+     -0.4255,
+     -0.0,
+     0.0336
+    ]
+   ]
+  },
+  {
+   "key": "ship.rom.valdore",
+   "source": "bc/R_TNG_VALDORE/SM_R_TNG_VALDORE.fbx",
+   "forward": "+X",
+   "up": "+Z",
+   "lengthMeters": 843,
+   "metallic": 0.4,
+   "bcMaps": {
+    "M_R_TNG_Valdore_D": {
+     "bc": "textures/R_TNG_Valdore_D_basecolor.png",
+     "e": "textures/R_TNG_Valdore_D_emissive.png"
+    },
+    "M_R_TNG_Valdore_J": {
+     "bc": "textures/R_TNG_Valdore_J_basecolor.png",
+     "e": "textures/R_TNG_Valdore_J_emissive.png"
+    },
+    "M_R_TNG_Valdore_B": {
+     "bc": "textures/R_TNG_Valdore_B_basecolor.png"
+    },
+    "M_R_TNG_Valdore_A": {
+     "bc": "textures/R_TNG_Valdore_A_basecolor.png",
+     "e": "textures/R_TNG_Valdore_A_emissive.png"
+    },
+    "M_R_TNG_Valdore_F": {
+     "bc": "textures/R_TNG_Valdore_F_basecolor.png"
+    },
+    "M_R_TNG_Valdore_G": {
+     "bc": "textures/R_TNG_Valdore_G_basecolor.png"
+    },
+    "M_R_TNG_Valdore_E": {
+     "bc": "textures/R_TNG_Valdore_E_basecolor.png",
+     "e": "textures/R_TNG_Valdore_E_emissive.png"
+    },
+    "M_R_TNG_Valdore_I": {
+     "bc": "textures/R_TNG_Valdore_I_basecolor.png",
+     "e": "textures/R_TNG_Valdore_I_emissive.png"
+    },
+    "M_R_TNG_Valdore_C": {
+     "bc": "textures/R_TNG_Valdore_C_basecolor.png",
+     "e": "textures/R_TNG_Valdore_C_emissive.png"
+    },
+    "M_R_TNG_Valdore_H": {
+     "bc": "textures/R_TNG_Valdore_H_basecolor.png"
+    },
+    "M_R_TNG_Valdore_K": {
+     "bc": "textures/R_TNG_Valdore_K_basecolor.png"
+    }
+   },
+   "bcShip": "R_TNG_VALDORE",
+   "sockets": [
+    [
+     "WPN_Torp_01",
+     0.4926,
+     0.0005,
+     -0.0133
+    ],
+    [
+     "WPN_Pulse_01",
+     -0.1082,
+     -0.6009,
+     -0.0344
+    ],
+    [
+     "WPN_Pulse_02",
+     -0.1076,
+     0.6003,
+     -0.0357
+    ],
+    [
+     "WPN_Torp_02",
+     -0.4655,
+     -0.0003,
+     0.0413
+    ],
+    [
+     "ENG_01",
+     -0.0904,
+     0.5177,
+     -0.0891
+    ],
+    [
+     "ENG_02",
+     -0.0888,
+     -0.5177,
+     -0.088
+    ],
+    [
+     "ENG_03",
+     -0.3567,
+     0.3198,
+     0.0471
+    ],
+    [
+     "WPN_Beam_01",
+     0.4691,
+     0.0001,
+     0.0146
+    ],
+    [
+     "ENG_04",
+     -0.3565,
+     -0.3194,
+     0.0463
+    ],
+    [
+     "ENG_05",
+     -0.4094,
+     0.0919,
+     0.0451
+    ],
+    [
+     "ENG_06",
+     -0.4094,
+     -0.0919,
+     0.0451
+    ],
+    [
+     "WPN_Pulse_03",
+     -0.4963,
+     -0.0003,
+     0.0788
+    ],
+    [
+     "WPN_Pulse_04",
+     -0.3015,
+     0.0009,
+     0.1086
+    ],
+    [
+     "WPN_Pulse_05",
+     -0.2725,
+     0.0005,
+     -0.0449
+    ]
+   ]
+  },
+  {
+   "key": "ship.rom.bop",
+   "source": "bc/RomBoP/SM_RomBoP.fbx",
+   "forward": "+X",
+   "up": "+Z",
+   "lengthMeters": 180,
+   "metallic": 0.4,
+   "bcMaps": {
+    "M_imptop": {
+     "bc": "textures/imptop_basecolor.png",
+     "e": "textures/imptop_emissive.png"
+    },
+    "M_baffles": {
+     "bc": "textures/baffles_basecolor.png"
+    },
+    "M_grey": {
+     "bc": "textures/grey_basecolor.png"
+    },
+    "M_pod": {
+     "bc": "textures/pod_basecolor.png",
+     "e": "textures/pod_emissive.png"
+    },
+    "M_cave": {
+     "bc": "textures/cave_basecolor.png"
+    },
+    "M_gen": {
+     "bc": "textures/gen_basecolor.png"
+    },
+    "M_gunbox": {
+     "bc": "textures/gunbox_basecolor.png"
+    },
+    "M_hullaft": {
+     "bc": "textures/hullaft_basecolor.png"
+    },
+    "M_hullbot": {
+     "bc": "textures/hullbot_basecolor.png",
+     "e": "textures/hullbot_emissive.png"
+    },
+    "M_hullside": {
+     "bc": "textures/hullside_basecolor.png",
+     "e": "textures/hullside_emissive.png"
+    },
+    "M_hulltop": {
+     "bc": "textures/hulltop_basecolor.png",
+     "e": "textures/hulltop_emissive.png"
+    },
+    "M_impbot": {
+     "bc": "textures/impbot_basecolor.png"
+    },
+    "M_impex": {
+     "bc": "textures/impex_basecolor.png",
+     "e": "textures/impex_emissive.png"
+    },
+    "M_neck": {
+     "bc": "textures/neck_basecolor.png"
+    },
+    "M_bodfr": {
+     "bc": "textures/bodfr_basecolor.png"
+    },
+    "M_necks": {
+     "bc": "textures/necks_basecolor.png",
+     "e": "textures/necks_emissive.png"
+    },
+    "M_podbot": {
+     "bc": "textures/podbot_basecolor.png",
+     "e": "textures/podbot_emissive.png"
+    },
+    "M_topside": {
+     "bc": "textures/topside_basecolor.png",
+     "e": "textures/topside_emissive.png"
+    },
+    "M_warpout": {
+     "bc": "textures/warpout_basecolor.png",
+     "e": "textures/warpout_emissive.png"
+    },
+    "M_pod_2": {
+     "bc": "textures/pod_basecolor.png",
+     "e": "textures/pod_emissive.png"
+    },
+    "M_oplas": {
+     "bc": "textures/oplas_basecolor.png",
+     "e": "textures/oplas_emissive.png"
+    },
+    "M_wing": {
+     "bc": "textures/wing_basecolor.png",
+     "e": "textures/wing_emissive.png"
+    },
+    "M_cloak": {
+     "bc": "textures/cloak_basecolor.png",
+     "e": "textures/cloak_emissive.png"
+    }
+   },
+   "bcShip": "RomBoP",
+   "sockets": [
+    [
+     "WPN_Torp_01",
+     0.4745,
+     -0.0252,
+     0.0001
+    ],
+    [
+     "WPN_Pulse_01",
+     -0.2603,
+     -0.4326,
+     -0.0781
+    ],
+    [
+     "WPN_Pulse_02",
+     -0.2609,
+     0.4337,
+     -0.0779
+    ],
+    [
+     "ENG_01",
+     -0.4351,
+     0.0268,
+     0.0564
+    ],
+    [
+     "ENG_02",
+     -0.4358,
+     -0.0762,
+     0.0553
+    ],
+    [
+     "ENG_03",
+     -0.1917,
+     0.1496,
+     -0.048
+    ],
+    [
+     "ENG_04",
+     -0.1958,
+     -0.2058,
+     -0.048
+    ],
+    [
+     "WPN_Torp_02",
+     -0.3063,
+     0.0527,
+     0.0152
+    ],
+    [
+     "WPN_Torp_03",
+     -0.3064,
+     -0.1012,
+     0.0161
+    ],
+    [
+     "ENG_05",
+     -0.4288,
+     -0.0237,
+     0.0645
+    ],
+    [
+     "WPN_Beam_01",
+     -0.2965,
+     -0.0239,
+     0.0949
+    ],
+    [
+     "WPN_Beam_02",
+     -0.297,
+     -0.0239,
+     -0.0067
+    ],
+    [
+     "WPN_Pulse_03",
+     0.4745,
+     -0.0252,
+     0.0001
+    ],
+    [
+     "WPN_Pulse_04",
+     0.4745,
+     -0.0252,
+     0.0001
+    ]
+   ]
+  },
+  {
+   "key": "ship.rom.starbase",
+   "source": "bc/Romulanstarbase/SM_Romulanstarbase.fbx",
+   "forward": "+X",
+   "up": "+Z",
+   "lengthMeters": 900,
+   "metallic": 0.4,
+   "bcMaps": {
+    "M_RomulanStarbase1": {
+     "bc": "textures/RomulanStarbase1_basecolor.png",
+     "e": "textures/RomulanStarbase1_emissive.png"
+    },
+    "M_RomulanStarbase2": {
+     "bc": "textures/RomulanStarbase2_basecolor.png",
+     "e": "textures/RomulanStarbase2_emissive.png"
+    },
+    "M_RomulanStarbase3": {
+     "bc": "textures/RomulanStarbase3_basecolor.png",
+     "e": "textures/RomulanStarbase3_emissive.png"
+    },
+    "M_RomulanStarbase4": {
+     "bc": "textures/RomulanStarbase4_basecolor.png",
+     "e": "textures/RomulanStarbase4_emissive.png"
+    }
+   },
+   "bcShip": "Romulanstarbase",
+   "sockets": [
+    [
+     "WPN_Beam_01",
+     0.4534,
+     -0.464,
+     0.3543
+    ],
+    [
+     "WPN_Beam_02",
+     0.4534,
+     0.4438,
+     0.3543
+    ],
+    [
+     "WPN_Beam_03",
+     -0.4544,
+     0.4438,
+     0.3543
+    ],
+    [
+     "WPN_Beam_04",
+     -0.4544,
+     -0.464,
+     0.3543
+    ],
+    [
+     "WPN_Beam_05",
+     0.4406,
+     -0.0101,
+     0.1886
+    ],
+    [
+     "WPN_Beam_06",
+     -0.0005,
+     0.4311,
+     0.1886
+    ],
+    [
+     "WPN_Beam_07",
+     -0.4417,
+     -0.0101,
+     0.1886
+    ],
+    [
+     "WPN_Beam_08",
+     -0.0005,
+     -0.4513,
+     0.1886
+    ]
+   ]
+  },
+  {
+   "key": "ship.rom.outpost",
+   "source": "bc/RomulanOutpost/SM_RomulanOutpost.fbx",
+   "forward": "+X",
+   "up": "+Z",
+   "lengthMeters": 300,
+   "metallic": 0.4,
+   "bcMaps": {
+    "M_XSS_1_3": {
+     "bc": "textures/XSS_1_3_basecolor.png",
+     "e": "textures/XSS_1_3_emissive.png"
+    },
+    "M_XSS_1_1": {
+     "bc": "textures/XSS_1_1_basecolor.png",
+     "e": "textures/XSS_1_1_emissive.png"
+    },
+    "M_XSS_1_5": {
+     "bc": "textures/XSS_1_5_basecolor.png",
+     "e": "textures/XSS_1_5_emissive.png"
+    },
+    "M_XSS_1_2": {
+     "bc": "textures/XSS_1_2_basecolor.png",
+     "e": "textures/XSS_1_2_emissive.png"
+    },
+    "M_XSS_1_1_2": {
+     "bc": "textures/XSS_1_1_basecolor.png",
+     "e": "textures/XSS_1_1_emissive.png"
+    },
+    "M_XSS_1_3_2": {
+     "bc": "textures/XSS_1_3_basecolor.png",
+     "e": "textures/XSS_1_3_emissive.png"
+    },
+    "M_XSS_1_2_2": {
+     "bc": "textures/XSS_1_2_basecolor.png",
+     "e": "textures/XSS_1_2_emissive.png"
+    },
+    "M_XSS_1_1_3": {
+     "bc": "textures/XSS_1_1_basecolor.png",
+     "e": "textures/XSS_1_1_emissive.png"
+    },
+    "M_XSS_1_4": {
+     "bc": "textures/XSS_1_4_basecolor.png",
+     "e": "textures/XSS_1_4_emissive.png"
+    },
+    "M_RSB_1_2": {
+     "bc": "textures/RSB_1_2_basecolor.png",
+     "e": "textures/RSB_1_2_emissive.png"
+    },
+    "M_RSB_1_1": {
+     "bc": "textures/RSB_1_1_basecolor.png",
+     "e": "textures/RSB_1_1_emissive.png"
+    },
+    "M_RSB_1_3": {
+     "bc": "textures/RSB_1_3_basecolor.png",
+     "e": "textures/RSB_1_3_emissive.png"
+    },
+    "M_RSB_1_1_2": {
+     "bc": "textures/RSB_1_1_basecolor.png",
+     "e": "textures/RSB_1_1_emissive.png"
+    },
+    "M_RSB_1_4": {
+     "bc": "textures/RSB_1_4_basecolor.png",
+     "e": "textures/RSB_1_4_emissive.png"
+    },
+    "M_RSB_1_2_2": {
+     "bc": "textures/RSB_1_2_basecolor.png",
+     "e": "textures/RSB_1_2_emissive.png"
+    },
+    "M_RSB_1_2_3": {
+     "bc": "textures/RSB_1_2_basecolor.png",
+     "e": "textures/RSB_1_2_emissive.png"
+    },
+    "M_RSB_1_2_4": {
+     "bc": "textures/RSB_1_2_basecolor.png",
+     "e": "textures/RSB_1_2_emissive.png"
+    },
+    "M_xsd_1_3": {
+     "bc": "textures/xsd_1_3_basecolor.png",
+     "e": "textures/xsd_1_3_emissive.png"
+    },
+    "M_xsd_1_2": {
+     "bc": "textures/xsd_1_2_basecolor.png",
+     "e": "textures/xsd_1_2_emissive.png"
+    },
+    "M_xsd_1_1": {
+     "bc": "textures/xsd_1_1_basecolor.png",
+     "e": "textures/xsd_1_1_emissive.png"
+    },
+    "M_xsd_1_4": {
+     "bc": "textures/xsd_1_4_basecolor.png",
+     "e": "textures/xsd_1_4_emissive.png"
+    },
+    "M_RCA_1_4": {
+     "bc": "textures/RCA_1_4_basecolor.png",
+     "e": "textures/RCA_1_4_emissive.png"
+    },
+    "M_RCA_1_2": {
+     "bc": "textures/RCA_1_2_basecolor.png",
+     "e": "textures/RCA_1_2_emissive.png"
+    },
+    "M_RCA_1_4_2": {
+     "bc": "textures/RCA_1_4_basecolor.png",
+     "e": "textures/RCA_1_4_emissive.png"
+    },
+    "M_RCA_1_5": {
+     "bc": "textures/RCA_1_5_basecolor.png",
+     "e": "textures/RCA_1_5_emissive.png"
+    },
+    "M_RCA_1_3": {
+     "bc": "textures/RCA_1_3_basecolor.png",
+     "e": "textures/RCA_1_3_emissive.png"
+    },
+    "M_RCA_1_5_2": {
+     "bc": "textures/RCA_1_5_basecolor.png",
+     "e": "textures/RCA_1_5_emissive.png"
+    },
+    "M_RCA_1_4_3": {
+     "bc": "textures/RCA_1_4_basecolor.png",
+     "e": "textures/RCA_1_4_emissive.png"
+    },
+    "M_RCA_1_1": {
+     "bc": "textures/RCA_1_1_basecolor.png",
+     "e": "textures/RCA_1_1_emissive.png"
+    },
+    "M_RCA_1_1_2": {
+     "bc": "textures/RCA_1_1_basecolor.png",
+     "e": "textures/RCA_1_1_emissive.png"
+    },
+    "M_RCA_1_1_3": {
+     "bc": "textures/RCA_1_1_basecolor.png",
+     "e": "textures/RCA_1_1_emissive.png"
+    },
+    "M_RCA_1_3_2": {
+     "bc": "textures/RCA_1_3_basecolor.png",
+     "e": "textures/RCA_1_3_emissive.png"
+    }
+   },
+   "bcShip": "RomulanOutpost",
+   "sockets": [
+    [
+     "WPN_Beam_01",
+     0.0467,
+     -0.0414,
+     -0.0686
+    ],
+    [
+     "WPN_Beam_02",
+     -0.035,
+     -0.0584,
+     -0.0613
+    ],
+    [
+     "WPN_Beam_03",
+     0.0298,
+     0.0478,
+     -0.0657
+    ],
+    [
+     "WPN_Beam_04",
+     0.1192,
+     -0.0862,
+     0.4083
+    ],
+    [
+     "WPN_Beam_05",
+     -0.1267,
+     -0.0713,
+     0.4027
+    ],
+    [
+     "WPN_Beam_06",
+     0.0088,
+     0.137,
+     0.4067
+    ],
+    [
+     "WPN_Pulse_01",
+     0.1171,
+     -0.0125,
+     0.2813
+    ],
+    [
+     "WPN_Pulse_02",
+     0.1171,
+     -0.0125,
+     0.2813
+    ],
+    [
+     "WPN_Pulse_03",
+     -0.0665,
+     -0.1028,
+     0.2789
+    ],
+    [
+     "WPN_Pulse_04",
+     -0.0665,
+     -0.1028,
+     0.2789
+    ],
+    [
+     "WPN_Pulse_05",
+     -0.0486,
+     0.1018,
+     0.2803
+    ],
+    [
+     "WPN_Pulse_06",
+     -0.0486,
+     0.1018,
+     0.2803
+    ],
+    [
+     "WPN_Pulse_07",
+     0.0512,
+     -0.0358,
+     -0.0655
+    ],
+    [
+     "WPN_Pulse_08",
+     0.4085,
+     -0.231,
+     0.06
+    ],
+    [
+     "WPN_Beam_07",
+     -0.019,
+     0.0058,
+     0.4745
+    ],
+    [
+     "WPN_Beam_08",
+     0.0308,
+     -0.0277,
+     0.4691
+    ],
+    [
+     "WPN_Beam_09",
+     -0.0251,
+     0.4746,
+     0.0375
+    ],
+    [
+     "WPN_Beam_10",
+     0.1192,
+     -0.0862,
+     0.4083
+    ],
+    [
+     "WPN_Beam_11",
+     -0.1267,
+     -0.0713,
+     0.4027
+    ],
+    [
+     "WPN_Beam_12",
+     0.0088,
+     0.137,
+     0.4067
+    ],
+    [
+     "WPN_Torp_01",
+     -0.0926,
+     0.4728,
+     0.0121
+    ],
+    [
+     "WPN_Torp_02",
+     -0.0926,
+     0.4728,
+     0.0121
+    ]
+   ]
+  },
+  {
+   "key": "ship.car.galor",
+   "source": "bc/Galor/SM_Galor.fbx",
+   "forward": "+X",
+   "up": "+Z",
+   "lengthMeters": 371,
+   "metallic": 0.45,
+   "bcMaps": {
+    "M_galor": {
+     "bc": "textures/galor_basecolor.png",
+     "e": "textures/galor_emissive.png"
+    }
+   },
+   "bcShip": "Galor",
+   "sockets": [
+    [
+     "ENG_01",
+     0.0956,
+     0.1351,
+     0.0021
+    ],
+    [
+     "ENG_02",
+     0.0956,
+     -0.1351,
+     0.0021
+    ],
+    [
+     "ENG_03",
+     -0.1247,
+     0.0416,
+     -0.0
+    ],
+    [
+     "ENG_04",
+     -0.1247,
+     -0.0416,
+     -0.0
+    ],
+    [
+     "WPN_Beam_01",
+     0.4117,
+     -0.0,
+     -0.0021
+    ],
+    [
+     "WPN_Beam_02",
+     0.3742,
+     0.1019,
+     0.0624
+    ],
+    [
+     "WPN_Beam_03",
+     0.3742,
+     -0.1019,
+     0.0624
+    ],
+    [
+     "WPN_Beam_04",
+     0.1518,
+     0.2453,
+     -0.0
+    ],
+    [
+     "WPN_Beam_05",
+     0.1518,
+     -0.2453,
+     -0.0
+    ],
+    [
+     "WPN_Beam_06",
+     -0.3389,
+     -0.0,
+     -0.0
+    ],
+    [
+     "WPN_Torp_01",
+     0.4117,
+     -0.0,
+     -0.0
+    ],
+    [
+     "WPN_Torp_02",
+     -0.341,
+     -0.0,
+     -0.0
+    ]
+   ]
+  },
+  {
+   "key": "ship.car.keldon",
+   "source": "bc/Keldon/SM_Keldon.fbx",
+   "forward": "+X",
+   "up": "+Z",
+   "lengthMeters": 400,
+   "metallic": 0.45,
+   "bcMaps": {
+    "M_galor": {
+     "bc": "textures/galor_basecolor.png",
+     "e": "textures/galor_emissive.png"
+    }
+   },
+   "bcShip": "Keldon",
+   "sockets": [
+    [
+     "ENG_01",
+     0.095,
+     0.1338,
+     0.0021
+    ],
+    [
+     "ENG_02",
+     0.095,
+     -0.1338,
+     0.0021
+    ],
+    [
+     "ENG_03",
+     -0.1232,
+     0.0412,
+     0.0
+    ],
+    [
+     "ENG_04",
+     -0.1232,
+     -0.0412,
+     0.0
+    ],
+    [
+     "WPN_Beam_01",
+     0.4078,
+     -0.0,
+     -0.0021
+    ],
+    [
+     "WPN_Beam_02",
+     0.3708,
+     0.1009,
+     0.0617
+    ],
+    [
+     "WPN_Beam_03",
+     0.3708,
+     -0.1009,
+     0.0617
+    ],
+    [
+     "WPN_Beam_04",
+     0.1506,
+     0.2429,
+     0.0
+    ],
+    [
+     "WPN_Beam_05",
+     0.1506,
+     -0.2429,
+     0.0
+    ],
+    [
+     "WPN_Beam_06",
+     -0.3352,
+     -0.0,
+     0.0
+    ],
+    [
+     "WPN_Beam_07",
+     -0.3805,
+     0.0926,
+     -0.0103
+    ],
+    [
+     "WPN_Beam_08",
+     -0.3805,
+     -0.0926,
+     -0.0103
+    ],
+    [
+     "WPN_Torp_01",
+     0.4078,
+     -0.0,
+     0.0
+    ],
+    [
+     "WPN_Torp_02",
+     -0.3352,
+     -0.0,
+     0.0
+    ]
+   ]
+  },
+  {
+   "key": "ship.car.hideki",
+   "source": "bc/C_TNG_HIDEKI/SM_C_TNG_HIDEKI.fbx",
+   "forward": "+X",
+   "up": "+Z",
+   "lengthMeters": 80,
+   "metallic": 0.45,
+   "bcMaps": {
+    "M_C_HIDEKI_K": {
+     "bc": "textures/C_HIDEKI_K_basecolor.png"
+    },
+    "M_C_HIDEKI_B": {
+     "bc": "textures/C_HIDEKI_B_basecolor.png"
+    },
+    "M_C_HIDEKI_H": {
+     "bc": "textures/C_HIDEKI_H_basecolor.png"
+    },
+    "M_C_HIDEKI_J": {
+     "bc": "textures/C_HIDEKI_J_basecolor.png"
+    },
+    "M_C_HIDEKI_I": {
+     "bc": "textures/C_HIDEKI_I_basecolor.png"
+    },
+    "M_C_HIDEKI_C": {
+     "bc": "textures/C_HIDEKI_C_basecolor.png"
+    },
+    "M_C_HIDEKI_E": {
+     "bc": "textures/C_HIDEKI_E_basecolor.png"
+    },
+    "M_C_HIDEKI_D": {
+     "bc": "textures/C_HIDEKI_D_basecolor.png"
+    },
+    "M_C_HIDEKI_G": {
+     "bc": "textures/C_HIDEKI_G_basecolor.png",
+     "e": "textures/C_HIDEKI_G_emissive.png"
+    },
+    "M_C_HIDEKI_F": {
+     "bc": "textures/C_HIDEKI_F_basecolor.png",
+     "e": "textures/C_HIDEKI_F_emissive.png"
+    },
+    "M_C_HIDEKI_A": {
+     "bc": "textures/C_HIDEKI_A_basecolor.png"
+    }
+   },
+   "bcShip": "C_TNG_HIDEKI",
+   "sockets": [
+    [
+     "WPN_Torp_01",
+     0.4434,
+     -0.0012,
+     -0.042
+    ],
+    [
+     "ENG_01",
+     -0.3116,
+     0.0628,
+     -0.0056
+    ],
+    [
+     "ENG_02",
+     -0.31,
+     -0.0626,
+     -0.0035
+    ],
+    [
+     "WPN_Beam_01",
+     0.446,
+     0.0006,
+     -0.0566
+    ],
+    [
+     "ENG_03",
+     -0.2836,
+     -0.0021,
+     -0.0084
+    ]
+   ]
+  },
+  {
+   "key": "ship.car.starbase",
+   "source": "bc/CardStarbase/SM_CardStarbase.fbx",
+   "forward": "+X",
+   "up": "+Z",
+   "lengthMeters": 1100,
+   "metallic": 0.45,
+   "bcMaps": {
+    "M_pyl": {
+     "bc": "textures/pyl_basecolor.png",
+     "e": "textures/pyl_emissive.png"
+    },
+    "M_habit": {
+     "bc": "textures/habit_basecolor.png",
+     "e": "textures/habit_emissive.png"
+    },
+    "M_outerring": {
+     "bc": "textures/outerring_basecolor.png",
+     "e": "textures/outerring_emissive.png"
+    },
+    "M_core": {
+     "bc": "textures/core_basecolor.png",
+     "e": "textures/core_emissive.png"
+    },
+    "M_core1": {
+     "bc": "textures/core1_basecolor.png",
+     "e": "textures/core1_emissive.png"
+    },
+    "M_core2": {
+     "bc": "textures/core2_basecolor.png",
+     "e": "textures/core2_emissive.png"
+    }
+   },
+   "bcShip": "CardStarbase",
+   "sockets": [
+    [
+     "WPN_Beam_01",
+     0.1786,
+     -0.0978,
+     0.0735
+    ],
+    [
+     "WPN_Beam_02",
+     0.1782,
+     -0.0974,
+     -0.0248
+    ],
+    [
+     "WPN_Beam_03",
+     -0.1772,
+     -0.1012,
+     0.0733
+    ],
+    [
+     "WPN_Beam_04",
+     -0.177,
+     -0.1019,
+     -0.0264
+    ],
+    [
+     "WPN_Beam_05",
+     0.0013,
+     0.2011,
+     0.0738
+    ],
+    [
+     "WPN_Beam_06",
+     0.0015,
+     0.2012,
+     -0.0264
+    ],
+    [
+     "WPN_Pulse_01",
+     0.1812,
+     -0.0988,
+     0.0977
+    ],
+    [
+     "WPN_Pulse_02",
+     0.1807,
+     -0.0997,
+     -0.0499
+    ],
+    [
+     "WPN_Pulse_03",
+     -0.1796,
+     -0.1022,
+     0.0961
+    ],
+    [
+     "WPN_Pulse_04",
+     -0.1795,
+     -0.1028,
+     -0.0501
+    ],
+    [
+     "WPN_Pulse_05",
+     0.0017,
+     0.2038,
+     0.0976
+    ],
+    [
+     "WPN_Pulse_06",
+     0.002,
+     0.2036,
+     -0.0493
+    ]
+   ]
+  },
+  {
+   "key": "ship.car.outpost",
+   "source": "bc/CardOutpost/SM_CardOutpost.fbx",
+   "forward": "+X",
+   "up": "+Z",
+   "lengthMeters": 300,
+   "metallic": 0.45,
+   "bcMaps": {
+    "M_C_Vakor_C": {
+     "bc": "textures/C_Vakor_C_basecolor.png",
+     "e": "textures/C_Vakor_C_emissive.png"
+    },
+    "M_C_Vakor_B": {
+     "bc": "textures/C_Vakor_B_basecolor.png",
+     "e": "textures/C_Vakor_B_emissive.png"
+    }
+   },
+   "bcShip": "CardOutpost",
+   "sockets": [
+    [
+     "WPN_Beam_01",
+     0.2912,
+     -0.2102,
+     0.1889
+    ],
+    [
+     "WPN_Beam_02",
+     -0.1102,
+     -0.341,
+     0.1883
+    ],
+    [
+     "WPN_Beam_03",
+     -0.3576,
+     -0.001,
+     0.1882
+    ],
+    [
+     "WPN_Beam_04",
+     -0.1093,
+     0.3413,
+     0.1883
+    ],
+    [
+     "WPN_Beam_05",
+     0.2912,
+     0.2113,
+     0.1882
+    ],
+    [
+     "WPN_Pulse_01",
+     0.3193,
+     -0.2307,
+     0.1365
+    ],
+    [
+     "WPN_Pulse_02",
+     -0.1217,
+     -0.374,
+     0.1353
+    ],
+    [
+     "WPN_Pulse_03",
+     -0.3922,
+     -0.0014,
+     0.1359
+    ],
+    [
+     "WPN_Pulse_04",
+     -0.1193,
+     0.3744,
+     0.136
+    ],
+    [
+     "WPN_Pulse_05",
+     0.3191,
+     0.2316,
+     0.1359
+    ]
+   ]
+  },
+  {
+   "key": "ship.car.platform",
+   "source": "bc/OrbitalWeaponsPlatform/SM_OrbitalWeaponsPlatform.fbx",
+   "forward": "+X",
+   "up": "+Z",
+   "lengthMeters": 50,
+   "metallic": 0.45,
+   "bcMaps": {
+    "M_Owp": {
+     "bc": "textures/OWP_basecolor.png",
+     "e": "textures/OWP_emissive.png"
+    }
+   },
+   "bcShip": "OrbitalWeaponsPlatform",
+   "sockets": [
+    [
+     "ENG_01",
+     -0.4203,
+     0.8373,
+     -0.5322
+    ],
+    [
+     "ENG_02",
+     -0.4221,
+     -0.8143,
+     -0.5379
+    ],
+    [
+     "ENG_03",
+     -0.4233,
+     -0.0014,
+     0.8611
+    ],
+    [
+     "WPN_Beam_01",
+     0.4776,
+     -0.7146,
+     -0.5475
+    ],
+    [
+     "WPN_Beam_02",
+     0.493,
+     -0.0059,
+     0.7005
+    ],
+    [
+     "WPN_Beam_03",
+     0.4776,
+     0.7182,
+     -0.5475
+    ],
+    [
+     "WPN_Beam_04",
+     -0.493,
+     -0.0059,
+     -0.717
+    ],
+    [
+     "WPN_Beam_05",
+     -0.493,
+     0.4871,
+     0.1458
+    ],
+    [
+     "WPN_Beam_06",
+     -0.493,
+     -0.4989,
+     0.1458
+    ],
+    [
+     "WPN_Torp_01",
+     0.077,
+     -0.0059,
+     -0.1315
+    ],
+    [
+     "WPN_Torp_02",
+     -0.1387,
+     -0.0059,
+     -0.1315
+    ]
+   ]
+  },
+  {
+   "key": "ship.fer.dkora",
+   "source": "bc/Marauder/SM_Marauder.fbx",
+   "forward": "+X",
+   "up": "+Z",
+   "lengthMeters": 350,
+   "metallic": 0.55,
+   "bcMaps": {
+    "M_marauder": {
+     "bc": "textures/marauder_basecolor.png",
+     "e": "textures/marauder_emissive.png"
+    }
+   },
+   "bcShip": "Marauder",
+   "sockets": [
+    [
+     "ENG_01",
+     -0.4459,
+     0.1951,
+     -0.0557
+    ],
+    [
+     "ENG_02",
+     -0.4459,
+     -0.1951,
+     -0.0557
+    ],
+    [
+     "ENG_03",
+     -0.203,
+     0.3933,
+     -0.092
+    ],
+    [
+     "ENG_04",
+     -0.1977,
+     -0.3974,
+     -0.092
+    ],
+    [
+     "WPN_Pulse_01",
+     0.1365,
+     0.3914,
+     -0.0926
+    ],
+    [
+     "WPN_Pulse_02",
+     0.1389,
+     -0.3918,
+     -0.0928
+    ],
+    [
+     "WPN_Beam_01",
+     -0.1115,
+     0.2787,
+     0.0446
+    ],
+    [
+     "WPN_Beam_02",
+     -0.1115,
+     -0.2787,
+     0.0446
+    ],
+    [
+     "WPN_Beam_03",
+     -0.4598,
+     -0.0,
+     0.0
+    ],
+    [
+     "WPN_Beam_04",
+     0.0,
+     -0.0,
+     -0.078
+    ],
+    [
+     "WPN_Torp_01",
+     -0.1254,
+     -0.0,
+     0.0864
+    ]
+   ]
+  },
+  {
+   "key": "ship.fer.nagus",
+   "source": "bc/Marauder/SM_Marauder.fbx",
+   "forward": "+X",
+   "up": "+Z",
+   "lengthMeters": 520,
+   "metallic": 0.55,
+   "bcMaps": {
+    "M_marauder": {
+     "bc": "textures/marauder_basecolor.png",
+     "e": "textures/marauder_emissive.png"
+    }
+   },
+   "bcShip": "Marauder",
+   "bcTint": [
+    0.85,
+    1.05,
+    0.8
+   ],
+   "variant": {
+    "proportions": [
+     1.0,
+     1.1,
+     1.12
+    ],
+    "modules": [
+     {
+      "from": [
+       -0.5,
+       -0.18
+      ],
+      "scale": 0.58,
+      "offset": [
+       0.08,
+       0.22,
+       -0.03
+      ],
+      "mirror": true
+     }
+    ]
+   },
+   "sockets": [
+    [
+     "ENG_01",
+     -0.4459,
+     0.1951,
+     -0.0557
+    ],
+    [
+     "ENG_02",
+     -0.4459,
+     -0.1951,
+     -0.0557
+    ],
+    [
+     "ENG_03",
+     -0.203,
+     0.3933,
+     -0.092
+    ],
+    [
+     "ENG_04",
+     -0.1977,
+     -0.3974,
+     -0.092
+    ],
+    [
+     "WPN_Pulse_01",
+     0.1365,
+     0.3914,
+     -0.0926
+    ],
+    [
+     "WPN_Pulse_02",
+     0.1389,
+     -0.3918,
+     -0.0928
+    ],
+    [
+     "WPN_Beam_01",
+     -0.1115,
+     0.2787,
+     0.0446
+    ],
+    [
+     "WPN_Beam_02",
+     -0.1115,
+     -0.2787,
+     0.0446
+    ],
+    [
+     "WPN_Beam_03",
+     -0.4598,
+     -0.0,
+     0.0
+    ],
+    [
+     "WPN_Beam_04",
+     0.0,
+     -0.0,
+     -0.078
+    ],
+    [
+     "WPN_Torp_01",
+     -0.1254,
+     -0.0,
+     0.0864
+    ]
+   ]
+  }
  ]
 }

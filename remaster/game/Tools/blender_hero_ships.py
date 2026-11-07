@@ -4,7 +4,8 @@
                                                                      [--gltf [--gltf-lods 0]]
 
 Reads ArtSource/HeroShips/hero-ships.json; sources come from LocalAssets/incoming (gitignored). For each ship:
-  1. Imports the source (glTF, or OBJ with the axes given in objAxes), drops cameras/lights/empties, joins all parts.
+  1. Imports the source (glTF, FBX, or OBJ with the axes given in objAxes), drops cameras/lights/empties, joins all
+     parts. Bridge Commander sources (staged by Tools/stage_bc_heroes.py) get their slots rebuilt from "bcMaps".
   2. Orients it so the named forward axis becomes the nose (+X) and the named up axis the top (+Z), centres it on
      its bounds and scales it to canon length in metres (the procedural hulls' convention).
   3. Cleans it (merges coincident vertices, drops loose ones) and decimates to maxTriangles when above it.
@@ -342,6 +343,36 @@ def build_textures(slot, src, out_dir, stem, metallic, tint=None):
             # which read as flat stickers at full strength. The importer dims the slot by it.
             files["eCoverage"] = round(float((e.max(axis=-1) > 0.15).mean()), 4)
     return files
+
+
+def apply_bc_maps(hull, ship):
+    """Bridge Commander sources (Tools/stage_bc_heroes.py): the converted FBX carries no texture links, so each slot is
+    rebuilt from the staged maps, {material name: {"bc": file, "e": file}} relative to the source's folder. BC keeps a
+    glow mask or gloss in the base colour's alpha; build_textures reads RGB only, so it never turns into holes."""
+    maps = ship.get("bcMaps")
+    if not maps:
+        return
+    folder = os.path.dirname(os.path.join(INCOMING, ship["source"]))
+    for mat in hull.data.materials:
+        m = maps.get(mat.name) if mat else None
+        if m is None and mat:
+            m = maps.get(mat.name.split(".")[0])
+        if not m:
+            continue
+        mat.use_nodes = True
+        nt = mat.node_tree
+        nt.nodes.clear()
+        out = nt.nodes.new("ShaderNodeOutputMaterial")
+        bsdf = nt.nodes.new("ShaderNodeBsdfPrincipled")
+        nt.links.new(bsdf.outputs[0], out.inputs["Surface"])
+        for kind, socket in (("bc", "Base Color"), ("e", "Emission Color")):
+            if not m.get(kind):
+                continue
+            tex = nt.nodes.new("ShaderNodeTexImage")
+            tex.image = bpy.data.images.load(os.path.join(folder, m[kind]), check_existing=True)
+            nt.links.new(tex.outputs["Color"], bsdf.inputs[socket])
+        if m.get("e"):
+            bsdf.inputs["Emission Strength"].default_value = 1.0
 
 
 def merge_slots(hull):
@@ -827,6 +858,7 @@ def build(ship, defaults, preview_dir, gltf=False, gltf_lods=True):
     out_dir = os.path.join(OUT_ROOT, key)
     os.makedirs(out_dir, exist_ok=True)
     hull = import_source(ship)
+    apply_bc_maps(hull, ship)
     orient_and_scale(hull, ship)
     apply_variant(hull, ship)
     tris_in = clean(hull, ship.get("maxTriangles", defaults["maxTriangles"]))

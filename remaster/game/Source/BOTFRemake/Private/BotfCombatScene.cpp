@@ -439,7 +439,7 @@ void ABotfCombatScene::ConfigureTitleScene(int EmpireId)
         if (Registry)
         {
             const auto Resolution = Registry->GetCatalog().resolve(TCHAR_TO_UTF8(*Key));
-            LengthMeters = Resolution.targetLengthMeters;
+            LengthMeters = botf::assets::classLengthMeters(Resolution);
             if (!Resolution.placeholder && Resolution.resolvedKey == Resolution.requestedKey)
                 Mesh = Cast<UStaticMesh>(FSoftObjectPath(UTF8_TO_TCHAR(Resolution.primaryPath().c_str())).TryLoad());
         }
@@ -448,6 +448,12 @@ void ABotfCombatScene::ConfigureTitleScene(int EmpireId)
             const FString Path = UTF8_TO_TCHAR(botf::assets::generatedShipPath(TCHAR_TO_UTF8(*Key)).c_str());
             if (!Path.IsEmpty() && FPackageName::DoesPackageExist(FSoftObjectPath(Path).GetLongPackageName()))
                 Mesh = Cast<UStaticMesh>(FSoftObjectPath(Path).TryLoad());
+            // The generated hull is built at the class's own length; it beats a fallback's length.
+            if (Mesh && Registry)
+            {
+                const auto Resolution = Registry->GetCatalog().resolve(TCHAR_TO_UTF8(*Key));
+                LengthMeters = botf::assets::classLengthMeters(Resolution, Mesh->GetBounds().BoxExtent.GetMax() * 2.0 / 100.0);
+            }
         }
         if (Mesh)
         {
@@ -697,20 +703,25 @@ void ABotfCombatScene::ApplyShipMesh(int VisualIndex, int ReferenceShipId, int O
         // Without a local model the chain ends at a generic faction placeholder (study.<fac> or built-in); keep the
         // scene's own placeholder then (it may be a better community mesh, e.g. the Federation franger).
         const auto Resolution = Registry->GetCatalog().resolveShip(ReferenceShipId, OwnerFaction);
+        // The class's procedural hull (Build-GeneratedArt.ps1, /Game/Generated) is built at the class's own length, so
+        // it sizes the class when the manifest gives the class no length of its own.
+        UStaticMesh* GeneratedMesh = nullptr;
+        const FString Generated = UTF8_TO_TCHAR(botf::assets::generatedShipPath(Resolution.requestedKey).c_str());
+        if (!Generated.IsEmpty() && FPackageName::DoesPackageExist(FSoftObjectPath(Generated).GetLongPackageName()))
+            GeneratedMesh = Cast<UStaticMesh>(FSoftObjectPath(Generated).TryLoad());
+        const double SpecMeters = GeneratedMesh
+            ? GeneratedMesh->GetBounds().BoxExtent.GetMax() * 2.0 / 100.0 : 0.0; // Blender metres import as centimetres
         if (!Resolution.placeholder && Resolution.resolvedKey.rfind("study.", 0) != 0)
-            Mesh = Registry->LoadShipMesh(ReferenceShipId, OwnerFaction, LengthMeters, Key);
-        else
         {
-            // No local model: the class's procedural hull when Build-GeneratedArt.ps1 has made it (/Game/Generated).
-            const FString Generated = UTF8_TO_TCHAR(botf::assets::generatedShipPath(Resolution.requestedKey).c_str());
-            if (!Generated.IsEmpty() && FPackageName::DoesPackageExist(FSoftObjectPath(Generated).GetLongPackageName()))
-                Mesh = Cast<UStaticMesh>(FSoftObjectPath(Generated).TryLoad());
-            if (Mesh)
-            {
-                Key = UTF8_TO_TCHAR(Resolution.requestedKey.c_str());
-                LengthMeters = Resolution.targetLengthMeters > 0.0 ? Resolution.targetLengthMeters
-                    : Mesh->GetBounds().BoxExtent.GetMax() * 2.0 / 100.0; // Blender metres import as centimetres
-            }
+            Mesh = Registry->LoadShipMesh(ReferenceShipId, OwnerFaction, LengthMeters, Key);
+            LengthMeters = botf::assets::classLengthMeters(Resolution, SpecMeters);
+        }
+        else if (GeneratedMesh)
+        {
+            // No local model: the class's procedural hull.
+            Mesh = GeneratedMesh;
+            Key = UTF8_TO_TCHAR(Resolution.requestedKey.c_str());
+            LengthMeters = botf::assets::classLengthMeters(Resolution, SpecMeters);
         }
     }
     // Interim art kept from the prototype: Federation destroyers without a local model use the community Ulysses mesh.

@@ -333,6 +333,65 @@ rebuilt from scratch: core CMake, Godot 4.5 with godot-cpp and the Linux extensi
   compare Godot and Unreal side by side.
 - Known: in the starbase drill, formation offsets can put the Oberth inside the Galaxy's bounding sphere.
 
+## PC session 2026-11-07: items 12-14, Bridge Commander heroes, Godot vs Unreal
+
+Checkout: `C:\Users\BiggDogg\Documents\ChatGPT\Game Remakes` (branch `claude/serene-archimedes-nvtcnw`). The old
+`C:\Dev\botf-remake` checkout, with the gitignored `LocalAssets` (the Sketchfab/Trekmeshes hero sources, audio,
+transcripts), was moved off C: on 20 Oct and is gone. Godot-cpp and both DLLs, the UE editor build and the heroes
+were rebuilt from scratch.
+
+- **Item 12 (Unreal).** `Build.bat BOTFRemakeEditor`: succeeded, with the length fix below. Showcase 6v6:
+  47 shots, 154 fps avg, p95 9.4 ms, p99 16.9 ms, max 258 ms (first-use shaders).
+- **Unreal length lookup fixed.** `Catalog::resolve` now also records the requested key's own length
+  (`ownLengthMeters`), and `classLengthMeters(resolution, specMeters)` picks the class's own `targetLengthMeters`,
+  then its generated hull's length, then the fallback chain. A Glantor is no longer its scout fallback's 60 m, nor a
+  Cardassian starbase its platform's 50 m. Used by `ApplyShipMesh`, the title fleet and `LoadShipMesh`.
+  client-logic-tests: 544 checks, 0 failures (3 new).
+- **Item 13 (Godot).** MSVC DLLs rebuilt (template_release and template_debug, VS 18 + Ninja), exported to
+  `remaster/godot/build/`. Tests: core 10/10, UI 85/0, timeline 17/0, scene 0, camera rig 63/0, hero models 0,
+  title fleet 0. `pc_smoke.gd`: 0 failures, galaxy 120 fps, battle rounds 120 fps (vsync cap, 120 Hz display).
+  - First battle round: worst frame 288 ms (was 1.35 s). Later rounds 22-29 ms worst frame.
+  - The opening rounds show our fleet from behind; the CAMERA bar switches modes; the galaxy fills the space left of
+    the inspector; the Starbase drill runs (shots below).
+  - Fix: `BattleScene._process` caps one frame's timeline step at 0.05 s of wall clock (`MAX_FRAME_STEP`). On this PC
+    the first battle frame took 0.14 s, which at 8x skipped 1.1 s of flight in one frame (the scene test's
+    "ship 5 jumped 17.2 units"). A hitch now slows playback instead of teleporting ships.
+  - A stale `.godot/imported` font cache logged `p_font.is_null()`; a re-import cleared it (nothing to commit).
+- **Starbase drill: Oberth inside the Galaxy, fixed.** A probe over three rounds found one pair, the Oberth 2.3
+  units inside the Galaxy's sphere in round 1. The spacing target was right, but it eased at 2.5/s while the ships
+  closed faster. The offsets now grow at `SPACING_PUSH_EASE` 12/s and still relax at 2.5/s. Probe after: 0 pairs.
+- **Item 14: hero ships from the Starhelm Bridge Commander library** (Simon, 7 Nov: "use those, choose the best
+  quality models for each ship needed").
+  - Source: `H:\StarhelmTools\bc-ships` (1,025 converted BC ships: FBX, textures, hardpoints, review renders;
+    Real-ESRGAN 4x maps in `bc-ships-hd` for a few). Ranked per class by triangles and texture pixels, then chosen
+    from the review renders. Choices in `ArtSource/HeroShips/bc-picks.json`.
+  - 33 heroes, up from 16: Federation Galaxy (with 4x maps), Galaxy-X, Sovereign (DS9FX), Defiant, Nebula, Miranda,
+    Ambassador (KM), Excelsior, Nova, Constellation, Oberth, starbase, outpost; Klingon Negh'Var, Vor'cha, K't'inga,
+    K'Vort, Bird-of-Prey (Retro D4), starbase, outpost; Romulan D'deridex, Valdore, Bird-of-Prey, starbase, outpost;
+    Cardassian Galor, Keldon (its own model now, not a Galor variant), Hideki, starbase, outpost, weapons platform;
+    Ferengi D'Kora (Marauder) and Nagus (Marauder variant, greener tint).
+  - Not covered: the 27 BOTF-only classes (Liwi, Rtan, Groumall and the like) have no BC model and keep their
+    procedural hulls. The Ferengi shuttle and pod are dropped: the library has no Ferengi small craft.
+  - `Tools/stage_bc_heroes.py` copies each pick into `LocalAssets/incoming/bc/<id>` (4x maps where they exist),
+    turns the BC hardpoints into sockets (phasers `WPN_Beam_NN`, pulse `WPN_Pulse_NN`, tubes `WPN_Torp_NN`, engine
+    glows `ENG_NN`) and rewrites `hero-ships.json`. `blender_hero_ships.py` rebuilds BC slots from `bcMaps` (BC's
+    alpha gloss/glow mask is ignored, so the hulls are solid).
+  - `blender ... --gltf`: 33/33, `godot-hero-manifest.json` 33 heroes. `test_hero_gltf_manifest.py` 14 OK.
+    `ue_import_hero_ships.py`: 33/33 (one warning: Galaxy-X has an empty slot M00).
+  - Both clients film them: Godot battle and title (with `BOTF_HERO_MANIFEST`), Unreal showcase battle and title.
+  - The earlier Sketchfab heroes' config is in git history (`hero-ships.json` before this commit) if those sources
+    are ever downloaded again.
+- **Godot vs Unreal, 1920x1080, RTX 4090.** The sheet is session-local, not committed (it holds third-party models).
+  | | Godot 4.5 | Unreal 5.8 |
+  |---|---|---|
+  | Battle | Starbase drill 6v4, 120 fps (vsync), worst 22-29 ms, first round 288 ms | showcase 6v6, 154 fps avg, p99 16.9 ms, max 258 ms |
+  | Galaxy | 120 fps, worst 9 ms | in the showcase average |
+  | Look | nebula, gas giant, faction brackets, radar | black starfield: the generated environment art is gitignored and not rebuilt (item 11) |
+  - The battles differ: Godot's is the Starbase drill; Unreal's showcase uses its own 6v6. Same camera modes (overview,
+    chase, ship, target, top-down, cinematic, free zoom).
+- **Open.** Unreal environment art needs `Build-GeneratedArt.ps1` (item 11). The local audio (voice plan) is lost
+  with `C:\Dev`: item 3 needs a rerun. Godot's first-battle hitch is still about 0.3 s.
+
 ## PC session 2026-09-29: Godot (Windows 11, RTX 4090)
 
 The cloud's Godot 4.5 client, built natively on Windows and run for the first time here. The mingw DLL was not needed.

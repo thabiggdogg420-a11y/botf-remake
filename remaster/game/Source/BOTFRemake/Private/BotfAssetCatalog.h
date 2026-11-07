@@ -190,7 +190,8 @@ struct Resolution {
     std::string resolvedKey;              // Empty when nothing in the chain resolved (placeholder).
     std::vector<std::string> objectPaths; // Every variant (voice lines have several).
     std::vector<std::string> chain;       // Keys visited, requested first.
-    double targetLengthMeters = 0.0;      // Canon length of the requested class when known, else of the resolved one.
+    double targetLengthMeters = 0.0;      // First length along the chain: the requested class's when known, else a fallback's.
+    double ownLengthMeters = 0.0;         // The requested key's own targetLengthMeters (0 = its entry carries none).
     bool placeholder = true;
     std::string factionPrefix;            // For the built-in placeholder.
 
@@ -199,6 +200,15 @@ struct Resolution {
         return objectPaths.empty() ? empty : objectPaths.front();
     }
 };
+
+// Canon length of the requested class: its own targetLengthMeters, else its own generated hull's length (specMeters,
+// 0 = no generated hull), else the first length along the fallback chain. A fallback's length must not size another
+// class: a Glantor (500 m) would take its scout fallback's 60 m, a Cardassian starbase its platform's 50 m.
+inline double classLengthMeters(const Resolution& r, double specMeters = 0.0) {
+    if (r.ownLengthMeters > 0.0) return r.ownLengthMeters;
+    if (specMeters > 0.0) return specMeters;
+    return r.targetLengthMeters;
+}
 
 // Object path of the ueAsset string: "/Game/X/Name" becomes "/Game/X/Name.Name"; full paths are kept.
 inline std::string normaliseObjectPath(const std::string& path) {
@@ -276,6 +286,7 @@ public:
                 continue;
             }
             if (out.targetLengthMeters <= 0.0 && e->targetLengthMeters > 0.0) out.targetLengthMeters = e->targetLengthMeters;
+            if (current == key) out.ownLengthMeters = e->targetLengthMeters;
             if (e->usable()) {
                 out.resolvedKey = e->key;
                 out.objectPaths = e->objectPaths;

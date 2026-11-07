@@ -61,7 +61,7 @@ FSoftObjectPath UBotfAssetRegistry::ResolvePath(const FString& Key) const
 UStaticMesh* UBotfAssetRegistry::LoadShipMesh(int32 ReferenceShipId, int32 OwnerFaction, double& OutLengthMeters, FString& OutKey) const
 {
     const auto Result = Catalog.resolveShip(ReferenceShipId, OwnerFaction);
-    OutLengthMeters = Result.targetLengthMeters;
+    OutLengthMeters = botf::assets::classLengthMeters(Result);
     OutKey = ToFString(Result.resolvedKey.empty() ? Result.requestedKey : Result.resolvedKey);
     UStaticMesh* Mesh = nullptr;
     if (!Result.primaryPath().empty())

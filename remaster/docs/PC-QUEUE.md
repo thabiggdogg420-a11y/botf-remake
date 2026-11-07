@@ -61,17 +61,21 @@ Status markers: `[ ]` pending, `[x]` done (paste the result or log into the PR/s
 9. [ ] **Unreal Insights profile of a 24-v-24 battle** (`Run-Showcase.ps1` plus `-trace=cpu,gpu,frame`); record the top costs in HANDOFF.md.
 10. [x] **Merge the Slate UI redesign** from `claude/ui-redesign` after review of its showcase screenshots. Already merged: `origin/claude/ui-redesign` is an ancestor of the working branch (checked 2026-09-30).
 11. [ ] **Fresh-clone check:** run `game\Build-GeneratedArt.ps1` on a clean checkout (needs Python with numpy and Pillow, and Blender 5.x). The generated art is gitignored.
-12. [ ] **Unreal rebuild after the 7 Nov cloud fix** (`f3d62df`). `ShipTrack::small` is now `smallCraft` in
+12. [x] Done 2026-11-07: editor build succeeded (with the class-length fix); showcase 6v6 47 shots, 154 fps avg. HANDOFF.md "PC session 2026-11-07".
+    **Unreal rebuild after the 7 Nov cloud fix** (`f3d62df`). `ShipTrack::small` is now `smallCraft` in
     `BotfCombatTimeline.h` (it clashed with the Windows `small` macro). Run `Build.bat BOTFRemakeEditor` and
     `Run-Showcase.ps1`. Nothing else in `game/Source` changed.
-13. [ ] **Godot rebuild and smoke run after the 7 Nov cloud fixes** (`f1050f3`). Rebuild the MSVC DLLs (the core
+13. [x] Done 2026-11-07: DLLs rebuilt, exported, all suites green, `pc_smoke.gd` 0 failures at 120 fps; first round 288 ms worst frame (was 1.35 s); frame-step cap and the Oberth spacing fix added.
+    **Godot rebuild and smoke run after the 7 Nov cloud fixes** (`f1050f3`). Rebuild the MSVC DLLs (the core
     gained real star names on 30 Sep), re-export, and rerun `tools/pc_smoke.gd`. Check by hand:
     - the first battle round no longer freezes;
     - the opening rounds show our fleet from behind, not specks;
     - the CAMERA button and C switch between cinematic and free;
     - the galaxy opens filling the space left of the inspector;
     - the new Starbase drill on the title screen.
-14. [ ] **Hero ships as glTF for the Godot build, and the live title menu** (cloud, 7 Nov). Needs the hero sources in
+14. [x] Done 2026-11-07 with Bridge Commander models from the Starhelm library (the old sources were lost with C:\Dev):
+    `python Tools\stage_bc_heroes.py`, then the Blender command below; 33/33 heroes in Godot and Unreal.
+    **Hero ships as glTF for the Godot build, and the live title menu** (cloud, 7 Nov). Needs the hero sources in
     `LocalAssets/incoming` (item 4) and Blender 5.x.
     - Regenerate with the glTF output (the FBX, textures and `hero.json` come out exactly as before):
       `blender -b --factory-startup --python remaster\game\Tools\blender_hero_ships.py -- --gltf`
@@ -91,6 +95,10 @@ Status markers: `[ ]` pending, `[x]` done (paste the result or log into the PR/s
     - Title: `SHOT_FULL=1 godot --path remaster\godot --resolution 1920x1080 -s res://scenes/ui/tools/screenshot.gd -- <out> title`
       with `BOTF_TITLE_EMPIRE` = 1..5 set; compare with `pc-screens/title-menu-live.png`. The title films the hero
       models when they are local, else the procedural hulls. Report the title frame rate on the PC.
+
+15. [ ] **Rebuild what was lost with C:\Dev** (moved off C: 20 Oct, since deleted): the original BOTF audio and
+    transcripts (item 3), the online audio downloads (item 2), and the generated environment art (item 11), which
+    leaves the Unreal battle on a black starfield.
 
 ## Blocked cloud work (waiting on the items above)
 

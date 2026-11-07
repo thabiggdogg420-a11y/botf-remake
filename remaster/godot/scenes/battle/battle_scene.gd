@@ -19,11 +19,13 @@ signal ship_picked(ship_id: int) ## A ship clicked in the view (BattleCamera); t
 ## World units per tactical cell. Ships are drawn at true scale against it (BattleShip.display_length): Unreal's
 ## CellUnits doubled to 170 with the true-scale hulls, so this doubled from 14 with them (a Galaxy spans 1.3 cells).
 const CELL := 28.0
-const SPACING_EASE := 2.5       ## 1/s: how fast the presentation spacing offsets follow their target.
+const SPACING_EASE := 2.5       ## 1/s: how fast the presentation spacing offsets relax toward a smaller target.
+const SPACING_PUSH_EASE := 12.0 ## 1/s: how fast they grow when hulls close in (no ship passes through another).
 ## Each round's timeline starts a ship at its home height, and a wing joined at the round start puts it on station;
 ## the pose it was last shown at eases into the new one over this long, so nothing jumps between rounds.
 const ROUND_JOIN_SECONDS := 1.5
 const FINISH_TAIL := 0.6        ## Seconds after the last job before round_finished.
+const MAX_FRAME_STEP := 0.05    ## Longest wall-clock step one frame may advance the timeline (a 20 fps floor).
 
 @export var round_seconds := 6.0
 @export var playback_speed := 1.0
@@ -168,7 +170,8 @@ static func pose_basis(facing: float, pitch: float, bank: float) -> Basis:
 func _process(delta: float) -> void:
 	if timeline == null:
 		return
-	var dt := delta * playback_speed
+	# A hitch (first-use shader compile, a model load) must slow playback, not teleport ships across the arena.
+	var dt := minf(delta, MAX_FRAME_STEP) * playback_speed
 	if _playing:
 		time += dt
 		_fire_cues()
@@ -243,13 +246,17 @@ func _update_spacing(t: float, delta: float, poses: Dictionary) -> void:
 		tracks.append(track)
 	var offsets := BattleTimeline.spacing_offsets(bodies)
 	var ease := 1.0 if delta <= 0.0 else 1.0 - exp(-SPACING_EASE * delta)
+	# Ships closing on each other mid-maneuver need the push at once (a slow ease let an Oberth pass through a Galaxy
+	# in the starbase drill); a push that is no longer needed relaxes at the gentle rate.
+	var push := 1.0 if delta <= 0.0 else 1.0 - exp(-SPACING_PUSH_EASE * delta)
 	for k in tracks.size():
 		if not bodies[k].active:
 			continue
 		var ship: BattleShip = _ships[tracks[k].fleet_id]
 		var o: Vector3 = offsets[k] * formation_spread
 		var target := Vector3(o.x, o.z, o.y) * CELL # plane x -> world x, altitude -> y, plane y -> z
-		ship.spacing = ship.spacing.lerp(target, 0.0 if delta <= 0.0 and ship.spacing != Vector3.ZERO else ease)
+		var rate := push if target.length() > ship.spacing.length() + 0.01 else ease
+		ship.spacing = ship.spacing.lerp(target, 0.0 if delta <= 0.0 and ship.spacing != Vector3.ZERO else rate)
 
 
 func _fire_cues() -> void:

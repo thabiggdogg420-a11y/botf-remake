@@ -92,6 +92,8 @@ static const char* ResolvedSample = R"({
   "ship.kli.vorcha": {"kind": "model", "status": "missing", "fallback": "ship.kli.neghvar"},
   "ship.kli.neghvar": {"kind": "model", "status": "missing", "fallback": "ship.kli.vorcha"},
   "ship.rom.x": {"kind": "model", "status": "resolved", "ueAssets": [], "fallback": null},
+  "ship.fer.glantor": {"kind": "model", "status": "missing", "fallback": "ship.fer.scout"},
+  "ship.fer.scout": {"kind": "model", "status": "missing", "targetLengthMeters": 60, "fallback": null},
   "weapon.Disruptor": {"kind": "sfx", "status": "resolved", "ueAssets": ["/Game/Local/Audio/Weapons/Disruptor/a.a"], "fallback": "weapon.generic.beam"},
   "weapon.generic.beam": {"kind": "sfx", "status": "missing", "fallback": null},
   "vo.advisor.fed": {"kind": "voice", "status": "resolved", "ueAssets": ["/Game/Local/Audio/Voice/advisor_fed/l1.l1", "/Game/Local/Audio/Voice/advisor_fed/l2.l2"], "fallback": null},
@@ -103,12 +105,16 @@ static void testCatalog() {
     assets::Catalog c;
     std::string err;
     EXPECT(c.loadFromJson(ResolvedSample, &err));
-    EXPECT(c.size() == 12);
+    EXPECT(c.size() == 14);
     auto r = c.resolve("ship.fed.galaxy");
     EXPECT(!r.placeholder && r.resolvedKey == "ship.fed.galaxy" && r.primaryPath() == "/Game/Local/Ships/fed/galaxy/ship_fed_galaxy.ship_fed_galaxy");
     EXPECT(r.targetLengthMeters == 642);
     r = c.resolve("ship.fed.galaxy_x");
     EXPECT(r.resolvedKey == "ship.fed.galaxy" && r.targetLengthMeters == 700 && r.chain.size() == 2);
+    EXPECT(r.ownLengthMeters == 700 && assets::classLengthMeters(r, 999.0) == 700); // its own length wins
+    r = c.resolve("ship.fer.glantor"); // no length of its own: the generated hull's length beats the scout's 60 m
+    EXPECT(r.ownLengthMeters == 0.0 && r.targetLengthMeters == 60.0);
+    EXPECT(assets::classLengthMeters(r, 500.0) == 500.0 && assets::classLengthMeters(r) == 60.0);
     r = c.resolve("ship.fed.nx"); // excelsior failed to convert -> in-repo study mesh
     EXPECT(r.resolvedKey == "study.fed" && r.primaryPath() == "/Game/Presentation/Federation/StaticMeshes/Federation.Federation");
     r = c.resolve("ship.kli.vorcha"); // cycle stops, placeholder
