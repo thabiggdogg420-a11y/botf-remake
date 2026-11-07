@@ -2362,8 +2362,9 @@ void addDrillShips(botf::GameState& s, int owner, int x, int y, int count) {
         const int tb = *std::max_element(b->technologyRequirements.begin(), b->technologyRequirements.end());
         return ta != tb ? ta < tb : a->id < b->id;
     });
-    for (int i = 0; i < count && i < static_cast<int>(picks.size()); ++i) {
-        const auto& r = *picks[static_cast<std::size_t>(i)];
+    // Past the race's armed classes the list repeats, so large drills (up to 24 a side) stay mixed.
+    for (int i = 0; i < count && !picks.empty(); ++i) {
+        const auto& r = *picks[static_cast<std::size_t>(i) % picks.size()];
         botf::Fleet f;
         f.id = s.nextFleetId++; f.ownerId = owner; f.x = f.targetX = x; f.y = f.targetY = y;
         f.shipClass = botf::Building::Destroyer; f.referenceShipId = r.id;
@@ -2386,7 +2387,8 @@ botf::Station makeStation(const botf::GameState& s, int owner, int x, int y, bot
     return st;
 }
 
-void newBattleDrill(bool withStation) {
+void newBattleDrill(bool withStation, int shipsPerSide = 3) {
+    shipsPerSide = std::clamp(shipsPerSide, 1, 24);
     auto s = botf::generateReferenceCampaign(1999);
     // The station variant plays under the Remastered preset, where outposts and starbases fight.
     if (withStation) botf::applyRulesetPreset(s, botf::RulesetPreset::Remastered);
@@ -2403,8 +2405,8 @@ void newBattleDrill(bool withStation) {
     s.majorRelations[0].contact = true;
     // Extra squadrons, validated by the core; fall back to the plain fixture if it rejects them.
     auto armed = s;
-    addDrillShips(armed, s.playerEmpire, sol.x, sol.y, 3);
-    addDrillShips(armed, foe, sol.x, sol.y, 3);
+    addDrillShips(armed, s.playerEmpire, sol.x, sol.y, shipsPerSide);
+    addDrillShips(armed, foe, sol.x, sol.y, shipsPerSide);
     try { botf::validate(armed); s = std::move(armed); } catch (...) { botf::validate(s); }
     if (withStation) {
         // Sol's starbase joins the defence as an immobile combatant (fleet id StationCombatantBase + id).
@@ -2700,7 +2702,7 @@ std::string dispatch(const std::string& method, const Value& a) {
     if (method == "meta") writeMeta(w);
     else if (method == "encyclopedia") writeEncyclopedia(w);
     else if (method == "newCampaign") { newCampaign(a); writeView(w); }
-    else if (method == "newBattleDrill") { newBattleDrill(a.getBool("station")); writeView(w); }
+    else if (method == "newBattleDrill") { newBattleDrill(a.getBool("station"), a.getInt("ships", 3)); writeView(w); }
     else if (method == "newFrontierDrill") { newFrontierDrill(); writeView(w); }
     else if (method == "station") writeStationDetail(w, a.getInt("stationId"));
     else if (method == "newDiplomacyDrill") { newDiplomacyDrill(); writeView(w); }

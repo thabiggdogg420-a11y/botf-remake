@@ -86,7 +86,11 @@ func _prepare(s: String) -> void:
 			app.end_turn()
 		"battle-r1", "battle-r3":
 			# Starbase drill (Remastered rules 3): take command and resolve rounds, then let the 3D view play.
-			app.start_drill("newBattleDrill", "Starbase drill", {"station": true})
+			# SHOT_DRILL_SHIPS sets the ships a side (default 3, max 24) for the large-battle shots.
+			var drill := {"station": true}
+			if OS.get_environment("SHOT_DRILL_SHIPS") != "":
+				drill["ships"] = int(OS.get_environment("SHOT_DRILL_SHIPS"))
+			app.start_drill("newBattleDrill", "Starbase drill", drill)
 			app.end_turn()
 			await _wait(4)
 			app.close_all_modals() # the deferred "Enemy contact" choice; Take command

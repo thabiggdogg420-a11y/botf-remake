@@ -78,7 +78,7 @@ if (-not $SkipUnreal) {
     foreach ($script in 'ue_build_environment.py', 'ue_import_generated_ships.py', 'ue_build_vfx.py') {
         $log = Join-Path $logDir ($script -replace '\.py$', '.log')
         Invoke-Step "Unreal: $script" {
-            & $cmd $project -run=pythonscript "-script=$(Join-Path $tools $script)" -unattended -nosplash -nullrhi *> $log
+            & $cmd $project -run=pythonscript "-script=$((Join-Path $tools $script) -replace '\\', '/')" -unattended -nosplash -nullrhi *> $log
             $failed = @(Select-String -LiteralPath $log -Pattern 'Traceback|Python script executed with errors|Missing .* input')
             if ($failed.Count) { $failed | Select-Object -First 5 | ForEach-Object { Write-Host "   $($_.Line)" }; throw "$script reported errors (see $log)" }
         }
