@@ -1,6 +1,7 @@
 """Blender (5.x, headless): turn downloaded base models into game-ready hero ships (private, local only).
 
     blender -b --factory-startup --python blender_hero_ships.py -- [--keys ship.fed.*,ship.kli.bop] [--preview]
+                                                                     [--gltf [--gltf-lods 0]]
 
 Reads ArtSource/HeroShips/hero-ships.json; sources come from LocalAssets/incoming (gitignored). For each ship:
   1. Imports the source (glTF, or OBJ with the axes given in objAxes), drops cameras/lights/empties, joins all parts.
@@ -16,6 +17,12 @@ Reads ArtSource/HeroShips/hero-ships.json; sources come from LocalAssets/incomin
      config's "sockets" entries ([name, x, y, z] as fractions of the length, nose +X).
   6. Writes LocalAssets/ships/<key>/SM_<slug>.fbx, T_<slug>_<slot>_{BC,N,ORM,E}.png and hero.json (slots, sockets,
      length), plus four preview renders when --preview is given (default C:/Dev/botf-shots/hero).
+  7. With --gltf (off by default; the FBX, textures and hero.json are written exactly as without it), also writes
+     LocalAssets/ships/<key>/SM_<slug>.glb for the Godot build: +X nose, +Y up, metres; the BC/N/ORM/E bakes embedded
+     as glTF PBR materials named like the slots (M00, ...); the plating bake as COLOR_0 ("Col"); the SOCKET_WPN_* /
+     SOCKET_ENG_* empties as nodes; reduced copies SM_<slug>_LOD1..3 (--gltf-lods 0 leaves them out). Each built hero
+     is merged into LocalAssets/ships/godot-hero-manifest.json (key -> glb, canon length, sockets, LODs and the
+     material hints ue_import_hero_ships.py applies; see Tools/hero_gltf_manifest.py).
 Tools/ue_import_hero_ships.py brings the result into /Game/Local and the resolved manifest.
 """
 import fnmatch
@@ -682,7 +689,138 @@ def render_previews(hull, length, key, preview_dir, slot_files, out_dir):
         hull.data.materials[i] = bpy.data.materials[name]
 
 
-def build(ship, defaults, preview_dir):
+# ---------------------------------------------------------------------------------------------------------------
+# glTF for Godot (--gltf)
+# ---------------------------------------------------------------------------------------------------------------
+
+def gltf_output_node(nt):
+    """The "glTF Material Output" group the glTF exporter reads ambient occlusion from."""
+    group = bpy.data.node_groups.get("glTF Material Output")
+    if group is None:
+        group = bpy.data.node_groups.new("glTF Material Output", "ShaderNodeTree")
+        if hasattr(group, "interface"):
+            group.interface.new_socket("Occlusion", in_out="INPUT", socket_type="NodeSocketFloat")
+        else:
+            group.inputs.new("NodeSocketFloat", "Occlusion")
+    node = nt.nodes.new("ShaderNodeGroup")
+    node.node_tree = group
+    return node
+
+
+def gltf_material(slot, out_dir):
+    """A glTF-exportable Principled material for a hero.json slot, named like the slot. Scales and floors stay out of
+    it (the Godot hull material applies them from the manifest hints), so the textures export as baked."""
+    mat = bpy.data.materials.new(slot["name"])
+    mat.use_nodes = True
+    nt = mat.node_tree
+    bsdf = next(n for n in nt.nodes if n.type == "BSDF_PRINCIPLED")
+
+    def tex(fn, colour):
+        node = nt.nodes.new("ShaderNodeTexImage")
+        node.image = bpy.data.images.load(os.path.join(out_dir, fn))
+        node.image.colorspace_settings.name = "sRGB" if colour else "Non-Color"
+        return node
+    if slot.get("plating"):
+        if slot.get("vertexBake"):
+            vcol = nt.nodes.new("ShaderNodeVertexColor")
+            vcol.layer_name = "Col"
+            nt.links.new(vcol.outputs["Color"], bsdf.inputs["Base Color"])
+        else:
+            bsdf.inputs["Base Color"].default_value = (*PLATING_TINT.get(slot["plating"], (0.45, 0.45, 0.48)), 1)
+        bsdf.inputs["Roughness"].default_value = 0.6
+        bsdf.inputs["Metallic"].default_value = 0.35 * slot.get("metallic", 0.45)
+        return mat
+    if slot.get("bc"):
+        nt.links.new(tex(slot["bc"], True).outputs["Color"], bsdf.inputs["Base Color"])
+    else:
+        bsdf.inputs["Base Color"].default_value = (*(slot.get("tint") or (0.6, 0.6, 0.6)), 1)
+    if slot.get("n"):
+        nm = nt.nodes.new("ShaderNodeNormalMap")
+        nt.links.new(tex(slot["n"], False).outputs["Color"], nm.inputs["Color"])
+        nt.links.new(nm.outputs["Normal"], bsdf.inputs["Normal"])
+    if slot.get("orm"):
+        orm = tex(slot["orm"], False)
+        sep = nt.nodes.new("ShaderNodeSeparateColor")
+        nt.links.new(orm.outputs["Color"], sep.inputs["Color"])
+        nt.links.new(sep.outputs["Green"], bsdf.inputs["Roughness"])
+        nt.links.new(sep.outputs["Blue"], bsdf.inputs["Metallic"])
+        nt.links.new(sep.outputs["Red"], gltf_output_node(nt).inputs["Occlusion"])
+    else:
+        bsdf.inputs["Metallic"].default_value = slot.get("metallic", 0.5)
+        bsdf.inputs["Roughness"].default_value = 1.0
+    if slot.get("e"):
+        nt.links.new(tex(slot["e"], True).outputs["Color"], bsdf.inputs["Emission Color"])
+        bsdf.inputs["Emission Strength"].default_value = 1.0
+    return mat
+
+
+def gltf_export_kwargs(**wanted):
+    """Only the options this Blender's glTF exporter has (their names moved between 3.x, 4.x and 5.x)."""
+    try:
+        props = {p.identifier for p in bpy.ops.export_scene.gltf.get_rna_type().properties}
+    except Exception:
+        return wanted
+    return {k: v for k, v in wanted.items() if k in props}
+
+
+def export_gltf(hull, ship, report, slots, out_dir, slug, lods_on):
+    """Writes SM_<slug>.glb next to the FBX (see the module docstring) and returns its godot-hero-manifest.json entry.
+    Runs after the FBX, hero.json and previews are written, so those stay as they are without --gltf."""
+    import shutil
+    sys.path.insert(0, HERE)
+    import hero_gltf_manifest as hgm
+    # The glTF materials replace the bare slot materials; their names (M00, ...) are what the manifest hints key on.
+    for i, slot in enumerate(slots):
+        if i >= len(hull.data.materials):
+            break
+        old = hull.data.materials[i]
+        if old is not None:
+            old.name = old.name + "_fbx"
+        hull.data.materials[i] = gltf_material(slot, out_dir)
+    if "Col" in hull.data.color_attributes:
+        hull.data.color_attributes.active_color = hull.data.color_attributes["Col"]
+    steps = hgm.LOD_STEPS if lods_on else hgm.LOD_STEPS[:1]
+    plan = hgm.lod_plan(slug, tri_count(hull), steps=steps)
+    extra = []
+    for lod in plan[1:]:
+        dup = hull.copy()
+        dup.data = hull.data.copy()
+        dup.name = dup.data.name = lod["node"]
+        bpy.context.scene.collection.objects.link(dup)
+        mod = dup.modifiers.new("Decimate", "DECIMATE")
+        mod.ratio = lod["ratio"]
+        mod.use_collapse_triangulate = True
+        extra.append(dup)
+    # The socket empties stay children of LOD0 only: hull.copy() does not copy children.
+    glb = os.path.join(out_dir, "SM_%s.glb" % slug)
+    bpy.ops.export_scene.gltf(**gltf_export_kwargs(
+        filepath=glb, export_format="GLB", use_selection=False, export_yup=True, export_apply=True,
+        export_texcoords=True, export_normals=True, export_tangents=True, export_materials="EXPORT",
+        export_image_format="AUTO", export_vertex_color="ACTIVE", export_all_vertex_colors=False,
+        export_colors=True, export_attributes=False, export_extras=False, export_cameras=False,
+        export_lights=False, export_animations=False, export_skins=False, export_morph=False))
+    for dup in extra:
+        mesh = dup.data
+        bpy.data.objects.remove(dup, do_unlink=True)
+        bpy.data.meshes.remove(mesh)
+    # The faction plating, when the generated-ship pipeline has made it, travels with the glb for the plated material.
+    plating_files = {}
+    fac = next((s["plating"] for s in slots if s.get("plating")), None)
+    if fac:
+        gen = os.path.join(GAME, "ArtSource", "Generated", "Ships")
+        for kind, stem in (("panels", "T_HullPanels"), ("normal", "T_HullNormal")):
+            for name in ("%s_%s.png" % (stem, fac), stem + ".png"):
+                if os.path.exists(os.path.join(gen, name)):
+                    os.makedirs(os.path.join(OUT_ROOT, "plating"), exist_ok=True)
+                    shutil.copy2(os.path.join(gen, name), os.path.join(OUT_ROOT, "plating", name))
+                    plating_files[kind] = "plating/" + name
+                    break
+    rel = os.path.relpath(glb, OUT_ROOT)
+    print("HERO glTF %s %s (%d LODs)" % (report["key"], rel, len(plan)))
+    return hgm.hero_entry(report, rel, plan, ship.get("bcTint"), plating_files)
+
+
+def build(ship, defaults, preview_dir, gltf=False, gltf_lods=True):
     key = ship["key"]
     fac, slug = key.split(".")[1], key.split(".", 2)[2]
     stem = "T_%s_%s" % (fac, slug)
@@ -731,6 +869,8 @@ def build(ship, defaults, preview_dir):
         json.dump(report, f, indent=1)
     if preview_dir:
         render_previews(hull, length, key, preview_dir, slot_files, out_dir)
+    if gltf:
+        return dict(report, gltf=export_gltf(hull, ship, report, slots, out_dir, slug, gltf_lods))
     return report
 
 
@@ -742,13 +882,18 @@ def main():
     preview_dir = (preview if isinstance(preview, str) else r"C:\Dev\botf-shots\hero") if preview else None
     if preview_dir:
         os.makedirs(preview_dir, exist_ok=True)
+    gltf = bool(arg("--gltf"))
+    gltf_lods = str(arg("--gltf-lods", "1")) not in ("0", "false", "no")
+    gltf_entries = {}
     done = total = 0
     for ship in config["ships"]:
         if pats and not any(fnmatch.fnmatch(ship["key"], p) for p in pats):
             continue
         total += 1
         try:
-            r = build(ship, defaults, preview_dir)
+            r = build(ship, defaults, preview_dir, gltf, gltf_lods)
+            if gltf:
+                gltf_entries[r["key"]] = r["gltf"]
             done += 1
             print("HERO OK  %-22s %7d -> %6d tris  %d slots  %d sockets" % (r["key"], r["trianglesIn"], r["triangles"],
                                                                          len(r["slots"]), len(r["sockets"])))
@@ -757,6 +902,12 @@ def main():
             traceback.print_exc()
             print("HERO ERR %s  %s" % (ship["key"], e))
     print("hero ships %d/%d" % (done, total))
+    if gltf:
+        sys.path.insert(0, HERE)
+        import hero_gltf_manifest as hgm
+        path = os.path.join(OUT_ROOT, hgm.MANIFEST_NAME)
+        data = hgm.merge_manifest(path, gltf_entries)
+        print("HERO glTF manifest %s: %d new, %d heroes" % (path, len(gltf_entries), len(data["heroes"])))
 
 
 main()

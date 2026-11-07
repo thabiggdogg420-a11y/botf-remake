@@ -16,8 +16,12 @@ var is_station := false
 var model: Node3D          ## Holds the hull (scaled to `length`); tumbles and stretches for explosions / warp-outs.
 var shield: MeshInstance3D
 var half_extents := Vector3(0.5, 0.15, 0.3) ## In ship units (after scaling to `length`).
-var sockets: Array[Node3D] = []            ## WPN_* nodes of an imported model.
+var sockets: Array[Node3D] = []            ## WPN_* nodes of an imported model (a hero glb names them SOCKET_WPN_*).
+var engine_sockets: Array[Node3D] = []     ## ENG_* nodes of an imported model.
 var imported := false
+var hero_key := ""                         ## The godot-hero-manifest.json key this ship's model came from.
+var canon_length_m := 0.0                  ## The hero model's canon length in metres (0 for other models).
+var model_scale := 1.0                     ## World units per model unit (metres for a hero glb).
 
 var _meshes: Array[GeometryInstance3D] = []
 var _shield_mat: ShaderMaterial
@@ -51,7 +55,10 @@ func setup(ship: Dictionary, assets: BattleAssets = null) -> void:
 		hull = assets.instantiate_ship(BattleShip.asset_keys_for(ship))
 	if hull != null:
 		imported = true
-		_fit_imported(hull)
+		if hull.has_meta("botf_hero"):
+			_fit_hero(hull)
+		else:
+			_fit_imported(hull)
 	else:
 		hull = ShipFactory.build(owner_id, is_station, ship)
 		hull.scale = Vector3.ONE * length
@@ -66,8 +73,11 @@ func setup(ship: Dictionary, assets: BattleAssets = null) -> void:
 	_cloak_mat.shader = CLOAK_SHADER
 
 
-## Hull length in world units: square-root compressed by hull strength (class size), stations largest.
+## Hull length in world units: square-root compressed by hull strength (class size), stations largest. A ship
+## Dictionary may set "displayLength" (world units) to override it (the title fleet does).
 static func length_for(ship: Dictionary) -> float:
+	if float(ship.get("displayLength", 0.0)) > 0.0:
+		return float(ship.displayLength)
 	var fid := int(ship.get("id", 0))
 	if fid >= 2000000 or int(ship.get("referenceShipId", 0)) < 0 or bool(ship.get("station", false)):
 		return 11.0
@@ -116,9 +126,41 @@ func _fit_imported(hull: Node3D) -> void:
 	var longest := maxf(box.size.x, box.size.z)
 	var s := length / maxf(longest, 1e-3)
 	hull.transform = Transform3D(rot.scaled(Vector3.ONE * s), -(rot * box.get_center()) * s)
-	for n in hull.find_children("WPN_*", "", true, false):
-		if n is Node3D:
+	_collect_sockets(hull)
+
+
+## A hero glb (BattleAssets.instantiate_hero): already nose +X, up +Y, in metres, so it is scaled by its canon length
+## (lengthMeters -> `length` world units) rather than by its bounds, and its WPN_* sockets scale with it.
+func _fit_hero(hull: Node3D) -> void:
+	var hero: Dictionary = hull.get_meta("botf_hero")
+	hero_key = str(hull.get_meta("botf_hero_key", ""))
+	var box := _aabb_of(hull, Transform3D.IDENTITY)
+	canon_length_m = float(hero.get("lengthMeters", 0.0))
+	if canon_length_m <= 0.0:
+		canon_length_m = maxf(box.size.x, 1e-3)
+	model_scale = length / canon_length_m
+	hull.transform = Transform3D(Basis.from_scale(Vector3.ONE * model_scale), -box.get_center() * model_scale)
+	HeroLook.apply(hull, hero, str(hull.get_meta("botf_hero_root", "")))
+	HeroLook.apply_lods(hull, hero, length)
+	_collect_sockets(hull)
+
+
+func _collect_sockets(hull: Node3D) -> void:
+	for n in hull.find_children("*", "Node3D", true, false):
+		var socket := BattleShip.socket_name(str(n.name))
+		if socket.begins_with("WPN_"):
 			sockets.append(n)
+		elif socket.begins_with("ENG_"):
+			engine_sockets.append(n)
+
+
+## A socket node's name without the exporter's prefix: "SOCKET_WPN_Beam_01" (Blender / Unreal convention) and
+## "WPN_Beam_01" both give "WPN_BEAM_01".
+static func socket_name(node_name: String) -> String:
+	var n := node_name.to_upper()
+	if n.begins_with("SOCKET_"):
+		n = n.substr(7)
+	return n
 
 
 func _collect(root: Node) -> void:
@@ -192,7 +234,7 @@ func hardpoint(family: int, mount_index: int, emitter_index: int) -> Vector3:
 	if not sockets.is_empty():
 		var names: Array[String] = []
 		for s in sockets:
-			names.append(str(s.name).to_upper())
+			names.append(BattleShip.socket_name(str(s.name)))
 		var pick := BattleShip.pick_socket(names, family, mount_index, emitter_index)
 		if pick >= 0:
 			return sockets[pick].global_position

@@ -6,12 +6,22 @@ extends RefCounted
 ##
 ## Manifest lookup order: $BOTF_RESOLVED_MANIFEST, <exe dir>/LocalAssets, res://../LocalAssets (remaster/LocalAssets),
 ## res://../game/LocalAssets (where Import-Assets.ps1 writes it).
+##
+## Hero ships (remaster/game/Tools/blender_hero_ships.py --gltf) come from ships/godot-hero-manifest.json beside any of
+## those (or $BOTF_HERO_MANIFEST): a hero glb wins over the resolved manifest's record for its key. Its instance
+## carries meta "botf_hero" (the manifest entry: canon length, sockets, LODs, material hints) and "botf_hero_root".
+
+const HERO_MANIFEST := "godot-hero-manifest.json"
 
 var manifest_path := ""
 var root_dir := ""
 var assets := {}          ## key -> record {status, importFiles, files, fallback, effectiveKey, ...}
 var _scenes := {}         ## key -> PackedScene or null
 var _streams := {}        ## key -> AudioStream or null
+var hero_manifest_path := ""
+var hero_root := ""
+var heroes := {}          ## key -> godot-hero-manifest.json entry {glb, lengthMeters, sockets, lods, slots, ...}
+var _hero_scenes := {}    ## key -> PackedScene or null
 
 
 func _init() -> void:
@@ -19,6 +29,56 @@ func _init() -> void:
 		if FileAccess.file_exists(p):
 			load_manifest(p)
 			break
+	for p in hero_candidate_paths():
+		if FileAccess.file_exists(p) and load_hero_manifest(p):
+			break
+
+
+## Where godot-hero-manifest.json may be: $BOTF_HERO_MANIFEST, then ships/ beside each resolved-manifest location.
+static func hero_candidate_paths() -> PackedStringArray:
+	var out := PackedStringArray()
+	var env := OS.get_environment("BOTF_HERO_MANIFEST")
+	if env != "":
+		out.append(env)
+	for p in candidate_paths():
+		out.append(p.get_base_dir().path_join("ships").path_join(HERO_MANIFEST))
+	return out
+
+
+func load_hero_manifest(path: String) -> bool:
+	var data = JSON.parse_string(FileAccess.get_file_as_string(path))
+	if not (data is Dictionary) or not (data.get("heroes") is Dictionary):
+		return false
+	hero_manifest_path = path
+	hero_root = path.get_base_dir()
+	heroes = data.heroes
+	_hero_scenes.clear()
+	return true
+
+
+## The hero entry for `key` whose glb exists on this machine, or {}.
+func hero(key: String) -> Dictionary:
+	var e = heroes.get(key)
+	if not (e is Dictionary) or hero_glb_path(e) == "":
+		return {}
+	return e
+
+
+func hero_glb_path(entry: Dictionary) -> String:
+	var rel := str(entry.get("glb", "")).replace("\\", "/")
+	if rel == "":
+		return ""
+	var p := rel if rel.is_absolute_path() else hero_root.path_join(rel)
+	return p if FileAccess.file_exists(p) else ""
+
+
+## Canon length in metres of the hero model for the first of `keys` that has one, else 0.
+func hero_length(keys: PackedStringArray) -> float:
+	for key in keys:
+		var e := hero(key)
+		if not e.is_empty():
+			return float(e.get("lengthMeters", 0.0))
+	return 0.0
 
 
 static func candidate_paths() -> PackedStringArray:
@@ -81,8 +141,12 @@ func local_files(rec: Dictionary, exts: PackedStringArray) -> PackedStringArray:
 	return out
 
 
-## A new instance of the first model any of `keys` resolves to, or null.
+## A new instance of the first model any of `keys` resolves to (a hero glb first), or null.
 func instantiate_ship(keys: PackedStringArray) -> Node3D:
+	for key in keys:
+		var h := instantiate_hero(key)
+		if h != null:
+			return h
 	if not has_manifest():
 		return null
 	for key in keys:
@@ -100,6 +164,25 @@ func instantiate_ship(keys: PackedStringArray) -> Node3D:
 				_scenes[key] = scene
 				return scene.instantiate()
 	return null
+
+
+## A new instance of the hero glb for `key` (meta botf_hero / botf_hero_key / botf_hero_root), or null.
+func instantiate_hero(key: String) -> Node3D:
+	if not _hero_scenes.has(key):
+		_hero_scenes[key] = null
+		var e := hero(key)
+		if not e.is_empty():
+			_hero_scenes[key] = _load_model(hero_glb_path(e))
+			if _hero_scenes[key] == null:
+				push_warning("BattleAssets: hero %s glb did not load (%s)" % [key, hero_glb_path(e)])
+	var packed: PackedScene = _hero_scenes[key]
+	if packed == null:
+		return null
+	var node: Node3D = packed.instantiate()
+	node.set_meta("botf_hero", heroes[key])
+	node.set_meta("botf_hero_key", key)
+	node.set_meta("botf_hero_root", hero_root)
+	return node
 
 
 static func _load_model(path: String) -> PackedScene:
