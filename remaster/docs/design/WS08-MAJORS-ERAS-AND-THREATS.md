@@ -19,10 +19,10 @@ Mods and Remakes:
 
 ## 2. Modern Target
 
-Folding Simon's explicit decision (§7 of `MASTER-PLAN.md`): The Dominion is fully playable as a **sixth major power**.
+Folding Simon's explicit decision (§7 of `docs/MASTER-PLAN.md`): The Dominion is fully playable as a **sixth major power**.
 
 1. **Playable Dominion (6th Major Empire):**
-   - *Leadership & Government:* Ruled by the Founders from the Great Link homeworld, administered by cloned Vorta diplomats, defended by genetically engineered Jem'Hadar shock troops (`ShipRosterData.h`, `Diplomacy.h:personalityForEmpire`).
+   - *Leadership & Government:* Ruled by the Founders from the Great Link homeworld, administered by cloned Vorta diplomats, defended by genetically engineered Jem'Hadar shock troops (`remaster/data/base/roster.json`, `Diplomacy.h:416-440`, `ShipRoster.h:25`).
    - *Ketracel-White Resource Mechanic:* Dominion capital ships and ground regiments consume Ketracel-White produced by specialized pharmaceutical facilities. Shortages cause Jem'Hadar mutiny, severe accuracy penalties, and loss of command cohesion.
    - *Jem'Hadar Cloning Yards:* Ground troops and crew replacements train at 3x standard speed with zero morale degradation.
    - *Infiltration Espionage:* Founders can infiltrate rival governments, generating false intelligence reports and triggering civil unrest.
@@ -35,7 +35,7 @@ Folding Simon's explicit decision (§7 of `MASTER-PLAN.md`): The Dominion is ful
      - *Post-Nemesis (Early 25th Century):* Advanced transwarp tech, Prometheus multi-vector assault, ablative armor.
 3. **Tunable Galactic Threats:**
    - *Threat Level Selector:* Configurable at campaign start: *Disabled*, *Normal*, *Apocalypse*.
-   - *Borg Incursions:* Autonomous hostile actor. Spawns tactical Borg Cubes and Spheres that assimilate colonies, absorb defeated starship weapon technology, and adapt shields against repeated beam frequencies (`GalacticEvents.cpp:320-370`).
+   - *Borg Incursions:* Autonomous hostile actor. Spawns tactical Borg Cubes and Spheres that assimilate colonies, absorb defeated starship weapon technology, and adapt shields against repeated beam frequencies (`GalacticEvents.cpp:11-70`, `remaster/data/base/events.json`).
    - *Species 8472 Outbreaks:* Subspace rift anomalies spawn organic bioships that destroy planets rather than occupying them.
 4. **Vanilla Monster Roster:**
    - Full implementation of roaming neutral entities with distinct tactical behaviors:
@@ -44,42 +44,64 @@ Folding Simon's explicit decision (§7 of `MASTER-PLAN.md`): The Dominion is ful
      - *Calamarain:* Energy-cloud entity causing severe plasma storms and system power outages.
      - *Husnock & Chodak Raiders:* Ancient dreadnoughts defending forgotten star systems.
 
-## 3. Player-Facing Surfaces (Screens and Scenes)
+## 3. Per-Era Photoreal Benchmark
+
+In compliance with Simon's ruling (Simon, 8 Nov 2026: *"as close to photorealistic as possible, aiming to look exactly like the shows battle scenes from DS9 dominion war era, or relevant era chosen to play in by the player (meaning TOS era weapons and ships match TOS era shows looks, but modernized to look realistic as possible)"*) and `docs/ART-BIBLE.md`:
+
+- **Era-Specific Aesthetic Parity:** Selecting an era configures the ship roster, weapon and effects looks, and LCARS UI theme to match the historical television and feature film reference material, modernized to photoreal AAA standards:
+  - *TOS Era:* Hulls feature clean, smooth plates and saturated weapon beams matching *TOS-R* remastered episodes; UI uses pale gold/blue retro LCARS.
+  - *Movie Era:* Complex hull aztecing, pearlescent surface sheens, intense torpedo flares, and moody theatrical lighting referencing *TMP*, *TWOK*, and *TUC*.
+  - *Dominion War Era:* The core photoreal benchmark. Ships (Galaxy, Sovereign, Defiant, Negh'Var, Jem'Hadar) display intricate surface greebles, micro-panel textures, authentic running lights, and photoreal phaser sweeps identical to DS9 fleet actions.
+  - *Voyager & Late Era:* Dynamic lighting, sleek multi-vector hulls, transwarp conduits, and cinematic lighting referencing *Picard* Season 3.
+- **Threat & Monster Photoreal Rules:**
+  - *Borg Cube:* Dense exterior surface greebles with glowing green interior geometric circuitry and cutting beams matching *First Contact* film stills.
+  - *Crystalline Entity:* Translucent faceted crystal lattice with internal refractive caustic lighting and pulse flares.
+  - *Dominion Roster:* Deep purple/grey hull plating with violet phased polaron emitters and yellow engine exhausts matching DS9 broadcast stills.
+
+## 4. Web-Build Consequences
+
+In compliance with `docs/M0-LANES.md` ("Browser target") and `docs/ART-BIBLE.md` §12:
+- **Renderer Fallback (Forward+ vs Compatibility/WebGL2):** Threat entities and major faction hulls render under Compatibility (WebGL2). Crystalline Entity refraction shaders fall back to an unrefracted additive emissive pass with bloom. Borg interior illumination uses emissive materials rather than dynamic per-mesh point lights. Lighting operates with shadowed star key lights and unshadowed fill/rim lights.
+- **Budgets:** Asset packaging is segmented into lazy-fetched per-empire bundles (≤100 MB per empire including 3D hulls, music, and voice lines). Initial web download is capped at ≤60 MB, containing core wasm, UI themes, shared audio, and the player's starting faction assets. Remaining empires and threats load asynchronously.
+- **No Disk Paths at Runtime:** Major empire configurations, expanded rosters, threat definitions, and event text load from `remaster/data/base/*.json` (`roster.json`, `events.json`, `ships.json`) handed to the core as byte buffers (`ShipRoster.h:25`). Mesh and audio assets load strictly via `res://` packs. Zero runtime disk reads or `$BOTF_*` paths.
+- **Saves:** Era start settings, threat configurations, Dominion Ketracel-white inventory, and active Borg invasion events serialize to `user://`, persisting to IndexedDB on web builds.
+
+## 5. Player-Facing Surfaces (Screens and Scenes)
 
 - `remaster/godot/scenes/ui/screens/new_campaign_screen.gd`:
   - Major Faction Selection: 6 faction cards (Federation, Klingon, Romulan, Cardassian, Ferengi, Dominion).
-  - Era Selector: Enterprise, TOS, TNG, Dominion War, Nemesis.
+  - Era Selector: Enterprise, TOS, TNG, Dominion War, Nemesis (`new_campaign_vm.gd`).
   - Threat Settings: Borg Incursion slider (Disabled/Normal/Apocalypse), Monster Density slider.
 - `remaster/godot/scenes/ui/screens/database_screen.gd`:
   - Threat Dossiers and Monster Encyclopedias with full 3D rotatable models and historical lore.
 - `remaster/godot/scenes/battle/battle_scene.gd`:
   - Encounter scenes against Borg Cubes, Crystalline Entity, and roaming monsters.
 
-## 4. Core Changes (Naming Files)
+## 6. Core Changes (Naming Files)
 
 - `remaster/game/Source/BotfSim/Simulation.h`:
-  - Add `EMPIRE_DOMINION = 6` to empire enums (`MaxEmpires = 6`).
+  - Add `EMPIRE_DOMINION = 6` to empire enums (`MaxEmpires = 6`, `Simulation.h:50`).
   - Add `KetracelWhiteState` to `EmpireState`.
   - Add `ThreatSettings` struct to `CampaignSetup`.
   - Add `MonsterEntity` struct to track roaming space entities in `GameState`.
 - `remaster/game/Source/BotfSim/Rules.cpp`:
-  - In `newCampaign()`, initialize Dominion starting assets, Vorta administrators, and Ketracel-white inventory.
-  - Implement era-appropriate starting technology profiles and ship hull baselines (`Rules.cpp:180-240`).
+  - In `newCampaign()` (`Rules.cpp:401-408`), initialize Dominion starting assets, Vorta administrators, and Ketracel-white inventory.
+  - Implement era-appropriate starting technology profiles and ship hull baselines (`Simulation.cpp:3934-4035`).
 - `remaster/game/Source/BotfSim/GalacticEvents.cpp`:
-  - Implement Borg Cube spawn and assimilation loop (`GalacticEvents.cpp:320-390`).
+  - Implement Borg Cube spawn and assimilation loop (`GalacticEvents.cpp:11-70`, `remaster/data/base/events.json`).
   - Implement roaming AI pathing for Crystalline Entity, Gomtuu, and Calamarain.
 - `remaster/tests/scenarios/RemasterGameplayTests.cpp`:
   - Add test fixtures validating 6-player campaign generation, Dominion resource mechanics, and Borg assimilation triggers.
 
-## 5. Client Changes
+## 7. Client Changes
 
 - `remaster/godot/scenes/ui/screens/new_campaign_screen.gd`:
   - Add Dominion faction selector card with authentic purple/gold aesthetic and vector emblem.
-  - Add Era and Threat configuration controls.
+  - Add Era and Threat configuration controls consuming `res://scripts/viewmodels/new_campaign_vm.gd`.
 - `remaster/godot/scenes/ui/theme/lcars.gd`:
   - Implement Dominion LCARS theme styling (Violet, Deep Purple, Gold accents) and vector insignia.
 
-## 6. Content and Art Needs (by Asset Key)
+## 8. Content and Art Needs (by Asset Key)
 
 - Dominion 3D Hulls:
   - `ship.dom.attack_ship`: Jem'Hadar strike raider.
@@ -98,7 +120,7 @@ Folding Simon's explicit decision (§7 of `MASTER-PLAN.md`): The Dominion is ful
   - `vo.threat.borg`: Authentic Borg collective assimilation demands ("We are the Borg...").
   - `mus.theme.dominion`: Majestic, militaristic Dominion orchestral theme.
 
-## 7. Acceptance Tests
+## 9. Acceptance Tests
 
 1. **Dominion Campaign Setup:**
    - Select Dominion as the player empire in the New Campaign screen; start game.
@@ -114,8 +136,15 @@ Folding Simon's explicit decision (§7 of `MASTER-PLAN.md`): The Dominion is ful
    - Engage the Cube in 3D combat; verify Cube absorbs standard phaser damage and deploys cutting beam and tractor beam weapons.
 5. **Crystalline Entity Roaming:**
    - Spawn Crystalline Entity event; verify entity moves across sectors along an organic trajectory and strips planetary population if entering an inhabited system.
+6. **Per-Era Photoreal Benchmark & Show Still Comparison:**
+   - Capture Dominion fleet formation in Dominion War era; compare side-by-side with DS9 "Sacrifice of Angels" broadcast stills. Verify hull purple/grey tone, phased polaron weapon VFX, and engine lighting match show footage.
+   - Capture Borg Cube encounter in TNG/DS9 era; compare side-by-side with *Star Trek: First Contact* film stills. Verify geometric greeble shadow depth, green node illumination, and scale ratio achieve visual parity.
+7. **Web Build Lazy Fetching & IndexedDB Persistence:**
+   - Run the game in a WebGL2 browser export. Select Dominion campaign.
+   - Verify Dominion asset pack (hulls, music, voice) fetches lazily over HTTP into `res://` memory packs without exceeding the 100 MB budget.
+   - Save game, reload from IndexedDB, and verify Ketracel-white inventory and threat states are preserved intact.
 
-## 8. M1 Vertical-Slice Subset
+## 10. M1 Vertical-Slice Subset
 
 For the M1 vertical slice:
 - Focus on the classic TNG / Dominion War era duel between Federation and Klingon.

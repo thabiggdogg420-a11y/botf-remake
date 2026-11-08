@@ -14,7 +14,7 @@ Mods and Remakes:
 
 ## 2. Modern Target
 
-Folding Simon's explicit decision (§7 of `MASTER-PLAN.md`): The 2D star chart is replaced with a fully modernized, zoomable **3D Galaxy Map**.
+Folding Simon's explicit decision (§7 of `docs/MASTER-PLAN.md`): The 2D star chart is replaced with a fully modernized, zoomable **3D Galaxy Map**.
 
 1. **3D Coordinate Space & Topologies:**
    - Systems are positioned in true 3D space `(X, Y, Z)` with galactic disc thickness.
@@ -26,19 +26,40 @@ Folding Simon's explicit decision (§7 of `MASTER-PLAN.md`): The 2D star chart i
 2. **Smooth Multi-Tier Zoom:**
    - Seamless continuous zoom from Galactic Overview (disc, quadrant boundaries, territory volumes) -> Sector Tier (star clusters, fleet models, sensor spheres) -> System View (star, orbital planes).
 3. **Volumetric Map Features & Hazards:**
-   - Real volumetric nebulae that obscure sensor vision and disable shields in combat (`GalaxyFeatures.cpp:80-140`).
-   - Drifting ion storms with animated wavefronts that damage unshielded ships (`GalaxyFeatures.cpp:160-210`).
+   - Real volumetric nebulae that obscure sensor vision and disable shields in combat (`GalaxyFeatures.cpp:70-150`).
+   - Drifting ion storms with animated wavefronts that damage unshielded ships (`GalaxyFeatures.cpp:129-165, 374`).
    - Gravitational lensing around black holes and neutron star pulsar beams (`GalaxyFeatures.cpp:95-125`).
    - Dynamic 3D wormhole tunnels with stable or unstable traversal characteristics.
 4. **Territory Volumes & Logistics Visuals:**
-   - Translucent 3D Voronoi territory bubbles surrounding colonies, outposts (radius 3), and starbases (radius 5) (`Stations.cpp:120-150`).
+   - Translucent 3D Voronoi territory bubbles surrounding colonies, outposts (radius 3), and starbases (radius 5) (`Stations.cpp:1-25, 352, 705`).
    - Glowing 3D spline lines indicating active commercial trade routes, fleet flight vectors with ETA waypoints, and supply borders.
 5. **Right-Click Strategic Flow:**
    - Retain the rapid right-click context menu workflow: Set Course, Attack, Intercept, Patrol, Colonize, Invade, Build Outpost, Upgrade Starbase, Terraform (`remaster/godot/scenes/galaxy/orders.gd:40-120`).
 6. **Live Setup Preview:**
    - Real-time 3D rotating galaxy preview in the New Campaign screen responding immediately to seed, shape, and density sliders.
 
-## 3. Player-Facing Surfaces (Screens and Scenes)
+## 3. Per-Era Photoreal Benchmark
+
+In compliance with Simon's combat visual benchmark (Simon, 8 Nov 2026: *"as close to photorealistic as possible, aiming to look exactly like the shows battle scenes from DS9 dominion war era, or relevant era chosen to play in by the player"*) and `docs/ART-BIBLE.md`:
+
+- **Unified Visual World:** The 3D strategic galaxy map shares the exact photoreal rendering standard, lighting rigor, and show-accurate aesthetics established for combat scenes. The star map is not an abstract spreadsheet: it is an authentic depiction of deep space as seen from a starship bridge viewscreen or stellar cartography bay.
+- **Reference Footage Alignment:**
+  - *TOS Era:* Stark high-contrast cosmic backdrops, saturated O/B/G star point sources, and vibrant primary-color nebulae referencing *TOS-R*.
+  - *Movie Era:* Deep atmospheric nebula clouds (referencing the Mutara Nebula in *The Wrath of Khan*), cold rim lighting, and elegant starfield vistas (*TMP* to *TUC*).
+  - *TNG / DS9 Dominion War Era:* Gritty, photorealistic battlefront spatial hazards, turbulent Badlands plasma storms, glowing Bajoran wormhole vortex geometry, and militaristic front-line territory volumes matching DS9 Dominion War broadcast stills.
+  - *Voyager Era:* Exotic delta-quadrant spatial anomalies, transwarp conduits, and dense interstellar dust clouds.
+  - *Late Era:* Deep cinematic shadows, subtle blue/gold fill lights, and high dynamic range lighting referencing *Picard* Season 3.
+- **Lighting & Materials:** Stars serve as physically plausible key lights with accurate color temperatures (warm yellow Class G, piercing blue Class O/B, deep amber Class M). 3D fleet models traversing the galaxy map use the same PBR micro-panelled materials and running lights as combat hulls, catching sharp specular glints against nearby stellar primaries.
+
+## 4. Web-Build Consequences
+
+In compliance with `docs/M0-LANES.md` ("Browser target"):
+- **Renderer Fallback (Forward+ vs Compatibility/WebGL2):** Desktop uses Forward+ with full volumetric fog and depth-prepass spatial shaders. On Web (Compatibility), volumetric fog is unsupported (`battle_environment.gd:43-49`, `nebula_fog.gdshader`); web falls back to 6 to 8 billboard cloud quads (`blend_add`, 512x512 R8) positioned at nebula banks matching nebula tint and drift. The procedural `space_sky.gdshader` (5 octave loops plus 3x3x3 cell searches) is baked at pack time to a 2048x1024 panorama for web. Canvas galaxy shaders (field, nebula, starfield) are strictly capped at ≤4 loop octaves. Sun key light casts shadows; fill and rim lights remain unshadowed. MSAA defaults to 2x with a user-adjustable render scale slider.
+- **Budgets:** Star billboards, nebula textures, and anomaly maps are compressed to ETC2/ASTC for web. Spline trail particle counts are capped at ≤600 particles per burst across ≤8 active emitters. Download size for galaxy map assets is budgeted under 15 MB.
+- **No Disk Paths at Runtime:** All 3D meshes, procedural shaders, celestial textures, and star catalogs load strictly through `res://` packs or memory buffers. The runtime engine never accesses `LocalAssets` or host paths.
+- **Saves:** Strategic map state, explored sector masks, fog-of-war arrays, fleet waypoints, and anomaly coordinates serialize to `user://`, persisting to IndexedDB on the web platform.
+
+## 5. Player-Facing Surfaces (Screens and Scenes)
 
 - `remaster/godot/scenes/galaxy/galaxy_screen.gd`:
   - Master strategic HUD, quadrant mini-map, strategic filter toggles (Political, Military, Supply, Economy, Exploration).
@@ -49,23 +70,23 @@ Folding Simon's explicit decision (§7 of `MASTER-PLAN.md`): The 2D star chart i
 - `remaster/godot/scenes/ui/screens/new_campaign_screen.gd`:
   - Interactive 3D viewport rendering live procedural galaxy generation preview.
 
-## 4. Core Changes (Naming Files)
+## 6. Core Changes (Naming Files)
 
 - `remaster/game/Source/BotfSim/Simulation.h`:
-  - Extend `System` struct with `int32_t z` coordinate (scaled fixed-point integer for cross-platform determinism).
+  - Extend `System` struct with `int32_t z` coordinate (scaled fixed-point integer for cross-platform determinism, `Simulation.h:108-111`).
   - Add `GalaxyShape` enum (`SHAPE_SPIRAL`, `SHAPE_RING`, `SHAPE_IRREGULAR`, `SHAPE_ELLIPTICAL`).
   - Add `MinorDensity` enum (`DENSITY_NONE`, `DENSITY_FEW`, `DENSITY_SOME`, `DENSITY_MANY`).
 - `remaster/game/Source/BotfSim/Simulation.cpp`:
-  - Rewrite `generate()` (lines 3900–4150) to calculate 3D system positions based on mathematical shape formulas rather than a flat 2D grid shuffle.
-  - Implement 3D Chebyshev/Euclidean distance metrics for sensor range, fleet warp travel, and territory borders (`Simulation.cpp:1800-1850`).
+  - Rewrite `generate()` (lines 3906–4150) to calculate 3D system positions based on mathematical shape formulas rather than a flat 2D grid shuffle.
+  - Implement 3D Chebyshev/Euclidean distance metrics for sensor range, fleet warp travel, and territory borders (`Simulation.cpp:3771`).
 - `remaster/game/Source/BotfSim/GalaxyFeatures.cpp`:
-  - Upgrade anomaly hazard checks (`isHazardAt`, `driftIonStorms`) to evaluate 3D spherical and ellipsoidal bounding volumes (`GalaxyFeatures.cpp:110-175`).
+  - Upgrade anomaly hazard checks (`isHazardAt`, `driftIonStorms`) to evaluate 3D spherical and ellipsoidal bounding volumes (`GalaxyFeatures.cpp:129-165, 374`).
 - `remaster/game/Source/BotfSim/Stations.cpp`:
-  - Extend outpost and starbase supply coverage to 3D radii (`Stations.cpp:130-165`).
+  - Extend outpost and starbase supply coverage to 3D radii (`Stations.cpp:1-25, 352, 705`).
 - `remaster/tests/scenarios/SimulationTests.cpp`:
   - Add tests validating 3D coordinate distribution, collision bounds between stars, and deterministic generator seeding.
 
-## 5. Client Changes
+## 7. Client Changes
 
 - `remaster/godot/scenes/galaxy/galaxy_map.gd`:
   - Reconstruct scene hierarchy under `Node3D`.
@@ -75,10 +96,10 @@ Folding Simon's explicit decision (§7 of `MASTER-PLAN.md`): The 2D star chart i
   - Raycast from mouse screen coordinates to 3D sector planes to resolve system and fleet selections.
   - Draw 3D bezier curves for fleet flight paths with animated pulses showing direction.
 - Shaders:
-  - Fix blocky artifacts in `remaster/godot/scenes/galaxy/shaders/ion_storm.gdshader` (`CURRENT-STATE-AUDIT:245`).
-  - Implement raymarched volumetric cloud shader for nebulae.
+  - Fix blocky artifacts in `remaster/godot/scenes/galaxy/nebula.gdshader` (`docs/research/CURRENT-STATE-AUDIT.md:245`).
+  - Implement raymarched volumetric cloud shader for nebulae on desktop with billboard fallback for web.
 
-## 6. Content and Art Needs (by Asset Key)
+## 8. Content and Art Needs (by Asset Key)
 
 - `vfx.star.spectral_o`: Blue hypergiant star billboard/shader.
 - `vfx.star.spectral_g`: Yellow dwarf star billboard/shader (e.g., Sol).
@@ -91,7 +112,7 @@ Folding Simon's explicit decision (§7 of `MASTER-PLAN.md`): The 2D star chart i
 - `vfx.route.trade_active`: Glowing amber spline conduit.
 - `vfx.route.fleet_course`: Green/Blue directional dashed pulse spline.
 
-## 7. Acceptance Tests
+## 9. Acceptance Tests
 
 1. **3D Galaxy Setup Preview:**
    - Open New Campaign screen, cycle galaxy shapes between Spiral, Ring, and Irregular.
@@ -106,8 +127,15 @@ Folding Simon's explicit decision (§7 of `MASTER-PLAN.md`): The 2D star chart i
    - Plot course through a drifting ion storm; verify pathfinding highlights hazard warnings and fleet takes shield/hull damage if transit is forced.
 5. **Territory Volume Projection:**
    - Construct an Outpost in a neutral sector; advance turn; verify a 3D translucent influence sphere (radius 3) expands around the outpost, updating empire sensor coverage.
+6. **Per-Era Photoreal Benchmark & Show Still Comparison:**
+   - Set campaign era to Dominion War (DS9). Capture 3D strategic map frame containing Badlands plasma clouds, Cardassian border territory, and an active Jem'Hadar task force.
+   - Perform side-by-side frame comparison against archival broadcast stills from DS9 ("Favor the Bold" / "Sacrifice of Angels"). Verify plasma storm turbulence, key lighting angle, deep shadow contrast, and hull specular response achieve visual parity with show footage.
+   - Repeat test for Movie Era setting; verify celestial backdrop and nebula visual density match *The Wrath of Khan* Mutara Nebula stills.
+7. **Web Compatibility Renderer Verification:**
+   - Export and run the web build in a WebGL2 browser. Open the 3D Galaxy Map.
+   - Verify nebula renders via billboard cloud quads without shader compilation errors, baked sky panorama displays cleanly, and frame rate remains stable with 0 disk path access errors.
 
-## 8. M1 Vertical-Slice Subset
+## 10. M1 Vertical-Slice Subset
 
 For the M1 vertical slice:
 - Small galaxy map (16 systems), fixed Spiral shape.
