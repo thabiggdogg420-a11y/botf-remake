@@ -92,10 +92,15 @@ func _on_click(cell: int, double: bool) -> void:
 	var x := cell % w
 	var y := cell / w
 	if double:
+		# Double-click flies the camera one level closer (galaxy -> sector -> system close-up). Once the view is
+		# already on that system's close-up, double-clicking your own system opens it, as on the 2D chart.
 		var s := app.system_at(x, y)
-		if not s.is_empty() and int(s.get("owner", 0)) == app.player():
+		if not s.is_empty() and int(s.get("owner", 0)) == app.player() and map.zoom_level() == "system" and map.is_focused_on(x, y):
 			app.select_system(int(s["id"]))
 			app.goto("system")
+			return
+		app.select_cell(cell)
+		map.fly_to_cell(x, y)
 		return
 	# Clicking a sector with own ships cycles through them; otherwise select the sector.
 	var units := []
@@ -126,7 +131,7 @@ func _on_click(cell: int, double: bool) -> void:
 # Context menu
 # ---------------------------------------------------------------------------------------------
 func open_context_menu_at_cell(x: int, y: int) -> void:
-	var p := map.map_to_screen(map.cell_center(x, y))
+	var p := map.cell_screen_pos(x, y)
 	open_context_menu(y * app.width() + x, p)
 
 func open_context_menu(cell: int, pos: Vector2) -> void:
@@ -421,7 +426,7 @@ func _build_inspector() -> void:
 		var e := Lcars.vbox(8)
 		e.add_child(Lcars.heading("Star chart", 26))
 		e.add_child(Lcars.para("Select a system or ship. Right-click a sector for orders; with a ship selected, right-click open space to set course."))
-		e.add_child(Lcars.label("Drag pan · Wheel zoom · F fit · H home\nTab next ship · Enter end turn", "Mono", 13))
+		e.add_child(Lcars.label("Drag pan · Right-drag orbit · Wheel zoom\nWASD pan · Q/E rotate · PgUp/PgDn tilt\nDouble-click fly to · F fit · H home\nTab next ship · Enter end turn", "Mono", 13))
 		_inspector_body.add_child(e)
 
 func _card_head(empire: int, title: String, sub: String) -> HBoxContainer:
