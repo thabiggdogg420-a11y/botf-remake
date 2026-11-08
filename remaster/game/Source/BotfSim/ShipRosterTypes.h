@@ -1,5 +1,5 @@
 // BOTF Remastered expanded ship roster: types (docs/SHIP-ROSTER.md).
-// The data itself lives in the generated ShipRosterData.h; accessors are in ShipRoster.h.
+// The data itself is data/base/roster.json (docs/DATA-FORMAT.md), loaded by Content.h; accessors are in ShipRoster.h.
 #pragma once
 #include <array>
 

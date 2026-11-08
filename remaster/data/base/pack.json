@@ -1,0 +1,15 @@
+{
+ "format": 1,
+ "id": "botf-base",
+ "name": "BOTF Remastered base content",
+ "revision": 1,
+ "files": [
+  "technologies.json",
+  "ships.json",
+  "buildings.json",
+  "races.json",
+  "roster.json",
+  "minors.json",
+  "events.json"
+ ]
+}

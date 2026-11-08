@@ -1,0 +1,2 @@
+# Content packs are checksummed byte for byte (docs/DATA-FORMAT.md): never convert line endings.
+*.json -text

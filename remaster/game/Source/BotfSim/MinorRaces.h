@@ -18,6 +18,7 @@
 // Saves without it load exactly as before.
 #pragma once
 
+#include "Content.h"
 #include "Simulation.h"
 
 #include <algorithm>
@@ -35,92 +36,13 @@
 
 namespace botf::minors {
 
-enum class Temperament : int { Peaceful, Scientific, Mercantile, Spiritual, Xenophobic, Warlike };
-// What a minor contributes to the empire it joins. Percentages apply to every colony of the empire;
-// Morale raises the morale level its colonies settle toward.
-enum class JoinBonus : int { Research, Industry, Food, Credits, Morale, GroundDefense };
-
-struct MinorRaceRecord {
-    int id;                        // Stable roster id (1-based, never reused); saved as Minor::raceId.
-    const char* name;              // Matches Minor::name.
-    const char* homeworld;         // Name given to the home system on placement.
-    int referenceRaceId;           // referenceData::RaceCatalogue id (portrait/icon), -1 if none.
-    Temperament temperament;
-    int techLevel;                 // 1..10 in an Early-era campaign; later eras add (era - 1).
-    int population;                // Starting population, and the colony size it brings on joining.
-    JoinBonus bonus;
-    int bonusValue;                // Percent, or morale points for JoinBonus::Morale.
-    int signatureShipId;           // referenceData::ShipCatalogue id of its own design, -1 if none.
-    std::array<int, 6> affinity;   // By major slot 1..5 (1 Fed, 2 Klingon, 3 Romulan, 4 Cardassian, 5 Ferengi); -2..+2.
-    const char* description;       // Original remaster text.
-};
-
-inline constexpr int MinorRaceCount = 30;
+// Temperament, JoinBonus and MinorRaceRecord are declared in Content.h. The roster is data since M0:
+// data/base/minors.json (docs/DATA-FORMAT.md), loaded from the installed content pack.
 inline constexpr int ReviewInterval = 5;       // Same cadence as the modern minor councils (DIPLOMACY.md 6).
 inline constexpr int MaxMinorPopulation = 1000;
 
-inline constexpr std::array<MinorRaceRecord, MinorRaceCount> Roster{{
-    {1, "Acamarians", "Acamar", 5, Temperament::Mercantile, 5, 45, JoinBonus::Credits, 10, 105, {0, 1, 0, 0, 0, 1},
-     "A clan society healing from centuries of blood feuds, with some clans still roaming the stars as raiders. Membership brings their trade networks and a steady flow of credits."},
-    {2, "Andorians", "Andoria", 6, Temperament::Warlike, 6, 60, JoinBonus::GroundDefense, 20, -1, {0, 2, 1, -1, 0, 0},
-     "Proud, antennaed warriors from an icy moon and old partners of the Vulcans and humans. Their soldiers harden the ground defenses of every world in the empire they join."},
-    {3, "Angosians", "Angosia", 7, Temperament::Peaceful, 5, 40, JoinBonus::GroundDefense, 15, -1, {0, 1, 0, 0, -1, 0},
-     "A peaceful society that once engineered its soldiers into living weapons, then struggled to live with them. Their veterans stiffen the defenses of allied worlds."},
-    {4, "Antedeans", "Antede", 8, Temperament::Xenophobic, 3, 35, JoinBonus::Food, 10, -1, {0, -1, 0, 0, 0, 1},
-     "Ichthyoid travelers who fall into a stupor aboard starships and rarely trust outsiders. Their ocean harvests add to the food supply of any empire they join."},
-    {5, "Anticans", "Antica", 9, Temperament::Warlike, 3, 40, JoinBonus::GroundDefense, 15, -1, {0, 1, 1, 0, 0, 0},
-     "Carnivorous hunters locked in an ancient feud with the neighboring Selay. Their appetite for battle strengthens the garrisons of any empire they join."},
-    {6, "Bajorans", "Bajor", 10, Temperament::Spiritual, 4, 70, JoinBonus::Morale, 5, 106, {0, 2, 0, 0, -2, 0},
-     "A deeply spiritual people who endured a brutal occupation with their faith intact. They despise Cardassian rule, and their devotion lifts morale across the empire they join."},
-    {7, "Bandi", "Deneb", 11, Temperament::Mercantile, 2, 35, JoinBonus::Industry, 10, -1, {0, 1, 0, 0, 0, 1},
-     "Gracious hosts and gifted builders whose showpiece station charmed visitors until its secret came out. Their architects lift industry across any empire they join."},
-    {8, "Benzites", "Benzar", 12, Temperament::Scientific, 6, 45, JoinBonus::Industry, 10, -1, {0, 2, 0, 0, 0, 0},
-     "Methodical perfectionists who never solve the same problem twice. Their efficiency experts raise industry throughout the empire they join."},
-    {9, "Betazoids", "Betazed", 13, Temperament::Peaceful, 6, 55, JoinBonus::Morale, 5, -1, {0, 2, 0, -1, -1, 0},
-     "Telepaths who prize honesty because little can be hidden from them for long. Their counselors ease tension on every world of the empire they join."},
-    {10, "Bolians", "Bolarus", 14, Temperament::Mercantile, 5, 60, JoinBonus::Credits, 10, -1, {0, 1, 0, 0, 0, 1},
-     "Cheerful blue-skinned bankers whose financial houses reach across the quadrant. Membership opens their banks and raises credit income empire-wide."},
-    {11, "Bynars", "Bynaus", 15, Temperament::Scientific, 7, 40, JoinBonus::Research, 10, -1, {0, 0, 0, 0, 0, 0},
-     "Paired beings who think in binary and live linked to their planetary computer. Their network adds 10% to the research of any empire they join."},
-    {12, "Caldonians", "Caldos", 16, Temperament::Scientific, 6, 35, JoinBonus::Research, 10, -1, {0, 1, 0, 0, 0, -1},
-     "Tall, gentle scholars who value pure research far above commerce. Their think tanks add to the research of any empire they join."},
-    {13, "Chalnoth", "Chalna", 17, Temperament::Warlike, 3, 45, JoinBonus::GroundDefense, 20, -1, {0, -1, 2, 0, 0, 0},
-     "Anarchist hunters who recognize no authority but strength. If persuaded to join an empire, they make its worlds very costly to invade."},
-    {14, "Edo", "Rubicun", 18, Temperament::Peaceful, 2, 30, JoinBonus::Morale, 5, -1, {0, 1, -1, 0, 0, 0},
-     "A carefree, pleasure-loving people watched over by a powerful guardian entity. Their easygoing culture raises morale across the empire they join."},
-    {15, "Ktarians", "Ktaria", 19, Temperament::Xenophobic, 5, 50, JoinBonus::Industry, 5, 107, {0, -1, 0, 1, 1, 0},
-     "Ambitious schemers who once tried to subvert a starship crew with an addictive game. Wary of outsiders, they drive a hard bargain but put industrious hands to work."},
-    {16, "Malcorians", "Malcor", 20, Temperament::Xenophobic, 4, 50, JoinBonus::Industry, 10, -1, {0, 0, -1, -1, -1, -1},
-     "A people on the verge of warp flight who are not yet ready to learn they are not alone. Suspicious of every empire, they bring a busy industrial base to one that wins them over."},
-    {17, "Mintakans", "Mintaka", 21, Temperament::Peaceful, 1, 30, JoinBonus::Food, 10, -1, {0, 1, 0, 0, 0, 0},
-     "A gentle, rational proto-Vulcan people who once briefly mistook a starship captain for a god. Their communal farms add to the food supply of any empire they join."},
-    {18, "Mizarians", "Mizar", 22, Temperament::Peaceful, 5, 50, JoinBonus::Morale, 5, -1, {0, 1, 0, 0, 0, 0},
-     "Pacifists who have outlasted repeated conquests by never resisting any of them. Their calm steadies morale in the empire they join."},
-    {19, "Nausicaans", "Nausicaa", 23, Temperament::Warlike, 4, 50, JoinBonus::GroundDefense, 20, -1, {0, -2, 2, 0, 0, 1},
-     "Towering brawlers and hired muscle with a taste for violence. Their young warriors swell the garrisons of any empire that can hold their loyalty."},
-    {20, "Pakleds", "Pakled", 24, Temperament::Mercantile, 3, 45, JoinBonus::Research, 5, 108, {0, -1, 0, 0, 0, 2},
-     "Slow-spoken scavengers who acquire technology by trade, trickery or theft. What they collect adds a little to the research of any empire they join."},
-    {21, "Selay", "Selay", 25, Temperament::Warlike, 3, 40, JoinBonus::GroundDefense, 15, -1, {0, 1, 0, 1, 0, 0},
-     "Reptilian rivals of the Anticans, just as eager to settle old scores. Their soldiers strengthen the garrisons of any empire they join."},
-    {22, "Sheliak", "Sheliak", 26, Temperament::Xenophobic, 8, 60, JoinBonus::Food, 15, 109, {0, -1, -1, 0, -1, -1},
-     "Legalistic non-humanoids who consider most species barely worth addressing and enforce every clause of every treaty. Their mastery of environments boosts food output empire-wide."},
-    {23, "Takarans", "Takara", 27, Temperament::Scientific, 6, 40, JoinBonus::Research, 5, -1, {0, 1, 0, 0, 0, 0},
-     "A people whose decentralized bodies shrug off wounds that would kill others. Their curiosity about physical forces adds to the research of any empire they join."},
-    {24, "Talarians", "Talar", 28, Temperament::Warlike, 5, 55, JoinBonus::GroundDefense, 25, 110, {0, -1, 1, 0, 1, 0},
-     "A patriarchal military society that treasures its homeworld above all else. Their fortification doctrine makes every world of their empire harder to invade."},
-    {25, "Tamarians", "Tama", 29, Temperament::Spiritual, 6, 50, JoinBonus::Research, 15, 111, {0, 1, 0, 0, 0, 0},
-     "The Children of Tama speak only in metaphors drawn from their myths and history. Once understood, those stories hold insights that raise the research of any empire they join."},
-    {26, "Trill", "Trill", 30, Temperament::Scientific, 7, 50, JoinBonus::Research, 10, 112, {0, 2, 0, 0, 0, 0},
-     "Humanoids who share their lives with long-lived symbionts that carry centuries of memory from host to host. Their joined scientists raise the research of any empire they join."},
-    {27, "Ullians", "Ullia", 31, Temperament::Peaceful, 6, 30, JoinBonus::Research, 5, -1, {0, 1, 0, 0, 0, 0},
-     "Telepathic historians who collect the memories of other peoples as living archives. Their knowledge adds a little to the research of any empire they join."},
-    {28, "Vulcans", "Vulcan", 32, Temperament::Scientific, 8, 80, JoinBonus::Research, 15, 113, {0, 2, -1, -1, 0, 0},
-     "Disciples of logic with a scientific tradition older than their warp drive. Vulcan scholars add 15% to the research of any empire they join."},
-    {29, "Yridians", "Yridia", 33, Temperament::Mercantile, 5, 35, JoinBonus::Credits, 15, 114, {0, 0, 0, 1, 1, 2},
-     "Information dealers who will sell any secret to anyone who can pay. Their brokerage houses raise credit income for any empire they join."},
-    {30, "Zakdorn", "Zakdorn", 34, Temperament::Scientific, 6, 45, JoinBonus::GroundDefense, 15, -1, {0, 1, 1, 0, 0, 0},
-     "Celebrated as the finest strategic minds in the galaxy, though they rarely put the reputation to the test. Their war-planners strengthen the defenses of any empire they join."},
-}};
+inline constexpr content::Table<MinorRaceRecord> Roster{&content::tables::minors};
+inline int minorRaceCount() { return static_cast<int>(Roster.size()); }
 
 inline const char* temperamentName(Temperament t) {
     switch (t) {
@@ -161,7 +83,7 @@ inline std::string describeJoinBonus(const MinorRaceRecord& r) {
 }
 
 inline const MinorRaceRecord* raceById(int id) {
-    return id >= 1 && id <= MinorRaceCount ? &Roster[static_cast<std::size_t>(id - 1)] : nullptr;
+    return id >= 1 && id <= minorRaceCount() ? &Roster[static_cast<std::size_t>(id - 1)] : nullptr;
 }
 
 inline const MinorRaceRecord* raceByName(std::string_view name) {
@@ -178,7 +100,7 @@ inline bool managed(const Minor& m) { return m.raceId != 0; }
 
 // Number of minors a new campaign of this size should hold (including the starter minor).
 inline int rosterTarget(int systemCount) {
-    return std::clamp(systemCount / 5, 1, MinorRaceCount);
+    return std::clamp(systemCount / 5, 1, std::max(1, minorRaceCount()));
 }
 
 // Technology progress needed to reach the next level.

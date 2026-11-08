@@ -3,9 +3,11 @@
 // decision offer 2-3 options (ResolveEventChoice); undecided events take their
 // default after the choice window, and rival AIs decide by situation.
 #include "GameplayInternal.h"
+#include "Content.h"
 
 #include <algorithm>
 #include <stdexcept>
+#include <string_view>
 
 namespace botf::gameplay {
 constexpr int CuratedEventInterval = 7;
@@ -506,98 +508,51 @@ void resolveGalacticEvents(GameState& next, TurnReport& report) {
 } // namespace botf::gameplay
 
 namespace botf {
+// Event names, choice text, default choices and description templates are data since M0:
+// data/base/events.json (docs/DATA-FORMAT.md). The effects stay in code above.
 const char* galacticEventName(GalacticEventKind kind) {
-    switch (kind) {
-    case GalacticEventKind::Plague: return "Plague";
-    case GalacticEventKind::SupernovaWarning: return "Supernova warning";
-    case GalacticEventKind::SubspaceRift: return "Subspace rift";
-    case GalacticEventKind::TradeBoom: return "Trade boom";
-    case GalacticEventKind::DerelictVessel: return "Derelict vessel";
-    case GalacticEventKind::LaborUnrest: return "Labor unrest";
-    case GalacticEventKind::ScientificBreakthrough: return "Scientific breakthrough";
-    default: return "Unknown event";
-    }
+    const int k = static_cast<int>(kind);
+    return k >= 0 && k < content::EventKinds ? content::eventDefinition(k).name.c_str() : "Unknown event";
 }
 
 std::vector<EventChoiceInfo> eventChoices(GalacticEventKind kind) {
     std::vector<EventChoiceInfo> options;
-    const auto add = [&](const char* label, const char* effect) {
+    const int k = static_cast<int>(kind);
+    if (k < 0 || k >= content::EventKinds) return options;
+    const auto& def = content::eventDefinition(k);
+    for (const auto& choice : def.choices) {
         EventChoiceInfo info;
         info.index = static_cast<int>(options.size());
-        info.label = label;
-        info.effect = effect;
+        info.label = choice.label;
+        info.effect = choice.effect;
+        info.isDefault = info.index == def.defaultChoice;
         options.push_back(std::move(info));
-    };
-    switch (kind) {
-    case GalacticEventKind::Plague:
-        add("Quarantine", "-10 morale now; population losses halved and the plague ends next turn.");
-        add("Emergency cure", "Pay 150 credits (60 in prototype rules) to end the plague at once; quarantine if unaffordable.");
-        add("Let it run its course", "No cost; the colony loses population every turn for four turns.");
-        break;
-    case GalacticEventKind::SupernovaWarning:
-        add("Evacuate", "Move half the colonists to the nearest colonies with room before the star explodes.");
-        add("Stellar shielding", "Pay 400 credits (150 in prototype rules) to limit losses to 30%; evacuate if unaffordable.");
-        add("Trust the scientists", "No action; the detonation kills 75% of the colony and -25 morale.");
-        break;
-    case GalacticEventKind::DerelictVessel:
-        add("Salvage its technology", "Research equal to 40% of the next level in our weakest field.");
-        add("Strip it for credits", "+250 credits (100 in prototype rules).");
-        add("Study its sensor logs", "+60 intelligence and charts the surrounding sectors.");
-        break;
-    case GalacticEventKind::LaborUnrest:
-        add("Meet their demands", "Pay 20 + population credits for +15 morale; martial law if unaffordable.");
-        add("Declare martial law", "-10 morale; the strike ends immediately.");
-        add("Ignore the strike", "-5 morale and 20 lost construction work every turn until it fades.");
-        break;
-    case GalacticEventKind::ScientificBreakthrough:
-        add("Theoretical focus", "Research equal to 50% of the next level in our weakest field.");
-        add("Applied engineering", "Research equal to 50% of the next Construction level.");
-        add("Weapons research", "Research equal to 50% of the next Weapons level.");
-        break;
-    default:
-        break;
     }
-    const int defaultIndex = options.empty() ? -1 : eventDefaultChoice(kind);
-    for (auto& option : options) option.isDefault = option.index == defaultIndex;
     return options;
 }
 
 int eventDefaultChoice(GalacticEventKind kind) {
-    switch (kind) {
-    case GalacticEventKind::Plague: return 2;
-    case GalacticEventKind::SupernovaWarning: return 2;
-    case GalacticEventKind::DerelictVessel: return 1;
-    case GalacticEventKind::LaborUnrest: return 2;
-    case GalacticEventKind::ScientificBreakthrough: return 0;
-    default: return -1;
-    }
+    const int k = static_cast<int>(kind);
+    return k >= 0 && k < content::EventKinds ? content::eventDefinition(k).defaultChoice : -1;
 }
 
 std::string describeEvent(const GameState& state, const GalacticEvent& e) {
+    (void)state;
+    const int k = static_cast<int>(e.kind);
+    if (k < 0 || k >= content::EventKinds) return {};
     const std::string where = e.systemId ? "system " + std::to_string(e.systemId) :
         e.x >= 0 ? "sector " + gameplay::sectorText(e.x, e.y) : std::string("our space");
-    switch (e.kind) {
-    case GalacticEventKind::Plague:
-        return "A plague broke out at " + where + ". Each turn it kills " + std::to_string(e.magnitude) +
-            "% of the colonists (Biotech research lowers the rate) until turn " + std::to_string(e.endTurn) + ".";
-    case GalacticEventKind::SupernovaWarning:
-        return "Astronomers predict the star of " + where + " will explode on turn " + std::to_string(e.endTurn) +
-            ", killing " + std::to_string(e.magnitude) + "% of its colonists and crippling ships in the sector.";
-    case GalacticEventKind::SubspaceRift:
-        return "A subspace rift opened at " + where + ". The sector is impassable until turn " + std::to_string(e.endTurn) +
-            "; scouts that study it gain Computers research.";
-    case GalacticEventKind::TradeBoom:
-        return "Interstellar commerce is booming: +" + std::to_string(e.magnitude) +
-            " credits per colony each turn (at most 150) until turn " + std::to_string(e.endTurn) + ".";
-    case GalacticEventKind::DerelictVessel:
-        return "Our crews found a derelict vessel of unknown origin at " + where + ".";
-    case GalacticEventKind::LaborUnrest:
-        return "Workers at " + where + " went on strike over low morale. Until resolved the colony loses morale and construction work.";
-    case GalacticEventKind::ScientificBreakthrough:
-        return "Our scientists made an unexpected breakthrough and ask where to apply it.";
+    const std::string& text = content::eventDefinition(k).description;
+    std::string out;
+    out.reserve(text.size() + 32);
+    for (std::size_t i = 0; i < text.size();) {
+        const auto rest = std::string_view(text).substr(i);
+        if (rest.starts_with("{where}")) { out += where; i += 7; }
+        else if (rest.starts_with("{magnitude}")) { out += std::to_string(e.magnitude); i += 11; }
+        else if (rest.starts_with("{endTurn}")) { out += std::to_string(e.endTurn); i += 9; }
+        else out += text[i++];
     }
-    (void)state;
-    return {};
+    return out;
 }
 
 std::vector<GalacticEvent> empireEvents(const GameState& state, int empireId) {
