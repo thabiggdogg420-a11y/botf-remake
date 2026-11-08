@@ -110,28 +110,30 @@ static func build(parent: Node3D, arena_size: Vector2) -> Dictionary:
 	out.planet = planet
 
 	# Volumetric nebula bank drifting through the far side of the arena.
-	var fog := FogVolume.new()
-	fog.name = "Nebula"
-	fog.size = Vector3(arena_size.x * 2.6, 90.0, arena_size.y * 1.4)
-	fog.shape = RenderingServer.FOG_VOLUME_SHAPE_ELLIPSOID
-	var fmat := ShaderMaterial.new()
-	fmat.shader = FOG_SHADER
-	fog.material = fmat
-	fog.position = Vector3(0.0, -30.0, -arena_size.y * 0.9)
-	parent.add_child(fog)
-	var fog2 := FogVolume.new()
-	fog2.name = "NebulaLow"
-	fog2.size = Vector3(arena_size.x * 1.8, 50.0, arena_size.y * 1.6)
-	fog2.shape = RenderingServer.FOG_VOLUME_SHAPE_ELLIPSOID
-	var fmat2 := ShaderMaterial.new()
-	fmat2.shader = FOG_SHADER
-	fmat2.set_shader_parameter("albedo", Color(0.25, 0.35, 0.6))
-	fmat2.set_shader_parameter("emission", Color(0.03, 0.06, 0.16))
-	fmat2.set_shader_parameter("emission_b", Color(0.12, 0.04, 0.12))
-	fmat2.set_shader_parameter("density", 0.012)
-	fog2.material = fmat2
-	fog2.position = Vector3(arena_size.x * 0.3, -45.0, arena_size.y * 0.4)
-	parent.add_child(fog2)
+	# FogVolume shaders are not supported by the web Compatibility renderer; forward_plus only.
+	if RenderingServer.get_current_rendering_method() == "forward_plus":
+		var fog := FogVolume.new()
+		fog.name = "Nebula"
+		fog.size = Vector3(arena_size.x * 2.6, 90.0, arena_size.y * 1.4)
+		fog.shape = RenderingServer.FOG_VOLUME_SHAPE_ELLIPSOID
+		var fmat := ShaderMaterial.new()
+		fmat.shader = FOG_SHADER
+		fog.material = fmat
+		fog.position = Vector3(0.0, -30.0, -arena_size.y * 0.9)
+		parent.add_child(fog)
+		var fog2 := FogVolume.new()
+		fog2.name = "NebulaLow"
+		fog2.size = Vector3(arena_size.x * 1.8, 50.0, arena_size.y * 1.6)
+		fog2.shape = RenderingServer.FOG_VOLUME_SHAPE_ELLIPSOID
+		var fmat2 := ShaderMaterial.new()
+		fmat2.shader = FOG_SHADER
+		fmat2.set_shader_parameter("albedo", Color(0.25, 0.35, 0.6))
+		fmat2.set_shader_parameter("emission", Color(0.03, 0.06, 0.16))
+		fmat2.set_shader_parameter("emission_b", Color(0.12, 0.04, 0.12))
+		fmat2.set_shader_parameter("density", 0.012)
+		fog2.material = fmat2
+		fog2.position = Vector3(arena_size.x * 0.3, -45.0, arena_size.y * 0.4)
+		parent.add_child(fog2)
 
 	parent.add_child(_dust(arena_size))
 	return out

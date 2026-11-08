@@ -16,6 +16,8 @@ const BAND_CELLS := [1, 2, 4, 6, 7]     ## Outer edge of point blank, short, med
 const SUBSYSTEMS := ["weapons", "engines", "shields", "sensors", "warpCore"]
 const SUBSYSTEM_LABELS := {"weapons": "WPN", "engines": "ENG", "shields": "SHD", "sensors": "SNS", "warpCore": "CORE"}
 const PICK_RADIUS_PX := 22.0
+const PIP_GAP_Y := 17.0       ## Minimum screen gap between stacked pip labels (px).
+const PIP_NEAR_X := 60.0      ## Labels closer than this horizontally count as overlapping.
 
 var scene: BattleScene
 var ship_id := 0
@@ -28,6 +30,7 @@ var _fill: MeshInstance3D
 var _ghost: Node3D
 var _readout: Label3D
 var _pips := {}               ## subsystem -> Label3D
+var _pip_base := {}           ## subsystem -> world point on the target's hull (the label is nudged off it in screen space)
 var _line_mat: StandardMaterial3D
 var _fill_mat: StandardMaterial3D
 
@@ -94,6 +97,41 @@ func show_plan(ship: Dictionary, p_forecast: Dictionary) -> void:
 	subsystem = str(p_forecast.get("subsystem", "none"))
 	visible = true
 	_rebuild(ship)
+
+
+func _process(_delta: float) -> void:
+	if is_showing():
+		declutter(get_viewport().get_camera_3d())
+
+
+## Pushes the subsystem tags apart on screen: the hull points of weapons, shields and the rest project onto nearly the
+## same pixels from many angles, so "SHD" and "[WPN]" drew on top of each other. Tags are stacked at least PIP_GAP_Y px
+## apart, keeping their depth, and picking follows the moved label.
+func declutter(cam: Camera3D) -> void:
+	if cam == null or _pip_base.is_empty():
+		return
+	var items := []
+	for k in SUBSYSTEMS:
+		var pip: Label3D = _pips[k]
+		if pip.visible and _pip_base.has(k) and not cam.is_position_behind(_pip_base[k]):
+			items.append([k, cam.unproject_position(_pip_base[k])])
+	items.sort_custom(func(a, b): return a[1].y < b[1].y or (a[1].y == b[1].y and a[1].x < b[1].x))
+	var placed: Array[Vector2] = []
+	var inv := cam.global_transform.affine_inverse()
+	for it in items:
+		var pos: Vector2 = it[1]
+		var moved := true
+		var guard := 0
+		while moved and guard < 12:
+			moved = false
+			guard += 1
+			for p in placed:
+				if absf(pos.x - p.x) < PIP_NEAR_X and absf(pos.y - p.y) < PIP_GAP_Y:
+					pos.y = p.y + PIP_GAP_Y
+					moved = true
+		placed.append(pos)
+		var depth := -(inv * Vector3(_pip_base[it[0]])).z
+		(_pips[it[0]] as Label3D).global_position = cam.project_position(pos, maxf(depth, cam.near + 0.01))
 
 
 func clear() -> void:
@@ -191,7 +229,8 @@ func _rebuild(ship: Dictionary) -> void:
 		for k in SUBSYSTEMS:
 			var pip: Label3D = _pips[k]
 			pip.visible = true
-			pip.global_position = target.subsystem_point(k)
+			_pip_base[k] = target.subsystem_point(k)
+			pip.global_position = _pip_base[k]
 			var chosen: bool = k == subsystem
 			pip.modulate = Color(1.0, 0.85, 0.3) if chosen else Color(0.6, 0.8, 1.0, 0.9)
 			pip.text = ("[%s]" if chosen else "%s") % SUBSYSTEM_LABELS[k]

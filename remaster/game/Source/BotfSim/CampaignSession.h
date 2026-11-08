@@ -107,7 +107,7 @@ inline bool replayMatches(const tactical::Encounter& initial, const tactical::En
             for (const auto& status : round.shipStatuses) {
                 const auto* ship = replay.getShip(status.fleetId);
                 if (!ship || ship->ownerId != player || !tactical::Encounter::shipActive(*ship)) continue;
-                const tactical::Order recordedOrder{status.fleetId, status.targetFleetId, status.maneuverExecuted};
+                const tactical::Order recordedOrder{status.fleetId, status.targetFleetId, status.maneuverExecuted, status.subsystemTarget};
                 if (remaster) {
                     if (status.aiControlled) continue; // The AI re-derives the same decision.
                 } else if (inferAi && !explicitShips.count(status.fleetId)) {

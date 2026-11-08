@@ -1,4 +1,4 @@
-# Remaster combat rules (save schema 14, tactical rules 2 and 3)
+# Remaster combat rules (save schema 14, tactical rules 2, 3 and 4)
 
 All outcome math is integer. GCC and Clang produce identical campaign hashes.
 
@@ -274,6 +274,58 @@ save round trip.
 Balance (provisional). Three 200-turn Remastered reference campaigns had about as many battles with losses as under
 rules 2. The average battle runs longer, because agile ships slip out of forward arcs and weak hulls stalemate more
 often.
+
+## Tactical rules 4: WEGO, facings, subsystems, range bands, crew (Remastered)
+
+Line numbers cite `remaster/game/Source/BotfSim/TacticalCombat.h` (TC.h). Rules 4 is rules 3 plus the items below;
+rules 1-3 are untouched. It is on for Remastered campaigns (`GameplayRules::wegoCombat`, set by the preset in
+`Rules.cpp`, saved as the optional `TACTICAL_WEGO 1` section; a save without it loads with it off and fights rules 3;
+the flag needs `flightModel`). Drills and tests can also call `enableWegoRules` (TC.h:2217), which converts a fresh
+rules 3 encounter. `constructEncounter` applies it to every campaign battle under the flag. Constant: `WegoTacticalRules = 4`
+(TC.h:63).
+
+**WEGO resolution.** Every ship plans and moves against the same start-of-round snapshot (`startField`, TC.h:1638),
+so a ship's own path depends only on its order and the start field. That is why the plan phase can show an exact path
+(`previewMove`, TC.h:1348; the forecast says `exact`). Order of a round:
+1. Round start (TC.h:1305): the crew repairs damaged subsystems and brings destroyed ones back (Veteran and better),
+   then shield emitters regenerate `maxShields / 20` scaled by emitter health into the weakest facings first. Hold
+   doubles it; a warp core under 50% halves it. `status.shieldBefore` is the value before this regeneration, so the
+   per-ship damage chain in the campaign record stays unbroken.
+2. Simultaneous movement, then simultaneous fire on the tick timeline (rules 3 events).
+3. Hits apply to facings and subsystems and are listed in `round.hits` (`WegoHit`, TC.h:420) and the per-ship
+   `wegoStates` (TC.h:432).
+
+**Shield facings** (TC.h:236-250). Six: fore, aft, port, starboard, dorsal, ventral. `maxShields` splits 22/16/18/18/13/13
+percent with the remainder to fore; `shields` always equals the sum of the facings. The struck facing follows the
+shooter's bearing relative to the target's heading (`struckFacing`, TC.h:932): within 45 degrees of the bow is fore,
+135 or more is aft, otherwise starboard (positive bearing) or port. A shooter on another deck layer whose vertical
+offset is at least its horizontal distance strikes dorsal (above) or ventral (below). Layers 0, +1, -1 are dealt to
+each side's mobile ships (`elevation`, TC.h:2227). A facing at zero lets the hit through to the hull. A station (immobile platform, layer 0) gets its facings from its own shields (`splitShieldFacings`, TC.h:2201; `Stations.cpp`) and does not regenerate shields mid-battle.
+
+**Subsystems** (TC.h:250-268, 1149). Five, each 0-100%: weapons, engines, shields (emitters), sensors, warp core.
+Hull damage wears one subsystem: the aimed one, else the one behind the struck facing (fore weapons, aft engines,
+port/starboard shields, dorsal sensors, ventral warp core). Aimed fire (`Order::subsystem`, TC.h:379) trades 20% of
+its hull damage for three times the subsystem damage (hull points as a percent of max hull, times 3). A destroyed
+shield emitter collapses every facing. A destroyed warp core breaches: a quarter of max hull is lost at once.
+Sensors lower to-hit by `(100 - sensors) / 4`. A ship may only retreat with warp core and engines above zero
+(`mayRetreat`, TC.h:517; exposed to clients as `wego.canWarp`, which hides the Retreat button). The tactical AI aims
+at the engines of a fleeing target, and Veteran-plus crews aim at weapons once the target's shields are under 25%
+(TC.h:741).
+
+**Range bands** (TC.h:286-300). Chebyshev distance in cells: point blank 1 or less, short 2, medium 3-4, long 5-6,
+extreme 7+. Base to-hit percent by family (beam, pulse, torpedo) for point blank/short/medium/long/extreme:
+97/92/80/0/0, 95/85/70/0/0, 75/90/85/72/55. A zero means the family cannot reach that band; maximum ranges are beam 4,
+pulse 3, torpedo 7 (`weaponMaxRange`, TC.h:301). To-hit is `base + crew accuracy - (100 - sensors) / 4 - target evasion`,
+clamped to 5-95 (`wegoHitChance`, TC.h:946).
+
+**Crew ratings** (TC.h:268-285). Green, Regular, Veteran, Elite, Legendary. Accuracy -10/0/+5/+10/+15 percent points;
+subsystem repair per round 2/4/6/8/10; destroyed-system restore 0/0/2/4/6. A ship's starting rating is a stable
+function of its fleet id (about 15/45/25/12/3 percent). A kill promotes the shooter one step (TC.h:1267).
+
+**Orders and replay.** `tacticalOrder` takes an optional `subsystem` (weapons, engines, shields, sensors, warpCore);
+`tacticalForecast` returns the exact path, the end pose and per-mount hit chance and damage for a planned order.
+Campaign replay verification feeds the recorded aim back (`status.subsystemTarget`, TC.h:404;
+`CampaignSession.h` `replayMatches`), so aimed orders replay identically after a save and reload.
 
 ## Rules 1 (legacy)
 
