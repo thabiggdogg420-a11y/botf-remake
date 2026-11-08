@@ -38,6 +38,8 @@ func _run() -> void:
 	_local_content()
 	await _persistence()
 	await _app_hooks()
+	_eras_and_orders()
+	await _voice_layers()   # last: it moves the audio clock far ahead
 	print("%d checks, %d failures" % [checks, failures])
 	quit(1 if failures > 0 else 0)
 
@@ -198,16 +200,17 @@ func _library() -> void:
 	_write_wav(dir.path_join("audio/vo.advisor.fed/b.wav"), 0.3)
 	_write_wav(dir.path_join("audio/one.wav"), 0.2)
 	var cj := FileAccess.open(dir.path_join("audio/cues.json"), FileAccess.WRITE)
-	cj.store_string(JSON.stringify({"cues": {"sfx.ui.research": ["one.wav"], "vo.diplomacy.kli": ["missing.wav"]}}))
+	cj.store_string(JSON.stringify({"cues": {"sfx.ui.research": ["user://audio_test/audio/one.wav"], "vo.diplomacy.kli": ["missing.wav"]}}))
 	cj.close()
-	var orig_env := OS.get_environment("BOTF_AUDIO_DIR")
-	OS.set_environment("BOTF_AUDIO_DIR", dir.path_join("audio"))
 	var lib := BotfAudioLibrary.new()
-	OS.set_environment("BOTF_AUDIO_DIR", orig_env)
-	check(lib.cues_path.ends_with("cues.json") and lib.cue_files.has("sfx.ui.research"), "cues.json loads")
+	check(lib.load_cues("user://audio_test/audio/cues.json"), "cues.json loads (through AppLoader, user://)")
+	check(lib.cues_path.ends_with("cues.json") and lib.cue_files.has("sfx.ui.research"), "cues.json lists its keys")
+	lib.cue_files["sfx.ui.beep"] = PackedStringArray(["user://audio_test/audio/sfx.ui.beep.wav"])
+	lib.cue_files["vo.advisor.fed"] = PackedStringArray(["user://audio_test/audio/vo.advisor.fed/a.wav", "user://audio_test/audio/vo.advisor.fed/b.wav"])
 	check(lib.files_for("sfx.ui.research").size() == 1, "a cue key resolves through cues.json")
+	check(lib.files_for("/etc/disk.wav").is_empty() and not AppLoader.allowed("C:/x.wav"), "disk paths are never served")
 	check(lib.files_for("vo.diplomacy.kli").is_empty(), "a missing listed file is not resolved")
-	check(lib.files_for("vo.advisor.fed").size() == 2, "a key folder resolves its files, sorted")
+	check(lib.files_for("vo.advisor.fed").size() == 2, "a key lists its files")
 	var r := lib.resolve_files(PackedStringArray(["sfx.ui.nothing", "sfx.ui.beep"]))
 	check(r.get("key", "") == "sfx.ui.beep", "the key chain falls back to the next key with a file")
 	check(lib.stream_of(r) is AudioStreamWAV, "a wav loads as a stream")
@@ -246,7 +249,7 @@ func _system() -> void:
 	var dir := ProjectSettings.globalize_path("user://audio_test/vo")
 	DirAccess.make_dir_recursive_absolute(dir)
 	_write_wav(dir.path_join("kli.wav"), 0.5)
-	sys.library.cue_files["vo.diplomacy.greet.kli"] = PackedStringArray([dir.path_join("kli.wav")])
+	sys.library.cue_files["vo.diplomacy.greet.kli"] = PackedStringArray(["user://audio_test/vo/kli.wav"])
 	sys.clock_override = 110.0
 	var vr := sys.cue("first_contact", "fed", "kli")
 	check(vr.get("voice", "") == "vo.diplomacy.greet.kli", "a voice file queues its line")
@@ -428,3 +431,134 @@ func _local_content() -> void:
 	check(wav != null and wav.mix_rate == 22050, "an effect wav loads at its own rate")
 	for ctx in ["title", "galaxy", "battle", "tension"]:
 		check(lib.has_files(BotfAudioCues.music_keys(ctx, "kli")), "music context %s has local files for the Klingons" % ctx)
+
+
+# ------------------------------------------------------------------------------------------------------------
+# M1-AUDIO: eras, order acknowledgement, bridge chatter, loads through AppLoader
+# ------------------------------------------------------------------------------------------------------------
+func _eras_and_orders() -> void:
+	check(BotfAudioCues.era_code("NextGeneration") == "tng" and BotfAudioCues.era_code("ds9") == "ds9" and BotfAudioCues.era_code("Original") == "tos"
+		and BotfAudioCues.era_code("zzz") == "", "era codes from roster names")
+	check(BotfAudioCues.with_era(PackedStringArray(["weapon.Phaser.fed", "weapon.generic.beam"]), "tng")
+		== PackedStringArray(["weapon.Phaser.fed.tng", "weapon.Phaser.fed", "weapon.generic.beam.tng", "weapon.generic.beam"]), "era twins go before each key")
+	check(BotfAudioCues.with_era(PackedStringArray(["sfx.ui.click"]), "tng") == PackedStringArray(["sfx.ui.click"]), "UI keys have no era twin")
+	check(BotfAudioCues.with_era(PackedStringArray(["a"]), "") == PackedStringArray(["a"]), "no era -> keys unchanged")
+	check(BotfAudioCues.order_voice_keys("Engage", "fed", "ds9") == PackedStringArray(["vo.combat.engage.fed.ds9", "vo.combat.engage.fed", "vo.combat.ack.fed.ds9", "vo.combat.ack.fed"]), "Engage: engage line, then acknowledgement")
+	check(BotfAudioCues.order_voice_keys("Retreat", "kli")[0] == "vo.combat.retreat.kli" and BotfAudioCues.order_voice_keys("Retreat", "").is_empty(), "orders never cross factions")
+	var missing := []
+	for mv in CombatVM.MANEUVERS:
+		if not BotfAudioCues.ORDER_DETAILS.has(mv.key):
+			missing.append(mv.key)
+	check(missing.is_empty(), "every combat order button has a voice mapping %s" % [missing])
+	check(BotfAudioSystem.chatter_kind("weapon.PhotonTorpedo.fed") == "torpedo" and BotfAudioSystem.chatter_kind("weapon.generic.beam") == "beam"
+		and BotfAudioSystem.chatter_kind("sfx.explosion.small") == "hull" and BotfAudioSystem.chatter_kind("sfx.explosion.large") == "destroyed"
+		and BotfAudioSystem.chatter_kind("sfx.shield.hit") == "shield" and BotfAudioSystem.chatter_kind("sfx.ui.click") == "", "effects map to chatter kinds")
+	check(BotfAudioSystem._combat_detail("vo.combat.shields.50.fed.ds9") == "shields.50" and BotfAudioSystem._combat_detail("vo.combat.torpedo.fed") == "torpedo", "bark detail from a key")
+	var ch := BotfBridgeChatter.new(7)
+	check(ch.next_line(10.0) == "", "no chatter before any event")
+	for i in 5:
+		ch.note("beam", 10.0 + i * 0.2)
+	ch.note("torpedo", 11.0)
+	var d1 := ch.next_line(12.0)
+	check(d1 in ["phaser", "torpedo", "target", "encounter"], "chatter follows the action (%s)" % d1)
+	ch.commit(d1, 12.0)
+	for i in 6:
+		ch.note("shield", 13.0 + i * 0.1)
+	check(ch.next_line(14.0) == "", "chatter holds a gap of %.0f s" % ch.min_gap)
+	ch.note_voice(30.0)
+	for i in 6:
+		ch.note("shield", 33.0 + i * 0.1)
+	var d2 := ch.next_line(38.5)
+	check(d2 != "" and d2 != d1, "next line differs from the last (%s)" % d2)
+	var a := BotfBridgeChatter.new(3)
+	var b := BotfBridgeChatter.new(3)
+	for c in [a, b]:
+		for i in 8:
+			c.note("hull", 1.0 + i * 0.1)
+			c.note("beam", 1.0 + i * 0.1)
+	var la := a.next_line(5.0)
+	check(la == b.next_line(5.0) and la != "", "same seed, same line (%s)" % la)
+	var c3 := BotfBridgeChatter.new(1)
+	c3.max_per_fight = 2
+	for t in [10.0, 30.0, 50.0]:
+		c3.note("destroyed", t)
+		var dd := c3.next_line(t + 0.5)
+		if dd != "":
+			c3.commit(dd, t + 0.5)
+	check(c3.lines_said == 2, "chatter stops at the per-fight cap")
+
+
+func _voice_layers() -> void:
+	var sys := _sys()
+	if sys == null:
+		return
+	var dir := ProjectSettings.globalize_path("user://audio_test/orders")
+	DirAccess.make_dir_recursive_absolute(dir)
+	for n in ["ack", "retreat", "underattack", "torpedo", "ack_tng"]:
+		_write_wav(dir.path_join(n + ".wav"), 0.2)
+	var lib := sys.library
+	for k in ["ack", "retreat", "underattack", "torpedo"]:
+		lib.cue_files["vo.combat.%s.fed" % k] = PackedStringArray(["user://audio_test/orders/%s.wav" % k])
+	sys._app = null
+	sys.enabled = true
+	sys.era = ""
+	sys.clock_override = 500.0
+	sys.recent.clear()
+	var got := sys.order_ack("Retreat")
+	check(got.get("sfx", "") == "sfx.ui.beep", "an order plays the beep even with no faction")
+	check(not got.has("voice"), "no player faction -> no crew voice")
+	var fake := _FakeApp.new()
+	sys._app = fake
+	sys.clock_override = 510.0
+	got = sys.order_ack("Retreat")
+	check(got.get("voice", "") == "vo.combat.retreat.fed", "Retreat is acknowledged with the retreat line: %s" % [got])
+	sys.clock_override = 520.0
+	sys.scheduler = BotfCueScheduler.new()
+	got = sys.order_ack("Engage")
+	check(got.get("voice", "") == "vo.combat.ack.fed", "Engage falls back to the acknowledgement group: %s" % [got])
+	sys.clock_override = 530.0
+	sys.scheduler = BotfCueScheduler.new()
+	sys.recent.clear()
+	var pill := Button.new()
+	pill.name = "Maneuver_Evade"
+	root.add_child(pill)
+	await frames()
+	pill.pressed.emit()
+	check(sys.recent.any(func(r): return r.cue == "order_accepted"), "pressing Maneuver_Evade fires the order cue")
+	check(not sys.recent.any(func(r): return r.cue == "ui_click"), "and not also the generic click")
+	lib.cue_files["vo.combat.ack.fed.tng"] = PackedStringArray(["user://audio_test/orders/ack_tng.wav"])
+	lib.eras_present["tng"] = true
+	sys.set_era("NextGeneration")
+	check(sys.current_era() == "tng" and sys.settings.get("audio_era") == "tng", "era set from a roster name and kept in settings")
+	sys.clock_override = 540.0
+	sys.scheduler = BotfCueScheduler.new()
+	got = sys.order_ack("Engage")
+	check(got.get("voice", "") == "vo.combat.ack.fed.tng", "the era's own line is preferred: %s" % [got])
+	sys.set_era("auto")
+	check(sys.current_era() == BotfAudioCues.DEFAULT_ERA, "auto -> the default era")
+	sys.set_music("battle")
+	sys.scheduler = BotfCueScheduler.new()
+	sys.chatter = BotfBridgeChatter.new(5)
+	sys.clock_override = 600.0
+	for i in 4:
+		sys.chatter.note("torpedo", 599.0 + i * 0.2)
+		sys.chatter.note("hull", 599.0 + i * 0.2)
+	var line := sys.chatter_tick()
+	check(line.begins_with("vo.combat."), "a fight produces a chatter line: %s" % line)
+	sys.chatter_enabled = false
+	sys.chatter = BotfBridgeChatter.new(5)
+	sys.chatter.note("hull", 700.0)
+	sys.clock_override = 701.0
+	check(sys.chatter_tick() == "", "chatter can be switched off")
+	sys.chatter_enabled = true
+	sys._app = null
+	pill.queue_free()
+	fake.free()
+
+
+class _FakeApp extends Node:
+	var screen := "combat"
+	var view := {}
+	var encounter := {}
+	func player() -> int:
+		return 1
