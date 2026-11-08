@@ -112,6 +112,7 @@ static func build(parent: Node3D, arena_size: Vector2, planet_class: String = "G
 	out.planet = planet
 	# Art wave 2: the photoreal set (desktop tier, normal map, cloud shell, atmosphere rim) lit by the battle sun, from
 	# the same texture packs the system view uses. Falls back to the procedural gas giant above when the class has none.
+	out.planet_class = planet_class
 	PlanetBody.attach(planet, planet_class, {"hi": true, "variant": 0, "inhabited": false, "sun_energy": 1.5,
 		"sun_node": sun, "sun_dir": sun.global_transform.basis.z, "sun_color": Color(1.0, 0.93, 0.82)})
 
@@ -195,3 +196,22 @@ static func _dust(arena_size: Vector2) -> GPUParticles3D:
 	mesh.material = m
 	gp.draw_pass_1 = mesh
 	return gp
+
+
+## Swaps the backdrop planet to `planet_class` after the fact (the battle's system is only known once the encounter
+## arrives). `env` is the dictionary build() returned. A class with no texture set keeps the procedural gas giant.
+static func set_planet_class(env: Dictionary, planet_class: String) -> void:
+	if planet_class == "" or planet_class == env.get("planet_class", "") or not env.has("planet"):
+		return
+	var planet: MeshInstance3D = env.planet
+	for c in planet.get_children():
+		if c is PlanetBody:
+			planet.remove_child(c)
+			c.queue_free()
+	var pm := ShaderMaterial.new()
+	pm.shader = PLANET_SHADER
+	planet.material_override = pm
+	var sun: DirectionalLight3D = env.sun
+	PlanetBody.attach(planet, planet_class, {"hi": true, "variant": 0, "inhabited": false, "sun_energy": 1.5,
+		"sun_node": sun, "sun_dir": sun.global_transform.basis.z, "sun_color": Color(1.0, 0.93, 0.82)})
+	env.planet_class = planet_class

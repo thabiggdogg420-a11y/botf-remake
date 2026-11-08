@@ -141,6 +141,16 @@ func _pure_models() -> void:
 	var e := {"ships": [{"id": 1, "name": "A"}, {"id": 2, "name": "B"}]}
 	var log := CombatVM.round_log(e, {"salvos": [{"from": 1, "to": 2, "beam": 3, "torpedo": 4}], "lost": [2], "ended": true})
 	check(log.size() == 3 and log[0][1] == "A → B: 7 damage" and log[1][0] == "alert", "round log lines")
+	# rules 4 (WEGO) helpers
+	var w4 := {"wego": {"canWarp": false, "crew": "Veteran", "facings": [1, 2, 3, 4, 5, 6], "subsystems": {"weapons": 80}}}
+	check(CombatVM.wego_of(w4)["crew"] == "Veteran" and CombatVM.wego_of({}).is_empty(), "wego block read, empty under rules 1-3")
+	check(CombatVM.retreat_hidden(w4) and not CombatVM.retreat_hidden({"wego": {"canWarp": true}}) and not CombatVM.retreat_hidden({}), "Retreat hidden only when a rules 4 ship cannot warp")
+	check(CombatVM.FACINGS.size() == 6 and CombatVM.SUBSYSTEMS.size() == 5, "six facings, five subsystems")
+	var cvm := CombatVM.new(null)
+	cvm.set_subsystem("engines")
+	check(cvm.subsystem == "engines", "aim set")
+	cvm.set_subsystem("bogus")
+	check(cvm.subsystem == "none", "an unknown aim clears it")
 	var cs := CombatVM.card_state({"alive": true, "beam": 2, "torpedo": 1, "next": {"maneuver": "Engage", "target": 2, "source": "order"}}, e["ships"], false)
 	check(cs["line"] == "next: Engage → B #2  (ordered)" and cs["ordered"] and cs["flags"] == "B2 · T1", "ship card state")
 	check(CombatVM.hail_outlook({"hail": {"accepts": true}}, "Klingons")[1] == "good", "hail outlook")
