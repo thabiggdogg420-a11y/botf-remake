@@ -14,6 +14,12 @@ set(GODOTCPP_DISABLE_EXCEPTIONS OFF CACHE BOOL "" FORCE)
 # template_debug for the editor, headless tests and debug exports; template_release for release exports.
 set(BOTF_GODOT_TARGET template_debug CACHE STRING "template_debug or template_release")
 set(GODOTCPP_TARGET ${BOTF_GODOT_TARGET} CACHE STRING "" FORCE)
+if(EMSCRIPTEN)
+    # godot-cpp builds with -sSUPPORT_LONGJMP=wasm, which clang refuses alongside Emscripten's JS exceptions
+    # (-fexceptions alone). Native wasm exceptions are compatible with it, for godot-cpp and the core alike.
+    string(APPEND CMAKE_CXX_FLAGS " -fwasm-exceptions")
+    string(APPEND CMAKE_SHARED_LINKER_FLAGS " -fwasm-exceptions")
+endif()
 add_subdirectory(godot-cpp EXCLUDE_FROM_ALL)
 
 set(REMASTER ${CMAKE_CURRENT_SOURCE_DIR}/../..)
@@ -33,7 +39,7 @@ if(NOT MSVC)
     # No -ffast-math and no FP contraction, so results match the native and wasm core bit for bit.
     target_compile_options(botf_core PRIVATE -fexceptions -ffp-contract=off)
 endif()
-if(NOT WIN32)
+if(NOT WIN32 AND NOT EMSCRIPTEN)
     # godot-cpp links libstdc++ statically. Keep its symbols private, or they interpose with the
     # system libstdc++ that the GPU drivers load, and iostream locale facets crash in serialize().
     target_link_options(botf_core PRIVATE -Wl,--exclude-libs,ALL)
@@ -50,11 +56,33 @@ if(MSVC)
 endif()
 
 set(BOTF_PLATFORM linux)
+set(BOTF_ARCH x86_64)
 if(WIN32)
     set(BOTF_PLATFORM windows)
 endif()
+if(EMSCRIPTEN)
+    # Web (docs/DATA-FORMAT.md section 11): a wasm32 side module for Godot's dlink web template, no threads.
+    # Configure with: emcmake cmake -S . -B build-web-<target> -G Ninja -DCMAKE_BUILD_TYPE=Release
+    #                 -DBOTF_GODOT_TARGET=template_<target> -DGODOTCPP_THREADS=OFF
+    # godot-cpp's cmake/web.cmake already adds -sSIDE_MODULE and -sSUPPORT_LONGJMP=wasm.
+    set(BOTF_PLATFORM web)
+    set(BOTF_ARCH wasm32)
+    target_compile_options(botf_core PRIVATE -sSIDE_MODULE=1)
+    # Godot's official web templates build the main module with exceptions off (its __cxa_throw aborts). The core
+    # throws, so the side module carries its own wasm-exceptions libc++abi and libunwind, bound locally (-Bsymbolic).
+    # Build them once with: embuilder build libc++abi-except libunwind-except --pic
+    set(BOTF_EM_PIC ${EMSCRIPTEN_SYSROOT}/lib/wasm32-emscripten/pic)
+    target_link_options(botf_core PRIVATE -sSIDE_MODULE=1 -sWASM_BIGINT -Wl,-Bsymbolic
+        ${BOTF_EM_PIC}/libc++abi-except.a ${BOTF_EM_PIC}/libunwind-except.a)
+    set_target_properties(botf_core PROPERTIES SUFFIX ".wasm")
+    # The one symbol still imported is the __cpp_exception tag, which the main module does not define: make it local.
+    find_package(Python3 REQUIRED COMPONENTS Interpreter)
+    add_custom_command(TARGET botf_core POST_BUILD
+        COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/wasm_localize_tag.py $<TARGET_FILE:botf_core>
+        VERBATIM)
+endif()
 set_target_properties(botf_core PROPERTIES
     PREFIX "lib"
-    OUTPUT_NAME "botf_core.${BOTF_PLATFORM}.${BOTF_GODOT_TARGET}.x86_64"
+    OUTPUT_NAME "botf_core.${BOTF_PLATFORM}.${BOTF_GODOT_TARGET}.${BOTF_ARCH}"
     LIBRARY_OUTPUT_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/bin
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/bin)

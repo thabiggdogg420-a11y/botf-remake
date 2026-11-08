@@ -126,27 +126,51 @@ The loader rejects: unknown or missing keys, wrong types, out-of-range integers,
 
 `tools/content/export_from_headers.cpp` was compiled against the f2581a7 headers and wrote the section files. The same program, rebuilt against the new loader, compares every field of every record with the old constexpr tables (strings by content, doubles bit for bit). Its output is on the lane report.
 
-## 10. Hand-offs outside lane L5
+## 10. Host wiring (M0 L5 round 2, branch m0/data2)
 
-- **Bridge call (needs `web/bridge/WebBridge.cpp`, not owned by L5):** add a method `loadContent` with args `{"bundle": <string>}` that calls `botf::content::install(args.bundle)` and returns `{"id","checksum","format"}`, plus `contentInfo` returning the same for `content::active()`. GDScript: `core.request("loadContent", {"bundle": FileAccess.get_file_as_string("res://data/base.pack.json")})` at boot, before `newCampaign`/`load`.
-- **Pack in `res://` (needs `remaster/godot/`, not owned by L5):** copy `remaster/data/*.pack.json` to `remaster/godot/data/` in the export step (lane L6 nightly), so it ships inside the `.pck`.
-- **`assets/check_asset_keys.py`** reads `ShipRosterData.h` (`check_asset_keys.py:52`). It must read `data/base/roster.json` instead; it belongs to the asset lane (L3).
-- **`research/export-reference.py`** wrote `ReferenceCatalogue.h`; it is superseded by `data/base/*.json` and is not part of any build.
+- **Bridge calls** (`web/bridge/WebBridge.cpp`, `dispatch`):
+  - `loadContent {"bundle": <string>}` calls `content::install` and returns `{"id","name","format","revision","checksum","bytes","base"}`. `checksum` is a 16-digit hex string, because JSON numbers lose 64-bit precision. A bad pack returns `ok:false` with the loader's path-carrying message, and the active pack stays.
+  - `loadBaseContent` reinstalls the embedded base pack.
+  - `contentInfo` returns the active pack.
+  - Call `loadContent` before `newCampaign` or loading a save. A save made under another pack is refused (section 7).
+- **Pack in `res://`.** `tools/verify/verify.ps1` copies `remaster/data/*.pack.json` byte for byte into `remaster/godot/data/` before the import. It checks the copies by hash and reports the step as `content-packs`. It writes `godot/data/.gitignore` (`*`), so the copies never dirty the tree. In the stamped preset it also widens `include_filter` to `fixtures/*.json, data/*.pack.json`, so the `.pck` carries the packs.
+- **Still to do, outside L5:**
+  - The committed `export_presets.cfg` (lane L6) should carry `data/*.pack.json` in `include_filter` itself.
+  - The client boot (`scenes/ui`, lane L4) should call `core.request("loadContent", {"bundle": FileAccess.get_file_as_string("res://data/base.pack.json")})` when the file exists. Until then the core uses its identical embedded base pack.
+- **`assets/check_asset_keys.py`** now reads `data/base/roster.json` and `data/base/ships.json`. Its output is byte-identical to the f2581a7 version run against the old headers: 203 required keys, 279 manifest entries, 0 errors.
+- **`research/export-reference.py`** wrote `ReferenceCatalogue.h`. The data files supersede it, and it is not part of any build.
 
 ## 11. GDExtension for wasm32 (Browser target)
 
-Requirement (coordinator, 8 Nov): the GDExtension builds for wasm32 with Emscripten using Godot's dlink web template, no threads.
+Requirement (coordinator, 8 Nov 2026): build the GDExtension for wasm32 with Emscripten, using Godot's dlink web template, with no threads. **Status: built and proven in headless Chrome on 8 Nov 2026 (branch m0/data2).**
 
-State on this PC (8 Nov 2026):
-- Godot web export templates: Simon installed them on 8 Nov. `%APPDATA%\Godot\export_templates\4.5.stable\` now has `web_dlink_*` and `web_dlink_nothreads_*`, both debug and release.
-- `godot/core/botf_core.gdextension` now has `web.debug.wasm32` and `web.release.wasm32` entries pointing at `bin/libbotf_core.web.template_<target>.wasm32.wasm`. These are no-thread builds: Godot uses the `.threads.` entry name only for threaded builds.
-- No Emscripten SDK is installed (`em++` not on PATH). `C:\Tools\emsdk` was cloned, but running `emsdk install` (it downloads and runs external toolchain binaries) was refused by this session's permission gate. **Blocker: Simon's OK to install emsdk 3.1.64 into `C:\Tools\emsdk`.**
-- The core itself is wasm-ready: the web client already compiles every `BotfSim/*.cpp` with `em++ -std=c++20 -O2 -fexceptions` (`web/build-wasm.sh:25-56`), and this lane adds no threads, no file I/O and no `<filesystem>`.
+**Pinned toolchain**
+- **Emscripten SDK 3.1.64.** Simon installed and activated it in `C:\Tools\emsdk` on 8 Nov 2026. Use `emsdk_env.bat` to set up the shell.
+- The Godot 4.5 template says it was built with Emscripten 4.0.10. A 3.1.64 side module loads into it and passes the suites below. Re-run that proof before changing either version.
+- **Godot 4.5-stable templates**, the `web_dlink_nothreads_*` pair, in `%APPDATA%\Godot\export_templates\4.5.stable\`.
 
-Exact steps once emsdk is allowed (PowerShell, no admin):
-1. `cd C:\Tools\emsdk; .\emsdk.bat install 3.1.64; .\emsdk.bat activate 3.1.64; .\emsdk_env.bat`
-2. Web templates: done (Simon, 8 Nov). `remaster/tools/verify/setup-web-export.ps1` installs them again if needed.
-3. Configure: `emcmake cmake -S remaster\godot\core -B remaster\godot\core\build-web-nothreads -G Ninja -DCMAKE_BUILD_TYPE=Release -DBOTF_GODOT_TARGET=template_release -DGODOTCPP_THREADS=OFF`. godot-cpp's `cmake/web.cmake` adds `-sSIDE_MODULE` and `-sSUPPORT_LONGJMP=wasm` (godot-cpp 4.5-stable, `web.cmake:20-37`).
-4. `remaster/godot/core/CMakeLists.txt` (not owned by L5) needs a web branch: `BOTF_PLATFORM web`, architecture suffix `wasm32` instead of `x86_64`, `-fexceptions` at compile and link, and `.wasm` output; The `botf_core.gdextension` web entries are already in place.
-5. Export with `remaster\tools\verify\verify.ps1 -Target web` (lane L6). The Web preset needs `variant/extensions_support=true` and `variant/thread_support=false`.
-6. Proof: serve the export with `remaster\tools\verify\serve_web.py` (no COOP/COEP headers needed without threads), boot it in headless Chrome with `web_capture.py`, and check the captures. Then run `res://tests/run_tests.gd`'s `test_fixture_determinism` in the browser build: the fingerprint must equal `godot/fixtures/determinism.json`.
+**Exceptions.** The core throws, and the bridge turns those throws into JSON errors. Godot's official template builds the main module with exceptions off: its `__cxa_throw` and `__cxa_begin_catch` abort, and it defines no `__cpp_exception` tag. The web branch of `godot/core/CMakeLists.txt` therefore does four things:
+1. It compiles everything, godot-cpp included, with `-fwasm-exceptions`. Plain `-fexceptions` cannot be combined with godot-cpp's `-sSUPPORT_LONGJMP=wasm`.
+2. It links the side module's own PIC `libc++abi-except.a` and `libunwind-except.a` with `-Wl,-Bsymbolic`, so every throw and catch stays inside the module.
+3. After linking, it runs `godot/core/wasm_localize_tag.py`. That script turns the one remaining import, the `__cpp_exception` tag, into a tag the module defines itself. Without it, loading fails with "tag import requires a WebAssembly.Tag" (first verify run, 8 Nov).
+4. It writes `bin/libbotf_core.web.template_<target>.wasm32.wasm`, matching the `web.*.wasm32` entries in `botf_core.gdextension`.
+
+**Build steps** (PowerShell, no admin):
+1. `C:\Tools\emsdk\emsdk_env.bat`
+2. Once only: `embuilder build libc++abi-except libunwind-except --pic`
+3. For each target, debug and release:
+   - `emcmake cmake -S remaster\godot\core -B remaster\godot\core\build-web-<target> -G Ninja -DCMAKE_BUILD_TYPE=Release -DBOTF_GODOT_TARGET=template_<target> -DGODOTCPP_THREADS=OFF`
+   - `cmake --build remaster\godot\core\build-web-<target>`
+   Ninja is the one shipped with VS Build Tools. The first build compiles all of godot-cpp, about 1,000 objects.
+4. Export and check: `powershell -NoProfile -File remaster\tools\verify\verify.ps1 -Target web`.
+
+**Proof, 8 Nov 2026**
+- `verify.ps1 -Target web`: 21 ok, 0 failed or blocked (run `captures\2026-11-08\134835`). The `export-web` step was ok. The `web-capture` step booted with `core ok=true, 5 empires`; its only console error was `shader type fog not supported in OpenGL renderer`, which is lane L6's Compatibility fallback, not the core.
+- Driven in headless Chrome (SwiftShader WebGL2, Compatibility renderer), each screen came up with live core data:
+  - title;
+  - New Campaign screen;
+  - Launch Campaign to the galaxy map: Sol, turn 0, 1,000 credits, the system panel;
+  - Tactical Drill, End Turn and the Enemy Contact dialog: 5 vs 4 Klingon, cloaked contacts, a truce estimate;
+  - Take Command: the battle view with the 3D Federation hulls, the orders bar and the radar.
+- In the browser build, `res://tests/run_tests.gd` ran with `--script` passed through `GODOT_CONFIG.args`: **11 passed, 0 failed**. That includes `test_invalid_order`, which means exceptions are caught across the bridge, and `test_fixture_determinism`, which means the fingerprint equals the WASM-recorded `godot/fixtures/determinism.json`. So the browser core and the desktop core agree.
+- Seen in the captures, not caused by this lane: the small bullet icons on the faction cards draw as missing-glyph boxes in the web build (font fallback), and the fog shader has no Compatibility fallback.
