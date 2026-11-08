@@ -67,6 +67,7 @@ func _ready() -> void:
 	_load_settings()
 	DisplaySettings.fill_defaults(settings)
 	DisplaySettings.apply(settings, get_tree())   # window mode, resolution, vsync, FPS cap, render scale, AA, shadows
+	AppLoader.mount_user_packs()   # asset bundles built by the pack step (planet textures ...)
 	BotfAudioSystem.attach(self)   # audio: shares settings, listens to screen changes (music, screen cue)
 	session.connect_core(CoreClient.create("fixture" if forced_backend == "fixture" else "auto"))
 	session.view_changed.connect(_on_view_changed)

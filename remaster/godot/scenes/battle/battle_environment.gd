@@ -8,7 +8,9 @@ const PLANET_SHADER := preload("res://scenes/battle/shaders/planet.gdshader")
 const FOG_SHADER := preload("res://scenes/battle/shaders/nebula_fog.gdshader")
 
 
-static func build(parent: Node3D, arena_size: Vector2) -> Dictionary:
+## `planet_class` picks the backdrop planet's texture set (M, O, L, P, H, K, Y, GasGiant); a class with no set keeps the
+## procedural gas giant.
+static func build(parent: Node3D, arena_size: Vector2, planet_class: String = "GasGiant") -> Dictionary:
 	var out := {}
 	var env := Environment.new()
 	var sky := Sky.new()
@@ -104,10 +106,14 @@ static func build(parent: Node3D, arena_size: Vector2) -> Dictionary:
 	# True scale (Simon, 8 Nov 2026: "the ships look huge compared to the nearby planet"): a gas giant is tens of
 	# thousands of km across, so it is a backdrop, pushed far beyond the arena where it never sits beside a hull.
 	planet.scale = Vector3.ONE * 700.0
-	planet.position = Vector3(-2600.0, -350.0, -4600.0) # level with the arena, far behind it: off the downward views
+	planet.position = Vector3(3200.0, -380.0, -4200.0) # level with the arena, far behind it, off the downward views, and on the side the sun lights (half phase from the arena)
 	planet.rotation_degrees = Vector3(12.0, 30.0, 18.0)
 	parent.add_child(planet)
 	out.planet = planet
+	# Art wave 2: the photoreal set (desktop tier, normal map, cloud shell, atmosphere rim) lit by the battle sun, from
+	# the same texture packs the system view uses. Falls back to the procedural gas giant above when the class has none.
+	PlanetBody.attach(planet, planet_class, {"hi": true, "variant": 0, "inhabited": false, "sun_energy": 1.5,
+		"sun_node": sun, "sun_dir": sun.global_transform.basis.z, "sun_color": Color(1.0, 0.93, 0.82)})
 
 	# Volumetric nebula bank drifting through the far side of the arena.
 	# FogVolume shaders are not supported by the web Compatibility renderer; forward_plus only.

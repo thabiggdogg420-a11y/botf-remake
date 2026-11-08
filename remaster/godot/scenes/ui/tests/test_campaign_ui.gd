@@ -86,6 +86,15 @@ func _workflow(backend: String) -> void:
 	# ---- Galaxy: select a unit, open the order menu, set course
 	var gs := app.current_screen()
 	check(gs.map != null and gs.map.view().size() > 0, "galaxy map has the view")
+	# M1-INT: the galaxy HUD is GalaxyHud over GalaxyVM, in the design system's frames.
+	check(gs.hud is GalaxyHud and find(gs, "Alerts") != null and find(gs, "OrdersCard") != null and find(gs, "LayerBar") != null and find(gs, "ChartStatus") != null, "galaxy HUD shows alerts, orders, layers and the status strip")
+	check(find(gs, "Legend") != null and find(gs, "Layer_fog") != null and find(gs, "Layer_fog").button_pressed, "HUD has the legend and the fog layer toggle")
+	find(gs, "Layer_grid").button_pressed = false
+	await frames()
+	check(app.map_layers.get("grid", true) == false, "a layer toggle reaches the chart")
+	find(gs, "OrdersToggle").pressed.emit()
+	await frames()
+	check(find(gs, "OrdersCard") != null and gs.hud.orders_open, "the orders frame opens")
 	var fleets: Array = app.view.get("fleets", [])
 	check(fleets.size() > 0, "player has ships")
 	if fleets.size() > 0:

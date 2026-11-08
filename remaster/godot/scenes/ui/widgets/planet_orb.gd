@@ -36,8 +36,13 @@ static func make(cls_: String, px: float, seed_: int = 0) -> PlanetOrb:
 	o.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	return o
 
+var _body_mesh: MeshInstance3D
+var _spin3d := 0.0
+
 func _ready() -> void:
 	if cls == "Asteroids":
+		return
+	if _build_3d():
 		return
 	if _shader == null:
 		_shader = AppLoader.resource("res://scenes/ui/widgets/planet_orb.gdshader") as Shader
@@ -63,7 +68,56 @@ func _ready() -> void:
 	material = m
 	set_process(animate and not UiTokens.reduced_motion)
 
+## The photoreal planet (art wave 2): the L7 texture set on a real sphere in a small transparent SubViewport, lit from the
+## upper left like the battle sun, with cloud shell and atmosphere rim (PlanetBody). Needs a class with a set; otherwise
+## false and the procedural 2D orb below is used. Works on both renderers (a plain 3D viewport, no screen textures).
+func _build_3d() -> bool:
+	if not PlanetTextures.variants(cls).size() > 0 or not PlanetBody.LOOK.has(cls):
+		return false
+	var side: float = maxf(custom_minimum_size.x, custom_minimum_size.y)
+	var svc := SubViewportContainer.new()
+	svc.name = "Globe"
+	svc.stretch = true
+	svc.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	svc.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	var vp := SubViewport.new()
+	vp.transparent_bg = true
+	vp.own_world_3d = true
+	vp.msaa_3d = Viewport.MSAA_4X
+	vp.size = Vector2i(maxi(int(side), 32), maxi(int(side), 32))
+	vp.render_target_update_mode = SubViewport.UPDATE_ALWAYS if animate and not UiTokens.reduced_motion else SubViewport.UPDATE_WHEN_VISIBLE
+	svc.add_child(vp)
+	var cam := Camera3D.new()
+	cam.projection = Camera3D.PROJECTION_ORTHOGONAL
+	cam.size = 2.0 / 0.42 # the disc fills 84% of the square, the halo of the 2D orb sits outside it
+	cam.position = Vector3(0, 0, 4)
+	vp.add_child(cam)
+	_body_mesh = MeshInstance3D.new()
+	var sm := SphereMesh.new()
+	sm.radius = 1.0
+	sm.height = 2.0
+	sm.radial_segments = 64
+	sm.rings = 32
+	_body_mesh.mesh = sm
+	var tilt := Node3D.new()
+	tilt.rotation_degrees = Vector3(0, 0, -12.0)
+	vp.add_child(tilt)
+	tilt.add_child(_body_mesh)
+	var hi := side >= 150.0
+	var sets := PlanetTextures.variants(cls, hi)
+	PlanetBody.attach(_body_mesh, cls, {"hi": hi, "variant": seed_id, "inhabited": true,
+		"sun_dir": Vector3(-0.62, 0.38, 0.69), "sun_color": Color(1.0, 0.95, 0.88), "sun_energy": 1.3 if sets.size() > 0 else 1.0})
+	add_child(svc)
+	_spin3d = float(seed_id % 11) / 11.0 * TAU
+	_body_mesh.rotation.y = _spin3d
+	set_process(animate and not UiTokens.reduced_motion)
+	return true
+
 func _process(delta: float) -> void:
+	if _body_mesh != null:
+		_spin3d = fmod(_spin3d + delta * TAU / 90.0, TAU)
+		_body_mesh.rotation.y = _spin3d
+		return
 	_spin = fmod(_spin + delta / 40.0, 1.0)
 	if material is ShaderMaterial:
 		(material as ShaderMaterial).set_shader_parameter("spin", _spin)
@@ -82,6 +136,8 @@ func _draw() -> void:
 			var p := ctr + Vector2(cos(a) * rr, sin(a) * rr * 0.42)
 			var s := rng.randf_range(1.2, 3.6) * r / 30.0
 			draw_circle(p, s, c.lightened(rng.randf_range(-0.2, 0.25)))
+		return
+	if _body_mesh != null:
 		return
 	if material != null:
 		# The shader draws the sphere into a square that is a little larger than the disc, for the halo.
