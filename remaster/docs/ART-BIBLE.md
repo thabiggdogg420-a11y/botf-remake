@@ -254,3 +254,28 @@ Each row: `key`, `category`, `name`, `source`, `status`, `ws` (MASTER-PLAN §5),
 - L5 (data): `ReferencePlanets` and the minor race table are the key sources; do not rename planet classes.
 - L6 (build): the nightly capture includes one turntable sheet per renderer for the M1 hulls; fix the ion storm and set `application/icon`.
 - L1 and L2: every design doc's "content and art needs, by asset key" cites keys from the manifest; a key not in the manifest is added there first.
+
+## Combat visual benchmark (Simon, 8 Nov 2026; this outranks the rest of this bible)
+
+Simon's words: "as close to photorealistic as possible, aiming to look exactly like the shows battle scenes from DS9 dominion war era, or relevant era chosen to play in by the player (meaning TOS era weapons and ships match TOS era shows looks, but modernized to look realistic as possible)".
+
+- **Reference footage.** The reference for each era is the show's battle scenes:
+  - TOS era: TOS-R (the remastered effects);
+  - movie era: TMP to TUC;
+  - TNG and DS9 era: the Dominion War episodes;
+  - VOY era;
+  - late era: Picard season 3 lighting.
+
+  Desktop (Forward+) is held to this bar. Web is a best-effort scale-down of the same look.
+- **Weapons by era.** Each look below is set per era:
+  - phaser colour, beam width and how a beam sweeps across a hull;
+  - disruptor bolts and beams;
+  - photon and quantum torpedo glow and flare;
+  - the shield bubble on impact;
+  - hull burn and scorch decals;
+  - venting plasma and atmosphere;
+  - the warp flash.
+
+  The tests compare captured frames side by side with stills from the show.
+- **Photoreal rules.** Use physically based hull materials with panel detail and running lights, a single hard key light from the local star with deep shadows and almost no ambient fill, and filmic tonemapping. Add camera language from the shows: long-lens fleet shots, ships passing close to camera, and slow pans.
+- **Era selection.** The era the player picks sets the ship roster, the weapon and effects look, and the UI theme.
