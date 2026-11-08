@@ -109,6 +109,13 @@ static func mount_user_packs() -> int:
 	for f in list("user://packs"):
 		if f.ends_with("_desktop.pck") and mount_pack("user://packs/" + f):
 			n += 1
+	# Packs shipped beside the exe (build\packs\*_desktop.pck from the verify/package step). The loader is the one place a
+	# disk path is allowed, and only for this folder; an editor or test run finds no such folder and mounts nothing.
+	var beside := OS.get_executable_path().get_base_dir().path_join("packs")
+	if not OS.has_feature("editor") and DirAccess.dir_exists_absolute(beside):
+		for f in DirAccess.get_files_at(beside):
+			if f.ends_with("_desktop.pck") and ProjectSettings.load_resource_pack(beside.path_join(f)):
+				n += 1
 	return n
 
 ## Web bundles served beside index.html in packs/ (built by pack_planets.gd with `web`; budget 40 MB all told).
