@@ -1,16 +1,15 @@
 extends Control
 ## Galaxy screen: the star chart plus HUD (alerts, galactic events, layer toggles, drafted orders,
-## legend), hover tooltip, right-click order menu and the inspector. Port of screens/Galaxy.tsx.
+## legend), hover tooltip, right-click order menu and the inspector. The HUD is GalaxyHud (scenes/ui/screens/galaxy_hud.gd)
+## fed by GalaxyVM; this script owns the chart, the inspector, the hover card and the order menu.
 
 var app: App
 var map: GalaxyMap
-var _hud: Control
+var hud: GalaxyHud
 var _inspector: PanelContainer
 var _inspector_body: VBoxContainer
 var _hover: PanelContainer
 var _menu: PanelContainer
-var _orders_open := false
-var _alerts_open := true
 var _framed := false
 var _warmed := false
 var _marks: Array = []
@@ -24,13 +23,14 @@ func _ready() -> void:
 	map.cell_clicked.connect(_on_click)
 	map.cell_context.connect(open_context_menu)
 	map.hover_changed.connect(_on_hover)
-	_hud = Control.new()
-	_hud.set_anchors_preset(Control.PRESET_FULL_RECT)
-	_hud.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(_hud)
+	hud = GalaxyHud.new()
+	hud.app = app
+	hud.focus_requested.connect(focus_cell)
+	hud.layer_changed.connect(func(key, on): map.set_layer(key, on))
+	add_child(hud)
 	_inspector = PanelContainer.new()
 	_inspector.name = "Inspector"
-	_inspector.add_theme_stylebox_override("panel", Lcars.box(Color(Lcars.PANEL_SOLID, 0.9), 18, Lcars.LINE2, 1, Vector4(16, 14, 16, 14)))
+	_inspector.add_theme_stylebox_override("panel", Lcars.panel_box(Lcars.accent()))
 	add_child(_inspector)
 	var sc := ScrollContainer.new()
 	sc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
@@ -39,7 +39,7 @@ func _ready() -> void:
 	_inspector_body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	sc.add_child(_inspector_body)
 	_hover = PanelContainer.new()
-	_hover.add_theme_stylebox_override("panel", Lcars.box(Color(Lcars.PANEL_SOLID, 0.94), 10, Color(Lcars.accent(), 0.6), 1, Vector4(12, 8, 12, 8)))
+	_hover.add_theme_stylebox_override("panel", Lcars.box(Color(Lcars.PANEL_SOLID, 0.94), maxi(4, UiTokens.radius() - 4), Color(Lcars.accent(), 0.6), 1, Vector4(12, 8, 12, 8)))
 	_hover.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_hover.visible = false
 	add_child(_hover)
@@ -78,7 +78,7 @@ func refresh() -> void:
 	if not _framed:
 		_framed = true
 		map.frame_known.call_deferred()
-	_build_hud()
+	hud.refresh()
 	_build_inspector()
 
 func _on_selection() -> void:
@@ -139,7 +139,7 @@ func open_context_menu(cell: int, pos: Vector2) -> void:
 	var actions := GalaxyOrders.cell_actions(app, cell)
 	_menu = PanelContainer.new()
 	_menu.name = "ContextMenu"
-	_menu.add_theme_stylebox_override("panel", Lcars.box(Color(Lcars.PANEL_SOLID, 0.97), 14, Lcars.accent(), 1, Vector4(8, 8, 8, 8)))
+	_menu.add_theme_stylebox_override("panel", Lcars.box(Color(Lcars.PANEL_SOLID, 0.97), UiTokens.radius(), Lcars.accent(), 1, Vector4(8, 8, 8, 8)))
 	var col := Lcars.vbox(2)
 	col.custom_minimum_size.x = 330
 	_menu.add_child(col)
@@ -286,118 +286,6 @@ func _features_at(cell: int) -> Array:
 		if int(f["x"]) + int(f["y"]) * w == cell or (f.has("cells") and f["cells"] is Array and (f["cells"].has(cell) or f["cells"].has(float(cell)))):
 			out.append(f)
 	return out
-
-# ---------------------------------------------------------------------------------------------
-# HUD
-# ---------------------------------------------------------------------------------------------
-func _build_hud() -> void:
-	for c in _hud.get_children():
-		c.queue_free()
-	var v := app.view
-	var top := Lcars.vbox(8)
-	top.position = Vector2(16, 14)
-	top.custom_minimum_size.x = 420
-	_hud.add_child(top)
-	# Alerts
-	var alerts: Array = v.get("alerts", [])
-	var tone := "good"
-	for a in alerts:
-		if a["severity"] == "alert":
-			tone = "alert"
-		elif tone != "alert":
-			tone = "warn"
-	var ac := PanelContainer.new()
-	ac.name = "Alerts"
-	ac.add_theme_stylebox_override("panel", Lcars.box(Color(Lcars.PANEL_SOLID, 0.88), 14, Color(Lcars.tone_color(tone), 0.7), 1, Vector4(12, 8, 12, 8)))
-	var acol := Lcars.vbox(4)
-	ac.add_child(acol)
-	var ah := Lcars.pill(("%d alert%s" % [alerts.size(), "" if alerts.size() == 1 else "s"]) if alerts.size() > 0 else "All systems nominal", "ghost", func(): _alerts_open = not _alerts_open; _build_hud())
-	ah.add_theme_color_override("font_color", Lcars.tone_color(tone))
-	ah.alignment = HORIZONTAL_ALIGNMENT_LEFT
-	acol.add_child(ah)
-	if _alerts_open:
-		for a in alerts.slice(0, 7):
-			var b := Button.new()
-			b.flat = true
-			b.alignment = HORIZONTAL_ALIGNMENT_LEFT
-			b.text = "●  " + str(a["text"])
-			b.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-			b.add_theme_font_override("font", Lcars.font("ui", 440))
-			b.add_theme_font_size_override("font_size", 14)
-			b.add_theme_color_override("font_color", Lcars.tone_color("alert" if a["severity"] == "alert" else ("warn" if a["severity"] == "warn" else "info")))
-			b.add_theme_color_override("font_hover_color", Lcars.TEXT)
-			var alert: Dictionary = a
-			b.pressed.connect(func(): _open_alert(alert))
-			acol.add_child(b)
-	top.add_child(ac)
-	# Events HUD
-	var evs: Array = v.get("events", [])
-	if evs.size() > 0:
-		var open := 0
-		for e in evs:
-			if e.get("awaitingChoice", false) and int(e.get("drafted", -1)) < 0:
-				open += 1
-		var eb := Lcars.pill(("%d decision%s needed" % [open, "" if open == 1 else "s"]) if open > 0 else "Galactic events: %s" % ", ".join(evs.slice(0, 2).map(func(e): return e["name"])), "warn" if open > 0 else "tertiary", func(): app.open_overlay("events"))
-		eb.name = "EventsHud"
-		top.add_child(eb)
-	# Bottom bar: layers, orders, legend
-	var bottom := Lcars.hbox(10)
-	bottom.position = Vector2(16, size.y - 58)
-	_hud.add_child(bottom)
-	for pair in [["territory", "Territory", "Colony influence of every known empire"], ["supply", "Supply", "Supply range of the selected unit (from the core)"],
-			["routes", "Routes", "Plotted courses and ETAs"], ["trade", "Trade", "Trade routes"], ["fog", "Fog", "Fog of war"], ["grid", "Grid", "Sector grid and coordinates"], ["labels", "Labels", "System names"]]:
-		var key: String = pair[0]
-		bottom.add_child(Lcars.toggle(pair[1], app.map_layers.get(key, true), func(on): map.set_layer(key, on), pair[2]))
-	var pending: Array = v.get("pending", [])
-	var oc := PanelContainer.new()
-	oc.name = "OrdersCard"
-	oc.add_theme_stylebox_override("panel", Lcars.box(Color(Lcars.PANEL_SOLID, 0.9), 14, Lcars.LINE2, 1, Vector4(10, 6, 10, 6)))
-	var ocol := Lcars.vbox(4)
-	oc.add_child(ocol)
-	ocol.add_child(Lcars.pill("Orders this turn  %d  %s" % [pending.size(), "▾" if _orders_open else "▴"], "ghost", func(): _orders_open = not _orders_open; _build_hud()))
-	if _orders_open:
-		if pending.is_empty():
-			ocol.add_child(Lcars.label("No orders drafted yet.", "Muted"))
-		for p in pending:
-			var r := Lcars.hbox(6)
-			var l := Lcars.label(str(p["summary"]), "", 13)
-			l.custom_minimum_size.x = 380
-			l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-			r.add_child(l)
-			var pid := int(p["id"])
-			r.add_child(Lcars.pill("✕", "ghost", func(): app.cancel_orders([pid], "Order cancelled."), "Finish the battle in progress first" if v.get("session", {}).get("active", false) else "", "Cancel this order"))
-			ocol.add_child(r)
-	bottom.add_child(oc)
-	oc.size_flags_vertical = Control.SIZE_SHRINK_END
-	bottom.alignment = BoxContainer.ALIGNMENT_END
-	bottom.reset_size()
-	bottom.position.y = size.y - 16 - bottom.get_combined_minimum_size().y
-	var legend := Lcars.hbox(14)
-	for item in [["Your ships", Lcars.owner_color(app.player())], ["Contacts", Lcars.ALERT], ["Station", Lcars.accent2()], ["Anomaly", Color(0.45, 0.85, 1.0)], ["Unexplored", Color("#1a2238")]]:
-		var sw := ColorRect.new()
-		sw.color = item[1]
-		sw.custom_minimum_size = Vector2(10, 10)
-		sw.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		legend.add_child(sw)
-		legend.add_child(Lcars.label(item[0], "Muted", 12))
-	legend.position = Vector2(size.x - 440 - legend.get_combined_minimum_size().x - 20, size.y - 34)
-	_hud.add_child(legend)
-
-func _open_alert(a: Dictionary) -> void:
-	if a.has("systemId"):
-		app.select_system(int(a["systemId"]))
-		var s := app.find_by_id("systems", int(a["systemId"]))
-		if not s.is_empty():
-			focus_cell(int(s["x"]), int(s["y"]))
-	elif a.has("fleetId"):
-		app.select_fleet(int(a["fleetId"]))
-		var f := app.find_by_id("fleets", int(a["fleetId"]))
-		if not f.is_empty():
-			focus_cell(int(f["x"]), int(f["y"]))
-	elif a["kind"] in ["proposal", "offer", "callToArms"]:
-		app.goto("diplomacy")
-	elif a["kind"] == "event":
-		app.open_overlay("events")
 
 # ---------------------------------------------------------------------------------------------
 # Inspector

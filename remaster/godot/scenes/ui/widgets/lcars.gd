@@ -108,10 +108,22 @@ static func tone_color(tone: String) -> Color:
 # ---------------------------------------------------------------------------------------------
 # Fonts
 # ---------------------------------------------------------------------------------------------
+## Bundled symbol fonts: the UI text uses ● ◇ ▸ ▲ ▼ ✓ ✗ ✕ ⚡ → ∞ and the like, which Antonio, Inter and Share Tech Mono lack.
+## Desktop finds them in a system font; the web build has no system fonts, so they showed as missing-glyph boxes. Every base
+## font lists these as fallbacks (and system fallback stays on), so the same glyphs draw in both builds.
+const SYMBOL_FONTS := ["symbols.ttf", "symbols-math.ttf"]
+
 static func _base_font(file: String) -> FontFile:
 	var key := "file:" + file
 	if not _fonts.has(key):
 		var f: FontFile = AppLoader.resource("res://scenes/ui/fonts/%s" % file)
+		if f != null:
+			var fb: Array[Font] = []
+			for sf in SYMBOL_FONTS:
+				var sym := AppLoader.resource("res://scenes/ui/fonts/%s" % sf) as Font
+				if sym != null:
+					fb.append(sym)
+			f.fallbacks = fb
 		_fonts[key] = f
 	return _fonts[key]
 
