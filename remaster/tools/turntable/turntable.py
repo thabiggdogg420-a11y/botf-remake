@@ -30,6 +30,13 @@ RENDERERS = {
 }
 
 
+def planets_arg():
+    """Point the planet mode at LocalAssets/planets (main checkout; $BOTF_LOCAL_ASSETS overrides) when it exists."""
+    main = os.environ.get('BOTF_MAIN_REMASTER', r'C:\Users\BiggDogg\Documents\ChatGPT\Game Remakes\remaster')
+    d = os.path.join(os.environ.get('BOTF_LOCAL_ASSETS') or os.path.join(main, 'game', 'LocalAssets'), 'planets')
+    return ['--planets=' + d.replace('\\', '/')] if os.path.isdir(d) else []
+
+
 def keys_from_manifest(a):
     doc = json.load(open(MANIFEST, encoding='utf8'))
     out = []
@@ -53,6 +60,8 @@ def main():
     ap.add_argument('--out', default=os.path.join(REMASTER, 'captures', 'turntable'))
     ap.add_argument('--size', default='384')
     ap.add_argument('--elev', default='14')
+    ap.add_argument('--rig', choices=['show', 'bible'], default='show', help='show: hard key, near-zero ambient (benchmark); bible: section 4 rig')
+    ap.add_argument('--variant', default='1', help='planet texture variant 1-6')
     ap.add_argument('--category')
     ap.add_argument('--faction')
     ap.add_argument('--milestone')
@@ -68,9 +77,9 @@ def main():
         out = os.path.join(a.out, mode)
         os.makedirs(out, exist_ok=True)
         cmd = [godot, '--path', PROJECT, '--audio-driver', 'Dummy', '--resolution', '480x270'] + RENDERERS[mode] + [
-            '-s', SCRIPT, '--', '--keys=' + ','.join(keys), '--out=' + out, '--size=' + a.size, '--elev=' + a.elev]
+            '-s', SCRIPT, '--', '--keys=' + ','.join(keys), '--out=' + out, '--size=' + a.size, '--elev=' + a.elev, '--rig=' + a.rig, '--variant=' + a.variant] + planets_arg()
         print('turntable [%s]: %d key(s) -> %s' % (mode, len(keys), out))
-        p = subprocess.run(cmd, cwd=PROJECT)
+        p = subprocess.run(cmd, cwd=PROJECT, creationflags=0x4000 if os.name == 'nt' else 0)
         rc = rc or p.returncode
     return rc
 

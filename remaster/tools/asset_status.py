@@ -11,7 +11,7 @@
   python remaster/tools/asset_status.py --json             machine-readable output
   python remaster/tools/asset_status.py --check            validate the manifest (exit 1 on problems)
 
-Statuses: procedural, placeholder, final, missing (ART-BIBLE.md section 11). Exit 0 unless --check finds a problem.
+Statuses: procedural, placeholder, final-candidate, final, missing (ART-BIBLE.md section 11). Exit 0 unless --check finds a problem.
 """
 import argparse
 import collections
@@ -22,7 +22,7 @@ import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 DEFAULT = os.path.join(HERE, '..', 'assets', 'asset-manifest.json')
-STATUSES = ['procedural', 'placeholder', 'final', 'missing']
+STATUSES = ['procedural', 'placeholder', 'final-candidate', 'final', 'missing']
 KEY_RE = re.compile(r'^[a-z0-9_]+(\.[A-Za-z0-9_<>]+)+$')
 
 

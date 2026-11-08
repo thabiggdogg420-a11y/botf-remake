@@ -1,0 +1,264 @@
+{
+ "_comment": "L7 art wave 1 hero picks: manifest ship key -> Bridge Commander model id in the Starhelm library (H:/StarhelmTools/bc-ships, private). lengthMeters is read from the asset manifest (canon). Same pick format as game/ArtSource/HeroShips/bc-picks.json plus 'glb' for a repo-local community model. 'needs_model' lists keys with no usable library model and the nearest base hull to kitbash from.",
+ "bcRoot": "H:/StarhelmTools/bc-ships",
+ "hdRoot": "H:/StarhelmTools/bc-ships-hd",
+ "picks": [
+  {
+   "key": "ship.fed.akira",
+   "bc": "Akira"
+  },
+  {
+   "key": "ship.fed.centaur",
+   "bc": "Centaur"
+  },
+  {
+   "key": "ship.fed.challenger",
+   "bc": "Challenger"
+  },
+  {
+   "key": "ship.fed.cheyenne",
+   "bc": "Cheyenne"
+  },
+  {
+   "key": "ship.fed.constitution",
+   "bc": "Constitution"
+  },
+  {
+   "key": "ship.fed.constitution_refit",
+   "bc": "ConstitutionR"
+  },
+  {
+   "key": "ship.fed.constitution_kelvin",
+   "bc": "WCJJEnterprise"
+  },
+  {
+   "key": "ship.fed.curry",
+   "bc": "Curry"
+  },
+  {
+   "key": "ship.fed.daedalus",
+   "bc": "Daedalus"
+  },
+  {
+   "key": "ship.fed.danube",
+   "bc": "Danube"
+  },
+  {
+   "key": "ship.fed.freedom",
+   "bc": "Freedom"
+  },
+  {
+   "key": "ship.fed.intrepid",
+   "bc": "Intrepid"
+  },
+  {
+   "key": "ship.fed.kelvin_type",
+   "bc": "bckelvin_refit"
+  },
+  {
+   "key": "ship.fed.luna",
+   "bc": "Luna"
+  },
+  {
+   "key": "ship.fed.new_orleans",
+   "bc": "NewOrleans"
+  },
+  {
+   "key": "ship.fed.niagara",
+   "bc": "Niagara"
+  },
+  {
+   "key": "ship.fed.norway",
+   "bc": "Norway"
+  },
+  {
+   "key": "ship.fed.nx",
+   "bc": "NX"
+  },
+  {
+   "key": "ship.fed.olympic",
+   "bc": "Olympic"
+  },
+  {
+   "key": "ship.fed.ranger",
+   "glb": "game/ArtSource/Community/Icewolf132/franger.glb",
+   "forward": "-Y",
+   "up": "+Z"
+  },
+  {
+   "key": "ship.fed.peregrine",
+   "bc": "Peregrine"
+  },
+  {
+   "key": "ship.fed.prometheus",
+   "bc": "Prometheus"
+  },
+  {
+   "key": "ship.fed.raven",
+   "bc": "JLSRaven"
+  },
+  {
+   "key": "ship.fed.rhode_island",
+   "bc": "JLSRhodeIsland"
+  },
+  {
+   "key": "ship.fed.saber",
+   "bc": "F_TNG_SABER"
+  },
+  {
+   "key": "ship.fed.spacedock",
+   "bc": "DryDock"
+  },
+  {
+   "key": "ship.fed.springfield",
+   "bc": "Springfield"
+  },
+  {
+   "key": "ship.fed.steamrunner",
+   "bc": "Steamrunner"
+  },
+  {
+   "key": "ship.fed.yeager",
+   "bc": "F_DS9_YEAGER"
+  },
+  {
+   "key": "ship.kli.bop_ent",
+   "bc": "BirdofPreyE",
+   "bcTint": [
+    0.864,
+    1.049,
+    1.15
+   ]
+  },
+  {
+   "key": "ship.kli.brel",
+   "bc": "BirdOfPrey",
+   "bcTint": [
+    0.865,
+    1.049,
+    1.15
+   ]
+  },
+  {
+   "key": "ship.kli.d4",
+   "bc": "MJD4",
+   "bcTint": [
+    0.831,
+    0.881,
+    0.826
+   ]
+  },
+  {
+   "key": "ship.kli.d5",
+   "bc": "KD5",
+   "bcTint": [
+    1.094,
+    0.744,
+    0.69
+   ]
+  },
+  {
+   "key": "ship.kli.d7",
+   "bc": "K_TOS_D7",
+   "bcTint": [
+    0.604,
+    0.67,
+    0.62
+   ]
+  },
+  {
+   "key": "ship.kli.raptor",
+   "bc": "K_TNG_RAPTOR",
+   "bcTint": [
+    1.15,
+    1.15,
+    1.15
+   ]
+  },
+  {
+   "key": "ship.kli.vorcha",
+   "bc": "Vorcha",
+   "bcTint": [
+    0.55,
+    0.5,
+    0.4
+   ]
+  },
+  {
+   "key": "ship.kli.neghvar",
+   "bc": "Neghvar",
+   "bcTint": [
+    0.836,
+    0.745,
+    0.747
+   ]
+  },
+  {
+   "key": "ship.kli.bop",
+   "bc": "D4_BOP",
+   "bcTint": [
+    0.92,
+    0.888,
+    0.905
+   ]
+  }
+ ],
+ "needs_model": {
+  "ship.fed.edward": [
+   "no library model",
+   "ship.fed.nebula or ship.fed.excelsior (same era cruiser)"
+  ],
+  "ship.fed.london": [
+   "no library model",
+   "ship.fed.constellation or ship.fed.excelsior"
+  ],
+  "ship.fed.sydney": [
+   "no library model",
+   "ship.fed.oberth (small science hull)"
+  ],
+  "ship.fed.soyuz": [
+   "no library model",
+   "ship.fed.nebula (Galaxy-era saucer and twin nacelles)"
+  ],
+  "ship.fed.vengeance": [
+   "no library model",
+   "ship.fed.sovereign scaled and widened, or ship.fed.galaxy_x"
+  ],
+  "ship.fed.wells": [
+   "no library model",
+   "ship.fed.saber"
+  ],
+  "ship.fed.yclass": [
+   "no library model",
+   "ship.fed.oberth or ship.fed.danube (utility hull)"
+  ],
+  "ship.fed.k7": [
+   "no library model (a 500 m station)",
+   "ship.fed.starbase or Starhelm SpaceFacility / MidwayStation"
+  ],
+  "ship.kli.charghwi": [
+   "BOTF-only class",
+   "ship.kli.vorcha (nearest 500 m heavy cruiser)"
+  ],
+  "ship.kli.d12": [
+   "no library model",
+   "ship.kli.d7 (K_TOS_D11 is the nearest library hull but is a 127 m escort)"
+  ],
+  "ship.kli.liwi": [
+   "BOTF-only class",
+   "ship.kli.ktinga"
+  ],
+  "ship.kli.mayduj": [
+   "BOTF-only class",
+   "ship.kli.ktinga or ship.kli.kvort"
+  ],
+  "ship.kli.neghtev": [
+   "no library model",
+   "ship.kli.neghvar (NeghvarH variant exists in the library, 682 m, not a Negh'Tev)"
+  ],
+  "ship.kli.qang": [
+   "BOTF-only class",
+   "ship.kli.vorcha or ship.kli.kvort"
+  ]
+ }
+}
