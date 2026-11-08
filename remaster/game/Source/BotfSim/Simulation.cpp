@@ -5,6 +5,8 @@
 #include "ReferencePlanets.h"
 #include "ShipRoster.h"
 #include "TacticalCombat.h"
+#include "Content.h"
+#include "ContentBase.generated.h"
 
 #include <algorithm>
 #include <array>
@@ -3209,6 +3211,10 @@ std::string payload(const GameState& s) {
             out << '\n';
         }
     }
+    // Content pack identity (docs/DATA-FORMAT.md section 7): written only when the active pack is not the base
+    // pack, so base-content saves and fingerprints keep their exact pre-M0 text. It is inside the fingerprint.
+    const auto& pack = content::active();
+    if (!pack.base) out << "CONTENT " << pack.id << ' ' << content::checksumHex(pack.checksum) << '\n';
     return out.str();
 }
 
@@ -5481,6 +5487,20 @@ GameState deserialize(const std::string& text) {
         parseCombatEvents(in, s);
         nextTag = readTag("Malformed save section after COMBAT_EVENTS");
     }
+    {   // Content pack identity (docs/DATA-FORMAT.md section 7). A save replays only on the pack it was made with.
+        const auto& pack = content::active();
+        const std::string activeText = pack.id + " (" + content::checksumHex(pack.checksum) + ")";
+        if (nextTag == "CONTENT") {
+            require(current, "Content pack section in an older save");
+            std::string id, sum;
+            require(static_cast<bool>(in >> id >> sum) && !id.empty() && sum.size() == 16, "Malformed CONTENT section");
+            require(!pack.base && id == pack.id && sum == content::checksumHex(pack.checksum),
+                ("Save needs content pack " + id + " (" + sum + "); active pack is " + activeText).c_str());
+            nextTag = readTag("Malformed save section after CONTENT");
+        } else {
+            require(pack.base, ("Save was made with the base content pack; active pack is " + activeText).c_str());
+        }
+    }
     require(nextTag == "CHECKSUM", ("Unexpected save section: " + nextTag).c_str());
     std::uint64_t checksum = 0;
     require(static_cast<bool>(in >> checksum), "Missing save checksum");
@@ -6253,3 +6273,16 @@ std::vector<int> activeEmpires(const GameState& state) {
 } // namespace internal
 } // namespace botf
 
+namespace botf::content {
+// The base pack, assembled once from the generated header (docs/DATA-FORMAT.md section 6).
+std::string_view embeddedBaseBundle() {
+    static const std::string bundle = [] {
+        std::string text;
+        text.reserve(embedded::BaseBundleBytes);
+        for (const char* line : embedded::BaseBundleLines) text += line;
+        if (text.size() != embedded::BaseBundleBytes) throw std::runtime_error("content: embedded base pack is corrupt");
+        return text;
+    }();
+    return bundle;
+}
+} // namespace botf::content

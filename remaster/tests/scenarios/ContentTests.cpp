@@ -1,10 +1,11 @@
-// Content scenarios (Lane G): original catalogue text and the minor-race roster.
+// Content scenarios (Lane G): original catalogue text and the minor-race roster; M0: content packs.
 //
 // 1. IP hygiene: no description in the reference catalogue (or the minor roster) may contain a sentence
 //    of the original game's text. The original sentences are represented only by 64-bit FNV-1a hashes of
 //    their normalized form (lower-case alphanumerics, single spaces), so no original prose ships here.
 // 2. Minor races: roster integrity, seeded placement scaled to galaxy size, join bonuses that vanish on
 //    secession, progression, temperament, home defense and the optional MINOR_RACES save section.
+#include "Content.h"
 #include "MinorRaces.h"
 #include "ReferenceCatalogue.h"
 #include "ShipRoster.h"
@@ -14,9 +15,11 @@
 #include <array>
 #include <cstdint>
 #include <cstdlib>
+#include <fstream>
 #include <functional>
 #include <iostream>
 #include <set>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -725,6 +728,96 @@ int main() {
         const auto row2End = text.find('\n', rowEnd + 1);
         corrupt([&](std::string t) { return t.replace(rowEnd + 1, row2End - rowEnd - 1, firstRow); }); // Duplicate row
         corrupt([&](std::string t) { return t.replace(row, rowEnd - row, "9999 1 1 10 0"); });
+    }, passed);
+
+    // ---- M0 content packs (docs/DATA-FORMAT.md) ----
+    run("content pack: embedded base equals data/base.pack.json byte for byte", [] {
+        const auto embedded = botf::content::embeddedBaseBundle();
+        std::string onDisk;
+        for (const char* path : {"../../data/base.pack.json", "../data/base.pack.json", "data/base.pack.json"}) {
+            std::ifstream in(path, std::ios::binary);
+            if (in) { std::ostringstream ss; ss << in.rdbuf(); onDisk = ss.str(); break; }
+        }
+        check(!onDisk.empty(), "data/base.pack.json not found from the test directory");
+        check(onDisk == std::string(embedded), "ContentBase.generated.h is stale: run tools/content/build_pack.py");
+        const auto& info = botf::content::active();
+        check(info.base && info.id == "botf-base" && info.format == 1 && info.checksum == botf::content::baseChecksum(),
+              "base pack active by default");
+        std::cout << "  base pack " << info.id << " r" << info.revision << " checksum " << botf::content::checksumHex(info.checksum)
+                  << " (" << info.bytes << " bytes)" << std::endl;
+        check(botf::referenceData::TechnologyCatalogue.size() == 77 && botf::referenceData::ShipCatalogue.size() == 125 &&
+              botf::referenceData::BuildingCatalogue.size() == 318 && botf::referenceData::RaceCatalogue.size() == 35 &&
+              botf::roster::ExpandedRoster.size() == 98 && botf::minors::Roster.size() == 30, "base pack record counts");
+    }, passed);
+
+    run("content pack: a mod changes data, the save and the fingerprint; saves need their own pack", [] {
+        const std::string base(botf::content::embeddedBaseBundle());
+        auto replaceOnce = [](std::string text, const std::string& from, const std::string& to) {
+            const auto at = text.find(from);
+            check(at != std::string::npos, "test edit anchor missing: " + from);
+            return text.replace(at, from.size(), to);
+        };
+        std::string mod = replaceOnce(base, "\"id\":\"botf-base\"", "\"id\":\"test-mod\"");
+        mod = replaceOnce(mod, "{\"id\":0,\"raceId\":0,\"name\":\"Strike Cruiser\",\"shipClass\":\"Keldon\",\"technologyRequirements\":[2,3,4,3,2,4],\"industryCost\":3570,\"maintenance\":73,\"hull\":200,",
+                               "{\"id\":0,\"raceId\":0,\"name\":\"Strike Cruiser\",\"shipClass\":\"Keldon\",\"technologyRequirements\":[2,3,4,3,2,4],\"industryCost\":3570,\"maintenance\":73,\"hull\":999,");
+        mod = replaceOnce(mod, "\"name\":\"Plague\"", "\"name\":\"Blight\"");
+
+        botf::content::installBase();
+        const auto baseGame = fresh(4242);
+        const auto baseSave = botf::serialize(baseGame);
+        const auto baseFingerprint = botf::fingerprint(baseGame);
+        check(baseSave.find("\nCONTENT ") == std::string::npos, "base saves carry no CONTENT section");
+
+        const auto& info = botf::content::install(mod);
+        check(!info.base && info.id == "test-mod" && info.checksum != botf::content::baseChecksum(), "mod pack installed");
+        check(botf::referenceData::ShipCatalogue[0].hull == 999, "mod data reaches the catalogue");
+        check(std::string(botf::galacticEventName(botf::GalacticEventKind::Plague)) == "Blight", "mod event text");
+        rejects([&] { botf::deserialize(baseSave); }, "base save accepted under a mod pack");
+
+        const auto modGame = fresh(4242);
+        const auto modSave = botf::serialize(modGame);
+        const std::string line = "\nCONTENT test-mod " + botf::content::checksumHex(info.checksum) + "\n";
+        check(modSave.find(line) != std::string::npos, "mod save carries CONTENT <id> <checksum>");
+        check(botf::fingerprint(modGame) != baseFingerprint, "content identity is inside the fingerprint");
+        check(botf::serialize(botf::deserialize(modSave)) == modSave, "mod save round trip under its pack");
+
+        botf::content::installBase();
+        rejects([&] { botf::deserialize(modSave); }, "mod save accepted under the base pack");
+        check(botf::serialize(botf::deserialize(baseSave)) == baseSave && botf::fingerprint(fresh(4242)) == baseFingerprint,
+              "base save and fingerprint unchanged after switching back");
+        check(botf::referenceData::ShipCatalogue[0].hull == 200, "base data restored");
+
+        // Same bytes, new pack id would be the base pack: botf-base is reserved for the embedded bytes.
+        rejects([&] { botf::content::install(replaceOnce(base, "\"hull\":200,", "\"hull\":201,")); }, "edited bundle claiming botf-base");
+    }, passed);
+
+    run("content pack: malformed packs are rejected and the active pack is unchanged", [] {
+        botf::content::installBase();
+        const std::string base(botf::content::embeddedBaseBundle());
+        const auto before = botf::content::active().checksum;
+        auto expectReject = [&](const std::string& bytes, const std::string& fragment, const std::string& what) {
+            bool rejected = false;
+            try { botf::content::install(bytes); } catch (const std::exception& e) {
+                rejected = true;
+                check(std::string(e.what()).find(fragment) != std::string::npos, what + ": message '" + e.what() + "' lacks '" + fragment + "'");
+            }
+            check(rejected, what + " accepted");
+            check(botf::content::active().checksum == before && botf::referenceData::ShipCatalogue[0].hull == 200, what + ": active pack changed");
+        };
+        auto edit = [&](const std::string& from, const std::string& to) {
+            std::string t = base;
+            const auto at = t.find(from);
+            check(at != std::string::npos, "anchor " + from);
+            t.replace(at, from.size(), to);
+            return t.replace(t.find("\"id\":\"botf-base\""), 16, "\"id\":\"bad-mod\"");
+        };
+        expectReject("{", "JSON", "truncated document");
+        expectReject(edit("\"format\":1", "\"format\":2"), "pack.format", "unknown format");
+        expectReject(edit("\"hull\":200,", "\"hull\":200,\"armor\":5,"), "unknown key \"armor\"", "unknown key");
+        expectReject(edit("\"faction\":\"Federation\"", "\"faction\":\"Federaton\""), "unknown Faction", "bad enum");
+        expectReject(edit("\"range\":0,\"speed\":1,", "\"range\":1e2,\"speed\":1,"), "exponent", "exponent number");
+        expectReject(edit("{\"id\":1001,", "{\"id\":999,"), "roster[1].id", "roster id out of order");
+        expectReject(edit("\"description\":\"A plague broke out at {where}.", "\"description\":\"A plague broke out at {here}."), "placeholder", "bad template");
     }, passed);
 
     if (failed) {

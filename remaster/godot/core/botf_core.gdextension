@@ -8,3 +8,6 @@ linux.debug.x86_64 = "res://core/bin/libbotf_core.linux.template_debug.x86_64.so
 linux.release.x86_64 = "res://core/bin/libbotf_core.linux.template_release.x86_64.so"
 windows.debug.x86_64 = "res://core/bin/libbotf_core.windows.template_debug.x86_64.dll"
 windows.release.x86_64 = "res://core/bin/libbotf_core.windows.template_release.x86_64.dll"
+# Web (wasm32, dlink template, no threads). Built with Emscripten: docs/DATA-FORMAT.md section 11.
+web.debug.wasm32 = "res://core/bin/libbotf_core.web.template_debug.wasm32.wasm"
+web.release.wasm32 = "res://core/bin/libbotf_core.web.template_release.wasm32.wasm"
