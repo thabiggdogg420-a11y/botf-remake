@@ -114,7 +114,7 @@ func _bottom(e: Dictionary, foe_name: String, last: Dictionary) -> Control:
 	var bottom := Lcars.hbox(10)
 	bottom.custom_minimum_size.y = 250
 	bottom.add_child(_orders(e, foe_name))
-	var logf := Lcars.frame("Combat log", ("round %d" % int(last["index"])) if not last.is_empty() else "awaiting first round", "tertiary")
+	var logf := Lcars.frame("Combat log", ("round %d" % int(last["index"])) if not last.is_empty() else "awaiting first round", "tertiary", "chronicle")
 	logf.custom_minimum_size.x = 560
 	var lb := Lcars.vbox(2)
 	if last.is_empty():
@@ -201,18 +201,22 @@ func _live(e: Dictionary) -> void:
 		_encounter_choice(e, mine, foes, foe_name)
 
 func _force(ships: Array, label: String) -> Control:
-	var h := Lcars.hbox(8)
-	h.add_child(Lcars.emblem(int(ships[0]["owner"]) if ships.size() > 0 else 0, 30))
+	var h := Lcars.hbox(10)
+	var fo := CombatVM.force(ships)
+	var own := int(ships[0]["owner"]) if ships.size() > 0 else 0
+	var ring := RingGauge.make(58, int(fo["hull"]), max(1, int(fo["max"])), Lcars.owner_color(own), str(int(fo["alive"])), "",
+		{"title": label, "value": "%d of %d ships" % [int(fo["alive"]), ships.size()], "parts": [["Hull remaining", "%d / %d" % [int(fo["hull"]), int(fo["max"])], ""]], "effect": "The ring is the side's combined hull. Ships at zero hull are lost."})
+	h.add_child(ring)
+	h.add_child(Lcars.emblem(own, 30))
 	var v := Lcars.vbox(2)
 	v.add_child(Lcars.label(label.to_upper(), "SubHeading", 17, Lcars.TEXT))
-	var fo := CombatVM.force(ships)
 	v.add_child(Lcars.meter(fo["hull"], max(1, int(fo["max"])), Color("#8fd18a"), 5, 160))
 	v.add_child(Lcars.label("%d/%d ships" % [int(fo["alive"]), ships.size()], "Mono", 12))
 	h.add_child(v)
 	return h
 
 func _ship_list(title: String, ships: Array, all: Array, sel: int, hostile: bool) -> Control:
-	var f := Lcars.frame(title, "", "alert" if hostile else "primary")
+	var f := Lcars.frame(title, "", "alert" if hostile else "primary", "alert" if hostile else "ship")
 	f.custom_minimum_size.x = 330
 	var list := Lcars.vbox(6)
 	for s in ships:
@@ -292,7 +296,7 @@ func _selected() -> Dictionary:
 
 func _orders(e: Dictionary, foe_name: String) -> Control:
 	var sel := _selected()
-	var f := Lcars.frame("Orders", vm.scope_label(), "secondary")
+	var f := Lcars.frame("Orders", vm.scope_label(), "secondary", "orders")
 	f.name = "TacticalOrders"
 	f.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var b := Lcars.body(f)

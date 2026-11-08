@@ -21,29 +21,34 @@ func refresh() -> void:
 	for c in get_children():
 		c.queue_free()
 	var v := app.view
-	var e: Dictionary = v["empire"]
-	var tot := vm.totals()
-	var m := Lcars.screen_margin(self)
-	var root := Lcars.vbox(14)
+	var m := Lcars.screen_margin(self, Vector4(16, 16, 10, 16))
+	var root := Lcars.vbox(12)
 	m.add_child(root)
-	var h := Lcars.hbox(22)
-	h.add_child(Lcars.emblem(app.player(), 56))
-	h.add_child(Lcars.title_block(str(v["meta"]["playerName"]), vm.subtitle()))
-	h.add_child(Lcars.spacer())
-	var pv := Lcars.pill("Preview turn", "secondary", func(): app.preview_turn(), "", "What the turn will do, and what is left idle")
-	pv.name = "PreviewTurn"
-	pv.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	h.add_child(pv)
-	var inc: Dictionary = e["income"]
-	h.add_child(Lcars.stat("Treasury", "%s  %s" % [Lcars.fmt(e["credits"]), Lcars.signed(inc["net"])], "secondary", "Colonies %s · trade %s · ship upkeep -%d" % [Lcars.signed(inc["colonies"]), Lcars.signed(inc["trade"]), int(inc["ships"])]))
-	h.add_child(Lcars.stat("Population", "%s/%s" % [Lcars.fmt(tot["pop"]), Lcars.fmt(tot["cap"])]))
-	h.add_child(Lcars.stat("Industry", Lcars.fmt(tot["industry"])))
-	h.add_child(Lcars.stat("Research", Lcars.fmt(tot["research"]), "info"))
-	h.add_child(Lcars.stat("Food balance", Lcars.signed(tot["food"]), "alert" if tot["food"] < 0 else "good"))
-	h.add_child(Lcars.stat("Intelligence", Lcars.fmt(e["intelligence"]), "tertiary"))
-	root.add_child(h)
-	root.add_child(_members(v))
-	var f := Lcars.frame(vm.tab_title(), "click a row to open it" if tab in ["colonies", "fleets"] else "", "primary")
+	root.add_child(_banner(v))
+	var kr := Lcars.hbox(10)
+	kr.name = "EmpireKpis"
+	for k in vm.kpis():
+		var t := Lcars.kpi(k["icon"], k["cap"], k["value"], k["delta"], k["tone"], k["explain"])
+		t.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		t.custom_minimum_size.x = 0
+		kr.add_child(t)
+	root.add_child(kr)
+	var dash := Lcars.hbox(12)
+	dash.name = "Dashboard"
+	dash.custom_minimum_size.y = 268
+	var cols := _colonies_panel()
+	cols.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	cols.size_flags_stretch_ratio = 2.2
+	dash.add_child(cols)
+	var eco := _economy_panel()
+	eco.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	dash.add_child(eco)
+	var con := _contacts_panel()
+	con.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	dash.add_child(con)
+	root.add_child(dash)
+	Motion.stagger(dash)
+	var f := Lcars.frame("Registry · " + vm.tab_title(), "click a row to open it" if tab in ["colonies", "fleets"] else "", "primary", "database")
 	f.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	var b := Lcars.body(f)
 	b.add_child(Lcars.tab_bar(vm.tab_labels(), tab, func(id): tab = id; refresh()))
@@ -99,6 +104,134 @@ func refresh() -> void:
 
 func _place(x: int, y: int) -> String:
 	return vm.place(x, y)
+
+## The banner: the empire's emblem as a large card, its name and motto, member worlds and stations, Preview turn.
+func _banner(v: Dictionary) -> Control:
+	var band := PanelContainer.new()
+	band.name = "Banner"
+	var sb := Lcars.panel_box(Lcars.accent())
+	sb.bg_color = Color(Lcars.accent().darkened(0.82), 0.92)
+	sb.content_margin_top = 10
+	sb.content_margin_bottom = 10
+	band.add_theme_stylebox_override("panel", sb)
+	var h := Lcars.hbox(22)
+	band.add_child(h)
+	h.add_child(PortraitSlot.make(app.player(), Vector2(112, 112), "", ""))
+	var tb := Lcars.vbox(2)
+	tb.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	var nm := Lcars.label(str(v["meta"]["playerName"]).to_upper(), "", 54, Lcars.accent())
+	nm.add_theme_font_override("font", Lcars.font("display", 700))
+	tb.add_child(nm)
+	var motto := ""
+	for fc in Lcars.FACTIONS:
+		if int(fc["id"]) == app.player():
+			motto = str(fc["motto"])
+	tb.add_child(Lcars.label(motto, "", 16, Lcars.TEXT2))
+	tb.add_child(Lcars.caption(vm.subtitle()))
+	h.add_child(tb)
+	h.add_child(Lcars.spacer())
+	var right := Lcars.vbox(8)
+	right.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	right.add_child(_members(v))
+	var pv := Lcars.pill("Preview turn", "secondary", func(): app.preview_turn(), "", "What the turn will do, and what is left idle")
+	pv.name = "PreviewTurn"
+	pv.size_flags_horizontal = Control.SIZE_SHRINK_END
+	pv.custom_minimum_size = Vector2(200, 44)
+	right.add_child(pv)
+	h.add_child(right)
+	return band
+
+## Colony cards: planet sphere, population ring, outputs and what it is building. Click opens the colony.
+func _colonies_panel() -> Control:
+	var cards := vm.colony_cards()
+	var f := Lcars.frame("Colonies", "%d worlds" % cards.size(), "primary", "colony")
+	f.name = "ColonyCards"
+	var flow := HFlowContainer.new()
+	flow.add_theme_constant_override("h_separation", 10)
+	flow.add_theme_constant_override("v_separation", 10)
+	for cc in cards:
+		var b := Lcars.row_button(false, 96)
+		b.custom_minimum_size = Vector2(300, 96)
+		b.tooltip_text = "%s: population %d/%d, food %s, industry %d, research %d, morale %d.%s Click to manage." % [cc["name"], cc["pop"], cc["cap"], Fmt.signed(cc["food"]), cc["industry"], cc["research"], cc["morale"], (" Building %s (%dT)." % [cc["building"], cc["eta"]]) if cc["building"] != "" else " Queue idle."]
+		var row := Lcars.row_inner(b, 8, 10)
+		row.add_child(PlanetOrb.make(cc["cls"], 74, cc["id"] * 13))
+		var col := Lcars.vbox(2)
+		col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		col.alignment = BoxContainer.ALIGNMENT_CENTER
+		var nm := Lcars.label(str(cc["name"]).to_upper(), "", 20, Lcars.TEXT)
+		nm.add_theme_font_override("font", Lcars.font("display", 600))
+		col.add_child(nm)
+		var outs := Lcars.hbox(10)
+		for o in [["food", Fmt.signed(cc["food"]), Lcars.ALERT if cc["short"] else Lcars.GOOD], ["industry", str(cc["industry"]), Lcars.accent2()], ["research", str(cc["research"]), Lcars.INFO]]:
+			outs.add_child(UiIcon.make(o[0], 14, o[2]))
+			outs.add_child(Lcars.label(o[1], "Mono", 13, Lcars.TEXT2))
+		col.add_child(outs)
+		var st := ("Building %s · %dT" % [cc["building"], cc["eta"]]) if cc["building"] != "" else "Queue idle"
+		col.add_child(Lcars.label(st, "", 12, Lcars.TEXT3 if cc["building"] != "" else Lcars.WARN))
+		row.add_child(col)
+		row.add_child(RingGauge.make(58, cc["pop"], max(1, cc["cap"]), Lcars.GOOD if not cc["short"] else Lcars.ALERT, str(cc["pop"]), "POP"))
+		Lcars.ignore_mouse(row)
+		var sid: int = cc["id"]
+		b.pressed.connect(func(): app.select_system(sid); app.goto("system"))
+		flow.add_child(b)
+	Lcars.body(f).add_child(Lcars.scroll(flow))
+	return f
+
+## Income bar, fleet roles ring and victory progress.
+func _economy_panel() -> Control:
+	var f := Lcars.frame("Economy & fleet", "", "secondary", "credits")
+	var b := Lcars.body(f)
+	b.add_child(Lcars.caption("Income per turn"))
+	var parts := vm.income_parts().map(func(p): return [p[0], p[1], Lcars.tone_color(p[2])])
+	b.add_child(SegmentBar.make(parts, {"title": "Income per turn", "parts": parts.map(func(p): return [p[0], Fmt.signed(p[1]), "alert" if p[1] < 0 else "good"]), "effect": "Colony income net of structure upkeep, plus trade, less ship upkeep."}))
+	var row := Lcars.hbox(14)
+	var roles := vm.fleet_roles()
+	var palette := [Lcars.accent(), Lcars.accent2(), Lcars.INFO, Lcars.GOOD, Lcars.WARN, Lcars.accent3()]
+	var ring := RingGauge.make(104, 0, 1, Lcars.accent(), str(app.view["fleets"].size()), "SHIPS", {"title": "Ships by role", "parts": roles.map(func(r): return [r[0], str(r[1])])})
+	var segs := []
+	for n in roles.size():
+		segs.append([roles[n][1], palette[n % palette.size()]])
+	ring.segments = segs
+	row.add_child(ring)
+	var leg := Lcars.vbox(3)
+	leg.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	for n in mini(roles.size(), 5):
+		var it := Lcars.hbox(6)
+		var dot := ColorRect.new()
+		dot.color = palette[n % palette.size()]
+		dot.custom_minimum_size = Vector2(10, 10)
+		dot.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		it.add_child(dot)
+		it.add_child(Lcars.label("%s  %d" % [roles[n][0], roles[n][1]], "", 13, Lcars.TEXT2))
+		leg.add_child(it)
+	row.add_child(leg)
+	b.add_child(row)
+	return f
+
+## Every major power: emblem, name, standing and trust. Click opens Diplomacy.
+func _contacts_panel() -> Control:
+	var f := Lcars.frame("Powers", "", "tertiary", "diplomacy")
+	var col := Lcars.vbox(6)
+	for r in vm.contacts():
+		var b := Lcars.row_button(false, 42)
+		b.tooltip_text = "%s: %s%s. Click for diplomacy." % [r["name"], r["status"], (", trust %d" % r["trust"]) if r["met"] else ""]
+		var row := Lcars.row_inner(b, 8, 8)
+		row.add_child(Lcars.emblem(r["empire"], 24, null if r["met"] else Lcars.TEXT3))
+		var nm := Lcars.label(str(r["name"]), "", 14, Lcars.TEXT if r["met"] else Lcars.TEXT3)
+		nm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		nm.clip_text = true
+		nm.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		row.add_child(nm)
+		if r["met"]:
+			var tm := Lcars.meter(r["trust"], 100, Lcars.tone_color(r["tone"]), 4, 50)
+			tm.size_flags_horizontal = Control.SIZE_SHRINK_END
+			row.add_child(tm)
+		row.add_child(Lcars.badge(r["status"], r["tone"]))
+		Lcars.ignore_mouse(row)
+		b.pressed.connect(func(): app.goto("diplomacy"))
+		col.add_child(b)
+	Lcars.body(f).add_child(Lcars.scroll(col))
+	return f
 
 func _members(v: Dictionary) -> Control:
 	var b := vm.member_bonuses()

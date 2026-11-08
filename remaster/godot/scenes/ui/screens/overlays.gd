@@ -22,6 +22,9 @@ static func open(app: App, kind: String) -> Control:
 	return null
 
 # ---------------------------------------------------------------------------------------------
+const CATEGORY_ICON := {"construction": "build", "research": "research", "exploration": "star", "diplomacy": "diplomacy", "intel": "intel", "combat": "combat",
+	"colonization": "colony", "events": "events", "stations": "system", "victory": "victory", "economy": "credits", "fleets": "fleets"}
+
 static func briefing(app: App, filter: String = "all") -> Control:
 	var b: Variant = _vm(app).briefing()
 	var root := Lcars.vbox(12)
@@ -37,10 +40,10 @@ static func briefing(app: App, filter: String = "all") -> Control:
 	head.add_child(t)
 	head.add_child(Lcars.spacer())
 	var credits := int(b.get("creditsAfter", 0)) - int(b.get("creditsBefore", 0))
-	head.add_child(Lcars.stat("Credits", Lcars.signed(credits), "alert" if credits < 0 else "good"))
-	head.add_child(Lcars.stat("Treasury", Lcars.fmt(b.get("creditsAfter", 0))))
-	head.add_child(Lcars.stat("Research", "+" + Lcars.fmt(b.get("researchGained", 0)), "info"))
-	head.add_child(Lcars.stat("Orders", int(b.get("ordersApplied", 0))))
+	head.add_child(Lcars.kpi("credits", "Credits", Lcars.signed(credits), "", "alert" if credits < 0 else "good", {"title": "Credits this turn", "value": Lcars.signed(credits), "parts": [["Before", Lcars.fmt(b.get("creditsBefore", 0)), ""], ["After", Lcars.fmt(b.get("creditsAfter", 0)), ""]], "effect": "Income less upkeep and spending, resolved this turn."}))
+	head.add_child(Lcars.kpi("save", "Treasury", Lcars.fmt(b.get("creditsAfter", 0)), "", "", {"title": "Treasury", "value": Lcars.fmt(b.get("creditsAfter", 0)), "effect": "Credits held after the turn resolved."}))
+	head.add_child(Lcars.kpi("research", "Research", "+" + Lcars.fmt(b.get("researchGained", 0)), "", "info", {"title": "Research gained", "value": "+" + Lcars.fmt(b.get("researchGained", 0)), "effect": "Points added across the six fields by the allocation."}))
+	head.add_child(Lcars.kpi("orders", "Orders", int(b.get("ordersApplied", 0)), "", "", {"title": "Orders applied", "value": str(int(b.get("ordersApplied", 0))), "effect": "Drafted orders that resolved this turn."}))
 	var ack := Lcars.pill("Acknowledge", "primary", func(): app.close_modal(), "", "", "Enter")
 	ack.name = "Acknowledge"
 	ack.size_flags_vertical = Control.SIZE_SHRINK_CENTER
@@ -65,11 +68,7 @@ static func briefing(app: App, filter: String = "all") -> Control:
 			continue
 		var sec := Lcars.vbox(4)
 		var h := Lcars.hbox(8)
-		var dot := ColorRect.new()
-		dot.color = Lcars.tone_color(CATEGORY_TONE.get(c, "primary"))
-		dot.custom_minimum_size = Vector2(10, 10)
-		dot.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		h.add_child(dot)
+		h.add_child(UiIcon.make(CATEGORY_ICON.get(c, "info"), 20, Lcars.tone_color(CATEGORY_TONE.get(c, "primary"))))
 		h.add_child(Lcars.label(Lcars.CATEGORY_LABELS.get(c, c).to_upper(), "SubHeading"))
 		sec.add_child(h)
 		for e in events:
@@ -219,7 +218,13 @@ static func events(app: App) -> Control:
 static func victory_rows(v: Dictionary, compact: bool = false) -> Control:
 	var list := Lcars.vbox(10 if not compact else 6)
 	for c in v.get("victory", {}).get("conditions", []):
+		var outer := Lcars.hbox(14)
+		var tone0 := "good" if c["achieved"] else ("warn" if int(c["percent"]) >= 75 else "primary")
+		outer.add_child(RingGauge.make(64 if not compact else 44, int(c["percent"]) if c["enabled"] else 0, 100, Lcars.tone_color(tone0), ("%d" % int(c["percent"])) if c["enabled"] else "-", "",
+			{"title": str(c["name"]), "value": ("%d%%" % int(c["percent"])) if c["enabled"] else "off", "effect": str(c["explanation"])}))
 		var row := Lcars.vbox(3)
+		row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		outer.add_child(row)
 		var h := Lcars.hbox(8)
 		h.add_child(Lcars.label(str(c["name"]).to_upper(), "SubHeading", 20 if not compact else 16, Lcars.TEXT))
 		if c["achieved"]:
@@ -234,8 +239,8 @@ static func victory_rows(v: Dictionary, compact: bool = false) -> Control:
 		if not compact:
 			row.add_child(Lcars.para(CONDITION_BLURB.get(c["condition"], ""), Lcars.TEXT3, 13))
 		row.add_child(Lcars.para(str(c["explanation"]), Lcars.TEXT2, 13))
-		row.name = "Victory_" + str(c["condition"])
-		list.add_child(row)
+		outer.name = "Victory_" + str(c["condition"])
+		list.add_child(outer)
 	return list
 
 static func victory(app: App) -> Control:
@@ -373,6 +378,21 @@ static func settings(app: App) -> Control:
 	scale_row.add_child(sl)
 	scale_row.add_child(pct)
 	root.add_child(scale_row)
+	var era_row := Lcars.hbox(12)
+	era_row.name = "Setting_uiEra"
+	era_row.add_child(_setting_text("Interface look", "The LCARS of an era: shapes and colours of TOS, the movies, TNG and DS9, Voyager or the post-Nemesis years."))
+	var eras := Lcars.hbox(4)
+	for id in UiTokens.ERA_ORDER:
+		var eid: String = id
+		var t := Lcars.toggle(UiTokens.ERAS[id]["label"], str(s.get("uiEra", "tng")) == id, func(_on):
+			s["uiEra"] = eid
+			app.save_settings()
+			app.close_modal()
+			settings(app), UiTokens.ERAS[id]["name"])
+		t.name = "Era_" + id
+		eras.add_child(t)
+	era_row.add_child(eras)
+	root.add_child(era_row)
 	for item in [["reducedMotion", "Reduced motion", "Stops camera glides, pulsing effects and battle animations."],
 			["colorblind", "Colour-blind-safe owner colours", "Okabe-Ito palette for empires on the map and in the interface. Emblems stay the primary owner cue."],
 			["autosave", "Autosave every turn", "Keeps one rolling autosave slot for the campaign in progress."],
@@ -391,7 +411,7 @@ static func settings(app: App) -> Control:
 		root.add_child(_volume_row(app, s, bus))
 	var acts := Lcars.hbox(8)
 	acts.add_child(Lcars.pill("Reset to defaults", "ghost", func():
-		app.settings = {"uiScale": 1.0, "colorblind": false, "reducedMotion": false, "autosave": true, "confirmEndTurn": false, "showGrid": true}
+		app.settings = {"uiScale": 1.0, "colorblind": false, "reducedMotion": false, "autosave": true, "confirmEndTurn": false, "showGrid": true, "uiEra": "tng"}
 		BotfAudioMix.fill_defaults(app.settings)
 		DisplaySettings.fill_defaults(app.settings)
 		DisplaySettings.apply(app.settings, app.get_tree())
@@ -527,7 +547,9 @@ static func help(app: App) -> Control:
 			["Esc", "Back, close panel, deselect unit, open menu"], ["Tab / Shift+Tab", "Cycle your ships on the star chart"],
 			["Right-click", "Order menu for a sector (with a unit selected: move, attack, colonize...)"], ["Double-click", "Open your colony's System screen"],
 			["Wheel / drag", "Zoom and pan the star chart"], ["F  /  H", "Fit the charted region  /  centre on the capital"],
-			["Ctrl+S", "Quick save"], ["?", "This help"]]:
+			["Ctrl+K", "Command palette: any screen, colony, fleet or command"], ["F9  /  F10", "Saves  /  settings"],
+			["E  /  V  /  C", "Galactic events  /  victory  /  chronicle"], ["Q E  or  [ ]", "Previous / next colony on the System screen"],
+			["Alt+Left", "Back to the previous screen"], ["Ctrl+S", "Quick save"], ["?", "This help"]]:
 		var k := Lcars.label(pair[0], "Mono", 16, Lcars.accent2())
 		g.add_child(k)
 		g.add_child(Lcars.label(pair[1], "", 15))

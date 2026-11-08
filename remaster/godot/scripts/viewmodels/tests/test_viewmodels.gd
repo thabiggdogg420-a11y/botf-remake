@@ -78,6 +78,19 @@ func _static_rules() -> void:
 	check(not AppLoader.allowed("C:/Users/x/file.json") and AppLoader.allowed("res://a") and AppLoader.allowed("user://b"), "AppLoader serves only res:// and user://")
 	check(AppLoader.json("res://scenes/ui/fixtures/campaign/meta.json") is Dictionary, "AppLoader reads JSON from the pack")
 	check(AppLoader.resource("res://scenes/ui/fonts/inter.woff2") != null, "AppLoader loads a font resource")
+	# M1-INT: the planet textures go through AppLoader (no disk paths, no env vars); the symbol fonts are fallbacks.
+	var pt := FileAccess.get_file_as_string("res://scenes/galaxy/planet_textures.gd")
+	var pt_bad := []
+	for f in ["FileAccess.", "DirAccess.", "Image.load_from_file", "OS.get_environment", "get_executable_path", "globalize_path", "LocalAssets", "BOTF_"]:
+		for line in pt.split("
+"):
+			if not line.strip_edges().begins_with("#") and line.contains(f):
+				pt_bad.append(f)
+	check(pt_bad.is_empty(), "planet_textures.gd reads nothing but through AppLoader %s" % [pt_bad])
+	check(AppLoader.text("C:/x.json") == "" and AppLoader.text("res://does/not/exist.json") == "", "AppLoader.text refuses disk paths and returns \"\" for a missing file")
+	check(not AppLoader.dir_exists("C:/Windows") and AppLoader.dir_exists("res://scenes"), "AppLoader.dir_exists serves the pack only")
+	for glyph in [0x25cf, 0x25c7, 0x25b8, 0x25be, 0x2713, 0x2715, 0x2192, 0x221e]:
+		check(Lcars.font("ui", 420).has_char(glyph), "the UI font draws U+%04X without a system font" % glyph)
 
 # ---------------------------------------------------------------------------------------------
 # Models that need no core
@@ -161,6 +174,22 @@ func _session_models(backend: String) -> void:
 	s.enter(v)
 	check(s.player() == 2, "the empire option makes the player the Klingon Empire")
 	check(int(s.selection["systemId"]) != 0, "entering selects the first colony")
+	# content pack loaded at boot (docs/DATA-FORMAT.md section 10)
+	check(FileAccess.file_exists(AppSession.BASE_PACK) or not s.content.is_empty() or s.content_note != "", "boot tried the base content pack")
+	if FileAccess.file_exists(AppSession.BASE_PACK):
+		check(str(s.content.get("id", "")) == "botf-base", "boot installed the base content pack through loadContent (%s, %s)" % [s.content.get("id", "?"), backend])
+		if backend != "fixture":
+			check(str(s.content.get("checksum", "")).length() == 16 and bool(s.content.get("base", false)), "the core reports the base pack checksum %s" % s.content.get("checksum", ""))
+	else:
+		check(s.content_note.contains("no content pack"), "a missing pack is recorded, the embedded base stays")
+	var gal := GalaxyVM.new(s)
+	var ga := gal.alerts()
+	check(ga["count"] == s.view.get("alerts", []).size() and ["good", "warn", "alert"].has(ga["tone"]), "galaxy alerts: %d, tone %s" % [ga["count"], ga["tone"]])
+	check(gal.layers({"fog": false}).size() == 7 and not gal.layers({"fog": false}).filter(func(l): return l["key"] == "fog")[0]["on"], "galaxy layers carry their state")
+	check(gal.orders()["count"] == s.view.get("pending", []).size() and gal.legend().size() == 5 and gal.status().size() == 4, "galaxy orders, legend and status")
+	check(gal.alert_target({"kind": "proposal"})["id"] == "diplomacy" and gal.alert_target({"kind": "event"})["do"] == "overlay" and gal.alert_target({"kind": "x"}).is_empty(), "alert targets")
+	var sys0: Dictionary = s.view["systems"][0]
+	check(gal.alert_target({"systemId": sys0["id"]})["x"] == int(sys0["x"]), "an alert on a system points at its sector")
 	# shell
 	var shell := ShellVM.new(s)
 	check(shell.stats().size() == 7 and shell.stats()[0]["cap"] == "Turn", "shell stats")
@@ -249,7 +278,47 @@ func _session_models(backend: String) -> void:
 	check(ov.end_summary("victory")["won"] and ov.end_summary("defeat")["stats"].size() == 8, "end-of-game summary")
 	var chk := EndTurnVM.build(s)
 	check(chk.has("warnings") and chk.has("forecast") and chk.has("alerts"), "end-turn check builds")
+	_m1_ui_models(s)
 	check(errors.is_empty(), "no core errors in the session %s" % [errors])
+
+## M1-UI (docs/UI-DESIGN-SYSTEM.md): every key figure carries an explanation, the command palette lists every
+## screen, colony and fleet, the Empire dashboard models and the WS02 options.
+func _m1_ui_models(s: AppSession) -> void:
+	var shell := ShellVM.new(s)
+	var explained := true
+	for st in shell.stats():
+		explained = explained and st.has("icon") and st["explain"] is Dictionary and str(st["explain"].get("title", "")) != "" and str(st["explain"].get("effect", "")) != ""
+	check(explained, "every top-bar figure has an icon and a cause-and-effect explanation")
+	var credits: Dictionary = shell.stats()[1]["explain"]
+	check(credits["parts"].size() == 5 and str(credits.get("forecast", "")) != "", "the treasury explains its parts and forecasts")
+	var items := shell.palette_items()
+	var ids := items.map(func(i): return str(i["id"]))
+	var screens_ok := true
+	for r in AppRoutes.GAME_SCREENS:
+		screens_ok = screens_ok and ids.has("screen:" + r["id"])
+	check(screens_ok, "the palette reaches every game screen")
+	check(ids.has("overlay:events") and ids.has("overlay:victory") and ids.has("overlay:briefing") and ids.has("overlay:settings") and ids.has("cmd:saves"), "the palette reaches every overlay and the saves")
+	check(ids.has("colony:%d" % int(s.view["colonies"][0]["systemId"])) and ids.has("fleet:%d" % int(s.view["fleets"][0]["id"])), "the palette lists colonies and fleets")
+	check(CommandPalette.filter(items, "resea").size() >= 1 and str(CommandPalette.filter(items, "resea")[0]["id"]) == "screen:research", "palette search ranks a label prefix first")
+	check(CommandPalette.filter(items, "zzzz-none").is_empty(), "palette search with no match is empty")
+	var sy := SystemVM.new(s)
+	check(sy.fetch(sy.system_id()), "system fetch")
+	var k := sy.kpis()
+	check(k.size() == 8 and k.all(func(x): return x["explain"] is Dictionary and x["explain"].has("effect")), "the colony's eight figures are explained")
+	var em := EmpireVM.new(s)
+	check(em.kpis().size() == 8 and em.contacts().size() == 4, "empire dashboard: eight figures, four other powers")
+	check(em.colony_cards().size() == s.view["colonies"].size() and str(em.colony_cards()[0]["cls"]) != "", "a card per colony with its main planet class")
+	check(em.income_parts().size() == 3 and int(em.income_parts()[2][1]) <= 0, "income parts: ship upkeep is negative")
+	var nc := NewCampaignVM.new(s)
+	nc.shape = "ring"
+	nc.minor_density = "many"
+	nc.difficulty = "hard"
+	var o := nc.options()
+	check(o["shape"] == "ring" and o["minorDensity"] == "many" and o["difficulty"] == "hard", "new campaign passes shape, minor density and difficulty")
+	check(nc.minors_count() > 0 and nc.minors_count() <= 29, "minor count follows the density, capped at 29")
+	nc.minor_density = "none"
+	check(nc.minors_count() == 0, "no minor races at density none")
+	check(NewCampaignVM.core_reads("seed") and not NewCampaignVM.core_reads("shape"), "options the core does not read yet are marked")
 
 # ---------------------------------------------------------------------------------------------
 # App.start_campaign honours the empire option (M0 bug: it was ignored and the player got the Federation)

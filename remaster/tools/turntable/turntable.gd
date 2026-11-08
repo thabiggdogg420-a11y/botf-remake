@@ -47,6 +47,8 @@ func _run() -> void:
 func _render_key(key: String, out_dir: String) -> bool:
 	var info := {"key": key, "renderer": RenderingServer.get_current_rendering_method(),
 		"driver": RenderingServer.get_current_rendering_driver_name(), "audio": AudioServer.get_driver_name() if AudioServer.has_method("get_driver_name") else "n/a"}
+	_sun_euler = Vector3(-18.0, -70.0, 0.0) if key.begins_with("planet.") else Vector3(-24.0, -128.0, 0.0)
+	_sun_dir = Basis.from_euler(Vector3(deg_to_rad(_sun_euler.x), deg_to_rad(_sun_euler.y), 0.0)).z
 	var subject := _make_subject(key, info)
 	if subject == null:
 		printerr("turntable: cannot build ", key)
@@ -113,16 +115,17 @@ func _add_rig(parent: Node) -> void:
 	var sun := DirectionalLight3D.new()
 	sun.light_color = Color(1.0, 0.93, 0.82)
 	sun.light_energy = 3.0
-	sun.rotation_degrees = Vector3(-24.0, -128.0, 0.0)
+	sun.rotation_degrees = _sun_euler
 	if String(_opts.rig) == "show":
 		# Show look (ART-BIBLE combat benchmark): one hard key, deep shadows, almost no ambient, a faint cool edge light.
 		env.ambient_light_energy = 0.04
 		env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
 		env.tonemap_white = 6.0
 		sun.light_energy = 4.5
-		sun.shadow_enabled = true
-		sun.shadow_normal_bias = 2.5
-		sun.shadow_bias = 0.05
+		sun.shadow_enabled = _sun_euler.y < -100.0 ## ships only: the planet scenes are far smaller than the shadow map's range and show acne
+		# small subjects (asteroid rocks, ships at turntable scale) need a tighter bias or the shadow map shows as black blocks
+		sun.shadow_normal_bias = 0.35 if _sun_euler.y > -100.0 else 2.5
+		sun.shadow_bias = 0.01 if _sun_euler.y > -100.0 else 0.05
 		parent.add_child(sun)
 		var edge := DirectionalLight3D.new()
 		edge.light_color = Color(0.6, 0.7, 1.0)
@@ -242,8 +245,39 @@ func _planet(cls: String, info: Dictionary) -> Node3D:
 	return holder
 
 
-## L7: planet texture sets from LocalAssets/planets/<class>/{desktop,web}/ (tools/art/gen_planets.py). Desktop renderers use
-## the 4096x2048 albedo, the normal map and a cloud shell; Compatibility uses the 1024x512 web albedo (relief baked in).
+## L9 look per class: atmosphere tint / strength, cloud tint and opacity, whether the emission texture is lights or lava.
+const PLANET_LOOK := {
+	"m": {"atmo": Color(0.32, 0.58, 1.0), "str": 0.9, "cloud": Color(1, 1, 1), "calpha": 0.8, "lights": true},
+	"o": {"atmo": Color(0.3, 0.6, 1.0), "str": 0.9, "cloud": Color(1, 1, 1), "calpha": 0.8, "lights": true},
+	"l": {"atmo": Color(0.55, 0.8, 0.5), "str": 0.8, "cloud": Color(0.96, 0.95, 0.84), "calpha": 0.8, "lights": true},
+	"p": {"atmo": Color(0.6, 0.78, 0.95), "str": 0.6, "cloud": Color(1, 1, 1), "calpha": 0.7, "lights": true},
+	"h": {"atmo": Color(0.9, 0.62, 0.42), "str": 0.45, "cloud": Color(0.95, 0.82, 0.72), "calpha": 0.6, "lights": true},
+	"k": {"atmo": Color(0, 0, 0), "str": 0.0, "cloud": Color(1, 1, 1), "calpha": 0.0, "lights": false},
+	"y": {"atmo": Color(1.0, 0.55, 0.2), "str": 1.5, "cloud": Color(0.55, 0.36, 0.2), "calpha": 0.38, "lava": true},
+	"gasgiant": {"atmo": Color(0.85, 0.78, 0.62), "str": 0.8, "cloud": Color(1, 1, 1), "calpha": 0.0, "lights": false},
+}
+var _sun_euler := Vector3(-24.0, -128.0, 0.0) ## degrees; planets use a gibbous phase so the disc can be judged
+var _sun_dir := Basis.from_euler(Vector3(deg_to_rad(-24.0), deg_to_rad(-128.0), 0.0)).z
+
+
+func _tex(path: String) -> ImageTexture:
+	var img := Image.load_from_file(path)
+	if img == null or img.is_empty():
+		return null
+	img.generate_mipmaps()
+	return ImageTexture.create_from_image(img)
+
+
+func _shader(file: String) -> Shader:
+	var path: String = get_script().resource_path.get_base_dir().path_join(file)
+	var sh := Shader.new()
+	sh.code = FileAccess.get_file_as_string(path)
+	return sh
+
+
+## L9: planet texture sets from LocalAssets/planets/<class>/{desktop,web}/ (tools/art/gen_planets.py). Desktop renderers use
+## the 4096x2048 albedo, normal and roughness maps; Compatibility uses the 1024x512 web albedo (relief baked in). Both get
+## the cloud shell, the atmosphere rim and the night lights (planet Y: lava emission, always on).
 func _textured_planet(holder: Node3D, cls: String, info: Dictionary) -> bool:
 	var web := RenderingServer.get_current_rendering_method() == "gl_compatibility"
 	var v := int(_opts.variant)
@@ -251,6 +285,7 @@ func _textured_planet(holder: Node3D, cls: String, info: Dictionary) -> bool:
 	var alb_path := dir.path_join("v%d_albedo.%s" % [v, "webp" if web else "png"])
 	if not FileAccess.file_exists(alb_path):
 		return false
+	var look: Dictionary = PLANET_LOOK.get(cls, {})
 	var mi := MeshInstance3D.new()
 	var sph := SphereMesh.new()
 	sph.radius = SUBJECT_SIZE * 0.5
@@ -258,34 +293,44 @@ func _textured_planet(holder: Node3D, cls: String, info: Dictionary) -> bool:
 	sph.radial_segments = 128 if not web else 48
 	sph.rings = 64 if not web else 24
 	mi.mesh = sph
-	var m := StandardMaterial3D.new()
-	m.albedo_texture = ImageTexture.create_from_image(Image.load_from_file(alb_path))
-	m.roughness = 0.9 if cls != "gasgiant" else 0.6
+	var m := ShaderMaterial.new()
+	m.shader = _shader("planet_surface.gdshader")
+	m.set_shader_parameter("albedo_tex", _tex(alb_path))
+	var rpath := dir.path_join("v%d_rough.png" % v)
+	if FileAccess.file_exists(rpath):
+		m.set_shader_parameter("rough_tex", _tex(rpath))
 	var npath := dir.path_join("v%d_normal.png" % v)
 	if not web and FileAccess.file_exists(npath):
-		m.normal_enabled = true
-		m.normal_texture = ImageTexture.create_from_image(Image.load_from_file(npath))
-		m.normal_scale = 1.0
+		m.set_shader_parameter("has_normal", true)
+		m.set_shader_parameter("normal_tex", _tex(npath))
+	var epath := dir.path_join("v%d_night.png" % v)
+	if FileAccess.file_exists(epath) and (look.get("lights", false) or look.get("lava", false)):
+		m.set_shader_parameter("emit_tex", _tex(epath))
+		m.set_shader_parameter("emit_always", look.get("lava", false))
+		m.set_shader_parameter("emit_energy", 1.3 if look.get("lava", false) else 1.4)
+	m.set_shader_parameter("sun_dir", _sun_dir)
 	mi.material_override = m
 	holder.add_child(mi)
 	var cpath := dir.path_join("v%d_clouds.png" % v)
-	if FileAccess.file_exists(cpath):
+	if FileAccess.file_exists(cpath) and float(look.get("calpha", 0.0)) > 0.0:
 		var cimg := Image.load_from_file(cpath)
 		cimg.convert(Image.FORMAT_L8)
-		var rgba := Image.create(cimg.get_width(), cimg.get_height(), false, Image.FORMAT_RGBA8)
 		var raw := cimg.get_data()
 		var out := PackedByteArray()
 		out.resize(raw.size() * 4)
+		var tint: Color = look.get("cloud", Color.WHITE)
+		var ca := float(look.get("calpha", 0.85))
 		for i in raw.size():
-			out[i * 4] = 255
-			out[i * 4 + 1] = 255
-			out[i * 4 + 2] = 255
-			out[i * 4 + 3] = int(raw[i] * 0.92)
-		rgba = Image.create_from_data(cimg.get_width(), cimg.get_height(), false, Image.FORMAT_RGBA8, out)
+			out[i * 4] = int(tint.r * 255.0)
+			out[i * 4 + 1] = int(tint.g * 255.0)
+			out[i * 4 + 2] = int(tint.b * 255.0)
+			out[i * 4 + 3] = int(raw[i] * ca)
+		var rgba := Image.create_from_data(cimg.get_width(), cimg.get_height(), false, Image.FORMAT_RGBA8, out)
+		rgba.generate_mipmaps()
 		var cm := MeshInstance3D.new()
 		var cs := SphereMesh.new()
-		cs.radius = SUBJECT_SIZE * 0.5 * 1.012
-		cs.height = SUBJECT_SIZE * 1.012
+		cs.radius = SUBJECT_SIZE * 0.5 * 1.008
+		cs.height = SUBJECT_SIZE * 1.008
 		cs.radial_segments = sph.radial_segments
 		cs.rings = sph.rings
 		cm.mesh = cs
@@ -294,50 +339,76 @@ func _textured_planet(holder: Node3D, cls: String, info: Dictionary) -> bool:
 		mm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 		mm.roughness = 1.0
 		cm.material_override = mm
+		cm.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		holder.add_child(cm)
-	info["source"] = "procedural texture set v%d (%s)" % [v, "web 1024x512" if web else "desktop 4096x2048 + normal"]
+	if float(look.get("str", 0.0)) > 0.0:
+		var am := MeshInstance3D.new()
+		var asph := SphereMesh.new()
+		asph.radius = SUBJECT_SIZE * 0.5 * 1.035
+		asph.height = SUBJECT_SIZE * 1.035
+		asph.radial_segments = sph.radial_segments
+		asph.rings = sph.rings
+		am.mesh = asph
+		var amat := ShaderMaterial.new()
+		amat.shader = _shader("planet_atmo.gdshader")
+		var ac: Color = look.atmo
+		amat.set_shader_parameter("tint", Vector3(ac.r, ac.g, ac.b))
+		amat.set_shader_parameter("strength", float(look.str))
+		amat.set_shader_parameter("sun_dir", _sun_dir)
+		am.material_override = amat
+		am.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		holder.add_child(am)
+	info["source"] = "procedural texture set v%d (%s) + cloud shell + atmosphere rim" % [v, "web 1024x512, relief baked" if web else "desktop 4096x2048 + normal + roughness"]
 	return true
 
 
-## L7: the asteroid belt from the 6 generated rock meshes (rock_<n>.obj, spherical UVs) and the rock albedo/normal.
+## L9: the asteroid belt from the 6 cratered rock meshes (rock_<n>.obj with UVs and normals) and each rock's own albedo and
+## normal map. Rocks are grey-brown S/C/M-type bodies: albedo 0.04 to 0.25, no blue cast.
 func _textured_asteroids(holder: Node3D, info: Dictionary) -> bool:
 	var web := RenderingServer.get_current_rendering_method() == "gl_compatibility"
 	var dir := String(_opts.planets).path_join("asteroids").path_join("web" if web else "desktop")
 	var meshes: Array[ArrayMesh] = []
+	var mats: Array[StandardMaterial3D] = []
 	for i in range(1, 7):
 		var p := dir.path_join("rock_%d.obj" % i)
 		if not FileAccess.file_exists(p):
 			return false
 		meshes.append(_load_obj(p))
-	var m := StandardMaterial3D.new()
-	var a := dir.path_join("rock_albedo.webp" if web else "rock_albedo.png")
-	if FileAccess.file_exists(a):
-		m.albedo_texture = ImageTexture.create_from_image(Image.load_from_file(a))
-	var n := dir.path_join("rock_normal.png")
-	if not web and FileAccess.file_exists(n):
-		m.normal_enabled = true
-		m.normal_texture = ImageTexture.create_from_image(Image.load_from_file(n))
-	m.roughness = 0.95
+		var m := StandardMaterial3D.new()
+		var a := dir.path_join("rock_%d_albedo.%s" % [i, "webp" if web else "png"])
+		if String(_opts.get("plain", "")) == "1":
+			m.albedo_color = Color(0.5, 0.45, 0.4)
+			mats.append(m)
+			continue
+		if FileAccess.file_exists(a):
+			m.albedo_texture = _tex(a)
+		var n := dir.path_join("rock_%d_normal.png" % i)
+		if not web and FileAccess.file_exists(n):
+			m.normal_enabled = true
+			m.normal_texture = _tex(n)
+		m.roughness = 0.93
+		mats.append(m)
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 8472
-	for _i in 60:
+	for _i in 46:
 		var mi := MeshInstance3D.new()
-		mi.mesh = meshes[rng.randi() % 6]
-		mi.scale = Vector3.ONE * rng.randf_range(0.06, 0.2)
+		var k := rng.randi() % 6
+		mi.mesh = meshes[k]
+		mi.scale = Vector3.ONE * rng.randf_range(0.07, 0.24)
 		mi.rotation = Vector3(rng.randf() * TAU, rng.randf() * TAU, rng.randf() * TAU)
-		mi.position = Vector3(rng.randf_range(-1, 1), rng.randf_range(-0.25, 0.25), rng.randf_range(-1, 1))
-		mi.material_override = m
+		mi.position = Vector3(rng.randf_range(-1, 1), rng.randf_range(-0.22, 0.22), rng.randf_range(-1, 1))
+		mi.material_override = mats[k]
 		holder.add_child(mi)
-	info["source"] = "procedural rock meshes x6 + rock maps (%s)" % ("web" if web else "desktop")
+	info["source"] = "procedural cratered rock meshes x6 + per-rock maps (%s)" % ("web" if web else "desktop")
 	return true
 
 
 func _load_obj(path: String) -> ArrayMesh:
 	var verts := PackedVector3Array()
 	var uvs := PackedVector2Array()
-	var idx := PackedInt32Array()
-	for line in FileAccess.get_file_as_string(path).split("
-", false):
+	var nrms := PackedVector3Array()
+	var idx: Array = []
+	for line in FileAccess.get_file_as_string(path).split("\n", false):
 		var t := line.split(" ", false)
 		if t.size() < 3:
 			continue
@@ -345,15 +416,22 @@ func _load_obj(path: String) -> ArrayMesh:
 			verts.append(Vector3(float(t[1]), float(t[2]), float(t[3])))
 		elif t[0] == "vt":
 			uvs.append(Vector2(float(t[1]), float(t[2])))
+		elif t[0] == "vn":
+			nrms.append(Vector3(float(t[1]), float(t[2]), float(t[3])))
 		elif t[0] == "f":
 			for k in 3:
-				idx.append(int(t[k + 1].split("/")[0]) - 1)
+				var c := t[k + 1].split("/")
+				idx.append([int(c[0]) - 1, int(c[1]) - 1, (int(c[2]) - 1) if c.size() > 2 and c[2] != "" else -1])
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	for i in idx:
-		st.set_uv(uvs[i])
-		st.add_vertex(verts[i])
-	st.generate_normals()
+	for tri in idx:
+		st.set_uv(uvs[tri[1]])
+		if tri[2] >= 0 and tri[2] < nrms.size():
+			st.set_normal(nrms[tri[2]])
+		st.add_vertex(verts[tri[0]])
+	if nrms.is_empty():
+		st.generate_normals()
+	st.generate_tangents()
 	return st.commit()
 
 

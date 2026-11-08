@@ -381,7 +381,16 @@
         "renderer": "Compatibility: hero_hull.gdshader / hero_plated.gdshader only, no screen-space effects"
       },
       "hero_lod0_tris": 5678,
-      "candidate_source": "sketchfab (unclear)"
+      "candidate_source": "sketchfab (unclear)",
+      "running_lights": [
+        "NAV_PORT",
+        "NAV_STBD",
+        "NAV_AFT",
+        "STROBE_DORSAL",
+        "STROBE_VENTRAL",
+        "STROBE_AFT_PORT",
+        "STROBE_AFT_STBD"
+      ]
     },
     {
       "key": "ship.car.groumall",
@@ -442,7 +451,14 @@
         "renderer": "Compatibility: hero_hull.gdshader / hero_plated.gdshader only, no screen-space effects"
       },
       "hero_lod0_tris": 1358,
-      "candidate_source": "moddb (restricted)"
+      "candidate_source": "moddb (restricted)",
+      "running_lights": [
+        "NAV_PORT",
+        "NAV_STBD",
+        "NAV_AFT",
+        "STROBE_DORSAL",
+        "STROBE_VENTRAL"
+      ]
     },
     {
       "key": "ship.car.keldon",
@@ -472,7 +488,16 @@
         "renderer": "Compatibility: hero_hull.gdshader / hero_plated.gdshader only, no screen-space effects"
       },
       "hero_lod0_tris": 7422,
-      "candidate_source": "gamefront/nexus (restricted)"
+      "candidate_source": "gamefront/nexus (restricted)",
+      "running_lights": [
+        "NAV_PORT",
+        "NAV_STBD",
+        "NAV_AFT",
+        "STROBE_DORSAL",
+        "STROBE_VENTRAL",
+        "STROBE_AFT_PORT",
+        "STROBE_AFT_STBD"
+      ]
     },
     {
       "key": "ship.car.kraxon",
@@ -651,7 +676,16 @@
         "download_kb": 1600,
         "renderer": "Compatibility: hero_hull.gdshader / hero_plated.gdshader only, no screen-space effects"
       },
-      "hero_lod0_tris": 16532
+      "hero_lod0_tris": 16532,
+      "running_lights": [
+        "NAV_PORT",
+        "NAV_STBD",
+        "NAV_AFT",
+        "STROBE_DORSAL",
+        "STROBE_VENTRAL",
+        "STROBE_AFT_PORT",
+        "STROBE_AFT_STBD"
+      ]
     },
     {
       "key": "ship.car.platform",
@@ -681,7 +715,14 @@
         "renderer": "Compatibility: hero_hull.gdshader / hero_plated.gdshader only, no screen-space effects"
       },
       "hero_lod0_tris": 1443,
-      "candidate_source": "sketchfab (unclear)"
+      "candidate_source": "sketchfab (unclear)",
+      "running_lights": [
+        "NAV_PORT",
+        "NAV_STBD",
+        "NAV_AFT",
+        "STROBE_DORSAL",
+        "STROBE_VENTRAL"
+      ]
     },
     {
       "key": "ship.car.ranol",
@@ -771,7 +812,16 @@
         "download_kb": 1600,
         "renderer": "Compatibility: hero_hull.gdshader / hero_plated.gdshader only, no screen-space effects"
       },
-      "hero_lod0_tris": 51770
+      "hero_lod0_tris": 51770,
+      "running_lights": [
+        "NAV_PORT",
+        "NAV_STBD",
+        "NAV_AFT",
+        "STROBE_DORSAL",
+        "STROBE_VENTRAL",
+        "STROBE_AFT_PORT",
+        "STROBE_AFT_STBD"
+      ]
     },
     {
       "key": "ship.car.telok",
@@ -984,7 +1034,17 @@
         "current": "procedural hull ships no download today (4000 tris, hull.gdshader passes Compatibility); budget is for the target hero model"
       },
       "candidate_source": "sketchfab (unclear)",
-      "hero_lod0_tris": 13530
+      "hero_lod0_tris": 13530,
+      "running_lights": [
+        "NAV_PORT",
+        "NAV_STBD",
+        "NAV_AFT",
+        "STROBE_DORSAL",
+        "STROBE_VENTRAL",
+        "STROBE_AFT_PORT",
+        "STROBE_AFT_STBD"
+      ],
+      "hull_tint_note": "cool light grey (fed_tints.py tint in godot-hero-manifest.json), not cream"
     },
     {
       "key": "ship.fed.ambassador",
@@ -1014,7 +1074,17 @@
         "renderer": "Compatibility: hero_hull.gdshader / hero_plated.gdshader only, no screen-space effects"
       },
       "hero_lod0_tris": 32930,
-      "candidate_source": "sketchfab (unclear)"
+      "candidate_source": "sketchfab (unclear)",
+      "running_lights": [
+        "NAV_PORT",
+        "NAV_STBD",
+        "NAV_AFT",
+        "STROBE_DORSAL",
+        "STROBE_VENTRAL",
+        "STROBE_AFT_PORT",
+        "STROBE_AFT_STBD"
+      ],
+      "hull_tint_note": "cool light grey (fed_tints.py tint in godot-hero-manifest.json), not cream"
     },
     {
       "key": "ship.fed.centaur",
@@ -1045,7 +1115,17 @@
         "renderer": "Compatibility: hero_hull.gdshader / hero_plated.gdshader only, no screen-space effects",
         "current": "procedural hull ships no download today (4000 tris, hull.gdshader passes Compatibility); budget is for the target hero model"
       },
-      "hero_lod0_tris": 20885
+      "hero_lod0_tris": 20885,
+      "running_lights": [
+        "NAV_PORT",
+        "NAV_STBD",
+        "NAV_AFT",
+        "STROBE_DORSAL",
+        "STROBE_VENTRAL",
+        "STROBE_AFT_PORT",
+        "STROBE_AFT_STBD"
+      ],
+      "hull_tint_note": "cool light grey (fed_tints.py tint in godot-hero-manifest.json), not cream"
     },
     {
       "key": "ship.fed.challenger",
@@ -1076,7 +1156,17 @@
         "renderer": "Compatibility: hero_hull.gdshader / hero_plated.gdshader only, no screen-space effects",
         "current": "procedural hull ships no download today (4000 tris, hull.gdshader passes Compatibility); budget is for the target hero model"
       },
-      "hero_lod0_tris": 3728
+      "hero_lod0_tris": 3728,
+      "running_lights": [
+        "NAV_PORT",
+        "NAV_STBD",
+        "NAV_AFT",
+        "STROBE_DORSAL",
+        "STROBE_VENTRAL",
+        "STROBE_AFT_PORT",
+        "STROBE_AFT_STBD"
+      ],
+      "hull_tint_note": "cool light grey (fed_tints.py tint in godot-hero-manifest.json), not cream"
     },
     {
       "key": "ship.fed.cheyenne",
@@ -1107,7 +1197,17 @@
         "renderer": "Compatibility: hero_hull.gdshader / hero_plated.gdshader only, no screen-space effects",
         "current": "procedural hull ships no download today (4000 tris, hull.gdshader passes Compatibility); budget is for the target hero model"
       },
-      "hero_lod0_tris": 4190
+      "hero_lod0_tris": 4190,
+      "running_lights": [
+        "NAV_PORT",
+        "NAV_STBD",
+        "NAV_AFT",
+        "STROBE_DORSAL",
+        "STROBE_VENTRAL",
+        "STROBE_AFT_PORT",
+        "STROBE_AFT_STBD"
+      ],
+      "hull_tint_note": "cool light grey (fed_tints.py tint in godot-hero-manifest.json), not cream"
     },
     {
       "key": "ship.fed.constellation",
@@ -1137,7 +1237,17 @@
         "renderer": "Compatibility: hero_hull.gdshader / hero_plated.gdshader only, no screen-space effects"
       },
       "hero_lod0_tris": 2767,
-      "candidate_source": "sketchfab (restricted)"
+      "candidate_source": "sketchfab (restricted)",
+      "running_lights": [
+        "NAV_PORT",
+        "NAV_STBD",
+        "NAV_AFT",
+        "STROBE_DORSAL",
+        "STROBE_VENTRAL",
+        "STROBE_AFT_PORT",
+        "STROBE_AFT_STBD"
+      ],
+      "hull_tint_note": "cool light grey (fed_tints.py tint in godot-hero-manifest.json), not cream"
     },
     {
       "key": "ship.fed.constitution",
@@ -1168,7 +1278,17 @@
         "renderer": "Compatibility: hero_hull.gdshader / hero_plated.gdshader only, no screen-space effects",
         "current": "procedural hull ships no download today (4000 tris, hull.gdshader passes Compatibility); budget is for the target hero model"
       },
-      "hero_lod0_tris": 28542
+      "hero_lod0_tris": 28542,
+      "running_lights": [
+        "NAV_PORT",
+        "NAV_STBD",
+        "NAV_AFT",
+        "STROBE_DORSAL",
+        "STROBE_VENTRAL",
+        "STROBE_AFT_PORT",
+        "STROBE_AFT_STBD"
+      ],
+      "hull_tint_note": "cool light grey (fed_tints.py tint in godot-hero-manifest.json), not cream"
     },
     {
       "key": "ship.fed.constitution_kelvin",
@@ -1200,7 +1320,17 @@
         "current": "procedural hull ships no download today (4000 tris, hull.gdshader passes Compatibility); budget is for the target hero model"
       },
       "hero_lod0_tris": 32419,
-      "review_note": "WCJJEnterprise (2009-film Enterprise)"
+      "review_note": "WCJJEnterprise (2009-film Enterprise)",
+      "running_lights": [
+        "NAV_PORT",
+        "NAV_STBD",
+        "NAV_AFT",
+        "STROBE_DORSAL",
+        "STROBE_VENTRAL",
+        "STROBE_AFT_PORT",
+        "STROBE_AFT_STBD"
+      ],
+      "hull_tint_note": "cool light grey (fed_tints.py tint in godot-hero-manifest.json), not cream"
     },
     {
       "key": "ship.fed.constitution_refit",
@@ -1231,7 +1361,17 @@
         "renderer": "Compatibility: hero_hull.gdshader / hero_plated.gdshader only, no screen-space effects",
         "current": "procedural hull ships no download today (4000 tris, hull.gdshader passes Compatibility); budget is for the target hero model"
       },
-      "hero_lod0_tris": 27360
+      "hero_lod0_tris": 27360,
+      "running_lights": [
+        "NAV_PORT",
+        "NAV_STBD",
+        "NAV_AFT",
+        "STROBE_DORSAL",
+        "STROBE_VENTRAL",
+        "STROBE_AFT_PORT",
+        "STROBE_AFT_STBD"
+      ],
+      "hull_tint_note": "cool light grey (fed_tints.py tint in godot-hero-manifest.json), not cream"
     },
     {
       "key": "ship.fed.curry",
@@ -1262,7 +1402,17 @@
         "renderer": "Compatibility: hero_hull.gdshader / hero_plated.gdshader only, no screen-space effects",
         "current": "procedural hull ships no download today (4000 tris, hull.gdshader passes Compatibility); budget is for the target hero model"
       },
-      "hero_lod0_tris": 6689
+      "hero_lod0_tris": 6689,
+      "running_lights": [
+        "NAV_PORT",
+        "NAV_STBD",
+        "NAV_AFT",
+        "STROBE_DORSAL",
+        "STROBE_VENTRAL",
+        "STROBE_AFT_PORT",
+        "STROBE_AFT_STBD"
+      ],
+      "hull_tint_note": "cool light grey (fed_tints.py tint in godot-hero-manifest.json), not cream"
     },
     {
       "key": "ship.fed.daedalus",
@@ -1293,7 +1443,15 @@
         "renderer": "Compatibility: hero_hull.gdshader / hero_plated.gdshader only, no screen-space effects",
         "current": "procedural hull ships no download today (4000 tris, hull.gdshader passes Compatibility); budget is for the target hero model"
       },
-      "hero_lod0_tris": 57689
+      "hero_lod0_tris": 57689,
+      "running_lights": [
+        "NAV_PORT",
+        "NAV_STBD",
+        "NAV_AFT",
+        "STROBE_DORSAL",
+        "STROBE_VENTRAL"
+      ],
+      "hull_tint_note": "cool light grey (fed_tints.py tint in godot-hero-manifest.json), not cream"
     },
     {
       "key": "ship.fed.danube",
@@ -1325,7 +1483,15 @@
         "current": "procedural hull ships no download today (4000 tris, hull.gdshader passes Compatibility); budget is for the target hero model"
       },
       "candidate_source": "sketchfab (unclear)",
-      "hero_lod0_tris": 10434
+      "hero_lod0_tris": 10434,
+      "running_lights": [
+        "NAV_PORT",
+        "NAV_STBD",
+        "NAV_AFT",
+        "STROBE_DORSAL",
+        "STROBE_VENTRAL"
+      ],
+      "hull_tint_note": "cool light grey (fed_tints.py tint in godot-hero-manifest.json), not cream"
     },
     {
       "key": "ship.fed.defiant",
@@ -1355,20 +1521,30 @@
         "renderer": "Compatibility: hero_hull.gdshader / hero_plated.gdshader only, no screen-space effects"
       },
       "hero_lod0_tris": 54578,
-      "candidate_source": "sketchfab (unclear)"
+      "candidate_source": "sketchfab (unclear)",
+      "running_lights": [
+        "NAV_PORT",
+        "NAV_STBD",
+        "NAV_AFT",
+        "STROBE_DORSAL",
+        "STROBE_VENTRAL",
+        "STROBE_AFT_PORT",
+        "STROBE_AFT_STBD"
+      ],
+      "hull_tint_note": "cool light grey (fed_tints.py tint in godot-hero-manifest.json), not cream"
     },
     {
       "key": "ship.fed.edward",
       "category": "ship",
       "name": "Edward (legacy catalogue)",
-      "source": "procedural: ShipFactory (godot/scenes/battle/ship_factory.gd) owner look fed",
-      "status": "procedural",
+      "source": "hero glb (L9 art wave 2): L9 kitbash of ship.fed.nebula (colony ship: Nebula saucer, colony cylinders); private",
+      "status": "final-candidate",
       "ws": 10,
       "milestone": "M1",
       "subcategory": "ship",
       "faction": "fed",
       "length_m": 280,
-      "has_hero_model": false,
+      "has_hero_model": true,
       "roster_name": "Edward (legacy catalogue)",
       "fallback_key": "ship.fed.miranda",
       "desktop_budget": {
@@ -1386,10 +1562,18 @@
         "renderer": "Compatibility: hero_hull.gdshader / hero_plated.gdshader only, no screen-space effects",
         "current": "procedural hull ships no download today (4000 tris, hull.gdshader passes Compatibility); budget is for the target hero model"
       },
-      "needs_model": {
-        "reason": "no library model",
-        "nearest_base_to_kitbash": "ship.fed.nebula or ship.fed.excelsior (same era cruiser)"
-      }
+      "hero_lod0_tris": 24960,
+      "review_note": "kitbash of ship.fed.nebula, canon length 280 m",
+      "running_lights": [
+        "NAV_PORT",
+        "NAV_STBD",
+        "NAV_AFT",
+        "STROBE_DORSAL",
+        "STROBE_VENTRAL",
+        "STROBE_AFT_PORT",
+        "STROBE_AFT_STBD"
+      ],
+      "hull_tint_note": "cool light grey (fed_tints.py tint in godot-hero-manifest.json), not cream"
     },
     {
       "key": "ship.fed.excelsior",
@@ -1419,7 +1603,17 @@
         "renderer": "Compatibility: hero_hull.gdshader / hero_plated.gdshader only, no screen-space effects"
       },
       "hero_lod0_tris": 23843,
-      "candidate_source": "sketchfab (unclear)"
+      "candidate_source": "sketchfab (unclear)",
+      "running_lights": [
+        "NAV_PORT",
+        "NAV_STBD",
+        "NAV_AFT",
+        "STROBE_DORSAL",
+        "STROBE_VENTRAL",
+        "STROBE_AFT_PORT",
+        "STROBE_AFT_STBD"
+      ],
+      "hull_tint_note": "cool light grey (fed_tints.py tint in godot-hero-manifest.json), not cream"
     },
     {
       "key": "ship.fed.freedom",
@@ -1450,7 +1644,17 @@
         "renderer": "Compatibility: hero_hull.gdshader / hero_plated.gdshader only, no screen-space effects",
         "current": "procedural hull ships no download today (4000 tris, hull.gdshader passes Compatibility); budget is for the target hero model"
       },
-      "hero_lod0_tris": 2566
+      "hero_lod0_tris": 2566,
+      "running_lights": [
+        "NAV_PORT",
+        "NAV_STBD",
+        "NAV_AFT",
+        "STROBE_DORSAL",
+        "STROBE_VENTRAL",
+        "STROBE_AFT_PORT",
+        "STROBE_AFT_STBD"
+      ],
+      "hull_tint_note": "cool light grey (fed_tints.py tint in godot-hero-manifest.json), not cream"
     },
     {
       "key": "ship.fed.galaxy",
@@ -1480,7 +1684,17 @@
         "renderer": "Compatibility: hero_hull.gdshader / hero_plated.gdshader only, no screen-space effects"
       },
       "hero_lod0_tris": 18505,
-      "candidate_source": "sketchfab (unclear)"
+      "candidate_source": "sketchfab (unclear)",
+      "running_lights": [
+        "NAV_PORT",
+        "NAV_STBD",
+        "NAV_AFT",
+        "STROBE_DORSAL",
+        "STROBE_VENTRAL",
+        "STROBE_AFT_PORT",
+        "STROBE_AFT_STBD"
+      ],
+      "hull_tint_note": "cool light grey (fed_tints.py tint in godot-hero-manifest.json), not cream"
     },
     {
       "key": "ship.fed.galaxy_x",
@@ -1509,7 +1723,17 @@
         "download_kb": 1600,
         "renderer": "Compatibility: hero_hull.gdshader / hero_plated.gdshader only, no screen-space effects"
       },
-      "hero_lod0_tris": 31278
+      "hero_lod0_tris": 31278,
+      "running_lights": [
+        "NAV_PORT",
+        "NAV_STBD",
+        "NAV_AFT",
+        "STROBE_DORSAL",
+        "STROBE_VENTRAL",
+        "STROBE_AFT_PORT",
+        "STROBE_AFT_STBD"
+      ],
+      "hull_tint_note": "cool light grey (fed_tints.py tint in godot-hero-manifest.json), not cream"
     },
     {
       "key": "ship.fed.intrepid",
@@ -1541,20 +1765,30 @@
         "current": "procedural hull ships no download today (4000 tris, hull.gdshader passes Compatibility); budget is for the target hero model"
       },
       "candidate_source": "sketchfab (unclear)",
-      "hero_lod0_tris": 9288
+      "hero_lod0_tris": 9288,
+      "running_lights": [
+        "NAV_PORT",
+        "NAV_STBD",
+        "NAV_AFT",
+        "STROBE_DORSAL",
+        "STROBE_VENTRAL",
+        "STROBE_AFT_PORT",
+        "STROBE_AFT_STBD"
+      ],
+      "hull_tint_note": "cool light grey (fed_tints.py tint in godot-hero-manifest.json), not cream"
     },
     {
       "key": "ship.fed.k7",
       "category": "ship",
       "name": "K-7 (Station, roster)",
-      "source": "procedural: ShipFactory (godot/scenes/battle/ship_factory.gd) owner look fed",
-      "status": "procedural",
+      "source": "hero glb (L9 art wave 2): L9 kitbash of ship.fed.starbase (K-7 station: column, ring, arms); private",
+      "status": "final-candidate",
       "ws": 10,
       "milestone": "M1",
       "subcategory": "ship",
       "faction": "fed",
       "length_m": 500,
-      "has_hero_model": false,
+      "has_hero_model": true,
       "roster_name": "K-7 (Station, roster)",
       "fallback_key": "ship.fed.starbase",
       "desktop_budget": {
@@ -1572,10 +1806,18 @@
         "renderer": "Compatibility: hero_hull.gdshader / hero_plated.gdshader only, no screen-space effects",
         "current": "procedural hull ships no download today (4000 tris, hull.gdshader passes Compatibility); budget is for the target hero model"
       },
-      "needs_model": {
-        "reason": "no library model (a 500 m station)",
-        "nearest_base_to_kitbash": "ship.fed.starbase or Starhelm SpaceFacility / MidwayStation"
-      }
+      "hero_lod0_tris": 7848,
+      "review_note": "kitbash of ship.fed.starbase, canon length 500 m",
+      "running_lights": [
+        "NAV_PORT",
+        "NAV_STBD",
+        "NAV_AFT",
+        "STROBE_DORSAL",
+        "STROBE_VENTRAL",
+        "STROBE_AFT_PORT",
+        "STROBE_AFT_STBD"
+      ],
+      "hull_tint_note": "cool light grey (fed_tints.py tint in godot-hero-manifest.json), not cream"
     },
     {
       "key": "ship.fed.kelvin_type",
@@ -1607,20 +1849,30 @@
         "current": "procedural hull ships no download today (4000 tris, hull.gdshader passes Compatibility); budget is for the target hero model"
       },
       "hero_lod0_tris": 29281,
-      "review_note": "bckelvin_refit: a Kelvin-era hull, not confirmed to be the USS Kelvin; orchestrator to confirm"
+      "review_note": "bckelvin_refit: a Kelvin-era hull, not confirmed to be the USS Kelvin; orchestrator to confirm",
+      "running_lights": [
+        "NAV_PORT",
+        "NAV_STBD",
+        "NAV_AFT",
+        "STROBE_DORSAL",
+        "STROBE_VENTRAL",
+        "STROBE_AFT_PORT",
+        "STROBE_AFT_STBD"
+      ],
+      "hull_tint_note": "cool light grey (fed_tints.py tint in godot-hero-manifest.json), not cream"
     },
     {
       "key": "ship.fed.london",
       "category": "ship",
       "name": "London (legacy catalogue)",
-      "source": "procedural: ShipFactory (godot/scenes/battle/ship_factory.gd) owner look fed",
-      "status": "procedural",
+      "source": "hero glb (L9 art wave 2): L9 kitbash of ship.fed.constellation (long-range cruiser); private",
+      "status": "final-candidate",
       "ws": 10,
       "milestone": "M1",
       "subcategory": "ship",
       "faction": "fed",
       "length_m": 350,
-      "has_hero_model": false,
+      "has_hero_model": true,
       "roster_name": "London (legacy catalogue)",
       "fallback_key": "ship.fed.miranda",
       "desktop_budget": {
@@ -1638,10 +1890,18 @@
         "renderer": "Compatibility: hero_hull.gdshader / hero_plated.gdshader only, no screen-space effects",
         "current": "procedural hull ships no download today (4000 tris, hull.gdshader passes Compatibility); budget is for the target hero model"
       },
-      "needs_model": {
-        "reason": "no library model",
-        "nearest_base_to_kitbash": "ship.fed.constellation or ship.fed.excelsior"
-      }
+      "hero_lod0_tris": 3639,
+      "review_note": "kitbash of ship.fed.constellation, canon length 350 m",
+      "running_lights": [
+        "NAV_PORT",
+        "NAV_STBD",
+        "NAV_AFT",
+        "STROBE_DORSAL",
+        "STROBE_VENTRAL",
+        "STROBE_AFT_PORT",
+        "STROBE_AFT_STBD"
+      ],
+      "hull_tint_note": "cool light grey (fed_tints.py tint in godot-hero-manifest.json), not cream"
     },
     {
       "key": "ship.fed.luna",
@@ -1672,7 +1932,17 @@
         "renderer": "Compatibility: hero_hull.gdshader / hero_plated.gdshader only, no screen-space effects",
         "current": "procedural hull ships no download today (4000 tris, hull.gdshader passes Compatibility); budget is for the target hero model"
       },
-      "hero_lod0_tris": 14640
+      "hero_lod0_tris": 14640,
+      "running_lights": [
+        "NAV_PORT",
+        "NAV_STBD",
+        "NAV_AFT",
+        "STROBE_DORSAL",
+        "STROBE_VENTRAL",
+        "STROBE_AFT_PORT",
+        "STROBE_AFT_STBD"
+      ],
+      "hull_tint_note": "cool light grey (fed_tints.py tint in godot-hero-manifest.json), not cream"
     },
     {
       "key": "ship.fed.miranda",
@@ -1702,7 +1972,17 @@
         "renderer": "Compatibility: hero_hull.gdshader / hero_plated.gdshader only, no screen-space effects"
       },
       "hero_lod0_tris": 9965,
-      "candidate_source": "sketchfab (unclear)"
+      "candidate_source": "sketchfab (unclear)",
+      "running_lights": [
+        "NAV_PORT",
+        "NAV_STBD",
+        "NAV_AFT",
+        "STROBE_DORSAL",
+        "STROBE_VENTRAL",
+        "STROBE_AFT_PORT",
+        "STROBE_AFT_STBD"
+      ],
+      "hull_tint_note": "cool light grey (fed_tints.py tint in godot-hero-manifest.json), not cream"
     },
     {
       "key": "ship.fed.nebula",
@@ -1732,7 +2012,17 @@
         "renderer": "Compatibility: hero_hull.gdshader / hero_plated.gdshader only, no screen-space effects"
       },
       "hero_lod0_tris": 23776,
-      "candidate_source": "sketchfab (unclear)"
+      "candidate_source": "sketchfab (unclear)",
+      "running_lights": [
+        "NAV_PORT",
+        "NAV_STBD",
+        "NAV_AFT",
+        "STROBE_DORSAL",
+        "STROBE_VENTRAL",
+        "STROBE_AFT_PORT",
+        "STROBE_AFT_STBD"
+      ],
+      "hull_tint_note": "cool light grey (fed_tints.py tint in godot-hero-manifest.json), not cream"
     },
     {
       "key": "ship.fed.new_orleans",
@@ -1763,7 +2053,17 @@
         "renderer": "Compatibility: hero_hull.gdshader / hero_plated.gdshader only, no screen-space effects",
         "current": "procedural hull ships no download today (4000 tris, hull.gdshader passes Compatibility); budget is for the target hero model"
       },
-      "hero_lod0_tris": 4922
+      "hero_lod0_tris": 4922,
+      "running_lights": [
+        "NAV_PORT",
+        "NAV_STBD",
+        "NAV_AFT",
+        "STROBE_DORSAL",
+        "STROBE_VENTRAL",
+        "STROBE_AFT_PORT",
+        "STROBE_AFT_STBD"
+      ],
+      "hull_tint_note": "cool light grey (fed_tints.py tint in godot-hero-manifest.json), not cream"
     },
     {
       "key": "ship.fed.niagara",
@@ -1794,7 +2094,17 @@
         "renderer": "Compatibility: hero_hull.gdshader / hero_plated.gdshader only, no screen-space effects",
         "current": "procedural hull ships no download today (4000 tris, hull.gdshader passes Compatibility); budget is for the target hero model"
       },
-      "hero_lod0_tris": 4812
+      "hero_lod0_tris": 4812,
+      "running_lights": [
+        "NAV_PORT",
+        "NAV_STBD",
+        "NAV_AFT",
+        "STROBE_DORSAL",
+        "STROBE_VENTRAL",
+        "STROBE_AFT_PORT",
+        "STROBE_AFT_STBD"
+      ],
+      "hull_tint_note": "cool light grey (fed_tints.py tint in godot-hero-manifest.json), not cream"
     },
     {
       "key": "ship.fed.norway",
@@ -1826,7 +2136,17 @@
         "current": "procedural hull ships no download today (4000 tris, hull.gdshader passes Compatibility); budget is for the target hero model"
       },
       "candidate_source": "sketchfab (unclear)",
-      "hero_lod0_tris": 7416
+      "hero_lod0_tris": 7416,
+      "running_lights": [
+        "NAV_PORT",
+        "NAV_STBD",
+        "NAV_AFT",
+        "STROBE_DORSAL",
+        "STROBE_VENTRAL",
+        "STROBE_AFT_PORT",
+        "STROBE_AFT_STBD"
+      ],
+      "hull_tint_note": "cool light grey (fed_tints.py tint in godot-hero-manifest.json), not cream"
     },
     {
       "key": "ship.fed.nova",
@@ -1856,7 +2176,17 @@
         "renderer": "Compatibility: hero_hull.gdshader / hero_plated.gdshader only, no screen-space effects"
       },
       "hero_lod0_tris": 18618,
-      "candidate_source": "sketchfab (restricted)"
+      "candidate_source": "sketchfab (restricted)",
+      "running_lights": [
+        "NAV_PORT",
+        "NAV_STBD",
+        "NAV_AFT",
+        "STROBE_DORSAL",
+        "STROBE_VENTRAL",
+        "STROBE_AFT_PORT",
+        "STROBE_AFT_STBD"
+      ],
+      "hull_tint_note": "cool light grey (fed_tints.py tint in godot-hero-manifest.json), not cream"
     },
     {
       "key": "ship.fed.nx",
@@ -1887,7 +2217,17 @@
         "renderer": "Compatibility: hero_hull.gdshader / hero_plated.gdshader only, no screen-space effects",
         "current": "procedural hull ships no download today (4000 tris, hull.gdshader passes Compatibility); budget is for the target hero model"
       },
-      "hero_lod0_tris": 30858
+      "hero_lod0_tris": 30858,
+      "running_lights": [
+        "NAV_PORT",
+        "NAV_STBD",
+        "NAV_AFT",
+        "STROBE_DORSAL",
+        "STROBE_VENTRAL",
+        "STROBE_AFT_PORT",
+        "STROBE_AFT_STBD"
+      ],
+      "hull_tint_note": "cool light grey (fed_tints.py tint in godot-hero-manifest.json), not cream"
     },
     {
       "key": "ship.fed.oberth",
@@ -1917,7 +2257,15 @@
         "renderer": "Compatibility: hero_hull.gdshader / hero_plated.gdshader only, no screen-space effects"
       },
       "hero_lod0_tris": 7947,
-      "candidate_source": "sketchfab (unclear)"
+      "candidate_source": "sketchfab (unclear)",
+      "running_lights": [
+        "NAV_PORT",
+        "NAV_STBD",
+        "NAV_AFT",
+        "STROBE_DORSAL",
+        "STROBE_VENTRAL"
+      ],
+      "hull_tint_note": "cool light grey (fed_tints.py tint in godot-hero-manifest.json), not cream"
     },
     {
       "key": "ship.fed.olympic",
@@ -1948,7 +2296,17 @@
         "renderer": "Compatibility: hero_hull.gdshader / hero_plated.gdshader only, no screen-space effects",
         "current": "procedural hull ships no download today (4000 tris, hull.gdshader passes Compatibility); budget is for the target hero model"
       },
-      "hero_lod0_tris": 14798
+      "hero_lod0_tris": 14798,
+      "running_lights": [
+        "NAV_PORT",
+        "NAV_STBD",
+        "NAV_AFT",
+        "STROBE_DORSAL",
+        "STROBE_VENTRAL",
+        "STROBE_AFT_PORT",
+        "STROBE_AFT_STBD"
+      ],
+      "hull_tint_note": "cool light grey (fed_tints.py tint in godot-hero-manifest.json), not cream"
     },
     {
       "key": "ship.fed.outpost",
@@ -1977,14 +2335,24 @@
         "download_kb": 1600,
         "renderer": "Compatibility: hero_hull.gdshader / hero_plated.gdshader only, no screen-space effects"
       },
-      "hero_lod0_tris": 35791
+      "hero_lod0_tris": 35791,
+      "running_lights": [
+        "NAV_PORT",
+        "NAV_STBD",
+        "NAV_AFT",
+        "STROBE_DORSAL",
+        "STROBE_VENTRAL",
+        "STROBE_AFT_PORT",
+        "STROBE_AFT_STBD"
+      ],
+      "hull_tint_note": "cool light grey (fed_tints.py tint in godot-hero-manifest.json), not cream"
     },
     {
       "key": "ship.fed.peregrine",
       "category": "ship",
       "name": "Peregrine (Raider, roster)",
-      "source": "hero glb (L7 art wave 1): Bridge Commander model Peregrine (Starhelm library); Blender blender_hero_ships.py --gltf, LODs, true length 30 m; private",
-      "status": "placeholder",
+      "source": "hero glb (L9 art wave 2): L9 original model: 30 m Peregrine-class fighter (wedge hull, twin nacelles), built in Blender from primitives; private",
+      "status": "final-candidate",
       "ws": 10,
       "milestone": "M1",
       "subcategory": "ship",
@@ -2008,8 +2376,16 @@
         "renderer": "Compatibility: hero_hull.gdshader / hero_plated.gdshader only, no screen-space effects",
         "current": "procedural hull ships no download today (4000 tris, hull.gdshader passes Compatibility); budget is for the target hero model"
       },
-      "hero_lod0_tris": 23776,
-      "review_note": "BC Peregrine is a 436 m saucer cruiser; the canon Peregrine is a 30 m fighter, so this model is the wrong class: needs a small wedge fighter model"
+      "hero_lod0_tris": 2172,
+      "review_note": "original 30 m wedge fighter with twin nacelles; replaces the wrong-class 436 m BC saucer",
+      "running_lights": [
+        "NAV_PORT",
+        "NAV_STBD",
+        "NAV_AFT",
+        "STROBE_DORSAL",
+        "STROBE_VENTRAL"
+      ],
+      "hull_tint_note": "cool light grey (fed_tints.py tint in godot-hero-manifest.json), not cream"
     },
     {
       "key": "ship.fed.prometheus",
@@ -2041,7 +2417,17 @@
         "current": "procedural hull ships no download today (4000 tris, hull.gdshader passes Compatibility); budget is for the target hero model"
       },
       "candidate_source": "sketchfab (unclear)",
-      "hero_lod0_tris": 7948
+      "hero_lod0_tris": 7948,
+      "running_lights": [
+        "NAV_PORT",
+        "NAV_STBD",
+        "NAV_AFT",
+        "STROBE_DORSAL",
+        "STROBE_VENTRAL",
+        "STROBE_AFT_PORT",
+        "STROBE_AFT_STBD"
+      ],
+      "hull_tint_note": "cool light grey (fed_tints.py tint in godot-hero-manifest.json), not cream"
     },
     {
       "key": "ship.fed.ranger",
@@ -2074,7 +2460,17 @@
       },
       "candidate_source": "in-repo (clear)",
       "hero_lod0_tris": 677,
-      "review_note": "in-repo Icewolf132 model (permission clear), 677 tris: low detail"
+      "review_note": "in-repo Icewolf132 model (permission clear), 677 tris: low detail",
+      "running_lights": [
+        "NAV_PORT",
+        "NAV_STBD",
+        "NAV_AFT",
+        "STROBE_DORSAL",
+        "STROBE_VENTRAL",
+        "STROBE_AFT_PORT",
+        "STROBE_AFT_STBD"
+      ],
+      "hull_tint_note": "cool light grey (fed_tints.py tint in godot-hero-manifest.json), not cream"
     },
     {
       "key": "ship.fed.raven",
@@ -2105,7 +2501,15 @@
         "renderer": "Compatibility: hero_hull.gdshader / hero_plated.gdshader only, no screen-space effects",
         "current": "procedural hull ships no download today (4000 tris, hull.gdshader passes Compatibility); budget is for the target hero model"
       },
-      "hero_lod0_tris": 15499
+      "hero_lod0_tris": 15499,
+      "running_lights": [
+        "NAV_PORT",
+        "NAV_STBD",
+        "NAV_AFT",
+        "STROBE_DORSAL",
+        "STROBE_VENTRAL"
+      ],
+      "hull_tint_note": "cool light grey (fed_tints.py tint in godot-hero-manifest.json), not cream"
     },
     {
       "key": "ship.fed.rhode_island",
@@ -2136,7 +2540,17 @@
         "renderer": "Compatibility: hero_hull.gdshader / hero_plated.gdshader only, no screen-space effects",
         "current": "procedural hull ships no download today (4000 tris, hull.gdshader passes Compatibility); budget is for the target hero model"
       },
-      "hero_lod0_tris": 16910
+      "hero_lod0_tris": 16910,
+      "running_lights": [
+        "NAV_PORT",
+        "NAV_STBD",
+        "NAV_AFT",
+        "STROBE_DORSAL",
+        "STROBE_VENTRAL",
+        "STROBE_AFT_PORT",
+        "STROBE_AFT_STBD"
+      ],
+      "hull_tint_note": "cool light grey (fed_tints.py tint in godot-hero-manifest.json), not cream"
     },
     {
       "key": "ship.fed.saber",
@@ -2169,7 +2583,17 @@
       },
       "candidate_source": "sketchfab (unclear)",
       "hero_lod0_tris": 703,
-      "review_note": "703 tris: the only Saber in the library, low detail"
+      "review_note": "703 tris: the only Saber in the library, low detail",
+      "running_lights": [
+        "NAV_PORT",
+        "NAV_STBD",
+        "NAV_AFT",
+        "STROBE_DORSAL",
+        "STROBE_VENTRAL",
+        "STROBE_AFT_PORT",
+        "STROBE_AFT_STBD"
+      ],
+      "hull_tint_note": "cool light grey (fed_tints.py tint in godot-hero-manifest.json), not cream"
     },
     {
       "key": "ship.fed.sovereign",
@@ -2199,20 +2623,30 @@
         "renderer": "Compatibility: hero_hull.gdshader / hero_plated.gdshader only, no screen-space effects"
       },
       "hero_lod0_tris": 19048,
-      "candidate_source": "sketchfab (unclear)"
+      "candidate_source": "sketchfab (unclear)",
+      "running_lights": [
+        "NAV_PORT",
+        "NAV_STBD",
+        "NAV_AFT",
+        "STROBE_DORSAL",
+        "STROBE_VENTRAL",
+        "STROBE_AFT_PORT",
+        "STROBE_AFT_STBD"
+      ],
+      "hull_tint_note": "cool light grey (fed_tints.py tint in godot-hero-manifest.json), not cream"
     },
     {
       "key": "ship.fed.soyuz",
       "category": "ship",
       "name": "Soyuz (Frigate, roster)",
-      "source": "procedural: ShipFactory (godot/scenes/battle/ship_factory.gd) owner look fed",
-      "status": "procedural",
+      "source": "hero glb (L9 art wave 2): L9 kitbash of ship.fed.excelsior (frigate, raised nacelles); private",
+      "status": "final-candidate",
       "ws": 10,
       "milestone": "M1",
       "subcategory": "ship",
       "faction": "fed",
       "length_m": 260,
-      "has_hero_model": false,
+      "has_hero_model": true,
       "roster_name": "Soyuz (Frigate, roster)",
       "fallback_key": "ship.fed.miranda",
       "desktop_budget": {
@@ -2230,10 +2664,18 @@
         "renderer": "Compatibility: hero_hull.gdshader / hero_plated.gdshader only, no screen-space effects",
         "current": "procedural hull ships no download today (4000 tris, hull.gdshader passes Compatibility); budget is for the target hero model"
       },
-      "needs_model": {
-        "reason": "no library model",
-        "nearest_base_to_kitbash": "ship.fed.nebula (Galaxy-era saucer and twin nacelles)"
-      }
+      "hero_lod0_tris": 24427,
+      "review_note": "kitbash of ship.fed.excelsior, canon length 260 m",
+      "running_lights": [
+        "NAV_PORT",
+        "NAV_STBD",
+        "NAV_AFT",
+        "STROBE_DORSAL",
+        "STROBE_VENTRAL",
+        "STROBE_AFT_PORT",
+        "STROBE_AFT_STBD"
+      ],
+      "hull_tint_note": "cool light grey (fed_tints.py tint in godot-hero-manifest.json), not cream"
     },
     {
       "key": "ship.fed.spacedock",
@@ -2265,7 +2707,17 @@
         "current": "procedural hull ships no download today (4000 tris, hull.gdshader passes Compatibility); budget is for the target hero model"
       },
       "hero_lod0_tris": 16238,
-      "review_note": "BC drydock is an open lattice frame (800 m, scaled to 1800 m); reads see-through from some angles"
+      "review_note": "BC drydock is an open lattice frame (800 m, scaled to 1800 m); reads see-through from some angles",
+      "running_lights": [
+        "NAV_PORT",
+        "NAV_STBD",
+        "NAV_AFT",
+        "STROBE_DORSAL",
+        "STROBE_VENTRAL",
+        "STROBE_AFT_PORT",
+        "STROBE_AFT_STBD"
+      ],
+      "hull_tint_note": "cool light grey (fed_tints.py tint in godot-hero-manifest.json), not cream"
     },
     {
       "key": "ship.fed.springfield",
@@ -2296,7 +2748,17 @@
         "renderer": "Compatibility: hero_hull.gdshader / hero_plated.gdshader only, no screen-space effects",
         "current": "procedural hull ships no download today (4000 tris, hull.gdshader passes Compatibility); budget is for the target hero model"
       },
-      "hero_lod0_tris": 3407
+      "hero_lod0_tris": 3407,
+      "running_lights": [
+        "NAV_PORT",
+        "NAV_STBD",
+        "NAV_AFT",
+        "STROBE_DORSAL",
+        "STROBE_VENTRAL",
+        "STROBE_AFT_PORT",
+        "STROBE_AFT_STBD"
+      ],
+      "hull_tint_note": "cool light grey (fed_tints.py tint in godot-hero-manifest.json), not cream"
     },
     {
       "key": "ship.fed.starbase",
@@ -2326,7 +2788,17 @@
         "renderer": "Compatibility: hero_hull.gdshader / hero_plated.gdshader only, no screen-space effects"
       },
       "hero_lod0_tris": 17616,
-      "candidate_source": "sketchfab (unclear)"
+      "candidate_source": "sketchfab (unclear)",
+      "running_lights": [
+        "NAV_PORT",
+        "NAV_STBD",
+        "NAV_AFT",
+        "STROBE_DORSAL",
+        "STROBE_VENTRAL",
+        "STROBE_AFT_PORT",
+        "STROBE_AFT_STBD"
+      ],
+      "hull_tint_note": "cool light grey (fed_tints.py tint in godot-hero-manifest.json), not cream"
     },
     {
       "key": "ship.fed.steamrunner",
@@ -2358,20 +2830,30 @@
         "current": "procedural hull ships no download today (4000 tris, hull.gdshader passes Compatibility); budget is for the target hero model"
       },
       "candidate_source": "sketchfab (unclear)",
-      "hero_lod0_tris": 5112
+      "hero_lod0_tris": 5112,
+      "running_lights": [
+        "NAV_PORT",
+        "NAV_STBD",
+        "NAV_AFT",
+        "STROBE_DORSAL",
+        "STROBE_VENTRAL",
+        "STROBE_AFT_PORT",
+        "STROBE_AFT_STBD"
+      ],
+      "hull_tint_note": "cool light grey (fed_tints.py tint in godot-hero-manifest.json), not cream"
     },
     {
       "key": "ship.fed.sydney",
       "category": "ship",
       "name": "Sydney (Transport, roster)",
-      "source": "procedural: ShipFactory (godot/scenes/battle/ship_factory.gd) owner look fed",
-      "status": "procedural",
+      "source": "hero glb (L9 art wave 2): L9 kitbash of ship.fed.oberth (transport with cargo containers); private",
+      "status": "placeholder",
       "ws": 10,
       "milestone": "M1",
       "subcategory": "ship",
       "faction": "fed",
       "length_m": 97,
-      "has_hero_model": false,
+      "has_hero_model": true,
       "roster_name": "Sydney (Transport, roster)",
       "fallback_key": "ship.fed.miranda",
       "desktop_budget": {
@@ -2389,23 +2871,29 @@
         "renderer": "Compatibility: hero_hull.gdshader / hero_plated.gdshader only, no screen-space effects",
         "current": "procedural hull ships no download today (4000 tris, hull.gdshader passes Compatibility); budget is for the target hero model"
       },
-      "needs_model": {
-        "reason": "no library model",
-        "nearest_base_to_kitbash": "ship.fed.oberth (small science hull)"
-      }
+      "hero_lod0_tris": 8443,
+      "review_note": "primitive-heavy kitbash (Oberth saucer + box containers): flat, needs hand modelling",
+      "running_lights": [
+        "NAV_PORT",
+        "NAV_STBD",
+        "NAV_AFT",
+        "STROBE_DORSAL",
+        "STROBE_VENTRAL"
+      ],
+      "hull_tint_note": "cool light grey (fed_tints.py tint in godot-hero-manifest.json), not cream"
     },
     {
       "key": "ship.fed.vengeance",
       "category": "ship",
       "name": "Dreadnought (Vengeance) (Dreadnought, roster)",
-      "source": "procedural: ShipFactory (godot/scenes/battle/ship_factory.gd) owner look fed",
-      "status": "procedural",
+      "source": "hero glb (L9 art wave 2): L9 kitbash of ship.fed.sovereign (dreadnought); private",
+      "status": "placeholder",
       "ws": 10,
       "milestone": "M1",
       "subcategory": "ship",
       "faction": "fed",
       "length_m": 965,
-      "has_hero_model": false,
+      "has_hero_model": true,
       "roster_name": "Dreadnought (Vengeance) (Dreadnought, roster)",
       "fallback_key": "ship.fed.galaxy",
       "desktop_budget": {
@@ -2423,23 +2911,31 @@
         "renderer": "Compatibility: hero_hull.gdshader / hero_plated.gdshader only, no screen-space effects",
         "current": "procedural hull ships no download today (4000 tris, hull.gdshader passes Compatibility); budget is for the target hero model"
       },
-      "needs_model": {
-        "reason": "no library model",
-        "nearest_base_to_kitbash": "ship.fed.sovereign scaled and widened, or ship.fed.galaxy_x"
-      }
+      "hero_lod0_tris": 19732,
+      "review_note": "Sovereign widened into a wedge with box keels: silhouette reads, surface detail is flat; needs hand modelling",
+      "running_lights": [
+        "NAV_PORT",
+        "NAV_STBD",
+        "NAV_AFT",
+        "STROBE_DORSAL",
+        "STROBE_VENTRAL",
+        "STROBE_AFT_PORT",
+        "STROBE_AFT_STBD"
+      ],
+      "hull_tint_note": "cool light grey (fed_tints.py tint in godot-hero-manifest.json), not cream"
     },
     {
       "key": "ship.fed.wells",
       "category": "ship",
       "name": "Wells (Special, roster)",
-      "source": "procedural: ShipFactory (godot/scenes/battle/ship_factory.gd) owner look fed",
-      "status": "procedural",
+      "source": "hero glb (L9 art wave 2): L9 kitbash of ship.fed.saber (special: ring ship); private",
+      "status": "final-candidate",
       "ws": 10,
       "milestone": "M1",
       "subcategory": "ship",
       "faction": "fed",
       "length_m": 450,
-      "has_hero_model": false,
+      "has_hero_model": true,
       "roster_name": "Wells (Special, roster)",
       "fallback_key": "study.fed",
       "desktop_budget": {
@@ -2457,23 +2953,31 @@
         "renderer": "Compatibility: hero_hull.gdshader / hero_plated.gdshader only, no screen-space effects",
         "current": "procedural hull ships no download today (4000 tris, hull.gdshader passes Compatibility); budget is for the target hero model"
       },
-      "needs_model": {
-        "reason": "no library model",
-        "nearest_base_to_kitbash": "ship.fed.saber"
-      }
+      "hero_lod0_tris": 2251,
+      "review_note": "kitbash of ship.fed.saber, canon length 450 m",
+      "running_lights": [
+        "NAV_PORT",
+        "NAV_STBD",
+        "NAV_AFT",
+        "STROBE_DORSAL",
+        "STROBE_VENTRAL",
+        "STROBE_AFT_PORT",
+        "STROBE_AFT_STBD"
+      ],
+      "hull_tint_note": "cool light grey (fed_tints.py tint in godot-hero-manifest.json), not cream"
     },
     {
       "key": "ship.fed.yclass",
       "category": "ship",
       "name": "Y-class (Transport, roster)",
-      "source": "procedural: ShipFactory (godot/scenes/battle/ship_factory.gd) owner look fed",
-      "status": "procedural",
+      "source": "hero glb (L9 art wave 2): L9 kitbash of ship.fed.danube (utility transport); private",
+      "status": "placeholder",
       "ws": 10,
       "milestone": "M1",
       "subcategory": "ship",
       "faction": "fed",
       "length_m": 60,
-      "has_hero_model": false,
+      "has_hero_model": true,
       "roster_name": "Y-class (Transport, roster)",
       "fallback_key": "ship.fed.miranda",
       "desktop_budget": {
@@ -2491,10 +2995,16 @@
         "renderer": "Compatibility: hero_hull.gdshader / hero_plated.gdshader only, no screen-space effects",
         "current": "procedural hull ships no download today (4000 tris, hull.gdshader passes Compatibility); budget is for the target hero model"
       },
-      "needs_model": {
-        "reason": "no library model",
-        "nearest_base_to_kitbash": "ship.fed.oberth or ship.fed.danube (utility hull)"
-      }
+      "hero_lod0_tris": 10998,
+      "review_note": "primitive-heavy kitbash (Danube + box cargo module): flat, needs hand modelling",
+      "running_lights": [
+        "NAV_PORT",
+        "NAV_STBD",
+        "NAV_AFT",
+        "STROBE_DORSAL",
+        "STROBE_VENTRAL"
+      ],
+      "hull_tint_note": "cool light grey (fed_tints.py tint in godot-hero-manifest.json), not cream"
     },
     {
       "key": "ship.fed.yeager",
@@ -2525,7 +3035,15 @@
         "renderer": "Compatibility: hero_hull.gdshader / hero_plated.gdshader only, no screen-space effects",
         "current": "procedural hull ships no download today (4000 tris, hull.gdshader passes Compatibility); budget is for the target hero model"
       },
-      "hero_lod0_tris": 5421
+      "hero_lod0_tris": 5421,
+      "running_lights": [
+        "NAV_PORT",
+        "NAV_STBD",
+        "NAV_AFT",
+        "STROBE_DORSAL",
+        "STROBE_VENTRAL"
+      ],
+      "hull_tint_note": "cool light grey (fed_tints.py tint in godot-hero-manifest.json), not cream"
     },
     {
       "key": "ship.fer.bronta",
@@ -2585,7 +3103,16 @@
         "renderer": "Compatibility: hero_hull.gdshader / hero_plated.gdshader only, no screen-space effects"
       },
       "hero_lod0_tris": 8548,
-      "candidate_source": "trekmeshes (unclear)"
+      "candidate_source": "trekmeshes (unclear)",
+      "running_lights": [
+        "NAV_PORT",
+        "NAV_STBD",
+        "NAV_AFT",
+        "STROBE_DORSAL",
+        "STROBE_VENTRAL",
+        "STROBE_AFT_PORT",
+        "STROBE_AFT_STBD"
+      ]
     },
     {
       "key": "ship.fer.glantor",
@@ -2674,7 +3201,16 @@
         "download_kb": 1600,
         "renderer": "Compatibility: hero_hull.gdshader / hero_plated.gdshader only, no screen-space effects"
       },
-      "hero_lod0_tris": 10540
+      "hero_lod0_tris": 10540,
+      "running_lights": [
+        "NAV_PORT",
+        "NAV_STBD",
+        "NAV_AFT",
+        "STROBE_DORSAL",
+        "STROBE_VENTRAL",
+        "STROBE_AFT_PORT",
+        "STROBE_AFT_STBD"
+      ]
     },
     {
       "key": "ship.fer.ngort",
@@ -3127,7 +3663,14 @@
         "renderer": "Compatibility: hero_hull.gdshader / hero_plated.gdshader only, no screen-space effects"
       },
       "hero_lod0_tris": 19574,
-      "candidate_source": "sketchfab (unclear)"
+      "candidate_source": "sketchfab (unclear)",
+      "running_lights": [
+        "NAV_PORT",
+        "NAV_STBD",
+        "NAV_AFT",
+        "STROBE_DORSAL",
+        "STROBE_VENTRAL"
+      ]
     },
     {
       "key": "ship.kli.bop_ent",
@@ -3158,7 +3701,14 @@
         "renderer": "Compatibility: hero_hull.gdshader / hero_plated.gdshader only, no screen-space effects",
         "current": "procedural hull ships no download today (4000 tris, hull.gdshader passes Compatibility); budget is for the target hero model"
       },
-      "hero_lod0_tris": 39653
+      "hero_lod0_tris": 39653,
+      "running_lights": [
+        "NAV_PORT",
+        "NAV_STBD",
+        "NAV_AFT",
+        "STROBE_DORSAL",
+        "STROBE_VENTRAL"
+      ]
     },
     {
       "key": "ship.kli.brel",
@@ -3189,20 +3739,27 @@
         "renderer": "Compatibility: hero_hull.gdshader / hero_plated.gdshader only, no screen-space effects",
         "current": "procedural hull ships no download today (4000 tris, hull.gdshader passes Compatibility); budget is for the target hero model"
       },
-      "hero_lod0_tris": 39653
+      "hero_lod0_tris": 39653,
+      "running_lights": [
+        "NAV_PORT",
+        "NAV_STBD",
+        "NAV_AFT",
+        "STROBE_DORSAL",
+        "STROBE_VENTRAL"
+      ]
     },
     {
       "key": "ship.kli.charghwi",
       "category": "ship",
       "name": "CharghwI' (legacy catalogue)",
-      "source": "procedural: ShipFactory (godot/scenes/battle/ship_factory.gd) owner look kli",
-      "status": "procedural",
+      "source": "hero glb (L9 art wave 2): L9 kitbash of ship.kli.vorcha (heavy cruiser); private",
+      "status": "final-candidate",
       "ws": 10,
       "milestone": "M1",
       "subcategory": "ship",
       "faction": "kli",
       "length_m": 500,
-      "has_hero_model": false,
+      "has_hero_model": true,
       "roster_name": "CharghwI' (legacy catalogue)",
       "fallback_key": "ship.kli.bop",
       "desktop_budget": {
@@ -3220,23 +3777,30 @@
         "renderer": "Compatibility: hero_hull.gdshader / hero_plated.gdshader only, no screen-space effects",
         "current": "procedural hull ships no download today (4000 tris, hull.gdshader passes Compatibility); budget is for the target hero model"
       },
-      "needs_model": {
-        "reason": "BOTF-only class",
-        "nearest_base_to_kitbash": "ship.kli.vorcha (nearest 500 m heavy cruiser)"
-      }
+      "hero_lod0_tris": 25680,
+      "review_note": "kitbash of ship.kli.vorcha, canon length 500 m",
+      "running_lights": [
+        "NAV_PORT",
+        "NAV_STBD",
+        "NAV_AFT",
+        "STROBE_DORSAL",
+        "STROBE_VENTRAL",
+        "STROBE_AFT_PORT",
+        "STROBE_AFT_STBD"
+      ]
     },
     {
       "key": "ship.kli.d12",
       "category": "ship",
       "name": "D12 (Destroyer, roster)",
-      "source": "procedural: ShipFactory (godot/scenes/battle/ship_factory.gd) owner look kli",
-      "status": "procedural",
+      "source": "hero glb (L9 art wave 2): L9 kitbash of ship.kli.d7 (destroyer); private",
+      "status": "final-candidate",
       "ws": 10,
       "milestone": "M1",
       "subcategory": "ship",
       "faction": "kli",
       "length_m": 210,
-      "has_hero_model": false,
+      "has_hero_model": true,
       "roster_name": "D12 (Destroyer, roster)",
       "fallback_key": "ship.kli.bop",
       "desktop_budget": {
@@ -3254,10 +3818,17 @@
         "renderer": "Compatibility: hero_hull.gdshader / hero_plated.gdshader only, no screen-space effects",
         "current": "procedural hull ships no download today (4000 tris, hull.gdshader passes Compatibility); budget is for the target hero model"
       },
-      "needs_model": {
-        "reason": "no library model",
-        "nearest_base_to_kitbash": "ship.kli.d7 (K_TOS_D11 is the nearest library hull but is a 127 m escort)"
-      }
+      "hero_lod0_tris": 4053,
+      "review_note": "kitbash of ship.kli.d7, canon length 210 m",
+      "running_lights": [
+        "NAV_PORT",
+        "NAV_STBD",
+        "NAV_AFT",
+        "STROBE_DORSAL",
+        "STROBE_VENTRAL",
+        "STROBE_AFT_PORT",
+        "STROBE_AFT_STBD"
+      ]
     },
     {
       "key": "ship.kli.d4",
@@ -3288,7 +3859,16 @@
         "renderer": "Compatibility: hero_hull.gdshader / hero_plated.gdshader only, no screen-space effects",
         "current": "procedural hull ships no download today (4000 tris, hull.gdshader passes Compatibility); budget is for the target hero model"
       },
-      "hero_lod0_tris": 19260
+      "hero_lod0_tris": 19260,
+      "running_lights": [
+        "NAV_PORT",
+        "NAV_STBD",
+        "NAV_AFT",
+        "STROBE_DORSAL",
+        "STROBE_VENTRAL",
+        "STROBE_AFT_PORT",
+        "STROBE_AFT_STBD"
+      ]
     },
     {
       "key": "ship.kli.d5",
@@ -3319,7 +3899,16 @@
         "renderer": "Compatibility: hero_hull.gdshader / hero_plated.gdshader only, no screen-space effects",
         "current": "procedural hull ships no download today (4000 tris, hull.gdshader passes Compatibility); budget is for the target hero model"
       },
-      "hero_lod0_tris": 2020
+      "hero_lod0_tris": 2020,
+      "running_lights": [
+        "NAV_PORT",
+        "NAV_STBD",
+        "NAV_AFT",
+        "STROBE_DORSAL",
+        "STROBE_VENTRAL",
+        "STROBE_AFT_PORT",
+        "STROBE_AFT_STBD"
+      ]
     },
     {
       "key": "ship.kli.d7",
@@ -3350,7 +3939,16 @@
         "renderer": "Compatibility: hero_hull.gdshader / hero_plated.gdshader only, no screen-space effects",
         "current": "procedural hull ships no download today (4000 tris, hull.gdshader passes Compatibility); budget is for the target hero model"
       },
-      "hero_lod0_tris": 3329
+      "hero_lod0_tris": 3329,
+      "running_lights": [
+        "NAV_PORT",
+        "NAV_STBD",
+        "NAV_AFT",
+        "STROBE_DORSAL",
+        "STROBE_VENTRAL",
+        "STROBE_AFT_PORT",
+        "STROBE_AFT_STBD"
+      ]
     },
     {
       "key": "ship.kli.ktinga",
@@ -3380,7 +3978,16 @@
         "renderer": "Compatibility: hero_hull.gdshader / hero_plated.gdshader only, no screen-space effects"
       },
       "hero_lod0_tris": 16503,
-      "candidate_source": "sketchfab (unclear)"
+      "candidate_source": "sketchfab (unclear)",
+      "running_lights": [
+        "NAV_PORT",
+        "NAV_STBD",
+        "NAV_AFT",
+        "STROBE_DORSAL",
+        "STROBE_VENTRAL",
+        "STROBE_AFT_PORT",
+        "STROBE_AFT_STBD"
+      ]
     },
     {
       "key": "ship.kli.kvort",
@@ -3409,20 +4016,29 @@
         "download_kb": 1200,
         "renderer": "Compatibility: hero_hull.gdshader / hero_plated.gdshader only, no screen-space effects"
       },
-      "hero_lod0_tris": 40041
+      "hero_lod0_tris": 40041,
+      "running_lights": [
+        "NAV_PORT",
+        "NAV_STBD",
+        "NAV_AFT",
+        "STROBE_DORSAL",
+        "STROBE_VENTRAL",
+        "STROBE_AFT_PORT",
+        "STROBE_AFT_STBD"
+      ]
     },
     {
       "key": "ship.kli.liwi",
       "category": "ship",
       "name": "LI'wI' (legacy catalogue)",
-      "source": "procedural: ShipFactory (godot/scenes/battle/ship_factory.gd) owner look kli",
-      "status": "procedural",
+      "source": "hero glb (L9 art wave 2): L9 kitbash of ship.kli.ktinga (cruiser); private",
+      "status": "final-candidate",
       "ws": 10,
       "milestone": "M1",
       "subcategory": "ship",
       "faction": "kli",
       "length_m": 260,
-      "has_hero_model": false,
+      "has_hero_model": true,
       "roster_name": "LI'wI' (legacy catalogue)",
       "fallback_key": "ship.kli.bop",
       "desktop_budget": {
@@ -3440,23 +4056,30 @@
         "renderer": "Compatibility: hero_hull.gdshader / hero_plated.gdshader only, no screen-space effects",
         "current": "procedural hull ships no download today (4000 tris, hull.gdshader passes Compatibility); budget is for the target hero model"
       },
-      "needs_model": {
-        "reason": "BOTF-only class",
-        "nearest_base_to_kitbash": "ship.kli.ktinga"
-      }
+      "hero_lod0_tris": 17387,
+      "review_note": "kitbash of ship.kli.ktinga, canon length 260 m",
+      "running_lights": [
+        "NAV_PORT",
+        "NAV_STBD",
+        "NAV_AFT",
+        "STROBE_DORSAL",
+        "STROBE_VENTRAL",
+        "STROBE_AFT_PORT",
+        "STROBE_AFT_STBD"
+      ]
     },
     {
       "key": "ship.kli.mayduj",
       "category": "ship",
       "name": "May'Duj (legacy catalogue)",
-      "source": "procedural: ShipFactory (godot/scenes/battle/ship_factory.gd) owner look kli",
-      "status": "procedural",
+      "source": "hero glb (L9 art wave 2): L9 kitbash of ship.kli.kvort (bulk carrier); private",
+      "status": "final-candidate",
       "ws": 10,
       "milestone": "M1",
       "subcategory": "ship",
       "faction": "kli",
       "length_m": 260,
-      "has_hero_model": false,
+      "has_hero_model": true,
       "roster_name": "May'Duj (legacy catalogue)",
       "fallback_key": "ship.kli.bop",
       "desktop_budget": {
@@ -3474,23 +4097,30 @@
         "renderer": "Compatibility: hero_hull.gdshader / hero_plated.gdshader only, no screen-space effects",
         "current": "procedural hull ships no download today (4000 tris, hull.gdshader passes Compatibility); budget is for the target hero model"
       },
-      "needs_model": {
-        "reason": "BOTF-only class",
-        "nearest_base_to_kitbash": "ship.kli.ktinga or ship.kli.kvort"
-      }
+      "hero_lod0_tris": 41237,
+      "review_note": "kitbash of ship.kli.kvort, canon length 260 m",
+      "running_lights": [
+        "NAV_PORT",
+        "NAV_STBD",
+        "NAV_AFT",
+        "STROBE_DORSAL",
+        "STROBE_VENTRAL",
+        "STROBE_AFT_PORT",
+        "STROBE_AFT_STBD"
+      ]
     },
     {
       "key": "ship.kli.neghtev",
       "category": "ship",
       "name": "Negh'Tev (Battleship, roster)",
-      "source": "procedural: ShipFactory (godot/scenes/battle/ship_factory.gd) owner look kli",
-      "status": "procedural",
+      "source": "hero glb (L9 art wave 2): L9 kitbash of ship.kli.neghvar (battleship); private",
+      "status": "final-candidate",
       "ws": 10,
       "milestone": "M1",
       "subcategory": "ship",
       "faction": "kli",
       "length_m": 720,
-      "has_hero_model": false,
+      "has_hero_model": true,
       "roster_name": "Negh'Tev (Battleship, roster)",
       "fallback_key": "ship.kli.neghvar",
       "desktop_budget": {
@@ -3508,10 +4138,17 @@
         "renderer": "Compatibility: hero_hull.gdshader / hero_plated.gdshader only, no screen-space effects",
         "current": "procedural hull ships no download today (4000 tris, hull.gdshader passes Compatibility); budget is for the target hero model"
       },
-      "needs_model": {
-        "reason": "no library model",
-        "nearest_base_to_kitbash": "ship.kli.neghvar (NeghvarH variant exists in the library, 682 m, not a Negh'Tev)"
-      }
+      "hero_lod0_tris": 24342,
+      "review_note": "kitbash of ship.kli.neghvar, canon length 720 m",
+      "running_lights": [
+        "NAV_PORT",
+        "NAV_STBD",
+        "NAV_AFT",
+        "STROBE_DORSAL",
+        "STROBE_VENTRAL",
+        "STROBE_AFT_PORT",
+        "STROBE_AFT_STBD"
+      ]
     },
     {
       "key": "ship.kli.neghvar",
@@ -3541,7 +4178,16 @@
         "renderer": "Compatibility: hero_hull.gdshader / hero_plated.gdshader only, no screen-space effects"
       },
       "hero_lod0_tris": 23606,
-      "candidate_source": "sketchfab (unclear)"
+      "candidate_source": "sketchfab (unclear)",
+      "running_lights": [
+        "NAV_PORT",
+        "NAV_STBD",
+        "NAV_AFT",
+        "STROBE_DORSAL",
+        "STROBE_VENTRAL",
+        "STROBE_AFT_PORT",
+        "STROBE_AFT_STBD"
+      ]
     },
     {
       "key": "ship.kli.outpost",
@@ -3570,20 +4216,29 @@
         "download_kb": 1600,
         "renderer": "Compatibility: hero_hull.gdshader / hero_plated.gdshader only, no screen-space effects"
       },
-      "hero_lod0_tris": 3492
+      "hero_lod0_tris": 3492,
+      "running_lights": [
+        "NAV_PORT",
+        "NAV_STBD",
+        "NAV_AFT",
+        "STROBE_DORSAL",
+        "STROBE_VENTRAL",
+        "STROBE_AFT_PORT",
+        "STROBE_AFT_STBD"
+      ]
     },
     {
       "key": "ship.kli.qang",
       "category": "ship",
       "name": "Qang (Heavy Cruiser, roster)",
-      "source": "procedural: ShipFactory (godot/scenes/battle/ship_factory.gd) owner look kli",
-      "status": "procedural",
+      "source": "hero glb (L9 art wave 2): L9 kitbash of ship.kli.kvort (ram-prow heavy cruiser); private",
+      "status": "final-candidate",
       "ws": 10,
       "milestone": "M1",
       "subcategory": "ship",
       "faction": "kli",
       "length_m": 350,
-      "has_hero_model": false,
+      "has_hero_model": true,
       "roster_name": "Qang (Heavy Cruiser, roster)",
       "fallback_key": "ship.kli.ktinga",
       "desktop_budget": {
@@ -3601,10 +4256,17 @@
         "renderer": "Compatibility: hero_hull.gdshader / hero_plated.gdshader only, no screen-space effects",
         "current": "procedural hull ships no download today (4000 tris, hull.gdshader passes Compatibility); budget is for the target hero model"
       },
-      "needs_model": {
-        "reason": "BOTF-only class",
-        "nearest_base_to_kitbash": "ship.kli.vorcha or ship.kli.kvort"
-      }
+      "hero_lod0_tris": 40803,
+      "review_note": "kitbash of ship.kli.kvort, canon length 350 m",
+      "running_lights": [
+        "NAV_PORT",
+        "NAV_STBD",
+        "NAV_AFT",
+        "STROBE_DORSAL",
+        "STROBE_VENTRAL",
+        "STROBE_AFT_PORT",
+        "STROBE_AFT_STBD"
+      ]
     },
     {
       "key": "ship.kli.raptor",
@@ -3635,7 +4297,14 @@
         "renderer": "Compatibility: hero_hull.gdshader / hero_plated.gdshader only, no screen-space effects",
         "current": "procedural hull ships no download today (4000 tris, hull.gdshader passes Compatibility); budget is for the target hero model"
       },
-      "hero_lod0_tris": 4230
+      "hero_lod0_tris": 4230,
+      "running_lights": [
+        "NAV_PORT",
+        "NAV_STBD",
+        "NAV_AFT",
+        "STROBE_DORSAL",
+        "STROBE_VENTRAL"
+      ]
     },
     {
       "key": "ship.kli.starbase",
@@ -3664,7 +4333,16 @@
         "download_kb": 1600,
         "renderer": "Compatibility: hero_hull.gdshader / hero_plated.gdshader only, no screen-space effects"
       },
-      "hero_lod0_tris": 1360
+      "hero_lod0_tris": 1360,
+      "running_lights": [
+        "NAV_PORT",
+        "NAV_STBD",
+        "NAV_AFT",
+        "STROBE_DORSAL",
+        "STROBE_VENTRAL",
+        "STROBE_AFT_PORT",
+        "STROBE_AFT_STBD"
+      ]
     },
     {
       "key": "ship.kli.vorcha",
@@ -3695,7 +4373,16 @@
       },
       "hero_lod0_tris": 25020,
       "candidate_source": "trekmeshes (unclear)",
-      "review_note": "tinted from teal-grey to Klingon olive (bcTint 0.55,0.5,0.4); darker for the Dominion War look"
+      "review_note": "tinted from teal-grey to Klingon olive (bcTint 0.55,0.5,0.4); darker for the Dominion War look",
+      "running_lights": [
+        "NAV_PORT",
+        "NAV_STBD",
+        "NAV_AFT",
+        "STROBE_DORSAL",
+        "STROBE_VENTRAL",
+        "STROBE_AFT_PORT",
+        "STROBE_AFT_STBD"
+      ]
     },
     {
       "key": "ship.krenim.timeship",
@@ -3935,7 +4622,16 @@
         "renderer": "Compatibility: hero_hull.gdshader / hero_plated.gdshader only, no screen-space effects"
       },
       "hero_lod0_tris": 2199,
-      "candidate_source": "sketchfab (unclear)"
+      "candidate_source": "sketchfab (unclear)",
+      "running_lights": [
+        "NAV_PORT",
+        "NAV_STBD",
+        "NAV_AFT",
+        "STROBE_DORSAL",
+        "STROBE_VENTRAL",
+        "STROBE_AFT_PORT",
+        "STROBE_AFT_STBD"
+      ]
     },
     {
       "key": "ship.rom.bop_ent",
@@ -4025,7 +4721,16 @@
         "renderer": "Compatibility: hero_hull.gdshader / hero_plated.gdshader only, no screen-space effects"
       },
       "hero_lod0_tris": 10035,
-      "candidate_source": "sketchfab (unclear)"
+      "candidate_source": "sketchfab (unclear)",
+      "running_lights": [
+        "NAV_PORT",
+        "NAV_STBD",
+        "NAV_AFT",
+        "STROBE_DORSAL",
+        "STROBE_VENTRAL",
+        "STROBE_AFT_PORT",
+        "STROBE_AFT_STBD"
+      ]
     },
     {
       "key": "ship.rom.ddredar",
@@ -4294,7 +4999,16 @@
         "download_kb": 1600,
         "renderer": "Compatibility: hero_hull.gdshader / hero_plated.gdshader only, no screen-space effects"
       },
-      "hero_lod0_tris": 3376
+      "hero_lod0_tris": 3376,
+      "running_lights": [
+        "NAV_PORT",
+        "NAV_STBD",
+        "NAV_AFT",
+        "STROBE_DORSAL",
+        "STROBE_VENTRAL",
+        "STROBE_AFT_PORT",
+        "STROBE_AFT_STBD"
+      ]
     },
     {
       "key": "ship.rom.rdaran",
@@ -4474,7 +5188,16 @@
         "download_kb": 1600,
         "renderer": "Compatibility: hero_hull.gdshader / hero_plated.gdshader only, no screen-space effects"
       },
-      "hero_lod0_tris": 1026
+      "hero_lod0_tris": 1026,
+      "running_lights": [
+        "NAV_PORT",
+        "NAV_STBD",
+        "NAV_AFT",
+        "STROBE_DORSAL",
+        "STROBE_VENTRAL",
+        "STROBE_AFT_PORT",
+        "STROBE_AFT_STBD"
+      ]
     },
     {
       "key": "ship.rom.valdore",
@@ -4504,7 +5227,16 @@
         "renderer": "Compatibility: hero_hull.gdshader / hero_plated.gdshader only, no screen-space effects"
       },
       "hero_lod0_tris": 4016,
-      "candidate_source": "sketchfab (unclear)"
+      "candidate_source": "sketchfab (unclear)",
+      "running_lights": [
+        "NAV_PORT",
+        "NAV_STBD",
+        "NAV_AFT",
+        "STROBE_DORSAL",
+        "STROBE_VENTRAL",
+        "STROBE_AFT_PORT",
+        "STROBE_AFT_STBD"
+      ]
     },
     {
       "key": "ship.s8472.bioship",
@@ -4900,7 +5632,7 @@
       "key": "planet.m",
       "category": "planet",
       "name": "Class M (Terran)",
-      "source": "procedural texture set (original work): LocalAssets/planets/m, tools/art/gen_planets.py; 6 desktop variants (albedo 4096x2048, normal, clouds, night where it fits), 4 web variants (1024x512 webp)",
+      "source": "procedural, original work (L9 rebuild, tools/art/gen_planets.py + planet_noise.py): LocalAssets/planets/m; fBm / ridged heightfields, latitude-altitude-moisture biomes, power-law craters or zonal-jet advection (gas giant); 6 desktop variants (albedo 4096x2048, normal, roughness, clouds, night/lava), 4 web variants (1024x512 webp, relief baked, 512x256 layers)",
       "status": "final-candidate",
       "ws": 10,
       "milestone": "M1",
@@ -4922,7 +5654,7 @@
       "key": "planet.o",
       "category": "planet",
       "name": "Class O (Oceanic)",
-      "source": "procedural texture set (original work): LocalAssets/planets/o, tools/art/gen_planets.py; 6 desktop variants (albedo 4096x2048, normal, clouds, night where it fits), 4 web variants (1024x512 webp)",
+      "source": "procedural, original work (L9 rebuild, tools/art/gen_planets.py + planet_noise.py): LocalAssets/planets/o; fBm / ridged heightfields, latitude-altitude-moisture biomes, power-law craters or zonal-jet advection (gas giant); 6 desktop variants (albedo 4096x2048, normal, roughness, clouds, night/lava), 4 web variants (1024x512 webp, relief baked, 512x256 layers)",
       "status": "final-candidate",
       "ws": 10,
       "milestone": "M1",
@@ -4944,7 +5676,7 @@
       "key": "planet.p",
       "category": "planet",
       "name": "Class P (Glacial)",
-      "source": "procedural texture set (original work): LocalAssets/planets/p, tools/art/gen_planets.py; 6 desktop variants (albedo 4096x2048, normal, clouds, night where it fits), 4 web variants (1024x512 webp)",
+      "source": "procedural, original work (L9 rebuild, tools/art/gen_planets.py + planet_noise.py): LocalAssets/planets/p; fBm / ridged heightfields, latitude-altitude-moisture biomes, power-law craters or zonal-jet advection (gas giant); 6 desktop variants (albedo 4096x2048, normal, roughness, clouds, night/lava), 4 web variants (1024x512 webp, relief baked, 512x256 layers)",
       "status": "final-candidate",
       "ws": 10,
       "milestone": "M1",
@@ -4966,7 +5698,7 @@
       "key": "planet.l",
       "category": "planet",
       "name": "Class L (Jungle)",
-      "source": "procedural texture set (original work): LocalAssets/planets/l, tools/art/gen_planets.py; 6 desktop variants (albedo 4096x2048, normal, clouds, night where it fits), 4 web variants (1024x512 webp)",
+      "source": "procedural, original work (L9 rebuild, tools/art/gen_planets.py + planet_noise.py): LocalAssets/planets/l; fBm / ridged heightfields, latitude-altitude-moisture biomes, power-law craters or zonal-jet advection (gas giant); 6 desktop variants (albedo 4096x2048, normal, roughness, clouds, night/lava), 4 web variants (1024x512 webp, relief baked, 512x256 layers)",
       "status": "final-candidate",
       "ws": 10,
       "milestone": "M1",
@@ -4988,7 +5720,7 @@
       "key": "planet.h",
       "category": "planet",
       "name": "Class H (Desert)",
-      "source": "procedural texture set (original work): LocalAssets/planets/h, tools/art/gen_planets.py; 6 desktop variants (albedo 4096x2048, normal, clouds, night where it fits), 4 web variants (1024x512 webp)",
+      "source": "procedural, original work (L9 rebuild, tools/art/gen_planets.py + planet_noise.py): LocalAssets/planets/h; fBm / ridged heightfields, latitude-altitude-moisture biomes, power-law craters or zonal-jet advection (gas giant); 6 desktop variants (albedo 4096x2048, normal, roughness, clouds, night/lava), 4 web variants (1024x512 webp, relief baked, 512x256 layers)",
       "status": "final-candidate",
       "ws": 10,
       "milestone": "M1",
@@ -5010,7 +5742,7 @@
       "key": "planet.k",
       "category": "planet",
       "name": "Class K (Barren)",
-      "source": "procedural texture set (original work): LocalAssets/planets/k, tools/art/gen_planets.py; 6 desktop variants (albedo 4096x2048, normal, clouds, night where it fits), 4 web variants (1024x512 webp)",
+      "source": "procedural, original work (L9 rebuild, tools/art/gen_planets.py + planet_noise.py): LocalAssets/planets/k; fBm / ridged heightfields, latitude-altitude-moisture biomes, power-law craters or zonal-jet advection (gas giant); 6 desktop variants (albedo 4096x2048, normal, roughness, clouds, night/lava), 4 web variants (1024x512 webp, relief baked, 512x256 layers)",
       "status": "final-candidate",
       "ws": 10,
       "milestone": "M1",
@@ -5032,7 +5764,7 @@
       "key": "planet.y",
       "category": "planet",
       "name": "Class Y (Demon)",
-      "source": "procedural texture set (original work): LocalAssets/planets/y, tools/art/gen_planets.py; 6 desktop variants (albedo 4096x2048, normal, clouds, night where it fits), 4 web variants (1024x512 webp)",
+      "source": "procedural, original work (L9 rebuild, tools/art/gen_planets.py + planet_noise.py): LocalAssets/planets/y; fBm / ridged heightfields, latitude-altitude-moisture biomes, power-law craters or zonal-jet advection (gas giant); 6 desktop variants (albedo 4096x2048, normal, roughness, clouds, night/lava), 4 web variants (1024x512 webp, relief baked, 512x256 layers)",
       "status": "final-candidate",
       "ws": 10,
       "milestone": "M1",
@@ -5054,7 +5786,7 @@
       "key": "planet.gasgiant",
       "category": "planet",
       "name": "Gas Giant",
-      "source": "procedural texture set (original work): LocalAssets/planets/gasgiant, tools/art/gen_planets.py; 6 desktop variants (albedo 4096x2048, normal, clouds, night where it fits), 4 web variants (1024x512 webp)",
+      "source": "procedural, original work (L9 rebuild, tools/art/gen_planets.py + planet_noise.py): LocalAssets/planets/gasgiant; fBm / ridged heightfields, latitude-altitude-moisture biomes, power-law craters or zonal-jet advection (gas giant); 6 desktop variants (albedo 4096x2048, normal, roughness, clouds, night/lava), 4 web variants (1024x512 webp, relief baked, 512x256 layers)",
       "status": "final-candidate",
       "ws": 10,
       "milestone": "M1",
@@ -5076,7 +5808,7 @@
       "key": "planet.asteroids",
       "category": "planet",
       "name": "Asteroids",
-      "source": "procedural texture set (original work): LocalAssets/planets/asteroids, tools/art/gen_planets.py; 6 rock meshes + rock albedo/normal",
+      "source": "procedural, original work (L9 rebuild, tools/art/gen_planets.py + planet_noise.py): LocalAssets/planets/asteroids; 6 cratered rock meshes (S/C/M-type, real crater size distribution) with per-rock albedo and normal",
       "status": "final-candidate",
       "ws": 10,
       "milestone": "M1",
@@ -5098,7 +5830,7 @@
       "key": "planet.layer.clouds",
       "category": "planet",
       "name": "Cloud layer (animated)",
-      "source": "procedural layers generated with each class set: LocalAssets/planets/<class>/desktop/v<n>_clouds.png and _night.png (tools/art/gen_planets.py)",
+      "source": "procedural layers generated with each class set (gen_planets.py): cover 26 to 40 percent so the surface stays readable; night lights, and planet Y lava emission (kept on in Compatibility)",
       "status": "final-candidate",
       "ws": 3,
       "milestone": "M1",
@@ -5132,7 +5864,7 @@
       "key": "planet.layer.night_lights",
       "category": "planet",
       "name": "Night-side city lights (colonised)",
-      "source": "procedural layers generated with each class set: LocalAssets/planets/<class>/desktop/v<n>_clouds.png and _night.png (tools/art/gen_planets.py)",
+      "source": "procedural layers generated with each class set (gen_planets.py): cover 26 to 40 percent so the surface stays readable; night lights, and planet Y lava emission (kept on in Compatibility)",
       "status": "final-candidate",
       "ws": 3,
       "milestone": "M1",

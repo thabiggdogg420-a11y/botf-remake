@@ -45,7 +45,7 @@ var encounter: Variant:
 var screen := ""
 var history: Array[String] = []
 var save_name := ""
-var settings := {"uiScale": 1.0, "colorblind": false, "reducedMotion": false, "autosave": true, "confirmEndTurn": false, "showGrid": true}  ## plus vol_* (BotfAudioMix)
+var settings := {"uiScale": 1.0, "colorblind": false, "reducedMotion": false, "autosave": true, "confirmEndTurn": false, "showGrid": true, "uiEra": "tng"}  ## plus vol_* (BotfAudioMix)
 var map_layers := {"territory": true, "supply": true, "routes": true, "trade": true, "grid": true, "labels": true, "fog": true}
 
 var _background: ColorRect
@@ -67,6 +67,7 @@ func _ready() -> void:
 	_load_settings()
 	DisplaySettings.fill_defaults(settings)
 	DisplaySettings.apply(settings, get_tree())   # window mode, resolution, vsync, FPS cap, render scale, AA, shadows
+	AppLoader.mount_user_packs()   # asset bundles built by the pack step (planet textures ...)
 	BotfAudioSystem.attach(self)   # audio: shares settings, listens to screen changes (music, screen cue)
 	session.connect_core(CoreClient.create("fixture" if forced_backend == "fixture" else "auto"))
 	session.view_changed.connect(_on_view_changed)
@@ -119,6 +120,11 @@ func _build_layers() -> void:
 
 func _apply_theme(empire: int) -> void:
 	Lcars.colorblind = settings.get("colorblind", false)
+	UiTokens.reduced_motion = settings.get("reducedMotion", false)
+	var era_id := str(settings.get("uiEra", "tng"))
+	if era_id != UiTokens.era:
+		UiTokens.era = era_id if UiTokens.ERAS.has(era_id) else "tng"
+		_theme_empire = -1
 	if empire == _theme_empire:
 		return
 	_theme_empire = empire
@@ -158,10 +164,18 @@ func _build_chrome() -> void:
 	who.add_child(Lcars.caption(head[1]))
 	row.add_child(who)
 	for st in shell.stats():
-		row.add_child(_top_stat(st["cap"], st["value"], st["tone"], st["tip"]))
+		row.add_child(Lcars.kpi(st["icon"], st["cap"], st["value"], st["delta"], st["tone"], st["explain"], true))
 	row.add_child(Lcars.spacer())
 	var os_ := shell.orders_stat()
-	row.add_child(_top_stat(os_["cap"], os_["value"], os_["tone"], os_["tip"]))
+	row.add_child(Lcars.kpi(os_["icon"], os_["cap"], os_["value"], "", os_["tone"], os_["explain"], true))
+	var pal := Lcars.icon_button("", "Command palette: jump to any screen, colony, fleet or command  [Ctrl+K]", "", func(): open_palette())
+	pal.name = "PaletteButton"
+	pal.icon = null
+	pal.custom_minimum_size = Vector2(40, 40)
+	pal.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	pal.add_child(UiIcon.make("search", 22, Lcars.TEXT2))
+	(pal.get_child(0) as Control).position = Vector2(9, 9)
+	row.add_child(pal)
 	var menu := Lcars.pill("Menu", "tertiary", func(): open_menu(), "", "Save, load, settings and help", "Esc")
 	menu.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	row.add_child(menu)
@@ -199,7 +213,12 @@ func _build_chrome() -> void:
 			b.add_theme_stylebox_override("hover", sb)
 		var keyl := Lcars.label(s["key"], "Mono", 11, Color(Lcars.ink(), 0.7))
 		keyl.position = Vector2(8, 4)
+		keyl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		b.add_child(keyl)
+		var ic := UiIcon.make(ShellVM.SCREEN_ICONS.get(s["id"], "arrow_right"), 18, Color(Lcars.ink(), 0.8))
+		ic.position = Vector2(10, 22)
+		ic.size = Vector2(18, 18)
+		b.add_child(ic)
 		_rail.add_child(b)
 	var fill := ColorRect.new()
 	fill.color = a.darkened(0.45)
@@ -216,7 +235,11 @@ func _build_chrome() -> void:
 		sb2.corner_radius_top_right = 14
 		sb2.corner_radius_bottom_right = 14
 		b2.add_theme_stylebox_override("normal", sb2)
-		b2.tooltip_text = ex["hint"]
+		b2.tooltip_text = ex["hint"] + ("  [%s]" % ex["key"] if str(ex.get("key", "")) != "" else "")
+		var ic2 := UiIcon.make(str(ex.get("icon", "arrow_right")), 16, Color(Lcars.ink(), 0.8))
+		ic2.position = Vector2(10, 11)
+		ic2.size = Vector2(16, 16)
+		b2.add_child(ic2)
 		var xid: String = ex["id"]
 		b2.pressed.connect(func(): goto(xid) if xid == "combat" else open_overlay(xid))
 		_rail.add_child(b2)
@@ -280,6 +303,7 @@ func goto(id: String, remember: bool = true) -> void:
 	_build_chrome()
 	if s.has_method("refresh"):
 		s.refresh()
+	Motion.enter(s, 0, "screen")
 	screen_changed.emit(id)
 
 func _place_current() -> void:
@@ -576,6 +600,45 @@ func open_overlay(kind: String) -> Control:
 func open_menu() -> void:
 	open_overlay("menu")
 
+## Ctrl+K command palette (docs/UI-DESIGN-SYSTEM.md §9). Items come from ShellVM.palette_items.
+func open_palette() -> Control:
+	if view.is_empty():
+		return null
+	close_all_modals()
+	var pal := CommandPalette.make(ShellVM.new(session).palette_items())
+	pal.ran.connect(run_palette)
+	var m := open_modal(pal, "Command", Vector2(700, 0))
+	pal.field.grab_focus.call_deferred()
+	return m
+
+## Runs a palette item id: screen:<id>, overlay:<kind>, colony:<systemId>, fleet:<fleetId>, cmd:<name>.
+func run_palette(id: String) -> void:
+	close_all_modals()
+	var kind := id.get_slice(":", 0)
+	var arg := id.get_slice(":", 1)
+	match kind:
+		"screen": goto(arg)
+		"overlay": open_overlay(arg)
+		"colony":
+			select_system(int(arg))
+			if screen == "system" and _current:
+				_current.refresh()
+			goto("system")
+		"fleet":
+			var f := find_by_id("fleets", int(arg))
+			select_fleet(int(arg))
+			goto("galaxy")
+			if not f.is_empty() and _current and _current.has_method("focus_cell"):
+				_current.focus_cell(int(f["x"]), int(f["y"]))
+		"cmd":
+			match arg:
+				"saves": goto("saves")
+				"quicksave":
+					if save_game(save_name if save_name != "" else "Quicksave"):
+						toast("Saved.", "good")
+				"preview": preview_turn()
+				"endturn": request_end_turn()
+
 # ---------------------------------------------------------------------------------------------
 # Keyboard
 # ---------------------------------------------------------------------------------------------
@@ -605,6 +668,26 @@ func _unhandled_key_input(event: InputEvent) -> void:
 			get_viewport().set_input_as_handled()
 		return
 	if not in_game:
+		return
+	var handled := true
+	if k.keycode == KEY_K and k.ctrl_pressed:
+		open_palette()
+	elif k.keycode == KEY_F9:
+		goto("saves")
+	elif k.keycode == KEY_F10:
+		open_overlay("settings")
+	elif k.keycode == KEY_LEFT and k.alt_pressed:
+		back()
+	elif not k.ctrl_pressed and not k.alt_pressed and k.keycode == KEY_E:
+		open_overlay("events")
+	elif not k.ctrl_pressed and not k.alt_pressed and k.keycode == KEY_V:
+		open_overlay("victory")
+	elif not k.ctrl_pressed and not k.alt_pressed and k.keycode == KEY_C and screen != "combat":
+		open_overlay("briefing")
+	else:
+		handled = false
+	if handled:
+		get_viewport().set_input_as_handled()
 		return
 	if k.keycode >= KEY_F1 and k.keycode <= KEY_F8:
 		goto(GAME_SCREENS[k.keycode - KEY_F1]["id"])

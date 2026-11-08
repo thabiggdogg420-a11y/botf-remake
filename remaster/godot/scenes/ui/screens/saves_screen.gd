@@ -28,7 +28,7 @@ func refresh() -> void:
 				app.toast("Saved.", "good")
 				refresh()))
 	col.add_child(head)
-	var frame := Lcars.frame("Slots", "stored in user://saves", "secondary")
+	var frame := Lcars.frame("Slots", "stored in user://saves · F9 in game", "secondary", "save")
 	frame.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	col.add_child(frame)
 	var list := Lcars.vbox(8)
@@ -36,13 +36,22 @@ func refresh() -> void:
 	var saves := vm.saves
 	if saves.is_empty():
 		list.add_child(Lcars.empty_note("No saved campaigns yet. Campaigns autosave at the end of every turn."))
+	var grid := HFlowContainer.new()
+	grid.add_theme_constant_override("h_separation", 12)
+	grid.add_theme_constant_override("v_separation", 12)
+	list.add_child(grid)
 	for s in saves:
 		var row := Lcars.card()
+		row.custom_minimum_size = Vector2(560, 0)
 		var h := Lcars.hbox(14)
 		row.add_child(h)
-		h.add_child(Lcars.emblem(int(s.get("player", 0)), 34))
-		var t := Lcars.vbox(0)
+		h.add_child(PortraitSlot.make(int(s.get("player", 0)), Vector2(96, 96)))
+		var t := Lcars.vbox(2)
 		t.add_child(Lcars.label(str(s.get("name", "?")), "SubHeading", 22, Lcars.TEXT))
+		var tr := Lcars.hbox(8)
+		tr.add_child(UiIcon.make("turn", 16, Lcars.accent()))
+		tr.add_child(Lcars.label("Turn %d" % int(s.get("turn", 0)), "", 18, Lcars.accent()))
+		t.add_child(tr)
 		t.add_child(Lcars.caption(SavesVM.describe(s)))
 		t.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		h.add_child(t)
@@ -50,5 +59,5 @@ func refresh() -> void:
 		h.add_child(Lcars.pill("Load", "primary", func(): app.load_game(blob)))
 		var file: String = s["file"]
 		h.add_child(Lcars.pill("Delete", "alert", func(): app.delete_save(file); refresh()))
-		list.add_child(row)
+		grid.add_child(row)
 	Lcars.body(frame).add_child(Lcars.scroll(list))

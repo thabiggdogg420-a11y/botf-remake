@@ -23,15 +23,15 @@ Mods and Remakes:
 ## 2. Modern Target
 
 1. **3D System View:**
-   - Replace flat 2D circular representations (`PlanetOrb` in `system_screen.gd:150`) with an embedded 3D viewport.
+   - Replace flat 2D circular representations (`PlanetOrb` in `remaster/godot/scenes/ui/screens/system_screen.gd`) with an embedded 3D viewport.
    - Central luminous star with spectral flares, surrounded by physically scaled, textured 3D orbiting planets, asteroid belts, and visible orbital infrastructure (shipyards, starbases, defense platforms).
 2. **Comprehensive Structure Catalog:**
-   - Implement the full set of 318 distinct structures defined in `ReferenceCatalogue.h`, respecting racial progression ladders, energy consumption, and population staffing requirements (`ReferenceCatalogue.h:50-320`).
+   - Implement the full set of 318 distinct structures defined in `remaster/data/base/buildings.json` (loaded into `referenceData::BuildingCatalogue`, `ReferenceCatalogue.h:13`), respecting racial progression ladders, energy consumption, and population staffing requirements (`docs/DATA-FORMAT.md`).
 3. **Strategic Dilithium Economy:**
    - Dilithium is modelled as a physical strategic resource:
      - Deposits occur on specific planetary bodies (Class M, Asteroids, Volcanic).
      - Refineries generate Dilithium units per turn.
-     - Each active capital ship requires continuous Dilithium maintenance; new ship construction requires an upfront Dilithium allocation. Deficits trigger severe speed and combat output debuffs (`Simulation.cpp:economy`).
+     - Each active capital ship requires continuous Dilithium maintenance; new ship construction requires an upfront Dilithium allocation. Deficits trigger severe speed and combat output debuffs (`Simulation.cpp:1080, 5020`).
 4. **Emergency Programs:**
    - Implement active empire emergency decrees with tangible tradeoffs:
      - *Federation Martial Law:* Halts rebellion, boosts ground defense +25%, but lowers research by 20% and inflicts long-term trust loss.
@@ -40,51 +40,59 @@ Mods and Remakes:
      - *Cardassian Inquisition:* Drastically boosts intelligence generation +50% and forced labor, reduces population growth.
      - *Ferengi Festival of Fun:* Costs large credit sum, raises morale by 2 tiers immediately.
 5. **Automation & Governors:**
-   - System-level AI governors: *Manual*, *Balanced*, *Growth*, *Research*, *Manufacturing*, and *Defense* (`Simulation.h:GovernorMode`).
+   - System-level AI governors: *Manual*, *Balanced*, *Growth*, *Research*, *Manufacturing*, and *Defense* (`Simulation.h:30`, `Simulation.cpp:1187-1216, 6015-6230`).
    - Governors automatically reassign population jobs and toggle structure power based on projected shortages and goals, eliminating late-game micromanagement fatigue.
 6. **Dynamic Rush Construction:**
    - Allow multiple rush-buys per turn with escalating cost penalties (base cost × 1.5^(purchases_this_turn)), maintaining economic balance.
 
-## 3. Player-Facing Surfaces (Screens and Scenes)
+## 3. Web-Build Consequences
+
+In compliance with `docs/M0-LANES.md` ("Browser target") and `docs/ART-BIBLE.md` §12:
+- **Renderer Fallback (Forward+ vs Compatibility/WebGL2):** Desktop 3D system view renders under Forward+ with multi-layer PBR materials (albedo, normal, roughness, night city emissive maps, Rayleigh atmospheric scattering, and rotating cloud shadow projection). On Web (Compatibility), high-poly spheres and normal maps are dropped to stay within WebGL2 fill-rate constraints; spheres fall back to 2k-tri meshes with 1024x512 albedo textures and 512x256 cloud/light layers (~700 KB per planet class). Atmospheric scattering uses a cheap 2-stop Fresnel rim pass.
+- **Budgets:** Structure icons are authored as 256x256 on desktop but downsampled and atlased to 128x128 in a single shared atlas of ≤2048 for web builds (~8 KB per icon across 114 building families). System viewport memory is clamped to ensure smooth 60 FPS in-browser rendering.
+- **No Disk Paths at Runtime:** All 318 building records, costs, and masks load from `data/base/buildings.json` handed to the core via memory buffer (`referenceData::BuildingCatalogue`, `ReferenceCatalogue.h:13`). Planet textures and UI icons load strictly via `res://` packs. Zero runtime code touches `LocalAssets` or `$BOTF_*` paths.
+- **Saves:** Colony workforce allocations, structure queues, emergency decrees, and governor priorities serialize to `user://`, which maps directly to browser IndexedDB in web builds.
+
+## 4. Player-Facing Surfaces (Screens and Scenes)
 
 - `remaster/godot/scenes/ui/screens/system_screen.gd`:
   - 3D interactive System Viewport with planet click-to-focus and orbit visualization.
-  - LCARS population job assignment sliders (Food, Industry, Energy, Intel, Research) with real-time output forecasts (`Simulation.cpp:forecast`).
+  - LCARS population job assignment sliders (Food, Industry, Energy, Intel, Research) with real-time output forecasts (`Simulation.cpp:4615-4700`).
   - Structure grid displaying race-specific icons, energy toggle switches, and build queue.
   - Emergency Program button palette with status indicators and cooldown meters.
-  - Governor mode dropdown.
+  - Governor mode dropdown (`system_vm.gd`).
 - `remaster/godot/scenes/ui/screens/empire_screen.gd`:
   - Empire-wide resource totals: Credits, Dilithium Stockpile/Upkeep, Energy Grid Reserves, Average Morale.
-  - Colony management ledger with multi-system governor assignment.
+  - Colony management ledger with multi-system governor assignment (`empire_vm.gd`).
 - `remaster/godot/scenes/ui/trade_panel.gd`:
   - Trade route management panel with domestic route allocation and foreign treaty commercial conduits.
 
-## 4. Core Changes (Naming Files)
+## 5. Core Changes (Naming Files)
 
 - `remaster/game/Source/BotfSim/Simulation.h`:
-  - Extend `EmpireState` with `int32_t dilithiumReserve`, `int32_t dilithiumIncome`, `int32_t dilithiumConsumed`.
+  - Extend `EmpireState` with `int32_t dilithiumReserve`, `int32_t dilithiumIncome`, `int32_t dilithiumConsumed` (`Simulation.h:120-135`).
   - Extend `Colony` struct with `EmergencyProgram activeProgram`, `int32_t programDuration`, `int32_t dilithiumOutput`.
   - Add `dilithiumRequired` to `ShipRecord` / `RosterClass`.
 - `remaster/game/Source/BotfSim/Simulation.cpp`:
-  - In `economy()` (lines 2800–3100), compute empire dilithium balance; block capital ship construction when dilithium is insufficient.
-  - In `colonyTurn()` (lines 2150–2380), evaluate Emergency Program effects on morale, population growth, and job output.
-  - In `BuyConstruction` command handler (line 1820), support progressive multi-buy formula.
+  - In `economy()` (`Simulation.cpp:1080, 5020-5028`), compute empire dilithium balance; block capital ship construction when dilithium is insufficient.
+  - In `colonyTurn()` (`Simulation.cpp:4615-4700`), evaluate Emergency Program effects on morale, population growth, and job output.
+  - In `BuyConstruction` command handler (`Simulation.cpp:350, 1140, 3512`), support progressive multi-buy formula.
 - `remaster/game/Source/BotfSim/ReferencePlanets.h`:
-  - Add `hasDilithiumDeposit`, `orbitalRadius`, and `textureAssetKey` to `PlanetClassData`.
+  - Add `hasDilithiumDeposit`, `orbitalRadius`, and `textureAssetKey` to `PlanetClassData` (`ReferencePlanets.h:17-45`).
 - `remaster/game/Source/BotfSim/BuildTemplates.cpp`:
-  - Support automatic queue population respecting racial building hierarchy ladders (`BuildTemplates.cpp:45-120`).
+  - Support automatic queue population respecting racial building hierarchy ladders (`BuildTemplates.cpp:13, 45-120`).
 
-## 5. Client Changes
+## 6. Client Changes
 
 - `remaster/godot/scenes/ui/screens/system_screen.gd`:
-  - Replace `PlanetOrb` with an embedded `SubViewport` containing a 3D system orbit rig.
+  - Replace `PlanetOrb` with an embedded `SubViewport` containing a 3D system orbit rig consuming `res://scripts/viewmodels/system_vm.gd`.
   - Bind Dilithium gauge and Emergency Program activation buttons to core client bridge.
 - `remaster/godot/scenes/ui/theme/lcars.gd`:
   - Implement dynamic structure card rendering using faction-specific LCARS color schemes.
 - `remaster/godot/scenes/ui/end_turn_check.gd`:
   - Add validation checks warning the player if a colony has starvation, energy deficits, or if Dilithium supplies are negative.
 
-## 6. Content and Art Needs (by Asset Key)
+## 7. Content and Art Needs (by Asset Key)
 
 - `planet.tex.class_m`: PBR textures (albedo, normal, roughness, night lights, cloud map) for Terran/Oceanic worlds.
 - `planet.tex.class_o`: Water world texture set.
@@ -98,7 +106,7 @@ Mods and Remakes:
 - `icon.struct.<race>.<type>.<tier>`: 318 distinct LCARS structure icons (e.g., `icon.struct.fed.industry.mass_replicator_1`).
 - `ui.icon.program.<type>`: Icons for Martial Law, Police State, Tribunal, Inquisition, and Festival of Fun.
 
-## 7. Acceptance Tests
+## 8. Acceptance Tests
 
 1. **Dilithium Construction Gate:**
    - Start campaign with 0 free dilithium; attempt to queue a heavy warship (Galaxy or Vor'cha class).
@@ -117,8 +125,11 @@ Mods and Remakes:
    - Rush-buy a second queued item in the same turn; verify the cost reflects the 1.5x escalation multiplier.
 5. **3D System Viewport:**
    - Open System screen; click different planets in orbit; verify camera smoothly pans to focus on selected planet with accurate orbital telemetry.
+6. **Web Compatibility & IndexedDB State Test:**
+   - Run system screen in a WebGL2 browser export. Verify planet spheres render with 1024x512 albedo textures and no shader errors.
+   - Reassign workforce sliders and queue items, save game, and reload; verify colony state is restored perfectly from IndexedDB.
 
-## 8. M1 Vertical-Slice Subset
+## 9. M1 Vertical-Slice Subset
 
 For the M1 vertical slice:
 - Sol system for Federation (Earth, Mars, Jupiter) and Qo'noS system for Klingon.

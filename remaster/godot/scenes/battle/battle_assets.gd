@@ -24,13 +24,42 @@ var heroes := {}          ## key -> godot-hero-manifest.json entry {glb, lengthM
 var _hero_scenes := {}    ## key -> PackedScene or null
 
 
+## Every file probe in the battle scenes goes through these three. res:// and user:// go to AppLoader (the browser
+## target's one loader). Other paths are the developer's LocalAssets (hero glbs, resolved manifest, local audio):
+## a desktop-only dev step, refused outright in the web build, where those assets must arrive as a mounted pack.
+static func local_disk_allowed(path: String) -> bool:
+	return not AppLoader.allowed(path) and not OS.has_feature("web")
+
+
+static func file_exists(path: String) -> bool:
+	if AppLoader.allowed(path):
+		return AppLoader.exists(path)
+	return local_disk_allowed(path) and FileAccess.file_exists(path)
+
+
+static func read_json(path: String) -> Variant:
+	if AppLoader.allowed(path):
+		return AppLoader.json(path)
+	if not BattleAssets.file_exists(path):
+		return null
+	return JSON.parse_string(FileAccess.get_file_as_string(path))
+
+
+static func list_dir(dir: String) -> PackedStringArray:
+	if AppLoader.allowed(dir):
+		return AppLoader.list(dir)
+	if not local_disk_allowed(dir) or not DirAccess.dir_exists_absolute(dir):
+		return PackedStringArray()
+	return DirAccess.get_files_at(dir)
+
+
 func _init() -> void:
 	for p in candidate_paths():
-		if FileAccess.file_exists(p):
+		if BattleAssets.file_exists(p):
 			load_manifest(p)
 			break
 	for p in hero_candidate_paths():
-		if FileAccess.file_exists(p) and load_hero_manifest(p):
+		if BattleAssets.file_exists(p) and load_hero_manifest(p):
 			break
 
 
@@ -46,7 +75,7 @@ static func hero_candidate_paths() -> PackedStringArray:
 
 
 func load_hero_manifest(path: String) -> bool:
-	var data = JSON.parse_string(FileAccess.get_file_as_string(path))
+	var data = BattleAssets.read_json(path)
 	if not (data is Dictionary) or not (data.get("heroes") is Dictionary):
 		return false
 	hero_manifest_path = path
@@ -69,7 +98,7 @@ func hero_glb_path(entry: Dictionary) -> String:
 	if rel == "":
 		return ""
 	var p := rel if rel.is_absolute_path() else hero_root.path_join(rel)
-	return p if FileAccess.file_exists(p) else ""
+	return p if BattleAssets.file_exists(p) else ""
 
 
 ## Canon length in metres of the hero model for the first of `keys` that has one, else 0.
@@ -94,7 +123,7 @@ static func candidate_paths() -> PackedStringArray:
 
 
 func load_manifest(path: String) -> bool:
-	var data = JSON.parse_string(FileAccess.get_file_as_string(path))
+	var data = BattleAssets.read_json(path)
 	if not (data is Dictionary):
 		return false
 	manifest_path = path
@@ -129,14 +158,14 @@ func local_files(rec: Dictionary, exts: PackedStringArray) -> PackedStringArray:
 			var p := str(f).replace("\\", "/")
 			if not exts.has(p.get_extension().to_lower()):
 				continue
-			if FileAccess.file_exists(p):
+			if BattleAssets.file_exists(p):
 				out.append(p)
 				continue
 			# Rebase ".../LocalAssets/<rest>" onto this manifest's folder.
 			var at := p.findn("LocalAssets/")
 			if at >= 0:
 				var local := root_dir.path_join(p.substr(at + "LocalAssets/".length()))
-				if FileAccess.file_exists(local):
+				if BattleAssets.file_exists(local):
 					out.append(local)
 	return out
 
@@ -312,9 +341,8 @@ func _find_stream(key: String) -> AudioStream:
 		if not rec.is_empty():
 			paths.append_array(local_files(rec, PackedStringArray(["wav", "ogg"])))
 		var dir := root_dir.path_join("audio").path_join(key)
-		if DirAccess.dir_exists_absolute(dir):
-			for f in DirAccess.get_files_at(dir):
-				paths.append(dir.path_join(f))
+		for f in BattleAssets.list_dir(dir):
+			paths.append(dir.path_join(f))
 	for ext in ["wav", "ogg"]:
 		paths.append("res://scenes/battle/audio/%s.%s" % [key, ext])
 	for p in paths:
@@ -327,7 +355,7 @@ func _find_stream(key: String) -> AudioStream:
 static func _load_stream(path: String) -> AudioStream:
 	if path.begins_with("res://"):
 		return load(path) as AudioStream if ResourceLoader.exists(path) else null
-	if not FileAccess.file_exists(path):
+	if not BattleAssets.file_exists(path):
 		return null
 	match path.get_extension().to_lower():
 		"wav": return AudioStreamWAV.load_from_file(path)

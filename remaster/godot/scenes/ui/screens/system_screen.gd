@@ -33,10 +33,10 @@ func cycle(d: int) -> void:
 func _unhandled_key_input(event: InputEvent) -> void:
 	var k := event as InputEventKey
 	if k and k.pressed and not k.echo and not app.has_modal() and not (get_viewport().gui_get_focus_owner() is LineEdit):
-		if k.keycode == KEY_Q:
+		if k.keycode == KEY_Q or k.keycode == KEY_BRACKETLEFT:
 			cycle(-1)
 			get_viewport().set_input_as_handled()
-		elif k.keycode == KEY_E:
+		elif k.keycode == KEY_E or k.keycode == KEY_BRACKETRIGHT:
 			cycle(1)
 			get_viewport().set_input_as_handled()
 
@@ -54,15 +54,15 @@ func refresh() -> void:
 		app.report_error(app.core.last_error)
 		return
 	var c := vm.colony()
-	var root := Lcars.vbox(14)
-	Lcars.screen_margin(self).add_child(root)
+	var root := Lcars.vbox(12)
+	Lcars.screen_margin(self, Vector4(16, 16, 10, 16)).add_child(root)
 	root.add_child(_header(c))
+	root.add_child(_kpis())
 	var cols := Lcars.hbox(14)
 	cols.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	root.add_child(cols)
 	var left := Lcars.vbox(12)
 	left.custom_minimum_size.x = 560
-	left.add_child(_planets())
 	left.add_child(_workforce(c))
 	left.add_child(_governor(c))
 	left.add_child(_energy(c))
@@ -84,61 +84,144 @@ func refresh() -> void:
 	rs.custom_minimum_size.x = 480
 	rs.size_flags_horizontal = Control.SIZE_FILL
 	cols.add_child(rs)
+	Motion.stagger(cols)
 
+## The hero band: colony name and navigation, then the system's planets as lit spheres beside their star.
 func _header(c: Dictionary) -> Control:
 	var pos := vm.colony_position()
 	var count: int = pos[1]
-	var e: Dictionary = c["economy"]
-	var h := Lcars.hbox(22)
-	h.add_child(Lcars.pill("◂", "ghost", func(): cycle(-1), "" if count > 1 else "Only one colony", "Previous colony", "Q"))
-	h.add_child(Lcars.title_block(str(c["name"]), "Colony %d of %d · governor %s" % [int(pos[0]) + 1, count, "manual" if c["governor"]["workforce"] == "Manual" else c["governor"]["workforce"]]))
-	h.add_child(Lcars.pill("▸", "ghost", func(): cycle(1), "" if count > 1 else "Only one colony", "Next colony", "E"))
-	h.add_child(Lcars.spacer())
-	var g: Dictionary = c["growth"]
-	var gtxt := SystemVM.growth_text(g)
-	h.add_child(Lcars.stat("Population", "%d/%d" % [int(c["population"]), int(c["capacity"])], "", "Population %d of capacity %d (max %d after terraforming every planet).\nNext turn: %s per turn.\nFood surplus drives growth; a shortfall shrinks the colony." % [int(c["population"]), int(c["capacity"]), int(detail["maxCapacity"]), gtxt]))
-	h.add_child(Lcars.stat("Growth", gtxt, "alert" if int(g.get("max", 0)) < 0 else "good"))
-	h.add_child(Lcars.stat("Morale", c["morale"], "warn" if int(c["morale"]) < 50 else "", "Morale drifts toward 70 each turn; events can raise or lower it."))
-	h.add_child(Lcars.stat("Food", Lcars.signed(int(e["food"]) - int(c["population"])), "alert" if int(e["foodDeficit"]) > 0 else "good", "%d farms staffed by %d workers produce %d food." % [int(c["structures"]["farms"]), int(c["workers"]["food"]), int(e["food"])]))
-	h.add_child(Lcars.stat("Industry", e["industry"], "", "Industry builds the first item in the queue each turn."))
-	h.add_child(Lcars.stat("Research", e["research"], "info", "Pooled empire-wide and split by your research allocation."))
-	h.add_child(Lcars.stat("Energy", "%d/%d" % [int(e["energyUsed"]), int(e["energyAvailable"])], "alert" if int(e["energyUsed"]) > int(e["energyAvailable"]) else "", "Power plants add capacity; unpowered structures go idle."))
-	h.add_child(Lcars.stat("Credits", Lcars.signed(e["net"]), "alert" if int(e["net"]) < 0 else "secondary", "Income %d - structure upkeep %d." % [int(e["income"]), int(e["upkeep"])]))
-	return h
+	var band := PanelContainer.new()
+	band.name = "Orrery"
+	var sb := Lcars.panel_box(Lcars.accent())
+	sb.bg_color = Color(Lcars.BG2, 0.7)
+	sb.content_margin_top = 8
+	sb.content_margin_bottom = 8
+	band.add_theme_stylebox_override("panel", sb)
+	var h := Lcars.hbox(18)
+	band.add_child(h)
+	h.add_child(_nav("◂", -1, count, "Previous colony", "Q"))
+	var tb := Lcars.vbox(0)
+	tb.custom_minimum_size.x = 300
+	tb.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	var nm := Lcars.label(str(c["name"]).to_upper(), "", 58, Lcars.accent())
+	nm.add_theme_font_override("font", Lcars.font("display", 700))
+	tb.add_child(nm)
+	tb.add_child(Lcars.caption("Colony %d of %d · %s" % [int(pos[0]) + 1, count, _sector()]))
+	var badges := Lcars.hbox(6)
+	var gov := str(c["governor"]["workforce"])
+	badges.add_child(Lcars.badge("Governor " + ("manual" if gov == "Manual" else gov), "secondary" if gov != "Manual" else "dim"))
+	if int(c["economy"]["foodDeficit"]) > 0:
+		badges.add_child(Lcars.badge("Food short", "alert"))
+	if not (c.get("building") is Dictionary):
+		badges.add_child(Lcars.badge("Queue idle", "warn"))
+	tb.add_child(badges)
+	h.add_child(tb)
+	h.add_child(_orrery())
+	h.add_child(_nav("▸", 1, count, "Next colony", "E"))
+	return band
 
-func _planets() -> Control:
-	var f := Lcars.frame("Planets", "capacity %d · max %d" % [int(detail["colony"]["capacity"]), int(detail["maxCapacity"])], "tertiary")
-	var row := HFlowContainer.new()
-	row.add_theme_constant_override("h_separation", 8)
-	row.add_theme_constant_override("v_separation", 8)
+func _nav(glyph: String, d: int, count: int, hint: String, key: String) -> Button:
+	var b := Lcars.pill(glyph, "ghost", func(): cycle(d), "" if count > 1 else "Only one colony", hint, key)
+	b.custom_minimum_size = Vector2(44, 110)
+	b.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	b.add_theme_font_size_override("font_size", 22)
+	return b
+
+## Star at the left, then each planet sized by class, its numeral, class and capacity bar; hover explains it.
+func _orrery() -> Control:
+	var row := Lcars.hbox(4)
+	row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	var star := StarGlow.new()
+	star.custom_minimum_size = Vector2(110, 140)
+	row.add_child(star)
+	var n := 0
 	for p in detail.get("planets", []):
-		var pc := Lcars.card()
-		pc.custom_minimum_size = Vector2(98, 0)
-		var v := Lcars.vbox(3)
-		pc.add_child(v)
-		var orb := PlanetOrb.new()
-		orb.cls = str(p["class"])
-		orb.custom_minimum_size = Vector2(0, 44)
-		v.add_child(orb)
-		var n := str(p["name"])
-		var sp := n.rfind(" ")
-		v.add_child(Lcars.label(n.substr(sp + 1) if sp > 0 else n, "SubHeading", 16, Lcars.TEXT))
-		v.add_child(Lcars.label("Gas giant" if p["class"] == "GasGiant" else ("Belt" if p["class"] == "Asteroids" else "Class " + str(p["class"])), "Muted", 12))
-		v.add_child(Lcars.meter(p["capacity"], max(1, int(p["maxCapacity"])), Lcars.GOOD, 3))
-		v.add_child(Lcars.label(("%d/%d" % [int(p["capacity"]), int(p["maxCapacity"])]) if int(p["maxCapacity"]) > 0 else "-", "Mono", 12))
-		pc.tooltip_text = "%s\n%s%s\nSupports %d now, %d when terraformed." % [p["className"], p["terraformState"], (" - %d/%d terraforming work" % [int(p["terraformWork"]), int(p["terraformNeeded"])]) if int(p["terraformNeeded"]) > 0 else "", int(p["capacity"]), int(p["maxCapacity"])]
-		row.add_child(pc)
-	Lcars.body(f).add_child(row)
-	return f
+		var cls := str(p["class"])
+		var px := 112.0 if cls == "GasGiant" else (64.0 if cls == "K" or cls == "Y" else (96.0 if cls == "Asteroids" else 82.0))
+		var col := Lcars.vbox(2)
+		col.custom_minimum_size.x = 118
+		var host := RichTip.Explained.new(SystemVM.planet_explain(p))
+		var orb := PlanetOrb.make(cls, px, int(vm.sid()) * 13 + n)
+		orb.custom_minimum_size = Vector2(118, 112)
+		host.add_child(orb)
+		col.add_child(host)
+		var nm := str(p["name"])
+		var sp := nm.rfind(" ")
+		var lab := Lcars.hbox(6)
+		lab.alignment = BoxContainer.ALIGNMENT_CENTER
+		lab.add_child(Lcars.label(nm.substr(sp + 1) if sp > 0 else nm, "", 18, Lcars.TEXT))
+		lab.get_child(0).add_theme_font_override("font", Lcars.font("display", 600))
+		lab.add_child(Lcars.label("Gas giant" if cls == "GasGiant" else ("Belt" if cls == "Asteroids" else "Class " + cls), "Caption"))
+		col.add_child(lab)
+		if int(p["maxCapacity"]) > 0:
+			var bar := Lcars.meter(p["capacity"], max(1, int(p["maxCapacity"])), Lcars.GOOD, 4)
+			bar.custom_minimum_size.x = 80
+			bar.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+			col.add_child(bar)
+			var cap := Lcars.label("%d/%d" % [int(p["capacity"]), int(p["maxCapacity"])], "Mono", 12)
+			cap.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			col.add_child(cap)
+		row.add_child(col)
+		n += 1
+	return row
+
+func _sector() -> String:
+	var sy := app.find_by_id("systems", vm.sid())
+	return ("sector %s" % vm.place(int(sy["x"]), int(sy["y"]))) if not sy.is_empty() else "your space"
+
+## The KPI row of the colony, each explained (SystemVM.kpis).
+func _kpis() -> Control:
+	var row := Lcars.hbox(10)
+	row.name = "ColonyKpis"
+	for k in vm.kpis():
+		var t := Lcars.kpi(k["icon"], k["cap"], k["value"], k["delta"], k["tone"], k["explain"])
+		t.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		t.custom_minimum_size.x = 0
+		row.add_child(t)
+	return row
+
+## A sun with corona at the left of the orrery.
+class StarGlow extends Control:
+	func _ready() -> void:
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+	func _draw() -> void:
+		var c := Vector2(size.x * 0.2, size.y / 2.0)
+		for k in 12:
+			draw_circle(c, 70.0 - k * 5.0, Color(1.0, 0.82, 0.5, 0.035 + k * 0.006))
+		draw_circle(c, 18.0, Color(1.0, 0.93, 0.75))
+		draw_circle(c, 12.0, Color(1, 1, 1))
 
 func _workforce(c: Dictionary) -> Control:
-	var f := Lcars.frame("Workforce", "%d unassigned" % vm.unassigned(), "primary")
+	var f := Lcars.frame("Workforce", "%d unassigned" % vm.unassigned(), "primary", "population")
 	f.name = "Workforce"
 	var b := Lcars.body(f)
+	var w: Dictionary = c["workers"]
+	var top := Lcars.hbox(16)
+	var ring := RingGauge.make(108, 0, 1, Lcars.accent(), str(int(c["population"])), "WORKERS",
+		{"title": "Workforce", "value": "%d citizens" % int(c["population"]), "parts": [["Food", str(int(w["food"])), "good"], ["Industry", str(int(w["industry"])), "secondary"], ["Research", str(int(w["research"])), "info"], ["Unassigned", str(int(w.get("unassigned", 0))), "warn"]],
+			"effect": "Drag a slider to move workers; the core forecasts the result before you apply it."})
+	ring.segments = [[int(w["food"]), Lcars.GOOD], [int(w["industry"]), Lcars.accent2()], [int(w["research"]), Lcars.INFO], [int(w.get("unassigned", 0)), Lcars.WARN]]
+	top.add_child(ring)
+	var right := Lcars.vbox(8)
+	right.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	top.add_child(right)
+	b.add_child(top)
 	var acts := Lcars.hbox(8)
 	acts.add_child(Lcars.pill("Balance", "ghost", func(): if not vm.auto_balance(false): _update_forecast(), _locked(), "Feed the colony, then split industry and research"))
 	acts.add_child(Lcars.pill("Industry", "ghost", func(): if not vm.auto_balance(true): _update_forecast(), _locked(), "Feed the colony, then maximise industry"))
-	b.add_child(acts)
+	right.add_child(acts)
+	var legend := Lcars.hbox(14)
+	for lg in [["Food", Lcars.GOOD], ["Industry", Lcars.accent2()], ["Research", Lcars.INFO], ["Idle", Lcars.WARN]]:
+		var it := Lcars.hbox(5)
+		var dot := ColorRect.new()
+		dot.color = lg[1]
+		dot.custom_minimum_size = Vector2(10, 10)
+		dot.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		it.add_child(dot)
+		it.add_child(Lcars.label(lg[0], "Muted", 13))
+		legend.add_child(it)
+	right.add_child(legend)
 	var limits: Dictionary = detail["capacityLimits"]
 	_sliders.clear()
 	_wf_out.clear()
@@ -225,7 +308,7 @@ func apply_workers() -> void:
 
 func _governor(c: Dictionary) -> Control:
 	var g: Dictionary = c["governor"]
-	var f := Lcars.frame("Governor", "automation", "secondary")
+	var f := Lcars.frame("Governor", "automation", "secondary", "settings")
 	var b := Lcars.body(f)
 	for which in ["workforce", "queue"]:
 		var row := Lcars.hbox(4)
@@ -257,7 +340,7 @@ func _governor(c: Dictionary) -> Control:
 func _energy(c: Dictionary) -> Control:
 	var e: Dictionary = c["economy"]
 	var s: Dictionary = c["structures"]
-	var f := Lcars.frame("Energy & shipyard", "", "tertiary")
+	var f := Lcars.frame("Energy & shipyard", "", "tertiary", "energy")
 	var b := Lcars.body(f)
 	var r := Lcars.hbox(8)
 	r.add_child(Lcars.label("Power", "Muted", 13))
@@ -280,7 +363,7 @@ func _energy(c: Dictionary) -> Control:
 	return f
 
 func _construction() -> Control:
-	var f := Lcars.frame("Construction", "", "primary")
+	var f := Lcars.frame("Construction", "", "primary", "build")
 	f.name = "Construction"
 	var b := Lcars.body(f)
 	var tabs := Lcars.hbox(6)
@@ -348,7 +431,7 @@ func _choice(ch: Dictionary) -> Control:
 
 func _queue(c: Dictionary) -> Control:
 	var q := vm.queue()
-	var f := Lcars.frame("Build queue", "%d item%s" % [q.size(), "" if q.size() == 1 else "s"], "secondary")
+	var f := Lcars.frame("Build queue", "%d item%s" % [q.size(), "" if q.size() == 1 else "s"], "secondary", "industry")
 	f.name = "BuildQueue"
 	var b := Lcars.body(f)
 	if str(detail.get("queueBlocker", "")) != "":
@@ -408,7 +491,7 @@ func _queue(c: Dictionary) -> Control:
 
 func _templates() -> Control:
 	var temps: Array = app.view.get("templates", [])
-	var f := Lcars.frame("Build templates", "%d saved" % temps.size(), "tertiary")
+	var f := Lcars.frame("Build templates", "%d saved" % temps.size(), "tertiary", "chronicle")
 	f.name = "Templates"
 	var b := Lcars.body(f)
 	var items := vm.queue_items()
@@ -459,7 +542,7 @@ func _megaproject() -> Control:
 	var m := vm.megaproject()
 	if m.is_empty():
 		return null
-	var f := Lcars.frame(str(m["name"]), "scientific victory", "good")
+	var f := Lcars.frame(str(m["name"]), "scientific victory", "good", "victory")
 	f.name = "Megaproject"
 	var b := Lcars.body(f)
 	var lock := _locked()

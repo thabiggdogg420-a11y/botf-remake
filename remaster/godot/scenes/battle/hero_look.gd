@@ -181,7 +181,7 @@ static func _texture(root_dir: String, rel: String) -> Texture2D:
 	if _textures.has(path):
 		return _textures[path]
 	var tex: Texture2D = null
-	if FileAccess.file_exists(path):
+	if BattleAssets.file_exists(path):
 		var img := Image.load_from_file(path)
 		if img != null and not img.is_empty():
 			img.generate_mipmaps()

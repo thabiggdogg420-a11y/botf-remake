@@ -392,7 +392,9 @@ func _spawn(i: int, j: Dictionary) -> void:
 			var source := _ship(j.source_fleet_id)
 			if target != null:
 				var from := source.global_position if source != null else target.global_position + Vector3(10, 0, 0)
-				target.add_shield_hit(from, j.start, j.duration * 1.8, col.lerp(Color(0.5, 0.8, 1.0), 0.45) * 0.55)
+				var facing: String = j.get("facing", "")
+				target.add_shield_hit(from, j.start, j.duration * 1.8, col.lerp(Color(0.5, 0.8, 1.0), 0.45) * 0.55,
+					facing, target.facing_strength(facing))
 				st.point = target.shield_point(from)
 				st.size = maxf(40.0 * UE, target.radius() * 0.35)
 				st.nodes = [_flare(col.lerp(Color.WHITE, 0.3), st.size, 1.0, 0.8)]
@@ -413,6 +415,15 @@ func _spawn(i: int, j: Dictionary) -> void:
 				_burst(p, Color(0.35, 0.3, 0.28), "smoke", 6, k * 0.6)
 				_flash_light(p, Color(1.0, 0.55, 0.2), 6.0, 600.0 * UE, 0.5)
 				target.add_scorch(p, from, clampf(target.length * 0.18, 0.6, 2.2))
+				# Tactical rules 4: a subsystem knocked out (or a warp core breach) gets its own secondary blast.
+				if j.get("subsystem_destroyed", false) or int(j.get("breach", 0)) > 0:
+					var big := int(j.get("breach", 0)) > 0
+					var q := target.subsystem_point(str(j.get("subsystem", "none")))
+					var hot := Color(0.6, 0.8, 1.0) if str(j.get("subsystem", "")) == "warpCore" else Color(1.0, 0.7, 0.3)
+					_burst(q, hot, "sparks", 60 if big else 36, k * (2.2 if big else 1.4))
+					_burst(q, Color(1.0, 0.45, 0.1), "fire_small", 24 if big else 12, k * (2.0 if big else 1.2))
+					_flash_light(q, hot, 14.0 if big else 8.0, (900.0 if big else 600.0) * UE, 0.8)
+					st.nodes.append(_flare(hot.lerp(Color.WHITE, 0.4), st.size * (2.4 if big else 1.6), 1.6, 1.0))
 		Job.RAM:
 			st.nodes = [_flare(Color(1.0, 0.6, 0.2), 4.0, 0.0, 1.0)]
 		Job.DECLOAK:

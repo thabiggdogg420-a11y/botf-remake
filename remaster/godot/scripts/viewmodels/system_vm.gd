@@ -267,3 +267,56 @@ func start_megaproject(name_: String) -> bool:
 
 func cancel_megaproject(name_: String) -> bool:
 	return issue({"type": "CancelMegaproject"}, [], "The %s was abandoned." % name_)
+
+# ---------------------------------------------------------------------------------------------
+# Key figures with explanations (docs/UI-DESIGN-SYSTEM.md §8)
+# ---------------------------------------------------------------------------------------------
+## The colony's KPI row: [{icon, cap, value, delta, tone, explain}].
+func kpis() -> Array:
+	var c := colony()
+	var e: Dictionary = c["economy"]
+	var s: Dictionary = c["structures"]
+	var w: Dictionary = c["workers"]
+	var g: Dictionary = c["growth"]
+	var pop := int(c["population"])
+	var food_bal := int(e["food"]) - pop
+	var gtxt := growth_text(g)
+	var fc := forecast_growth()
+	var fe := forecast_economy()
+	var eu := int(e["energyUsed"])
+	var ea := int(e["energyAvailable"])
+	return [
+		{"icon": "population", "cap": "Population", "value": "%d/%d" % [pop, int(c["capacity"])], "delta": "", "tone": "",
+			"explain": {"title": "Population", "value": "%d of %d" % [pop, int(c["capacity"])], "parts": [["Capacity now", str(int(c["capacity"])), ""], ["Capacity when every planet is terraformed", str(int(detail.get("maxCapacity", c["capacity"]))), "good"], ["Change per turn", gtxt, "alert" if int(g.get("max", 0)) < 0 else "good"]],
+				"effect": "A food surplus grows the colony up to capacity; a shortfall shrinks it. Terraforming raises capacity.",
+				"forecast": ("Next turn with the drafted staffing: %s." % forecast_growth_text(fc)) if not fc.is_empty() else ""}},
+		{"icon": "growth", "cap": "Growth", "value": gtxt, "delta": "", "tone": "alert" if int(g.get("max", 0)) < 0 else "good",
+			"explain": {"title": "Growth", "value": gtxt, "effect": "Population change per turn. It needs a food surplus and free capacity.", "forecast": forecast_growth_text(fc) if not fc.is_empty() else ""}},
+		{"icon": "morale", "cap": "Morale", "value": str(int(c["morale"])), "delta": "", "tone": "warn" if int(c["morale"]) < 50 else "",
+			"explain": {"title": "Morale", "value": str(int(c["morale"])), "effect": "Drifts toward 70 each turn. Events, war and conquest move it; under 50 output suffers and unrest can start."}},
+		{"icon": "food", "cap": "Food", "value": str(int(e["food"])), "delta": Fmt.signed(food_bal), "tone": "alert" if int(e["foodDeficit"]) > 0 else "good",
+			"explain": {"title": "Food", "value": "%d produced" % int(e["food"]), "parts": [["Farms", str(int(s["farms"])), ""], ["Farm workers", str(int(w["food"])), ""], ["Eaten (1 per population)", "-%d" % pop, ""], ["Balance", Fmt.signed(food_bal), "alert" if food_bal < 0 else "good"]],
+				"effect": "Each farm worker adds food. A shortfall stops growth, then shrinks the colony.",
+				"forecast": ("Drafted staffing: %s food." % Fmt.signed(int(fe.get("food", 0)) - pop)) if not fe.is_empty() else ""}},
+		{"icon": "industry", "cap": "Industry", "value": str(int(e["industry"])), "delta": "", "tone": "",
+			"explain": {"title": "Industry", "value": "%d per turn" % int(e["industry"]), "parts": [["Factories", str(int(s["factories"])), ""], ["Factory workers", str(int(w["industry"])), ""], ["Unpowered factories", str(int(e["inactiveFactories"])), "warn" if int(e["inactiveFactories"]) > 0 else ""]],
+				"effect": "Builds the first item in the queue each turn. Unpowered factories produce nothing.",
+				"forecast": ("Drafted staffing: %d industry." % int(fe.get("industry", 0))) if not fe.is_empty() else ""}},
+		{"icon": "research", "cap": "Research", "value": str(int(e["research"])), "delta": "", "tone": "info",
+			"explain": {"title": "Research", "value": "%d per turn" % int(e["research"]), "parts": [["Laboratories", str(int(s["laboratories"])), ""], ["Lab workers", str(int(w["research"])), ""], ["Unpowered labs", str(int(e["inactiveLabs"])), "warn" if int(e["inactiveLabs"]) > 0 else ""]],
+				"effect": "Pooled across the empire and split by the research allocation.",
+				"forecast": ("Drafted staffing: %d research." % int(fe.get("research", 0))) if not fe.is_empty() else ""}},
+		{"icon": "energy", "cap": "Energy", "value": "%d/%d" % [eu, ea], "delta": "", "tone": "alert" if eu > ea else "",
+			"explain": {"title": "Energy", "value": "%d used of %d" % [eu, ea], "parts": [["Power plants", str(int(s["powerPlants"])), ""], ["Fusion plants", str(int(s.get("fusionPlants", 0))), ""], ["Spare", str(ea - eu), "alert" if ea < eu else "good"]],
+				"effect": "Structures draw power; when demand exceeds supply the last ones go idle. Build power plants to add capacity."}},
+		{"icon": "credits", "cap": "Credits", "value": Fmt.signed(int(e["net"])), "delta": "", "tone": "alert" if int(e["net"]) < 0 else "secondary",
+			"explain": {"title": "Colony credits", "value": Fmt.signed(int(e["net"])) + " per turn", "parts": [["Income", "+%d" % int(e["income"]), "good"], ["Structure upkeep", "-%d" % int(e["upkeep"]), "alert"]],
+				"effect": "Net credits this colony adds to the treasury each turn. Every structure costs upkeep."}},
+	]
+
+## Planet explanation for the orrery.
+static func planet_explain(p: Dictionary) -> Dictionary:
+	var parts := [["Supports now", str(int(p["capacity"])), ""], ["When terraformed", str(int(p["maxCapacity"])), "good"]]
+	if int(p.get("terraformNeeded", 0)) > 0:
+		parts.append(["Terraforming", "%d/%d work" % [int(p["terraformWork"]), int(p["terraformNeeded"])], "info"])
+	return {"title": str(p["name"]), "value": str(p.get("className", "")), "parts": parts, "effect": "State: %s. Terraforming raises the population it supports." % str(p.get("terraformState", ""))}

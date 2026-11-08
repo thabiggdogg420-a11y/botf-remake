@@ -80,7 +80,7 @@ func _pane_tab(id: String, text: String) -> Button:
 
 func _race_list() -> Control:
 	var contacted := vm.contacted()
-	var f := Lcars.frame("Known powers", "%d contacted" % (contacted.size() + d["minors"].size()), "primary")
+	var f := Lcars.frame("Known powers", "%d contacted" % (contacted.size() + d["minors"].size()), "primary", "diplomacy")
 	f.custom_minimum_size.x = 440
 	var b := Lcars.body(f)
 	var list := Lcars.vbox(4)
@@ -282,6 +282,36 @@ func _news() -> Control:
 	return f
 
 # ---------------------------------------------------------------------------------------------
+## The hail panel (docs/UI-DESIGN-SYSTEM.md §5): a viewscreen with the race's portrait slot (lane L7's art when
+## present, else the emblem card), the name strip and the standing. Hail opens Negotiate.
+func _hail(name_: String, tid: int, is_minor: bool, rel: Dictionary, minor: Dictionary) -> Control:
+	var p := PanelContainer.new()
+	p.name = "HailPanel"
+	var sb := Lcars.box(Color(0, 0, 0, 0.6), UiTokens.radius(), Color(Lcars.accent(), 0.5), 2, Vector4(8, 8, 8, 8))
+	p.add_theme_stylebox_override("panel", sb)
+	var v := Lcars.vbox(6)
+	p.add_child(v)
+	var key := PortraitSlot.minor_key(name_) if is_minor else ""
+	var ps := PortraitSlot.make(0 if is_minor else tid, Vector2(300, 170), key, name_)
+	ps.name = "Portrait"
+	v.add_child(ps)
+	var row := Lcars.hbox(6)
+	var st := "Independent"
+	var tone := "dim"
+	if not rel.is_empty():
+		st = "At war" if rel.get("atWar", false) else ("Allied" if rel.get("allied", false) else "At peace")
+		tone = "alert" if rel.get("atWar", false) else "good"
+	elif not minor.is_empty() and int(minor.get("memberOf", 0)) != 0:
+		st = "Member world"
+		tone = "primary"
+	row.add_child(Lcars.badge(st, tone))
+	row.add_child(Lcars.spacer())
+	var hail := Lcars.pill("Hail", "secondary", func(): dossier_tab = "propose"; refresh(), "" if not rel.get("eliminated", false) else "No one answers", "Open a channel and negotiate")
+	hail.name = "Hail"
+	row.add_child(hail)
+	v.add_child(row)
+	return p
+
 func _dossier() -> Control:
 	var v := app.view
 	var ds := vm.dossier()
@@ -303,11 +333,8 @@ func _dossier() -> Control:
 		tg.name = "Dossier_" + id
 		tabs.add_child(tg)
 	b.add_child(tabs)
-	var head := Lcars.hbox(16)
-	if is_minor:
-		head.add_child(Lcars.label("◇", "", 56, Color("#d8c3ff")))
-	else:
-		head.add_child(Lcars.emblem(tid, 64))
+	var head := Lcars.hbox(18)
+	head.add_child(_hail(name_, tid, is_minor, rel, minor))
 	var hm := Lcars.vbox(6)
 	hm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var badges := HFlowContainer.new()
@@ -334,11 +361,17 @@ func _dossier() -> Control:
 		badges.add_child(Lcars.badge("%s%s" % [t["typeName"], (" · %dT left" % int(t["turnsRemaining"])) if int(t["turnsRemaining"]) >= 0 else ""], "secondary"))
 	hm.add_child(badges)
 	if not rel.get("eliminated", false):
-		var tr := Lcars.hbox(8)
-		tr.add_child(Lcars.caption("Relations" if is_minor else "Trust"))
+		var tr := Lcars.hbox(14)
 		var val := int(rel.get("trust", minor.get("attitude", 0)))
-		tr.add_child(Lcars.meter(val, 100, Lcars.ALERT if rel.get("atWar", false) else Lcars.GOOD, 8))
-		tr.add_child(Lcars.label(str(val), "Mono", 16))
+		var mem: Dictionary = rel.get("memory", {})
+		tr.add_child(RingGauge.make(96, val, 100, Lcars.ALERT if rel.get("atWar", false) else (Lcars.GOOD if val >= 50 else Lcars.WARN), str(val), "RELATIONS" if is_minor else "TRUST",
+			{"title": "Relations" if is_minor else "Trust", "value": "%d of 100" % val, "parts": [["Their grievances", str(int(mem.get("theirGrievances", 0))), "alert"], ["Our grievances", str(int(mem.get("ourGrievances", 0))), ""], ["Their betrayals", str(int(mem.get("theirBetrayals", 0))), "alert"]] if not is_minor else [],
+				"effect": "Gifts, kept treaties and shared enemies raise it; demands, broken treaties and border incursions lower it. Proposals need enough of it to be accepted."}))
+		var tl := Lcars.vbox(2)
+		tl.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		tl.add_child(Lcars.caption("Relations" if is_minor else "Trust"))
+		tl.add_child(Lcars.label("Warm" if val >= 70 else ("Cordial" if val >= 50 else ("Cool" if val >= 30 else "Hostile")), "", 26, Lcars.TEXT))
+		tr.add_child(tl)
 		hm.add_child(tr)
 	head.add_child(hm)
 	b.add_child(head)

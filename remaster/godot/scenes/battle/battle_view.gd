@@ -92,8 +92,10 @@ func _show_deployment(e: Dictionary) -> void:
 			var side: bool = s.get("mine", false)
 			var c: Vector2 = sum[side] / maxf(1, n[side])
 			var at := {"x": c.x, "y": c.y}
-			ships.append({"id": s.get("id", 0), "owner": s.get("owner", 0), "hullBefore": s.get("hull", 1),
-				"shieldBefore": s.get("shields", 0), "from": at, "to": at, "yaw": 0.0, "startsCloaked": true})
+			# A sensor ghost reports hull -1; round_ship_info drops hull <= 0, so it was never built here and round 1
+			# instanced the whole cloaked side on its first frame (M1 profile, 24v24: 70 ms sync, 334 ms worst frame).
+			ships.append({"id": s.get("id", 0), "owner": s.get("owner", 0), "hullBefore": maxi(1, int(s.get("hull", 1))),
+				"shieldBefore": maxi(0, int(s.get("shields", 0))), "from": at, "to": at, "yaw": 0.0, "startsCloaked": true})
 	if ships.is_empty():
 		return
 	var staged := e.duplicate()

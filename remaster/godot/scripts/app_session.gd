@@ -26,10 +26,40 @@ static func create(backend: String = "auto") -> AppSession:
 	s.connect_core(CoreClient.create(backend))
 	return s
 
+## The content pack every client boot installs (docs/DATA-FORMAT.md section 10). The core never opens files: the client reads
+## the pack through AppLoader and hands the bytes to `loadContent`. verify.ps1 and the export presets put it in the pck.
+const BASE_PACK := "res://data/base.pack.json"
+
+## Identity of the installed pack ({id, name, revision, checksum, bytes, base}); {} when none was loaded.
+var content: Dictionary = {}
+## "" when the pack loaded, else why not (the core then keeps the base content it embeds).
+var content_note := ""
+
 func connect_core(c: CoreClient) -> void:
 	core = c
+	load_content()
 	var m: Variant = core.request("meta")
 	meta = m if m is Dictionary else {}
+
+## Reads a content pack through AppLoader and installs it in the core (`loadContent`). The base pack is byte-identical to the
+## content the core embeds, so a missing file (a bare checkout that never ran verify.ps1) or a refusal leaves the embedded base
+## in place and is recorded in `content_note`. Call before a campaign starts or a save loads.
+func load_content(path: String = BASE_PACK) -> Dictionary:
+	content = {}
+	var bundle := AppLoader.text(path)
+	if bundle == "":
+		content_note = "no content pack at %s; the core keeps its embedded base content" % path
+		print("content: ", content_note)
+		return content
+	var r := core.invoke("loadContent", {"bundle": bundle})
+	if not r.get("ok", false):
+		content_note = "loadContent refused %s: %s" % [path, core.last_error]
+		push_warning("content: " + content_note)
+		return content
+	content = r["result"] if r.get("result") is Dictionary else {}
+	content_note = ""
+	print("content: %s r%s %s (%s bytes) via %s" % [content.get("id", "?"), content.get("revision", "?"), content.get("checksum", ""), content.get("bytes", "?"), core.backend])
+	return content
 
 # ---------------------------------------------------------------------------------------------
 # Reads

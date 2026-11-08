@@ -23,8 +23,8 @@ Mods and Remakes:
 ## 2. Modern Target
 
 1. **Expanded 223-Ship Canon Roster:**
-   - Full integration of 223 ship records (125 legacy reference records plus 98 expanded roster classes in `ShipRosterData.h`), categorized into eight canon eras (Enterprise, TOS, Movie, TNG, Dominion War, Nemesis, Kelvin, and Future) (`ShipRosterData.h:30-310`, `ShipRoster.h`).
-   - 43 buildable canon classes in the Remastered preset with authentic weapon mounts, firing arcs, warp speeds, and sensor ratings (`ShipRosterTypes.h:40-85`).
+   - Full integration of 223 ship records (125 legacy reference records in `remaster/data/base/ships.json` plus 98 expanded roster classes in `remaster/data/base/roster.json`), categorized into eight canon eras (Enterprise, TOS, Movie, TNG, Dominion War, Nemesis, Kelvin, and Future) (`ShipRoster.h:22-45`, `docs/DATA-FORMAT.md`).
+   - 43 buildable canon classes in the Remastered preset with authentic weapon mounts, firing arcs, warp speeds, and sensor ratings (`ShipRosterTypes.h:10-75`).
 2. **Comprehensive Strategic Order Palette:**
    - *Set Course:* Warp transit to target sector with calculated pathfinding around hazards.
    - *Attack / Engage:* Aggressive pursuit and engagement of hostile fleets or starbases.
@@ -39,7 +39,7 @@ Mods and Remakes:
    - Crew rank ladder: Green (+0%), Regular (+5% accuracy/evasion), Veteran (+10%), Elite (+15%), Legendary (+20% accuracy/evasion, +10% critical resistance).
    - Combat engagements, surviving hull damage, and training academies grant crew experience points (`Simulation.h:Ship::crewExperience`).
 4. **Logistics, Supply Lines and Allied Basing:**
-   - Supply networks projected from Colonies (radius 3), Outposts (radius 3), and Starbases (radius 5) (`Stations.cpp:120-160`).
+   - Supply networks projected from Colonies (radius 3), Outposts (radius 3), and Starbases (radius 5) (`Stations.cpp:1-25, 352, 705`).
    - Allied empires with Affiliation or Alliance treaties share supply networks, enabling forward staging operations (`Diplomacy.h:alliedSupply`).
    - Ships stranded "Out of Supply" suffer 50% movement reduction and face random warp engine breakdown chances.
 5. **Carrier Small Craft Wings:**
@@ -47,10 +47,18 @@ Mods and Remakes:
 6. **3D Ship Detail Viewer:**
    - Interactive 3D inspection module in the Fleets screen displaying real-time hull integrity, shield quadrant status, hardpoint arcs, and crew manifest.
 
-## 3. Player-Facing Surfaces (Screens and Scenes)
+## 3. Web-Build Consequences
+
+In compliance with `docs/M0-LANES.md` ("Browser target") and `docs/ART-BIBLE.md` §12:
+- **Renderer Fallback (Forward+ vs Compatibility/WebGL2):** Desktop utilizes Forward+ with clustered lighting and high-poly hero meshes. On Web (Compatibility), the 3D ship viewer and strategic fleet meshes render under WebGL2; classes lacking reduced hero models fall back to procedural geometry (`ship_factory.gd`, `hull.gdshader`) with ~4k tris and zero download overhead. Secondary fill and rim lights run unshadowed.
+- **Budgets:** Ship hero hulls are strictly budgeted for web: LOD0 12k to 45k tris by size tier, 2 LOD levels (1.0 and 0.25), textures atlased (Base Color 1024, ORM 1024, Emissive 512, normal maps dropped for hulls under 200m), compressed via ETC2/ASTC. Download size: 0.9 to 2.2 MB per hull tier. Ships load via lazily fetched per-empire packs (≤100 MB per empire).
+- **No Disk Paths at Runtime:** Ship records load from `data/base/ships.json` and `data/base/roster.json` handed to core as byte buffers (`referenceData::ShipCatalogue`, `roster::ExpandedRoster`, `ShipRoster.h:22-45`). Models load via `res://` packs. No access to `$BOTF_*` env vars or `LocalAssets` at runtime.
+- **Saves:** Fleet coordinates, task force hierarchies, strategic orders, and crew experience points serialize to `user://`, mapping to IndexedDB on the web target.
+
+## 4. Player-Facing Surfaces (Screens and Scenes)
 
 - `remaster/godot/scenes/ui/screens/fleets_screen.gd`:
-  - Hierarchical Task Force registry organized by sector and operational posture.
+  - Hierarchical Task Force registry organized by sector and operational posture (`fleets_vm.gd`).
   - Stance toggles: Aggressive, Balanced, Defensive, Withdraw.
   - Interactive 3D Ship Inspector sub-viewport showing 3D hull, weapon hardpoints, and crew rank insignia.
   - Split / Merge Task Force controls.
@@ -60,37 +68,37 @@ Mods and Remakes:
 - `remaster/godot/scenes/galaxy/orders.gd`:
   - Contextual right-click menu with core validation strings for disabled orders (`orders.gd:40-120`).
 
-## 4. Core Changes (Naming Files)
+## 5. Core Changes (Naming Files)
 
 - `remaster/game/Source/BotfSim/Simulation.h`:
-  - Extend `Ship` struct with `int32_t crewExperience`, `CrewRank crewRank`, `int32_t taskForceId`, `CarrierWing carrierWing`.
+  - Extend `Ship` struct with `int32_t crewExperience`, `CrewRank crewRank`, `int32_t taskForceId`, `CarrierWing carrierWing` (`Simulation.h:150-165`).
   - Add `FleetOrder` enum (`ORDER_MOVE`, `ORDER_ATTACK`, `ORDER_INTERCEPT`, `ORDER_RAID`, `ORDER_PATROL`, `ORDER_DEFEND`, `ORDER_REDEPLOY`, `ORDER_COLONIZE`, `ORDER_TERRAFORM`, `ORDER_BUILD_STATION`, `ORDER_INVADE`).
 - `remaster/game/Source/BotfSim/Simulation.cpp`:
-  - Implement `executeStrategicOrders()` (lines 3200–3500) resolving Intercept triggers, Raid income siphoning, and Redeploy movement speed modifiers.
-  - In `advance()` (lines 1400–1450), award crew experience to combat survivors and apply academy training points.
-  - Update `supplyRange()` calculation to integrate allied treaty sharing (`Simulation.cpp:1820-1880`).
+  - Implement `executeStrategicOrders()` (`Simulation.cpp:1109-1135, 3200-3500`) resolving Intercept triggers, Raid income siphoning, and Redeploy movement speed modifiers.
+  - In `advance()` (`Simulation.cpp:1400-1450`), award crew experience to combat survivors and apply academy training points.
+  - Update `supplyRange()` calculation to integrate allied treaty sharing (`Simulation.cpp:3771`).
 - `remaster/game/Source/BotfSim/Stations.cpp`:
-  - Manage Outpost-to-Starbase upgrade orders and station repair dock capabilities (`Stations.cpp:130-195`).
+  - Manage Outpost-to-Starbase upgrade orders and station repair dock capabilities (`Stations.cpp:1-25, 246, 705`).
 - `remaster/tests/scenarios/ShipRosterTests.cpp`:
   - Add verification suites for crew promotion thresholds, intercept order dispatch, and carrier wing deployment.
 
-## 5. Client Changes
+## 6. Client Changes
 
 - `remaster/godot/scenes/ui/screens/fleets_screen.gd`:
-  - Refactor to consume `res://scripts/viewmodels/fleets_viewmodel.gd`.
+  - Refactor to consume `res://scripts/viewmodels/fleets_vm.gd`.
   - Embed 3D model turntable allowing 360-degree rotation of selected starships with weapon hardpoint highlights.
 - `remaster/godot/scenes/galaxy/orders.gd`:
   - Bind client input handlers for Intercept, Raid, Defend, and Redeploy.
   - Render intercept radar circles on hover over friendly task forces.
 
-## 6. Content and Art Needs (by Asset Key)
+## 7. Content and Art Needs (by Asset Key)
 
 - 159 Ship Model Asset Keys: `ship.<faction>.<class>` (e.g., `ship.fed.defiant`, `ship.fed.galaxy`, `ship.fed.sovereign`, `ship.kli.b_rel`, `ship.kli.k_tinga`, `ship.kli.negh_var`, `ship.rom.d_deridex`, `ship.car.galor`, `ship.fer.d_kora`).
 - Small Craft Models: `ship.fed.peregrine`, `ship.fed.runabout`, `ship.kli.to_duj`, `ship.car.hideki`.
 - Station Models: `ship.fed.starbase`, `ship.kli.starbase`, `ship.rom.starbase`, `ship.car.starbase`, `ship.neutral.outpost`.
 - Rank Insignia Icons: `ui.icon.rank.green`, `ui.icon.rank.regular`, `ui.icon.rank.veteran`, `ui.icon.rank.elite`, `ui.icon.rank.legendary`.
 
-## 7. Acceptance Tests
+## 8. Acceptance Tests
 
 1. **Strategic Intercept Order:**
    - Station a Federation task force with 2 *Defiant*-class escorts in Sector 04-04 and set order to "Intercept".
@@ -108,8 +116,11 @@ Mods and Remakes:
 5. **3D Ship Detail Inspector:**
    - Open Fleets screen, select a *Galaxy*-class explorer; rotate the 3D model; toggle weapon arc overlays.
    - Verify forward phaser array and photon torpedo launcher hardpoints highlight in matching LCARS colors.
+6. **Web Compatibility & Memory Budget Verification:**
+   - Run Fleets screen in a WebGL2 browser export. Inspect hero hulls under the 2-LOD web budget.
+   - Verify memory footprint remains within web allocation and fleet data loads cleanly from `data/base/*.json` via `res://` packs without disk errors.
 
-## 8. M1 Vertical-Slice Subset
+## 9. M1 Vertical-Slice Subset
 
 For the M1 vertical slice:
 - Federation roster: Constitution, Miranda, Defiant classes, Troop Transport, and Starbase.

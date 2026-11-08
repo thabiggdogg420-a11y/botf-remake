@@ -26,6 +26,45 @@ var preset := "remastered"
 var seed_value := 0
 var events := true
 var aggression := true
+## WS02 options (docs/design/WS02-GALAXY-AND-STRATEGIC-MAP.md §1-2). The core's newCampaign does not read these yet
+## (web/bridge/WebBridge.cpp newCampaign reads faction, empires, seed, era, ruleset, size, preset, events,
+## aiAggression); they are passed through so the generator lane can pick them up, and the screen marks them.
+var shape := "spiral"
+var minor_density := "some"
+var difficulty := "normal"
+## The UI era look (docs/UI-DESIGN-SYSTEM.md §2.3), stored in settings.uiEra at launch.
+var ui_era := "tng"
+
+const SHAPES := [
+	{"id": "spiral", "label": "Spiral", "blurb": "Three arms around a bright core; borders form along the arms."},
+	{"id": "ring", "label": "Ring", "blurb": "A band of stars around an empty centre; every empire has two neighbours."},
+	{"id": "irregular", "label": "Irregular", "blurb": "Clumps and voids; chokepoints decide wars."},
+	{"id": "elliptical", "label": "Elliptical", "blurb": "An even oval; open borders, early contact."},
+]
+const DENSITIES := [
+	{"id": "none", "label": "None", "share": 0.0}, {"id": "few", "label": "Few", "share": 0.12},
+	{"id": "some", "label": "Some", "share": 0.2}, {"id": "many", "label": "Many", "share": 0.3},
+]
+const DIFFICULTIES := [
+	{"id": "simple", "label": "Simple", "blurb": "Rivals expand slowly and forgive."},
+	{"id": "easy", "label": "Easy", "blurb": "Rivals are cautious."},
+	{"id": "normal", "label": "Normal", "blurb": "The reference balance."},
+	{"id": "hard", "label": "Hard", "blurb": "Rivals build their best ships and press their advantage."},
+	{"id": "impossible", "label": "Impossible", "blurb": "Rivals start ahead and never let up."},
+]
+## Option keys the core reads today; the others show a "generator pending" mark.
+const CORE_READS := ["faction", "empires", "seed", "era", "ruleset", "width", "height", "systems", "events", "aiAggression", "preset"]
+
+static func core_reads(key: String) -> bool:
+	return key in CORE_READS
+
+## Minor races the density gives on this size (capped at 29, the original's limit; WS02 §1).
+func minors_count() -> int:
+	var share := 0.2
+	for d in DENSITIES:
+		if d["id"] == minor_density:
+			share = float(d["share"])
+	return mini(29, int(round(int(size_def()["systems"]) * share)))
 
 func roll_seed() -> void:
 	seed_value = randi_range(100000, 999999)
@@ -44,7 +83,8 @@ func pick_faction(id: int) -> void:
 func options() -> Dictionary:
 	var sz := size_def()
 	return {"faction": faction, "empires": powers(), "seed": seed_value, "era": era, "ruleset": ruleset,
-		"width": sz["width"], "height": sz["height"], "systems": sz["systems"], "events": events, "aiAggression": aggression, "preset": preset}
+		"width": sz["width"], "height": sz["height"], "systems": sz["systems"], "events": events, "aiAggression": aggression, "preset": preset,
+		"shape": shape, "minorDensity": minor_density, "difficulty": difficulty}
 
 ## Era buttons: [{id, name, level, blurb}].
 func eras() -> Array:
@@ -68,4 +108,5 @@ func summary() -> Array:
 	var o := options()
 	return ["%d major powers · %d systems · %dx%d sectors" % [o["empires"], o["systems"], o["width"], o["height"]],
 		"%s era · %s rules · %s gameplay" % [era_name(), ruleset, preset.capitalize()],
+		"%s galaxy · %s minor races (%d) · %s difficulty" % [shape.capitalize(), minor_density, minors_count(), difficulty.capitalize()],
 		"Seed %d%s%s" % [seed_value, " · events" if events else "", " · aggressive AI" if aggression else ""]]

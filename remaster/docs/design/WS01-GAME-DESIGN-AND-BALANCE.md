@@ -19,27 +19,36 @@ Modifications introduced by the community altered several dynamics:
 
 ## 2. Modern Target
 
-The modern ruleset preserves the integer-only deterministic simulation core implemented in `remaster/game/Source/BotfSim/Rules.cpp:44-58` and `Simulation.cpp:3900-4200`, ensuring cross-platform lockstep equivalence between Native MSVC and WebAssembly targets (`tests/scenarios/SimulationTests.cpp`, `test_fixture_determinism`).
+The modern ruleset preserves the integer-only deterministic simulation core implemented in `remaster/game/Source/BotfSim/Rules.cpp:120-135, 401-408` and `Simulation.cpp:3906-4200`, ensuring cross-platform lockstep equivalence between Native MSVC and WebAssembly targets (`remaster/tests/scenarios/SimulationTests.cpp`, `test_fixture_determinism`).
 
 Key enhancements:
 1. **Campaign Presets:**
-   - **Classic Preset:** Enforces vanilla 1999 mechanics, original random event rates, standard tech ladders, and legacy victory rules (`Rules.cpp:49-51`).
-   - **Remastered Preset (Default):** Activates outposts/starbases, galactic anomalies, 14-card curated event deck, and expanded alternative victories (`Rules.cpp:46-48`).
+   - **Classic Preset:** Enforces vanilla 1999 mechanics, original random event rates, standard tech ladders, and legacy victory rules (`Rules.cpp:123-140`).
+   - **Remastered Preset (Default):** Activates outposts/starbases, galactic anomalies, 14-card curated event deck, and expanded alternative victories (`Rules.cpp:123-130`).
 2. **Settled Victory Thresholds:**
-   - **Domination:** Solo control of 60% of total galaxy population and colonized systems, or 75% for an allied bloc, evaluated after turn 150 (`Victory.cpp:15-40`).
+   - **Domination:** Solo control of 60% of total galaxy population and colonized systems, or 75% for an allied bloc, evaluated after turn 150 (`Victory.cpp:1-40, 232`).
    - **Conquest:** Complete military subjugation or elimination of all rival major powers.
-   - **Scientific Victory:** Reach Level 10 across all six research disciplines and construct the empire-specific megaproject (e.g., Federation Daystrom Nexus, Klingon Ty'Gokor Tactical Array) (`Victory.cpp:42-78`).
-   - **Diplomatic Victory:** Lead a diplomatic coalition controlling ≥66% of the galactic population post-turn 150 (`Victory.cpp:80-112`).
+   - **Scientific Victory:** Reach Level 10 across all six research disciplines and construct the empire-specific megaproject (e.g., Federation Daystrom Nexus, Klingon Ty'Gokor Tactical Array) (`Victory.cpp:42-80`).
+   - **Diplomatic Victory:** Lead a diplomatic coalition controlling ≥66% of the galactic population post-turn 150 (`Victory.cpp:91-130`).
    - **Vendetta Victory:** Eliminate two assigned historical rivals; for the Dominion, assigned rivals are Federation and Klingons.
 3. **Difficulty Modifiers:**
    - *Easy:* AI production and research multiplier at 0.8x.
    - *Normal:* 1.0x baseline.
    - *Hard:* 1.25x multiplier to AI production and research.
    - *Impossible:* 1.5x multiplier to AI production and research.
-   - *Expert (Non-cheating):* 1.0x baseline production with advanced heuristic decision trees and aggressive tactical fleet assembly (`Simulation.h:difficultyModifier`).
+   - *Expert (Non-cheating):* 1.0x baseline production with advanced heuristic decision trees and aggressive tactical fleet assembly (`Simulation.cpp:2552`, `Simulation.h:456`).
 4. **Pacing:** Standard campaign calibrated to 250–350 turns with anti-stall mechanics in late-game diplomacy and conquest.
 
-## 3. Player-Facing Surfaces (Screens and Scenes)
+## 3. Web-Build Consequences
+
+In compliance with `docs/M0-LANES.md` ("Browser target"):
+- **Renderer Fallback:** Game design HUD, LCARS vector frames, and victory modal gauges operate across Desktop (Forward+) and Web (Compatibility/WebGL2) identically. Quality tiers are declared in project settings rather than per-scene scripts, ensuring balance overlays and telemetry render cleanly on WebGL2 without forward-clustered lighting dependencies.
+- **Native Core & Determinism:** The GDExtension simulation core compiles to WebAssembly via Emscripten using Godot's dlink web template alongside the native MSVC DLL. Campaign balance math uses strictly deterministic integer arithmetic, guaranteeing identical campaign state hashes (`fingerprint(next)`) across native and browser builds. Code assumes single-threaded execution unless local server headers provide COOP/COEP isolation.
+- **Budgets & Campaign Limits:** Memory allocation for campaign state is capped for web targets. Galaxy sizes and turn history buffers are budgeted to prevent browser tab memory exhaustion; pacing presets adjust turn retention.
+- **No Disk Paths at Runtime:** Game rules, event card definitions, and balance tables load strictly from memory buffers handed to the core (`ContentBase.generated.h` or `res://data/base.pack.json`). Zero runtime code reaches out to disk paths, `LocalAssets`, or environment variables (`$BOTF_*`).
+- **Saves:** Campaign saves serialize to `user://`, which Godot maps directly to browser IndexedDB on web builds. Game setup menus omit settings that the web environment cannot honour.
+
+## 4. Player-Facing Surfaces (Screens and Scenes)
 
 - `remaster/godot/scenes/ui/screens/new_campaign_screen.gd`:
   - Ruleset selector: `Classic` vs `Remastered`.
@@ -47,40 +56,40 @@ Key enhancements:
   - Victory conditions checklist: toggles for Domination, Conquest, Scientific, Diplomatic, and Vendetta.
   - Campaign pacing setting: Quick (0.75x research/build costs), Standard (1.0x), Epic (1.5x).
 - `remaster/godot/scenes/ui/screens/overlays.gd`:
-  - Victory Progress Modal: Live percentage gauges and requirements breakdown for each victory path (`Victory.cpp:victoryProgress`).
+  - Victory Progress Modal: Live percentage gauges and requirements breakdown for each victory path (`Victory.cpp:232`).
   - Turn Chronicle Modal: Historical milestone tracking.
 - `remaster/godot/scenes/ui/screens/database_screen.gd`:
   - Rules Encyclopedia: In-game manual describing exact formulas for morale, trade, growth, and victory conditions.
 
-## 4. Core Changes (Naming Files)
+## 5. Core Changes (Naming Files)
 
 - `remaster/game/Source/BotfSim/Simulation.h`:
   - Add `DifficultyLevel` enum (`DIFFICULTY_EASY`, `DIFFICULTY_NORMAL`, `DIFFICULTY_HARD`, `DIFFICULTY_IMPOSSIBLE`, `DIFFICULTY_EXPERT`).
   - Add `vendettaTargets[2]` array to `EmpireState` struct.
   - Extend `CampaignSetup` struct to include `difficulty`, `enabledVictoriesMask`, and `pacingMultiplier`.
 - `remaster/game/Source/BotfSim/Rules.cpp`:
-  - In `newCampaign(CampaignSetup)` (around line 120), initialize `vendettaTargets` based on chosen empire and map setup.
+  - In `newCampaign(CampaignSetup)` (`Rules.cpp:401-408`), initialize `vendettaTargets` based on chosen empire and map setup.
   - Register difficulty modifiers into `GameState::difficultyModifier`.
 - `remaster/game/Source/BotfSim/Victory.cpp`:
-  - Implement `checkVendettaVictory(const GameState& state, int empireId)` (`Victory.cpp:85-130`).
-  - Calibrate `checkScientificVictory()` and `checkDiplomaticVictory()` turn 150 threshold gating (`Victory.cpp:32-85`).
+  - Implement `checkVendettaVictory(const GameState& state, int empireId)` (`Victory.cpp:150-160`).
+  - Calibrate `checkScientificVictory()` and `checkDiplomaticVictory()` turn 150 threshold gating (`Victory.cpp:42-130`).
 - `remaster/game/Source/BotfSim/Simulation.cpp`:
-  - Apply `difficultyModifier` to AI yield calculations in `economy()` (line 2850) and `research()` (line 2450).
+  - Apply `difficultyModifier` to AI yield calculations in `economy()` (`Simulation.cpp:1080, 5020`) and `research()` (`Simulation.cpp:2393, 4834`).
 - `remaster/tests/scenarios/RemasterGameplayTests.cpp`:
   - Add unit tests verifying Vendetta victory triggers, Expert non-cheating yield parity, and difficulty multiplier integrity.
 
-## 5. Client Changes
+## 6. Client Changes
 
 - `remaster/godot/scenes/ui/screens/new_campaign_screen.gd`:
   - Bind UI controls for difficulty, victory toggles, and campaign preset.
   - Forward selected parameters to `app.start_campaign()`.
 - `remaster/godot/scenes/ui/app.gd`:
-  - Fix bug where `start_campaign` ignored the `empire` option (`CURRENT-STATE-AUDIT:245`).
-  - Marshall `difficulty` and `ruleset` arguments through GDExtension `botf_core.cpp`.
+  - Fix bug where `start_campaign` ignored the `empire` option (`docs/research/CURRENT-STATE-AUDIT.md:245`).
+  - Marshall `difficulty` and `ruleset` arguments through GDExtension core bridge.
 - `remaster/godot/scenes/ui/screens/overlays.gd`:
   - Display Vendetta rival portraits, alive/eliminated status, and completion meters in `victory_overlay`.
 
-## 6. Content and Art Needs (by Asset Key)
+## 7. Content and Art Needs (by Asset Key)
 
 - `ui.icon.victory.domination`: Vector/texture icon depicting galaxy conquest map.
 - `ui.icon.victory.conquest`: Vector/texture icon depicting crossed phasers / military victory.
@@ -89,7 +98,7 @@ Key enhancements:
 - `ui.icon.victory.vendetta`: Vector/texture icon depicting targeting reticle over rival insignia.
 - `ui.badge.difficulty.<level>`: LCARS difficulty badge indicators for Easy, Normal, Hard, Impossible, Expert.
 
-## 7. Acceptance Tests
+## 8. Acceptance Tests
 
 1. **Empire Setup Passthrough:**
    - Open New Campaign screen, select Klingon Empire, Hard difficulty, and Remastered preset.
@@ -106,8 +115,11 @@ Key enhancements:
    - Verify AI receives exactly 1.0x baseline resource income with zero unearned credits or research points.
 5. **Classic Preset Parity:**
    - Start game with Classic preset; verify anomalous hazards, outposts, and alternative victories are disabled in `GameState::rules`.
+6. **Web Build Determinism & IndexedDB Save Test:**
+   - Launch the game export in a WebGL2 browser. Start a campaign, advance 5 turns, save game.
+   - Inspect IndexedDB storage under `user://` to verify complete save payload. Reload save and verify game state fingerprint matches MSVC native desktop build turn-for-turn.
 
-## 8. M1 Vertical-Slice Subset
+## 9. M1 Vertical-Slice Subset
 
 For the M1 vertical slice (Federation vs Klingon duel on a Small map):
 - Preset locked to `Remastered`.

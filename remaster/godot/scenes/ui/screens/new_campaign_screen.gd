@@ -43,6 +43,9 @@ func options() -> Dictionary:
 	return vm.options()
 
 func start() -> void:
+	if app.settings.get("uiEra", "tng") != vm.ui_era:
+		app.settings["uiEra"] = vm.ui_era
+		app.save_settings()
 	app.start_campaign(vm.options())
 
 func _unhandled_key_input(event: InputEvent) -> void:
@@ -51,13 +54,19 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 		start()
 
+var _preview: GalaxyPreview
+
 func refresh() -> void:
 	for c in get_children():
 		c.queue_free()
+	if app and not _era_read:
+		_era_read = true
+		vm.ui_era = str(app.settings.get("uiEra", "tng"))
+	UiTokens.era = vm.ui_era
 	Lcars.accent_empire = faction
 	app.theme = Lcars.build_theme(faction)
-	var margin := Lcars.screen_margin(self, Vector4(64, 64, 40, 40))
-	var col := Lcars.vbox(22)
+	var margin := Lcars.screen_margin(self, Vector4(48, 48, 28, 28))
+	var col := Lcars.vbox(16)
 	margin.add_child(col)
 	var head := Lcars.hbox(18)
 	head.add_child(Lcars.pill("Back", "ghost", func(): app.goto("title", false), "", "", "Esc"))
@@ -66,32 +75,61 @@ func refresh() -> void:
 	sub.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	head.add_child(sub)
 	col.add_child(head)
-	# Faction cards
-	var cards := Lcars.hbox(16)
+	var cards := Lcars.hbox(14)
 	col.add_child(cards)
 	for f in Lcars.FACTIONS:
 		cards.add_child(_faction_card(f))
-	# Options
-	var opts := Lcars.hbox(20)
+	var opts := Lcars.hbox(16)
+	opts.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	col.add_child(opts)
-	var galaxy := Lcars.frame("Galaxy", "size, powers, seed", "secondary")
-	galaxy.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	opts.add_child(galaxy)
+	opts.add_child(_galaxy_panel())
+	opts.add_child(_preview_panel())
+	opts.add_child(_rules_column())
+	Motion.stagger(opts)
+
+var _era_read := false
+
+## A row of ghost toggles under a caption; marks the option when the core does not read it yet.
+func _choice_row(cap: String, items: Array, current: String, on_pick: Callable, core_key: String = "", min_w: int = 0) -> Control:
+	var box := Lcars.vbox(5)
+	var ch := Lcars.hbox(8)
+	ch.add_child(Lcars.caption(cap))
+	if core_key != "" and not NewCampaignVM.core_reads(core_key):
+		var bd := Lcars.badge("generator pending", "warn")
+		bd.tooltip_text = "The rules core does not read this option yet (WS02 generator work). It is saved with the campaign options and drawn in the preview."
+		bd.mouse_filter = Control.MOUSE_FILTER_PASS
+		ch.add_child(bd)
+	box.add_child(ch)
+	var row := HFlowContainer.new()
+	row.add_theme_constant_override("h_separation", 6)
+	row.add_theme_constant_override("v_separation", 6)
+	for it in items:
+		var id: String = str(it[0])
+		var t := Lcars.toggle(it[1], current == id, func(_on): on_pick.call(id), it[2] if it.size() > 2 else "")
+		if min_w > 0:
+			t.custom_minimum_size.x = min_w
+		if it.size() > 3:
+			t.name = it[3]
+		row.add_child(t)
+	box.add_child(row)
+	return box
+
+func _galaxy_panel() -> Control:
+	var galaxy := Lcars.frame("Galaxy", "shape, size, races", "secondary", "galaxy")
+	galaxy.custom_minimum_size.x = 430
 	var gb := Lcars.body(galaxy)
-	var sizes := Lcars.hbox(8)
-	for s in SIZES:
-		var sid: String = s["id"]
-		sizes.add_child(Lcars.toggle(s["label"], size_id == sid, func(_on): size_id = sid; refresh(), "%dx%d sectors, %d star systems. %s" % [s["width"], s["height"], s["systems"], s["blurb"]]))
-	gb.add_child(sizes)
-	gb.add_child(Lcars.caption("Powers in play"))
-	var pw := Lcars.hbox(8)
+	gb.add_theme_constant_override("separation", 14)
+	gb.add_child(_choice_row("Shape", NewCampaignVM.SHAPES.map(func(s): return [s["id"], s["label"], s["blurb"]]), vm.shape, func(id): vm.shape = id; refresh(), "shape"))
+	gb.add_child(_choice_row("Size", SIZES.map(func(s): return [s["id"], s["label"], "%dx%d sectors, %d star systems. %s" % [s["width"], s["height"], s["systems"], s["blurb"]]]), size_id, func(id): size_id = id; refresh(), "systems"))
+	gb.add_child(_choice_row("Minor races", NewCampaignVM.DENSITIES.map(func(d): return [d["id"], d["label"], "About %d%% of systems hold a minor race (at most 29)." % int(float(d["share"]) * 100)]), vm.minor_density, func(id): vm.minor_density = id; refresh(), "minorDensity"))
+	var pw_items := []
 	for n in [2, 3, 4, 5]:
-		var t := Lcars.toggle(str(n), vm.powers() == n, func(_on): empires = n; refresh(), "%d major powers compete." % n)
-		t.custom_minimum_size.x = 56
-		if n < faction:
-			t.disabled = true
-			t.tooltip_text = "Powers join in canonical order (Federation, Klingon, Romulan, Cardassian, Ferengi)."
-		pw.add_child(t)
+		pw_items.append([str(n), str(n), "%d major powers compete." % n])
+	var pw := _choice_row("Powers in play", pw_items, str(vm.powers()), func(id): empires = int(id); refresh(), "empires", 56)
+	for t in pw.find_children("*", "Button", true, false):
+		if int((t as Button).text) < faction:
+			(t as Button).disabled = true
+			(t as Button).tooltip_text = "Powers join in canonical order (Federation, Klingon, Romulan, Cardassian, Ferengi)."
 	gb.add_child(pw)
 	gb.add_child(Lcars.caption("Seed"))
 	var sr := Lcars.hbox(8)
@@ -99,72 +137,100 @@ func refresh() -> void:
 	seed_edit.max_value = 99999999
 	seed_edit.value = seed_value
 	seed_edit.custom_minimum_size.x = 180
-	seed_edit.value_changed.connect(func(v): seed_value = int(v))
+	seed_edit.value_changed.connect(func(v): seed_value = int(v); _update_preview())
 	seed_edit.name = "Seed"
 	sr.add_child(seed_edit)
 	sr.add_child(Lcars.pill("Randomise", "ghost", func(): vm.roll_seed(); refresh(), "", "Roll a new galaxy"))
 	gb.add_child(sr)
-	var rules := Lcars.frame("Era & rules", "technology and gameplay", "tertiary")
-	rules.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	opts.add_child(rules)
+	return galaxy
+
+func _preview_panel() -> Control:
+	var f := Lcars.frame("Preview", "%s · %d systems" % [vm.shape, int(vm.size_def()["systems"])], "primary", "star")
+	f.name = "GalaxyPreviewPanel"
+	f.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var b := Lcars.body(f)
+	_preview = GalaxyPreview.new()
+	_preview.name = "GalaxyPreview"
+	_preview.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_preview.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_preview.custom_minimum_size = Vector2(420, 300)
+	b.add_child(_preview)
+	_update_preview()
+	var stats := Lcars.hbox(10)
+	var sz := vm.size_def()
+	for st in [["empire", "Powers", str(vm.powers()), "Major powers in play."], ["star", "Systems", str(int(sz["systems"])), "Star systems the galaxy holds."], ["galaxy", "Sectors", "%dx%d" % [int(sz["width"]), int(sz["height"])], "The map's sector grid."], ["population", "Minor races", str(vm.minors_count()), "Estimated from the density: about %s of systems." % vm.minor_density]]:
+		var t := Lcars.kpi(st[0], st[1], st[2], "", "", {"title": st[1], "value": st[2], "effect": st[3]})
+		t.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		t.custom_minimum_size.x = 0
+		stats.add_child(t)
+	b.add_child(stats)
+	var leg := Lcars.hbox(16)
+	for e in range(1, vm.powers() + 1):
+		var it := Lcars.hbox(6)
+		it.add_child(Lcars.emblem(e, 16))
+		it.add_child(Lcars.label(Lcars.FACTIONS[e - 1]["short"], "Muted", 13))
+		leg.add_child(it)
+	var mi := Lcars.hbox(6)
+	mi.add_child(Lcars.label("○", "", 14, Lcars.TEXT2))
+	mi.add_child(Lcars.label("Minor race", "Muted", 13))
+	leg.add_child(mi)
+	b.add_child(leg)
+	return f
+
+func _update_preview() -> void:
+	if _preview:
+		_preview.configure(vm.shape, seed_value, int(vm.size_def()["systems"]), vm.powers(), vm.minors_count(), faction)
+
+func _rules_column() -> Control:
+	var colr := Lcars.vbox(14)
+	colr.custom_minimum_size.x = 470
+	var rules := Lcars.frame("Rules", "difficulty, era, look", "tertiary", "settings")
+	rules.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	var rb := Lcars.body(rules)
-	var eras := Lcars.hbox(6)
-	for e in vm.eras():
-		var eid := int(e["id"])
-		var lvl := int(e["level"])
-		var t2 := Lcars.toggle("%s  T%d" % [e["name"], lvl], era == eid, func(_on): era = eid; refresh(), "%s\nStarting technology level %d in every field." % [e["blurb"], lvl])
-		eras.add_child(t2)
-	rb.add_child(eras)
-	var rs := Lcars.hbox(8)
-	rs.add_child(Lcars.toggle("Reference rules", ruleset == "reference", func(_on): ruleset = "reference"; refresh(), "Reference catalogue ships and technologies, planets & terraforming, task forces, modern diplomacy and intelligence."))
-	rs.add_child(Lcars.toggle("Prototype rules", ruleset == "prototype", func(_on): ruleset = "prototype"; refresh(), "The original compact prototype ruleset with generic hulls."))
-	rb.add_child(rs)
-	rb.add_child(Lcars.caption("Gameplay"))
-	var ps := Lcars.hbox(8)
-	var rem := Lcars.toggle("Remastered", preset == "remastered", func(_on): preset = "remastered"; refresh(), "Outposts and starbases, nebulae, wormholes, black holes, neutron stars, ion storms, curated galactic events and four paths to victory.")
-	rem.name = "PresetRemastered"
-	ps.add_child(rem)
-	var cls := Lcars.toggle("Classic", preset == "classic", func(_on): preset = "classic"; refresh(), "Original-like: stations, the original random events, conquest or domination victories only. No anomalies.")
-	cls.name = "PresetClassic"
-	ps.add_child(cls)
-	rb.add_child(ps)
-	rb.add_child(Lcars.para("Anomalies, galactic events with choices, stations and four paths to victory." if preset == "remastered" else "Close to the 1999 original: stations, simple random events, conquest or domination.", Lcars.TEXT3, 14))
+	rb.add_theme_constant_override("separation", 12)
+	rb.add_child(_choice_row("Difficulty", NewCampaignVM.DIFFICULTIES.map(func(d): return [d["id"], d["label"], d["blurb"]]), vm.difficulty, func(id): vm.difficulty = id; refresh(), "difficulty"))
+	rb.add_child(_choice_row("Starting era", vm.eras().map(func(e): return [str(e["id"]), "%s T%d" % [e["name"], int(e["level"])], "%s\nStarting technology level %d in every field." % [e["blurb"], int(e["level"])]]), str(era), func(id): era = int(id); refresh(), "era"))
+	rb.add_child(_choice_row("Ruleset", [["reference", "Reference", "Reference catalogue ships and technologies, planets & terraforming, task forces, modern diplomacy and intelligence."], ["prototype", "Prototype", "The original compact prototype ruleset with generic hulls."]], ruleset, func(id): ruleset = id; refresh(), "ruleset"))
+	rb.add_child(_choice_row("Gameplay", [["remastered", "Remastered", "Outposts and starbases, nebulae, wormholes, black holes, neutron stars, ion storms, curated galactic events and four paths to victory.", "PresetRemastered"], ["classic", "Classic", "Original-like: stations, the original random events, conquest or domination victories only. No anomalies.", "PresetClassic"]], preset, func(id): preset = id; refresh(), "preset"))
 	var tg := Lcars.hbox(18)
 	var ev := CheckBox.new()
 	ev.text = "Galactic events" if preset == "remastered" else "Random events"
 	ev.button_pressed = events
+	ev.tooltip_text = "Events on or off: galactic events with choices (Remastered) or the original random events (Classic)."
 	ev.toggled.connect(func(on): events = on)
 	tg.add_child(ev)
 	var ag := CheckBox.new()
 	ag.text = "Aggressive rivals"
 	ag.button_pressed = aggression
+	ag.tooltip_text = "Rivals declare war and raid when they see weakness."
 	ag.toggled.connect(func(on): aggression = on)
 	tg.add_child(ag)
 	rb.add_child(tg)
-	# Summary + launch
+	rb.add_child(_choice_row("Interface look", UiTokens.ERA_ORDER.map(func(id): return [id, UiTokens.ERAS[id]["label"], "%s interface: shapes and colours of that era's LCARS." % UiTokens.ERAS[id]["name"]]), vm.ui_era, func(id): vm.ui_era = id; UiTokens.era = id; refresh()))
+	colr.add_child(rules)
 	var summ := PanelContainer.new()
-	summ.add_theme_stylebox_override("panel", Lcars.box(Color(Lcars.PANEL_SOLID, 0.95), 20, Lcars.accent(), 2, Vector4(20, 18, 20, 18)))
-	summ.custom_minimum_size.x = 420
-	opts.add_child(summ)
-	var sb := Lcars.vbox(10)
+	var ss := Lcars.box(Color(Lcars.accent().darkened(0.8), 0.95), UiTokens.radius(), Lcars.accent(), 2, Vector4(18, 14, 18, 14))
+	ss.shadow_color = Color(Lcars.accent(), 0.25)
+	ss.shadow_size = 16
+	summ.add_theme_stylebox_override("panel", ss)
+	var sb := Lcars.vbox(8)
 	summ.add_child(sb)
 	var sh := Lcars.hbox(12)
-	sh.add_child(Lcars.emblem(faction, 48))
+	sh.add_child(Lcars.emblem(faction, 44))
 	var nm := Lcars.vbox(0)
-	nm.add_child(Lcars.label(vm.faction_name(faction, ""), "Heading", 30))
+	nm.add_child(Lcars.label(vm.faction_name(faction, ""), "Heading", 28))
 	nm.add_child(Lcars.caption("from " + Lcars.FACTIONS[faction - 1]["capital"]))
 	sh.add_child(nm)
 	sb.add_child(sh)
 	for line in vm.summary():
-		sb.add_child(Lcars.para("•  " + line, Lcars.TEXT2, 15))
-	var sp := Control.new()
-	sp.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	sb.add_child(sp)
+		sb.add_child(Lcars.label(line, "", 13, Lcars.TEXT2))
 	var launch := Lcars.pill("Launch campaign", "primary", func(): start(), "", "", "Enter")
 	launch.name = "Launch"
-	launch.custom_minimum_size.y = 64
+	launch.custom_minimum_size.y = 60
 	launch.add_theme_font_size_override("font_size", 28)
 	sb.add_child(launch)
+	colr.add_child(summ)
+	return colr
 
 func _pick_faction(id: int) -> void:
 	vm.pick_faction(id)
@@ -179,9 +245,10 @@ func _faction_card(f: Dictionary) -> Control:
 	b.name = "Faction%d" % id
 	b.toggle_mode = true
 	b.button_pressed = selected
-	b.custom_minimum_size = Vector2(0, 250)
+	b.custom_minimum_size = Vector2(0, 186)
 	b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	var bg := Lcars.box(Color(col, 0.16) if selected else Color(Lcars.PANEL2, 0.85), 18, col if selected else Lcars.LINE2, 3 if selected else 1, Vector4(16, 14, 16, 14))
+	b.tooltip_text = "%s · capital %s\n%s" % [f["short"], f["capital"], ", ".join(f["traits"])]
+	var bg := Lcars.box(Color(col, 0.16) if selected else Color(Lcars.PANEL2, 0.85), UiTokens.radius(), col if selected else Lcars.LINE2, 3 if selected else 1, Vector4(16, 14, 16, 14))
 	if selected:
 		bg.shadow_color = Color(col, 0.35)
 		bg.shadow_size = 18
@@ -191,30 +258,29 @@ func _faction_card(f: Dictionary) -> Control:
 			s.border_color = col
 		b.add_theme_stylebox_override(st, s)
 	b.pressed.connect(_pick_faction.bind(id))
-	var v := Lcars.vbox(6)
-	v.set_anchors_preset(Control.PRESET_FULL_RECT)
-	v.offset_left = 18
-	v.offset_top = 14
-	v.offset_right = -14
-	v.offset_bottom = -12
-	v.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	b.add_child(v)
-	var band := ColorRect.new()
-	band.color = col
-	band.custom_minimum_size = Vector2(0, 6)
-	v.add_child(band)
-	var top := Lcars.hbox(10)
-	top.add_child(Lcars.emblem(id, 46, col))
-	var nm := Lcars.label(vm.faction_name(id, f["short"]), "", 24, col)
+	var h := Lcars.hbox(14)
+	h.set_anchors_preset(Control.PRESET_FULL_RECT)
+	h.offset_left = 14
+	h.offset_top = 12
+	h.offset_right = -12
+	h.offset_bottom = -12
+	b.add_child(h)
+	var ps := PortraitSlot.make(id, Vector2(110, 150))
+	ps.live = selected
+	h.add_child(ps)
+	var v := Lcars.vbox(4)
+	v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	h.add_child(v)
+	var nm := Lcars.label(vm.faction_name(id, f["short"]), "", 22, col)
 	nm.add_theme_font_override("font", Lcars.font("display", 600))
 	nm.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	nm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	top.add_child(nm)
-	v.add_child(top)
+	v.add_child(nm)
 	v.add_child(Lcars.caption("Capital · " + f["capital"]))
-	v.add_child(Lcars.para("“%s”" % f["motto"], Lcars.TEXT, 15))
+	var mo := Lcars.para("“%s”" % f["motto"], Lcars.TEXT, 13)
+	v.add_child(mo)
 	for t in f["traits"]:
-		v.add_child(Lcars.label("▸ " + t, "Muted", 14, Color(pal["secondary"])))
-	for n in v.find_children("*", "Control", true, false):
+		v.add_child(Lcars.label("▸ " + t, "Muted", 12, Color(pal["secondary"])))
+	for n in h.find_children("*", "Control", true, false):
 		n.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	h.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	return b

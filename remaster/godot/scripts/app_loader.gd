@@ -39,6 +39,72 @@ static func resource(path: String) -> Resource:
 		return null
 	return load(path)
 
+const ART_EXTS := ["webp", "png", "jpg"]
+static var _art_cache := {}
+
+## The texture for an asset-manifest key (docs/UI-DESIGN-SYSTEM.md §7): res://art/<category>/<key>.<webp|png|jpg>
+## from the base pack or a mounted asset pack, or null when the art is not there yet (callers fall back).
+static func art(key: String, category: String) -> Texture2D:
+	if key == "":
+		return null
+	var ck := category + "/" + key
+	if _art_cache.has(ck):
+		return _art_cache[ck]
+	var tex: Texture2D = null
+	for ext in ART_EXTS:
+		var p := "res://art/%s/%s.%s" % [category, key, ext]
+		if ResourceLoader.exists(p):
+			tex = load(p) as Texture2D
+			if tex:
+				break
+	_art_cache[ck] = tex
+	return tex
+
+## A res:// or user:// text file ("" when missing). Content packs are read this way and handed to the core (loadContent).
+static func text(path: String) -> String:
+	if not _check(path) or not FileAccess.file_exists(path):
+		return ""
+	return FileAccess.get_file_as_string(path)
+
+## True when `dir` exists as a directory in the pack (res://) or user://.
+static func dir_exists(dir: String) -> bool:
+	if not _check(dir):
+		return false
+	return DirAccess.dir_exists_absolute(dir)
+
+## True when this build may start worker threads (desktop yes; the web export is not threaded).
+static func threads() -> bool:
+	return OS.has_feature("threads") and not OS.has_feature("web")
+
+## An Image from a res:// or user:// file (a pack or a loose file), resized to at most `max_width` wide with mipmaps;
+## null when missing. Synchronous and thread-safe, so the planet textures can call it on a worker or on the main thread.
+static func image(path: String, max_width: int = 2048) -> Image:
+	if not _check(path):
+		return null
+	var img: Image = null
+	if path.begins_with("res://") and ResourceLoader.exists(path):
+		var t := load(path) as Texture2D
+		img = t.get_image() if t else null
+		if img != null and img.is_compressed():
+			img.decompress()
+	elif FileAccess.file_exists(path):
+		img = Image.load_from_file(path)
+	if img == null or img.is_empty():
+		return null
+	if img.get_width() > max_width:
+		img.resize(max_width, max_width * img.get_height() / img.get_width(), Image.INTERPOLATE_LANCZOS)
+	if not img.has_mipmaps():
+		img.generate_mipmaps()
+	return img
+
+## Mounts every `user://packs/*.pck` (asset bundles built by the pack step, e.g. tools/pack_planets.gd). Returns the count.
+static func mount_user_packs() -> int:
+	var n := 0
+	for f in list("user://packs"):
+		if f.ends_with(".pck") and mount_pack("user://packs/" + f):
+			n += 1
+	return n
+
 ## Parsed JSON from a res:// or user:// file, or null when missing or invalid.
 static func json(path: String) -> Variant:
 	if not _check(path) or not FileAccess.file_exists(path):

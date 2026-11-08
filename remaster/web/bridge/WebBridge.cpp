@@ -18,6 +18,7 @@
 #include "../../game/Source/BotfSim/ReferenceCatalogue.h"
 #include "../../game/Source/BotfSim/ShipRoster.h"
 #include "../../game/Source/BotfSim/MinorRaces.h"
+#include "../../game/Source/BotfSim/Content.h"
 #include "Json.h"
 
 #include <algorithm>
@@ -79,6 +80,7 @@ constexpr std::array<const char*, 4> StanceNames{"Balanced", "Aggressive", "Defe
 constexpr std::array<const char*, 5> GovernorNames{"Manual", "Balanced", "Growth", "Research", "Manufacturing"};
 constexpr std::array<const char*, 12> ManeuverKeys{"Engage", "Charge", "Circle", "Hold", "Retreat", "Assault",
     "Harry", "Flyby", "Strafe", "Evade", "Ram", "Hail"};
+constexpr std::array<const char*, 6> SubsystemKeys{"none", "weapons", "engines", "shields", "sensors", "warpCore"};
 constexpr std::array<const char*, 9> TreatyKeys{"None", "NonAggression", "Friendship", "Affiliation", "Alliance",
     "Membership", "Peace", "Trade", "War"};
 constexpr std::array<const char*, 4> ToneKeys{"Cordial", "Neutral", "Demanding", "Hostile"};
@@ -120,6 +122,10 @@ struct Bridge {
     std::vector<tac::Encounter> lastEncounters;   // player encounters fought in the last committed turn
     std::string lastBriefing;                      // JSON of the last turn briefing
     std::string scenario = "campaign";
+    // Combat sandbox (tactical rules 4): a standalone WEGO encounter the battle scene can drive before campaigns
+    // switch rules 4 on (that needs GameplayRules::wegoCombat, outside this bridge). Never touches the campaign.
+    std::optional<tac::Encounter> sandbox;
+    botf::GameState sandboxState;
 };
 Bridge B;
 
@@ -1895,15 +1901,29 @@ PlannedOrder plannedOrder(const tac::Encounter& e, const tac::Ship& ship) {
 
 void writeCoord(Writer& w, const tac::TacticalCoord& c) { w.beginObject().field("x", c.x).field("y", c.y).endObject(); }
 
-void writeEncounter(Writer& w, const tac::Encounter& e, int me) {
+// Rules 4 per-ship block: facings, subsystems, crew and deck layer (COMBAT-RULES.md "Tactical rules 4").
+void writeWegoShip(Writer& w, const tac::Ship& ship) {
+    w.key("wego").beginObject();
+    w.key("facings").beginArray(); for (int v : ship.shieldFacing) w.value(v); w.endArray();
+    w.key("maxFacings").beginArray(); for (int v : ship.maxShieldFacing) w.value(v); w.endArray();
+    w.key("subsystems").beginObject();
+    for (int i = 1; i <= tac::SubsystemCount; ++i) w.field(SubsystemKeys[static_cast<std::size_t>(i)], ship.subsystems[static_cast<std::size_t>(i - 1)]);
+    w.endObject();
+    w.field("crew", tac::crewRatingName(ship.crew)).field("crewLevel", ship.crew)
+        .field("elevation", ship.elevation).field("coreBreached", ship.coreBreached)
+        .field("canWarp", ship.canRetreat && ship.system(tac::Subsystem::WarpCore) > 0 && ship.system(tac::Subsystem::Engines) > 0);
+    w.endObject();
+}
+
+void writeEncounter(Writer& w, const tac::Encounter& e, int me, const botf::GameState& gs = B.state) {
     w.beginObject();
     w.field("arenaWidth", e.arenaWidth); w.field("arenaHeight", e.arenaHeight);
     w.field("round", e.currentRound); w.field("maxRounds", e.maxRounds);
     w.field("finished", e.isFinished); w.field("winner", e.winnerOwnerId);
     w.field("sectorX", e.sectorX); w.field("sectorY", e.sectorY); w.field("turn", e.strategicTurn);
     w.field("controller", e.controllingOwnerId);
-    const auto* sys = systemAtCell(B.state, e.sectorX, e.sectorY);
-    w.field("location", sys && knownSystem(B.state, *sys) ? sys->name : "Sector " + std::to_string(e.sectorX) + "," + std::to_string(e.sectorY));
+    const auto* sys = systemAtCell(gs, e.sectorX, e.sectorY);
+    w.field("location", sys && knownSystem(gs, *sys) ? sys->name : "Sector " + std::to_string(e.sectorX) + "," + std::to_string(e.sectorY));
     w.field("rules", e.rulesVersion);
     w.field("ticksPerRound", botf::CombatTicksPerRound);
     int foe = 0;
@@ -1951,9 +1971,14 @@ void writeEncounter(Writer& w, const tac::Encounter& e, int me) {
             w.key("weapons").beginArray();
             for (const auto& m : ship.mounts) {
                 const std::string type = botf::roster::weaponTypeName(m.type);
+                const auto family = botf::roster::weaponFamily(m.type);
+                // Arc geometry and range rings for plan-phase overlays (degrees from the bow, grid cells).
                 w.beginObject().field("type", type).field("key", "weapon." + type).field("count", m.count)
                     .field("arc", enumName(static_cast<int>(m.arc), rosterNames::Arc))
-                    .field("torpedo", botf::roster::torpedoWeapon(m.type)).endObject();
+                    .field("torpedo", botf::roster::torpedoWeapon(m.type))
+                    .field("family", botf::roster::weaponFamilyName(family))
+                    .field("arcCentre", tac::arcCentre(m.arc)).field("arcHalfWidth", tac::arcHalfWidth(m.arc))
+                    .field("maxRange", tac::weaponMaxRange(family)).field("attack", m.attack).endObject();
             }
             w.endArray();
         } else if (const auto* rc = botf::roster::findRosterClass(ship.referenceShipId)) {
@@ -1967,16 +1992,19 @@ void writeEncounter(Writer& w, const tac::Encounter& e, int me) {
         w.field("immobile", ship.immobile);
         if (botf::isStationCombatant(ship.fleetId)) {
             w.field("station", true);
-            if (const auto* st = botf::stationById(B.state, botf::stationIdForCombatant(ship.fleetId))) {
+            if (const auto* st = botf::stationById(gs, botf::stationIdForCombatant(ship.fleetId))) {
                 w.field("stationType", enumName(static_cast<int>(st->type), StationTypeNames));
                 w.field("stationName", botf::stationName(*st));
             }
         }
         w.field("disengaging", ship.disengaging());
+        if (e.flightRules()) w.field("facing", ship.facing).field("elevation", ship.elevation);
+        if (e.wegoRules()) writeWegoShip(w, ship);
         if (mine) {
             w.field("maneuver", enumName(static_cast<int>(order.maneuver), ManeuverKeys));
             w.field("target", order.targetFleetId);
             w.field("ordered", hasPending);
+            if (e.wegoRules()) w.field("subsystem", enumName(static_cast<int>(order.subsystem), SubsystemKeys));
         }
         // What the ship will execute next round: the player's order, a standing order (strategic
         // stance or an earlier tactical order) or the tactical AI's own decision (Encounter::aiOrderFor).
@@ -1985,6 +2013,7 @@ void writeEncounter(Writer& w, const tac::Encounter& e, int me) {
             w.key("next").beginObject()
                 .field("maneuver", enumName(static_cast<int>(next.order.maneuver), ManeuverKeys))
                 .field("target", next.order.targetFleetId)
+                .field("subsystem", enumName(static_cast<int>(next.order.subsystem), SubsystemKeys))
                 .field("source", next.source).endObject();
         }
         w.endObject();
@@ -2014,9 +2043,24 @@ void writeEncounter(Writer& w, const tac::Encounter& e, int me) {
             w.field("disengaging", e.remasterRules() && st.maneuverExecuted == tac::TacticalManeuver::Retreat &&
                 !st.retreatedThisRound && !st.destroyedThisRound && st.hullBefore > 0);
             w.field("yaw", st.facingYaw);
+            if (e.wegoRules()) w.field("subsystem", enumName(static_cast<int>(st.subsystemTarget), SubsystemKeys));
             w.endObject();
         }
         w.endArray();
+        // Rules 4: facings, subsystems and crew after the round (persistent damage).
+        if (e.wegoRules()) {
+            w.key("wego").beginArray();
+            for (const auto& ws : r.wegoStates) {
+                w.beginObject().field("id", ws.fleetId);
+                w.key("facings").beginArray(); for (int v : ws.shieldFacing) w.value(v); w.endArray();
+                w.key("subsystems").beginObject();
+                for (int i = 1; i <= tac::SubsystemCount; ++i) w.field(SubsystemKeys[static_cast<std::size_t>(i)], ws.subsystems[static_cast<std::size_t>(i - 1)]);
+                w.endObject();
+                w.field("crew", tac::crewRatingName(ws.crew)).field("crewLevel", ws.crew).field("coreBreached", ws.coreBreached);
+                w.endObject();
+            }
+            w.endArray();
+        }
         w.key("salvos").beginArray();
         for (const auto& sv : r.salvos) {
             const auto* shooter = r.getStatus(sv.attackerFleetId);
@@ -2030,6 +2074,18 @@ void writeEncounter(Writer& w, const tac::Encounter& e, int me) {
         // Tactical rules 3 presentation stream (COMBAT-RULES.md "Event stream for client authors"); empty otherwise.
         static constexpr std::array<const char*, 10> EventKinds{"ManeuverStart", "ManeuverEnd", "Cloak", "Decloak", "Fire",
             "Ram", "Destroyed", "Retreated", "Disengage", "Truce"};
+        // Rules 4 hits are matched to their Fire/Ram event by (shooter, target, mount, tick), in order.
+        std::vector<char> hitUsed(r.hits.size(), 0);
+        auto hitFor = [&](const botf::CombatEvent& ev) -> const tac::WegoHit* {
+            const int mount = ev.kind == botf::CombatEventKind::Ram ? -1 : ev.mountIndex;
+            for (std::size_t i = 0; i < r.hits.size(); ++i) {
+                const auto& h = r.hits[i];
+                if (hitUsed[i] || h.shooter != ev.fleetId || h.target != ev.targetFleetId || h.mount != mount || h.tick != ev.tick) continue;
+                hitUsed[i] = 1;
+                return &h;
+            }
+            return nullptr;
+        };
         w.key("events").beginArray();
         for (const auto& ev : r.events) {
             w.beginObject().field("tick", ev.tick).field("kind", enumName(static_cast<int>(ev.kind), EventKinds))
@@ -2044,6 +2100,14 @@ void writeEncounter(Writer& w, const tac::Encounter& e, int me) {
             if (ev.kind == botf::CombatEventKind::Fire || ev.kind == botf::CombatEventKind::Ram)
                 w.field("impactTick", ev.impactTick).field("shieldDamage", ev.shieldDamage).field("hullDamage", ev.hullDamage)
                     .field("destroyed", ev.destroyed);
+            if (e.wegoRules() && (ev.kind == botf::CombatEventKind::Fire || ev.kind == botf::CombatEventKind::Ram)) {
+                if (const auto* h = hitFor(ev)) {
+                    w.field("hitChance", h->hitChance).field("shieldFacing", tac::shieldFacingName(h->facing))
+                        .field("subsystem", enumName(h->subsystem, SubsystemKeys)).field("aimed", h->aimed)
+                        .field("subsystemDamage", h->subsystemDamage).field("subsystemDestroyed", h->subsystemDestroyed)
+                        .field("breachDamage", h->breachDamage);
+                }
+            }
             w.field("x", ev.x).field("y", ev.y).field("facing", ev.facing);
             if (ev.kind == botf::CombatEventKind::ManeuverStart || ev.kind == botf::CombatEventKind::ManeuverEnd)
                 w.field("maneuver", enumName(ev.maneuver, ManeuverKeys)).field("value", ev.value);
@@ -2054,6 +2118,54 @@ void writeEncounter(Writer& w, const tac::Encounter& e, int me) {
     }
     w.endArray();
     w.endObject();
+}
+
+// Plan-phase forecast (rules 3 and 4): the ship's previewed path and end pose, and per mount the arc, range band,
+// hit chance and expected damage against the target (Encounter::previewMove / forecastFire).
+void writeForecast(Writer& w, const tac::Encounter& e, const tac::Order& order) {
+    const auto move = e.previewMove(order);
+    const auto mounts = e.forecastFire(order);
+    w.beginObject();
+    w.field("fleetId", order.fleetId).field("target", mounts.empty() ? order.targetFleetId : mounts.front().target)
+        .field("maneuver", enumName(static_cast<int>(order.maneuver), ManeuverKeys))
+        .field("subsystem", enumName(static_cast<int>(order.subsystem), SubsystemKeys));
+    w.field("exact", move.exact).field("slid", move.slid);
+    w.key("path").beginArray();
+    for (const auto& [c, f] : move.path) w.beginObject().field("x", c.x).field("y", c.y).field("facing", f).endObject();
+    w.endArray();
+    w.key("end").beginObject().field("x", move.end.x).field("y", move.end.y).field("facing", move.endFacing).endObject();
+    int expected = 0, firing = 0;
+    w.key("mounts").beginArray();
+    for (const auto& m : mounts) {
+        const std::string type = botf::roster::weaponTypeName(m.type);
+        w.beginObject().field("mount", m.mount).field("weapon", type).field("key", "weapon." + type)
+            .field("family", botf::roster::weaponFamilyName(m.family))
+            .field("arc", enumName(static_cast<int>(m.arc), rosterNames::Arc))
+            .field("distance", m.distance).field("band", tac::rangeBandName(m.band))
+            .field("inArc", m.inArc).field("inRange", m.inRange).field("hitChance", m.hitChance)
+            .field("damage", m.damage).field("expectedDamage", m.expectedDamage)
+            .field("facing", tac::shieldFacingName(m.facing)).field("facingShields", m.facingShields).endObject();
+        expected += m.expectedDamage;
+        if (m.hitChance > 0) ++firing;
+    }
+    w.endArray();
+    w.field("expectedDamage", expected).field("mountsFiring", firing);
+    w.endObject();
+}
+
+tac::Order readTacticalOrder(const Value& a, const tac::Encounter& e) {
+    tac::Order o;
+    o.fleetId = a.getInt("fleetId");
+    o.maneuver = static_cast<tac::TacticalManeuver>(enumIndex(a["maneuver"], ManeuverKeys, "maneuver", 0));
+    o.targetFleetId = o.maneuver == tac::TacticalManeuver::Retreat ? 0 : a.getInt("targetFleetId");
+    if (o.targetFleetId) {
+        const auto* ts = e.getShip(o.targetFleetId);
+        if (!ts || !tac::Encounter::shipActive(*ts)) o.targetFleetId = 0;
+    }
+    const int sub = enumIndex(a["subsystem"], SubsystemKeys, "subsystem", 0);
+    if (sub < 0 || sub > tac::MaxSubsystemValue) fail("Unknown subsystem");
+    o.subsystem = static_cast<tac::Subsystem>(sub);
+    return o;
 }
 
 // Rounds resolve through the plain session API. session::resume re-derives AI decisions during
@@ -2495,6 +2607,32 @@ void newBattleDrill(bool withStation, int shipsPerSide = 3, bool stationForFoe =
     startGame(std::move(s), withStation ? "drill-station" : "drill");
 }
 
+// Combat sandbox: the drill's Sol squadrons (Federation against the Klingon patrol, up to 24 a side) as a
+// standalone tactical rules 4 encounter. The player commands the Federation side.
+void newCombatSandbox(int shipsPerSide, std::uint64_t seed) {
+    shipsPerSide = std::clamp(shipsPerSide, 1, 24);
+    auto s = botf::generateReferenceCampaign(1999);
+    botf::applyRulesetPreset(s, botf::RulesetPreset::Remastered);
+    s.eventsEnabled = false; s.aiAggressionEnabled = false;
+    const auto& sol = s.systems.front();
+    auto rival = std::find_if(s.fleets.begin(), s.fleets.end(), [&](const botf::Fleet& f) { return f.ownerId != s.playerEmpire; });
+    if (rival == s.fleets.end()) fail("Sandbox needs a rival ship");
+    const int foe = rival->ownerId;
+    s.fleets.erase(std::remove_if(s.fleets.begin(), s.fleets.end(), [&](const botf::Fleet& f) {
+        return f.x == sol.x && f.y == sol.y; }), s.fleets.end());
+    addDrillShips(s, s.playerEmpire, sol.x, sol.y, shipsPerSide);
+    addDrillShips(s, foe, sol.x, sol.y, shipsPerSide);
+    for (auto& r : s.majorRelations)
+        if ((r.first == s.playerEmpire && r.second == foe) || (r.first == foe && r.second == s.playerEmpire)) { r.atWar = true; r.contact = true; }
+    std::vector<int> ids;
+    for (const auto& f : s.fleets) if (f.x == sol.x && f.y == sol.y && (f.ownerId == s.playerEmpire || f.ownerId == foe)) ids.push_back(f.id);
+    auto enc = tac::constructEncounter(s, ids, seed ? seed : 8112026);
+    enc.controllingOwnerId = s.playerEmpire;
+    tac::enableWegoRules(enc);
+    B.sandboxState = std::move(s);
+    B.sandbox = std::move(enc);
+}
+
 // Frontier drill (also the e2e fixture for the schema-13 layer): a Remastered campaign in the
 // Developed era where long-range sensors have charted the region around the capital and every
 // anomaly. A troop transport waits at the capital, ready to assemble an outpost; an outpost already
@@ -2770,9 +2908,21 @@ void writeEncyclopedia(Writer& w) {
 // ------------------------------------------------------------------------------------------------
 // Dispatch
 // ------------------------------------------------------------------------------------------------
+// Content pack identity (docs/DATA-FORMAT.md section 6). The checksum is a 16-digit hex string (JSON numbers lose 64-bit precision).
+void writeContentInfo(Writer& w, const botf::content::PackInfo& info) {
+    w.beginObject().field("id", info.id).field("name", info.name).field("format", info.format).field("revision", info.revision)
+        .field("checksum", botf::content::checksumHex(info.checksum)).field("bytes", static_cast<std::int64_t>(info.bytes))
+        .field("base", info.base).endObject();
+}
+
 std::string dispatch(const std::string& method, const Value& a) {
     Writer w;
     if (method == "meta") writeMeta(w);
+    // loadContent {"bundle": "<pack bytes>"}: install a content pack the host read through res:// (the core never opens
+    // files). Atomic: a bad pack leaves the active one in place. Call before newCampaign or loading a save.
+    else if (method == "loadContent") writeContentInfo(w, botf::content::install(a.getString("bundle")));
+    else if (method == "loadBaseContent") writeContentInfo(w, botf::content::installBase());
+    else if (method == "contentInfo") writeContentInfo(w, botf::content::active());
     else if (method == "encyclopedia") writeEncyclopedia(w);
     else if (method == "newCampaign") { newCampaign(a); writeView(w); }
     else if (method == "newBattleDrill") { newBattleDrill(a.getBool("station"), a.getInt("ships", 3), a.getBool("foeStation")); writeView(w); }
@@ -2864,7 +3014,45 @@ std::string dispatch(const std::string& method, const Value& a) {
     }
     else if (method == "endTurn") endTurn(w);
     else if (method == "briefing") w.raw(B.lastBriefing.empty() ? "null" : B.lastBriefing);
-    else if (method == "tactical") {
+    else if (method == "combatSandbox") {
+        newCombatSandbox(a.getInt("ships", 3), static_cast<std::uint64_t>(a.getInt("seed", 0)));
+        writeEncounter(w, *B.sandbox, B.sandboxState.playerEmpire, B.sandboxState);
+    } else if (a.getBool("sandbox") && (method == "tactical" || method == "tacticalOrder" || method == "tacticalRound" ||
+                                        method == "tacticalAuto" || method == "tacticalForecast")) {
+        // The same tactical calls against the combat sandbox.
+        if (!B.sandbox) fail("No combat sandbox");
+        auto& e = *B.sandbox;
+        const int me = B.sandboxState.playerEmpire;
+        if (method == "tacticalOrder") {
+            if (a.getBool("all")) {
+                int n = 0;
+                auto trial = e;
+                for (const auto& ship : e.ships) {
+                    if (ship.ownerId != me || !tac::Encounter::shipActive(ship)) continue;
+                    auto o = readTacticalOrder(a, e);
+                    o.fleetId = ship.fleetId;
+                    if (o.maneuver == tac::TacticalManeuver::Retreat && !e.mayRetreat(ship)) continue;
+                    trial.submitOrder(o);
+                    ++n;
+                }
+                e = std::move(trial);
+                w.value(n);
+            } else {
+                e.submitOrder(readTacticalOrder(a, e));
+                w.value(1);
+            }
+        } else if (method == "tacticalForecast") {
+            writeForecast(w, e, readTacticalOrder(a, e));
+        } else {
+            if (method == "tacticalRound") { if (e.isFinished) fail("The sandbox battle is over"); e.resolveRound(); }
+            if (method == "tacticalAuto") e.runUntilFinished();
+            writeEncounter(w, e, me, B.sandboxState);
+        }
+    } else if (method == "tacticalForecast") {
+        requireGame();
+        if (!B.session.active || !B.session.pending) fail("No tactical encounter awaits orders");
+        writeForecast(w, *B.session.pending, readTacticalOrder(a, *B.session.pending));
+    } else if (method == "tactical") {
         requireGame();
         if (B.session.active && B.session.pending) writeEncounter(w, *B.session.pending, B.state.playerEmpire);
         else w.null();
@@ -2897,13 +3085,16 @@ std::string dispatch(const std::string& method, const Value& a) {
                     (maneuver != tac::TacticalManeuver::Retreat || ship.canRetreat)) ids.push_back(ship.fleetId);
         } else ids.push_back(a.getInt("fleetId"));
         if (ids.empty()) fail(maneuver == tac::TacticalManeuver::Retreat ? "No ship has a safe withdrawal sector" : "No active ships to command");
+        // Rules 4 subsystem aim ("subsystem": weapons, engines, shields, sensors, warpCore); none by default.
+        const int aim = enumIndex(a["subsystem"], SubsystemKeys, "subsystem", 0);
+        if (aim < 0 || aim > tac::MaxSubsystemValue) fail("Unknown subsystem");
         auto trial = B.session;   // all-or-nothing
         for (int id : ids) {
             const auto* ship = trial.pending->getShip(id);
             int t = maneuver == tac::TacticalManeuver::Retreat ? 0 : target;
             if (t) { const auto* ts = trial.pending->getShip(t); if (!ts || !ts->isAlive || ts->retreated || !ts->activeInCombat) t = 0; }
             (void)ship;
-            botf::session::order(trial, {id, t, maneuver});
+            botf::session::order(trial, {id, t, maneuver, static_cast<tac::Subsystem>(aim)});
         }
         B.session = std::move(trial);
         touch();

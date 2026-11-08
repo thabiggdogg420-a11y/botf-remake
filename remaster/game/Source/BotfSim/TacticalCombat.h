@@ -56,6 +56,11 @@ inline constexpr int RemasterTacticalRules = 2;
 // mounts with firing arcs, beam/pulse/torpedo behaviour, and the CombatEvent presentation stream.
 // See COMBAT-RULES.md, "Tactical rules 3". Rules 1 and 2 are untouched by it.
 inline constexpr int FlightTacticalRules = 3;
+// Rules 4 ("WEGO", Simon 8 Nov 2026: BATTLE-DESIGN.md proposals 9-12): rules 3 plus simultaneous movement (every
+// ship plans against the start-of-round field), six shield facings, subsystem targeting and damage, range bands
+// with to-hit rolls for every weapon family, and crew ratings from Green to Legendary. Integer math only.
+// See COMBAT-RULES.md, "Tactical rules 4". Rules 1-3 are untouched by it.
+inline constexpr int WegoTacticalRules = 4;
 inline constexpr int MaxShipMounts = 6;
 inline constexpr int MaxManeuverValue = 11;
 
@@ -229,6 +234,88 @@ inline int sizeHitModifier(roster::SizeClass c) {
     return 0;
 }
 
+// ---- Rules 4: shield facings, subsystems, crew, range bands ---------------------------------------------------
+enum class ShieldFacing : int { Fore = 0, Aft = 1, Port = 2, Starboard = 3, Dorsal = 4, Ventral = 5 };
+inline constexpr int ShieldFacingCount = 6;
+inline const char* shieldFacingName(int f) {
+    static constexpr std::array<const char*, ShieldFacingCount> Names{"fore", "aft", "port", "starboard", "dorsal", "ventral"};
+    return f >= 0 && f < ShieldFacingCount ? Names[static_cast<std::size_t>(f)] : "none";
+}
+// Share of maxShields carried by each facing (percent; sums to 100, remainder to Fore).
+inline int shieldFacingShare(int f) {
+    static constexpr std::array<int, ShieldFacingCount> Share{22, 16, 18, 18, 13, 13};
+    return Share[static_cast<std::size_t>(f)];
+}
+// None means "no aim": hull hits then wear the subsystem behind the struck facing.
+enum class Subsystem : int { None = 0, Weapons = 1, Engines = 2, Shields = 3, Sensors = 4, WarpCore = 5 };
+inline constexpr int SubsystemCount = 5;
+inline constexpr int MaxSubsystemValue = 5;
+inline const char* subsystemName(int s) {
+    static constexpr std::array<const char*, SubsystemCount + 1> Names{"none", "weapons", "engines", "shields", "sensors", "warpCore"};
+    return s >= 0 && s <= SubsystemCount ? Names[static_cast<std::size_t>(s)] : "none";
+}
+// The subsystem behind each facing (incidental damage from unaimed hull hits).
+inline Subsystem subsystemBehind(int facing) {
+    switch (static_cast<ShieldFacing>(facing)) {
+    case ShieldFacing::Fore: return Subsystem::Weapons;
+    case ShieldFacing::Aft: return Subsystem::Engines;
+    case ShieldFacing::Port: case ShieldFacing::Starboard: return Subsystem::Shields;
+    case ShieldFacing::Dorsal: return Subsystem::Sensors;
+    case ShieldFacing::Ventral: return Subsystem::WarpCore;
+    }
+    return Subsystem::Weapons;
+}
+enum class CrewRating : int { Green = 0, Regular = 1, Veteran = 2, Elite = 3, Legendary = 4 };
+inline constexpr int MaxCrewRating = 4;
+inline const char* crewRatingName(int c) {
+    static constexpr std::array<const char*, MaxCrewRating + 1> Names{"Green", "Regular", "Veteran", "Elite", "Legendary"};
+    return c >= 0 && c <= MaxCrewRating ? Names[static_cast<std::size_t>(c)] : "Regular";
+}
+inline int crewAccuracy(int c) { static constexpr std::array<int, 5> A{-10, 0, 5, 10, 15}; return A[static_cast<std::size_t>(std::clamp(c, 0, 4))]; }
+// Subsystem percent points repaired per round: damaged systems, and destroyed systems brought back online.
+inline int crewRepair(int c) { static constexpr std::array<int, 5> R{2, 4, 6, 8, 10}; return R[static_cast<std::size_t>(std::clamp(c, 0, 4))]; }
+inline int crewRestore(int c) { static constexpr std::array<int, 5> R{0, 0, 2, 4, 6}; return R[static_cast<std::size_t>(std::clamp(c, 0, 4))]; }
+// A ship's crew rating until the campaign tracks experience: a stable function of its fleet id, so a ship keeps
+// its crew from battle to battle (about 15% Green, 45% Regular, 25% Veteran, 12% Elite, 3% Legendary).
+inline int startingCrewRating(int fleetId) {
+    std::uint32_t h = static_cast<std::uint32_t>(fleetId) * 2654435761u;
+    h ^= h >> 15;
+    const int roll = static_cast<int>(h % 100u);
+    return roll < 15 ? 0 : roll < 60 ? 1 : roll < 85 ? 2 : roll < 97 ? 3 : 4;
+}
+enum class RangeBand : int { PointBlank = 0, Short = 1, Medium = 2, Long = 3, Extreme = 4 };
+inline const char* rangeBandName(int b) {
+    static constexpr std::array<const char*, 5> Names{"pointBlank", "short", "medium", "long", "extreme"};
+    return b >= 0 && b < 5 ? Names[static_cast<std::size_t>(b)] : "extreme";
+}
+inline RangeBand rangeBand(int dist) {
+    return dist <= 1 ? RangeBand::PointBlank : dist == 2 ? RangeBand::Short : dist <= 4 ? RangeBand::Medium :
+        dist <= 6 ? RangeBand::Long : RangeBand::Extreme;
+}
+// Base to-hit percent per family and band (rules 4). 0 = the family cannot reach that band.
+inline int bandHitBase(roster::WeaponFamily f, RangeBand b) {
+    static constexpr std::array<std::array<int, 5>, 3> T{{{97, 92, 80, 0, 0}, {95, 85, 70, 0, 0}, {75, 90, 85, 72, 55}}};
+    return T[static_cast<std::size_t>(f)][static_cast<std::size_t>(b)];
+}
+// Greatest distance at which a family does any damage (range rings).
+inline int weaponMaxRange(roster::WeaponFamily f) {
+    return f == roster::WeaponFamily::Beam ? 4 : f == roster::WeaponFamily::Pulse ? 3 : 7;
+}
+// Half-width of a firing arc in degrees, and its centre relative to the bow (Broadside is two wedges at +-90).
+inline int arcHalfWidth(roster::FiringArc arc) {
+    switch (arc) {
+    case roster::FiringArc::Forward: return 45;
+    case roster::FiringArc::ForwardWide: return 90;
+    case roster::FiringArc::Broadside: return 45;
+    case roster::FiringArc::Aft: return 45;
+    case roster::FiringArc::All: return 180;
+    }
+    return 180;
+}
+inline int arcCentre(roster::FiringArc arc) { return arc == roster::FiringArc::Aft ? 180 : arc == roster::FiringArc::Broadside ? 90 : 0; }
+// Weapons output percent at subsystem health h (offline at 0).
+inline int weaponsOutput(int h) { return h <= 0 ? 0 : 50 + h / 2; }
+
 struct TacticalMount {
     roster::WeaponType type = roster::WeaponType::PhaserBank;
     int count = 1;                 // Emitters / tubes (visual and burst size)
@@ -274,6 +361,14 @@ struct Ship {
     int lateral = 0;               // Sideways thruster cells per round (Strafe, Circle, Harry)
     roster::SizeClass sizeClass = roster::SizeClass::Medium;
     std::vector<TacticalMount> mounts{};
+    // Rules 4 (serialized in the WEGO section; unused by rules 1-3). shields == sum of shieldFacing.
+    std::array<int, ShieldFacingCount> shieldFacing{};
+    std::array<int, ShieldFacingCount> maxShieldFacing{};
+    std::array<int, SubsystemCount> subsystems{100, 100, 100, 100, 100}; // Percent health, Subsystem value - 1
+    int crew = 1;                  // CrewRating
+    int elevation = 0;             // Deck layer -1..1 (cells): firing from above or below strikes dorsal/ventral
+    bool coreBreached = false;     // Warp core destroyed (breach damage already taken)
+    int system(Subsystem sub) const { return sub == Subsystem::None ? 100 : subsystems[static_cast<std::size_t>(static_cast<int>(sub) - 1)]; }
     bool disengaging() const { return retreatSteps > 0 && !retreated && isAlive; }
 };
 
@@ -281,6 +376,7 @@ struct Order {
     int fleetId = 0;               // ID of the ship receiving the order
     int targetFleetId = 0;         // Target enemy fleet ID (0 for auto-targeting)
     TacticalManeuver maneuver = TacticalManeuver::Engage;
+    Subsystem subsystem = Subsystem::None; // Rules 4 aim (ignored by rules 1-3)
     constexpr bool operator==(const Order& other) const = default;
 };
 
@@ -305,6 +401,7 @@ struct ShipRoundStatus {
     TacticalCoord intermediatePosition{0, 0};
     int facingYaw = 0;             // Heading in degrees [0, 359] for 3D orientation
     bool aiControlled = false;     // Order came from the tactical AI, not a player/standing order
+    Subsystem subsystemTarget = Subsystem::None; // Rules 4: the aim executed this round
     constexpr bool operator==(const ShipRoundStatus& other) const = default;
 };
 
@@ -318,6 +415,29 @@ struct WeaponSalvoRecord {
     constexpr bool operator==(const WeaponSalvoRecord& other) const = default;
 };
 
+// Rules 4: what one Fire or Ram impact did beyond the CombatEvent (facing struck, subsystem damage). Matched to its
+// event by (shooter, target, mount, tick).
+struct WegoHit {
+    int shooter = 0, target = 0, mount = -1, tick = 0, impactTick = 0;
+    int hitChance = 0;             // Percent rolled against (100 for rams)
+    int facing = -1;               // ShieldFacing struck (-1 when the shot missed)
+    int subsystem = 0;             // Subsystem damaged (0 none)
+    bool aimed = false;            // The shooter aimed at that subsystem
+    int subsystemDamage = 0;       // Percent points removed
+    bool subsystemDestroyed = false;
+    int breachDamage = 0;          // Warp core breach hull damage caused by this hit
+    constexpr bool operator==(const WegoHit& other) const = default;
+};
+// Rules 4: a ship's facings, subsystems and crew after the round (persistent damage for clients).
+struct WegoShipState {
+    int fleetId = 0;
+    std::array<int, ShieldFacingCount> shieldFacing{};
+    std::array<int, SubsystemCount> subsystems{};
+    int crew = 1;
+    bool coreBreached = false;
+    constexpr bool operator==(const WegoShipState& other) const = default;
+};
+
 struct RoundResult {
     int roundIndex = 0;
     std::vector<ShipRoundStatus> shipStatuses;
@@ -326,6 +446,8 @@ struct RoundResult {
     std::vector<int> retreatedFleetIds;
     std::vector<WeaponSalvoRecord> salvos;
     std::vector<CombatEvent> events; // Rules 3 presentation stream, ordered by tick (COMBAT-RULES.md)
+    std::vector<WegoHit> hits;       // Rules 4, in resolution order
+    std::vector<WegoShipState> wegoStates; // Rules 4, one per ship in encounter order
     bool encounterEnded = false;
     int winnerOwnerId = 0; // 0 if draw or ongoing
     bool hailedTruce = false;
@@ -390,6 +512,11 @@ struct Encounter {
 
     bool remasterRules() const { return rulesVersion >= RemasterTacticalRules; }
     bool flightRules() const { return rulesVersion >= FlightTacticalRules; }
+    bool wegoRules() const { return rulesVersion >= WegoTacticalRules; }
+    // Rules 4: a destroyed warp core or engines rule out the jump to warp.
+    bool mayRetreat(const Ship& s) const {
+        return s.canRetreat && (!wegoRules() || (s.system(Subsystem::WarpCore) > 0 && s.system(Subsystem::Engines) > 0));
+    }
 
     const Ship* getShip(int fleetId) const {
         for (const auto& s : ships) {
@@ -449,6 +576,14 @@ struct Encounter {
             throw std::invalid_argument("Fleet ID " + std::to_string(order.fleetId) +
                 " cannot retreat: no safe supplied withdrawal sector exists.");
         }
+        if (order.maneuver == TacticalManeuver::Retreat && !mayRetreat(*s)) {
+            throw std::invalid_argument("Fleet ID " + std::to_string(order.fleetId) +
+                " cannot retreat: its warp core or engines are destroyed.");
+        }
+        const int aim = static_cast<int>(order.subsystem);
+        if (aim < 0 || aim > MaxSubsystemValue || (aim != 0 && !wegoRules())) {
+            throw std::invalid_argument("Invalid subsystem target: " + std::to_string(aim));
+        }
         if (order.targetFleetId != 0) {
             const Ship* target = getShip(order.targetFleetId);
             if (!target) {
@@ -499,7 +634,7 @@ struct Encounter {
         for (int fid : g->fleetIds) {
             const Ship* s = getShip(fid);
             if (s && shipActive(*s)) {
-                if (maneuver == TacticalManeuver::Retreat && !s->canRetreat) {
+                if (maneuver == TacticalManeuver::Retreat && !mayRetreat(*s)) {
                     continue; // Skip retreat for ships lacking retreat route
                 }
                 batch.push_back(Order{s->fleetId, targetFleetId, maneuver});
@@ -555,9 +690,9 @@ struct Encounter {
         Order aiOrder;
         aiOrder.fleetId = ship.fleetId;
         const bool armed = ship.beamAttack > 0 || ship.torpedoAttack > 0;
-        if (ship.hull * 4 <= ship.maxHull && ship.canRetreat) {
+        if (ship.hull * 4 <= ship.maxHull && mayRetreat(ship)) {
             aiOrder.maneuver = TacticalManeuver::Retreat;
-        } else if (!armed && ship.canRetreat) {
+        } else if (!armed && mayRetreat(ship)) {
             aiOrder.maneuver = TacticalManeuver::Retreat;
         } else if (remasterRules() && !armed) {
             aiOrder.maneuver = TacticalManeuver::Hail; // Trapped noncombatant asks for quarter
@@ -601,27 +736,56 @@ struct Encounter {
             }
         }
         aiOrder.targetFleetId = bestTarget ? bestTarget->fleetId : 0;
+        // Rules 4: with a target's shields mostly down, seasoned crews go for its guns; anyone goes for the engines
+        // of a ship trying to run.
+        if (wegoRules() && bestTarget) {
+            if (bestTarget->retreatSteps > 0) aiOrder.subsystem = Subsystem::Engines;
+            else if (ship.crew >= static_cast<int>(CrewRating::Veteran) && bestTarget->shields * 4 < bestTarget->maxShields)
+                aiOrder.subsystem = Subsystem::Weapons;
+        }
         return aiOrder;
     }
 
     struct PlannedOrder { Order order; bool ai = false; };
 
     // Rules 3 movement of one ship: persistent facing, turn budget, acceleration, lateral thrust.
+    // field: rules 4 (WEGO) passes the start-of-round snapshot, so every ship plans against the same picture and the
+    // order of movement no longer matters. path: when set, receives every intermediate pose (move preview).
     void flightMove(Ship& s, const Order& ord, ShipRoundStatus* st, int firstOwner, RoundResult& round,
-                    std::vector<std::pair<int, CombatEvent>>& events, std::map<int, int>& slidCells) {
+                    std::vector<std::pair<int, CombatEvent>>& events, std::map<int, int>& slidCells,
+                    const std::vector<Ship>* field = nullptr, std::vector<std::pair<TacticalCoord, int>>* path = nullptr) {
         const TacticalCoord start = s.position;
         const int startFacing = s.facing;
         int turns = s.turnRate / 45;
+        int speedCap = s.speed;
+        if (wegoRules()) {
+            const int eng = s.system(Subsystem::Engines);
+            if (eng <= 0) { turns = 0; speedCap = 0; }
+            else {
+                if (eng < 50 && turns > 1) --turns;
+                speedCap = std::max(1, s.speed * eng / 100);
+            }
+        }
+        const std::vector<Ship>& view = field ? *field : ships;
+        auto viewShip = [&](int fid) -> const Ship* {
+            for (const auto& o : view) if (o.fleetId == fid) return &o;
+            return nullptr;
+        };
+        auto mark = [&]() {
+            if (path && (path->empty() || path->back().first != s.position || path->back().second != s.facing))
+                path->push_back({s.position, s.facing});
+        };
+        mark();
         int moved = 0, slid = 0;
         auto turnToward = [&](int want) {
-            while (turns > 0 && s.facing != want) { s.facing = rotateToward(s.facing, want); --turns; }
+            while (turns > 0 && s.facing != want) { s.facing = rotateToward(s.facing, want); --turns; mark(); }
         };
         auto inArena = [&](int x, int y) { return x >= 0 && y >= 0 && x < arenaWidth && y < arenaHeight; };
         auto cheb = [](TacticalCoord a, TacticalCoord b) { return std::max(std::abs(a.x - b.x), std::abs(a.y - b.y)); };
         auto nearestHostile = [&]() -> const Ship* {
             const Ship* best = nullptr;
             int bestD = std::numeric_limits<int>::max();
-            for (const auto& other : ships) {
+            for (const auto& other : view) {
                 if (!shipActive(other) || other.ownerId == s.ownerId) continue;
                 const int d = cheb(s.position, other.position);
                 if (d < bestD) { bestD = d; best = &other; }
@@ -653,13 +817,14 @@ struct Encounter {
                 push(0, CombatEventKind::Disengage, 0);
                 turnToward(s.ownerId == firstOwner ? 180 : 0);
                 const int edgeDir = (edgeX > s.position.x) - (edgeX < s.position.x);
-                const int steps = s.immobile ? 0 : std::min(s.speed, s.velocity + s.acceleration);
+                const int steps = s.immobile ? 0 : std::min(speedCap, s.velocity + s.acceleration);
                 while (moved < steps && edgeDir != 0) {
                     const auto [dx, dy] = octantStep(s.facing);
                     if (dx != edgeDir || !inArena(s.position.x + dx, s.position.y + dy)) break;
                     s.position.x += dx;
                     s.position.y += dy;
                     ++moved;
+                    mark();
                 }
             }
         } else if (ord.maneuver == TacticalManeuver::Hold || ord.maneuver == TacticalManeuver::Hail || s.immobile) {
@@ -667,7 +832,7 @@ struct Encounter {
                 turnToward(headingOctant(t->position.x - s.position.x, t->position.y - s.position.y));
             }
         } else {
-            const Ship* target = getShip(ord.targetFleetId);
+            const Ship* target = viewShip(ord.targetFleetId);
             if (!target || !shipActive(*target)) target = nearestHostile();
             if (target) {
                 int desiredDist = 2;
@@ -681,7 +846,7 @@ struct Encounter {
                 const bool passing = ord.maneuver == TacticalManeuver::Flyby || ord.maneuver == TacticalManeuver::Strafe;
                 const bool sliding = ord.maneuver == TacticalManeuver::Strafe || ord.maneuver == TacticalManeuver::Circle ||
                     ord.maneuver == TacticalManeuver::Harry;
-                const int maxSteps = std::min(s.speed + (passing ? 1 : 0), s.velocity + s.acceleration);
+                const int maxSteps = (wegoRules() && speedCap <= 0) ? 0 : std::min(speedCap + (passing ? 1 : 0), s.velocity + s.acceleration);
                 int lateralLeft = sliding ? s.lateral : 0;
                 for (int guard = 0; guard < 64; ++guard) {
                     const int cur = cheb(s.position, target->position);
@@ -692,6 +857,7 @@ struct Encounter {
                             const int before = angularDistance(s.facing, want);
                             s.facing = rotateToward(s.facing, want);
                             --turns;
+                            mark();
                             if (before >= 135) { ++moved; continue; } // A hard turn bleeds a step of speed
                         }
                         const auto [dx, dy] = octantStep(s.facing);
@@ -699,6 +865,7 @@ struct Encounter {
                         if (!inArena(next.x, next.y) || cheb(next, target->position) >= cur) break; // Cannot close on this heading
                         s.position = next;
                         ++moved;
+                        mark();
                     } else if (cur < desiredDist) {
                         if (moved + 2 > maxSteps) break; // Reverse thrust costs two steps
                         const int bx = (s.position.x > target->position.x) - (s.position.x < target->position.x);
@@ -708,6 +875,7 @@ struct Encounter {
                         if (next == s.position) break;
                         s.position = next;
                         moved += 2;
+                        mark();
                     } else if (lateralLeft > 0) {
                         // Sideways thrust: slide across the target's front, keeping the bow on it.
                         std::optional<TacticalCoord> bestCell;
@@ -726,6 +894,7 @@ struct Encounter {
                         s.position = *bestCell;
                         --lateralLeft;
                         ++slid;
+                        mark();
                     } else {
                         if (passing && slid == 0 && moved < maxSteps) {
                             const auto [dx, dy] = octantStep(s.facing);
@@ -733,6 +902,7 @@ struct Encounter {
                                 s.position.x += dx;
                                 s.position.y += dy;
                                 ++moved;
+                                mark();
                             }
                         }
                         break;
@@ -757,6 +927,29 @@ struct Encounter {
         }
     }
 
+    // Rules 4: the shield facing a shot from (from, elevation) strikes. A shooter on another deck layer whose vertical
+    // offset is at least its horizontal distance strikes dorsal (from above) or ventral (from below).
+    static int struckFacing(const Ship& t, TacticalCoord from, int elevation) {
+        const int dz = elevation - t.elevation;
+        const int horiz = std::max(std::abs(from.x - t.position.x), std::abs(from.y - t.position.y));
+        if (dz != 0 && std::abs(dz) >= horiz) return static_cast<int>(dz > 0 ? ShieldFacing::Dorsal : ShieldFacing::Ventral);
+        if (horiz == 0) return static_cast<int>(ShieldFacing::Fore);
+        const int rel = relativeBearing(t.facing, facingDegrees(from.x - t.position.x, from.y - t.position.y));
+        const int a = rel < 0 ? -rel : rel;
+        if (a <= 45) return static_cast<int>(ShieldFacing::Fore);
+        if (a >= 135) return static_cast<int>(ShieldFacing::Aft);
+        // Bearings grow from +x toward +y, which the 3D client draws clockwise seen from above (+y is world +z):
+        // a positive relative bearing is the ship's right hand, starboard.
+        return static_cast<int>(rel > 0 ? ShieldFacing::Starboard : ShieldFacing::Port);
+    }
+    // Rules 4 to-hit: band base + crew accuracy - sensor damage - target evasion (maneuver, strafe, size), 5..95.
+    static int wegoHitChance(const Ship& attacker, roster::WeaponFamily family, int dist, int evade) {
+        const int base = bandHitBase(family, rangeBand(dist));
+        if (base <= 0) return 0;
+        const int sensors = attacker.system(Subsystem::Sensors);
+        return std::clamp(base + crewAccuracy(attacker.crew) - (100 - sensors) / 4 - evade, 5, 95);
+    }
+
     // Rules 3 fire: per-mount arcs, beam/pulse/torpedo behaviour, resolved on a tick timeline.
     void flightFire(const std::vector<PlannedOrder>& activeOrders, std::vector<ShipRoundStatus>& statuses,
                     DeterministicRng& rng, RoundResult& round, std::vector<std::pair<int, CombatEvent>>& events,
@@ -770,7 +963,10 @@ struct Encounter {
             bool hit = false, intercepted = false, ram = false;
             TacticalCoord from{0, 0};
             int facing = 0;
+            int chance = 100, elevation = 0;          // Rules 4
+            Subsystem aim = Subsystem::None;          // Rules 4
         };
+        const bool wego = wegoRules();
         auto statusOf = [&](int fid) -> ShipRoundStatus* {
             for (auto& st : statuses) if (st.fleetId == fid) return &st;
             return nullptr;
@@ -827,11 +1023,13 @@ struct Encounter {
                 r.recoil = primary->hull + primary->shields;
                 r.from = attacker->position;
                 r.facing = attacker->facing;
+                r.elevation = attacker->elevation;
                 shots.push_back(r);
                 if (ast) ast->beamDamageDealt = r.damage;
                 continue;
             }
             const bool ambush = ast && ast->decloakedThisRound;
+            const Subsystem aim = wego ? ord.subsystem : Subsystem::None;
             for (std::size_t i = 0; i < attacker->mounts.size(); ++i) {
                 const TacticalMount& mount = attacker->mounts[i];
                 if (mount.attack <= 0) continue;
@@ -840,6 +1038,7 @@ struct Encounter {
                     const int d = cheb(attacker->position, t.position);
                     const int rel = relativeBearing(attacker->facing,
                         facingDegrees(t.position.x - attacker->position.x, t.position.y - attacker->position.y));
+                    if (wego && d > 3 && attacker->system(Subsystem::Sensors) <= 0) return false; // Sensors blind
                     return weaponRangePercent(family, d) > 0 && inFiringArc(mount.arc, rel);
                 };
                 const Ship* pick = usable(*primary) ? primary : nullptr;
@@ -866,6 +1065,7 @@ struct Encounter {
                     else if (m == TacticalManeuver::Evade) base = base * 70 / 100;
                 }
                 if (ambush) base = base * 125 / 100;
+                if (wego) base = base * weaponsOutput(attacker->system(Subsystem::Weapons)) / 100;
                 if (base <= 0) continue;
                 Shot shot;
                 shot.shooter = attacker->fleetId;
@@ -878,14 +1078,18 @@ struct Encounter {
                 shot.from = attacker->position;
                 shot.facing = attacker->facing;
                 const int evade = evasion(*pick) - sizeHitModifier(pick->sizeClass);
+                shot.aim = aim;
+                shot.elevation = attacker->elevation;
+                if (wego) shot.chance = wegoHitChance(*attacker, family, dist, evade);
                 if (family == WeaponFamily::Beam) {
                     shot.damage = std::max(1, base * (100 + rng.range(-5, 5)) / 100);
-                    shot.hit = true;
+                    shot.hit = !wego || rng.range(1, 100) <= shot.chance;
                     shot.impactTick = shot.fireTick;
                     shots.push_back(shot);
                 } else if (family == WeaponFamily::Pulse) {
                     const int total = base * 110 / 100; // Bursts hit harder but can miss
-                    const int chance = std::clamp(95 - 10 * std::max(0, dist - 1) - evade, 5, 95);
+                    const int chance = wego ? shot.chance : std::clamp(95 - 10 * std::max(0, dist - 1) - evade, 5, 95);
+                    shot.chance = chance;
                     const int bolts = std::max(1, std::min(3, total));
                     shot.projectiles = std::max(1, (mount.count + bolts - 1) / bolts);
                     for (int k = 0; k < bolts; ++k) {
@@ -897,7 +1101,8 @@ struct Encounter {
                         shots.push_back(bolt);
                     }
                 } else {
-                    const int chance = std::clamp(90 - 5 * std::max(0, dist - 1) - evade, 5, 95);
+                    const int chance = wego ? shot.chance : std::clamp(90 - 5 * std::max(0, dist - 1) - evade, 5, 95);
+                    shot.chance = chance;
                     shot.damage = std::max(1, base * (100 + rng.range(-5, 5)) / 100);
                     shot.hit = rng.range(1, 100) <= chance;
                     if (shot.hit && pointDefence(*pick) && !pick->isCloaked && rng.range(1, 100) <= 10) {
@@ -939,6 +1144,51 @@ struct Encounter {
             t.hull -= hd;
             taken[t.fleetId] += sd + hd;
         };
+        // Rules 4: the hit lands on one shield facing; hull damage wears the aimed subsystem (or the one behind the
+        // facing). Aimed fire trades 20% of its hull damage for three times the subsystem damage.
+        auto applyWego = [&](Ship& t, const Shot& sh, TacticalCoord from, int elevation, int raw, int shieldPct, int hullPct,
+                             int& sd, int& hd, WegoHit& h) {
+            const int f = struckFacing(t, from, elevation);
+            const auto fi = static_cast<std::size_t>(f);
+            h.facing = f;
+            const int effective = static_cast<int>(static_cast<std::int64_t>(raw) * shieldPct / 100);
+            sd = std::min(t.shieldFacing[fi], effective);
+            const int used = std::min(raw, static_cast<int>((static_cast<std::int64_t>(sd) * 100 + shieldPct - 1) / shieldPct));
+            t.shieldFacing[fi] -= sd;
+            t.shields -= sd;
+            const bool aimed = !sh.ram && sh.aim != Subsystem::None;
+            int hullRaw = static_cast<int>(static_cast<std::int64_t>(raw - used) * hullPct / 100);
+            if (aimed) hullRaw = hullRaw * 80 / 100;
+            hd = std::min(t.hull, hullRaw);
+            t.hull -= hd;
+            taken[t.fleetId] += sd + hd;
+            if (hd <= 0) return;
+            const Subsystem sub = aimed ? sh.aim : subsystemBehind(f);
+            const int maxHull = std::max(1, t.maxHull);
+            const int pts = aimed ? std::max(1, static_cast<int>(static_cast<std::int64_t>(hd) * 300 / maxHull))
+                                  : static_cast<int>(static_cast<std::int64_t>(hd) * 100 / maxHull);
+            int& hp = t.subsystems[static_cast<std::size_t>(static_cast<int>(sub) - 1)];
+            if (pts <= 0 || hp <= 0) return;
+            const int dmg = std::min(hp, pts);
+            hp -= dmg;
+            h.subsystem = static_cast<int>(sub);
+            h.aimed = aimed;
+            h.subsystemDamage = dmg;
+            if (hp > 0) return;
+            h.subsystemDestroyed = true;
+            if (sub == Subsystem::Shields) { // Emitters gone: every facing collapses
+                t.shieldFacing.fill(0);
+                t.shields = 0;
+            } else if (sub == Subsystem::WarpCore && !t.coreBreached) { // Breach: a quarter of the hull
+                t.coreBreached = true;
+                h.breachDamage = std::min(t.hull, std::max(1, t.maxHull / 4));
+                t.hull -= h.breachDamage;
+                taken[t.fleetId] += h.breachDamage;
+            }
+        };
+        auto promote = [&](int fid) {
+            if (Ship* who = getShip(fid); who && who->crew < MaxCrewRating) ++who->crew;
+        };
         auto killed = [&](Ship& t, int tick) {
             if (t.hull > 0 || deathTick.count(t.fleetId)) return false;
             deathTick[t.fleetId] = tick;
@@ -968,14 +1218,22 @@ struct Encounter {
                 forward.beam = sh.damage;
                 tallies.push_back({{sh.target, sh.shooter}, Tally{sh.recoil, 0, 0, 0, true}});
                 int sd = 0, hd = 0, rsd = 0, rhd = 0;
-                if (target) applyHit(*target, sh.damage, 100, 100, sd, hd);
-                if (shooter) applyHit(*shooter, sh.recoil, 100, 100, rsd, rhd);
+                WegoHit h{sh.shooter, sh.target, -1, sh.fireTick, sh.impactTick, 100};
+                WegoHit back{sh.target, sh.shooter, -1, sh.fireTick, sh.impactTick, 100};
+                if (wego) {
+                    if (target) applyWego(*target, sh, sh.from, sh.elevation, sh.damage, 100, 100, sd, hd, h);
+                    if (shooter && target) applyWego(*shooter, sh, target->position, target->elevation, sh.recoil, 100, 100, rsd, rhd, back);
+                } else {
+                    if (target) applyHit(*target, sh.damage, 100, 100, sd, hd);
+                    if (shooter) applyHit(*shooter, sh.recoil, 100, 100, rsd, rhd);
+                }
                 e.shieldDamage = sd;
                 e.hullDamage = hd;
                 events.push_back({2, e});
                 const std::size_t at = events.size() - 1;
                 if (target && killed(*target, tick)) events[at].second.destroyed = true;
                 if (shooter) killed(*shooter, tick);
+                if (wego) { round.hits.push_back(h); round.hits.push_back(back); }
                 return;
             }
             e.kind = CombatEventKind::Fire;
@@ -984,11 +1242,13 @@ struct Encounter {
             e.weaponFamily = static_cast<int>(sh.family);
             e.projectiles = sh.projectiles;
             e.intercepted = sh.intercepted;
+            WegoHit h{sh.shooter, sh.target, sh.mount, sh.fireTick, sh.impactTick, sh.chance};
             if (target && target->hull > 0 && sh.hit) {
                 int raw = sh.damage * defenceMul(*target) / 100;
                 if (target->isCloaked) raw = raw * 50 / 100;
                 int sd = 0, hd = 0;
-                applyHit(*target, raw, shieldEffectPercent(sh.family), hullEffectPercent(sh.family), sd, hd);
+                if (wego) applyWego(*target, sh, sh.from, sh.elevation, raw, shieldEffectPercent(sh.family), hullEffectPercent(sh.family), sd, hd, h);
+                else applyHit(*target, raw, shieldEffectPercent(sh.family), hullEffectPercent(sh.family), sd, hd);
                 e.hit = true;
                 e.shieldDamage = sd;
                 e.hullDamage = hd;
@@ -1002,10 +1262,15 @@ struct Encounter {
                 t.hull += hd;
                 events.push_back({2, e});
                 const std::size_t at = events.size() - 1;
-                if (killed(*target, tick)) events[at].second.destroyed = true;
+                if (killed(*target, tick)) {
+                    events[at].second.destroyed = true;
+                    if (wego) promote(sh.shooter);
+                }
+                if (wego) round.hits.push_back(h);
                 return;
             }
             events.push_back({2, e}); // Missed, intercepted, or the target was already destroyed
+            if (wego) round.hits.push_back(h);
         };
         std::vector<char> launched(shots.size(), 0);
         for (int tick = 0; tick < CombatTicksPerRound; ++tick) {
@@ -1033,6 +1298,169 @@ struct Encounter {
             }
         }
     }
+
+    // Rules 4 round start: damaged subsystems are repaired by the crew (Veteran and better also bring destroyed ones
+    // back online), then the shield emitters regenerate maxShields / 20 scaled by their health into the weakest
+    // facings first. Hold doubles regeneration; a warp core under 50% halves it.
+    void wegoRoundStart(Ship& s, TacticalManeuver order) const {
+        for (auto& hp : s.subsystems) {
+            if (hp >= 100) continue;
+            hp = std::min(100, hp + (hp > 0 ? crewRepair(s.crew) : crewRestore(s.crew)));
+        }
+        if (s.coreBreached) s.subsystems[static_cast<std::size_t>(static_cast<int>(Subsystem::WarpCore) - 1)] = 0;
+        const int emitters = s.system(Subsystem::Shields);
+        if (emitters <= 0 || s.maxShields <= 0) return;
+        std::int64_t amount = static_cast<std::int64_t>(s.maxShields) / 20 * emitters / 100;
+        if (order == TacticalManeuver::Hold) amount *= 2;
+        if (s.system(Subsystem::WarpCore) < 50) amount /= 2;
+        while (amount > 0) {
+            int best = -1;
+            for (int f = 0; f < ShieldFacingCount; ++f) {
+                const auto fi = static_cast<std::size_t>(f);
+                if (s.shieldFacing[fi] >= s.maxShieldFacing[fi]) continue;
+                if (best < 0) { best = f; continue; }
+                const auto bi = static_cast<std::size_t>(best);
+                // Lowest fill ratio first (cross-multiplied, integer).
+                if (static_cast<std::int64_t>(s.shieldFacing[fi]) * s.maxShieldFacing[bi] <
+                    static_cast<std::int64_t>(s.shieldFacing[bi]) * s.maxShieldFacing[fi]) best = f;
+            }
+            if (best < 0) break;
+            const auto bi = static_cast<std::size_t>(best);
+            const int give = static_cast<int>(std::min<std::int64_t>(amount, std::max(1, s.maxShieldFacing[bi] / 4)));
+            const int room = s.maxShieldFacing[bi] - s.shieldFacing[bi];
+            const int add = std::min(give, room);
+            s.shieldFacing[bi] += add;
+            s.shields += add;
+            amount -= add;
+        }
+    }
+
+    // Rules 4 move preview: under WEGO a ship's own move depends only on its order and the start-of-round field, so
+    // the plan phase can show its exact path and end pose. Returns each pose along the way (first = current).
+    struct MovePreview {
+        std::vector<std::pair<TacticalCoord, int>> path;
+        TacticalCoord end{0, 0};
+        int endFacing = 0;
+        int slid = 0;
+        bool exact = false; // true under rules 4 (WEGO); rules 3 moves also depend on ships that move earlier
+    };
+    MovePreview previewMove(const Order& order) const {
+        MovePreview out;
+        const Ship* ship = getShip(order.fleetId);
+        if (!ship || !flightRules()) return out;
+        Encounter scratch = *this;
+        Ship& s = *scratch.getShip(order.fleetId);
+        if (shipActive(s) && !isFinished) {
+            RoundResult r;
+            std::vector<std::pair<int, CombatEvent>> ev;
+            std::map<int, int> slid;
+            const std::vector<Ship> field = ships;
+            const int firstOwner = ships.empty() ? 0 : ships[0].ownerId;
+            if (scratch.wegoRules()) scratch.wegoRoundStart(s, order.maneuver);
+            scratch.flightMove(s, order, nullptr, firstOwner, r, ev, slid, &field, &out.path);
+            out.slid = slid[order.fleetId];
+        }
+        if (out.path.empty()) out.path.push_back({s.position, s.facing});
+        out.end = s.position;
+        out.endFacing = s.facing;
+        out.exact = wegoRules();
+        return out;
+    }
+
+    // Plan-phase forecast for one mount against one target: the attacker fires from its previewed end pose at the
+    // target's current pose (the target's own move is unknown until both sides commit).
+    struct MountForecast {
+        int mount = 0;
+        roster::WeaponType type = roster::WeaponType::None;
+        roster::WeaponFamily family = roster::WeaponFamily::Beam;
+        roster::FiringArc arc = roster::FiringArc::All;
+        int distance = 0;
+        int band = 0;
+        bool inArc = false, inRange = false;
+        int hitChance = 0;          // Percent (rules 3 beams always hit: 100)
+        int damage = 0;             // Raw damage on a hit, before shields
+        int expectedDamage = 0;     // damage * hitChance / 100
+        int facing = -1;            // ShieldFacing struck (rules 4), else -1
+        int facingShields = 0;      // Shields left on that facing
+        int target = 0;             // The ship forecast against (the order's target, else the nearest visible enemy)
+    };
+    std::vector<MountForecast> forecastFire(const Order& order) const {
+        std::vector<MountForecast> out;
+        const Ship* attacker = getShip(order.fleetId);
+        if (!attacker || !flightRules()) return out;
+        const Ship* target = getShip(order.targetFleetId);
+        const MovePreview mv = previewMove(order);
+        if (!target || !shipActive(*target)) {
+            int best = std::numeric_limits<int>::max();
+            for (const auto& o : ships) {
+                if (!shipActive(o) || o.ownerId == attacker->ownerId || o.isCloaked) continue;
+                const int d = std::max(std::abs(mv.end.x - o.position.x), std::abs(mv.end.y - o.position.y));
+                if (d < best) { best = d; target = &o; }
+            }
+        }
+        if (!target) return out;
+        Ship at = *attacker;
+        if (wegoRules()) wegoRoundStart(at, order.maneuver);
+        at.position = mv.end;
+        at.facing = mv.endFacing;
+        const int dist = std::max(std::abs(at.position.x - target->position.x), std::abs(at.position.y - target->position.y));
+        const int rel = relativeBearing(at.facing, facingDegrees(target->position.x - at.position.x, target->position.y - at.position.y));
+        int evade = -sizeHitModifier(target->sizeClass);
+        const auto lastOrder = lastExecutedOrder(target->fleetId); // The target's last maneuver is the best guess
+        if (lastOrder) {
+            switch (lastOrder->maneuver) {
+            case TacticalManeuver::Evade: evade += 25; break;
+            case TacticalManeuver::Circle: case TacticalManeuver::Harry: evade += 15; break;
+            case TacticalManeuver::Flyby: case TacticalManeuver::Strafe: case TacticalManeuver::Retreat: evade += 10; break;
+            case TacticalManeuver::Charge: case TacticalManeuver::Hold: evade -= 10; break;
+            default: break;
+            }
+        }
+        const bool blind = wegoRules() && dist > 3 && at.system(Subsystem::Sensors) <= 0;
+        for (std::size_t i = 0; i < at.mounts.size(); ++i) {
+            const TacticalMount& m = at.mounts[i];
+            MountForecast f;
+            f.mount = static_cast<int>(i);
+            f.target = target->fleetId;
+            f.type = m.type;
+            f.family = roster::weaponFamily(m.type);
+            f.arc = m.arc;
+            f.distance = dist;
+            f.band = static_cast<int>(rangeBand(dist));
+            f.inArc = inFiringArc(m.arc, rel);
+            f.inRange = weaponRangePercent(f.family, dist) > 0 && !blind;
+            int base = m.attack * weaponRangePercent(f.family, dist) / 100;
+            const TacticalManeuver man = order.maneuver;
+            if (f.family != roster::WeaponFamily::Torpedo) {
+                if (man == TacticalManeuver::Charge) base = base * 120 / 100;
+                else if (man == TacticalManeuver::Strafe) base = base * 125 / 100;
+                else if (man == TacticalManeuver::Circle) base = base * 85 / 100;
+                else if (man == TacticalManeuver::Harry) base = base * 90 / 100;
+                else if (man == TacticalManeuver::Evade) base = base * 70 / 100;
+            } else {
+                if (man == TacticalManeuver::Strafe) base = base * 80 / 100;
+                else if (man == TacticalManeuver::Evade) base = base * 70 / 100;
+            }
+            if (wegoRules()) base = base * weaponsOutput(at.system(Subsystem::Weapons)) / 100;
+            if (f.family == roster::WeaponFamily::Pulse) base = base * 110 / 100;
+            const bool fires = f.inArc && f.inRange && m.attack > 0 && base > 0 &&
+                man != TacticalManeuver::Retreat && man != TacticalManeuver::Hail && !at.isCloaked;
+            if (wegoRules()) f.hitChance = fires ? wegoHitChance(at, f.family, dist, evade) : 0;
+            else if (!fires) f.hitChance = 0;
+            else if (f.family == roster::WeaponFamily::Beam) f.hitChance = 100;
+            else if (f.family == roster::WeaponFamily::Pulse) f.hitChance = std::clamp(95 - 10 * std::max(0, dist - 1) - evade, 5, 95);
+            else f.hitChance = std::clamp(90 - 5 * std::max(0, dist - 1) - evade, 5, 95);
+            f.damage = fires ? base : 0;
+            f.expectedDamage = f.damage * f.hitChance / 100;
+            if (wegoRules()) {
+                f.facing = struckFacing(*target, at.position, at.elevation);
+                f.facingShields = target->shieldFacing[static_cast<std::size_t>(f.facing)];
+            }
+            out.push_back(f);
+        }
+        return out;
+    }
+
 
     // -------------------------------------------------------------------------
     // Round Resolution
@@ -1071,7 +1499,7 @@ struct Encounter {
                     stand.targetFleetId = 0; // Clear destroyed target for retargeting
                     if (modern) standIt->second.targetFleetId = 0;
                 }
-                if (modern && stand.maneuver == TacticalManeuver::Retreat && !ship.canRetreat) {
+                if (modern && stand.maneuver == TacticalManeuver::Retreat && !mayRetreat(ship)) {
                     activeOrders.push_back({aiOrderFor(ship), true});
                     continue;
                 }
@@ -1087,6 +1515,13 @@ struct Encounter {
 
         RoundResult round;
         round.roundIndex = currentRound;
+        if (wegoRules()) {
+            for (auto& ship : ships) {
+                if (!shipActive(ship)) continue;
+                const Planned* p = plannedFor(ship.fleetId);
+                wegoRoundStart(ship, p ? p->order.maneuver : TacticalManeuver::Engage);
+            }
+        }
 
         std::vector<ShipRoundStatus> statuses;
         statuses.reserve(ships.size());
@@ -1113,6 +1548,7 @@ struct Encounter {
                 st->targetFleetId = planned.order.targetFleetId;
                 st->intermediatePosition = st->positionBefore;
                 st->aiControlled = planned.ai;
+                st->subsystemTarget = planned.order.subsystem;
             }
         }
 
@@ -1193,7 +1629,9 @@ struct Encounter {
         }
         const bool combatPhases = !(modern && truce);
 
-        // 2. Maneuver & Movement Phase
+        // 2. Maneuver & Movement Phase. Rules 4 (WEGO): every ship plans against the start-of-round field.
+        std::vector<Ship> startField;
+        if (wegoRules()) startField = ships;
         for (const auto& planned : activeOrders) {
             if (!combatPhases) break;
             const Order& ord = planned.order;
@@ -1203,7 +1641,7 @@ struct Encounter {
             ShipRoundStatus* st = getStatus(s->fleetId);
             if (modern && ord.maneuver != TacticalManeuver::Retreat) s->retreatSteps = 0; // Disengage aborted
             if (flight) {
-                flightMove(*s, ord, st, firstOwner, round, events, slidCells);
+                flightMove(*s, ord, st, firstOwner, round, events, slidCells, wegoRules() ? &startField : nullptr);
                 continue;
             }
             if (s->immobile) continue; // Stations hold position whatever their order.
@@ -1577,6 +2015,9 @@ struct Encounter {
             }
         }
         round.shipStatuses = statuses;
+        if (wegoRules()) {
+            for (const auto& s : ships) round.wegoStates.push_back({s.fleetId, s.shieldFacing, s.subsystems, s.crew, s.coreBreached});
+        }
         if (flight) {
             std::stable_sort(events.begin(), events.end(), [](const auto& a, const auto& b) {
                 return a.second.tick != b.second.tick ? a.second.tick < b.second.tick : a.first < b.first;
@@ -1747,6 +2188,33 @@ inline void equipFlight(Ship& s, int firstOwner) {
             given += m.attack;
         }
         if (first) first->attack += attack - given;
+    }
+}
+
+// Rules 4: switch a rules 3 encounter (no rounds fought yet) to WEGO rules and give every ship its facings,
+// subsystems, crew rating and deck layer. Facings split maxShields by shieldFacingShare (remainder fore) and keep
+// the current shields in the same proportion. Each side's mobile ships take layers 0, +1, -1 in encounter order.
+inline void enableWegoRules(Encounter& enc) {
+    if (!enc.flightRules()) throw std::invalid_argument("WEGO rules need a rules 3 (flight) encounter.");
+    if (!enc.rounds.empty()) throw std::invalid_argument("WEGO rules can only be enabled before round 1.");
+    enc.rulesVersion = WegoTacticalRules;
+    std::map<int, int> sideIndex;
+    for (auto& s : enc.ships) {
+        int given = 0, current = 0;
+        for (int f = 0; f < ShieldFacingCount; ++f) {
+            const auto fi = static_cast<std::size_t>(f);
+            s.maxShieldFacing[fi] = s.maxShields * shieldFacingShare(f) / 100;
+            s.shieldFacing[fi] = s.shields * shieldFacingShare(f) / 100;
+            given += s.maxShieldFacing[fi];
+            current += s.shieldFacing[fi];
+        }
+        s.maxShieldFacing[0] += s.maxShields - given;
+        s.shieldFacing[0] += s.shields - current;
+        s.subsystems.fill(100);
+        s.crew = startingCrewRating(s.fleetId);
+        s.coreBreached = false;
+        static constexpr std::array<int, 3> Layers{0, 1, -1};
+        s.elevation = s.immobile ? 0 : Layers[static_cast<std::size_t>(sideIndex[s.ownerId]++ % 3)];
     }
 }
 
@@ -2389,6 +2857,28 @@ inline std::string writeEncounter(const Encounter& encounter, bool presentation)
                 ss << "\n";
             }
         }
+        if (encounter.wegoRules()) {
+            ss << "HITS " << r.hits.size() << "\n";
+            for (const auto& h : r.hits) {
+                ss << h.shooter << " " << h.target << " " << h.mount << " " << h.tick << " " << h.impactTick << " "
+                   << h.hitChance << " " << h.facing << " " << h.subsystem << " " << (h.aimed ? 1 : 0) << " "
+                   << h.subsystemDamage << " " << (h.subsystemDestroyed ? 1 : 0) << " " << h.breachDamage << "\n";
+            }
+            ss << "WEGO_STATE " << r.wegoStates.size() << "\n";
+            for (const auto& w : r.wegoStates) {
+                ss << w.fleetId;
+                for (int v : w.shieldFacing) ss << " " << v;
+                for (int v : w.subsystems) ss << " " << v;
+                ss << " " << w.crew << " " << (w.coreBreached ? 1 : 0) << "\n";
+            }
+            ss << "AIMED";
+            int aimedCount = 0;
+            for (const auto& st : r.shipStatuses) if (st.subsystemTarget != Subsystem::None) ++aimedCount;
+            ss << " " << aimedCount;
+            for (const auto& st : r.shipStatuses)
+                if (st.subsystemTarget != Subsystem::None) ss << " " << st.fleetId << " " << static_cast<int>(st.subsystemTarget);
+            ss << "\n";
+        }
     }
 
     // Extended section: groups and cloak states
@@ -2428,6 +2918,28 @@ inline std::string writeEncounter(const Encounter& encounter, bool presentation)
             ss << "\n";
         }
     }
+    // Rules 4: facings, subsystems, crew and deck layer of every ship, then the subsystem aims of pending and
+    // standing orders (ORDERS and STANDING keep their rules 1-3 layout).
+    if (encounter.wegoRules()) {
+        ss << "WEGO " << encounter.ships.size() << "\n";
+        for (const auto& s : encounter.ships) {
+            ss << s.fleetId << " " << s.elevation << " " << s.crew << " " << (s.coreBreached ? 1 : 0);
+            for (int v : s.shieldFacing) ss << " " << v;
+            for (int v : s.maxShieldFacing) ss << " " << v;
+            for (int v : s.subsystems) ss << " " << v;
+            ss << "\n";
+        }
+        std::vector<std::pair<int, int>> aims, standingAims;
+        for (const auto& o : encounter.pendingOrders)
+            if (o.subsystem != Subsystem::None) aims.push_back({o.fleetId, static_cast<int>(o.subsystem)});
+        for (const auto& [fid, o] : encounter.standingOrders)
+            if (o.subsystem != Subsystem::None) standingAims.push_back({fid, static_cast<int>(o.subsystem)});
+        ss << "AIMS " << aims.size();
+        for (const auto& [fid, sub] : aims) ss << " " << fid << " " << sub;
+        ss << " " << standingAims.size();
+        for (const auto& [fid, sub] : standingAims) ss << " " << fid << " " << sub;
+        ss << "\n";
+    }
 
     ss << "END\n";
     return ss.str();
@@ -2462,7 +2974,7 @@ inline Encounter deserializeEncounter(const std::string& text) {
     bool hasArena = false, hasRounds = false, hasSector = false, hasRng = false;
     bool hasController = false, hasShips = false, hasOrders = false, hasRoundResults = false, hasEnd = false;
     bool hasRules = false, hasRelation = false, hasStanding = false;
-    bool hasGroups = false, hasCloakState = false, hasFixed = false, hasFlight = false;
+    bool hasGroups = false, hasCloakState = false, hasFixed = false, hasFlight = false, hasWego = false, hasAims = false;
     std::set<int> owners;
 
     auto requireShip = [&](int fleetId, const char* what) -> Ship& {
@@ -2488,7 +3000,7 @@ inline Encounter deserializeEncounter(const std::string& text) {
         if (tag == "RULES") {
             if (!v2 || hasRules) fail("Unexpected RULES section.");
             if (!(ss >> enc.rulesVersion) ||
-                enc.rulesVersion < LegacyTacticalRules || enc.rulesVersion > FlightTacticalRules) {
+                enc.rulesVersion < LegacyTacticalRules || enc.rulesVersion > WegoTacticalRules) {
                 fail("Unknown tactical rules version.");
             }
             hasRules = true;
@@ -2780,6 +3292,51 @@ inline Encounter deserializeEncounter(const std::string& text) {
                         r.events.push_back(e);
                     }
                 }
+                if (v2 && enc.wegoRules()) {
+                    std::int64_t hitCount = 0;
+                    if (!(ss >> subTag >> hitCount) || subTag != "HITS" || hitCount < 0 || hitCount > 8192) fail("Malformed HITS tag in ROUND_RESULTS.");
+                    for (std::int64_t j = 0; j < hitCount; ++j) {
+                        WegoHit h;
+                        int aimed = 0, destroyed = 0;
+                        if (!(ss >> h.shooter >> h.target >> h.mount >> h.tick >> h.impactTick >> h.hitChance >> h.facing >> h.subsystem >>
+                              aimed >> h.subsystemDamage >> destroyed >> h.breachDamage)) fail("Failed to parse HITS record.");
+                        requireShip(h.shooter, "HITS");
+                        requireShip(h.target, "HITS target");
+                        if (h.mount < -1 || h.mount >= MaxShipMounts || h.tick < 0 || h.tick >= CombatTicksPerRound ||
+                            h.impactTick < h.tick || h.impactTick >= CombatTicksPerRound || h.hitChance < 0 || h.hitChance > 100 ||
+                            h.facing < -1 || h.facing >= ShieldFacingCount || h.subsystem < 0 || h.subsystem > MaxSubsystemValue ||
+                            h.subsystemDamage < 0 || h.subsystemDamage > 100 || h.breachDamage < 0 || h.breachDamage > MaxStat) {
+                            fail("HITS values out of bounds.");
+                        }
+                        h.aimed = boolean(aimed, "HITS");
+                        h.subsystemDestroyed = boolean(destroyed, "HITS");
+                        r.hits.push_back(h);
+                    }
+                    std::int64_t stateCount = 0;
+                    if (!(ss >> subTag >> stateCount) || subTag != "WEGO_STATE" || stateCount != static_cast<std::int64_t>(enc.ships.size()))
+                        fail("Malformed WEGO_STATE tag in ROUND_RESULTS.");
+                    for (std::int64_t j = 0; j < stateCount; ++j) {
+                        WegoShipState w;
+                        int breached = 0;
+                        if (!(ss >> w.fleetId)) fail("Failed to parse WEGO_STATE record.");
+                        for (auto& v : w.shieldFacing) if (!(ss >> v) || v < 0 || v > MaxStat) fail("WEGO_STATE facing out of bounds.");
+                        for (auto& v : w.subsystems) if (!(ss >> v) || v < 0 || v > 100) fail("WEGO_STATE subsystem out of bounds.");
+                        if (!(ss >> w.crew >> breached) || w.crew < 0 || w.crew > MaxCrewRating) fail("WEGO_STATE crew out of bounds.");
+                        w.coreBreached = boolean(breached, "WEGO_STATE");
+                        requireShip(w.fleetId, "WEGO_STATE");
+                        r.wegoStates.push_back(w);
+                    }
+                    std::int64_t aimedCount = 0;
+                    if (!(ss >> subTag >> aimedCount) || subTag != "AIMED" || aimedCount < 0 || aimedCount > static_cast<std::int64_t>(r.shipStatuses.size()))
+                        fail("Malformed AIMED tag in ROUND_RESULTS.");
+                    for (std::int64_t j = 0; j < aimedCount; ++j) {
+                        int fid = 0, sub = 0;
+                        if (!(ss >> fid >> sub) || sub < 1 || sub > MaxSubsystemValue) fail("Failed to parse AIMED record.");
+                        auto it = std::find_if(r.shipStatuses.begin(), r.shipStatuses.end(), [&](const ShipRoundStatus& st) { return st.fleetId == fid; });
+                        if (it == r.shipStatuses.end()) fail("AIMED refers to a ship without a status.");
+                        it->subsystemTarget = static_cast<Subsystem>(sub);
+                    }
+                }
                 enc.rounds.push_back(r);
             }
             hasRoundResults = true;
@@ -2889,6 +3446,52 @@ inline Encounter deserializeEncounter(const std::string& text) {
                     s.mounts.push_back(m);
                 }
             }
+        } else if (tag == "WEGO") {
+            if (!v2 || !hasShips || hasWego || !enc.wegoRules()) fail("WEGO section is unexpected or duplicated.");
+            hasWego = true;
+            std::int64_t count = 0;
+            if (!(ss >> count) || count != static_cast<std::int64_t>(enc.ships.size())) fail("Failed to parse WEGO count.");
+            std::set<int> seen;
+            for (std::int64_t i = 0; i < count; ++i) {
+                int fid = 0, breached = 0;
+                Ship probe;
+                if (!(ss >> fid >> probe.elevation >> probe.crew >> breached)) fail("Failed to parse WEGO ship record.");
+                if (!seen.insert(fid).second) fail("Duplicate WEGO ship record.");
+                Ship& s = requireShip(fid, "WEGO");
+                if (probe.elevation < -1 || probe.elevation > 1 || probe.crew < 0 || probe.crew > MaxCrewRating) fail("WEGO values out of bounds.");
+                for (auto& v : probe.shieldFacing) if (!(ss >> v) || v < 0 || v > MaxStat) fail("WEGO facing out of bounds.");
+                for (auto& v : probe.maxShieldFacing) if (!(ss >> v) || v < 0 || v > MaxStat) fail("WEGO facing maximum out of bounds.");
+                for (auto& v : probe.subsystems) if (!(ss >> v) || v < 0 || v > 100) fail("WEGO subsystem out of bounds.");
+                std::int64_t sum = 0, maxSum = 0;
+                for (int f = 0; f < ShieldFacingCount; ++f) {
+                    const auto fi = static_cast<std::size_t>(f);
+                    if (probe.shieldFacing[fi] > probe.maxShieldFacing[fi]) fail("WEGO facing above its maximum.");
+                    sum += probe.shieldFacing[fi];
+                    maxSum += probe.maxShieldFacing[fi];
+                }
+                if (sum != s.shields || maxSum != s.maxShields) fail("WEGO facings do not add up to the ship's shields.");
+                s.elevation = probe.elevation; s.crew = probe.crew; s.coreBreached = boolean(breached, "WEGO");
+                s.shieldFacing = probe.shieldFacing; s.maxShieldFacing = probe.maxShieldFacing; s.subsystems = probe.subsystems;
+            }
+        } else if (tag == "AIMS") {
+            if (!v2 || hasAims || !enc.wegoRules() || !hasOrders || !hasStanding) fail("AIMS section is unexpected or duplicated.");
+            hasAims = true;
+            for (int pass = 0; pass < 2; ++pass) {
+                std::int64_t count = 0;
+                if (!(ss >> count) || count < 0 || count > 4096) fail("Failed to parse AIMS count.");
+                for (std::int64_t i = 0; i < count; ++i) {
+                    int fid = 0, sub = 0;
+                    if (!(ss >> fid >> sub) || sub < 1 || sub > MaxSubsystemValue) fail("Failed to parse AIMS record.");
+                    Order* o = nullptr;
+                    if (pass == 0) {
+                        for (auto& p : enc.pendingOrders) if (p.fleetId == fid) o = &p;
+                    } else if (auto it = enc.standingOrders.find(fid); it != enc.standingOrders.end()) {
+                        o = &it->second;
+                    }
+                    if (!o) fail("AIMS refers to a ship without an order.");
+                    o->subsystem = static_cast<Subsystem>(sub);
+                }
+            }
         } else if (tag == "END") {
             hasEnd = true;
             break;
@@ -2901,7 +3504,8 @@ inline Encounter deserializeEncounter(const std::string& text) {
         (v2 && (!hasRules || !hasRelation || !hasStanding || !hasController || !hasCloakState))) {
         fail("Incomplete tactical encounter serialization: missing required sections.");
     }
-    if (hasFlight != enc.flightRules()) fail("FLIGHT section is required exactly for tactical rules 3.");
+    if (hasFlight != enc.flightRules()) fail("FLIGHT section is required exactly for tactical rules 3 and 4.");
+    if (hasWego != enc.wegoRules() || hasAims != enc.wegoRules()) fail("WEGO and AIMS sections are required exactly for tactical rules 4.");
     if (static_cast<int>(enc.rounds.size()) != enc.currentRound) {
         fail("ROUND_RESULTS count does not match the current round.");
     }

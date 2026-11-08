@@ -254,3 +254,97 @@ func delete_template(tid: int) -> bool:
 
 func define_template(tid: int, name_: String, items: Array, success: String) -> bool:
 	return issue({"type": "DefineBuildTemplate", "templateId": tid, "templateName": name_, "templateItems": items}, [], success)
+
+# ---------------------------------------------------------------------------------------------
+# Dashboard (docs/UI-DESIGN-SYSTEM.md §10, Empire): key figures, income, colony cards, contacts, fleet strength
+# ---------------------------------------------------------------------------------------------
+func kpis() -> Array:
+	var v := view()
+	var e: Dictionary = v["empire"]
+	var inc: Dictionary = e["income"]
+	var tot := totals()
+	var net := int(inc["net"])
+	var ships: int = v["fleets"].size()
+	var upkeep := 0
+	var attack := 0
+	for f in v["fleets"]:
+		upkeep += int(f.get("maintenance", 0))
+		attack += int(f.get("attack", 0))
+	var contacts: Array = v["empires"].filter(func(r): return r.get("contact", false))
+	var wars: int = contacts.filter(func(r): return r.get("atWar", false)).size()
+	return [
+		{"icon": "credits", "cap": "Treasury", "value": Fmt.fmt(e["credits"]), "delta": Fmt.signed(net), "tone": "secondary",
+			"explain": {"title": "Treasury", "value": "¢" + Fmt.fmt(e["credits"]), "parts": [["Colonies (net of upkeep)", Fmt.signed(int(inc["colonies"])), "good"], ["Trade", Fmt.signed(int(inc["trade"])), ""], ["Ship upkeep", "-%d" % int(inc["ships"]), "alert"], ["Net per turn", Fmt.signed(net), "alert" if net < 0 else "good"]],
+				"effect": "Spent by buy orders and megaprojects. Trade routes and treaties raise income; ships cost upkeep every turn.",
+				"forecast": ("Runs dry in %d turns." % int(ceil(float(e["credits"]) / -net))) if net < 0 else "¢%s next turn." % Fmt.fmt(int(e["credits"]) + net)}},
+		{"icon": "population", "cap": "Population", "value": "%s/%s" % [Fmt.fmt(tot["pop"]), Fmt.fmt(tot["cap"])], "delta": "", "tone": "",
+			"explain": {"title": "Population", "value": "%d of %d capacity" % [tot["pop"], tot["cap"]], "effect": "Grows with a food surplus up to capacity. New colonies and terraforming raise capacity."}},
+		{"icon": "industry", "cap": "Industry", "value": Fmt.fmt(tot["industry"]), "delta": "", "tone": "",
+			"explain": {"title": "Industry", "value": "%d per turn" % tot["industry"], "parts": v["colonies"].map(func(c): return [str(c["name"]), str(int(c["economy"]["industry"])), ""]), "effect": "Each colony builds its own queue with its own industry."}},
+		{"icon": "research", "cap": "Research", "value": Fmt.fmt(tot["research"]), "delta": "", "tone": "info",
+			"explain": {"title": "Research", "value": "%d per turn" % tot["research"], "parts": v["colonies"].map(func(c): return [str(c["name"]), str(int(c["economy"]["research"])), ""]), "effect": "Pooled and split across six fields on the Research screen."}},
+		{"icon": "food", "cap": "Food balance", "value": Fmt.signed(tot["food"]), "delta": "", "tone": "alert" if tot["food"] < 0 else "good",
+			"explain": {"title": "Food balance", "value": Fmt.signed(tot["food"]), "parts": v["colonies"].map(func(c): return [str(c["name"]), Fmt.signed(int(c["economy"]["food"]) - int(c["population"])), "alert" if int(c["economy"]["foodDeficit"]) > 0 else "good"]), "effect": "Food is not shared between colonies: each one must feed itself."}},
+		{"icon": "intel", "cap": "Intelligence", "value": Fmt.fmt(e["intelligence"]), "delta": "", "tone": "tertiary",
+			"explain": {"title": "Intelligence", "value": Fmt.fmt(e["intelligence"]), "effect": "Funds espionage, sabotage and security on the Intel screen."}},
+		{"icon": "fleet", "cap": "Ships", "value": str(ships), "delta": "", "tone": "",
+			"explain": {"title": "Ships", "value": str(ships), "parts": [["Total attack", str(attack), ""], ["Upkeep per turn", "-%d" % upkeep, "alert"]], "effect": "Every ship costs upkeep; scrap obsolete hulls to save credits."}},
+		{"icon": "diplomacy", "cap": "Contacts", "value": str(contacts.size()), "delta": ("%d at war" % wars) if wars > 0 else "", "tone": "alert" if wars > 0 else "",
+			"explain": {"title": "Contacts", "value": "%d powers met" % contacts.size(), "parts": contacts.map(func(r): return [str(r["name"]), "war" if r.get("atWar", false) else "trust %d" % int(r.get("trust", 0)), "alert" if r.get("atWar", false) else ""]), "effect": "Meet powers by exploring. Treaties and trade need contact."}},
+	]
+
+## Income as segment-bar parts: [[label, value, Color]] (colours set by the presentation from `tone`).
+func income_parts() -> Array:
+	var inc: Dictionary = view()["empire"]["income"]
+	return [["Colonies", int(inc["colonies"]), "good"], ["Trade", int(inc["trade"]), "info"], ["Ships", -int(inc["ships"]), "alert"]]
+
+## Colony cards: [{id, name, cls (largest planet class), pop, cap, food, industry, research, building, eta, short, idle}].
+func colony_cards() -> Array:
+	var out := []
+	for c in view()["colonies"]:
+		var sy := session.find_by_id("systems", int(c["systemId"]))
+		var cls := "M"
+		var best := -1
+		for p in sy.get("planets", []):
+			if int(p.get("capacity", 0)) > best and str(p["class"]) != "Asteroids":
+				best = int(p["capacity"])
+				cls = str(p["class"])
+		var b: Variant = c.get("building")
+		out.append({"id": int(c["systemId"]), "name": str(c["name"]), "cls": cls, "pop": int(c["population"]), "cap": int(c["capacity"]),
+			"food": int(c["economy"]["food"]) - int(c["population"]), "industry": int(c["economy"]["industry"]), "research": int(c["economy"]["research"]),
+			"morale": int(c["morale"]), "building": str(b["name"]) if b is Dictionary else "", "eta": int(b["eta"]) if b is Dictionary else 0,
+			"short": int(c["economy"]["foodDeficit"]) > 0, "idle": not (b is Dictionary)})
+	return out
+
+## Contacts strip: [{empire, name, status, tone, trust}] for every major power except the player.
+func contacts() -> Array:
+	var out := []
+	for r in view()["empires"]:
+		var met: bool = r.get("contact", false)
+		var status := "No contact"
+		var tone := "dim"
+		if r.get("eliminated", false):
+			status = "Eliminated"
+		elif met and r.get("atWar", false):
+			status = "War"
+			tone = "alert"
+		elif met and r.get("allied", false):
+			status = "Allied"
+			tone = "good"
+		elif met:
+			status = "Peace"
+			tone = "good" if int(r.get("trust", 0)) >= 60 else "info"
+		out.append({"empire": int(r["empire"]), "name": str(r["name"]), "status": status, "tone": tone, "trust": int(r.get("trust", 0)), "met": met})
+	return out
+
+## Ships by role: [[role, count]] largest first.
+func fleet_roles() -> Array:
+	var by := {}
+	for f in view()["fleets"]:
+		var k := str(f.get("className", "Other"))
+		by[k] = int(by.get(k, 0)) + 1
+	var out := []
+	for k in by:
+		out.append([k, by[k]])
+	out.sort_custom(func(a, b): return a[1] > b[1])
+	return out

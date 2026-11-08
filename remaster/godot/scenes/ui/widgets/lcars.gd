@@ -108,10 +108,22 @@ static func tone_color(tone: String) -> Color:
 # ---------------------------------------------------------------------------------------------
 # Fonts
 # ---------------------------------------------------------------------------------------------
+## Bundled symbol fonts: the UI text uses ● ◇ ▸ ▲ ▼ ✓ ✗ ✕ ⚡ → ∞ and the like, which Antonio, Inter and Share Tech Mono lack.
+## Desktop finds them in a system font; the web build has no system fonts, so they showed as missing-glyph boxes. Every base
+## font lists these as fallbacks (and system fallback stays on), so the same glyphs draw in both builds.
+const SYMBOL_FONTS := ["symbols.ttf", "symbols-math.ttf"]
+
 static func _base_font(file: String) -> FontFile:
 	var key := "file:" + file
 	if not _fonts.has(key):
 		var f: FontFile = AppLoader.resource("res://scenes/ui/fonts/%s" % file)
+		if f != null:
+			var fb: Array[Font] = []
+			for sf in SYMBOL_FONTS:
+				var sym := AppLoader.resource("res://scenes/ui/fonts/%s" % sf) as Font
+				if sym != null:
+					fb.append(sym)
+			f.fallbacks = fb
 		_fonts[key] = f
 	return _fonts[key]
 
@@ -155,6 +167,17 @@ static func box(bg: Color, radius: int = 12, border: Color = Color.TRANSPARENT, 
 	s.anti_aliasing = true
 	return s
 
+## The era's panel: tinted surface, hairline border, a lit top edge in the accent and a soft drop shadow.
+static func panel_box(edge: Color = Color(0, 0, 0, 0)) -> StyleBoxFlat:
+	var sb := box(Color(UiTokens.panel(), 0.9), UiTokens.radius(), LINE, 1, Vector4(16, 14, 16, 14))
+	if edge.a > 0:
+		sb.border_color = Color(edge, 0.22)
+		sb.border_width_top = 2
+	sb.shadow_color = Color(0, 0, 0, 0.35)
+	sb.shadow_size = 10
+	sb.shadow_offset = Vector2(0, 4)
+	return sb
+
 ## Builds the complete LCARS Theme for a faction accent. Saved as lcars_theme.tres by tools/build_theme.gd.
 static func build_theme(empire: int = 1) -> Theme:
 	accent_empire = empire
@@ -194,19 +217,22 @@ static func build_theme(empire: int = 1) -> Theme:
 	t.set_color("font_disabled_color", "Button", Color(TEXT3, 0.8))
 	t.set_color("icon_normal_color", "Button", ink())
 	var pad := Vector4(16, 5, 16, 5)
-	t.set_stylebox("normal", "Button", box(a, 16, Color.TRANSPARENT, 0, pad))
-	t.set_stylebox("hover", "Button", box(a.lightened(0.18), 16, Color.TRANSPARENT, 0, pad))
-	t.set_stylebox("pressed", "Button", box(a.darkened(0.15), 16, Color.TRANSPARENT, 0, pad))
-	t.set_stylebox("disabled", "Button", box(Color(PANEL3, 0.9), 16, LINE2, 1, pad))
-	var focus := box(Color.TRANSPARENT, 17, Color(1, 1, 1, 0.8), 2, pad)
+	var pr := UiTokens.pill_radius()
+	var rr := UiTokens.radius()
+	var pnl := UiTokens.panel()
+	t.set_stylebox("normal", "Button", box(a, pr, Color.TRANSPARENT, 0, pad))
+	t.set_stylebox("hover", "Button", box(a.lightened(0.18), pr, Color.TRANSPARENT, 0, pad))
+	t.set_stylebox("pressed", "Button", box(a.darkened(0.15), pr, Color.TRANSPARENT, 0, pad))
+	t.set_stylebox("disabled", "Button", box(Color(PANEL3, 0.9), pr, LINE2, 1, pad))
+	var focus := box(Color.TRANSPARENT, pr + 1, Color(1, 1, 1, 0.8), 2, pad)
 	focus.draw_center = false
 	t.set_stylebox("focus", "Button", focus)
 	# Ghost pill variation (toggles, secondary controls)
 	t.set_type_variation("GhostButton", "Button")
-	t.set_stylebox("normal", "GhostButton", box(Color(PANEL2, 0.8), 14, LINE2, 1, pad))
-	t.set_stylebox("hover", "GhostButton", box(PANEL3, 14, a, 1, pad))
-	t.set_stylebox("pressed", "GhostButton", box(Color(a, 0.35), 14, a, 1, pad))
-	t.set_stylebox("hover_pressed", "GhostButton", box(Color(a, 0.45), 14, a, 1, pad))
+	t.set_stylebox("normal", "GhostButton", box(Color(PANEL2, 0.8), maxi(3, pr - 4), LINE2, 1, pad))
+	t.set_stylebox("hover", "GhostButton", box(PANEL3, maxi(3, pr - 4), a, 1, pad))
+	t.set_stylebox("pressed", "GhostButton", box(Color(a, 0.35), maxi(3, pr - 4), a, 1, pad))
+	t.set_stylebox("hover_pressed", "GhostButton", box(Color(a, 0.45), maxi(3, pr - 4), a, 1, pad))
 	t.set_color("font_color", "GhostButton", TEXT2)
 	t.set_color("font_hover_color", "GhostButton", TEXT)
 	t.set_color("font_pressed_color", "GhostButton", TEXT)
@@ -217,18 +243,18 @@ static func build_theme(empire: int = 1) -> Theme:
 	for state in ["normal", "hover", "pressed", "hover_pressed"]:
 		var c := a.darkened(0.25) if state == "normal" else (a.lightened(0.15) if state == "hover" else a.lightened(0.3))
 		var sb := box(c, 0, Color.TRANSPARENT, 0, Vector4(14, 8, 14, 8))
-		sb.corner_radius_top_right = 18
-		sb.corner_radius_bottom_right = 18
+		sb.corner_radius_top_right = pr
+		sb.corner_radius_bottom_right = pr
 		t.set_stylebox(state, "RailButton", sb)
 	t.set_font_size("font_size", "RailButton", 19)
 	t.set_constant("h_separation", "Button", 8)
 	# Panels
-	t.set_stylebox("panel", "Panel", box(PANEL, 18, LINE, 1))
-	t.set_stylebox("panel", "PanelContainer", box(PANEL, 18, LINE, 1, Vector4(16, 14, 16, 14)))
+	t.set_stylebox("panel", "Panel", box(Color(pnl, 0.9), rr, LINE, 1))
+	t.set_stylebox("panel", "PanelContainer", panel_box(a))
 	t.set_type_variation("Card", "PanelContainer")
-	t.set_stylebox("panel", "Card", box(Color(PANEL2, 0.92), 14, LINE2, 1, Vector4(12, 10, 12, 10)))
+	t.set_stylebox("panel", "Card", box(Color(PANEL2, 0.92), maxi(4, rr - 2), LINE2, 1, Vector4(12, 10, 12, 10)))
 	t.set_type_variation("Inset", "PanelContainer")
-	t.set_stylebox("panel", "Inset", box(Color(BG2, 0.85), 10, LINE, 1, Vector4(10, 8, 10, 8)))
+	t.set_stylebox("panel", "Inset", box(Color(BG2, 0.85), maxi(4, rr - 4), LINE, 1, Vector4(10, 8, 10, 8)))
 	# Inputs
 	for type in ["LineEdit", "SpinBox"]:
 		t.set_stylebox("normal", type, box(BG2, 10, LINE2, 1, Vector4(10, 6, 10, 6)))
@@ -338,9 +364,10 @@ static func pill(text: String, tone: String = "primary", on_press: Callable = Ca
 	elif tone != "primary":
 		var c := tone_color(tone)
 		var pad := Vector4(16, 5, 16, 5)
-		b.add_theme_stylebox_override("normal", box(c, 16, Color.TRANSPARENT, 0, pad))
-		b.add_theme_stylebox_override("hover", box(c.lightened(0.18), 16, Color.TRANSPARENT, 0, pad))
-		b.add_theme_stylebox_override("pressed", box(c.darkened(0.15), 16, Color.TRANSPARENT, 0, pad))
+		var pr := UiTokens.pill_radius()
+		b.add_theme_stylebox_override("normal", box(c, pr, Color.TRANSPARENT, 0, pad))
+		b.add_theme_stylebox_override("hover", box(c.lightened(0.18), pr, Color.TRANSPARENT, 0, pad))
+		b.add_theme_stylebox_override("pressed", box(c.darkened(0.15), pr, Color.TRANSPARENT, 0, pad))
 	var tip := hint
 	if key != "":
 		tip = ("%s  [%s]" % [hint, key]) if hint != "" else "[%s]" % key
@@ -392,34 +419,63 @@ static func scroll(child: Control) -> ScrollContainer:
 	s.add_child(child)
 	return s
 
-## An LCARS framed panel: coloured header band with title, body container returned via frame.get_meta("body").
-static func frame(title: String, sub: String = "", tone: String = "primary") -> PanelContainer:
+## An LCARS framed panel: era header (docs/UI-DESIGN-SYSTEM.md §5) with title, optional icon and sub caption; the
+## body container is returned via frame.get_meta("body"), the header row via get_meta("head").
+static func frame(title: String, sub: String = "", tone: String = "primary", icon_name: String = "") -> PanelContainer:
 	var p := PanelContainer.new()
-	var outer := vbox(8)
+	var tc := tone_color(tone)
+	p.add_theme_stylebox_override("panel", panel_box(tc))
+	var outer := vbox(10)
 	p.add_child(outer)
 	var head := hbox(10)
-	var band := ColorRect.new()
-	band.color = tone_color(tone)
-	band.custom_minimum_size = Vector2(26, 22)
-	head.add_child(band)
-	var t := label(title.to_upper(), "", 21, tone_color(tone))
+	var style := UiTokens.header_style()
+	if style == "cap" or style == "bar":
+		var cap := Panel.new()
+		var cs := box(tc, 11 if style == "cap" else 0, Color.TRANSPARENT, 0, Vector4.ZERO)
+		if style == "cap":
+			cs.corner_radius_top_right = 3
+			cs.corner_radius_bottom_right = 3
+		cap.add_theme_stylebox_override("panel", cs)
+		cap.custom_minimum_size = Vector2(30 if style == "cap" else 8, 22)
+		cap.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		head.add_child(cap)
+	elif style == "bracket":
+		head.add_child(label("[", "", 22, tc))
+	elif style == "hairline":
+		var dot := ColorRect.new()
+		dot.color = tc
+		dot.custom_minimum_size = Vector2(6, 6)
+		dot.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		head.add_child(dot)
+	if icon_name != "":
+		head.add_child(UiIcon.make(icon_name, 20, tc))
+	var t := label(title.to_upper(), "", 22, tc)
 	t.add_theme_font_override("font", font("display", 600))
 	head.add_child(t)
+	if style == "bracket":
+		head.add_child(label("]", "", 22, tc))
 	if sub != "":
 		var s := label(sub.to_upper(), "Caption")
 		s.size_flags_vertical = Control.SIZE_SHRINK_END
 		head.add_child(s)
 	var line := ColorRect.new()
-	line.color = Color(tone_color(tone), 0.35)
-	line.custom_minimum_size = Vector2(0, 2)
+	line.color = Color(tc, 0.3 if style != "hairline" else 0.5)
+	line.custom_minimum_size = Vector2(0, 2 if style != "hairline" else 1)
 	line.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	line.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	head.add_child(line)
+	if style == "cap":
+		var endcap := Panel.new()
+		endcap.add_theme_stylebox_override("panel", box(Color(tc, 0.55), 5, Color.TRANSPARENT, 0, Vector4.ZERO))
+		endcap.custom_minimum_size = Vector2(14, 10)
+		endcap.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		head.add_child(endcap)
 	outer.add_child(head)
 	var body := vbox(8)
 	body.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	outer.add_child(body)
 	p.set_meta("body", body)
+	p.set_meta("head", head)
 	return p
 
 static func body(frame_panel: Control) -> VBoxContainer:
@@ -443,16 +499,33 @@ static func meter(value: float, max_value: float, color: Color = Color(0, 0, 0, 
 		bar.add_theme_stylebox_override("fill", box(color, 4, Color.TRANSPARENT, 0, Vector4.ZERO))
 	return bar
 
-## A stat tile: small caption over a large value.
-static func stat(caption_text: String, value: Variant, tone: String = "", tip: String = "") -> Control:
+## A stat: small caption over a large value, explained on hover. `tip` is a string or an explanation Dictionary
+## (docs/UI-DESIGN-SYSTEM.md §8); with none, the caption and value form the explanation's title.
+static func stat(caption_text: String, value: Variant, tone: String = "", tip: Variant = "") -> Control:
+	var ex := RichTip.from(tip)
+	if str(ex.get("title", "")) == "":
+		ex["title"] = caption_text
+	elif not ex.has("value") and not ex.has("parts"):
+		ex = {"title": caption_text, "value": num(value), "effect": str(ex["title"])}
+	if not ex.has("value"):
+		ex["value"] = num(value)
+	var host := RichTip.Explained.new(ex)
 	var v := vbox(0)
 	v.add_child(caption(caption_text))
 	var val := label(num(value), "", 24, tone_color(tone) if tone != "" else TEXT)
 	val.add_theme_font_override("font", font("display", 560))
 	v.add_child(val)
-	v.tooltip_text = tip
-	v.mouse_filter = Control.MOUSE_FILTER_PASS
-	return v
+	ignore_mouse(v)
+	host.add_child(v)
+	return host
+
+## A key-figure tile with icon, delta and rich explanation (KpiTile).
+static func kpi(icon_name: String, caption_text: String, value: Variant, delta: String = "", tone: String = "", explain: Variant = "", compact: bool = false) -> KpiTile:
+	return KpiTile.make(icon_name, caption_text, num(value), delta, tone, explain, compact)
+
+## An icon from the UI set (UiIcon).
+static func icon(name_: String, px: float = 20.0, tint: Variant = null) -> UiIcon:
+	return UiIcon.make(name_, px, tint)
 
 static func badge(text: String, tone: String = "primary") -> PanelContainer:
 	var p := PanelContainer.new()
@@ -534,7 +607,9 @@ static func title_block(title: String, sub: String, size: int = 40) -> VBoxConta
 	return t
 
 ## A selectable list row: a ghost button, highlighted when active. Fill it through row_inner().
-static func row_button(active: bool, height: int = 52, radius: int = 12) -> Button:
+static func row_button(active: bool, height: int = 52, radius: int = -1) -> Button:
+	if radius < 0:
+		radius = maxi(4, UiTokens.radius() - 2)
 	var btn := Button.new()
 	btn.theme_type_variation = "GhostButton"
 	btn.custom_minimum_size.y = height

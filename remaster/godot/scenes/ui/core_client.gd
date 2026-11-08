@@ -116,6 +116,12 @@ func _fixture_call(method: String, args: Dictionary) -> Dictionary:
 	match method:
 		"meta", "encyclopedia":
 			return _fixture(method)
+		"loadContent":
+			# The fixtures were recorded from the base pack: accept it and report a stand-in identity (no parsing).
+			var bundle := str(args.get("bundle", ""))
+			if bundle == "":
+				return _fail("loadContent needs a bundle")
+			return _ok({"id": "botf-base", "name": "fixture backend (recorded from the base pack)", "format": 1, "revision": 0, "checksum": "", "bytes": bundle.length(), "base": true})
 		"newCampaign":
 			return _start("campaign", args)
 		"newFrontierDrill":
