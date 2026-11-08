@@ -5,7 +5,7 @@
 
 Key scheme (one scheme everywhere: roster, manifest, importer, Unreal client):
   ship.<fac>.<class>      a ship model. Expanded roster classes use the roster's assetKey verbatim
-                          (ShipRosterData.h). Legacy catalogue classes (ids 0..104) use
+                          (data/base/roster.json). Legacy catalogue classes (data/base/ships.json, ids 0..104) use
                           ship.<fac>.<slug(className)>, and ship.<fac>.starbase / ship.<fac>.outpost.
   weapon.<Type>           weapon fire/impact audio (and VFX) per roster WeaponType, e.g. weapon.PhaserArray.
   weapon.<Type>.<fac>     optional faction variant (weapon.Disruptor.rom); the client tries it before weapon.<Type>.
@@ -26,7 +26,7 @@ import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
-CORE = os.path.join(ROOT, "game", "Source", "BotfSim")
+DATA = os.path.join(ROOT, "data", "base")
 
 LEGACY_FACTION = {0: "car", 1: "fed", 2: "fer", 3: "kli", 4: "rom"}
 LEGACY_ALIASES = {"ship.borg.cube": 115}  # legacy non-major ids with a manifest key
@@ -48,29 +48,25 @@ def legacy_key(race_id, class_name):
     return "ship.%s.%s" % (fac, slug(class_name))
 
 
+def _section(name):
+    # Content pack section file (docs/DATA-FORMAT.md): {"<name>": [records...]}.
+    with open(os.path.join(DATA, name + ".json"), encoding="utf-8") as fh:
+        return json.load(fh)[name]
+
+
 def roster_classes():
-    text = open(os.path.join(CORE, "ShipRosterData.h"), encoding="utf-8").read()
-    rx = re.compile(r'\{(\d+), "(ship\.[^"]+)", Faction::(\w+), (\d+), (\d+), "([^"]*)", "([^"]*)", HullRole::(\w+), \d+, Era::(\w+)')
     out = []
-    for m in rx.finditer(text):
-        out.append({"id": int(m.group(1)), "key": m.group(2), "faction": m.group(3), "role": m.group(6),
-                    "className": m.group(7), "hullRole": m.group(8), "era": m.group(9)})
-    weapons = sorted(set(re.findall(r"WeaponType::(\w+), [1-9]", text)))
-    return out, weapons
+    weapons = set()
+    for c in _section("roster"):
+        out.append({"id": c["id"], "key": c["assetKey"], "faction": c["faction"], "role": c["roleName"],
+                    "className": c["className"], "hullRole": c["hullRole"], "era": c["era"]})
+        weapons.update(w["type"] for w in c["weapons"] if w["count"] > 0)
+    return out, sorted(weapons)
 
 
 def legacy_classes():
-    text = open(os.path.join(CORE, "ReferenceCatalogue.h"), encoding="utf-8").read()
-    start = text.index("ShipCatalogue{")
-    rx = re.compile(r'\{(\d+), (\d+), "([^"]*)", "([^"]*)"')
-    out = []
-    for m in rx.finditer(text, start):
-        i = int(m.group(1))
-        if i > 124:
-            break
-        out.append({"id": i, "raceId": int(m.group(2)), "role": m.group(3), "className": m.group(4),
-                    "key": legacy_key(int(m.group(2)), m.group(4))})
-    return out
+    return [{"id": s["id"], "raceId": s["raceId"], "role": s["name"], "className": s["shipClass"],
+             "key": legacy_key(s["raceId"], s["shipClass"])} for s in _section("ships")]
 
 
 def required_keys():

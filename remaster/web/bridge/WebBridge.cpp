@@ -18,6 +18,7 @@
 #include "../../game/Source/BotfSim/ReferenceCatalogue.h"
 #include "../../game/Source/BotfSim/ShipRoster.h"
 #include "../../game/Source/BotfSim/MinorRaces.h"
+#include "../../game/Source/BotfSim/Content.h"
 #include "Json.h"
 
 #include <algorithm>
@@ -2770,9 +2771,21 @@ void writeEncyclopedia(Writer& w) {
 // ------------------------------------------------------------------------------------------------
 // Dispatch
 // ------------------------------------------------------------------------------------------------
+// Content pack identity (docs/DATA-FORMAT.md section 6). The checksum is a 16-digit hex string (JSON numbers lose 64-bit precision).
+void writeContentInfo(Writer& w, const botf::content::PackInfo& info) {
+    w.beginObject().field("id", info.id).field("name", info.name).field("format", info.format).field("revision", info.revision)
+        .field("checksum", botf::content::checksumHex(info.checksum)).field("bytes", static_cast<std::int64_t>(info.bytes))
+        .field("base", info.base).endObject();
+}
+
 std::string dispatch(const std::string& method, const Value& a) {
     Writer w;
     if (method == "meta") writeMeta(w);
+    // loadContent {"bundle": "<pack bytes>"}: install a content pack the host read through res:// (the core never opens
+    // files). Atomic: a bad pack leaves the active one in place. Call before newCampaign or loading a save.
+    else if (method == "loadContent") writeContentInfo(w, botf::content::install(a.getString("bundle")));
+    else if (method == "loadBaseContent") writeContentInfo(w, botf::content::installBase());
+    else if (method == "contentInfo") writeContentInfo(w, botf::content::active());
     else if (method == "encyclopedia") writeEncyclopedia(w);
     else if (method == "newCampaign") { newCampaign(a); writeView(w); }
     else if (method == "newBattleDrill") { newBattleDrill(a.getBool("station"), a.getInt("ships", 3), a.getBool("foeStation")); writeView(w); }

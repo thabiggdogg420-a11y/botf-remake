@@ -95,6 +95,18 @@ Write-Host "version $productVersion"
 $presets = Join-Path $proj 'export_presets.cfg'
 $presetsOriginal = [System.IO.File]::ReadAllText($presets)
 
+# Content packs (docs/DATA-FORMAT.md section 10): copy remaster/data/*.pack.json into res://data/ so the exports carry them
+# inside the .pck (the core never opens files; the client reads res://data/<pack>.pack.json and calls loadContent).
+# Byte copy: the checksum is over the exact bytes. The folder ignores itself, so the copy never makes the tree dirty.
+$packDir = Join-Path $proj 'data'
+New-Item -ItemType Directory -Force -Path $packDir | Out-Null
+[System.IO.File]::WriteAllText((Join-Path $packDir '.gitignore'), "*`n")
+$packs = @(Get-ChildItem -LiteralPath (Join-Path $remaster 'data') -Filter '*.pack.json' -File)
+foreach ($p in $packs) { Copy-Item -LiteralPath $p.FullName -Destination (Join-Path $packDir $p.Name) -Force }
+$packsOk = $packs.Count -gt 0 -and @($packs | Where-Object {
+    (Get-FileHash -LiteralPath $_.FullName).Hash -ne (Get-FileHash -LiteralPath (Join-Path $packDir $_.Name)).Hash }).Count -eq 0
+Add-Result 'content-packs' $(if ($packsOk) { 'ok' } else { 'FAIL' }) "$($packs.Count) pack(s) copied to res://data"
+
 $imp = Start-Godot 'import' "--headless --audio-driver Dummy --path `"$proj`" --import"
 Wait-Jobs @($imp) 300
 Add-Result 'import' $(if ($imp.Exit -eq 0) { 'ok' } else { 'FAIL' }) "exit $($imp.Exit)"
@@ -108,7 +120,8 @@ try {
     if (-not $SkipExport) {
         # Stamp the Windows preset's version fields for the export; the finally block restores the committed file.
         $stamped = $presetsOriginal -replace 'application/file_version="[^"]*"', "application/file_version=`"$version.0`"" `
-            -replace 'application/product_version="[^"]*"', "application/product_version=`"$productVersion`""
+            -replace 'application/product_version="[^"]*"', "application/product_version=`"$productVersion`"" `
+            -replace 'include_filter="fixtures/\*\.json"', 'include_filter="fixtures/*.json, data/*.pack.json"'
         [System.IO.File]::WriteAllText($presets, $stamped)
         New-Item -ItemType Directory -Force -Path (Join-Path $proj 'build\web') | Out-Null
         Set-Content -LiteralPath (Join-Path $proj 'build\VERSION.txt') -Value "BOTF Remastered $productVersion" -Encoding ASCII
