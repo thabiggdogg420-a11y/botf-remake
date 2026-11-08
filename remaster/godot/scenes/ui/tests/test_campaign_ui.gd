@@ -217,6 +217,16 @@ func _workflow(backend: String) -> void:
 		var cs2 := app.current_screen()
 		check(find(cs2, "BattleHost") != null, "BattleHost container is present")
 		check(find(cs2, "Maneuver_Engage") != null and find(cs2, "Maneuver_Retreat") != null, "maneuver buttons are present")
+		# Rules 4: the ship systems panel (six facings, five gauges, crew badge, aim selector) shows for a WEGO ship.
+		var wego_ship := false
+		for sd in app.encounter.get("ships", []):
+			wego_ship = wego_ship or (sd.get("mine", false) and sd.has("wego"))
+		if wego_ship:
+			check(find(cs2, "ShipSystems") != null and find(cs2, "CrewBadge") != null and find(cs2, "AimSelector") != null, "rules 4 systems panel is present")
+			check(find(cs2, "Facing_fore") != null and find(cs2, "Facing_ventral") != null and find(cs2, "Sys_warpCore") != null, "facing bars and subsystem gauges are present")
+			cs2.vm.set_subsystem("engines")
+			check(cs2.vm.order("Engage") != "", "an aimed order is accepted")
+			cs2.vm.set_subsystem("none")
 		cs2.order("Charge")
 		await frames()
 		cs2._round()

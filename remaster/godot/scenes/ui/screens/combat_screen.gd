@@ -65,6 +65,7 @@ func _battle_host() -> BattleHost:
 	if host == null or not is_instance_valid(host):
 		host = BattleHost.new()
 		host.ship_picked.connect(_pick)
+		host.subsystem_picked.connect(_aim)
 	host.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	host.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	return host
@@ -114,6 +115,9 @@ func _bottom(e: Dictionary, foe_name: String, last: Dictionary) -> Control:
 	var bottom := Lcars.hbox(10)
 	bottom.custom_minimum_size.y = 250
 	bottom.add_child(_orders(e, foe_name))
+	var sel := _selected()
+	if not CombatVM.wego_of(sel).is_empty():
+		bottom.add_child(_systems(sel))
 	var logf := Lcars.frame("Combat log", ("round %d" % int(last["index"])) if not last.is_empty() else "awaiting first round", "tertiary", "chronicle")
 	logf.custom_minimum_size.x = 560
 	var lb := Lcars.vbox(2)
@@ -195,6 +199,7 @@ func _live(e: Dictionary) -> void:
 	root.add_child(mid)
 	host.load_encounter.call_deferred(e)
 	host.set_selection.call_deferred(ship, target)
+	_plan.call_deferred()
 	var bottom := _bottom(e, foe_name, last)
 	root.add_child(bottom)
 	if choice and not e.get("finished", false) and int(e["round"]) == 0:
@@ -287,6 +292,87 @@ func _fill_card(btn: Button, s: Dictionary, all: Array, sel: int, hostile: bool)
 	parts[2].add_theme_color_override("font_color", Lcars.accent2() if cs["ordered"] else Lcars.TEXT2)
 	parts[3].text = cs["flags"]
 
+## Plan phase (rules 4): the selected ship's arcs, range bands, move preview and forecast on the 3D view.
+func _plan() -> void:
+	if host == null or not is_instance_valid(host) or not host.is_inside_tree():
+		return
+	var sel := _selected()
+	var fc := vm.forecast()
+	if fc.is_empty() or sel.is_empty():
+		host.clear_plan()
+		return
+	host.show_plan(sel, fc)
+
+## A subsystem pip clicked on the target in the 3D view.
+func _aim(_target_id: int, key: String) -> void:
+	vm.set_subsystem(key)
+	refresh()
+
+## Rules 4 ship systems: six shield facings, five subsystem gauges, the crew rating and the aim selector.
+func _systems(s: Dictionary) -> Control:
+	var w := CombatVM.wego_of(s)
+	var crew := str(w.get("crew", "Regular"))
+	var f := Lcars.frame("Ship systems", short_name(s), "tertiary", "ship")
+	f.name = "ShipSystems"
+	f.custom_minimum_size.x = 400
+	var b := Lcars.body(f)
+	var top := Lcars.hbox(8)
+	var cb := Lcars.badge("Crew · " + crew, CombatVM.CREW_TONES.get(crew, "primary"))
+	cb.name = "CrewBadge"
+	cb.tooltip_text = "Crew rating %s: it sets repair speed, fire accuracy and how fast destroyed systems come back." % crew
+	top.add_child(cb)
+	if w.get("coreBreached", false):
+		top.add_child(Lcars.badge("Core breached", "alert"))
+	if not w.get("canWarp", true):
+		top.add_child(Lcars.badge("No warp", "warn"))
+	b.add_child(top)
+	var fac: Array = w.get("facings", [])
+	var mx: Array = w.get("maxFacings", [])
+	var g := Lcars.grid(2)
+	g.name = "FacingBars"
+	g.add_theme_constant_override("h_separation", 14)
+	g.add_theme_constant_override("v_separation", 2)
+	for i in CombatVM.FACINGS.size():
+		var row := Lcars.hbox(6)
+		var cap := Lcars.label(str(CombatVM.FACINGS[i]).substr(0, 4).to_upper(), "Mono", 11, Lcars.TEXT3)
+		cap.custom_minimum_size.x = 38
+		row.add_child(cap)
+		var m := Lcars.meter(float(fac[i]) if i < fac.size() else 0.0, float(mx[i]) if i < mx.size() else 1.0, Lcars.SHIELD, 6, 70)
+		m.name = "Facing_" + CombatVM.FACINGS[i]
+		row.add_child(m)
+		row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		g.add_child(row)
+	b.add_child(g)
+	var subs: Dictionary = w.get("subsystems", {})
+	var sr := Lcars.hbox(8)
+	sr.name = "SubsystemGauges"
+	for def in CombatVM.SUBSYSTEMS:
+		var hp := int(subs.get(def[0], 100))
+		var col := Color("#8fd18a") if hp >= 60 else (Color("#e8b44a") if hp > 0 else Lcars.ALERT)
+		var cell := Lcars.vbox(1)
+		cell.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		cell.tooltip_text = "%s %d%%" % [def[2], hp]
+		cell.add_child(Lcars.label("%s %d" % [def[1], hp], "Mono", 11, Lcars.TEXT2))
+		var m2 := Lcars.meter(hp, 100, col, 6)
+		m2.name = "Sys_" + def[0]
+		cell.add_child(m2)
+		sr.add_child(cell)
+	b.add_child(sr)
+	b.add_child(Lcars.caption("Aim at the target's subsystem"))
+	var ar := Lcars.hbox(4)
+	ar.name = "AimSelector"
+	var opts := [["none", "NONE", "No aim: fire spreads over the target's facing"]]
+	for def in CombatVM.SUBSYSTEMS:
+		opts.append([def[0], def[1], "Aim at the target's %s" % def[2].to_lower()])
+	for o in opts:
+		var key: String = o[0]
+		var tg := Lcars.toggle(o[1], vm.subsystem == key, func(_on): vm.set_subsystem(key); refresh(), o[2])
+		tg.name = "Aim_" + key
+		tg.add_theme_font_size_override("font_size", 12)
+		ar.add_child(tg)
+	b.add_child(ar)
+	return f
+
 func _pick(id: int) -> void:
 	vm.pick(id)
 	refresh()
@@ -313,6 +399,8 @@ func _orders(e: Dictionary, foe_name: String) -> Control:
 	grid.add_theme_constant_override("h_separation", 6)
 	for mv in MANEUVERS:
 		var key: String = mv["key"]
+		if key == "Retreat" and scope == "ship" and CombatVM.retreat_hidden(sel):
+			continue # rules 4: no warp, no withdrawal (warp core or engines down, or no safe sector)
 		var p := Lcars.pill(mv["name"], CombatVM.maneuver_tone(key), func(): order(key), vm.maneuver_block(key), vm.maneuver_hint(mv))
 		p.name = "Maneuver_" + key
 		p.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -343,7 +431,13 @@ func _round() -> void:
 		print("ROUND_TIMING refresh_round=%d ms" % ((Time.get_ticks_usec() - _t1) / 1000))
 	var rounds: Array = _enc().get("rounds", [])
 	if host and rounds.size() > 0:
+		host.clear_plan()
 		host.play_round.call_deferred(rounds.back(), _enc())
+		if not host.round_finished.is_connected(_plan_after_round):
+			host.round_finished.connect(_plan_after_round, CONNECT_ONE_SHOT)
+
+func _plan_after_round(_idx: int) -> void:
+	_plan()
 
 func _auto() -> void:
 	if not vm.resolve(true):

@@ -99,6 +99,7 @@ func _ready() -> void:
 func play_round(p_encounter: Dictionary, p_round_index: int) -> void:
 	encounter = p_encounter
 	round_index = p_round_index
+	BattleEnvironment.set_planet_class(_env, str(encounter.get("planetClass", ""))) # the battle system's planet
 	var rounds: Array = encounter.get("rounds", [])
 	if round_index < 0 or round_index >= rounds.size():
 		push_warning("BattleScene.play_round: no round %d" % round_index)

@@ -1309,7 +1309,8 @@ struct Encounter {
         }
         if (s.coreBreached) s.subsystems[static_cast<std::size_t>(static_cast<int>(Subsystem::WarpCore) - 1)] = 0;
         const int emitters = s.system(Subsystem::Shields);
-        if (emitters <= 0 || s.maxShields <= 0) return;
+        // A station never regenerates mid-battle: the campaign record caps it at its starting shields.
+        if (s.immobile || emitters <= 0 || s.maxShields <= 0) return;
         std::int64_t amount = static_cast<std::int64_t>(s.maxShields) / 20 * emitters / 100;
         if (order == TacticalManeuver::Hold) amount *= 2;
         if (s.system(Subsystem::WarpCore) < 50) amount /= 2;
@@ -1515,6 +1516,10 @@ struct Encounter {
 
         RoundResult round;
         round.roundIndex = currentRound;
+        // Round-start shield regeneration (rules 4) is part of this round's change: status.shieldBefore is the value the
+        // previous round ended on, so the campaign's per-ship damage chain stays unbroken.
+        std::map<int, int> shieldsBeforeRegen;
+        for (const auto& ship : ships) shieldsBeforeRegen[ship.fleetId] = ship.shields;
         if (wegoRules()) {
             for (auto& ship : ships) {
                 if (!shipActive(ship)) continue;
@@ -1530,7 +1535,7 @@ struct Encounter {
             st.fleetId = s.fleetId;
             st.ownerId = s.ownerId;
             st.hullBefore = s.hull;
-            st.shieldBefore = s.shields;
+            st.shieldBefore = shieldsBeforeRegen[s.fleetId];
             st.positionBefore = s.position;
             statuses.push_back(st);
         }
@@ -2191,6 +2196,35 @@ inline void equipFlight(Ship& s, int firstOwner) {
     }
 }
 
+// Rules 4: splits a ship's maxShields and shields over the six facings (shieldFacingShare, remainder fore). Used by
+// enableWegoRules and by anything that rewrites a ship's shield values afterwards (a station's proxy fleet).
+inline void splitShieldFacings(Ship& s) {
+    int given = 0, current = 0;
+    for (int f = 0; f < ShieldFacingCount; ++f) {
+        const auto fi = static_cast<std::size_t>(f);
+        s.maxShieldFacing[fi] = s.maxShields * shieldFacingShare(f) / 100;
+        s.shieldFacing[fi] = s.shields * shieldFacingShare(f) / 100;
+        given += s.maxShieldFacing[fi];
+        current += s.shieldFacing[fi];
+    }
+    s.maxShieldFacing[0] += s.maxShields - given;
+    s.shieldFacing[0] += s.shields - current;
+    // The remainder given to fore can exceed fore's own capacity (shields below max): spill the excess to facings with room.
+    for (int f = 0; f < ShieldFacingCount; ++f) {
+        auto& cur = s.shieldFacing[static_cast<std::size_t>(f)];
+        int excess = cur - s.maxShieldFacing[static_cast<std::size_t>(f)];
+        if (excess <= 0) continue;
+        cur -= excess;
+        for (int g = 0; g < ShieldFacingCount && excess > 0; ++g) {
+            const auto gi = static_cast<std::size_t>(g);
+            const int move = std::min(excess, s.maxShieldFacing[gi] - s.shieldFacing[gi]);
+            if (move <= 0) continue;
+            s.shieldFacing[gi] += move;
+            excess -= move;
+        }
+    }
+}
+
 // Rules 4: switch a rules 3 encounter (no rounds fought yet) to WEGO rules and give every ship its facings,
 // subsystems, crew rating and deck layer. Facings split maxShields by shieldFacingShare (remainder fore) and keep
 // the current shields in the same proportion. Each side's mobile ships take layers 0, +1, -1 in encounter order.
@@ -2200,16 +2234,7 @@ inline void enableWegoRules(Encounter& enc) {
     enc.rulesVersion = WegoTacticalRules;
     std::map<int, int> sideIndex;
     for (auto& s : enc.ships) {
-        int given = 0, current = 0;
-        for (int f = 0; f < ShieldFacingCount; ++f) {
-            const auto fi = static_cast<std::size_t>(f);
-            s.maxShieldFacing[fi] = s.maxShields * shieldFacingShare(f) / 100;
-            s.shieldFacing[fi] = s.shields * shieldFacingShare(f) / 100;
-            given += s.maxShieldFacing[fi];
-            current += s.shieldFacing[fi];
-        }
-        s.maxShieldFacing[0] += s.maxShields - given;
-        s.shieldFacing[0] += s.shields - current;
+        splitShieldFacings(s);
         s.subsystems.fill(100);
         s.crew = startingCrewRating(s.fleetId);
         s.coreBreached = false;
@@ -2464,6 +2489,8 @@ inline Encounter constructEncounter(const GameState& state,
         enc.groups.push_back(std::move(grp));
     }
 
+    // Rules 4: Remastered campaigns with the WEGO flag fight with facings, subsystems and crew ratings.
+    if (state.rules.wegoCombat && state.rules.flightModel) enableWegoRules(enc);
     return enc;
 }
 

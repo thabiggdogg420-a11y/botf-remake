@@ -27,6 +27,12 @@ var target := 0
 var scope := "all"
 var choice := true
 var archive_sel := {}
+var subsystem := "none" ## Rules 4 aim for ship and all-ships orders: none, weapons, engines, shields, sensors or warpCore.
+var maneuver := "Engage" ## The last maneuver ordered, used for the plan-phase forecast.
+
+const FACINGS := ["fore", "aft", "port", "starboard", "dorsal", "ventral"]
+const SUBSYSTEMS := [["weapons", "WPN", "Weapons"], ["engines", "ENG", "Engines"], ["shields", "SHD", "Shield emitters"], ["sensors", "SNS", "Sensors"], ["warpCore", "CORE", "Warp core"]]
+const CREW_TONES := {"Green": "warn", "Regular": "primary", "Veteran": "good", "Elite": "good", "Legendary": "good"}
 
 static func is_active(s: Dictionary) -> bool:
 	return s.get("alive", false) and s.get("active", false) and not s.get("retreated", false)
@@ -35,6 +41,16 @@ static func short_name(s: Dictionary) -> String:
 	if s.is_empty():
 		return "nearest enemy"
 	return "Cloaked contact" if s.get("hidden", false) else str(s["name"]).split(" — ")[0]
+
+## The rules 4 block of a ship ({facings, maxFacings, subsystems, crew, canWarp, ...}), or {} under rules 1-3.
+static func wego_of(s: Dictionary) -> Dictionary:
+	var w: Variant = s.get("wego")
+	return w if w is Dictionary else {}
+
+## Retreat needs a warp-capable ship under rules 4 (core and engines up, a safe sector): hidden otherwise.
+static func retreat_hidden(s: Dictionary) -> bool:
+	var w := wego_of(s)
+	return not w.is_empty() and not w.get("canWarp", false)
 
 func enc() -> Dictionary:
 	return session.encounter if session.encounter is Dictionary else {}
@@ -165,10 +181,14 @@ static func hail_outlook(e: Dictionary, foe: String) -> Array:
 	return ["The %s would refuse a truce unless they hail too (%s)." % [foe, why], "alert"]
 
 ## Orders a maneuver for the current scope. Returns the toast text, or "" after failed.
-func order(maneuver: String) -> String:
+func order(maneuver_key: String) -> String:
 	var sel := selected()
-	var t := 0 if maneuver in ["Retreat", "Hail"] else target
-	var args := {"maneuver": maneuver, "targetFleetId": t}
+	if not maneuver_key in ["Retreat", "Hail"]:
+		maneuver = maneuver_key
+	var t := 0 if maneuver_key in ["Retreat", "Hail"] else target
+	var args := {"maneuver": maneuver_key, "targetFleetId": t}
+	if subsystem != "none" and not wego_of(sel).is_empty() and scope != "group":
+		args["subsystem"] = subsystem
 	if scope == "all":
 		args["all"] = true
 	elif scope == "group":
@@ -180,7 +200,23 @@ func order(maneuver: String) -> String:
 		session.failed.emit(r["error"])
 		return ""
 	session.fetch_encounter()
-	return "%s ordered for %s ship%s%s." % [maneuver, Fmt.num(r["result"]), "" if int(r["result"]) == 1 else "s", (", target #%d" % t) if t != 0 else ""]
+	return "%s ordered for %s ship%s%s." % [maneuver_key, Fmt.num(r["result"]), "" if int(r["result"]) == 1 else "s", (", target #%d" % t) if t != 0 else ""]
+
+## The plan-phase forecast for the selected ship against the target (bridge "tacticalForecast"), or {} when the core
+## cannot give one (rules 1-3, no target, the fixture backend).
+func forecast() -> Dictionary:
+	var sel := selected()
+	if sel.is_empty() or wego_of(sel).is_empty() or target == 0 or not is_active(sel) or enc().get("finished", false):
+		return {}
+	var args := {"fleetId": ship, "targetFleetId": target, "maneuver": maneuver}
+	if subsystem != "none":
+		args["subsystem"] = subsystem
+	var r := session.core.invoke("tacticalForecast", args)
+	return r["result"] if r["ok"] and r["result"] is Dictionary else {}
+
+## The aim picked on the plan overlay (subsystem pips) or the selector; clicking the active aim clears it.
+func set_subsystem(key: String) -> void:
+	subsystem = key if key in ["weapons", "engines", "shields", "sensors", "warpCore"] else "none"
 
 ## Resolves one round (or the whole battle when `auto`). False after failed.
 func resolve(auto: bool) -> bool:

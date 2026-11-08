@@ -275,6 +275,29 @@ func _run() -> void:
 	await shot("pc-12-battle-end")
 	check(app.end_turn() == "complete", "turn completes after the battle")
 
+	# ---- Plan phase (rules 4, Remastered station drill): systems panel, aim selector, plan overlay with subsystem tags
+	app.start_drill("newBattleDrill", "Plan-phase drill", {"station": true, "ships": 3, "foeStation": true})
+	await wait()
+	var plan_status := app.end_turn()
+	await wait(20)
+	check(plan_status == "battle" and app.screen == "combat", "station drill opens the combat screen")
+	app.close_all_modals()
+	var pcs := app.current_screen()
+	pcs.choice = false
+	pcs.vm.set_subsystem("weapons")
+	pcs.refresh()
+	await wait(40)
+	pcs.vm.maneuver = "Engage"
+	pcs._plan()
+	await wait(40)
+	check(find(pcs, "ShipSystems") != null and find(pcs, "FacingBars") != null and find(pcs, "AimSelector") != null, "plan phase shows the ship systems panel")
+	check(find(pcs, "Facing_fore") != null and find(pcs, "Sys_warpCore") != null and find(pcs, "CrewBadge") != null, "six facing bars, five gauges and the crew badge")
+	await shot("pc-09b-plan-phase")
+	pcs.vm.set_subsystem("none")
+	pcs.refresh()
+	await wait(6)
+	app.end_turn()
+
 	# ---- 24 v 24 starbase drill: the large-battle frame cost (each round from the call that starts it)
 	app.start_drill("newBattleDrill", "Starbase drill", {"station": true, "ships": 24})
 	await wait()

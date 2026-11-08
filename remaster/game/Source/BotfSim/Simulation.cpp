@@ -3176,6 +3176,8 @@ std::string payload(const GameState& s) {
     if (s.rules.expandedRoster) out << "SHIP_ROSTER 1\n";
     // Tactical rules 3 (COMBAT-RULES.md): optional, like SHIP_ROSTER, so saves without it keep rules 2.
     if (s.rules.flightModel) out << "TACTICAL_FLIGHT 1\n";
+    // Tactical rules 4 (WEGO): optional; saves without it keep rules 3.
+    if (s.rules.wegoCombat) out << "TACTICAL_WEGO 1\n";
     // Schema 14: per-ship orders of recorded battle rounds. Written only when some
     // round carries orders, so campaigns without them keep the schema-13 layout.
     const bool anyOrders = std::any_of(s.latestBattles.begin(), s.latestBattles.end(), [](const CombatReport& b) {
@@ -5476,6 +5478,13 @@ GameState deserialize(const std::string& text) {
         require(static_cast<bool>(in >> revision) && revision == 1, "Unsupported tactical flight revision");
         s.rules.flightModel = true;
         nextTag = readTag("Malformed save section after TACTICAL_FLIGHT");
+    }
+    if (nextTag == "TACTICAL_WEGO") {
+        require(current || legacy13, "Tactical WEGO section in an older save");
+        int revision = 0;
+        require(static_cast<bool>(in >> revision) && revision == 1, "Unsupported tactical WEGO revision");
+        s.rules.wegoCombat = true;
+        nextTag = readTag("Malformed save section after TACTICAL_WEGO");
     }
     if (nextTag == "COMBAT_ORDERS") {
         require(current, "Schema 14 section in an older save");
