@@ -603,35 +603,3 @@ func _megaproject() -> Control:
 		if str(m.get("startBlocker", "")) != "":
 			b.add_child(Lcars.para(str(m["startBlocker"]), Lcars.WARN, 12))
 	return f
-
-class PlanetOrb extends Control:
-	var cls := "M"
-	func _draw() -> void:
-		var colors := {"M": Color("#4fae6a"), "L": Color("#7fa35a"), "O": Color("#3f7fd0"), "H": Color("#d0a060"), "K": Color("#9a8a80"), "J": Color("#d9a86a"), "GasGiant": Color("#d9a86a"), "Y": Color("#c0503a"), "N": Color("#b08040"), "D": Color("#80808a"), "Asteroids": Color("#707078")}
-		var c: Color = colors.get(cls, Color("#8899aa"))
-		var ctr := Vector2(size.x / 2.0, size.y / 2.0)
-		var r: float = min(size.x, size.y) * 0.42
-		if cls == "Asteroids":
-			for k in range(9):
-				var a := k * 0.7
-				draw_circle(ctr + Vector2(cos(a) * r * 0.9, sin(a) * r * 0.35), 2.5 + (k % 3), c)
-			return
-		draw_circle(ctr, r + 3, Color(c, 0.18))
-		draw_circle(ctr, r, c.darkened(0.35))
-		draw_circle(ctr - Vector2(r * 0.18, r * 0.18), r * 0.78, c)
-		draw_circle(ctr - Vector2(r * 0.35, r * 0.35), r * 0.3, Color(1, 1, 1, 0.25))
-		if cls == "GasGiant" or cls == "J":
-			draw_arc(ctr, r * 1.5, PI * 0.1, PI * 0.9, 20, Color(c.lightened(0.3), 0.6), 1.5, true)
-
-class ChoiceIcon extends Control:
-	var product := ""
-	var ship := false
-	func _draw() -> void:
-		var c := size / 2.0
-		var a := Lcars.accent()
-		draw_circle(c, 16, Color(a, 0.15))
-		if ship:
-			draw_colored_polygon(PackedVector2Array([c + Vector2(0, -11), c + Vector2(8, 9), c + Vector2(0, 5), c + Vector2(-8, 9)]), a)
-		else:
-			draw_rect(Rect2(c - Vector2(8, 6), Vector2(16, 12)), a, false, 2.0)
-			draw_rect(Rect2(c - Vector2(3, 11), Vector2(6, 5)), a)

@@ -20,8 +20,8 @@ var view_node: Node = null
 func _ready() -> void:
 	name = "BattleHost"
 	clip_contents = true
-	if ResourceLoader.exists(BATTLE_SCENE):
-		var packed: PackedScene = load(BATTLE_SCENE)
+	if AppLoader.exists(BATTLE_SCENE):
+		var packed: PackedScene = AppLoader.resource(BATTLE_SCENE)
 		attach(packed.instantiate())
 	else:
 		push_error("BattleHost: %s is missing" % BATTLE_SCENE)

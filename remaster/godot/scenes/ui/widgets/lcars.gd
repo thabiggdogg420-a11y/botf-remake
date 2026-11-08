@@ -1,7 +1,8 @@
 class_name Lcars
 extends RefCounted
 ## LCARS modern look: palettes, fonts, the Theme resource and small widget builders shared by every screen.
-## Mirrors remaster/web/src/ui/theme.ts and styles/main.css.
+## The design system of the widget layer (docs/CLIENT-ARCHITECTURE.md): tokens (colours, fonts), the Theme and the
+## component builders every presentation script uses. Composite widgets live beside it in scenes/ui/widgets.
 
 const BG := Color("#04060c")
 const BG2 := Color("#070b16")
@@ -110,7 +111,7 @@ static func tone_color(tone: String) -> Color:
 static func _base_font(file: String) -> FontFile:
 	var key := "file:" + file
 	if not _fonts.has(key):
-		var f: FontFile = load("res://scenes/ui/fonts/%s" % file)
+		var f: FontFile = AppLoader.resource("res://scenes/ui/fonts/%s" % file)
 		_fonts[key] = f
 	return _fonts[key]
 
@@ -518,3 +519,86 @@ class EmblemView extends Control:
 		mouse_filter = Control.MOUSE_FILTER_IGNORE
 	func _draw() -> void:
 		Lcars.draw_emblem(self, empire, size / 2.0, min(size.x, size.y), tint)
+
+# ---------------------------------------------------------------------------------------------
+# Layout components shared by the screens
+# ---------------------------------------------------------------------------------------------
+## A full-rect MarginContainer added to `host`; returns it. `sides` is margin per side (left, right, top, bottom).
+static func screen_margin(host: Control, sides: Vector4 = Vector4(16, 16, 16, 16)) -> MarginContainer:
+	var m := MarginContainer.new()
+	m.set_anchors_preset(Control.PRESET_FULL_RECT)
+	m.add_theme_constant_override("margin_left", int(sides.x))
+	m.add_theme_constant_override("margin_right", int(sides.y))
+	m.add_theme_constant_override("margin_top", int(sides.z))
+	m.add_theme_constant_override("margin_bottom", int(sides.w))
+	host.add_child(m)
+	return m
+
+## Screen title block: heading over a caption.
+static func title_block(title: String, sub: String, size: int = 40) -> VBoxContainer:
+	var t := vbox(0)
+	t.add_child(heading(title, size))
+	t.add_child(caption(sub))
+	return t
+
+## A selectable list row: a ghost button, highlighted when active. Fill it through row_inner().
+static func row_button(active: bool, height: int = 52, radius: int = 12) -> Button:
+	var btn := Button.new()
+	btn.theme_type_variation = "GhostButton"
+	btn.custom_minimum_size.y = height
+	if active:
+		btn.add_theme_stylebox_override("normal", box(Color(accent(), 0.2), radius, accent(), 1))
+	return btn
+
+## The content row inside a row_button.
+static func row_inner(btn: Button, pad: int = 10, sep: int = 10) -> HBoxContainer:
+	var h := hbox(sep)
+	h.set_anchors_preset(Control.PRESET_FULL_RECT)
+	h.offset_left = pad
+	h.offset_right = -pad
+	btn.add_child(h)
+	return h
+
+## Lets clicks pass through `n` and all its children to the button underneath.
+static func ignore_mouse(n: Control) -> void:
+	n.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	for c in n.find_children("*", "Control", true, false):
+		c.mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+## A flat glyph button with a disabled reason.
+static func icon_button(text: String, hint: String, reason: String, on: Callable) -> Button:
+	var b := Button.new()
+	b.text = text
+	b.flat = true
+	b.tooltip_text = ("Unavailable: " + reason) if reason != "" else hint
+	b.disabled = reason != ""
+	b.add_theme_color_override("font_color", TEXT2)
+	b.add_theme_color_override("font_hover_color", accent())
+	b.pressed.connect(on)
+	return b
+
+## A labelled bar: caption, meter, "v/max".
+static func bar_row(cap: String, value: int, max_value: int, color: Color, cap_width: int = 60) -> HBoxContainer:
+	var r := hbox(8)
+	var l := label(cap, "Muted", 13)
+	l.custom_minimum_size.x = cap_width
+	r.add_child(l)
+	r.add_child(meter(value, max_value, color, 8))
+	r.add_child(label("%d/%d" % [value, max_value], "Mono", 13))
+	return r
+
+## Toggle bar: [[id, label]]; `current` is highlighted; on_pick(id) when one is chosen. Buttons are named prefix+id.
+static func tab_bar(tabs: Array, current: String, on_pick: Callable, prefix: String = "Tab_") -> HBoxContainer:
+	var row := hbox(6)
+	for t in tabs:
+		var id: String = t[0]
+		var tg := toggle(t[1], current == id, func(_on): on_pick.call(id))
+		tg.name = prefix + id
+		row.add_child(tg)
+	return row
+
+## A stat over a tooltip; mouse passes so the tip shows.
+static func tip(c: Control, text: String) -> Control:
+	c.tooltip_text = text
+	c.mouse_filter = Control.MOUSE_FILTER_PASS
+	return c

@@ -1,8 +1,9 @@
 class_name App
 extends Control
-## Root of the strategic client: application state, the LCARS shell (top bar, rail), screen
-## switching, overlays, toasts and keyboard shortcuts. Port of remaster/web/src/App.tsx and
-## state/store.ts. Screens are plain Controls with `app` and `refresh()`.
+## The shell of the strategic client: the LCARS chrome (top bar, rail), screen switching, overlays, toasts and
+## keyboard shortcuts. Game state lives in an AppSession (scripts/app_session.gd); the fields below forward to it so
+## older callers (galaxy, battle, tests) keep working. Screens are presentation scripts with `app` and `refresh()`,
+## each fed by a view model (scripts/viewmodels). Layering: docs/CLIENT-ARCHITECTURE.md.
 
 signal view_changed
 signal selection_changed
@@ -12,33 +13,37 @@ static var i: App
 ## Test hook: "fixture" forces the fixture backend, "" picks BotfCore when present.
 static var forced_backend := ""
 
-const GAME_SCREENS := [
-	{"id": "galaxy", "label": "Galaxy", "key": "F1", "hint": "Star chart, fleets and orders", "script": "res://scenes/galaxy/galaxy_screen.gd"},
-	{"id": "system", "label": "System", "key": "F2", "hint": "Colony management", "script": "res://scenes/ui/screens/system_screen.gd"},
-	{"id": "empire", "label": "Empire", "key": "F3", "hint": "All colonies and fleets", "script": "res://scenes/ui/screens/empire_screen.gd"},
-	{"id": "research", "label": "Research", "key": "F4", "hint": "Technology and allocation", "script": "res://scenes/ui/screens/research_screen.gd"},
-	{"id": "fleets", "label": "Fleets", "key": "F5", "hint": "Ships and task forces", "script": "res://scenes/ui/screens/fleets_screen.gd"},
-	{"id": "diplomacy", "label": "Diplomacy", "key": "F6", "hint": "Empires, minors and treaties", "script": "res://scenes/ui/screens/diplomacy_screen.gd"},
-	{"id": "intel", "label": "Intel", "key": "F7", "hint": "Espionage and security", "script": "res://scenes/ui/screens/intel_screen.gd"},
-	{"id": "database", "label": "Database", "key": "F8", "hint": "Ships, technologies, structures", "script": "res://scenes/ui/screens/database_screen.gd"},
-]
-const OUTSIDE_SCREENS := {
-	"title": "res://scenes/ui/screens/title_screen.gd",
-	"new": "res://scenes/ui/screens/new_campaign_screen.gd",
-	"saves": "res://scenes/ui/screens/saves_screen.gd",
-	"combat": "res://scenes/ui/screens/combat_screen.gd",
-}
-const SETTINGS_PATH := "user://botf_settings.json"
+const GAME_SCREENS := AppRoutes.GAME_SCREENS
+const OUTSIDE_SCREENS := AppRoutes.OUTSIDE_SCREENS
+const SETTINGS_PATH := AppSaves.SETTINGS_PATH
 
-var core: CoreClient
-var meta: Dictionary = {}
-var view: Dictionary = {}
-var encyclopedia: Dictionary = {}
+## Game state: core, meta, view, selection, briefing, encounter and the order API.
+var session := AppSession.new()
+
+var core: CoreClient:
+	get: return session.core
+	set(v): session.core = v
+var meta: Dictionary:
+	get: return session.meta
+	set(v): session.meta = v
+var view: Dictionary:
+	get: return session.view
+	set(v): session.view = v
+var encyclopedia: Dictionary:
+	get: return session.encyclopedia
+	set(v): session.encyclopedia = v
+var selection: Dictionary:
+	get: return session.selection
+	set(v): session.selection = v
+var briefing: Variant:
+	get: return session.briefing
+	set(v): session.briefing = v
+var encounter: Variant:
+	get: return session.encounter
+	set(v): session.encounter = v
+
 var screen := ""
 var history: Array[String] = []
-var selection := {"cell": -1, "systemId": 0, "fleetId": 0, "taskForceId": 0}
-var briefing: Variant = null
-var encounter: Variant = null
 var save_name := ""
 var settings := {"uiScale": 1.0, "colorblind": false, "reducedMotion": false, "autosave": true, "confirmEndTurn": false, "showGrid": true}  ## plus vol_* (BotfAudioMix)
 var map_layers := {"territory": true, "supply": true, "routes": true, "trade": true, "grid": true, "labels": true, "fog": true}
@@ -63,9 +68,11 @@ func _ready() -> void:
 	DisplaySettings.fill_defaults(settings)
 	DisplaySettings.apply(settings, get_tree())   # window mode, resolution, vsync, FPS cap, render scale, AA, shadows
 	BotfAudioSystem.attach(self)   # audio: shares settings, listens to screen changes (music, screen cue)
-	core = CoreClient.create("fixture" if forced_backend == "fixture" else "auto")
-	var m: Variant = core.request("meta")
-	meta = m if m is Dictionary else {}
+	session.connect_core(CoreClient.create("fixture" if forced_backend == "fixture" else "auto"))
+	session.view_changed.connect(_on_view_changed)
+	session.selection_changed.connect(func(): selection_changed.emit())
+	session.notified.connect(func(text, tone): toast(text, tone))
+	session.failed.connect(report_error)
 	_apply_theme(1)
 	_build_layers()
 	goto("title")
@@ -82,7 +89,7 @@ func _build_layers() -> void:
 	_background = ColorRect.new()
 	_background.set_anchors_preset(Control.PRESET_FULL_RECT)
 	var mat := ShaderMaterial.new()
-	mat.shader = load("res://scenes/galaxy/starfield.gdshader")
+	mat.shader = AppLoader.resource("res://scenes/galaxy/starfield.gdshader")
 	_background.material = mat
 	_background.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_background)
@@ -125,11 +132,11 @@ const RAIL_W := 150.0
 func _build_chrome() -> void:
 	for c in _chrome.get_children():
 		c.queue_free()
-	if view.is_empty() or screen in ["title", "new", "saves"]:
+	if view.is_empty() or AppRoutes.is_bare(screen):
 		return
 	var a := Lcars.accent()
 	# Elbow (top-left LCARS sweep) with the faction emblem.
-	var elbow := ElbowView.new()
+	var elbow := LcarsElbow.new()
 	elbow.position = Vector2.ZERO
 	elbow.size = Vector2(RAIL_W + 40, TOP_H + 40)
 	elbow.empire = int(view["meta"]["player"])
@@ -144,27 +151,21 @@ func _build_chrome() -> void:
 	_topbar = top
 	var row := Lcars.hbox(26)
 	top.add_child(row)
-	var e: Dictionary = view["empire"]
+	var shell := ShellVM.new(session)
+	var head := shell.heading()
 	var who := Lcars.vbox(0)
-	who.add_child(Lcars.label(str(view["meta"]["playerName"]).to_upper(), "Heading", 26))
-	who.add_child(Lcars.caption("%s era · %s rules · stardate %d.%d" % [view["meta"].get("eraName", ""), view["meta"].get("rules", {}).get("presetName", ""), 2360 + int(view["meta"]["turn"]) / 4, (int(view["meta"]["turn"]) % 4) * 25]))
+	who.add_child(Lcars.label(head[0], "Heading", 26))
+	who.add_child(Lcars.caption(head[1]))
 	row.add_child(who)
-	row.add_child(_top_stat("Turn", str(int(view["meta"]["turn"])), "", "Current turn. Enter ends the turn."))
-	var net := int(e.get("income", {}).get("net", 0))
-	row.add_child(_top_stat("Credits", "%s  %s" % [Lcars.fmt(e.get("credits", 0)), Lcars.signed(net)], "alert" if net < 0 else "secondary",
-		"Treasury ¢%s. Per turn: colonies %s, trade %s, ships -%s. Drafted spending ¢%s." % [Lcars.fmt(e.get("credits", 0)), e.get("income", {}).get("colonies", 0), e.get("income", {}).get("trade", 0), e.get("income", {}).get("ships", 0), e.get("draftCredits", 0)]))
-	row.add_child(_top_stat("Research", "%d/t" % int(e.get("researchOutput", 0)), "", "Research points per turn across the empire. Reserve %s." % e.get("researchReserve", 0)))
-	row.add_child(_top_stat("Industry", str(int(e.get("industry", 0))), "", "Total industry per turn of all colonies."))
-	row.add_child(_top_stat("Food", str(int(e.get("food", 0))), "good", "Total food produced per turn."))
-	row.add_child(_top_stat("Pop", str(int(e.get("population", 0))), "", "Total population."))
-	row.add_child(_top_stat("Intel", str(int(e.get("intelligence", 0))), "tertiary", "Intelligence points per turn."))
+	for st in shell.stats():
+		row.add_child(_top_stat(st["cap"], st["value"], st["tone"], st["tip"]))
 	row.add_child(Lcars.spacer())
-	var pending: Array = view.get("pending", [])
-	row.add_child(_top_stat("Orders", str(pending.size()), "", "Orders drafted this turn. They resolve when the turn ends."))
+	var os_ := shell.orders_stat()
+	row.add_child(_top_stat(os_["cap"], os_["value"], os_["tone"], os_["tip"]))
 	var menu := Lcars.pill("Menu", "tertiary", func(): open_menu(), "", "Save, load, settings and help", "Esc")
 	menu.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	row.add_child(menu)
-	var end := Lcars.pill("End turn", "secondary", func(): request_end_turn(), "Finish the battle in progress first" if view.get("session", {}).get("active", false) else "", "Resolve all drafted orders", "Enter")
+	var end := Lcars.pill("End turn", "secondary", func(): request_end_turn(), shell.end_turn_block(), "Resolve all drafted orders", "Enter")
 	end.name = "EndTurn"
 	end.custom_minimum_size = Vector2(170, 44)
 	end.add_theme_font_size_override("font_size", 21)
@@ -204,17 +205,10 @@ func _build_chrome() -> void:
 	fill.color = a.darkened(0.45)
 	fill.custom_minimum_size = Vector2(RAIL_W, 8)
 	_rail.add_child(fill)
-	var extras := [
-		["Events", func(): open_overlay("events"), "Galactic events and decisions"],
-		["Victory", func(): open_overlay("victory"), "Victory conditions and megaprojects"],
-		["Chronicle", func(): open_overlay("briefing"), "Last turn briefing and chronicle"],
-	]
-	if view.get("session", {}).get("active", false):
-		extras.push_front(["Battle", func(): goto("combat"), "Tactical battle in progress"])
-	for ex in extras:
+	for ex in shell.rail_extras():
 		var b2 := Button.new()
 		b2.theme_type_variation = "RailButton"
-		b2.text = ex[0].to_upper()
+		b2.text = str(ex["label"]).to_upper()
 		b2.alignment = HORIZONTAL_ALIGNMENT_RIGHT
 		b2.custom_minimum_size = Vector2(RAIL_W, 38)
 		b2.add_theme_font_size_override("font_size", 16)
@@ -222,8 +216,9 @@ func _build_chrome() -> void:
 		sb2.corner_radius_top_right = 14
 		sb2.corner_radius_bottom_right = 14
 		b2.add_theme_stylebox_override("normal", sb2)
-		b2.tooltip_text = ex[2]
-		b2.pressed.connect(ex[1])
+		b2.tooltip_text = ex["hint"]
+		var xid: String = ex["id"]
+		b2.pressed.connect(func(): goto(xid) if xid == "combat" else open_overlay(xid))
 		_rail.add_child(b2)
 
 func _top_stat(cap: String, value: String, tone: String, tip: String) -> Control:
@@ -239,31 +234,9 @@ func _top_stat(cap: String, value: String, tone: String, tip: String) -> Control
 
 ## Area available to in-game screens (right of the rail, below the top bar).
 func stage_rect() -> Rect2:
-	if view.is_empty() or screen in ["title", "new", "saves"]:
+	if view.is_empty() or AppRoutes.is_bare(screen):
 		return Rect2(Vector2.ZERO, size)
 	return Rect2(Vector2(RAIL_W + 14, TOP_H + 4), size - Vector2(RAIL_W + 14, TOP_H + 4))
-
-class ElbowView extends Control:
-	var empire := 1
-	func _ready() -> void:
-		mouse_filter = Control.MOUSE_FILTER_IGNORE
-	func _draw() -> void:
-		var a := Lcars.accent()
-		var w := App.RAIL_W
-		var h := App.TOP_H - 14
-		# LCARS elbow: rail column sweeping into the top bar with an inner radius.
-		draw_rect(Rect2(0, 0, w, h + 30), a)
-		draw_rect(Rect2(w, 0, 40, h), a)
-		draw_rect(Rect2(w, h, 30, 30), a)
-		# inner corner cut
-		var pts := PackedVector2Array()
-		for k in range(0, 17):
-			var ang := PI + PI / 2.0 * k / 16.0
-			pts.append(Vector2(w + 30, h + 30) + Vector2(cos(ang), sin(ang)) * 30)
-		pts.append(Vector2(w + 30, h + 30))
-		draw_colored_polygon(pts, Lcars.BG)
-		Lcars.draw_emblem(self, empire, Vector2(34, 34), 40, Lcars.ink())
-		draw_string(Lcars.font("display", 600), Vector2(62, 44), "LCARS", HORIZONTAL_ALIGNMENT_LEFT, -1, 22, Lcars.ink())
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_RESIZED and _chrome:
@@ -274,12 +247,6 @@ func _notification(what: int) -> void:
 # ---------------------------------------------------------------------------------------------
 # Navigation
 # ---------------------------------------------------------------------------------------------
-func _script_for(id: String) -> String:
-	for s in GAME_SCREENS:
-		if s["id"] == id:
-			return s["script"]
-	return OUTSIDE_SCREENS.get(id, "")
-
 func goto(id: String, remember: bool = true) -> void:
 	if id == screen and _current:
 		return
@@ -300,10 +267,10 @@ func goto(id: String, remember: bool = true) -> void:
 	if _current:
 		_current.queue_free()
 		_current = null
-	var path := _script_for(id)
+	var path := AppRoutes.script_for(id)
 	if path == "":
 		return
-	var s: Control = load(path).new()
+	var s: Control = (AppLoader.resource(path) as GDScript).new()
 	s.name = "Screen_" + id
 	s.set("app", self)
 	_current = s
@@ -335,150 +302,83 @@ func back() -> void:
 # State
 # ---------------------------------------------------------------------------------------------
 func refresh() -> void:
-	var v: Variant = core.request("view")
-	if v is Dictionary:
-		view = v
-		_apply_theme(int(view["meta"]["player"]))
-		_build_chrome()
-		view_changed.emit()
-		if _current and _current.has_method("refresh"):
-			_current.refresh()
-	else:
-		report_error(core.last_error)
+	session.refresh()
+
+func _on_view_changed() -> void:
+	_apply_theme(int(view["meta"]["player"]))
+	_build_chrome()
+	view_changed.emit()
+	if _current and _current.has_method("refresh"):
+		_current.refresh()
 
 func player() -> int:
-	return int(view.get("meta", {}).get("player", 0))
+	return session.player()
 
 func width() -> int:
-	return int(view.get("meta", {}).get("width", 1))
+	return session.width()
 
 func get_encyclopedia() -> Dictionary:
-	if encyclopedia.is_empty():
-		var e: Variant = core.request("encyclopedia")
-		encyclopedia = e if e is Dictionary else {}
-	return encyclopedia
+	return session.get_encyclopedia()
 
 func find_by_id(list_key: String, id: int, key: String = "id") -> Dictionary:
-	for item in view.get(list_key, []):
-		if int(item.get(key, -1)) == id:
-			return item
-	return {}
+	return session.find_by_id(list_key, id, key)
 
 func system_at(x: int, y: int) -> Dictionary:
-	for s in view.get("systems", []):
-		if int(s["x"]) == x and int(s["y"]) == y:
-			return s
-	return {}
+	return session.system_at(x, y)
 
 func empire_name(id: int) -> String:
-	if id == player():
-		return str(view["meta"]["playerName"])
-	for e in meta.get("empires", []):
-		if int(e["id"]) == id:
-			return str(e["name"])
-	return "Independent"
+	return session.empire_name(id)
 
 func select_cell(cell: int) -> void:
-	if cell < 0 or view.is_empty():
-		selection = {"cell": -1, "systemId": 0, "fleetId": 0, "taskForceId": 0}
-	else:
-		var s := system_at(cell % width(), cell / width())
-		selection = {"cell": cell, "systemId": int(s.get("id", 0)), "fleetId": 0, "taskForceId": 0}
-	selection_changed.emit()
+	session.select_cell(cell)
 
 func select_system(system_id: int) -> void:
-	var s := find_by_id("systems", system_id)
-	if s.is_empty():
-		return
-	selection = {"cell": int(s["y"]) * width() + int(s["x"]), "systemId": system_id, "fleetId": 0, "taskForceId": 0}
-	selection_changed.emit()
+	session.select_system(system_id)
 
 func select_fleet(fleet_id: int) -> void:
-	var f := find_by_id("fleets", fleet_id)
-	if f.is_empty():
-		f = find_by_id("contacts", fleet_id)
-	if f.is_empty():
-		return
-	var s := system_at(int(f["x"]), int(f["y"]))
-	selection = {"cell": int(f["y"]) * width() + int(f["x"]), "systemId": int(s.get("id", 0)), "fleetId": fleet_id, "taskForceId": int(f.get("taskForceId", 0))}
-	selection_changed.emit()
+	session.select_fleet(fleet_id)
 
 ## Submits an order through the core; on rejection shows the core's reason.
 func issue(command: Dictionary, cancel_ids: Array = [], success: String = "") -> bool:
-	var r := core.invoke("submit", {"command": command, "cancelIds": cancel_ids})
-	if not r["ok"]:
-		report_error(r["error"])
-		return false
-	refresh()
-	if success != "":
-		toast(success, "good")
-	return true
+	return session.issue(command, cancel_ids, success)
 
 func cancel_orders(ids: Array, message: String = "") -> void:
-	if ids.is_empty():
-		return
-	var r := core.invoke("cancel", {"ids": ids})
-	if not r["ok"]:
-		report_error(r["error"])
-		return
-	refresh()
-	if message != "":
-		toast(message, "info")
+	session.cancel_orders(ids, message)
 
 ## The core's reason a command would be rejected, or "" when it is valid.
 func dry_run(command: Dictionary, cancel_ids: Array = []) -> String:
-	var r := core.invoke("dryRun", {"command": command, "cancelIds": cancel_ids})
-	if not r["ok"]:
-		return str(r["error"])
-	var res: Variant = r["result"]
-	if res is Dictionary:
-		return "" if res.get("ok", true) else str(res.get("error", "Rejected"))
-	return ""
+	return session.dry_run(command, cancel_ids)
 
 func unit_order_ids(fleet_id: int, task_force_id: int, types: Array = []) -> Array:
-	var out := []
-	for p in view.get("pending", []):
-		if not types.is_empty() and not types.has(p["type"]):
-			continue
-		if task_force_id != 0:
-			if int(p.get("taskForceId", 0)) == task_force_id and p["type"] == "SetTaskForceOrder":
-				out.append(int(p["id"]))
-		elif int(p.get("fleetId", -1)) == fleet_id and p["type"] != "CreateTaskForce":
-			out.append(int(p["id"]))
-	return out
+	return session.unit_order_ids(fleet_id, task_force_id, types)
 
 # ---------------------------------------------------------------------------------------------
 # Campaign lifecycle
 # ---------------------------------------------------------------------------------------------
 func _enter_game(v: Dictionary, name_: String) -> void:
-	view = v
-	briefing = null
-	encounter = null
 	history.clear()
 	save_name = name_
 	_apply_theme(int(v["meta"]["player"]))
-	var cols: Array = v.get("colonies", [])
-	if cols.size() > 0:
-		select_system(int(cols[0]["systemId"]))
+	session.enter(v)
 	screen = ""
 	goto("galaxy", false)
 
+## Starts a campaign. The player's power is options.faction; options.empire is accepted as an alias
+## (AppSession.campaign_options).
 func start_campaign(options: Dictionary) -> bool:
-	var r := core.invoke("newCampaign", options)
-	if not r["ok"]:
-		report_error(r["error"])
+	var v := session.start("newCampaign", AppSession.campaign_options(options))
+	if v.is_empty():
 		return false
-	_enter_game(r["result"], "%s campaign %s" % [r["result"]["meta"]["playerName"], str(r["result"]["meta"]["seed"])])
+	_enter_game(v, "%s campaign %s" % [v["meta"]["playerName"], str(v["meta"]["seed"])])
 	toast("Campaign begins. %s, turn %d." % [view["meta"]["playerName"], int(view["meta"]["turn"])], "good")
 	autosave()
 	return true
 
 func start_drill(method: String, label_: String, args: Dictionary = {}) -> void:
-	var r := core.invoke(method, args)
-	if not r["ok"]:
-		report_error(r["error"])
+	var v := session.start(method, args)
+	if v.is_empty():
 		return
-	_enter_game(r["result"], label_)
+	_enter_game(v, label_)
 	toast(label_ + " loaded.", "warn")
 
 func request_end_turn() -> void:
@@ -501,15 +401,12 @@ func preview_turn() -> void:
 
 ## Ends the turn. Returns the status ("battle" or "complete").
 func end_turn() -> String:
-	var r := core.invoke("endTurn", {})
-	if not r["ok"]:
-		report_error(r["error"])
+	var res := session.end_turn()
+	if res.is_empty():
 		return "error"
-	var res: Dictionary = r["result"]
 	if res.get("status", "") == "battle":
 		refresh()
-		var e: Variant = core.request("tactical")
-		encounter = e
+		session.fetch_encounter()
 		goto("combat")
 		BotfAudioSystem.on_battle_joined()
 		toast("Battle joined. Issue maneuvers or let the tactical AI command.", "warn")
@@ -531,68 +428,43 @@ func end_turn() -> String:
 # Saves and settings
 # ---------------------------------------------------------------------------------------------
 func save_game(name_: String) -> bool:
-	var r := core.invoke("save", {})
-	if not r["ok"]:
-		report_error(r["error"])
+	var blob := session.save_blob()
+	if blob.is_empty():
 		return false
-	DirAccess.make_dir_recursive_absolute("user://saves")
-	var blob: Dictionary = r["result"]
-	blob["name"] = name_
-	blob["when"] = Time.get_datetime_string_from_system()
-	blob["playerName"] = view.get("meta", {}).get("playerName", "")
-	var f := FileAccess.open("user://saves/%s.json" % name_.validate_filename(), FileAccess.WRITE)
-	if f == null:
-		report_error("Could not write the save file")
+	var err := AppSaves.write(blob, name_, str(view.get("meta", {}).get("playerName", "")))
+	if err != "":
+		report_error(err)
 		return false
-	f.store_string(JSON.stringify(blob))
-	f.close()
 	save_name = name_
 	return true
 
 func list_saves() -> Array:
-	var out := []
-	var d := DirAccess.open("user://saves")
-	if d == null:
-		return out
-	for fn in d.get_files():
-		if fn.ends_with(".json"):
-			var data: Variant = JSON.parse_string(FileAccess.get_file_as_string("user://saves/" + fn))
-			if data is Dictionary:
-				data["file"] = fn
-				out.append(data)
-	out.sort_custom(func(a, b): return str(a.get("when", "")) > str(b.get("when", "")))
-	return out
+	return AppSaves.list()
 
 func load_game(blob: Dictionary) -> bool:
-	var r := core.invoke("load", {"data": blob.get("data", ""), "scenario": blob.get("scenario", "campaign")})
-	if not r["ok"]:
-		report_error(r["error"])
+	var v := session.start("load", {"data": blob.get("data", ""), "scenario": blob.get("scenario", "campaign")})
+	if v.is_empty():
 		return false
-	_enter_game(r["result"], str(blob.get("name", "Loaded campaign")))
+	_enter_game(v, str(blob.get("name", "Loaded campaign")))
 	toast("Loaded %s, turn %d." % [blob.get("name", ""), int(view["meta"]["turn"])], "good")
 	if view.get("session", {}).get("active", false):
-		encounter = core.request("tactical")
+		session.fetch_encounter()
 		goto("combat")
 	return true
 
 func delete_save(file: String) -> void:
-	DirAccess.remove_absolute("user://saves/" + file)
+	AppSaves.delete(file)
 
 func autosave() -> void:
 	if settings.get("autosave", true) and not view.is_empty():
 		save_game("Autosave")
 
 func _load_settings() -> void:
-	if FileAccess.file_exists(SETTINGS_PATH):
-		var s: Variant = JSON.parse_string(FileAccess.get_file_as_string(SETTINGS_PATH))
-		if s is Dictionary:
-			settings.merge(s, true)
+	AppSaves.load_settings(settings)
 	_apply_scale()
 
 func save_settings() -> void:
-	var f := FileAccess.open(SETTINGS_PATH, FileAccess.WRITE)
-	if f:
-		f.store_string(JSON.stringify(settings))
+	AppSaves.store_settings(settings)
 	Lcars.colorblind = settings.get("colorblind", false)
 	_apply_scale()
 	_theme_empire = -1
@@ -712,7 +584,7 @@ func _unhandled_key_input(event: InputEvent) -> void:
 	var k := event as InputEventKey
 	if k == null or not k.pressed or k.echo:
 		return
-	var in_game := not view.is_empty() and not (screen in ["title", "new", "saves"])
+	var in_game := not view.is_empty() and not AppRoutes.is_bare(screen)
 	if k.keycode == KEY_ESCAPE:
 		get_viewport().set_input_as_handled()
 		if has_modal():
