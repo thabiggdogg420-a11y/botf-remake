@@ -474,21 +474,13 @@ static func empty_note(text: String) -> Label:
 
 ## Formats JSON numbers (which arrive as floats) without a spurious ".0".
 static func num(value: Variant) -> String:
-	if value is float and is_equal_approx(value, round(value)):
-		return str(int(value))
-	return str(value)
+	return Fmt.num(value)
 
 static func signed(n: float) -> String:
-	return ("+%d" % n) if n > 0 else ("%d" % n)
+	return Fmt.signed(n)
 
 static func fmt(n: float) -> String:
-	var i := int(round(n))
-	var s := str(abs(i))
-	var out := ""
-	while s.length() > 3:
-		out = "," + s.substr(s.length() - 3) + out
-		s = s.substr(0, s.length() - 3)
-	return ("-" if i < 0 else "") + s + out
+	return Fmt.fmt(n)
 
 ## Draws a faction emblem into a CanvasItem at centre c with size s.
 static func draw_emblem(ci: CanvasItem, empire: int, c: Vector2, s: float, color: Color, outline: bool = false) -> void:

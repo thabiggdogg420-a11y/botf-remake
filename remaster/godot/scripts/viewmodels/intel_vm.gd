@@ -30,7 +30,7 @@ func _from_intel() -> Dictionary:
 
 ## Security strength as shown: the core's milli-strength, else the stockpile.
 func security_text() -> String:
-	return ("%.1f" % (float(intel["defenseStrengthMilli"]) / 1000.0)) if intel.has("defenseStrengthMilli") else Lcars.fmt(intel.get("securityStockpile", 0))
+	return ("%.1f" % (float(intel["defenseStrengthMilli"]) / 1000.0)) if intel.has("defenseStrengthMilli") else Fmt.fmt(intel.get("securityStockpile", 0))
 
 func reports_count() -> int:
 	return intel["reports"].size() + intel["operations"].size()
@@ -112,9 +112,9 @@ func operation_rows() -> Array:
 		var tone := ("good" if o.get("success", false) else "warn") if o.get("mine", false) else "alert"
 		var txt := "%s · %s · %s" % [("%s vs %s" % [o["area"], o["defenderName"]]) if o.get("mine", false) else "Intrusion by %s" % o["attackerName"], o["department"], o["outcome"]]
 		if int(o.get("creditsStolen", 0)) > 0:
-			txt += " · ¢%s taken" % Lcars.fmt(o["creditsStolen"])
+			txt += " · ¢%s taken" % Fmt.fmt(o["creditsStolen"])
 		if int(o.get("researchStolen", 0)) > 0:
-			txt += " · %s research taken" % Lcars.fmt(o["researchStolen"])
+			txt += " · %s research taken" % Fmt.fmt(o["researchStolen"])
 		if str(o.get("details", "")) != "":
 			txt += "\n" + str(o["details"])
 		var badge := ""
@@ -127,5 +127,5 @@ func operation_rows() -> Array:
 func report_rows() -> Array:
 	var out := []
 	for r in intel.get("reports", []):
-		out.append({"turn": int(r["turn"]), "ok": r.get("success", false), "text": "%s · %s%s" % [r["targetName"], ("%d colonies, about ¢%s" % [int(r["knownColonies"]), Lcars.fmt(r["estimatedCredits"])]) if r.get("success", false) else "operation failed", (" · " + str(r["system"])) if str(r.get("system", "")) != "" else ""]})
+		out.append({"turn": int(r["turn"]), "ok": r.get("success", false), "text": "%s · %s%s" % [r["targetName"], ("%d colonies, about ¢%s" % [int(r["knownColonies"]), Fmt.fmt(r["estimatedCredits"])]) if r.get("success", false) else "operation failed", (" · " + str(r["system"])) if str(r.get("system", "")) != "" else ""]})
 	return out

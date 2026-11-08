@@ -16,8 +16,8 @@ func stats() -> Array:
 	var net := int(inc.get("net", 0))
 	return [
 		{"cap": "Turn", "value": str(int(v["meta"]["turn"])), "tone": "", "tip": "Current turn. Enter ends the turn."},
-		{"cap": "Credits", "value": "%s  %s" % [Lcars.fmt(e.get("credits", 0)), Lcars.signed(net)], "tone": "alert" if net < 0 else "secondary",
-			"tip": "Treasury ¢%s. Per turn: colonies %s, trade %s, ships -%s. Drafted spending ¢%s." % [Lcars.fmt(e.get("credits", 0)), inc.get("colonies", 0), inc.get("trade", 0), inc.get("ships", 0), e.get("draftCredits", 0)]},
+		{"cap": "Credits", "value": "%s  %s" % [Fmt.fmt(e.get("credits", 0)), Fmt.signed(net)], "tone": "alert" if net < 0 else "secondary",
+			"tip": "Treasury ¢%s. Per turn: colonies %s, trade %s, ships -%s. Drafted spending ¢%s." % [Fmt.fmt(e.get("credits", 0)), inc.get("colonies", 0), inc.get("trade", 0), inc.get("ships", 0), e.get("draftCredits", 0)]},
 		{"cap": "Research", "value": "%d/t" % int(e.get("researchOutput", 0)), "tone": "", "tip": "Research points per turn across the empire. Reserve %s." % e.get("researchReserve", 0)},
 		{"cap": "Industry", "value": str(int(e.get("industry", 0))), "tone": "", "tip": "Total industry per turn of all colonies."},
 		{"cap": "Food", "value": str(int(e.get("food", 0))), "tone": "good", "tip": "Total food produced per turn."},
