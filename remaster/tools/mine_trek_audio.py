@@ -480,7 +480,7 @@ def cmd_alert(a):
 
 # manifest kind -> game keys (each gets ".<era>")
 SFX_KEYS = {
-    "beam": ["weapon.Phaser", "weapon.generic.beam"],
+    "beam": ["weapon.Phaser", "weapon.PhaserBank", "weapon.PhaserArray", "weapon.generic.beam"],
     "launch": ["weapon.generic.torpedo", "weapon.PhotonTorpedo", "weapon.QuantumTorpedo"],
     "impact": ["sfx.explosion.small"],
     "hit": ["sfx.shield.hit"],
@@ -568,8 +568,32 @@ def cmd_sheet(a):
                     note.append("tone %s Hz (sd %s), share %s" % (mm.get("freq"), mm.get("freq_sd"), mm.get("share")))
                 lines.append("| [ ] | `%s/%s` | %s | %s | %.1f s | %s |" % (trek_rel, c["file"], c["source"], mmss(c["t"]), c["dur"], "; ".join(note)))
             lines.append("")
+    lines += cue_index(a, m)
     open(a.out, "w", encoding="utf-8").write("\n".join(lines) + "\n")
     print(len(m), "clips on the sheet", file=sys.stderr)
+
+
+def cue_index(a, manifest):
+    """Per game key: which clip plays, from which episode at which time (Trek era twins), or which BOTF bank file."""
+    by_file = {c["file"]: c for c in manifest}
+    lines = ["## Cue index: what each game cue plays", "",
+             "Era twin keys (`<key>.<era>`) are tried first, then the plain key (original BOTF bank), then a generated tone. "
+             "Rows with a source episode are Trek clips; rows marked BOTF are the original game's own bank files (no timecode).", ""]
+    trek_cues = os.path.join(a.trek, "cues.json")
+    table = json.load(open(trek_cues))["cues"] if os.path.exists(trek_cues) else {}
+    botf_path = os.path.join(os.path.dirname(os.path.normpath(a.trek)), "cues.json")
+    botf = json.load(open(botf_path))["cues"] if os.path.exists(botf_path) else {}
+    lines += ["| cue key | clip | source | time | note |", "|---|---|---|---|---|"]
+    for key in sorted(set(table) | set(botf)):
+        for f in table.get(key, []):
+            c = by_file.get(f, {})
+            note = '"%s"' % c["text"] if c.get("kind") == "voice" and "text" in c else c.get("kind", "")
+            lines.append("| `%s` | `%s` | %s | %s | %s |" % (key, f, c.get("source", "?"), mmss(c["t"]) if "t" in c else "?", note))
+        for f in botf.get(key, []):
+            if key.startswith(("sfx.", "weapon.", "vo.combat", "vo.advisor.fleet")):
+                lines.append("| `%s` | `%s` | BOTF bank | - | original game file |" % (key, f))
+    lines.append("")
+    return lines
 
 
 def main():

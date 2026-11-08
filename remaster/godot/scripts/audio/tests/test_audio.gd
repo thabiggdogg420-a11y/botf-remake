@@ -427,8 +427,8 @@ func _local_content() -> void:
 		check(s != null, "local file loads for %s" % k)
 	var ogg := lib.stream_of(lib.resolve_files(PackedStringArray(["vo.combat.kill.kli"]))) as AudioStreamOggVorbis
 	check(ogg != null and ogg.get_length() > 0.3, "a voice ogg decodes with a length (%.1f s)" % (ogg.get_length() if ogg else 0.0))
-	var wav := lib.stream_of(lib.resolve_files(PackedStringArray(["sfx.explosion.large"]))) as AudioStreamWAV
-	check(wav != null and wav.mix_rate == 22050, "an effect wav loads at its own rate")
+	var fx := lib.stream_of(lib.resolve_files(PackedStringArray(["sfx.explosion.large"])))
+	check(fx != null and fx.get_length() > 0.1, "an effect loads with a length (web pack is ogg)")
 	for ctx in ["title", "galaxy", "battle", "tension"]:
 		check(lib.has_files(BotfAudioCues.music_keys(ctx, "kli")), "music context %s has local files for the Klingons" % ctx)
 
@@ -460,7 +460,7 @@ func _eras_and_orders() -> void:
 		ch.note("beam", 10.0 + i * 0.2)
 	ch.note("torpedo", 11.0)
 	var d1 := ch.next_line(12.0)
-	check(d1 in ["phaser", "torpedo", "target", "encounter"], "chatter follows the action (%s)" % d1)
+	check(d1 in ["phaser", "torpedo", "encounter"], "chatter follows the action (%s)" % d1)
 	ch.commit(d1, 12.0)
 	for i in 6:
 		ch.note("shield", 13.0 + i * 0.1)
@@ -514,8 +514,8 @@ func _voice_layers() -> void:
 	check(got.get("voice", "") == "vo.combat.retreat.fed", "Retreat is acknowledged with the retreat line: %s" % [got])
 	sys.clock_override = 520.0
 	sys.scheduler = BotfCueScheduler.new()
-	got = sys.order_ack("Engage")
-	check(got.get("voice", "") == "vo.combat.ack.fed", "Engage falls back to the acknowledgement group: %s" % [got])
+	got = sys.order_ack("Strafe")
+	check(str(got.get("voice", "")).begins_with("vo.combat.ack.fed"), "Strafe (ack only) falls back to the acknowledgement group: %s" % [got])
 	sys.clock_override = 530.0
 	sys.scheduler = BotfCueScheduler.new()
 	sys.recent.clear()
@@ -532,7 +532,7 @@ func _voice_layers() -> void:
 	check(sys.current_era() == "tng" and sys.settings.get("audio_era") == "tng", "era set from a roster name and kept in settings")
 	sys.clock_override = 540.0
 	sys.scheduler = BotfCueScheduler.new()
-	got = sys.order_ack("Engage")
+	got = sys.order_ack("Strafe")
 	check(got.get("voice", "") == "vo.combat.ack.fed.tng", "the era's own line is preferred: %s" % [got])
 	sys.set_era("auto")
 	check(sys.current_era() == BotfAudioCues.DEFAULT_ERA, "auto -> the default era")

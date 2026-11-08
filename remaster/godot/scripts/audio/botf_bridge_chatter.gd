@@ -1,7 +1,7 @@
 class_name BotfBridgeChatter
 extends RefCounted
 ## The bridge chatter layer: low-priority crew lines in a fight, drawn from the original BOTF combat groups
-## (vo.combat.underattack / phaser / torpedo / shields.* / evade / kill / target / encounter), chosen by what has
+## (vo.combat.underattack / phaser / torpedo / shields.* / evade / kill / encounter; the originals have no "target" line), chosen by what has
 ## just happened. It speaks only into quiet: BattleTimeline barks and order acknowledgements reset its gap, a detail
 ## is not repeated within `repeat_seconds`, and nothing is said before the fight has produced events.
 ## Pure and deterministic (time and seed passed in), unit-tested in scripts/audio/tests/test_audio.gd.
@@ -83,7 +83,6 @@ func next_line(now: float, has_files := Callable()) -> String:
 		w["evade"] = 1.5
 	if dead > 0:
 		w["kill"] = 5.0
-	w["target"] = 0.8
 	w["encounter"] = 0.4
 	for d in w.keys():
 		var spent: bool = d == _last_detail or now - float(_spoken.get(d, -100.0)) < repeat_seconds

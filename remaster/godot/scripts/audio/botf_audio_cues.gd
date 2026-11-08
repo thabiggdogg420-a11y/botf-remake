@@ -132,7 +132,7 @@ static func combat_voice_keys(detail: String, fac: String, era := "") -> PackedS
 
 
 ## Bridge chatter (BotfBridgeChatter): details drawn from the original BOTF combat groups. Each is a vo.combat.<d>.<fac>.
-const CHATTER_DETAILS := ["underattack", "phaser", "torpedo", "shields.75", "shields.50", "shields.25", "evade", "kill", "target", "encounter"]
+const CHATTER_DETAILS := ["underattack", "phaser", "torpedo", "shields.75", "shields.50", "shields.25", "evade", "kill", "encounter"]
 
 ## Music contexts -> key chains (first with files wins), the generated fallback kind, and loop behaviour.
 const MUSIC := {
