@@ -47,3 +47,11 @@ The reference is the frozen Unreal client (`remaster/game/Source`, mainly BotfCo
   - 24 of 42 torpedo launches play, the rest are dropped by the 4-voice salvo cap;
   - 29 of 41 shield hits play;
   - 19 of 20 hull hits play.
+
+## R3.5 pass 4 (8 Nov 2026)
+- The round-start refresh is now incremental (combat_screen.refresh_round updates the cards in place): about 30 ms, down from 220-370 ms. In 24v24 the worst frame is about 117 ms in rounds 2-4 and 370 ms in round 1.
+- Cloak and decloak play for every ship: 4 of 4 each in the trace.
+- The drill takes `foeStation`, which gives the rival the starbase. WebBridge.cpp is changed and the debug DLL is rebuilt in the worktree.
+- Torpedoes have empire colours (Federation red-orange, Klingon green-gold), longer trails on a 60 px floor, and brighter heads. Beam, flare and impact floors are raised.
+- Damaged ships show fires and plasma venting. Explosions last 3.5 ticks, with more debris and smoke.
+- The tactical camera fits the screen box to about 86% of the frame and drifts slowly. Formation spacing uses full spheres, so hulls no longer overlap.

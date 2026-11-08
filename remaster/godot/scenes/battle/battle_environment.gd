@@ -19,7 +19,7 @@ static func build(parent: Node3D, arena_size: Vector2) -> Dictionary:
 	env.background_mode = Environment.BG_SKY
 	env.sky = sky
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	env.ambient_light_color = Color(0.15, 0.16, 0.2)
+	env.ambient_light_color = Color(0.2, 0.21, 0.27) # R3.5: dark-hulled ships (Klingon) read at tactical distance
 	env.ambient_light_energy = 1.0
 	env.reflected_light_source = Environment.REFLECTION_SOURCE_SKY
 	env.tonemap_mode = Environment.TONE_MAPPER_ACES
@@ -75,7 +75,7 @@ static func build(parent: Node3D, arena_size: Vector2) -> Dictionary:
 	var rim := DirectionalLight3D.new()
 	rim.name = "NebulaRim"
 	rim.light_color = Color(0.6, 0.66, 0.9)
-	rim.light_energy = 0.35
+	rim.light_energy = 0.7
 	rim.sky_mode = DirectionalLight3D.SKY_MODE_LIGHT_ONLY
 	parent.add_child(rim)
 	rim.rotation_degrees = Vector3(35.0, 40.0, 0.0)

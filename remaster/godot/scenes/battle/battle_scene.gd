@@ -248,16 +248,16 @@ func _update_spacing(t: float, delta: float, poses: Dictionary) -> void:
 		var ship: BattleShip = _ships.get(track.fleet_id)
 		var p: BattleTimeline.Pose = poses.get(track.fleet_id)
 		var active := ship != null and p != null and track.visibility_at(t) > 0.05
-		# Bounding spheres of flat hulls may overlap a little (ABotfCombatScene: 0.75 of the radius).
+		# R3.5 (coordinator, 8 Nov: 24v24 hulls overlapped): full bounding spheres plus a 10% gap, no overlap.
 		bodies.append({"x": p.x if active else 0.0, "y": p.y if active else 0.0, "alt": p.altitude if active else 0.0,
-			"radius": 0.75 * ship.half_extents.length() / (CELL * SPREAD) if active else 0.0, "active": active})
+			"radius": 1.1 * ship.half_extents.length() / (CELL * SPREAD) if active else 0.0, "active": active})
 		tracks.append(track)
 	# The relaxation is the dearest per-frame job at 24 v 24, and the offsets only drift slowly: solve it at 20 Hz and
 	# ease every frame (a zero-length step, the first frame of a round or a seek, always solves).
 	_spacing_clock += delta
 	if delta <= 0.0 or _spacing_clock >= SPACING_SOLVE_INTERVAL or _spacing_cache.size() != bodies.size():
 		_spacing_clock = 0.0
-		_spacing_cache = BattleTimeline.spacing_offsets(bodies)
+		_spacing_cache = BattleTimeline.spacing_offsets(bodies, 10, 2.5, 6.0)
 	var offsets := _spacing_cache
 	var ease := 1.0 if delta <= 0.0 else 1.0 - exp(-SPACING_EASE * delta)
 	# Ships closing on each other mid-maneuver need the push at once (a slow ease let an Oberth pass through a Galaxy
@@ -421,6 +421,7 @@ func _update_camera(t: float, delta: float, centroid: Vector3, spread: float) ->
 			continue
 		var info: Dictionary = by_id.get(fid, {})
 		var hs: Array = state.get(fid, [float(info.get("hull", 1)), float(info.get("shields", 0))])
+		ship.set_damage(1.0 - hs[0] / maxf(1.0, float(info.get("maxHull", hs[0]))))
 		var bow := ship.global_basis.x
 		bodies.append({"id": fid, "center": ship.global_position, "radius": camera.hull_radius(ship), "owner": ship.owner_id,
 			"mine": info.get("mine", ship.owner_id == me), "heading": rad_to_deg(atan2(bow.z, bow.x)),

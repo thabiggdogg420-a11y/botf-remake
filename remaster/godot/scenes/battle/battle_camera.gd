@@ -687,18 +687,42 @@ func _fit_distance(fit: Array, aspect: float, side_sign: float) -> Array:
 		if d.length() > 1e-3:
 			fwd = d.normalized()
 	var side := fwd.cross(Vector3.UP).normalized() * side_sign
-	var dir := (side * 0.85 - fwd * 0.45 + Vector3.UP * 0.75).normalized()
-	# Smallest distance at which every fitted hull is inside the frame with ~10% margin.
-	var dist := 20.0
-	for i in 160:
-		var ok := true
+	# Raised three-quarter view (about 40 degrees), drifting slowly round the battle.
+	var dir := (side * 0.85 - fwd * 0.4 + Vector3.UP * 0.8).normalized().rotated(Vector3.UP, _time * 0.008)
+	# Fit the screen-space box of every hull to ~85% of the frame and centre it: little empty frame, no crop.
+	var th := tan(deg_to_rad(fov) * 0.5)
+	var dist := 0.0
+	for b in fit:
+		dist = maxf(dist, mid.distance_to(b.center) + float(b.radius))
+	dist = maxf(dist * 2.0, 20.0)
+	for it in 10:
+		var eye := mid + dir * dist
+		var bs := Basis.looking_at(mid - eye, Vector3.UP)
+		var inv := bs.inverse()
+		var x0 := INF
+		var x1 := -INF
+		var y0 := INF
+		var y1 := -INF
+		var near_z := INF
 		for b in fit:
-			if not _sphere_fit(mid + dir * dist, mid, b.center, float(b.radius), aspect, 0.88)[0]:
-				ok = false
-				break
-		if ok:
-			break
-		dist *= 1.05
+			var v: Vector3 = inv * ((b.center as Vector3) - eye)
+			var z := maxf(-v.z, 1e-3)
+			near_z = minf(near_z, z - float(b.radius))
+			var ry := float(b.radius) / (z * th)
+			var x := v.x / (z * th * aspect)
+			var y := v.y / (z * th)
+			x0 = minf(x0, x - ry / aspect)
+			x1 = maxf(x1, x + ry / aspect)
+			y0 = minf(y0, y - ry)
+			y1 = maxf(y1, y + ry)
+		var cx := (x0 + x1) * 0.5
+		var cy := (y0 + y1) * 0.5
+		var fill := maxf((x1 - x0) * 0.5, (y1 - y0) * 0.5)
+		mid += bs.x * cx * dist * th * aspect * 0.8 + bs.y * cy * dist * th * 0.8
+		var k := clampf(fill / 0.86, 0.6, 1.6)
+		if near_z < dist * 0.25:
+			k = maxf(k, 1.0) # never fly into the nearest hull to fill the frame
+		dist *= k
 	return [mid, dist, dir]
 
 

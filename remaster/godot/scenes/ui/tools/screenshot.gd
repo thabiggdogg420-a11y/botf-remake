@@ -234,6 +234,22 @@ func _prepare(s: String) -> void:
 			var view: Node = app._current.host.view_node
 			var cam: BattleCamera = view.camera
 			var t0: float = maxf(0.0, view.time - 1.25)
+			if OS.get_environment("SHOT_KILL") != "":
+				# Kill strip: resolve rounds until one destroys a ship, then frame the explosion.
+				var kt := -1.0
+				for r in 12:
+					if view.timeline != null:
+						for j in view.timeline.jobs:
+							if j.kind == BattleTimeline.Job.EXPLOSION:
+								kt = j.start
+								break
+					if kt >= 0.0 or app.encounter.get("finished", false):
+						break
+					app._current._round()
+					await _wait(6)
+				print("KILL at ", kt)
+				if kt >= 0.0:
+					t0 = maxf(0.0, kt - 0.5)
 			var shot := _live_shot(view)
 			view.force_cutaway = s == "battle-strip-close"
 			view.seek(t0)
@@ -310,6 +326,8 @@ func _volley_drill(campaign := false) -> void:
 		var drill := {"station": true}
 		if OS.get_environment("SHOT_DRILL_SHIPS") != "":
 			drill["ships"] = int(OS.get_environment("SHOT_DRILL_SHIPS"))
+		if OS.get_environment("SHOT_FOE_STATION") != "":
+			drill["foeStation"] = true
 		app.start_drill("newBattleDrill", "Starbase drill", drill)
 		app.end_turn()
 	await _wait(4)

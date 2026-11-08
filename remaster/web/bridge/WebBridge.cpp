@@ -2452,7 +2452,7 @@ botf::Station makeStation(const botf::GameState& s, int owner, int x, int y, bot
     return st;
 }
 
-void newBattleDrill(bool withStation, int shipsPerSide = 3) {
+void newBattleDrill(bool withStation, int shipsPerSide = 3, bool stationForFoe = false) {
     shipsPerSide = std::clamp(shipsPerSide, 1, 24);
     auto s = botf::generateReferenceCampaign(1999);
     // The station variant plays under the Remastered preset, where outposts and starbases fight.
@@ -2477,10 +2477,18 @@ void newBattleDrill(bool withStation, int shipsPerSide = 3) {
         // Sol's starbase joins the defence as an immobile combatant (fleet id StationCombatantBase + id).
         auto fortified = s;
         const auto& home = fortified.systems.front();
-        fortified.stations.push_back(makeStation(fortified, s.playerEmpire, home.x, home.y, botf::StationType::Starbase));
+        // stationForFoe: the rival's starbase instead (a station fight against the player), validated like the rest.
+        fortified.stations.push_back(makeStation(fortified, stationForFoe ? foe : s.playerEmpire, home.x, home.y, botf::StationType::Starbase));
         fortified.nextStationId++;
-        botf::validate(fortified);
-        s = std::move(fortified);
+        try { botf::validate(fortified); s = std::move(fortified); }
+        catch (...) {
+            if (!stationForFoe) throw;
+            auto own = s;
+            own.stations.push_back(makeStation(own, s.playerEmpire, home.x, home.y, botf::StationType::Starbase));
+            own.nextStationId++;
+            botf::validate(own);
+            s = std::move(own);
+        }
     }
     botf::Command war; war.id = s.lastAcceptedCommand + 1; war.type = botf::CommandType::DeclareWar; war.targetEmpire = foe;
     botf::submit(s, war);
@@ -2767,7 +2775,7 @@ std::string dispatch(const std::string& method, const Value& a) {
     if (method == "meta") writeMeta(w);
     else if (method == "encyclopedia") writeEncyclopedia(w);
     else if (method == "newCampaign") { newCampaign(a); writeView(w); }
-    else if (method == "newBattleDrill") { newBattleDrill(a.getBool("station"), a.getInt("ships", 3)); writeView(w); }
+    else if (method == "newBattleDrill") { newBattleDrill(a.getBool("station"), a.getInt("ships", 3), a.getBool("foeStation")); writeView(w); }
     else if (method == "newFrontierDrill") { newFrontierDrill(); writeView(w); }
     else if (method == "station") writeStationDetail(w, a.getInt("stationId"));
     else if (method == "newDiplomacyDrill") { newDiplomacyDrill(); writeView(w); }

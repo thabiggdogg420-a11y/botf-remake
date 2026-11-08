@@ -44,7 +44,7 @@ class Config:
 	var miss_overshoot_cells := 2.5
 	var intercept_fraction := 0.78
 	var impact_ticks := 0.6
-	var explosion_ticks := 2.0
+	var explosion_ticks := 3.5 # long enough to read the kill (coordinator, 8 Nov)
 	var warp_ticks := 1.0
 	var cloak_ticks := 1.0
 	var bank_per_turn_degree := 0.3
@@ -408,7 +408,14 @@ static func weapon_color(weapon: String, owner_faction: int) -> Color:
 		"TholianWeb": return Color(1.0, 0.35, 0.1)
 		"BioEnergy": return Color(0.8, 1.0, 0.2)
 		"TemporalWeapon": return Color(0.8, 0.3, 1.0)
-		"PhotonTorpedo", "PhotonicTorpedo", "Torpedo": return Color(1.0, 0.2, 0.08)
+		"PhotonTorpedo", "PhotonicTorpedo", "Torpedo":
+			# Each empire its own torpedo colour (coordinator, 8 Nov): Federation red-orange, Klingon green-gold.
+			match owner_faction:
+				2: return Color(0.75, 1.0, 0.15)
+				3: return Color(0.2, 1.0, 0.5)
+				4: return Color(1.0, 0.8, 0.1)
+				5: return Color(0.6, 0.4, 1.0)
+			return Color(1.0, 0.25, 0.08)
 		"QuantumTorpedo": return Color(0.4, 0.65, 1.0)
 		"PlasmaTorpedo": return Color(0.25, 1.0, 0.4)
 		"SpatialTorpedo": return Color(1.0, 0.55, 0.2)

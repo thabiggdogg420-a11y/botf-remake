@@ -135,7 +135,8 @@ func _off_cooldown(key: String, bus: String, now: float) -> bool:
 	# Salvos (R3.5, Simon: "no sounds for weapons"): a weapon or impact key may overlap itself up to salvo_voices
 	# times inside its cooldown, so 8 torpedoes from a broadside sound as a ripple, not one blip. Other keys still
 	# play once per cooldown.
-	var allowed := salvo_voices if (key.begins_with("weapon.") or key.begins_with("sfx.shield") or key.begins_with("sfx.explosion")) else 1
+	# Cloak and decloak play for every ship (coordinator, 8 Nov: a wing cloaking together played one sound in four).
+	var allowed := salvo_voices if (key.begins_with("weapon.") or key.begins_with("sfx.shield") or key.begins_with("sfx.explosion") or key.begins_with("sfx.cloak") or key.begins_with("sfx.decloak")) else 1
 	var recent := 0
 	for p in _played:
 		if p.key == key and now - p.at < cd:

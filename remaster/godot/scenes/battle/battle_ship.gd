@@ -392,6 +392,72 @@ func update_shield(t: float) -> void:
 	_shield_mat.set_shader_parameter("hit_colors", cols)
 
 
+## Damage feedback (R3.5, coordinator 8 Nov): fires and venting plasma grow on a ship as its hull falls. damage is
+## 0 (intact) .. 1 (wrecked); below 15% nothing shows, then up to three fires and a vent appear.
+var _damage_fx: Array = []
+var _damage_shown := -1.0
+
+func set_damage(damage: float) -> void:
+	damage = clampf(damage, 0.0, 1.0)
+	if absf(damage - _damage_shown) < 0.02:
+		return
+	_damage_shown = damage
+	if _damage_fx.is_empty():
+		if damage < 0.15:
+			return
+		_build_damage_fx()
+	var fires := int(ceil(clampf((damage - 0.15) / 0.28, 0.0, 3.0)))
+	for k in _damage_fx.size():
+		var e: CPUParticles3D = _damage_fx[k]
+		var on := k < fires if k < 3 else damage > 0.45
+		e.emitting = on
+		e.visible = on
+
+
+func _build_damage_fx() -> void:
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
+	mat.vertex_color_use_as_albedo = true
+	mat.albedo_texture = BattleShip.ember_texture()
+	mat.depth_draw_mode = BaseMaterial3D.DEPTH_DRAW_DISABLED
+	var quad := QuadMesh.new()
+	quad.material = mat
+	var L := maxf(length, 2.0)
+	for k in 4:
+		var e := CPUParticles3D.new()
+		e.mesh = quad
+		e.local_coords = false
+		var vent := k == 3
+		e.amount = 24 if vent else 32
+		e.lifetime = 1.2 if vent else 0.9
+		var r := RandomNumberGenerator.new()
+		r.seed = hash([name, k])
+		e.position = Vector3(r.randf_range(-0.4, 0.35) * half_extents.x * 2.0, r.randf_range(0.1, 0.6) * half_extents.y, r.randf_range(-0.6, 0.6) * half_extents.z)
+		e.direction = Vector3(r.randf_range(-0.3, 0.3), 1.0, r.randf_range(-1.0, 1.0)) if vent else Vector3(0, 1, 0)
+		e.spread = 12.0 if vent else 35.0
+		e.initial_velocity_min = L * (0.25 if vent else 0.05)
+		e.initial_velocity_max = L * (0.4 if vent else 0.12)
+		e.gravity = Vector3.ZERO
+		e.scale_amount_min = L * (0.05 if vent else 0.07)
+		e.scale_amount_max = L * (0.09 if vent else 0.13)
+		var g := Gradient.new()
+		if vent:
+			g.set_color(0, Color(0.75, 0.9, 1.0, 0.9))
+			g.set_color(1, Color(0.4, 0.55, 0.8, 0.0))
+		else:
+			g.set_color(0, Color(1.0, 0.85, 0.45, 1.0))
+			g.add_point(0.35, Color(1.0, 0.4, 0.08, 0.85))
+			g.set_color(g.get_point_count() - 1, Color(0.25, 0.08, 0.02, 0.0))
+		e.color_ramp = g
+		e.emitting = false
+		e.visible = false
+		add_child(e)
+		_damage_fx.append(e)
+
+
 func clear_effects() -> void:
 	_hits.clear()
 	shield.visible = false

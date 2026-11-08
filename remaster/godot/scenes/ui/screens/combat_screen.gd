@@ -76,27 +76,10 @@ func _unhandled_key_input(event: InputEvent) -> void:
 			app.end_turn()
 
 # ---------------------------------------------------------------------------------------------
-func _live(e: Dictionary) -> void:
-	var ships: Array = e["ships"]
-	var mine: Array = ships.filter(func(s): return s.get("mine", false))
-	var foes: Array = ships.filter(func(s): return not s.get("mine", false))
-	if ship == 0 or mine.filter(func(s): return int(s["id"]) == ship and is_active(s)).is_empty():
-		var a: Array = mine.filter(func(s): return is_active(s))
-		ship = int(a[0]["id"]) if a.size() > 0 else 0
-	if target == 0 or foes.filter(func(s): return int(s["id"]) == target and is_active(s) and not s.get("hidden", false)).is_empty():
-		var b: Array = foes.filter(func(s): return is_active(s) and not s.get("hidden", false))
-		target = int(b[0]["id"]) if b.size() > 0 else 0
-	var foe_name: String = foes[0]["ownerName"] if foes.size() > 0 else "enemy"
-	var rounds: Array = e.get("rounds", [])
-	var last: Dictionary = rounds.back() if rounds.size() > 0 else {}
-	var m := MarginContainer.new()
-	m.set_anchors_preset(Control.PRESET_FULL_RECT)
-	for side in ["left", "right", "top", "bottom"]:
-		m.add_theme_constant_override("margin_" + side, 14)
-	add_child(m)
-	var root := Lcars.vbox(10)
-	m.add_child(root)
-	# Header
+var _root: Control = null
+var _cards := {} ## ship id -> card of the live layout
+
+func _header(e: Dictionary, mine: Array, foes: Array, foe_name: String, last: Dictionary) -> Control:
 	var h := Lcars.hbox(20)
 	var alert := RedAlert.new()
 	alert.custom_minimum_size = Vector2(26, 60)
@@ -122,6 +105,97 @@ func _live(e: Dictionary) -> void:
 		var au := Lcars.pill("Auto-resolve", "alert", func(): _auto(), "", "Let your captains fight the battle to its end")
 		au.name = "AutoResolve"
 		h.add_child(au)
+	return h
+
+func _bottom(e: Dictionary, foe_name: String, last: Dictionary) -> Control:
+	# Bottom: orders + log
+	var bottom := Lcars.hbox(10)
+	bottom.custom_minimum_size.y = 250
+	bottom.add_child(_orders(e, foe_name))
+	var logf := Lcars.frame("Combat log", ("round %d" % int(last["index"])) if not last.is_empty() else "awaiting first round", "tertiary")
+	logf.custom_minimum_size.x = 560
+	var lb := Lcars.vbox(2)
+	if last.is_empty():
+		lb.add_child(Lcars.para("Ships deploy at opposite edges of the arena. Dashed lines show what each ship will do next round.", Lcars.TEXT3, 13))
+	for line in round_log(e, last):
+		lb.add_child(Lcars.para(line[1], Lcars.tone_color(line[0]), 13))
+	Lcars.body(logf).add_child(Lcars.scroll(lb))
+	bottom.add_child(logf)
+	return bottom
+
+## After a round: update the live layout in place (header, ship cards, orders and log) instead of rebuilding every
+## node. R3.5: the full rebuild of a 24v24 layout cost 220-370 ms at each round start.
+func refresh_round() -> void:
+	var e := _enc()
+	var ok: bool = _root != null and is_instance_valid(_root) and _root.is_inside_tree() and not e.is_empty() and not e.get("finished", false) and not choice
+	var ships: Array = e.get("ships", [])
+	if ok:
+		for sd in ships:
+			if not _cards.has(int(sd["id"])) or not is_instance_valid(_cards[int(sd["id"])]):
+				ok = false
+		ok = ok and _cards.size() == ships.size()
+	if not ok:
+		refresh()
+		return
+	var mine: Array = ships.filter(func(x): return x.get("mine", false))
+	var foes: Array = ships.filter(func(x): return not x.get("mine", false))
+	if ship == 0 or mine.filter(func(x): return int(x["id"]) == ship and is_active(x)).is_empty():
+		var a: Array = mine.filter(func(x): return is_active(x))
+		ship = int(a[0]["id"]) if a.size() > 0 else 0
+	if target == 0 or foes.filter(func(x): return int(x["id"]) == target and is_active(x) and not x.get("hidden", false)).is_empty():
+		var b: Array = foes.filter(func(x): return is_active(x) and not x.get("hidden", false))
+		target = int(b[0]["id"]) if b.size() > 0 else 0
+	var foe_name: String = foes[0]["ownerName"] if foes.size() > 0 else "enemy"
+	var rounds: Array = e.get("rounds", [])
+	var last: Dictionary = rounds.back() if rounds.size() > 0 else {}
+	var old_h: Control = _root.get_child(0)
+	var nh := _header(e, mine, foes, foe_name, last)
+	_root.add_child(nh)
+	_root.move_child(nh, 0)
+	old_h.queue_free()
+	for sd in ships:
+		var old: Button = _cards[int(sd["id"])]
+		var hostile: bool = not sd.get("mine", false)
+		if bool(old.get_meta("hidden", false)) == bool(sd.get("hidden", false)):
+			_fill_card(old, sd, ships, target if hostile else ship, hostile)
+			continue
+		var nc := _ship_card(sd, ships, target if hostile else ship, hostile)
+		var par := old.get_parent()
+		par.add_child(nc)
+		par.move_child(nc, old.get_index())
+		par.remove_child(old)
+		old.queue_free()
+		_cards[int(sd["id"])] = nc
+	var old_b: Control = _root.get_child(_root.get_child_count() - 1)
+	var nb := _bottom(e, foe_name, last)
+	_root.add_child(nb)
+	old_b.queue_free()
+	_root.remove_child(old_b)
+	host.set_selection(ship, target)
+
+func _live(e: Dictionary) -> void:
+	_cards.clear()
+	var ships: Array = e["ships"]
+	var mine: Array = ships.filter(func(s): return s.get("mine", false))
+	var foes: Array = ships.filter(func(s): return not s.get("mine", false))
+	if ship == 0 or mine.filter(func(s): return int(s["id"]) == ship and is_active(s)).is_empty():
+		var a: Array = mine.filter(func(s): return is_active(s))
+		ship = int(a[0]["id"]) if a.size() > 0 else 0
+	if target == 0 or foes.filter(func(s): return int(s["id"]) == target and is_active(s) and not s.get("hidden", false)).is_empty():
+		var b: Array = foes.filter(func(s): return is_active(s) and not s.get("hidden", false))
+		target = int(b[0]["id"]) if b.size() > 0 else 0
+	var foe_name: String = foes[0]["ownerName"] if foes.size() > 0 else "enemy"
+	var rounds: Array = e.get("rounds", [])
+	var last: Dictionary = rounds.back() if rounds.size() > 0 else {}
+	var m := MarginContainer.new()
+	m.set_anchors_preset(Control.PRESET_FULL_RECT)
+	for side in ["left", "right", "top", "bottom"]:
+		m.add_theme_constant_override("margin_" + side, 14)
+	add_child(m)
+	var root := Lcars.vbox(10)
+	m.add_child(root)
+	_root = root
+	var h := _header(e, mine, foes, foe_name, last)
 	root.add_child(h)
 	# Middle: ship lists and the battle host
 	var mid := Lcars.hbox(10)
@@ -136,19 +210,7 @@ func _live(e: Dictionary) -> void:
 	root.add_child(mid)
 	host.load_encounter.call_deferred(e)
 	host.set_selection.call_deferred(ship, target)
-	# Bottom: orders + log
-	var bottom := Lcars.hbox(10)
-	bottom.custom_minimum_size.y = 250
-	bottom.add_child(_orders(e, foe_name))
-	var logf := Lcars.frame("Combat log", ("round %d" % int(last["index"])) if not last.is_empty() else "awaiting first round", "tertiary")
-	logf.custom_minimum_size.x = 560
-	var lb := Lcars.vbox(2)
-	if last.is_empty():
-		lb.add_child(Lcars.para("Ships deploy at opposite edges of the arena. Dashed lines show what each ship will do next round.", Lcars.TEXT3, 13))
-	for line in round_log(e, last):
-		lb.add_child(Lcars.para(line[1], Lcars.tone_color(line[0]), 13))
-	Lcars.body(logf).add_child(Lcars.scroll(lb))
-	bottom.add_child(logf)
+	var bottom := _bottom(e, foe_name, last)
 	root.add_child(bottom)
 	if choice and not e.get("finished", false) and int(e["round"]) == 0:
 		_encounter_choice(e, mine, foes, foe_name)
@@ -177,7 +239,9 @@ func _ship_list(title: String, ships: Array, all: Array, sel: int, hostile: bool
 	f.custom_minimum_size.x = 330
 	var list := Lcars.vbox(6)
 	for s in ships:
-		list.add_child(_ship_card(s, all, sel, hostile))
+		var cd := _ship_card(s, all, sel, hostile)
+		_cards[int(s["id"])] = cd
+		list.add_child(cd)
 	Lcars.body(f).add_child(Lcars.scroll(list))
 	return f
 
@@ -194,13 +258,6 @@ func _ship_card(s: Dictionary, all: Array, sel: int, hostile: bool) -> Control:
 	btn.theme_type_variation = "GhostButton"
 	btn.custom_minimum_size.y = 96
 	btn.disabled = s.get("hidden", false)
-	var c := Lcars.owner_color(int(s["owner"]))
-	var status := "DESTROYED" if not s.get("alive", true) else ("WITHDRAWN" if s.get("retreated", false) else "")
-	var sb := Lcars.box(Color(c, 0.18) if sel == id else Color(Lcars.PANEL2, 0.85), 12, c if sel == id else Lcars.LINE2, 2 if sel == id else 1)
-	btn.add_theme_stylebox_override("normal", sb)
-	btn.add_theme_stylebox_override("disabled", sb)
-	if status != "":
-		btn.modulate = Color(1, 1, 1, 0.5)
 	var v := Lcars.vbox(3)
 	v.set_anchors_preset(Control.PRESET_FULL_RECT)
 	v.offset_left = 10
@@ -215,36 +272,62 @@ func _ship_card(s: Dictionary, all: Array, sel: int, hostile: bool) -> Control:
 	h.add_child(n)
 	h.add_child(Lcars.label("#%d" % id, "Mono", 11, Lcars.TEXT3))
 	v.add_child(h)
+	btn.set_meta("hidden", s.get("hidden", false))
 	if s.get("hidden", false):
 		v.add_child(Lcars.label("Cloaked · decloaks to fire", "Muted", 12))
 	else:
-		v.add_child(Lcars.meter(s["shields"], max(1, int(s["maxShields"])), Lcars.SHIELD, 3))
-		v.add_child(Lcars.meter(max(0, int(s["hull"])), max(1, int(s["maxHull"])), Color("#8fd18a"), 4))
-		var nx: Variant = s.get("next")
-		var line := status
-		if line == "":
-			if nx is Dictionary:
-				line = "%s%s%s  (%s)" % ["will " if hostile else "next: ", nx["maneuver"], (" → " + _name_of(all, int(nx["target"]))) if int(nx.get("target", 0)) != 0 else "", {"ai": "AI", "standing": "standing", "order": "ordered"}.get(nx.get("source", ""), "")]
-			else:
-				line = "beam %d · torp %d" % [int(s["beam"]), int(s["torpedo"])]
-		v.add_child(Lcars.label(line, "", 12, Lcars.accent2() if nx is Dictionary and nx.get("source", "") == "order" else Lcars.TEXT2))
-		var flags := []
-		if s.get("cloaked", false) and s.get("alive", false):
-			flags.append("Cloaked")
-		if s.get("station", false):
-			flags.append("%s · immobile" % s.get("stationType", "Station"))
-		if s.get("disengaging", false):
-			flags.append("Disengaging")
-		if str(s.get("group", "")) != "":
-			flags.append(str(s["group"]))
-		if not hostile:
-			flags.append("B%d · T%d" % [int(s["beam"]), int(s["torpedo"])])
-		v.add_child(Lcars.label("  ·  ".join(flags), "Mono", 11, Lcars.TEXT3))
+		var sh := Lcars.meter(0, 1, Lcars.SHIELD, 3)
+		var hb := Lcars.meter(0, 1, Color("#8fd18a"), 4)
+		var ln := Lcars.label("", "", 12, Lcars.TEXT2)
+		var fl := Lcars.label("", "Mono", 11, Lcars.TEXT3)
+		for x in [sh, hb, ln, fl]:
+			v.add_child(x)
+		btn.set_meta("parts", [sh, hb, ln, fl])
+	_fill_card(btn, s, all, sel, hostile)
 	for x in [v] + v.find_children("*", "Control", true, false):
 		x.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	btn.add_child(v)
 	btn.pressed.connect(func(): _pick(id))
 	return btn
+
+## Sets a card's changing state (selection frame, meters, next order, flags) without rebuilding it.
+func _fill_card(btn: Button, s: Dictionary, all: Array, sel: int, hostile: bool) -> void:
+	var id := int(s["id"])
+	btn.disabled = s.get("hidden", false)
+	var c := Lcars.owner_color(int(s["owner"]))
+	var status := "DESTROYED" if not s.get("alive", true) else ("WITHDRAWN" if s.get("retreated", false) else "")
+	var sb := Lcars.box(Color(c, 0.18) if sel == id else Color(Lcars.PANEL2, 0.85), 12, c if sel == id else Lcars.LINE2, 2 if sel == id else 1)
+	btn.add_theme_stylebox_override("normal", sb)
+	btn.add_theme_stylebox_override("disabled", sb)
+	btn.modulate = Color(1, 1, 1, 0.5) if status != "" else Color.WHITE
+	if not btn.has_meta("parts"):
+		return
+	var parts: Array = btn.get_meta("parts")
+	parts[0].max_value = max(1, int(s["maxShields"]))
+	parts[0].value = clampf(float(s["shields"]), 0.0, parts[0].max_value)
+	parts[1].max_value = max(1, int(s["maxHull"]))
+	parts[1].value = clampf(float(max(0, int(s["hull"]))), 0.0, parts[1].max_value)
+	var nx: Variant = s.get("next")
+	var line := status
+	if line == "":
+		if nx is Dictionary:
+			line = "%s%s%s  (%s)" % ["will " if hostile else "next: ", nx["maneuver"], (" → " + _name_of(all, int(nx["target"]))) if int(nx.get("target", 0)) != 0 else "", {"ai": "AI", "standing": "standing", "order": "ordered"}.get(nx.get("source", ""), "")]
+		else:
+			line = "beam %d · torp %d" % [int(s["beam"]), int(s["torpedo"])]
+	parts[2].text = line
+	parts[2].add_theme_color_override("font_color", Lcars.accent2() if nx is Dictionary and nx.get("source", "") == "order" else Lcars.TEXT2)
+	var flags := []
+	if s.get("cloaked", false) and s.get("alive", false):
+		flags.append("Cloaked")
+	if s.get("station", false):
+		flags.append("%s · immobile" % s.get("stationType", "Station"))
+	if s.get("disengaging", false):
+		flags.append("Disengaging")
+	if str(s.get("group", "")) != "":
+		flags.append(str(s["group"]))
+	if not hostile:
+		flags.append("B%d · T%d" % [int(s["beam"]), int(s["torpedo"])])
+	parts[3].text = "  ·  ".join(flags)
 
 func _pick(id: int) -> void:
 	var e := _enc()
@@ -343,7 +426,10 @@ func _round() -> void:
 		return
 	app.encounter = r["result"]
 	choice = false
-	refresh()
+	var _t1 := Time.get_ticks_usec()
+	refresh_round()
+	if OS.get_environment("ROUND_TIMING") != "":
+		print("ROUND_TIMING refresh_round=%d ms" % ((Time.get_ticks_usec() - _t1) / 1000))
 	var rounds: Array = _enc().get("rounds", [])
 	if host and rounds.size() > 0:
 		host.play_round.call_deferred(rounds.back(), _enc())
