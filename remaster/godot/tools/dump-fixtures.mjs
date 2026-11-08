@@ -46,7 +46,12 @@ call('tacticalOrder', { all: true, maneuver: 'Engage' });
 rec('battle-rules3-round1', 'tacticalRound');
 rec('battle-rules3-round2', 'tacticalRound');
 rec('battle-rules3-final', 'tacticalAuto');
-// Determinism reference for the Godot tests: fingerprint after a scripted 10-turn run.
+// Determinism references for the Godot tests: fingerprint after a scripted 10-turn run.
+// determinism = the default (tactical rules 4, WEGO); determinism-rules3 = the same campaign with "wego": false.
 call('newCampaign', campaign);
 for (let i = 0; i < 10; i++) endTurn();
 dump('determinism', 'fingerprint', { campaign, turns: 10 }, call('fingerprint'));
+const campaign3 = { ...campaign, wego: false };
+call('newCampaign', campaign3);
+for (let i = 0; i < 10; i++) endTurn();
+dump('determinism-rules3', 'fingerprint', { campaign: campaign3, turns: 10 }, call('fingerprint'));

@@ -194,15 +194,13 @@ func test_diplomacy_drill() -> void:
 ## Determinism across builds: the native extension must reproduce the fingerprint the wasm core
 ## recorded in fixtures/determinism.json (tools/dump-fixtures.sh).
 func test_fixture_determinism() -> void:
-	var fx := load_fixture("determinism")
-	# The wasm core recorded this fixture before tactical rules 4 became the Remastered default: replay it on rules 3.
-	# Rules 4 has no wasm record yet (needs an Emscripten rebuild of web/src/generated).
-	var campaign: Dictionary = fx.args.campaign.duplicate()
-	campaign["wego"] = false
-	api("newCampaign", campaign)
-	for i in int(fx.args.turns):
-		end_turn()
-	check(api("fingerprint") == fx.result, "fingerprint %s == wasm %s" % [api("fingerprint"), fx.result])
+	# Rules 4 (the Remastered default, WEGO) and rules 3 ("wego": false) each carry a wasm-recorded fingerprint.
+	for name in ["determinism", "determinism-rules3"]:
+		var fx := load_fixture(name)
+		api("newCampaign", fx.args.campaign)
+		for i in int(fx.args.turns):
+			end_turn()
+		check(api("fingerprint") == fx.result, "%s: fingerprint %s == wasm %s" % [name, api("fingerprint"), fx.result])
 	var fx_view := load_fixture("campaign-view")
 	var raw: String = core.request_json("newCampaign", JSON.stringify(fx_view.args))
 	var reparsed: Dictionary = JSON.parse_string(raw)
