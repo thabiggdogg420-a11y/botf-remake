@@ -628,12 +628,14 @@ Each minor race in vanilla BOTF provides a unique wonder structure when integrat
 ## 5. Resolution of Victory Thresholds (Gap Closure for §1.12)
 
 ### 5.1 Domination Victory
+
+> **Odo check, 8 Nov 2026:** the vanilla victory numbers in this section (turn 60, 0.67 allied multiplier) are secondhand. They come from a community post summarised in research/BOTF-RESEARCH.md:167, not from disassembly or the core's tables. They also conflict with the current core, which uses turn >= 20 and counts systems only (Victory.cpp:232-242). This is unresolved; WS01 decides which rule to follow.
 - **The Conflict:** `BOTF-FEATURE-REFERENCE.md` §1.12 noted a conflict between sources: Wikipedia reported 60% population and systems solo, 75% allied; Armada Fleet Command reported 70% solo / 50% allied.
 - **Executable Evidence:** Reverse engineering of retail `stbof.exe` (`Sub_4529F0`, AFC Topic 1331; documented in `research/BOTF-RESEARCH.md` lines 165-170):
   1. The victory check does not run during early turns; it first evaluates on **Turn 60**.
   2. **Solo Domination:** Requires the player empire to control strictly greater than **60% of total galaxy population** AND strictly greater than **60% of total star systems**.
   3. **Allied Domination:** The assembly logic applies an alliance threshold multiplier of **0.67** (two-thirds, or 66.7%), contrary to the printed manual's claim of 75%.
-  4. **Vanilla Bug:** Disassembly revealed an engine bug where the retail 1.0.2 executable checked allied population against the 66.7% threshold but omitted the corresponding allied star system count check.
+  4. **Vanilla Bug:** A community report (secondhand) states an engine bug where the retail 1.0.2 executable checked allied population against the 66.7% threshold but omitted the corresponding allied star system count check.
 - **Remaster Implementation:**
   - Conquest: `Simulation.cpp:4995-5005` — `surviving.size() == 1` (last surviving empire controls all colonies).
   - Solo Domination: `Simulation.cpp:5001-5004` & `Victory.cpp:232-242` — Evaluated on `turn >= 20`; requires `controlled_colonies * 5 >= total_systems * 3` (**60% of galaxy star systems**).
