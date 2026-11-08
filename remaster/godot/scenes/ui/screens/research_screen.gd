@@ -27,12 +27,17 @@ func refresh() -> void:
 		return
 	var root := Lcars.vbox(14)
 	Lcars.screen_margin(self).add_child(root)
-	var h := Lcars.hbox(24)
+	var h := Lcars.hbox(18)
+	var fields0 := vm.fields()
+	var split := RingGauge.make(92, 0, 1, Lcars.INFO, "%d" % int(vm.research["output"]), "PER TURN",
+		{"title": "Allocation", "value": "%d points per turn" % int(vm.research["output"]), "parts": range(fields0.size()).map(func(i): return [str(fields0[i]["name"]), "%d%%" % int(vm.alloc[i])]), "effect": "Output is pooled across the empire and split by these shares. Drag a field's slider; locked shares stay put."})
+	split.segments = range(fields0.size()).map(func(i): return [int(vm.alloc[i]), Color(FIELD_COLORS[i % FIELD_COLORS.size()])])
+	h.add_child(split)
 	h.add_child(Lcars.title_block("Research", "Science output is pooled empire-wide and divided by allocation"))
 	h.add_child(Lcars.spacer())
-	h.add_child(Lcars.stat("Output", "%d/turn" % int(vm.research["output"]), "info", "Sum of every colony's laboratory output."))
-	h.add_child(Lcars.stat("Next turn", ("+" + Lcars.fmt(vm.forecast.get("research", 0))) if vm.forecast_ok() else "-", "good", "Research gained when this turn resolves (core forecast of the turn with your current orders)."))
-	h.add_child(Lcars.stat("Reserve", Lcars.fmt(vm.research.get("reserve", 0)), "", "Points banked in fields that have reached the final level."))
+	h.add_child(Lcars.kpi("research", "Output", "%d/turn" % int(vm.research["output"]), "", "info", {"title": "Research output", "value": "%d per turn" % int(vm.research["output"]), "effect": "Sum of every colony's laboratory output. More lab workers or research structures raise it."}))
+	h.add_child(Lcars.kpi("growth", "Next turn", ("+" + Lcars.fmt(vm.forecast.get("research", 0))) if vm.forecast_ok() else "-", "", "good", {"title": "Next turn", "value": ("+" + Lcars.fmt(vm.forecast.get("research", 0))) if vm.forecast_ok() else "-", "effect": "Research gained when this turn resolves.", "forecast": "Core forecast of the turn with your current orders."}))
+	h.add_child(Lcars.kpi("save", "Reserve", Lcars.fmt(vm.research.get("reserve", 0)), "", "", {"title": "Reserve", "value": Lcars.fmt(vm.research.get("reserve", 0)), "effect": "Points banked in fields that have reached the final level."}))
 	_total = Lcars.hbox(0)
 	h.add_child(_total)
 	var lock := vm.lock_reason()
@@ -64,8 +69,17 @@ func _field_card(i: int, fd: Dictionary, lock: String) -> Control:
 	sb.border_width_top = 5
 	sb.border_color = col_c if focus == i else Color(col_c, 0.6)
 	card.add_theme_stylebox_override("panel", sb)
+	var outer := Lcars.hbox(14)
+	card.add_child(outer)
+	var pg0 := vm.progress(i)
+	var ring := RingGauge.make(96, float(fd["progress"]), max(1, int(pg0["cost"])), col_c, "L%d" % int(fd["level"]), "OF 10",
+		{"title": str(fd["name"]), "value": "Level %d of 10" % int(fd["level"]), "parts": [["Progress", "%s / %s" % [Lcars.fmt(fd["progress"]), Lcars.fmt(pg0["cost"])], ""], ["Share", "%d%%" % int(vm.alloc[i]), ""], ["Next turn", "+%d" % int(pg0["gained"]), "good"]],
+			"effect": Lcars.RESEARCH_BLURBS[i] if i < Lcars.RESEARCH_BLURBS.size() else "",
+			"forecast": ("Next level in %d turns at this share." % int(pg0["turns"])) if int(pg0["turns"]) > 0 else "No progress at this share."})
+	outer.add_child(ring)
 	var v := Lcars.vbox(6)
-	card.add_child(v)
+	v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	outer.add_child(v)
 	var top := Lcars.hbox(8)
 	var nm := Lcars.label(str(fd["name"]).to_upper(), "SubHeading", 22, col_c)
 	nm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -133,7 +147,7 @@ func apply() -> void:
 	vm.apply()
 
 func _ladder(fd: Dictionary) -> Control:
-	var f := Lcars.frame("%s - technology ladder" % fd["name"], "level %d of 10" % int(fd["level"]), "secondary")
+	var f := Lcars.frame("%s - technology ladder" % fd["name"], "level %d of 10" % int(fd["level"]), "secondary", "research")
 	f.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	var b := Lcars.body(f)
 	var rungs := Lcars.hbox(4)

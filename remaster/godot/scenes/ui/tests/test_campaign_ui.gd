@@ -46,6 +46,8 @@ func _run() -> void:
 		await _workflow(b)
 	await _new_app("fixture")
 	await _r35_display_and_quit()
+	await _new_app("fixture")
+	await _m1_ui()
 	print("%d checks, %d failures" % [checks, failures])
 	quit(1 if failures > 0 else 0)
 
@@ -444,3 +446,104 @@ func _r35_display_and_quit() -> void:
 		check(quits[0] == 1, "confirming Quit quits the game")
 	app.quit_hook = Callable()
 	DisplaySettings.dry_run = false
+
+
+func _key(code: Key, ctrl: bool = false) -> void:
+	var ev := InputEventKey.new()
+	ev.keycode = code
+	ev.pressed = true
+	ev.ctrl_pressed = ctrl
+	app._unhandled_key_input(ev)
+
+## M1-UI (docs/UI-DESIGN-SYSTEM.md): WS02 options and preview, the two-click rule from the galaxy, the command
+## palette and hotkeys, the Empire dashboard, the hail panel, explained figures and the era setting.
+func _m1_ui() -> void:
+	print("== M1-UI")
+	app.goto("new")
+	await frames()
+	var nc := app.current_screen()
+	check(find(nc, "GalaxyPreview") is GalaxyPreview, "new campaign shows the galaxy preview")
+	var shape_btn := nc.find_children("*", "Button", true, false).filter(func(b): return (b as Button).text == "Ring")
+	check(shape_btn.size() == 1, "new campaign offers the ring shape")
+	if shape_btn.size() == 1:
+		(shape_btn[0] as Button).toggled.emit(true)
+		await frames()
+		nc = app.current_screen()
+		check(nc.vm.shape == "ring" and (find(nc, "GalaxyPreview") as GalaxyPreview).shape == "ring", "picking a shape redraws the preview")
+	var labels := nc.find_children("*", "Button", true, false).map(func(b): return (b as Button).text)
+	check(labels.has("Many") and labels.has("Impossible") and labels.has("Elliptical") and labels.has("Voyager"), "minor density, difficulty, shape and interface era are offered")
+	nc.seed_value = 424242
+	nc.start()
+	await frames(3)
+	check(app.screen == "galaxy", "campaign starts on the galaxy")
+	# Two-click rule: every game screen is one rail click from the galaxy; every overlay one rail or key press.
+	var reached := []
+	for r in AppRoutes.GAME_SCREENS:
+		app.goto("galaxy")
+		await frames()
+		var rb := find(app, "Rail_" + r["id"]) as Button
+		if rb:
+			rb.pressed.emit()
+			await frames()
+			if app.screen == r["id"]:
+				reached.append(r["id"])
+	check(reached.size() == AppRoutes.GAME_SCREENS.size(), "every screen is one click from the galaxy (%d of %d)" % [reached.size(), AppRoutes.GAME_SCREENS.size()])
+	app.goto("galaxy")
+	await frames()
+	for kind in [[KEY_E, "events"], [KEY_V, "victory"], [KEY_C, "briefing"]]:
+		_key(kind[0])
+		await frames()
+		check(app.has_modal(), "%s opens from one key on the galaxy" % kind[1])
+		app.close_all_modals()
+		await frames()
+	_key(KEY_F10)
+	await frames()
+	check(find(app, "SettingsPanel") != null, "F10 opens settings")
+	app.close_all_modals()
+	await frames()
+	# Command palette
+	_key(KEY_K, true)
+	await frames()
+	var pal := find(app, "CommandPalette") as CommandPalette
+	check(pal != null, "Ctrl+K opens the command palette")
+	if pal:
+		pal.field.text = "resea"
+		pal.field.text_changed.emit("resea")
+		await frames()
+		pal.run_selected()
+		await frames()
+		check(app.screen == "research" and not app.has_modal(), "the palette runs its first match (Research)")
+	app.run_palette("colony:%d" % int(app.view["colonies"][0]["systemId"]))
+	await frames()
+	check(app.screen == "system", "the palette opens a colony's System screen")
+	check(find(app.current_screen(), "Orrery") != null and find(app.current_screen(), "ColonyKpis") != null, "the System screen leads with the planets and key figures")
+	var kp := find(app.current_screen(), "ColonyKpis")
+	if kp:
+		var tile := kp.get_child(0) as KpiTile
+		check(tile != null and tile.tooltip_text.find(char(10)) > 0 and tile._make_custom_tooltip(tile.tooltip_text) is Control, "a key figure explains itself on hover")
+	app.goto("empire")
+	await frames()
+	var es := app.current_screen()
+	check(find(es, "Banner") != null and find(es, "EmpireKpis") != null and find(es, "ColonyCards") != null, "the Empire screen is filled: banner, figures, colony cards")
+	check(find(es, "Table") != null and find(es, "PreviewTurn") != null, "the Empire registry and Preview turn remain")
+	app.goto("diplomacy")
+	await frames()
+	var ds := app.current_screen()
+	var contacted: Array = app.view["empires"].filter(func(e): return e.get("contact", false))
+	if contacted.size() > 0:
+		check(find(ds, "HailPanel") != null and find(ds, "Portrait") is PortraitSlot, "diplomacy shows the hail panel with a portrait slot")
+		var hb := find(ds, "Hail") as Button
+		if hb:
+			hb.pressed.emit()
+			await frames()
+			check(app.current_screen().vm.dossier_tab == "propose", "Hail opens negotiation")
+	# Era setting
+	var before := str(app.settings.get("uiEra", "tng"))
+	app.settings["uiEra"] = "tos"
+	app.save_settings()
+	await frames()
+	check(UiTokens.era == "tos" and UiTokens.radius() == 4, "the TOS interface look applies its tokens")
+	app.settings["uiEra"] = before
+	app.save_settings()
+	await frames()
+	check(UiTokens.era == before, "the interface look restores")

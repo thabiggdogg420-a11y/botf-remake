@@ -249,7 +249,47 @@ func _session_models(backend: String) -> void:
 	check(ov.end_summary("victory")["won"] and ov.end_summary("defeat")["stats"].size() == 8, "end-of-game summary")
 	var chk := EndTurnVM.build(s)
 	check(chk.has("warnings") and chk.has("forecast") and chk.has("alerts"), "end-turn check builds")
+	_m1_ui_models(s)
 	check(errors.is_empty(), "no core errors in the session %s" % [errors])
+
+## M1-UI (docs/UI-DESIGN-SYSTEM.md): every key figure carries an explanation, the command palette lists every
+## screen, colony and fleet, the Empire dashboard models and the WS02 options.
+func _m1_ui_models(s: AppSession) -> void:
+	var shell := ShellVM.new(s)
+	var explained := true
+	for st in shell.stats():
+		explained = explained and st.has("icon") and st["explain"] is Dictionary and str(st["explain"].get("title", "")) != "" and str(st["explain"].get("effect", "")) != ""
+	check(explained, "every top-bar figure has an icon and a cause-and-effect explanation")
+	var credits: Dictionary = shell.stats()[1]["explain"]
+	check(credits["parts"].size() == 5 and str(credits.get("forecast", "")) != "", "the treasury explains its parts and forecasts")
+	var items := shell.palette_items()
+	var ids := items.map(func(i): return str(i["id"]))
+	var screens_ok := true
+	for r in AppRoutes.GAME_SCREENS:
+		screens_ok = screens_ok and ids.has("screen:" + r["id"])
+	check(screens_ok, "the palette reaches every game screen")
+	check(ids.has("overlay:events") and ids.has("overlay:victory") and ids.has("overlay:briefing") and ids.has("overlay:settings") and ids.has("cmd:saves"), "the palette reaches every overlay and the saves")
+	check(ids.has("colony:%d" % int(s.view["colonies"][0]["systemId"])) and ids.has("fleet:%d" % int(s.view["fleets"][0]["id"])), "the palette lists colonies and fleets")
+	check(CommandPalette.filter(items, "resea").size() >= 1 and str(CommandPalette.filter(items, "resea")[0]["id"]) == "screen:research", "palette search ranks a label prefix first")
+	check(CommandPalette.filter(items, "zzzz-none").is_empty(), "palette search with no match is empty")
+	var sy := SystemVM.new(s)
+	check(sy.fetch(sy.system_id()), "system fetch")
+	var k := sy.kpis()
+	check(k.size() == 8 and k.all(func(x): return x["explain"] is Dictionary and x["explain"].has("effect")), "the colony's eight figures are explained")
+	var em := EmpireVM.new(s)
+	check(em.kpis().size() == 8 and em.contacts().size() == 4, "empire dashboard: eight figures, four other powers")
+	check(em.colony_cards().size() == s.view["colonies"].size() and str(em.colony_cards()[0]["cls"]) != "", "a card per colony with its main planet class")
+	check(em.income_parts().size() == 3 and int(em.income_parts()[2][1]) <= 0, "income parts: ship upkeep is negative")
+	var nc := NewCampaignVM.new(s)
+	nc.shape = "ring"
+	nc.minor_density = "many"
+	nc.difficulty = "hard"
+	var o := nc.options()
+	check(o["shape"] == "ring" and o["minorDensity"] == "many" and o["difficulty"] == "hard", "new campaign passes shape, minor density and difficulty")
+	check(nc.minors_count() > 0 and nc.minors_count() <= 29, "minor count follows the density, capped at 29")
+	nc.minor_density = "none"
+	check(nc.minors_count() == 0, "no minor races at density none")
+	check(NewCampaignVM.core_reads("seed") and not NewCampaignVM.core_reads("shape"), "options the core does not read yet are marked")
 
 # ---------------------------------------------------------------------------------------------
 # App.start_campaign honours the empire option (M0 bug: it was ignored and the player got the Federation)

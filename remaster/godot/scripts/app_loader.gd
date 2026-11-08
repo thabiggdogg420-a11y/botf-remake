@@ -39,6 +39,27 @@ static func resource(path: String) -> Resource:
 		return null
 	return load(path)
 
+const ART_EXTS := ["webp", "png", "jpg"]
+static var _art_cache := {}
+
+## The texture for an asset-manifest key (docs/UI-DESIGN-SYSTEM.md §7): res://art/<category>/<key>.<webp|png|jpg>
+## from the base pack or a mounted asset pack, or null when the art is not there yet (callers fall back).
+static func art(key: String, category: String) -> Texture2D:
+	if key == "":
+		return null
+	var ck := category + "/" + key
+	if _art_cache.has(ck):
+		return _art_cache[ck]
+	var tex: Texture2D = null
+	for ext in ART_EXTS:
+		var p := "res://art/%s/%s.%s" % [category, key, ext]
+		if ResourceLoader.exists(p):
+			tex = load(p) as Texture2D
+			if tex:
+				break
+	_art_cache[ck] = tex
+	return tex
+
 ## Parsed JSON from a res:// or user:// file, or null when missing or invalid.
 static func json(path: String) -> Variant:
 	if not _check(path) or not FileAccess.file_exists(path):

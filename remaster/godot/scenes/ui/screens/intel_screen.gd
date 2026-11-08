@@ -30,12 +30,18 @@ func refresh() -> void:
 	var intel := vm.intel
 	var root := Lcars.vbox(14)
 	Lcars.screen_margin(self).add_child(root)
-	var h := Lcars.hbox(24)
+	var h := Lcars.hbox(18)
+	var sec := int(vm.budget["security"])
+	var ring := RingGauge.make(92, 0, 1, Lcars.GOOD, "%d%%" % sec, "SECURITY",
+		{"title": "Budget split", "value": "%d%% security" % sec, "parts": [["Internal security", "%d%%" % sec, "good"], ["Operations against rivals", "%d%%" % (100 - sec), "warn"]],
+			"effect": "Security receives whatever is not assigned to operations. Raising a rival's espionage or sabotage share takes it from security."})
+	ring.segments = [[sec, Lcars.GOOD], [100 - sec, Lcars.WARN]]
+	h.add_child(ring)
 	h.add_child(Lcars.title_block("Intelligence", "Divide the budget between internal security and operations against each rival"))
 	h.add_child(Lcars.spacer())
-	h.add_child(Lcars.stat("Reserve", Lcars.fmt(intel["reserve"]), "", "Intelligence points available to classic operations."))
-	h.add_child(Lcars.stat("Output", "%s/turn" % Lcars.fmt(intel["output"]), "tertiary", "Intelligence generated each turn, split by the budget below."))
-	h.add_child(Lcars.stat("Security", vm.security_text(), "good", "Counter-intelligence strength. Rival operations are measured against it."))
+	h.add_child(Lcars.kpi("save", "Reserve", Lcars.fmt(intel["reserve"]), "", "", {"title": "Reserve", "value": Lcars.fmt(intel["reserve"]), "effect": "Intelligence points available to classic operations (Gather intelligence, Sabotage)."}))
+	h.add_child(Lcars.kpi("intel", "Output", "%s/t" % Lcars.fmt(intel["output"]), "", "tertiary", {"title": "Output", "value": "%s per turn" % Lcars.fmt(intel["output"]), "effect": "Intelligence generated each turn, split by the budget below."}))
+	h.add_child(Lcars.kpi("shield", "Security", vm.security_text(), "", "good", {"title": "Security", "value": vm.security_text(), "effect": "Counter-intelligence strength. Rival operations are measured against it; more security share raises it."}))
 	h.add_child(Lcars.pill("Revert", "ghost", func(): refresh()))
 	_apply = Lcars.pill("Apply budget", "primary", func(): vm.apply())
 	_apply.name = "ApplyIntel"

@@ -26,7 +26,7 @@ func refresh() -> void:
 	var current := vm.current(list)
 	var row := Lcars.hbox(14)
 	Lcars.screen_margin(self).add_child(row)
-	var reg := Lcars.frame("Fleet registry", "%d ships · %d task forces" % [v["fleets"].size(), v["taskForces"].size()], "primary")
+	var reg := Lcars.frame("Fleet registry", "%d ships · %d task forces" % [v["fleets"].size(), v["taskForces"].size()], "primary", "fleets")
 	reg.name = "Registry"
 	reg.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	row.add_child(reg)
@@ -79,7 +79,7 @@ func _row(u: Dictionary, active: bool) -> Control:
 	if active:
 		b.add_theme_stylebox_override("normal", Lcars.box(Color(Lcars.accent(), 0.22), 12, Lcars.accent(), 1))
 	var inner := Lcars.row_inner(b, 12)
-	inner.add_child(Lcars.emblem(app.player(), 18))
+	inner.add_child(UiIcon.make("fleet" if not tf.is_empty() else "ship", 20, Lcars.owner_color(app.player())))
 	var nm := Lcars.vbox(-2)
 	nm.alignment = BoxContainer.ALIGNMENT_CENTER
 	nm.add_child(Lcars.label(str(tf["name"]) if not tf.is_empty() else str(lead["name"]), "", 15, Lcars.TEXT))
@@ -110,7 +110,7 @@ func _detail(u: Dictionary) -> Control:
 	var lead: Dictionary = u["lead"]
 	var tf: Dictionary = u["tf"]
 	var members: Array = u["members"]
-	var f := Lcars.frame(str(tf["name"]) if not tf.is_empty() else str(lead["name"]), ("task force · %d ships" % members.size()) if not tf.is_empty() else "%s · #%d" % [lead.get("designClass", lead["className"]), int(lead["id"])], "secondary")
+	var f := Lcars.frame(str(tf["name"]) if not tf.is_empty() else str(lead["name"]), ("task force · %d ships" % members.size()) if not tf.is_empty() else "%s · #%d" % [lead.get("designClass", lead["className"]), int(lead["id"])], "secondary", "ship")
 	f.name = "UnitDetail"
 	var b := Lcars.body(f)
 	var lock := vm.lock_reason()
@@ -126,17 +126,26 @@ func _detail(u: Dictionary) -> Control:
 	var lid := int(lead["id"])
 	top.add_child(Lcars.pill("Show on chart", "ghost", func(): _show_on_chart(lid, lx, ly)))
 	b.add_child(top)
+	var hero := ShipSilhouette.new()
+	hero.seed_id = int(lead.get("referenceShipId", lead["id"]))
+	hero.color = Lcars.owner_color(app.player())
+	hero.custom_minimum_size = Vector2(0, 150)
+	hero.tooltip_text = "%s %s, procedural silhouette (hull art by lane L7 replaces it)." % [lead.get("designClass", ""), lead.get("designName", lead["className"])]
+	b.add_child(hero)
 	if tf.is_empty() and lead.get("roster") is Dictionary:
 		b.add_child(Lcars.para(Roster.weapon_summary(lead["roster"].get("weapons", [])), Lcars.TEXT3, 13))
 	var t := FleetsVM.totals(members)
 	b.add_child(Lcars.bar_row("Hull", t["hull"], t["max_hull"], Color("#8fd18a")))
 	b.add_child(Lcars.bar_row("Shields", t["shields"], t["max_shields"], Lcars.SHIELD))
-	var g := Lcars.grid(4)
-	g.add_theme_constant_override("h_separation", 40)
-	g.add_child(Lcars.stat("Attack", Lcars.fmt(tf.get("attack", lead["attack"]))))
-	g.add_child(Lcars.stat("Speed", "%d/turn" % int(tf.get("speed", lead["speed"])), "", "A task force moves at its slowest ship's speed."))
-	g.add_child(Lcars.stat("Range", t["range"], "", "Supply range from a powered shipyard (shortest-ranged member)."))
-	g.add_child(Lcars.stat("Upkeep", t["upkeep"], "warn"))
+	var g := Lcars.hbox(8)
+	for k in [["attack", "Attack", Lcars.fmt(tf.get("attack", lead["attack"])), "", "Combined weapon strength. Stance and range decide how it is used in battle."],
+			["speed", "Speed", "%d/t" % int(tf.get("speed", lead["speed"])), "", "Sectors per turn. A task force moves at its slowest ship's speed."],
+			["range", "Range", str(t["range"]), "", "Supply range from a powered shipyard (shortest-ranged member). Outside it the unit cannot move further out."],
+			["credits", "Upkeep", str(t["upkeep"]), "warn", "Credits per turn for these ships. Scrapping or disbanding removes the cost."]]:
+		var kt := Lcars.kpi(k[0], k[1], k[2], "", k[3], {"title": k[1], "value": k[2], "effect": k[4]})
+		kt.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		kt.custom_minimum_size.x = 0
+		g.add_child(kt)
 	b.add_child(g)
 	# Send to
 	var send := Lcars.hbox(8)

@@ -40,9 +40,13 @@ func refresh() -> void:
 	rem.size_flags_vertical = Control.SIZE_SHRINK_END
 	big.add_child(rem)
 	root.add_child(big)
+	var eraname := Lcars.hbox(8)
+	eraname.add_child(Lcars.badge(UiTokens.era_def()["label"] + " interface", "secondary"))
+	eraname.add_child(Lcars.label("Ctrl+K in game opens the command palette", "Muted", 13))
 	var tag := Lcars.para("Five powers. One quadrant. A modern reconstruction of the 1999 grand strategy classic, running on its deterministic simulation core.", Lcars.TEXT2, 17)
 	tag.custom_minimum_size.x = 560
 	root.add_child(tag)
+	root.add_child(eraname)
 	root.add_child(Control.new())
 	var menu := Lcars.vbox(10)
 	menu.custom_minimum_size.x = 420
@@ -56,7 +60,9 @@ func refresh() -> void:
 	var nb := Lcars.pill("New campaign", "secondary" if saves.size() > 0 else "primary", func(): app.goto("new"))
 	nb.name = "NewCampaign"
 	menu.add_child(nb)
-	menu.add_child(Lcars.pill("Load campaign", "secondary", func(): app.goto("saves"), "", "Saved campaigns"))
+	var lb := Lcars.pill("Load campaign", "secondary", func(): app.goto("saves"), "", "Saved campaigns")
+	lb.name = "LoadCampaign"
+	menu.add_child(lb)
 	var row := Lcars.hbox(10)
 	row.add_child(_wide(Lcars.pill("Tactical drill", "tertiary", func(): app.start_drill("newBattleDrill", "Tactical drill"), "", "A ready-made skirmish at Sol to practise tactical command")))
 	row.add_child(_wide(Lcars.pill("Diplomacy drill", "tertiary", func(): app.start_drill("newDiplomacyDrill", "Diplomacy drill"), "", "Incoming proposals, a tribute demand and an ally's call to arms")))
@@ -73,8 +79,15 @@ func refresh() -> void:
 	menu.add_child(row3)
 	for b2 in menu.get_children():
 		if b2 is Button:
-			b2.custom_minimum_size.y = 46
-			b2.add_theme_font_size_override("font_size", 21)
+			b2.custom_minimum_size.y = 52
+			b2.add_theme_font_size_override("font_size", 22)
+			b2.alignment = HORIZONTAL_ALIGNMENT_LEFT
+			var nm := str(b2.name)
+			var ic := UiIcon.make("save" if nm.begins_with("Load") or nm == "Continue" else ("star" if nm == "NewCampaign" else "arrow_right"), 22, Lcars.ink())
+			ic.position = Vector2(b2.custom_minimum_size.y * 0.5 + 6, 15)
+			b2.add_child(ic)
+			b2.text = "        " + b2.text
+	Motion.stagger(menu)
 	var foot := Lcars.hbox(40)
 	foot.position = Vector2(size.x * 0.09, size.y - 48)
 	foot.add_child(Lcars.label(vm.footer(), "Mono", 13, Lcars.TEXT3))
