@@ -9,3 +9,5 @@
 # kept out of git to stay inside the LFS quota.
 /game/ArtSource/Generated/
 /game/Content/Generated/
+# M0 L6: verify pipeline output (exports, capture runs, contact sheets)
+/captures/
