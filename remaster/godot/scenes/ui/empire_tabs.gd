@@ -2,25 +2,20 @@ class_name EmpireTabs
 extends RefCounted
 ## Empire-wide managers shown as tabs on the Empire screen: governors for every colony, build-queue
 ## templates, stations (with the starbase upgrade), and member minor worlds (with secession risk).
-## Each builder returns a Control and issues the same orders the System screen does.
+## Each builder returns a Control (presentation only); data and orders come from the screen's EmpireVM.
 
-const SECESSION_LINE := 30
-const JOIN_LINE := 80
+const SECESSION_LINE := EmpireVM.SECESSION_LINE
+const JOIN_LINE := EmpireVM.JOIN_LINE
 
 static func _lock(app: App) -> String:
-	return "Finish the battle in progress first" if app.view.get("session", {}).get("active", false) else ""
+	return app.session.lock_reason()
 
 # ---------------------------------------------------------------------------------------------
 # Governors
 # ---------------------------------------------------------------------------------------------
-static func _set_governor(app: App, sid: int, wf: String, qu: String) -> bool:
-	var cancel := []
-	for p in app.view.get("pending", []):
-		if p["type"] == "SetColonyGovernor" and int(p.get("systemId", -1)) == sid:
-			cancel.append(int(p["id"]))
-	return app.issue({"type": "SetColonyGovernor", "systemId": sid, "governorWorkforce": wf, "governorQueue": qu}, cancel)
-
-static func governors(app: App) -> Control:
+static func governors(app: App, vm: EmpireVM = null) -> Control:
+	if vm == null:
+		vm = EmpireVM.new(app.session)
 	var col := Lcars.vbox(8)
 	col.name = "GovernorManager"
 	var lock := _lock(app)
@@ -35,10 +30,8 @@ static func governors(app: App) -> Control:
 		for o in opts:
 			var key: String = o["key"]
 			var b := Lcars.pill(str(o["name"]), "ghost", func():
-				for c in app.view["colonies"]:
-					var g: Dictionary = c["governor"]
-					_set_governor(app, int(c["systemId"]), key if w == "workforce" else str(g["workforce"]), key if w == "queue" else str(g["queue"]))
-				app.toast("All %d colonies: %s governor %s." % [app.view["colonies"].size(), w, key], "good"), lock, "Apply to all %d colonies" % app.view["colonies"].size())
+				var n := vm.set_all_governors(w, key)
+				app.toast("All %d colonies: %s governor %s." % [n, w, key], "good"), lock, "Apply to all %d colonies" % app.view["colonies"].size())
 			b.name = "All_%s_%s" % [w, key]
 			all.add_child(b)
 	col.add_child(all)
@@ -59,21 +52,18 @@ static func governors(app: App) -> Control:
 			for o in opts:
 				var key2: String = o["key"]
 				var t := Lcars.toggle(str(o["name"]), str(g[w2]) == key2, func(_on):
-					_set_governor(app, sid, key2 if w2 == "workforce" else str(g["workforce"]), key2 if w2 == "queue" else str(g["queue"])))
+					vm.set_governor(sid, key2 if w2 == "workforce" else str(g["workforce"]), key2 if w2 == "queue" else str(g["queue"])))
 				t.add_theme_font_size_override("font_size", 13)
 				t.disabled = lock != ""
 				t.name = "Gov_%s_%d_%s" % [w2, sid, key2]
 				row.add_child(t)
 		if g.get("override", false) and str(g["workforce"]) != "Manual":
-			row.add_child(Lcars.pill("Resume governor", "primary", func(): app.issue({"type": "ClearGovernorOverride", "systemId": sid}, [], "Governor resumed."), lock, "Manual staffing is overriding the governor"))
+			row.add_child(Lcars.pill("Resume governor", "primary", func(): vm.resume_governor(sid), lock, "Manual staffing is overriding the governor"))
 		list.add_child(row)
-		var why := ""
-		if str(g.get("warning", "")) != "":
-			why = str(g["warning"])
-		elif str(g["workforce"]) != "Manual" and str(g.get("workforceExplanation", "")) != "":
-			why = str(g["workforceExplanation"])
+		var note := EmpireVM.governor_note(g)
+		var why: String = note[0]
 		if why != "":
-			var p := Lcars.para(why, Lcars.WARN if str(g.get("warning", "")) != "" else Lcars.TEXT3, 12)
+			var p := Lcars.para(why, Lcars.WARN if note[1] else Lcars.TEXT3, 12)
 			p.custom_minimum_size.x = 400
 			list.add_child(p)
 	col.add_child(Lcars.scroll(list))
@@ -82,14 +72,16 @@ static func governors(app: App) -> Control:
 # ---------------------------------------------------------------------------------------------
 # Build templates
 # ---------------------------------------------------------------------------------------------
-static func templates(app: App, state: Dictionary) -> Control:
+static func templates(app: App, vm: EmpireVM = null) -> Control:
+	if vm == null:
+		vm = EmpireVM.new(app.session)
+	var state := vm.tab_state
 	var col := Lcars.vbox(8)
 	col.name = "TemplateManager"
 	var v := app.view
 	var lock := _lock(app)
 	var temps: Array = v.get("templates", [])
 	col.add_child(Lcars.para("Templates are saved build queues. Apply one to any colony; the default template is applied to every new colony with an empty queue.", Lcars.TEXT3, 13))
-	var empty_cols: Array = v["colonies"].filter(func(c): return int(c.get("queueLength", 0)) == 0)
 	for t in temps:
 		var tid := int(t["id"])
 		var tname: String = t["name"]
@@ -104,29 +96,16 @@ static func templates(app: App, state: Dictionary) -> Control:
 		cv.add_child(h)
 		cv.add_child(Lcars.para(" · ".join(t["items"].map(func(i): return i["name"])), Lcars.TEXT3, 12))
 		var acts := Lcars.hbox(4)
-		# dryRunMany: which idle colonies would accept this template.
-		var items := []
-		for c in empty_cols:
-			items.append({"command": {"type": "ApplyBuildTemplate", "templateId": tid, "systemId": int(c["systemId"])}, "cancelIds": []})
-		var accepted := []
-		if items.size() > 0 and lock == "":
-			var res: Variant = app.core.request("dryRunMany", {"items": items})
-			if res is Array:
-				for i in range(res.size()):
-					if str(res[i]) == "":
-						accepted.append(items[i]["command"])
-		var reason := lock
-		if reason == "":
-			reason = "Every colony already has a queue" if empty_cols.is_empty() else ("No idle colony can build this template" if accepted.is_empty() else "")
+		var accepted := vm.accepted_applies(tid)  # dryRunMany: which idle colonies would accept this template
+		var reason := vm.apply_block(accepted)
 		var ap := Lcars.pill("Apply to %d idle colon%s" % [accepted.size(), "y" if accepted.size() == 1 else "ies"], "secondary", func():
-			for cmd in accepted:
-				app.issue(cmd)
+			vm.apply_template_to(accepted)
 			app.toast("“%s” applied to %d colonies." % [tname, accepted.size()], "good"), reason, "Appends the template to every colony whose build queue is empty (checked with the core first)")
 		ap.name = "ApplyIdle_%d" % tid
 		acts.add_child(ap)
 		var is_def: bool = t.get("isDefault", false)
-		acts.add_child(Lcars.pill("Clear default" if is_def else "Make default", "ghost", func(): app.issue({"type": "SetDefaultBuildTemplate", "templateId": 0 if is_def else tid}, [], "Default template updated."), lock))
-		acts.add_child(Lcars.pill("Delete", "alert", func(): app.confirm("Delete “%s”?" % tname, "Queues it was applied to are not affected.", "Delete", func(): app.issue({"type": "DeleteBuildTemplate", "templateId": tid}, [], "Template deleted.")), lock))
+		acts.add_child(Lcars.pill("Clear default" if is_def else "Make default", "ghost", func(): vm.set_default_template(tid, is_def), lock))
+		acts.add_child(Lcars.pill("Delete", "alert", func(): app.confirm("Delete “%s”?" % tname, "Queues it was applied to are not affected.", "Delete", func(): vm.delete_template(tid)), lock))
 		cv.add_child(acts)
 		col.add_child(card)
 	if temps.is_empty():
@@ -157,14 +136,11 @@ static func templates(app: App, state: Dictionary) -> Control:
 			app.toast("Name the template", "warn")
 			return
 		var sid := ob.get_selected_id()
-		var d: Variant = app.core.request("colony", {"systemId": sid})
-		if not d is Dictionary or d.get("queue", []).is_empty():
+		var its := vm.queue_items(sid)
+		if its.is_empty():
 			app.toast("That colony's build queue is empty.", "warn")
 			return
-		var its := []
-		for q in d["queue"]:
-			its.append({"product": q["product"], "referenceId": int(q["referenceId"])})
-		app.issue({"type": "DefineBuildTemplate", "templateId": 0, "templateName": n, "templateItems": its}, [], "Template “%s” saved." % n), lock)
+		vm.define_template(0, n, its, "Template “%s” saved." % n), lock)
 	save.name = "SaveTemplate"
 	nr.add_child(save)
 	col.add_child(nr)
@@ -173,10 +149,12 @@ static func templates(app: App, state: Dictionary) -> Control:
 # ---------------------------------------------------------------------------------------------
 # Stations and the starbase upgrade
 # ---------------------------------------------------------------------------------------------
-static func stations(app: App) -> Control:
+static func stations(app: App, vm: EmpireVM = null) -> Control:
+	if vm == null:
+		vm = EmpireVM.new(app.session)
 	var col := Lcars.vbox(8)
 	col.name = "StationManager"
-	var mine: Array = app.view.get("stations", []).filter(func(s): return s.get("mine", false))
+	var mine := vm.my_stations()
 	var cost: Dictionary = app.view.get("stationUpgradeCost", {})
 	col.add_child(Lcars.para("Outposts extend supply (radius 3) and sensors (2). A starbase fights harder, repairs ships in its sector and has supply radius 5, sensors 3. Upgrading costs ¢%s up front and %s industry from one colony within 6 sectors, whose build queue pauses meanwhile; it also needs Construction level 2." % [str(cost.get("credits", "?")), str(cost.get("industry", "?"))], Lcars.TEXT3, 13))
 	if mine.is_empty():
@@ -219,25 +197,19 @@ static func stations(app: App) -> Control:
 # ---------------------------------------------------------------------------------------------
 # Member and candidate minor worlds
 # ---------------------------------------------------------------------------------------------
-const LOYALTY := {
-	"Warlike": "Loyalty rises while you are at war.",
-	"Peaceful": "Loyalty falls while you are at war.",
-	"Scientific": "Loyalty rises while your Computers level is at least its tech level.",
-	"Mercantile": "Loyalty rises while your treasury holds ¢1000 or more.",
-	"Spiritual": "Loyalty rises while its colony's morale is 70 or more.",
-	"Xenophobic": "Loyalty falls steadily.",
-}
+const LOYALTY := EmpireVM.LOYALTY
 
-static func members(app: App) -> Control:
+static func members(app: App, vm: EmpireVM = null) -> Control:
+	if vm == null:
+		vm = EmpireVM.new(app.session)
 	var col := Lcars.vbox(8)
 	col.name = "MemberManager"
-	var d: Variant = app.core.request("diplomacy")
-	if not d is Dictionary:
+	var mw := vm.minor_worlds()
+	if mw.is_empty():
 		col.add_child(Lcars.empty_note("Minor-race data unavailable: %s" % app.core.last_error))
 		return col
-	var me := app.player()
-	var mem: Array = d["minors"].filter(func(m): return int(m.get("memberOf", 0)) == me)
-	var cand: Array = d["minors"].filter(func(m): return int(m.get("memberOf", 0)) == 0)
+	var mem: Array = mw["members"]
+	var cand: Array = mw["candidates"]
 	col.add_child(Lcars.para("A member world adds its bonus to every colony. It secedes, and the bonus is lost, if its attitude toward you falls below %d (and you hold another colony). Every 5 turns its attitude drifts: -2 for rising expectations, +2 while its morale is 70+, -2 per extra war you fight." % SECESSION_LINE, Lcars.TEXT3, 13))
 	if mem.is_empty():
 		col.add_child(Lcars.empty_note("No member worlds. Befriend a minor race, then offer membership."))
@@ -261,14 +233,10 @@ static func _member_card(app: App, m: Dictionary, is_member: bool) -> Control:
 	if m.get("race") is Dictionary:
 		h.add_child(Lcars.badge(str(m["race"]["temperament"]), "dim"))
 	h.add_child(Lcars.spacer())
-	var line := SECESSION_LINE if is_member else JOIN_LINE
-	var margin := att - line
-	var bad := (is_member and margin < 15) or (not is_member and margin < 0)
-	var tip := ""
-	if is_member:
-		tip = "Attitude %d. It secedes below %d: %d point%s of margin." % [att, SECESSION_LINE, margin, "" if abs(margin) == 1 else "s"]
-	else:
-		tip = "Attitude %d. Membership needs %d or more, a friendship signed in an earlier turn, and contact." % [att, JOIN_LINE]
+	var stand := EmpireVM.minor_standing(m, is_member)
+	var margin: int = stand["margin"]
+	var bad: bool = stand["bad"]
+	var tip: String = stand["tip"]
 	var bar := Lcars.meter(att, 100, Lcars.ALERT if bad and is_member else Lcars.GOOD, 8, 160)
 	bar.tooltip_text = tip
 	h.add_child(bar)

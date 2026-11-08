@@ -1,39 +1,34 @@
 extends Control
-## Empire overview: treasury and totals, member worlds, sortable colony and fleet tables.
-## Port of screens/Empire.tsx.
+## Empire overview presentation: treasury and totals, member worlds, sortable colony and fleet tables and the
+## manager tabs. Data and orders: EmpireVM (scripts/viewmodels/empire_vm.gd).
 
 var app: App
-var tab := "colonies"
-var tab_state := {}
+var vm: EmpireVM:
+	get:
+		if vm == null:
+			vm = EmpireVM.new(app.session)
+		return vm
+var tab: String:
+	get: return vm.tab
+	set(v): vm.tab = v
+var tab_state: Dictionary:
+	get: return vm.tab_state
+	set(v): vm.tab_state = v
 
-const TABS := [["colonies", "Colonies"], ["fleets", "Fleets"], ["trade", "Trade"], ["governors", "Governors"], ["templates", "Templates"], ["stations", "Stations"], ["members", "Member worlds"]]
+const TABS := EmpireVM.TABS
 
 func refresh() -> void:
 	for c in get_children():
 		c.queue_free()
 	var v := app.view
 	var e: Dictionary = v["empire"]
-	var tot := {"food": 0, "industry": 0, "research": 0, "net": 0, "pop": 0, "cap": 0}
-	for c in v["colonies"]:
-		tot["food"] += int(c["economy"]["food"]) - int(c["population"])
-		tot["industry"] += int(c["economy"]["industry"])
-		tot["research"] += int(c["economy"]["research"])
-		tot["pop"] += int(c["population"])
-		tot["cap"] += int(c["capacity"])
-	var m := MarginContainer.new()
-	m.set_anchors_preset(Control.PRESET_FULL_RECT)
-	for side in ["left", "right", "top", "bottom"]:
-		m.add_theme_constant_override("margin_" + side, 16)
-	add_child(m)
+	var tot := vm.totals()
+	var m := Lcars.screen_margin(self)
 	var root := Lcars.vbox(14)
 	m.add_child(root)
 	var h := Lcars.hbox(22)
 	h.add_child(Lcars.emblem(app.player(), 56))
-	var t := Lcars.vbox(0)
-	t.add_child(Lcars.heading(str(v["meta"]["playerName"]), 40))
-	var contacts: int = v["empires"].filter(func(r): return r.get("contact", false)).size()
-	t.add_child(Lcars.caption("Turn %d · %d colonies · %d ships · %d contacts" % [int(v["meta"]["turn"]), v["colonies"].size(), v["fleets"].size(), contacts]))
-	h.add_child(t)
+	h.add_child(Lcars.title_block(str(v["meta"]["playerName"]), vm.subtitle()))
 	h.add_child(Lcars.spacer())
 	var pv := Lcars.pill("Preview turn", "secondary", func(): app.preview_turn(), "", "What the turn will do, and what is left idle")
 	pv.name = "PreviewTurn"
@@ -48,34 +43,18 @@ func refresh() -> void:
 	h.add_child(Lcars.stat("Intelligence", Lcars.fmt(e["intelligence"]), "tertiary"))
 	root.add_child(h)
 	root.add_child(_members(v))
-	var titles := {}
-	for tb in TABS:
-		titles[tb[0]] = tb[1]
-	var f := Lcars.frame(str(titles.get(tab, "Colonies")), "click a row to open it" if tab in ["colonies", "fleets"] else "", "primary")
+	var f := Lcars.frame(vm.tab_title(), "click a row to open it" if tab in ["colonies", "fleets"] else "", "primary")
 	f.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	var b := Lcars.body(f)
-	var tabs := Lcars.hbox(6)
-	for tb in TABS:
-		var id: String = tb[0]
-		var label: String = tb[1]
-		if id == "colonies":
-			label += "  %d" % v["colonies"].size()
-		elif id == "fleets":
-			label += "  %d" % v["fleets"].size()
-		elif id == "trade":
-			label += "  %d" % v.get("tradeRoutes", []).filter(func(r): return int(r["owner"]) == app.player()).size()
-		var tg := Lcars.toggle(label, tab == id, func(_on): tab = id; refresh())
-		tg.name = "Tab_" + id
-		tabs.add_child(tg)
-	b.add_child(tabs)
+	b.add_child(Lcars.tab_bar(vm.tab_labels(), tab, func(id): tab = id; refresh()))
 	if not tab in ["colonies", "fleets"]:
 		var pane: Control
 		match tab:
-			"trade": pane = TradePanel.make(app)
-			"governors": pane = EmpireTabs.governors(app)
-			"templates": pane = EmpireTabs.templates(app, tab_state)
-			"stations": pane = EmpireTabs.stations(app)
-			_: pane = EmpireTabs.members(app)
+			"trade": pane = TradePanel.make(app, vm)
+			"governors": pane = EmpireTabs.governors(app, vm)
+			"templates": pane = EmpireTabs.templates(app, vm)
+			"stations": pane = EmpireTabs.stations(app, vm)
+			_: pane = EmpireTabs.members(app, vm)
 		pane.size_flags_vertical = Control.SIZE_EXPAND_FILL
 		b.add_child(pane if pane is ScrollContainer or pane is TradePanel else Lcars.scroll(pane))
 		root.add_child(f)
@@ -119,11 +98,10 @@ func refresh() -> void:
 	root.add_child(f)
 
 func _place(x: int, y: int) -> String:
-	var s := app.system_at(x, y)
-	return str(s["name"]) if not s.is_empty() else "%d.%d" % [x, y]
+	return vm.place(x, y)
 
 func _members(v: Dictionary) -> Control:
-	var b: Dictionary = v["empire"].get("memberBonuses", {}) if v["empire"].get("memberBonuses") is Dictionary else {}
+	var b := vm.member_bonuses()
 	var row := PanelContainer.new()
 	row.theme_type_variation = "Inset"
 	var h := Lcars.hbox(12)
@@ -133,26 +111,18 @@ func _members(v: Dictionary) -> Control:
 	l.mouse_filter = Control.MOUSE_FILTER_PASS
 	h.add_child(l)
 	if int(b.get("members", 0)) > 0:
-		var parts := []
-		for pair in [["research", "% research"], ["industry", "% industry"], ["food", "% food"], ["credits", "% credit income"], ["morale", " morale"], ["groundDefense", "% ground defense"]]:
-			if int(b.get(pair[0], 0)) != 0:
-				parts.append("+%d%s" % [int(b[pair[0]]), pair[1]])
+		var parts: Array = b["parts"]
 		h.add_child(Lcars.label(" · ".join(parts) if parts.size() > 0 else "no bonus", "", 14, Lcars.GOOD))
-		for mm in b.get("minors", []):
+		for mm in b["minors"]:
 			var bd := Lcars.badge("◇ " + str(mm["name"]), "primary")
 			bd.tooltip_text = str(mm["bonus"])
 			h.add_child(bd)
 	else:
 		h.add_child(Lcars.label("None yet - befriend minor races in Diplomacy and invite them to join for their bonuses.", "Muted", 14))
 	h.add_child(Lcars.spacer())
-	var sb := 0
-	var op := 0
-	for s in v.get("stations", []):
-		if s.get("mine", false):
-			if s["type"] == "Starbase":
-				sb += 1
-			else:
-				op += 1
+	var sc := vm.station_counts()
+	var sb: int = sc["starbases"]
+	var op: int = sc["outposts"]
 	if sb + op > 0:
 		h.add_child(Lcars.label("%d starbases · %d outposts" % [sb, op], "Mono", 13))
 	return row
