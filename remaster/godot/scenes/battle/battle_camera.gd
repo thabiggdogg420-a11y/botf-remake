@@ -90,6 +90,11 @@ var _radius_cache := {}
 var _clear_subject := 0
 var _clear_angle := Vector3(0, 0, 1)
 var _clear_check := 0.0
+## The backdrop planet (set by BattleScene) and the vista shot that frames the fleet with it, at true scale.
+var planet_center := Vector3.ZERO
+var planet_radius := 0.0
+var force_vista := false       ## Tools/tests: hold the planet vista.
+var vista_active := false      ## True while the filmed tactical shot is the planet vista.
 
 ## Legacy orbit API (battle_demo, tools): the free camera's focus, distance and angles in the old convention.
 var orbit_focus: Vector3:
@@ -117,7 +122,7 @@ var orbit_pitch: float:
 func _ready() -> void:
 	fov = 48.0
 	near = 0.3
-	far = 6000.0
+	far = 9000.0 # the battle planet sits ~4300 units back (BattleEnvironment)
 	current = true
 	var layer := CanvasLayer.new()
 	layer.name = "Markers"
@@ -807,7 +812,27 @@ func _cinematic_shot(_delta: float, shot: Dictionary, time: float) -> Array:
 	if _tactical.is_empty() or time - _tactical_t > 1.0 or time < _tactical_t:
 		_tactical_t = time
 		_tactical = _tactical_pose(aspect, 1.0)
+	vista_active = planet_radius > 0.0 and (force_vista or bool(shot.get("vista", false)))
+	if vista_active:
+		var vp := vista_pose(_tactical)
+		fov = 48.0
+		return vp
 	return _tactical
+
+
+## The planet vista: from a little beside and above the fleet, looking back past it so the fleet sits low in the
+## foreground and the planet limb fills the far side of the frame. `tactical` is the tactical [eye, look].
+func vista_pose(tactical: Array) -> Array:
+	var mid: Vector3 = tactical[1]
+	var dist := maxf(((tactical[0] as Vector3) - mid).length(), 40.0)
+	var to_p := planet_center - mid
+	var dp := to_p.normalized()
+	var side := dp.cross(Vector3.UP).normalized()
+	var eye := mid - dp * dist * 1.1 + side * dist * 0.7 + Vector3.UP * dist * 0.12
+	var a := (mid - eye).normalized()
+	var b := (planet_center - eye).normalized()
+	var look_dir := (a * 0.8 + b).normalized()
+	return [eye, eye + look_dir * dist]
 
 
 func _sphere_outside(eye: Vector3, look: Vector3, c: Vector3, r: float, aspect: float) -> bool:

@@ -5,6 +5,7 @@ extends RefCounted
 
 const SKY_SHADER := preload("res://scenes/battle/shaders/space_sky.gdshader")
 const PLANET_SHADER := preload("res://scenes/battle/shaders/planet.gdshader")
+const PLANET_RADIUS := 1100.0 ## ~100x a cruiser hull: at ~4300 units it spans ~30 degrees, so it dwarfs any hull beside it
 const FOG_SHADER := preload("res://scenes/battle/shaders/nebula_fog.gdshader")
 
 
@@ -105,8 +106,8 @@ static func build(parent: Node3D, arena_size: Vector2, planet_class: String = "G
 	planet.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	# True scale (Simon, 8 Nov 2026: "the ships look huge compared to the nearby planet"): a gas giant is tens of
 	# thousands of km across, so it is a backdrop, pushed far beyond the arena where it never sits beside a hull.
-	planet.scale = Vector3.ONE * 700.0
-	planet.position = Vector3(3200.0, -380.0, -4200.0) # level with the arena, far behind it, off the downward views, and on the side the sun lights (half phase from the arena)
+	planet.scale = Vector3.ONE * PLANET_RADIUS
+	planet.position = Vector3(2600.0, -310.0, -3400.0) # level with the arena, far behind it, off the downward views, and on the side the sun lights (half phase from the arena)
 	planet.rotation_degrees = Vector3(12.0, 30.0, 18.0)
 	parent.add_child(planet)
 	out.planet = planet

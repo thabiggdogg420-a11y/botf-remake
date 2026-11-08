@@ -400,7 +400,7 @@ func _choice(ch: Dictionary) -> Control:
 	var btn := Button.new()
 	btn.name = "Choice_%s_%d" % [ch["product"], int(ch["referenceId"])]
 	btn.theme_type_variation = "GhostButton"
-	btn.custom_minimum_size.y = 58
+	btn.custom_minimum_size.y = 58 if reason == "" else 82 # the reason is a third text line: room for it, so it never crowds the next row
 	btn.disabled = reason != ""
 	var sb := Lcars.box(Color(Lcars.PANEL2, 0.8), 12, Lcars.LINE2, 1, Vector4(12, 6, 12, 6))
 	btn.add_theme_stylebox_override("disabled", Lcars.box(Color(Lcars.PANEL, 0.6), 12, Lcars.LINE, 1, Vector4(12, 6, 12, 6)))

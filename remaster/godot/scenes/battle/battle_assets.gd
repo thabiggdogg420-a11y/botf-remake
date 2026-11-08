@@ -227,7 +227,7 @@ func warm(keys: PackedStringArray) -> int:
 		var path := hero_glb_path(e)
 		if _shared.has(path) or _tasks.has(path):
 			continue
-		_tasks[path] = WorkerThreadPool.add_task(_load_job.bind(path), false, "botf hero " + key.get_file())
+		_tasks[path] = WorkerThreadPool.add_task(_load_job.bind(path, e, hero_root), false, "botf hero " + key.get_file())
 		started += 1
 	return started
 
@@ -271,8 +271,8 @@ static var _results := {}  ## glb path -> PackedScene, written by the worker, co
 static var _mutex := Mutex.new()
 
 
-static func _load_job(path: String) -> void:
-	var packed := _load_model(path)
+static func _load_job(path: String, hero: Dictionary = {}, root: String = "") -> void:
+	var packed := _load_model(path, hero, root)
 	_mutex.lock()
 	_results[path] = packed
 	_mutex.unlock()
@@ -293,7 +293,7 @@ static func _shared_model(path: String) -> PackedScene:
 	return _shared[path]
 
 
-static func _load_model(path: String) -> PackedScene:
+static func _load_model(path: String, hero: Dictionary = {}, root: String = "") -> PackedScene:
 	var state: GLTFState
 	var doc: GLTFDocument
 	if path.get_extension().to_lower() == "fbx":
@@ -307,11 +307,61 @@ static func _load_model(path: String) -> PackedScene:
 	var node := doc.generate_scene(state)
 	if node == null:
 		return null
+	if not hero.is_empty():
+		# Mip chains and plating images are built here, on the worker, not on the first battle frame: HeroLook.apply on
+		# the main thread cost 0.2-1.8 s per class (M1-BETAFIX profile) generating them from a GPU readback.
+		BattleAssets.mip_scene_images(node, state)
+		HeroLook.prime(hero, root)
 	var packed := PackedScene.new()
 	_own(node, node)
 	packed.pack(node)
 	node.free()
 	return packed
+
+
+## Decodes the glb's embedded images on this (worker) thread, builds their mip chains, and points every material
+## texture of `node` at the mipped copy (tagged "botf_mipped" so HeroLook.mipmapped leaves it alone). Any image it cannot
+## decode here keeps the plain texture, which HeroLook.mipmapped still handles on the main thread.
+static func mip_scene_images(node: Node, state: GLTFState) -> void:
+	var imgs: Array = state.get_images()
+	var jimgs: Array = state.json.get("images", []) if state.json is Dictionary else []
+	var views: Array = state.get_buffer_views()
+	var buffers: Array = state.get_buffers()
+	var swap := {} # texture instance id -> mipped texture
+	for i in mini(imgs.size(), jimgs.size()):
+		var j: Dictionary = jimgs[i]
+		var bv := int(j.get("bufferView", -1))
+		if imgs[i] == null or bv < 0 or bv >= views.size():
+			continue
+		var view: GLTFBufferView = views[bv]
+		if view.buffer < 0 or view.buffer >= buffers.size():
+			continue
+		var bytes: PackedByteArray = (buffers[view.buffer] as PackedByteArray).slice(view.byte_offset, view.byte_offset + view.byte_length)
+		var img := Image.new()
+		var mime := str(j.get("mimeType", "image/png"))
+		var err := img.load_jpg_from_buffer(bytes) if mime == "image/jpeg" else img.load_png_from_buffer(bytes)
+		if err != OK or img.is_empty() or img.is_compressed():
+			continue
+		img.generate_mipmaps()
+		var tex := ImageTexture.create_from_image(img)
+		tex.set_meta("botf_mipped", true)
+		swap[(imgs[i] as Object).get_instance_id()] = tex
+	if swap.is_empty():
+		return
+	var meshes: Array = node.find_children("*", "MeshInstance3D", true, false)
+	if node is MeshInstance3D:
+		meshes.append(node)
+	for mi: MeshInstance3D in meshes:
+		if mi.mesh == null:
+			continue
+		for s in mi.mesh.get_surface_count():
+			var m := mi.mesh.surface_get_material(s) as BaseMaterial3D
+			if m == null:
+				continue
+			for prop in ["albedo_texture", "normal_texture", "roughness_texture", "metallic_texture", "ao_texture", "emission_texture"]:
+				var t: Texture2D = m.get(prop)
+				if t != null and swap.has(t.get_instance_id()):
+					m.set(prop, swap[t.get_instance_id()])
 
 
 static func _own(node: Node, owner: Node) -> void:

@@ -77,6 +77,48 @@ func _ready() -> void:
 	_apply_theme(1)
 	_build_layers()
 	goto("title")
+	_warm_battle.call_deferred()
+
+## Loads the battle screen's scripts, scene, planet textures and effect materials one step per frame while the title and
+## galaxy sit idle, so the first battle opens in a frame or two instead of a 300-500 ms stall (M1-BETAFIX; it was 1.5-4 s
+## with hero models, see BattleAssets.mip_scene_images). The references are kept for the life of the process.
+static var _warm_refs: Array = []
+static var _warmed_battle := false
+
+func _warm_battle() -> void:
+	if _warmed_battle or DisplayServer.get_name() == "headless":
+		return
+	_warmed_battle = true
+	var tree := get_tree()
+	for _i in 30:
+		await tree.process_frame # let the title draw first
+	if not is_inside_tree():
+		_warmed_battle = false
+		return
+	_warm_refs.append(AppLoader.resource(AppRoutes.script_for("combat")))
+	await tree.process_frame
+	var packed: PackedScene = AppLoader.resource(BattleHost.BATTLE_SCENE)
+	_warm_refs.append(packed)
+	await tree.process_frame
+	# An off-screen battle view: compiles the sky, planet and effect shaders and uploads the backdrop planet's textures.
+	var sv := SubViewport.new()
+	sv.size = Vector2i(256, 144)
+	sv.own_world_3d = true
+	sv.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+	add_child(sv)
+	var view := packed.instantiate()
+	sv.add_child(view)
+	await tree.process_frame
+	if "_env" in view:
+		BattleEnvironment.set_planet_class(view._env, "M")
+	await tree.process_frame
+	if "fx" in view and view.fx != null:
+		view.fx.prewarm()
+	BattleShip.flame_flipbook()
+	BattleShip.puff_texture()
+	for _i in 6:
+		await tree.process_frame
+	sv.queue_free()
 
 # ---------------------------------------------------------------------------------------------
 # Layers and chrome
@@ -293,14 +335,19 @@ func goto(id: String, remember: bool = true) -> void:
 	var path := AppRoutes.script_for(id)
 	if path == "":
 		return
+	var _g0 := Time.get_ticks_usec()
 	var s: Control = (AppLoader.resource(path) as GDScript).new()
 	s.name = "Screen_" + id
 	s.set("app", self)
 	_current = s
+	var _g1 := Time.get_ticks_usec()
 	_stage.add_child(s)
+	var _g2 := Time.get_ticks_usec()
 	_place_current()
 	_background.visible = id != "galaxy"
 	_build_chrome()
+	if id == "combat":
+		print("OPENPROF   goto parts: new %d add_child(_ready) %d place+chrome %d" % [(_g1 - _g0) / 1000, (_g2 - _g1) / 1000, (Time.get_ticks_usec() - _g2) / 1000])
 	if s.has_method("refresh"):
 		s.refresh()
 	Motion.enter(s, 0, "screen")
@@ -425,14 +472,20 @@ func preview_turn() -> void:
 
 ## Ends the turn. Returns the status ("battle" or "complete").
 func end_turn() -> String:
+	var _tp := Time.get_ticks_usec()
 	var res := session.end_turn()
 	if res.is_empty():
 		return "error"
 	if res.get("status", "") == "battle":
+		var _t1 := Time.get_ticks_usec()
 		refresh()
+		var _t2 := Time.get_ticks_usec()
 		session.fetch_encounter()
+		var _t3 := Time.get_ticks_usec()
 		goto("combat")
+		var _t4 := Time.get_ticks_usec()
 		BotfAudioSystem.on_battle_joined()
+		print("OPENPROF core %d refresh %d fetch %d goto %d audio %d" % [(_t1 - _tp) / 1000, (_t2 - _t1) / 1000, (_t3 - _t2) / 1000, (_t4 - _t3) / 1000, (Time.get_ticks_usec() - _t4) / 1000])
 		toast("Battle joined. Issue maneuvers or let the tactical AI command.", "warn")
 		return "battle"
 	briefing = res.get("briefing")

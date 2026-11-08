@@ -75,6 +75,12 @@ func refresh() -> void:
 			if int(f.get("owner", 0)) == int(app.view.get("meta", {}).get("player", 0)):
 				mine.append(f)
 		BattleAssets.shared().warm(BattleAssets.ships_keys(mine))
+		# The visible foes too (a battle is fought against them): their hulls parse in the background as well, after ours.
+		var theirs: Array = []
+		for f in app.view.get("fleets", []):
+			if int(f.get("owner", 0)) != int(app.view.get("meta", {}).get("player", 0)):
+				theirs.append(f)
+		BattleAssets.shared().warm(BattleAssets.ships_keys(theirs))
 	if not _framed:
 		_framed = true
 		map.frame_known.call_deferred()

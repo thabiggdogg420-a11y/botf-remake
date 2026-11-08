@@ -27,8 +27,13 @@ func _ready() -> void:
 	name = "BattleHost"
 	clip_contents = true
 	if AppLoader.exists(BATTLE_SCENE):
+		var _a := Time.get_ticks_usec()
 		var packed: PackedScene = AppLoader.resource(BATTLE_SCENE)
-		attach(packed.instantiate())
+		var _b := Time.get_ticks_usec()
+		var inst := packed.instantiate()
+		var _c := Time.get_ticks_usec()
+		attach(inst)
+		print("OPENPROF host load %d inst %d attach %d" % [(_b - _a) / 1000, (_c - _b) / 1000, (Time.get_ticks_usec() - _c) / 1000])
 	else:
 		push_error("BattleHost: %s is missing" % BATTLE_SCENE)
 

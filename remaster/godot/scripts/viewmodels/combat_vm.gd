@@ -246,6 +246,14 @@ static func round_log(e: Dictionary, r: Dictionary) -> Array:
 		var dmg := int(sv.get("beam", 0)) + int(sv.get("torpedo", 0))
 		var txt := "%s → %s: %d damage%s%s%s" % [names.get(int(sv["from"]), "?"), names.get(int(sv["to"]), "?"), dmg, " (ram)" if sv.get("ram", false) else "", " (ambush)" if sv.get("ambush", false) else "", " (absorbed by shields)" if sv.get("absorbed", false) else ""]
 		out.append(["alert" if sv.get("ram", false) else "info", txt])
+	# Rules 4 aimed fire: one line per subsystem hit, so an aimed round shows its effect in the log.
+	for ev in r.get("events", []):
+		if ev.get("kind", "") == "Fire" and ev.get("aimed", false) and int(ev.get("subsystemDamage", 0)) > 0:
+			var label := str(ev.get("subsystem", "")).to_upper()
+			for def in SUBSYSTEMS:
+				if def[0] == ev.get("subsystem", ""):
+					label = str(def[2]).to_lower()
+			out.append(["warn", "%s hit %s's %s: -%d%%%s" % [names.get(int(ev.get("fleetId", 0)), "?"), names.get(int(ev.get("targetFleetId", 0)), "?"), label, int(ev.get("subsystemDamage", 0)), " (destroyed)" if ev.get("subsystemDestroyed", false) else ""]])
 	for id in r.get("lost", []):
 		out.append(["alert", "%s destroyed." % names.get(int(id), "?")])
 	for id in r.get("retreatedIds", []):
