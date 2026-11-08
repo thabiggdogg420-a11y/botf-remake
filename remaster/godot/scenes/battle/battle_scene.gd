@@ -15,6 +15,7 @@ extends Node3D
 signal round_finished(round_index: int)
 signal cue(key: String, keys: PackedStringArray, priority: int, fleet_id: int)
 signal ship_picked(ship_id: int) ## A ship clicked in the view (BattleCamera); the host updates its selection.
+signal subsystem_picked(target_id: int, subsystem: String) ## Plan phase: a subsystem pip clicked on the target.
 
 ## World units per tactical cell. Ships are drawn at true scale against it (BattleShip.display_length): Unreal's
 ## CellUnits doubled to 170 with the true-scale hulls, so this doubled from 14 with them (a Galaxy spans 1.3 cells).
@@ -48,6 +49,7 @@ var fx: BattleFx
 var audio: BattleAudio
 var assets: BattleAssets
 var director := BattleTimeline.Director.new()
+var plan: BattlePlan              ## Plan-phase overlays (arcs, range bands, move preview, forecast, subsystem pips).
 
 var _ships := {}                 ## fleet_id -> BattleShip
 var _arena := Vector2(16, 12)
@@ -78,6 +80,11 @@ func _ready() -> void:
 	fx.name = "Fx"
 	fx.scene = self
 	add_child(fx)
+	plan = BattlePlan.new()
+	plan.name = "Plan"
+	plan.scene = self
+	add_child(plan)
+	plan.subsystem_picked.connect(func(t, k): subsystem_picked.emit(t, k))
 	audio = BattleAudio.new()
 	audio.name = "Audio"
 	audio.assets = assets
@@ -103,6 +110,10 @@ func play_round(p_encounter: Dictionary, p_round_index: int) -> void:
 	var _pt0 := Time.get_ticks_usec()
 	var info := BattleTimeline.round_ship_info(encounter, round_index)
 	_sync_ships(info)
+	for w0 in rounds[round_index].get("wego", []):
+		var node0: BattleShip = _ships.get(int(w0.get("id", 0)))
+		if node0 != null:
+			node0.facings_after = w0.get("facings", [])
 	var _pt1 := Time.get_ticks_usec()
 	# Flight style and wings follow the length of the class actually shown (the local manifest may know it).
 	for i in info:
@@ -129,6 +140,7 @@ func play_round(p_encounter: Dictionary, p_round_index: int) -> void:
 	fx.reset(timeline)
 	if OS.get_environment("ROUND_TIMING") != "":
 		print("ROUND_TIMING play sync=%d build=%d rest=%d ms ships=%d" % [(_pt1 - _pt0) / 1000, (_pt2 - _pt1) / 1000, (Time.get_ticks_usec() - _pt2) / 1000, _ships.size()])
+	clear_plan()
 	director.reset()
 	time = 0.0
 	_sound_i = 0
@@ -392,6 +404,18 @@ func _apply(t: float, delta: float) -> void:
 	_update_camera(t, delta, centroid, spread)
 
 
+## Plan phase (BattleHost contract, tactical rules 3 and 4): draws `ship`'s firing arcs, range bands and previewed move
+## with the forecast readout and subsystem pips on its target. forecast = the bridge's "tacticalForecast" result.
+func show_plan(ship: Dictionary, forecast: Dictionary) -> void:
+	if plan != null and not ship.is_empty():
+		plan.show_plan(ship, forecast)
+
+
+func clear_plan() -> void:
+	if plan != null:
+		plan.clear()
+
+
 ## The selected ship and target (BattleHost contract): the camera follows and rings them.
 func set_selection(ship: int, target: int) -> void:
 	if camera != null:
@@ -410,8 +434,19 @@ func _update_camera(t: float, delta: float, centroid: Vector3, spread: float) ->
 	# Hull and shields as the round shows them: before it, then after it once it has played.
 	var state := {}
 	var rounds: Array = encounter.get("rounds", [])
+	# Rules 4 subsystems and facings: the previous round's state while this one plays (damage persists from round to
+	# round), this round's once it has played. Impacts during playback are drawn by the hit jobs themselves.
+	var wego_state := {}
 	if round_index >= 0 and round_index < rounds.size():
 		var done := _finished_sent and not _playing
+		var src: Array = rounds[round_index].get("wego", []) if done or round_index == 0 else rounds[round_index - 1].get("wego", [])
+		if not done and round_index == 0:
+			src = []
+			for s0 in encounter.get("ships", []):
+				if s0.has("wego"):
+					src.append({"id": s0.id, "facings": s0.wego.get("maxFacings", []), "subsystems": {}, "coreBreached": false})
+		for w0 in src:
+			wego_state[int(w0.get("id", 0))] = w0
 		for rs in rounds[round_index].get("ships", []):
 			state[int(rs.get("id", 0))] = [float(rs.get("hullAfter" if done else "hullBefore", rs.get("hullBefore", 1))),
 				float(rs.get("shieldAfter" if done else "shieldBefore", rs.get("shieldBefore", 0)))]
@@ -427,6 +462,9 @@ func _update_camera(t: float, delta: float, centroid: Vector3, spread: float) ->
 		var info: Dictionary = by_id.get(fid, {})
 		var hs: Array = state.get(fid, [float(info.get("hull", 1)), float(info.get("shields", 0))])
 		ship.set_damage(1.0 - hs[0] / maxf(1.0, float(info.get("maxHull", hs[0]))))
+		var ws: Dictionary = wego_state.get(fid, {})
+		if not ws.is_empty():
+			ship.set_wego_state(ws)
 		var bow := ship.global_basis.x
 		bodies.append({"id": fid, "center": ship.global_position, "radius": camera.hull_radius(ship), "owner": ship.owner_id,
 			"mine": info.get("mine", ship.owner_id == me), "heading": rad_to_deg(atan2(bow.z, bow.x)),

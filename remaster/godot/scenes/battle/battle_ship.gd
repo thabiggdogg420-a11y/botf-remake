@@ -40,7 +40,7 @@ var _meshes: Array[GeometryInstance3D] = []
 var _shield_mat: ShaderMaterial
 var _cloak_mat: ShaderMaterial
 var _hits: Array = []      ## [{dir: Vector3, start: float, duration: float, color: Color}]
-var _decals: Array[Decal] = []
+var _decals: Array[Node3D] = []  ## Scorch decals (Forward+) or scorch quads (Compatibility), oldest first.
 var _socket_pick := {}   ## (family, mount, emitter) key -> index into sockets (-1 = none): see hardpoint()
 var _center: Node3D
 
@@ -58,6 +58,7 @@ func setup(ship: Dictionary, assets: BattleAssets = null) -> void:
 	fleet_id = int(ship.get("id", 0))
 	owner_id = int(ship.get("owner", 0))
 	ship_name = str(ship.get("name", ""))
+	max_facings = ship.get("wego", {}).get("maxFacings", [])
 	is_station = BattleShip.is_station_ship(ship)
 	length_meters = BattleShip.length_meters_for(ship, assets)
 	if not is_station and assets != null:
@@ -361,14 +362,24 @@ func set_visibility(visibility: float, shimmer: float) -> void:
 
 
 ## Registers a shield impact from world point `from`, running [start, start + duration] in timeline seconds.
-func add_shield_hit(from: Vector3, start: float, duration: float, color: Color) -> void:
+## facing (tactical rules 4): "fore", "aft", "port", "starboard", "dorsal" or "ventral" lights that whole shield segment;
+## strength is what the facing has left (0..1).
+func add_shield_hit(from: Vector3, start: float, duration: float, color: Color, facing := "", strength := 1.0) -> void:
 	var dir := (global_transform.basis.inverse() * (from - global_position)).normalized()
-	_hits.append({"dir": dir, "start": start, "duration": duration, "color": color})
+	_hits.append({"dir": dir, "start": start, "duration": duration, "color": color,
+		"axis": FACING_AXES.get(facing, Vector3.ZERO), "strength": strength})
+	last_facing_hit = facing
+
+
+const FACING_AXES := {"fore": Vector3(1, 0, 0), "aft": Vector3(-1, 0, 0), "port": Vector3(0, 0, -1),
+	"starboard": Vector3(0, 0, 1), "dorsal": Vector3(0, 1, 0), "ventral": Vector3(0, -1, 0)}
+var last_facing_hit := ""
 
 
 func update_shield(t: float) -> void:
 	var dirs := []
 	var cols := []
+	var axes := []
 	var active := 0
 	var keep := []
 	for h in _hits:
@@ -380,6 +391,8 @@ func update_shield(t: float) -> void:
 			continue
 		dirs.append(Vector4(h.dir.x, h.dir.y, h.dir.z, age))
 		cols.append(Vector4(h.color.r, h.color.g, h.color.b, 1.0))
+		var ax: Vector3 = h.get("axis", Vector3.ZERO)
+		axes.append(Vector4(ax.x, ax.y, ax.z, float(h.get("strength", 1.0))))
 		active += 1
 	_hits = keep
 	shield.visible = active > 0
@@ -388,8 +401,10 @@ func update_shield(t: float) -> void:
 	while dirs.size() < 6:
 		dirs.append(Vector4(1, 0, 0, -1))
 		cols.append(Vector4.ZERO)
+		axes.append(Vector4.ZERO)
 	_shield_mat.set_shader_parameter("hits", dirs)
 	_shield_mat.set_shader_parameter("hit_colors", cols)
+	_shield_mat.set_shader_parameter("hit_facing", axes)
 
 
 ## Damage feedback (R3.5, coordinator 8 Nov): fires and venting plasma grow on a ship as its hull falls. damage is
@@ -532,6 +547,111 @@ func _build_damage_fx() -> void:
 	_damage_fx.append([vent])
 
 
+## Tactical rules 4 persistent damage: each crippled subsystem keeps showing on the hull, round after round, until the
+## crew repairs it. state = the round's "wego" entry ({subsystems: {weapons, engines, shields, sensors, warpCore},
+## coreBreached}). Weapons and sensors spark at the bow and dorsal array, dead engines trail sparks and smoke from the
+## stern, a failing warp core vents blue plasma from the ventral hull, and a breached core burns.
+var _system_fx := {}
+var wego_state := {}
+var max_facings: Array = []
+var facings_after: Array = []  ## This round's facings once it resolves (the shield flash shows what is left).
+
+func set_wego_state(state: Dictionary) -> void:
+	if state.is_empty() or state == wego_state:
+		return
+	wego_state = state
+	var sys: Dictionary = state.get("subsystems", {})
+	var breached: bool = state.get("coreBreached", false)
+	_system_effect("weapons", float(sys.get("weapons", 100)) <= 25.0)
+	_system_effect("engines", float(sys.get("engines", 100)) <= 25.0)
+	_system_effect("sensors", float(sys.get("sensors", 100)) <= 25.0)
+	_system_effect("warpCore", float(sys.get("warpCore", 100)) < 50.0 and not breached)
+	_system_effect("breach", breached)
+
+
+## Remaining strength 0..1 of a shield facing, from the latest rules 4 state (1 when unknown).
+func facing_strength(facing: String) -> float:
+	var idx := ["fore", "aft", "port", "starboard", "dorsal", "ventral"].find(facing)
+	var now: Array = facings_after if not facings_after.is_empty() else wego_state.get("facings", [])
+	if idx < 0 or idx >= now.size() or idx >= max_facings.size():
+		return 1.0
+	return clampf(float(now[idx]) / maxf(1.0, float(max_facings[idx])), 0.0, 1.0)
+
+
+## Local-to-world point of a subsystem (rules 4): weapons at the bow, engines astern, sensors dorsal, warp core ventral.
+func subsystem_point(sub: String) -> Vector3:
+	var hx := half_extents
+	var local := Vector3.ZERO
+	match sub:
+		"weapons": local = Vector3(hx.x * 0.75, hx.y * 0.5, 0.0)
+		"engines": local = Vector3(-hx.x * 0.9, 0.0, 0.0)
+		"sensors": local = Vector3(hx.x * 0.2, hx.y, 0.0)
+		"warpCore": local = Vector3(-hx.x * 0.2, -hx.y, 0.0)
+		"shields": local = Vector3(0.0, hx.y * 0.6, hx.z * 0.8)
+	return global_transform * local
+
+
+func system_effect_on(key: String) -> bool:
+	var list: Array = _system_fx.get(key, [])
+	return not list.is_empty() and list[0].emitting
+
+
+func _system_effect(key: String, on: bool) -> void:
+	if not _system_fx.has(key):
+		if not on:
+			return
+		_system_fx[key] = _build_system_fx(key)
+	for e in _system_fx[key]:
+		e.emitting = on
+		e.visible = on
+
+
+func _build_system_fx(key: String) -> Array:
+	var L := maxf(length, 2.0)
+	var hx := half_extents
+	var spark_mat := BattleShip._particle_mat(BattleShip.puff_texture(), true, false)
+	var smoke_mat := BattleShip._particle_mat(BattleShip.puff_texture(), false, false)
+	var fire_mat := BattleShip._particle_mat(BattleShip.flame_flipbook(), true, true)
+	var spark_ramp := Gradient.new()
+	spark_ramp.set_color(0, Color(1.0, 0.9, 0.6, 1.0))
+	spark_ramp.set_color(1, Color(1.0, 0.45, 0.1, 0.0))
+	var smoke_ramp := Gradient.new()
+	smoke_ramp.set_color(0, Color(0.3, 0.29, 0.29, 0.7))
+	smoke_ramp.set_color(1, Color(0.16, 0.16, 0.18, 0.0))
+	var plasma_ramp := Gradient.new()
+	plasma_ramp.set_color(0, Color(0.7, 0.85, 1.0, 0.95))
+	plasma_ramp.set_color(1, Color(0.3, 0.5, 1.0, 0.0))
+	var fire_ramp := Gradient.new()
+	fire_ramp.set_color(0, Color(1.0, 0.95, 0.8, 1.0))
+	fire_ramp.set_color(1, Color(1.0, 0.45, 0.15, 0.0))
+	var out := []
+	match key:
+		"weapons":
+			var at := Vector3(hx.x * 0.75, hx.y * 0.5, 0.0)
+			out.append(_emitter(spark_mat, at, 30, 0.45, Vector3.UP, 70.0, Vector2(L * 0.1, L * 0.25), Vector2(L * 0.008, L * 0.02), spark_ramp, false))
+		"sensors":
+			var at := Vector3(hx.x * 0.2, hx.y * 1.0, 0.0)
+			out.append(_emitter(spark_mat, at, 18, 0.4, Vector3.UP, 60.0, Vector2(L * 0.08, L * 0.2), Vector2(L * 0.006, L * 0.016), spark_ramp, false))
+		"engines":
+			var at := Vector3(-hx.x * 0.95, 0.0, 0.0)
+			out.append(_emitter(spark_mat, at, 36, 0.5, Vector3(-1, 0.2, 0).normalized(), 50.0, Vector2(L * 0.1, L * 0.3), Vector2(L * 0.008, L * 0.02), spark_ramp, false))
+			var smoke := _emitter(smoke_mat, at, 24, 2.6, Vector3(-1, 0.1, 0).normalized(), 20.0, Vector2(L * 0.05, L * 0.12), Vector2(L * 0.1, L * 0.25), smoke_ramp, false)
+			smoke.scale_amount_curve = _grow_curve()
+			out.append(smoke)
+		"warpCore":
+			var at := Vector3(-hx.x * 0.2, -hx.y * 1.0, 0.0)
+			var gas := _emitter(spark_mat, at, 40, 1.2, Vector3.DOWN, 12.0, Vector2(L * 0.3, L * 0.45), Vector2(L * 0.05, L * 0.1), plasma_ramp, false)
+			gas.scale_amount_curve = _grow_curve()
+			out.append(gas)
+		"breach":
+			var at := Vector3(-hx.x * 0.2, -hx.y * 0.4, 0.0)
+			out.append(_emitter(fire_mat, at, 30, 0.8, Vector3.UP, 45.0, Vector2(L * 0.05, L * 0.12), Vector2(L * 0.2, L * 0.34), fire_ramp, true))
+			var smoke := _emitter(smoke_mat, at, 30, 3.0, Vector3.UP, 35.0, Vector2(L * 0.05, L * 0.12), Vector2(L * 0.2, L * 0.4), smoke_ramp, false)
+			smoke.scale_amount_curve = _grow_curve()
+			out.append(smoke)
+	return out
+
+
 static func _grow_curve() -> Curve:
 	var c := Curve.new()
 	c.max_value = 2.0
@@ -546,10 +666,32 @@ func clear_effects() -> void:
 
 
 ## Burn mark where the hull was struck; `heat` glows and cools over the following seconds.
-func add_scorch(world_point: Vector3, from: Vector3, size: float) -> Decal:
+## Scorch marks persist across rounds (up to 10 per hull). The web build's Compatibility renderer has no decals: there
+## the mark is an alpha-blended quad laid on the hull at the impact point, facing the shooter.
+func add_scorch(world_point: Vector3, from: Vector3, size: float) -> Node3D:
 	if _decals.size() >= 10:
-		var old: Decal = _decals.pop_front()
+		var old: Node3D = _decals.pop_front()
 		old.queue_free()
+	if RenderingServer.get_current_rendering_method() == "gl_compatibility":
+		var q := MeshInstance3D.new()
+		var quad := QuadMesh.new()
+		quad.size = Vector2(size, size * 1.5)
+		var m := StandardMaterial3D.new()
+		m.albedo_texture = BattleShip.scorch_texture()
+		m.emission_enabled = true
+		m.emission_texture = BattleShip.ember_texture()
+		m.emission_energy_multiplier = 2.0
+		m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		m.cull_mode = BaseMaterial3D.CULL_DISABLED
+		quad.material = m
+		q.mesh = quad
+		q.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		model.add_child(q)
+		var n0 := (from - world_point).normalized()
+		q.global_position = world_point + n0 * 0.02 * size
+		q.look_at(world_point + n0, Vector3.UP if absf(n0.dot(Vector3.UP)) < 0.95 else Vector3.RIGHT)
+		_decals.append(q)
+		return q
 	var d := Decal.new()
 	d.texture_albedo = BattleShip.scorch_texture()
 	d.texture_emission = BattleShip.ember_texture()

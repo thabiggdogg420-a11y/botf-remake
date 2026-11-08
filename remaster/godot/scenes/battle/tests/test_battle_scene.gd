@@ -37,16 +37,24 @@ func _run() -> void:
 		scene.play_round(encounter, r)
 		check(scene.is_playing(), "round %d playing" % r)
 		var frames := 0
+		var prev_t := 0.0
 		while scene.is_playing() and frames < 2000:
 			await process_frame
 			frames += 1
+			var last_t := prev_t
+			prev_t = scene.time
 			for fid in [5, 7, 8, 10]:
 				var s := scene.ship_node(fid)
 				if s == null or not s.visible:
 					last.erase(fid)
 					continue
 				if last.has(fid):
-					check(s.global_position.distance_to(last[fid]) < BattleScene.CELL * BattleScene.SPREAD * 0.5, "round %d ship %d jumped %.1f units" % [r, fid, s.global_position.distance_to(last[fid])])
+					# A jump is measured against the timeline time the frame advanced: at 8x a capped 0.05 s frame is 0.4 s of
+					# flight, and a fast escort covers more than half a cell in that honestly (M1: the fixed half-cell bound
+					# failed on main at 18-41 units). Allowed: half a cell plus 3 cells per timeline second.
+					var step_t: float = maxf(0.0, scene.time - last_t)
+					var bound: float = BattleScene.CELL * BattleScene.SPREAD * (0.5 + 3.0 * step_t)
+					check(s.global_position.distance_to(last[fid]) < bound, "round %d ship %d jumped %.1f units in %.2f s" % [r, fid, s.global_position.distance_to(last[fid]), step_t])
 				last[fid] = s.global_position
 		check(finished.has(r), "round %d finished (frames %d)" % [r, frames])
 		var fires: Array = encounter.rounds[r].events.filter(func(e): return e.kind == "Fire")
