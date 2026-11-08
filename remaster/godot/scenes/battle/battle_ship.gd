@@ -408,55 +408,136 @@ func set_damage(damage: float) -> void:
 		_build_damage_fx()
 	var fires := int(ceil(clampf((damage - 0.15) / 0.28, 0.0, 3.0)))
 	for k in _damage_fx.size():
-		var e: CPUParticles3D = _damage_fx[k]
 		var on := k < fires if k < 3 else damage > 0.45
-		e.emitting = on
-		e.visible = on
+		for e in _damage_fx[k]:
+			e.emitting = on
+			e.visible = on
 
 
-func _build_damage_fx() -> void:
+static var _flame_tex: Texture2D
+static var _puff_tex: Texture2D
+
+## A 4x4 flipbook of a licking flame, generated here (no third-party art): a teardrop mask over rising value noise.
+static func flame_flipbook() -> Texture2D:
+	if _flame_tex != null:
+		return _flame_tex
+	var fs := 64
+	var img := Image.create(fs * 4, fs * 4, false, Image.FORMAT_RGBA8)
+	var noise := FastNoiseLite.new()
+	noise.seed = 4127
+	noise.frequency = 0.09
+	noise.fractal_octaves = 3
+	for f in 16:
+		var ox := (f % 4) * fs
+		var oy := (f / 4) * fs
+		var rise := float(f) * 6.0
+		for y in fs:
+			for x in fs:
+				var u := (float(x) + 0.5) / fs * 2.0 - 1.0
+				var v := 1.0 - (float(y) + 0.5) / fs # 0 bottom .. 1 top
+				var n := noise.get_noise_2d(float(x) * 1.2, float(y) * 1.2 + rise) * 0.5 + 0.5
+				var width := 0.62 * (1.0 - v) + 0.08
+				var shape := clampf(1.0 - absf(u + (n - 0.5) * 0.5 * v) / width, 0.0, 1.0)
+				var a := clampf(shape * (n * 1.4 - v * 0.9 + 0.35), 0.0, 1.0)
+				var heat := clampf(a * 1.3 - v * 0.4, 0.0, 1.0)
+				var col := Color(1.0, 0.25 + 0.7 * heat, 0.05 + 0.5 * heat * heat, a)
+				img.set_pixel(ox + x, oy + y, col)
+	_flame_tex = ImageTexture.create_from_image(img)
+	return _flame_tex
+
+
+## Soft round puff for smoke and venting gas.
+static func puff_texture() -> Texture2D:
+	if _puff_tex != null:
+		return _puff_tex
+	var n := 64
+	var img := Image.create(n, n, false, Image.FORMAT_RGBA8)
+	for y in n:
+		for x in n:
+			var d := Vector2(x - n * 0.5 + 0.5, y - n * 0.5 + 0.5).length() / (n * 0.5)
+			var a := clampf(1.0 - d, 0.0, 1.0)
+			img.set_pixel(x, y, Color(1, 1, 1, a * a))
+	_puff_tex = ImageTexture.create_from_image(img)
+	return _puff_tex
+
+
+static func _particle_mat(tex: Texture2D, additive: bool, flipbook: bool) -> StandardMaterial3D:
 	var mat := StandardMaterial3D.new()
 	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD if additive else BaseMaterial3D.BLEND_MODE_MIX
 	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	mat.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
 	mat.vertex_color_use_as_albedo = true
-	mat.albedo_texture = BattleShip.ember_texture()
+	mat.albedo_texture = tex
 	mat.depth_draw_mode = BaseMaterial3D.DEPTH_DRAW_DISABLED
+	if flipbook:
+		mat.particles_anim_h_frames = 4
+		mat.particles_anim_v_frames = 4
+		mat.particles_anim_loop = true
+	return mat
+
+
+func _emitter(mat: StandardMaterial3D, at: Vector3, amount: int, life: float, dir: Vector3, spread: float, vel: Vector2, size: Vector2, ramp: Gradient, flipbook: bool) -> CPUParticles3D:
 	var quad := QuadMesh.new()
 	quad.material = mat
+	var e := CPUParticles3D.new()
+	e.mesh = quad
+	e.local_coords = false
+	e.amount = amount
+	e.lifetime = life
+	e.position = at
+	e.direction = dir
+	e.spread = spread
+	e.initial_velocity_min = vel.x
+	e.initial_velocity_max = vel.y
+	e.gravity = Vector3.ZERO
+	e.scale_amount_min = size.x
+	e.scale_amount_max = size.y
+	e.color_ramp = ramp
+	if flipbook:
+		e.anim_speed_min = 1.0
+		e.anim_speed_max = 1.4
+		e.anim_offset_max = 1.0
+	e.emitting = false
+	e.visible = false
+	add_child(e)
+	return e
+
+
+func _build_damage_fx() -> void:
 	var L := maxf(length, 2.0)
-	for k in 4:
-		var e := CPUParticles3D.new()
-		e.mesh = quad
-		e.local_coords = false
-		var vent := k == 3
-		e.amount = 24 if vent else 32
-		e.lifetime = 1.2 if vent else 0.9
+	var fire_mat := BattleShip._particle_mat(BattleShip.flame_flipbook(), true, true)
+	var smoke_mat := BattleShip._particle_mat(BattleShip.puff_texture(), false, false)
+	var gas_mat := BattleShip._particle_mat(BattleShip.puff_texture(), true, false)
+	var fire_ramp := Gradient.new()
+	fire_ramp.set_color(0, Color(1.0, 0.95, 0.8, 1.0))
+	fire_ramp.set_color(1, Color(1.0, 0.5, 0.2, 0.0))
+	var smoke_ramp := Gradient.new()
+	smoke_ramp.set_color(0, Color(0.32, 0.3, 0.3, 0.75))
+	smoke_ramp.set_color(1, Color(0.18, 0.18, 0.2, 0.0))
+	var gas_ramp := Gradient.new()
+	gas_ramp.set_color(0, Color(0.85, 0.95, 1.0, 0.9))
+	gas_ramp.set_color(1, Color(0.45, 0.65, 1.0, 0.0))
+	for k in 3:
 		var r := RandomNumberGenerator.new()
 		r.seed = hash([name, k])
-		# On the upper hull surface, not inside it (pass 4 fires were buried in the mesh and never showed).
-		e.position = Vector3(r.randf_range(-0.4, 0.35) * half_extents.x, half_extents.y * 1.05, r.randf_range(-0.5, 0.5) * half_extents.z)
-		e.direction = Vector3(r.randf_range(-0.3, 0.3), 1.0, r.randf_range(-1.0, 1.0)) if vent else Vector3(0, 1, 0)
-		e.spread = 12.0 if vent else 35.0
-		e.initial_velocity_min = L * (0.25 if vent else 0.05)
-		e.initial_velocity_max = L * (0.4 if vent else 0.12)
-		e.gravity = Vector3.ZERO
-		e.scale_amount_min = L * (0.08 if vent else 0.12)
-		e.scale_amount_max = L * (0.14 if vent else 0.2)
-		var g := Gradient.new()
-		if vent:
-			g.set_color(0, Color(0.75, 0.9, 1.0, 0.9))
-			g.set_color(1, Color(0.4, 0.55, 0.8, 0.0))
-		else:
-			g.set_color(0, Color(1.0, 0.85, 0.45, 1.0))
-			g.add_point(0.35, Color(1.0, 0.4, 0.08, 0.85))
-			g.set_color(g.get_point_count() - 1, Color(0.25, 0.08, 0.02, 0.0))
-		e.color_ramp = g
-		e.emitting = false
-		e.visible = false
-		add_child(e)
-		_damage_fx.append(e)
+		var at := Vector3(r.randf_range(-0.4, 0.35) * half_extents.x, half_extents.y * 1.05, r.randf_range(-0.5, 0.5) * half_extents.z)
+		var fire := _emitter(fire_mat, at, 18, 0.7, Vector3.UP, 20.0, Vector2(L * 0.04, L * 0.09), Vector2(L * 0.16, L * 0.26), fire_ramp, true)
+		var smoke := _emitter(smoke_mat, at, 26, 2.4, Vector3.UP, 30.0, Vector2(L * 0.05, L * 0.1), Vector2(L * 0.14, L * 0.3), smoke_ramp, false)
+		smoke.scale_amount_curve = _grow_curve()
+		_damage_fx.append([fire, smoke])
+	var vat := Vector3(-0.1 * half_extents.x, half_extents.y * 0.6, half_extents.z * 1.02)
+	var vent := _emitter(gas_mat, vat, 40, 1.1, Vector3(0.0, 0.25, 1.0).normalized(), 9.0, Vector2(L * 0.35, L * 0.5), Vector2(L * 0.05, L * 0.1), gas_ramp, false)
+	vent.scale_amount_curve = _grow_curve()
+	_damage_fx.append([vent])
+
+
+static func _grow_curve() -> Curve:
+	var c := Curve.new()
+	c.max_value = 2.0
+	c.add_point(Vector2(0, 0.4))
+	c.add_point(Vector2(1, 1.6))
+	return c
 
 
 func clear_effects() -> void:

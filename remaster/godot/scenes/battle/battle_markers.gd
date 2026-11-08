@@ -59,6 +59,11 @@ func _draw() -> void:
 		var alpha := 0.95 if key else remap(clampf(r, 14.0, 110.0), 14.0, 110.0, 0.75, 0.16)
 		# R3.5: at 24 v 24 a bracket on every hull drew a red fence over the enemy line; in a crowd only the selected,
 		# targeted and hovered ships get brackets, the rest a faint pip.
+		# Plan-view icons (coordinator, 8 Nov, Homeworld-style): a hull under ~20 px gets a faction-coloured class
+		# silhouette pointing along its heading: chevron = escort, diamond = cruiser, arrowhead = capital, square = station.
+		if r * 2.0 < 20.0 and camera.mode != BattleCamera.Mode.CINEMATIC:
+			_draw_icon(view, b, c, Color(base, 0.95), key)
+			continue
 		var crowded: bool = camera.bodies.size() > 12
 		if crowded and not key:
 			var pip := Color(base, 0.45)
@@ -215,3 +220,27 @@ class Radar extends Control:
 			cam.follow_fleet(best)
 		else:
 			cam.fly_to_point(to_world(mb.position))
+
+
+func _draw_icon(view: CameraRig.View, b: Dictionary, c: Vector2, col: Color, key: bool) -> void:
+	var hd := deg_to_rad(float(b.get("heading", 0.0)))
+	var bow3: Vector3 = (b.center as Vector3) + Vector3(cos(hd), 0.0, sin(hd)) * maxf(float(b.radius), 1.0)
+	var pb := CameraRig.project(view, bow3, 0.0)
+	var d := Vector2(pb.u * size.x, pb.v * size.y) - c
+	d = d.normalized() if d.length() > 0.01 else Vector2.UP
+	var n := Vector2(-d.y, d.x)
+	var rad: float = float(b.radius)
+	var k := 7.0 if rad < 6.0 else (9.0 if rad < 14.0 else 11.0)
+	var pts: PackedVector2Array
+	if int(b.get("id", 0)) >= 2000000:
+		pts = PackedVector2Array([c + Vector2(-k, -k), c + Vector2(k, -k), c + Vector2(k, k), c + Vector2(-k, k)])
+	elif rad < 6.0:
+		pts = PackedVector2Array([c + d * k, c - d * k * 0.6 + n * k * 0.7, c - d * k * 0.2, c - d * k * 0.6 - n * k * 0.7])
+	elif rad < 14.0:
+		pts = PackedVector2Array([c + d * k, c + n * k * 0.6, c - d * k * 0.8, c - n * k * 0.6])
+	else:
+		pts = PackedVector2Array([c + d * k * 1.1, c + n * k * 0.8 + d * k * 0.1, c + n * k * 0.6 - d * k * 0.8, c - n * k * 0.6 - d * k * 0.8, c - n * k * 0.8 + d * k * 0.1])
+	draw_colored_polygon(pts, Color(col, 0.35))
+	var loop := pts.duplicate()
+	loop.append(pts[0])
+	draw_polyline(loop, col.lightened(0.3) if key else col, 2.0 if key else 1.3, true)

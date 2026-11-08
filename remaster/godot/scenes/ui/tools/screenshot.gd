@@ -276,6 +276,8 @@ func _prepare(s: String) -> void:
 					t0 = maxf(0.0, view.time - 1.25)
 			var shot := _live_shot(view)
 			view.force_cutaway = s == "battle-strip-close"
+			if OS.get_environment("SHOT_TACTICAL") != "":
+				cam.set_mode(BattleCamera.Mode.OVERVIEW) # the plan view (C / CAMERA)
 			view.seek(t0)
 			# -close: the director's own two-ship framing of the busiest beam exchange (no free camera).
 			view.playback_speed = 1.0

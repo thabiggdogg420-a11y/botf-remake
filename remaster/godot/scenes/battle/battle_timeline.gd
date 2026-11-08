@@ -919,7 +919,7 @@ static func round_ship_info(encounter: Dictionary, round_index: int) -> Array:
 		var pos: Dictionary = rs.get("from", ship.get("position", {"x": 0, "y": 0}))
 		out.append({"fleetId": fid, "ownerId": int(rs.get("owner", ship.get("owner", 0))),
 			"shields": int(rs.get("shieldBefore", 0)), "maxShields": int(ship.get("maxShields", 0)),
-			"startsCloaked": cloaked.has(fid), "x": float(pos.x), "y": float(pos.y),
+			"startsCloaked": cloaked.has(fid) or bool(rs.get("startsCloaked", false)), "x": float(pos.x), "y": float(pos.y),
 			"facing": float(rs.get("yaw", 0)), "lengthMeters": ShipFactory.canon_length_meters(ship)})
 	return out
 

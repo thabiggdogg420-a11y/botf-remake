@@ -100,14 +100,17 @@ func play_round(p_encounter: Dictionary, p_round_index: int) -> void:
 	var cfg := BattleTimeline.Config.new()
 	cfg.round_seconds = round_seconds
 	cfg.player_empire = _player_empire()
+	var _pt0 := Time.get_ticks_usec()
 	var info := BattleTimeline.round_ship_info(encounter, round_index)
 	_sync_ships(info)
+	var _pt1 := Time.get_ticks_usec()
 	# Flight style and wings follow the length of the class actually shown (the local manifest may know it).
 	for i in info:
 		var node: BattleShip = _ships.get(int(i.fleetId))
 		if node != null:
 			i["lengthMeters"] = node.length_meters
 	timeline = BattleTimeline.build(rounds[round_index].get("events", []), info, cfg)
+	var _pt2 := Time.get_ticks_usec()
 	_carry.clear()
 	for track in timeline.ships:
 		var was: BattleTimeline.Pose = _shown.get(track.fleet_id)
@@ -124,6 +127,8 @@ func play_round(p_encounter: Dictionary, p_round_index: int) -> void:
 	for s in _ships.values():
 		s.clear_effects()
 	fx.reset(timeline)
+	if OS.get_environment("ROUND_TIMING") != "":
+		print("ROUND_TIMING play sync=%d build=%d rest=%d ms ships=%d" % [(_pt1 - _pt0) / 1000, (_pt2 - _pt1) / 1000, (Time.get_ticks_usec() - _pt2) / 1000, _ships.size()])
 	director.reset()
 	time = 0.0
 	_sound_i = 0
@@ -441,7 +446,8 @@ func _update_camera(t: float, delta: float, centroid: Vector3, spread: float) ->
 	var subject: BattleShip = _ships.get(director.subject)
 	var other: BattleShip = _ships.get(director.other)
 	# Cutaways are occasional (coordinator, 8 Nov): about one round in four, or a kill; otherwise the tactical view.
-	var cutaway_round := force_cutaway or round_index % 4 == 2 or director.kind == BattleTimeline.Job.EXPLOSION
+	# Playback is group shots; the whole battle is shown once, as the establishing shot of round 1 (first ~2 s).
+	var cutaway_round := force_cutaway or not (round_index == 0 and t < 2.0)
 	if subject != null and cutaway_round and (_playing or not _finished_sent):
 		shot = {"key": "%d_%d_%d_%.2f" % [round_index, director.subject, director.other, director.since],
 			"kind": director.kind, "subject": subject.global_position, "subject_size": subject.length,
