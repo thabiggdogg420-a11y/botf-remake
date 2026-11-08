@@ -52,9 +52,23 @@ func _init() -> void:
 	instance = self
 
 
+## R3.5: an 8-voice torpedo salvo summed to +15 dBFS (4 voices already +9). A hard limiter on the master bus keeps
+## every mix under -1 dBFS; the salvo cap can then be 8 without clipping.
+static func _ensure_limiter() -> void:
+	var idx := AudioServer.get_bus_index("Master")
+	for k in AudioServer.get_bus_effect_count(idx):
+		if AudioServer.get_bus_effect(idx, k) is AudioEffectHardLimiter:
+			return
+	var lim := AudioEffectHardLimiter.new()
+	lim.ceiling_db = -1.0
+	lim.pre_gain_db = 0.0
+	AudioServer.add_bus_effect(idx, lim)
+
+
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	ensure_buses()
+	_ensure_limiter()
 	library = BotfAudioLibrary.new()
 	library.prewarm_music()
 	for i in POOL:

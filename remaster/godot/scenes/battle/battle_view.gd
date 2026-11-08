@@ -26,6 +26,10 @@ func load_encounter(e: Dictionary) -> void:
 		if key != _encounter_key:
 			_encounter_key = key
 			_show_deployment(e)
+		# Compile the weapon effects while the fleets deploy, not on the first round's first frame (R3.5: 370 ms).
+		if not _prewarmed:
+			_prewarmed = true
+			fx.prewarm.call_deferred()
 		return
 	_play_index(e, rounds.size() - 1, key)
 

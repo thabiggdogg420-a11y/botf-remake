@@ -433,7 +433,15 @@ func _spawn(i: int, j: Dictionary) -> void:
 				add_child(ring)
 				ring.global_position = p
 				ring.rotation_degrees = Vector3(rng_angle(i, 20.0), rng_angle(i + 3, 180.0), rng_angle(i + 5, 20.0))
-				st.nodes = [_flare(Color(1.0, 0.75, 0.4), size * 1.5, 2.0, 1.5), ring]
+				# A second ring crossed with the first: the shock reads as a shell, not a flat disc (R3.5).
+				var ring2 := MeshInstance3D.new()
+				ring2.mesh = _plane
+				ring2.material_override = _shock_mat
+				ring2.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+				add_child(ring2)
+				ring2.global_position = p
+				ring2.rotation_degrees = ring.rotation_degrees + Vector3(70.0, 35.0, 0.0)
+				st.nodes = [_flare(Color(1.0, 0.75, 0.4), size * 1.5, 2.0, 1.5), ring, ring2]
 				_burst(p, Color(1.0, 0.5, 0.15), "fireball", 160, size / 5.0)
 				_burst(p, Color(1.0, 0.7, 0.3), "sparks", 90, size / 5.0)
 				_burst(p, Color(1.0, 0.45, 0.1), "debris", 70, size / 3.0)
@@ -567,10 +575,10 @@ func _animate(i: int, j: Dictionary, t: float) -> void:
 			var size: float = st.size
 			st.nodes[0].global_position = st.point
 			st.nodes[0].set_instance_shader_parameter("flare_intensity", 1.5 * exp(-u * 7.0) + 0.25 * (1.0 - u)) # R3.5: the 2.5 peak whited out the kill frame
-			st.nodes[0].scale = Vector3.ONE * maxf(size * (1.5 + 2.0 * u), _px_world(st.point, 90.0 * (1.0 + u)))
-			for k in [1]:
+			st.nodes[0].scale = Vector3.ONE * maxf(size * (1.5 + 2.0 * u), _px_world(st.point, 50.0 * (1.0 + u)))
+			for k in range(1, st.nodes.size()):
 				var ring: MeshInstance3D = st.nodes[k]
-				var r := size * (0.3 + 1.5 * (1.0 - pow(1.0 - u, 2.5)))
+				var r := size * (0.3 + (1.5 if k == 1 else 1.1) * (1.0 - pow(1.0 - u, 2.5)))
 				ring.scale = Vector3(r, 1.0, r)
 				ring.set_instance_shader_parameter("ring_age", u)
 		Job.WARP:

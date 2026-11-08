@@ -814,6 +814,8 @@ func _cinematic_shot(_delta: float, shot: Dictionary, time: float) -> Array:
 								_cut_pose = [eye, mid]
 		if not _cut_pose.is_empty() or not was_tactical:
 			_cut = true
+	# Tactical uses a narrower lens (R3.5: ships fill more of the frame, less perspective shrink at the far side).
+	fov = 48.0 if not _cut_pose.is_empty() else 36.0
 	if not _cut_pose.is_empty():
 		var drift := (time - _shot_start) * 0.03
 		var e0: Vector3 = _cut_pose[0]

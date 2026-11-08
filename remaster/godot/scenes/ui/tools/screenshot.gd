@@ -250,6 +250,30 @@ func _prepare(s: String) -> void:
 				print("KILL at ", kt)
 				if kt >= 0.0:
 					t0 = maxf(0.0, kt - 0.5)
+			if OS.get_environment("SHOT_DAMAGE") != "":
+				# Damage strip: resolve rounds until a ship is below half hull, then follow it (fires and venting).
+				var worst := 0
+				for r in 10:
+					var lo := 0.5
+					worst = 0
+					for sd in app.encounter.get("ships", []):
+						var f := float(sd.get("hull", 1)) / maxf(1.0, float(sd.get("maxHull", 1)))
+						if sd.get("alive", false) and not sd.get("station", false) and f < lo:
+							lo = f
+							worst = int(sd["id"])
+					if worst != 0 or app.encounter.get("finished", false):
+						break
+					app._current._round()
+					await _wait(6)
+				print("DAMAGE ship ", worst)
+				if worst != 0:
+					# One more round so the replay starts from the damaged hull (fires show from hullBefore).
+					if not app.encounter.get("finished", false):
+						app._current._round()
+						await _wait(6)
+					cam = view.camera
+					cam.follow_fleet(worst)
+					t0 = maxf(0.0, view.time - 1.25)
 			var shot := _live_shot(view)
 			view.force_cutaway = s == "battle-strip-close"
 			view.seek(t0)

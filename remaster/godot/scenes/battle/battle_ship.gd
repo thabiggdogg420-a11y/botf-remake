@@ -435,14 +435,15 @@ func _build_damage_fx() -> void:
 		e.lifetime = 1.2 if vent else 0.9
 		var r := RandomNumberGenerator.new()
 		r.seed = hash([name, k])
-		e.position = Vector3(r.randf_range(-0.4, 0.35) * half_extents.x * 2.0, r.randf_range(0.1, 0.6) * half_extents.y, r.randf_range(-0.6, 0.6) * half_extents.z)
+		# On the upper hull surface, not inside it (pass 4 fires were buried in the mesh and never showed).
+		e.position = Vector3(r.randf_range(-0.4, 0.35) * half_extents.x, half_extents.y * 1.05, r.randf_range(-0.5, 0.5) * half_extents.z)
 		e.direction = Vector3(r.randf_range(-0.3, 0.3), 1.0, r.randf_range(-1.0, 1.0)) if vent else Vector3(0, 1, 0)
 		e.spread = 12.0 if vent else 35.0
 		e.initial_velocity_min = L * (0.25 if vent else 0.05)
 		e.initial_velocity_max = L * (0.4 if vent else 0.12)
 		e.gravity = Vector3.ZERO
-		e.scale_amount_min = L * (0.05 if vent else 0.07)
-		e.scale_amount_max = L * (0.09 if vent else 0.13)
+		e.scale_amount_min = L * (0.08 if vent else 0.12)
+		e.scale_amount_max = L * (0.14 if vent else 0.2)
 		var g := Gradient.new()
 		if vent:
 			g.set_color(0, Color(0.75, 0.9, 1.0, 0.9))

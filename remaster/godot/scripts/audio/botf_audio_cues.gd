@@ -142,7 +142,7 @@ static func cooldown_for(key: String, bus: String) -> float:
 	if bus == BUS_VOICE:
 		return 4.0
 	if key.begins_with("weapon."):
-		return 0.25 # with BotfCueScheduler.salvo_voices: up to 4 shots of one weapon in a quarter second
+		return 0.25 # with BotfCueScheduler.salvo_voices: up to 8 shots of one weapon in a quarter second
 	if key.begins_with("sfx.alert"):
 		return 3.0
 	if bus == BUS_INTERFACE:

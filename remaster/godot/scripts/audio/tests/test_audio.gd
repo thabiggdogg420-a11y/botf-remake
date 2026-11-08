@@ -55,13 +55,19 @@ func _registry() -> void:
 	check(BotfAudioCues.cue_for("nonsense").is_empty(), "unknown cue is silent")
 	check(BotfAudioCues.cooldown_for("weapon.x", "Effects") == 0.25 and BotfAudioCues.cooldown_for("sfx.alert.red", "Effects") == 3.0
 		and BotfAudioCues.cooldown_for("sfx.ui.click", "Interface") == 0.12 and BotfAudioCues.cooldown_for("vo.x", "Voice") == 4.0, "cooldown table")
-	# Salvo (R3.5): 8 torpedoes in a quarter second play 4 overlapping launches, then the key rests.
+	# Salvo (R3.5): 10 torpedoes in a quarter second play 8 overlapping launches, then the key rests.
 	var sal := BotfCueScheduler.new()
 	var played := 0
-	for k in 8:
+	for k in 10:
 		if sal.request_sfx("weapon.generic.torpedo", "Effects", 3, 1.0 + k * 0.025).play:
 			played += 1
-	check(played == 4, "a torpedo salvo plays as 4 overlapping launches (%d)" % played)
+	check(played == 8, "a torpedo salvo plays as 8 overlapping launches (%d)" % played)
+	BotfAudioSystem._ensure_limiter()
+	var mi := AudioServer.get_bus_index("Master")
+	var has_lim := false
+	for e in AudioServer.get_bus_effect_count(mi):
+		has_lim = has_lim or AudioServer.get_bus_effect(mi, e) is AudioEffectHardLimiter
+	check(has_lim, "master bus carries a hard limiter (salvos never clip)")
 	var ui := BotfCueScheduler.new()
 	check(ui.request_sfx("sfx.ui.click", "Interface", 1, 1.0).play and not ui.request_sfx("sfx.ui.click", "Interface", 1, 1.01).play, "non-weapon keys still play once per cooldown")
 	check(BotfAudioCues.bus_for_key("vo.advisor.fed") == "Voice" and BotfAudioCues.bus_for_key("sfx.ui.click") == "Interface"

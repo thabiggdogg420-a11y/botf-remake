@@ -10,7 +10,7 @@ var max_voice_queue := 4
 var voice_gap := 0.6
 var voice_timeout := 6.0
 var history_seconds := 10.0
-var salvo_voices := 4
+var salvo_voices := 8 # with the master hard limiter (BotfAudioSystem._ensure_limiter), no clipping
 
 var _played: Array = []     ## [{key, at}] recent plays, for cooldowns
 var _sfx: Array = []        ## [{handle, priority, at}]
