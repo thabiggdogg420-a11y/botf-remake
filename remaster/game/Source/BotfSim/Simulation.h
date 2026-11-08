@@ -340,6 +340,9 @@ struct GameplayRules {
     // Tactical flight model and typed weapons (tactical rules 3, COMBAT-RULES.md). Remastered only; saved as
     // the optional TACTICAL_FLIGHT section, so saves without it keep tactical rules 2 exactly.
     bool flightModel = false;
+    // Tactical rules 4 (WEGO, facings, subsystems; COMBAT-RULES.md). Needs flightModel. Saved as the optional
+    // TACTICAL_WEGO section, so older saves load with it off and keep rules 3.
+    bool wegoCombat = false;
     bool operator==(const GameplayRules&) const = default;
 };
 

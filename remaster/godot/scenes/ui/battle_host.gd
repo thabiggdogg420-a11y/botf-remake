@@ -7,6 +7,12 @@ extends Control
 ##   func play_round(round: Dictionary, encounter: Dictionary) -> void   # animate one TacticalRound (rules 3 events)
 ##   func set_selection(ship_id: int, target_id: int) -> void
 ##   signal ship_picked(ship_id: int)
+signal subsystem_picked(target_id: int, subsystem: String)
+signal round_finished(round_index: int)
+##   func show_plan(ship: Dictionary, forecast: Dictionary) -> void   # rules 4 plan overlay (tacticalForecast result)
+##   func clear_plan() -> void
+##   signal subsystem_picked(target_id: int, subsystem: String)
+##   signal round_finished(round_index: int)
 ##
 ## The scene at BATTLE_SCENE always ships with the project (the 2D BattlePlaceholder that stood in for it was removed
 ## in R3); if it is ever missing the host is an empty panel and says so in the log.
@@ -46,6 +52,10 @@ func attach(node: Node) -> void:
 	view_node = node
 	if node.has_signal("ship_picked"):
 		node.connect("ship_picked", func(id): ship_picked.emit(id))
+	if node.has_signal("subsystem_picked"):
+		node.connect("subsystem_picked", func(t, k): subsystem_picked.emit(t, k))
+	if node.has_signal("round_finished"):
+		node.connect("round_finished", func(i): round_finished.emit(i))
 	_add_camera_bar.call_deferred()
 
 ## The camera mode bar over the 3D view (as the Unreal combat screen): OVERVIEW CHASE SHIP TARGET TOP-DOWN CINEMATIC,
@@ -105,3 +115,11 @@ func play_round(r: Dictionary, e: Dictionary) -> void:
 func set_selection(ship: int, target: int) -> void:
 	if view_node and view_node.has_method("set_selection"):
 		view_node.set_selection(ship, target)
+
+func show_plan(ship: Dictionary, forecast: Dictionary) -> void:
+	if view_node and view_node.has_method("show_plan"):
+		view_node.show_plan(ship, forecast)
+
+func clear_plan() -> void:
+	if view_node and view_node.has_method("clear_plan"):
+		view_node.clear_plan()

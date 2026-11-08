@@ -1924,6 +1924,13 @@ void writeEncounter(Writer& w, const tac::Encounter& e, int me, const botf::Game
     w.field("controller", e.controllingOwnerId);
     const auto* sys = systemAtCell(gs, e.sectorX, e.sectorY);
     w.field("location", sys && knownSystem(gs, *sys) ? sys->name : "Sector " + std::to_string(e.sectorX) + "," + std::to_string(e.sectorY));
+    // The battle backdrop planet: the system's largest non-asteroid world (clients fall back to a gas giant).
+    if (sys && knownSystem(gs, *sys)) {
+        const botf::Planet* backdrop = nullptr;
+        for (const auto& p : sys->planets)
+            if (p.planetClass != botf::PlanetClass::Asteroids && (!backdrop || p.maxCapacity > backdrop->maxCapacity)) backdrop = &p;
+        if (backdrop) w.field("planetClass", enumName(static_cast<int>(backdrop->planetClass), PlanetClassKeys));
+    }
     w.field("rules", e.rulesVersion);
     w.field("ticksPerRound", botf::CombatTicksPerRound);
     int foe = 0;
@@ -2519,6 +2526,8 @@ void newCampaign(const Value& a) {
     setup.preset = botf::RulesetPreset::Remastered;
     if (a.has("preset") && !botf::parseRulesetPreset(a.getString("preset"), setup.preset)) fail("Unknown ruleset preset");
     auto s = botf::newCampaign(setup);
+    // "wego": false keeps tactical rules 3 in a Remastered game (the WASM-recorded determinism fixture predates rules 4).
+    if (a.has("wego") && !a.getBool("wego")) s.rules.wegoCombat = false;
     if (a.has("events")) s.eventsEnabled = a.getBool("events");
     if (a.has("aiAggression")) s.aiAggressionEnabled = a.getBool("aiAggression");
     botf::validate(s);

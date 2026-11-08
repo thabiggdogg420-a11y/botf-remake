@@ -532,7 +532,7 @@ void testFlightModelPlayerOrdersReplay() {
     auto uninterrupted = flightBattle();
     botf::session::TurnSession live;
     beginPlayerBattle(live, uninterrupted);
-    check(live.pending->rulesVersion == botf::tactical::FlightTacticalRules, "Remastered battle is not rules 3");
+    check(live.pending->rulesVersion == botf::tactical::WegoTacticalRules, "Remastered battle is not rules 4");
     const int player = firstShip(*live.pending, 1);
     const int enemy = firstShip(*live.pending, 2);
     botf::session::order(live, {player, enemy, botf::tactical::TacticalManeuver::Strafe});
@@ -550,6 +550,50 @@ void testFlightModelPlayerOrdersReplay() {
         strafed |= e.kind == botf::CombatEventKind::ManeuverStart && e.fleetId == player &&
             e.maneuver == static_cast<int>(botf::tactical::TacticalManeuver::Strafe);
     check(strafed, "Player strafe order missing from the event stream");
+}
+
+// Tactical rules 4 (WEGO): the Remastered preset switches it on, an aimed order replays, and the TACTICAL_WEGO
+// section round-trips. A save without the section loads with it off and fights rules 3.
+void testWegoCampaignBattle() {
+    auto state = flightBattle();
+    check(state.rules.wegoCombat && state.rules.flightModel, "Remastered preset does not set wegoCombat");
+    const auto text0 = botf::serialize(state);
+    check(text0.find("\nTACTICAL_WEGO 1\n") != std::string::npos, "Remastered save lacks TACTICAL_WEGO");
+    check(botf::serialize(botf::deserialize(text0)) == text0, "TACTICAL_WEGO did not round-trip");
+
+    // Old save: a campaign with the flag off writes no TACTICAL_WEGO line, loads with it off and fights rules 3.
+    auto flightOnly = state;
+    flightOnly.rules.wegoCombat = false;
+    const auto oldText = botf::serialize(flightOnly);
+    check(oldText.find("TACTICAL_WEGO") == std::string::npos && oldText.find("TACTICAL_FLIGHT 1") != std::string::npos,
+        "Flag-off save wrote TACTICAL_WEGO");
+    auto old = botf::deserialize(oldText);
+    check(!old.rules.wegoCombat && old.rules.flightModel, "Old save did not load with WEGO off");
+    botf::session::TurnSession oldLive;
+    beginPlayerBattle(oldLive, old);
+    check(oldLive.pending->rulesVersion == botf::tactical::FlightTacticalRules, "Old save battle is not rules 3");
+
+    auto uninterrupted = state;
+    botf::session::TurnSession live;
+    beginPlayerBattle(live, uninterrupted);
+    check(live.pending->rulesVersion == botf::tactical::WegoTacticalRules, "Campaign battle is not rules 4");
+    const int player = firstShip(*live.pending, 1);
+    const int enemy = firstShip(*live.pending, 2);
+    botf::tactical::Order aimed{player, enemy, botf::tactical::TacticalManeuver::Engage, botf::tactical::Subsystem::Engines};
+    botf::session::order(live, aimed);
+    botf::session::resolveRound(live);
+    bool aimRecorded = false;
+    for (const auto& st : live.pending->rounds.back().shipStatuses)
+        aimRecorded |= st.fleetId == player && st.subsystemTarget == botf::tactical::Subsystem::Engines;
+    check(aimRecorded, "Aimed order not recorded in the round status");
+    auto reloadedState = botf::deserialize(botf::serialize(uninterrupted));
+    auto reloaded = botf::session::deserialize(botf::session::serialize(live));
+    check(botf::tactical::serializeEncounter(*reloaded.pending) == botf::tactical::serializeEncounter(*live.pending),
+        "Mid-battle save lost rules 4 state");
+    const auto liveReport = finish(live, uninterrupted);
+    const auto loadedReport = finish(reloaded, reloadedState);
+    check(botf::serialize(uninterrupted) == botf::serialize(reloadedState) && liveReport.stateHash == loadedReport.stateHash,
+        "Rules 4 mid-battle reload diverged (aimed order did not replay)");
 }
 
 void run(const char* name, const std::function<void()>& test, int& passed) {
@@ -584,6 +628,7 @@ int main() {
         run("unified combat: strategic stance, target and retreat become standing orders", testStrategicOrdersBecomeStandingOrders, passed);
         run("rules 3: flight-model session matches headless advance; events survive the save", testFlightModelSessionMatchesHeadless, passed);
         run("rules 3: player strafe orders replay and reload mid-battle", testFlightModelPlayerOrdersReplay, passed);
+        run("rules 4: Remastered campaign battle runs WEGO; aimed order replays; save/reload identical", testWegoCampaignBattle, passed);
     } catch (const std::exception& error) {
         std::cerr << "FAIL suite aborted after " << passed << " session scenarios: " << error.what() << '\n';
         return 1;

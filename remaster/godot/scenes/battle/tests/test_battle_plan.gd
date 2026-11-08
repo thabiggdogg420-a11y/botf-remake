@@ -61,21 +61,32 @@ func _run() -> void:
 	var ghost: Node3D = plan.get_node("Ghost")
 	var want := scene.cell_to_world(float(p0.x) + 2.0, float(p0.y))
 	check(Vector2(ghost.global_position.x, ghost.global_position.z).distance_to(Vector2(want.x, want.z)) < 0.01, "ghost sits on the end cell")
-	var readout: Label3D = plan.get_node("Readout")
+	var readout: Label = plan.get_node("PlanUI/Overlay/Readout")
 	check(readout.visible and readout.text.contains("PHASERARRAY  82%") and readout.text.contains("AIM ENGINES") and
 		not readout.text.contains("PHASECANNON"), "forecast readout lists the mounts that bear: " + readout.text)
 	check(BattlePlan.readout_text({"mounts": []}).contains("NO WEAPON BEARS"), "an empty forecast says so")
-	# Subsystem picking: a pip's own screen point picks it; picking it again clears the aim.
+	# Subsystem picking: a tag's own screen point picks it; picking it again clears the aim.
 	var cam: Camera3D = scene.camera
 	var picked := []
 	scene.subsystem_picked.connect(func(t, k): picked.append([t, k]))
-	var pip: Label3D = plan.get_node("Pip_warpCore")
-	check(pip.visible, "subsystem pips on the target")
-	if not cam.is_position_behind(pip.global_position):
-		var at := cam.unproject_position(pip.global_position)
-		check(plan.subsystem_at(at, cam) in ["warpCore", "engines", "shields", "sensors", "weapons"], "a pip is under its own screen point")
-		var k := plan.subsystem_at(at, cam)
-		check(plan.pick(at, cam) and picked.size() == 1 and picked[0][1] == k and picked[0][0] == int(foe.id), "clicking a pip aims at that subsystem")
+	var pip: Label = plan.get_node("PlanUI/Overlay/Pip_warpCore")
+	check(pip.visible, "subsystem tags on the target")
+	# The tags are one vertical list inside the view, clear of each other and of the forecast panel.
+	var vp := scene.get_viewport().get_visible_rect()
+	var rows := []
+	for key in BattlePlan.SUBSYSTEMS:
+		rows.append(plan.tag_rect(key))
+	var tidy := true
+	for i in rows.size():
+		tidy = tidy and (rows[i] as Rect2).size != Vector2.ZERO and vp.encloses(rows[i])
+		if i > 0:
+			tidy = tidy and absf(rows[i].position.x - rows[0].position.x) < 0.01 and rows[i].position.y >= rows[i - 1].end.y - 0.01
+	check(tidy, "tags are a vertical list inside the view")
+	check(vp.encloses(Rect2(readout.position, readout.size)), "forecast readout sits inside the view")
+	check(not plan.tag_rect("weapons").intersects(Rect2(readout.position, readout.size)), "tags clear the forecast readout")
+	var at: Vector2 = plan.tag_rect("warpCore").get_center()
+	check(plan.subsystem_at(at, cam) == "warpCore", "a tag is under its own screen point")
+	check(plan.pick(at, cam) and picked.size() == 1 and picked[0][1] == "warpCore" and picked[0][0] == int(foe.id), "clicking a tag aims at that subsystem")
 	check(plan.subsystem_at(Vector2(-500, -500), cam) == "", "nothing picked off the pips")
 	scene.clear_plan()
 	check(not plan.is_showing() and plan.get_node_or_null("Ghost") == null or not plan.visible, "plan clears")

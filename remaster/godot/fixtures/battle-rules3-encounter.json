@@ -13,7 +13,8 @@
   "turn": 1,
   "controller": 1,
   "location": "Sol",
-  "rules": 3,
+  "planetClass": "M",
+  "rules": 4,
   "ticksPerRound": 12,
   "foe": 2,
   "hail": {
@@ -52,14 +53,24 @@
       "key": "weapon.PhaserArray",
       "count": 2,
       "arc": "All",
-      "torpedo": false
+      "torpedo": false,
+      "family": "beam",
+      "arcCentre": 0,
+      "arcHalfWidth": 180,
+      "maxRange": 4,
+      "attack": 2
      },
      {
       "type": "PhotonTorpedo",
       "key": "weapon.PhotonTorpedo",
       "count": 1,
       "arc": "ForwardWide",
-      "torpedo": true
+      "torpedo": true,
+      "family": "torpedo",
+      "arcCentre": 0,
+      "arcHalfWidth": 90,
+      "maxRange": 7,
+      "attack": 1
      }
     ],
     "alive": true,
@@ -72,12 +83,46 @@
     "group": "Scout",
     "immobile": false,
     "disengaging": false,
+    "facing": 0,
+    "elevation": 0,
+    "wego": {
+     "facings": [
+      27,
+      17,
+      19,
+      19,
+      14,
+      14
+     ],
+     "maxFacings": [
+      27,
+      17,
+      19,
+      19,
+      14,
+      14
+     ],
+     "subsystems": {
+      "weapons": 100,
+      "engines": 100,
+      "shields": 100,
+      "sensors": 100,
+      "warpCore": 100
+     },
+     "crew": "Regular",
+     "crewLevel": 1,
+     "elevation": 0,
+     "coreBreached": false,
+     "canWarp": true
+    },
     "maneuver": "Engage",
     "target": 0,
     "ordered": false,
+    "subsystem": "none",
     "next": {
      "maneuver": "Engage",
      "target": 3,
+     "subsystem": "none",
      "source": "ai"
     }
    },
@@ -109,7 +154,12 @@
       "key": "weapon.PhaserArray",
       "count": 2,
       "arc": "All",
-      "torpedo": false
+      "torpedo": false,
+      "family": "beam",
+      "arcCentre": 0,
+      "arcHalfWidth": 180,
+      "maxRange": 4,
+      "attack": 1
      }
     ],
     "alive": true,
@@ -122,12 +172,46 @@
     "group": "Support",
     "immobile": false,
     "disengaging": false,
+    "facing": 0,
+    "elevation": 1,
+    "wego": {
+     "facings": [
+      17,
+      11,
+      12,
+      12,
+      9,
+      9
+     ],
+     "maxFacings": [
+      17,
+      11,
+      12,
+      12,
+      9,
+      9
+     ],
+     "subsystems": {
+      "weapons": 100,
+      "engines": 100,
+      "shields": 100,
+      "sensors": 100,
+      "warpCore": 100
+     },
+     "crew": "Elite",
+     "crewLevel": 3,
+     "elevation": 1,
+     "coreBreached": false,
+     "canWarp": true
+    },
     "maneuver": "Engage",
     "target": 0,
     "ordered": false,
+    "subsystem": "none",
     "next": {
      "maneuver": "Charge",
      "target": 3,
+     "subsystem": "none",
      "source": "ai"
     }
    },
@@ -159,14 +243,24 @@
       "key": "weapon.PhaserArray",
       "count": 2,
       "arc": "All",
-      "torpedo": false
+      "torpedo": false,
+      "family": "beam",
+      "arcCentre": 0,
+      "arcHalfWidth": 180,
+      "maxRange": 4,
+      "attack": 2
      },
      {
       "type": "PhotonTorpedo",
       "key": "weapon.PhotonTorpedo",
       "count": 1,
       "arc": "ForwardWide",
-      "torpedo": true
+      "torpedo": true,
+      "family": "torpedo",
+      "arcCentre": 0,
+      "arcHalfWidth": 90,
+      "maxRange": 7,
+      "attack": 2
      }
     ],
     "alive": true,
@@ -179,12 +273,46 @@
     "group": "Fast Attack",
     "immobile": false,
     "disengaging": false,
+    "facing": 0,
+    "elevation": -1,
+    "wego": {
+     "facings": [
+      51,
+      35,
+      39,
+      39,
+      28,
+      28
+     ],
+     "maxFacings": [
+      51,
+      35,
+      39,
+      39,
+      28,
+      28
+     ],
+     "subsystems": {
+      "weapons": 100,
+      "engines": 100,
+      "shields": 100,
+      "sensors": 100,
+      "warpCore": 100
+     },
+     "crew": "Elite",
+     "crewLevel": 3,
+     "elevation": -1,
+     "coreBreached": false,
+     "canWarp": true
+    },
     "maneuver": "Engage",
     "target": 0,
     "ordered": false,
+    "subsystem": "none",
     "next": {
      "maneuver": "Engage",
      "target": 3,
+     "subsystem": "none",
      "source": "ai"
     }
    },
@@ -216,14 +344,24 @@
       "key": "weapon.PhaserArray",
       "count": 2,
       "arc": "All",
-      "torpedo": false
+      "torpedo": false,
+      "family": "beam",
+      "arcCentre": 0,
+      "arcHalfWidth": 180,
+      "maxRange": 4,
+      "attack": 10
      },
      {
       "type": "PhotonTorpedo",
       "key": "weapon.PhotonTorpedo",
       "count": 1,
       "arc": "ForwardWide",
-      "torpedo": true
+      "torpedo": true,
+      "family": "torpedo",
+      "arcCentre": 0,
+      "arcHalfWidth": 90,
+      "maxRange": 7,
+      "attack": 6
      }
     ],
     "alive": true,
@@ -236,12 +374,46 @@
     "group": "Fast Attack",
     "immobile": false,
     "disengaging": false,
+    "facing": 0,
+    "elevation": 0,
+    "wego": {
+     "facings": [
+      93,
+      65,
+      73,
+      73,
+      53,
+      53
+     ],
+     "maxFacings": [
+      93,
+      65,
+      73,
+      73,
+      53,
+      53
+     ],
+     "subsystems": {
+      "weapons": 100,
+      "engines": 100,
+      "shields": 100,
+      "sensors": 100,
+      "warpCore": 100
+     },
+     "crew": "Regular",
+     "crewLevel": 1,
+     "elevation": 0,
+     "coreBreached": false,
+     "canWarp": true
+    },
     "maneuver": "Engage",
     "target": 0,
     "ordered": false,
+    "subsystem": "none",
     "next": {
      "maneuver": "Engage",
      "target": 3,
+     "subsystem": "none",
      "source": "ai"
     }
    },
@@ -273,14 +445,24 @@
       "key": "weapon.PhaserArray",
       "count": 2,
       "arc": "All",
-      "torpedo": false
+      "torpedo": false,
+      "family": "beam",
+      "arcCentre": 0,
+      "arcHalfWidth": 180,
+      "maxRange": 4,
+      "attack": 20
      },
      {
       "type": "PhotonTorpedo",
       "key": "weapon.PhotonTorpedo",
       "count": 1,
       "arc": "ForwardWide",
-      "torpedo": true
+      "torpedo": true,
+      "family": "torpedo",
+      "arcCentre": 0,
+      "arcHalfWidth": 90,
+      "maxRange": 7,
+      "attack": 11
      }
     ],
     "alive": true,
@@ -293,12 +475,46 @@
     "group": "Fast Attack",
     "immobile": false,
     "disengaging": false,
+    "facing": 0,
+    "elevation": 1,
+    "wego": {
+     "facings": [
+      132,
+      96,
+      108,
+      108,
+      78,
+      78
+     ],
+     "maxFacings": [
+      132,
+      96,
+      108,
+      108,
+      78,
+      78
+     ],
+     "subsystems": {
+      "weapons": 100,
+      "engines": 100,
+      "shields": 100,
+      "sensors": 100,
+      "warpCore": 100
+     },
+     "crew": "Veteran",
+     "crewLevel": 2,
+     "elevation": 1,
+     "coreBreached": false,
+     "canWarp": true
+    },
     "maneuver": "Engage",
     "target": 0,
     "ordered": false,
+    "subsystem": "none",
     "next": {
      "maneuver": "Engage",
      "target": 3,
+     "subsystem": "none",
      "source": "ai"
     }
    },
@@ -330,14 +546,24 @@
       "key": "weapon.PhaserArray",
       "count": 2,
       "arc": "All",
-      "torpedo": false
+      "torpedo": false,
+      "family": "beam",
+      "arcCentre": 0,
+      "arcHalfWidth": 180,
+      "maxRange": 4,
+      "attack": 24
      },
      {
       "type": "PhotonTorpedo",
       "key": "weapon.PhotonTorpedo",
       "count": 1,
       "arc": "All",
-      "torpedo": true
+      "torpedo": true,
+      "family": "torpedo",
+      "arcCentre": 0,
+      "arcHalfWidth": 180,
+      "maxRange": 7,
+      "attack": 20
      }
     ],
     "alive": true,
@@ -353,12 +579,46 @@
     "stationType": "Starbase",
     "stationName": "Starbase 1",
     "disengaging": false,
+    "facing": 0,
+    "elevation": 0,
+    "wego": {
+     "facings": [
+      174,
+      124,
+      140,
+      140,
+      101,
+      101
+     ],
+     "maxFacings": [
+      174,
+      124,
+      140,
+      140,
+      101,
+      101
+     ],
+     "subsystems": {
+      "weapons": 100,
+      "engines": 100,
+      "shields": 100,
+      "sensors": 100,
+      "warpCore": 100
+     },
+     "crew": "Veteran",
+     "crewLevel": 2,
+     "elevation": 0,
+     "coreBreached": false,
+     "canWarp": false
+    },
     "maneuver": "Hold",
     "target": 0,
     "ordered": false,
+    "subsystem": "none",
     "next": {
      "maneuver": "Hold",
      "target": 0,
+     "subsystem": "none",
      "source": "standing"
     }
    },

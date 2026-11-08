@@ -1849,6 +1849,34 @@ void testWegoSoak() {
               << " aimed subsystem kills, " << breaches << " core breaches; replay and reload identical." << std::endl;
 }
 
+// Rules 4: the facing split keeps every facing within its own capacity, whatever the current shields (a damaged ship's
+// remainder must not sit on fore beyond its share), and a campaign-built encounter under the flag runs rules 4.
+void testWegoFacingSplit() {
+    for (int max : {0, 7, 95, 330}) for (int cur : {0, 1, max / 2, max - 3, max}) {
+        if (cur < 0 || cur > max) continue;
+        Ship s;
+        s.maxShields = max;
+        s.shields = cur;
+        splitShieldFacings(s);
+        int sum = 0, maxSum = 0;
+        for (int f = 0; f < ShieldFacingCount; ++f) {
+            const auto fi = static_cast<std::size_t>(f);
+            CHECK(s.shieldFacing[fi] >= 0 && s.shieldFacing[fi] <= s.maxShieldFacing[fi]);
+            sum += s.shieldFacing[fi];
+            maxSum += s.maxShieldFacing[fi];
+        }
+        CHECK(sum == cur && maxSum == max);
+    }
+    GameState state = flightCampaign();
+    state.rules.wegoCombat = true;
+    std::vector<int> ids;
+    const int x = state.fleets.back().x, y = state.fleets.back().y;
+    for (const auto& f : state.fleets) if (f.x == x && f.y == y) ids.push_back(f.id);
+    CHECK(constructEncounter(state, ids, 555).rulesVersion == WegoTacticalRules);
+    state.rules.wegoCombat = false;
+    CHECK(constructEncounter(state, ids, 555).rulesVersion == FlightTacticalRules);
+}
+
 void testWegoCampaignEncounterAndSaves() {
     GameState state = flightCampaign();
     std::vector<int> ids;
@@ -1937,6 +1965,7 @@ int main() {
         {"rules 4: subsystem targeting and effects", testSubsystemTargeting},
         {"rules 4: range bands and crew ratings", testRangeBandsAndCrew},
         {"rules 4: plan-phase fire forecast", testWegoForecast},
+        {"rules 4: facing split stays within capacity; the campaign flag selects rules 4", testWegoFacingSplit},
         {"rules 4: campaign encounter, determinism and saves", testWegoCampaignEncounterAndSaves},
         {"rules 4: combat soak (120 battles, up to 24v24)", testWegoSoak},
     };

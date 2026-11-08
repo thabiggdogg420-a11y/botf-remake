@@ -196,14 +196,19 @@ func _orders() -> Control:
 	var o := vm.orders()
 	var f := Lcars.frame("Orders this turn", "", "secondary", "orders")
 	f.name = "OrdersCard"
-	f.custom_minimum_size.x = 380
+	f.custom_minimum_size.x = 480 # the 22 px title, cap, icon, badge and toggle crowded the 380 px header (the rule shrank to a dash)
 	f.size_flags_vertical = Control.SIZE_SHRINK_END
 	var head: HBoxContainer = f.get_meta("head")
+	head.add_theme_constant_override("separation", 14)
+	for c in head.get_children():
+		if c is ColorRect:
+			c.custom_minimum_size.x = 48 # the header rule keeps a visible length between the title and the badge
 	head.add_child(Lcars.badge(str(o["count"]), "secondary" if int(o["count"]) > 0 else "dim"))
 	var toggle := Lcars.icon_button("▾" if orders_open else "▴", "Show or hide the drafted orders", "", func():
 		orders_open = not orders_open
 		refresh())
 	toggle.name = "OrdersToggle"
+	toggle.custom_minimum_size = Vector2(34, 34)
 	head.add_child(toggle)
 	var body := Lcars.body(f)
 	if not orders_open:
@@ -215,7 +220,7 @@ func _orders() -> Control:
 		var r := Lcars.hbox(6)
 		var l := Lcars.label(str(p["summary"]), "", 13, Lcars.TEXT2)
 		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		l.custom_minimum_size.x = 300
+		l.custom_minimum_size.x = 380
 		l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		r.add_child(l)
 		var pid := int(p["id"])
