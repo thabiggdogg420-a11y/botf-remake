@@ -75,7 +75,6 @@ var _seed := 0
 var systems3d := {}
 ## cell -> system id
 var _cell_system := {}
-var _pending_tex: Array = []      # [ShaderMaterial, {albedo, clouds, night}]
 var _time := 0.0
 var _view_proj := Projection.IDENTITY
 var _vp_size := Vector2(1920, 1080)
@@ -597,12 +596,11 @@ func _build_planets(sid: int) -> void:
 		m.set_shader_parameter("star_pos", e["pos"])
 		m.set_shader_parameter("star_color", (st["color"] as Color).lerp(Color.WHITE, 0.55))
 		m.set_shader_parameter("colonised", 1.0 if colonised and int(p.get("capacity", 0)) > 0 else 0.0)
-		var sets := PlanetTextures.variants(cls)
-		if not sets.is_empty():
-			var set_: Dictionary = sets[(sid * 7 + i) % sets.size()]
-			_pending_tex.append([m, set_])
 		mi.material_override = m
 		pivot.add_child(mi)
+		# Photoreal set (art wave 2) when the class has one, streamed in over the procedural globe above.
+		PlanetBody.attach(mi, cls, {"star_pos": e["pos"], "variant": sid * 7 + i,
+			"sun_color": (st["color"] as Color).lerp(Color.WHITE, 0.55), "inhabited": colonised and int(p.get("capacity", 0)) > 0})
 		if cls == "GasGiant" and GalaxyLayout.hash01(x, y, _seed, 60 + i) < 0.6:
 			mi.add_child(_ring(r))
 
@@ -700,31 +698,10 @@ func _update_lod() -> void:
 			if show:
 				for pivot in pr.get_children():
 					pivot.rotation.y = float(pivot.get_meta("phase")) + t * float(pivot.get_meta("speed"))
-	if not _pending_tex.is_empty():
-		var left: Array = []
-		for job in _pending_tex:
-			var m: ShaderMaterial = job[0]
-			var set_: Dictionary = job[1]
-			var alb := PlanetTextures.get_texture(set_["albedo"])
-			var done := alb != null
-			if alb:
-				m.set_shader_parameter("albedo_tex", alb)
-				m.set_shader_parameter("has_albedo", true)
-			for layer in ["clouds", "night"]:
-				if set_.has(layer):
-					var lt := PlanetTextures.get_texture(set_[layer])
-					if lt:
-						m.set_shader_parameter(layer + "_tex", lt)
-						m.set_shader_parameter("has_" + layer, true)
-					else:
-						done = false
-			if not done:
-				left.append(job)
-		_pending_tex = left
 
 ## True while planet textures are still streaming in (captures wait for this).
 func textures_pending() -> bool:
-	return not _pending_tex.is_empty()
+	return PlanetBody.pending > 0
 
 func _set_field(mi: MeshInstance3D, img: Image, g: Vector2i) -> void:
 	var tex := ImageTexture.create_from_image(img)

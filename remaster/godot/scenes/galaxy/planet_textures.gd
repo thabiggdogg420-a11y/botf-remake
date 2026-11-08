@@ -2,7 +2,7 @@ class_name PlanetTextures
 extends RefCounted
 ## Planet texture sets from lane L7 for the system close-up, loaded lazily (on a worker thread where threads exist) and cached.
 ## Layout of a set (L7): planets/<class>/<tier>/v<n>_albedo.(png|webp), v<n>_clouds.png, v<n>_night.png, tier
-## "desktop" (4096x2048) or "web" (1024x512). The galaxy map draws a planet at most about 160 px wide, so it reads
+## "desktop" (4096x2048, also _rough and _normal) or "web" (1024x512, relief baked in). The galaxy map draws a planet at most about 160 px wide, so it reads
 ## the web tier first in both renderers and caps any image at MAX_WIDTH on the worker (a 4096 upload on the main
 ## thread was a 0.5 s hitch).
 ##
@@ -33,14 +33,25 @@ const WEB_MAX_WIDTH := 1024
 static func reset() -> void:
 	_sets.clear()
 
-## The variants available for a planet class (each a dict of file paths), [] when L7 has none.
-static func variants(cls: String) -> Array:
-	if _sets.has(cls):
-		return _sets[cls]
+## True when the active renderer is Compatibility (WebGL2 or the desktop gl_compatibility path): the web tier only.
+static func compat() -> bool:
+	return OS.has_feature("web") or RenderingServer.get_current_rendering_method() == "gl_compatibility"
+
+## The variants available for a planet class (each a dict of file paths), [] when L7 has none. `hi` asks for the
+## desktop tier (4096 source, capped at MAX_WIDTH on load, with normal map) where the renderer allows it: for a planet that
+## fills a good part of the screen (battle backdrop, big system orb). Compatibility always gets the web tier, which
+## has the relief baked into the albedo.
+static func variants(cls: String, hi: bool = false) -> Array:
+	hi = hi and not compat()
+	var key := cls + ("#hi" if hi else "")
+	if _sets.has(key):
+		return _sets[key]
 	var out: Array = []
 	if disabled:
 		return out
-	var tiers := ["web"] if OS.has_feature("web") else ["web", "desktop"]
+	var tiers := ["desktop", "web"] if hi else ["web", "desktop"]
+	if compat():
+		tiers = ["web"]
 	for root in [ROOT]:
 		for d in CLASS_DIRS.get(cls, [cls.to_lower()]):
 			for tr in tiers:
@@ -57,7 +68,7 @@ static func variants(cls: String) -> Array:
 					if alb == "":
 						continue
 					var v := {"albedo": alb}
-					for layer in ["clouds", "night"]:
+					for layer in ["clouds", "night", "rough", "normal"]:
 						var lp := dir.path_join("v%d_%s.png" % [n, layer])
 						if AppLoader.exists(lp):
 							v[layer] = lp
@@ -68,7 +79,7 @@ static func variants(cls: String) -> Array:
 				break
 		if not out.is_empty():
 			break
-	_sets[cls] = out
+	_sets[key] = out
 	return out
 
 ## The texture at `path` if loaded; otherwise starts a background load and returns null (call again next frame). Without
