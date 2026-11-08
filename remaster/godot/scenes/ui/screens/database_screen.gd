@@ -58,7 +58,7 @@ func refresh() -> void:
 	vm.init_faction()
 	var row := Lcars.hbox(14)
 	Lcars.screen_margin(self).add_child(row)
-	var f := Lcars.frame("Database", "reference catalogue", "primary")
+	var f := Lcars.frame("Database", "reference catalogue", "primary", "database")
 	f.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	f.size_flags_stretch_ratio = 1.1
 	row.add_child(f)
@@ -145,7 +145,7 @@ func _fill_list() -> void:
 func _show_detail(r: Dictionary) -> void:
 	for c in _detail_host.get_children():
 		c.queue_free()
-	var f := Lcars.frame(str(r.get("title", "Entry")), str(r.get("sub", "")), "secondary")
+	var f := Lcars.frame(str(r.get("title", "Entry")), str(r.get("sub", "")), "secondary", {"ships": "ship", "technologies": "research", "structures": "build", "minors": "population"}.get(tab, "empire"))
 	f.name = "Detail"
 	f.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_detail_host.add_child(f)
@@ -162,18 +162,29 @@ func _show_detail(r: Dictionary) -> void:
 		_:
 			var col := Lcars.vbox(10)
 			if RACE_TO_EMPIRE.has(id):
-				col.add_child(Lcars.emblem(RACE_TO_EMPIRE[id], 90))
+				col.add_child(PortraitSlot.make(RACE_TO_EMPIRE[id], Vector2(420, 236), "", str(r.get("title", ""))))
 			col.add_child(Lcars.para("One of the five major powers of the quadrant." if id <= 4 else "A minor race that can be befriended, courted for membership, or absorbed into an empire."))
 			var n := vm.ships_of_race(id)
 			col.add_child(Lcars.label("%d ship designs in the reference catalogue." % n, "Muted"))
 			b.add_child(col)
 
+const SPEC_ICONS := {"Hull": "hull", "Shields": "shield", "Attack": "attack", "Speed": "speed", "Range": "range", "Sensors": "eye", "Troops": "population",
+	"Industry": "industry", "Upkeep": "credits", "Torpedo share": "combat", "Energy": "energy", "Population": "population", "Morale": "morale",
+	"Temperament": "diplomacy", "Join bonus": "good", "Tech level": "research", "Signature ship": "ship"}
+const SPEC_TIPS := {"Hull": "Damage the hull absorbs before the ship is lost.", "Shields": "Absorb damage first and recharge between rounds.", "Attack": "Combined weapon strength per round.",
+	"Speed": "Sectors per turn on the galaxy map.", "Range": "Sectors from a powered shipyard the ship can operate.", "Industry": "Industry to build it.", "Upkeep": "Credits per turn while in service.",
+	"Energy": "Power the structure draws.", "Population": "Workers the structure needs.", "Morale": "Morale it adds to the colony."}
+
+## Key figures as tiles with icons (docs/UI-DESIGN-SYSTEM.md §5).
 func _spec(pairs: Array) -> GridContainer:
-	var g := Lcars.grid(5)
-	g.add_theme_constant_override("h_separation", 30)
-	g.add_theme_constant_override("v_separation", 10)
+	var g := Lcars.grid(4)
+	g.add_theme_constant_override("h_separation", 8)
+	g.add_theme_constant_override("v_separation", 8)
 	for p in pairs:
-		g.add_child(Lcars.stat(p[0], p[1]))
+		var t := Lcars.kpi(SPEC_ICONS.get(p[0], "info"), p[0], p[1], "", "", {"title": p[0], "value": Lcars.num(p[1]), "effect": SPEC_TIPS.get(p[0], "")})
+		t.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		t.custom_minimum_size.x = 0
+		g.add_child(t)
 	return g
 
 func _ship_entry(id: int) -> Control:
@@ -192,7 +203,7 @@ func _ship_entry(id: int) -> Control:
 	var silhouette := ShipSilhouette.new()
 	silhouette.seed_id = id
 	silhouette.color = Lcars.owner_color(RACE_TO_EMPIRE.get(int(s["race"]), 0))
-	silhouette.custom_minimum_size = Vector2(0, 150)
+	silhouette.custom_minimum_size = Vector2(0, 190)
 	col.add_child(silhouette)
 	var tags := HFlowContainer.new()
 	if r is Dictionary:
@@ -251,7 +262,8 @@ func _minor_entry(id: int) -> Control:
 	var r := vm.entry("minorRaces", id, "raceId")
 	var col := Lcars.vbox(10)
 	col.name = "MinorEntry"
-	col.add_child(Lcars.label("◇ " + str(r["raceName"]).to_upper(), "Heading", 30))
+	col.add_child(PortraitSlot.make(0, Vector2(420, 236), PortraitSlot.minor_key(str(r["raceName"])), str(r["raceName"])))
+	col.add_child(Lcars.label(str(r["raceName"]).to_upper(), "Heading", 30))
 	col.add_child(Lcars.caption("Homeworld %s · %s" % [r["homeworld"], r["temperament"]]))
 	col.add_child(Lcars.para(str(r["description"]), Lcars.TEXT2, 15))
 	var sp := [["Temperament", r["temperament"]], ["Join bonus", r["bonus"]], ["Tech level", "%d (+ era)" % int(r["techLevel"])], ["Population", r["population"]]]
