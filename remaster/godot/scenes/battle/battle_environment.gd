@@ -19,11 +19,11 @@ static func build(parent: Node3D, arena_size: Vector2) -> Dictionary:
 	env.background_mode = Environment.BG_SKY
 	env.sky = sky
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	env.ambient_light_color = Color(0.15, 0.16, 0.2)
+	env.ambient_light_color = Color(0.26, 0.27, 0.33) # R3.5: dark-hulled ships (Klingon) read at tactical distance
 	env.ambient_light_energy = 1.0
 	env.reflected_light_source = Environment.REFLECTION_SOURCE_SKY
 	env.tonemap_mode = Environment.TONE_MAPPER_ACES
-	env.tonemap_exposure = 1.0
+	env.tonemap_exposure = 1.0 # fill light carries the shadow side; 1.15 blew out white saucers
 	env.tonemap_white = 8.0
 	env.glow_enabled = true
 	env.glow_normalized = false
@@ -59,7 +59,7 @@ static func build(parent: Node3D, arena_size: Vector2) -> Dictionary:
 	var sun := DirectionalLight3D.new()
 	sun.name = "Sun"
 	sun.light_color = Color(1.0, 0.93, 0.82)
-	sun.light_energy = 2.6
+	sun.light_energy = 3.0
 	sun.shadow_enabled = DisplaySettings.shadows_enabled # Settings > Shadow quality: Off
 	sun.directional_shadow_max_distance = 320.0
 	# R3.5: the default biases left shadow acne as black speckle over the hero hulls (title close-ups).
@@ -72,10 +72,18 @@ static func build(parent: Node3D, arena_size: Vector2) -> Dictionary:
 	sun.rotation_degrees = Vector3(-24.0, -128.0, 0.0)
 	out.sun = sun
 
+	# Fill from the side opposite the key light so the shadow side of a hull (and dark Klingon hulls) still reads.
+	var fill := DirectionalLight3D.new()
+	fill.name = "Fill"
+	fill.light_color = Color(0.75, 0.8, 1.0)
+	fill.light_energy = 0.9
+	fill.sky_mode = DirectionalLight3D.SKY_MODE_LIGHT_ONLY
+	fill.rotation_degrees = Vector3(-35.0, 52.0, 0.0)
+	parent.add_child(fill)
 	var rim := DirectionalLight3D.new()
 	rim.name = "NebulaRim"
 	rim.light_color = Color(0.6, 0.66, 0.9)
-	rim.light_energy = 0.35
+	rim.light_energy = 0.7
 	rim.sky_mode = DirectionalLight3D.SKY_MODE_LIGHT_ONLY
 	parent.add_child(rim)
 	rim.rotation_degrees = Vector3(35.0, 40.0, 0.0)

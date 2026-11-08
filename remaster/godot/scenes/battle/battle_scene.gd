@@ -22,7 +22,7 @@ const CELL := 28.0
 ## Presentation spread (Simon, 8 Nov 2026: "the battle should be a little more spread out"): grid positions and heights
 ## are drawn this many times further apart than a cell while hulls keep their true-scale length against CELL, so ships
 ## sit several lengths apart and the engagement range reads. Rules positions are untouched.
-const SPREAD := 1.3
+const SPREAD := 1.2
 const SPACING_EASE := 2.5       ## 1/s: how fast the presentation spacing offsets relax toward a smaller target.
 const SPACING_PUSH_EASE := 5.0  ## 1/s: how fast they grow when hulls close in (12 heaved hulls up and down; R3.5).
 ## Each round's timeline starts a ship at its home height, and a wing joined at the round start puts it on station;
@@ -100,14 +100,17 @@ func play_round(p_encounter: Dictionary, p_round_index: int) -> void:
 	var cfg := BattleTimeline.Config.new()
 	cfg.round_seconds = round_seconds
 	cfg.player_empire = _player_empire()
+	var _pt0 := Time.get_ticks_usec()
 	var info := BattleTimeline.round_ship_info(encounter, round_index)
 	_sync_ships(info)
+	var _pt1 := Time.get_ticks_usec()
 	# Flight style and wings follow the length of the class actually shown (the local manifest may know it).
 	for i in info:
 		var node: BattleShip = _ships.get(int(i.fleetId))
 		if node != null:
 			i["lengthMeters"] = node.length_meters
 	timeline = BattleTimeline.build(rounds[round_index].get("events", []), info, cfg)
+	var _pt2 := Time.get_ticks_usec()
 	_carry.clear()
 	for track in timeline.ships:
 		var was: BattleTimeline.Pose = _shown.get(track.fleet_id)
@@ -124,6 +127,8 @@ func play_round(p_encounter: Dictionary, p_round_index: int) -> void:
 	for s in _ships.values():
 		s.clear_effects()
 	fx.reset(timeline)
+	if OS.get_environment("ROUND_TIMING") != "":
+		print("ROUND_TIMING play sync=%d build=%d rest=%d ms ships=%d" % [(_pt1 - _pt0) / 1000, (_pt2 - _pt1) / 1000, (Time.get_ticks_usec() - _pt2) / 1000, _ships.size()])
 	director.reset()
 	time = 0.0
 	_sound_i = 0
@@ -248,16 +253,16 @@ func _update_spacing(t: float, delta: float, poses: Dictionary) -> void:
 		var ship: BattleShip = _ships.get(track.fleet_id)
 		var p: BattleTimeline.Pose = poses.get(track.fleet_id)
 		var active := ship != null and p != null and track.visibility_at(t) > 0.05
-		# Bounding spheres of flat hulls may overlap a little (ABotfCombatScene: 0.75 of the radius).
+		# R3.5 (coordinator, 8 Nov: 24v24 hulls overlapped): full bounding spheres plus a 10% gap, no overlap.
 		bodies.append({"x": p.x if active else 0.0, "y": p.y if active else 0.0, "alt": p.altitude if active else 0.0,
-			"radius": 0.75 * ship.half_extents.length() / (CELL * SPREAD) if active else 0.0, "active": active})
+			"radius": 1.1 * ship.half_extents.length() / (CELL * SPREAD) if active else 0.0, "active": active})
 		tracks.append(track)
 	# The relaxation is the dearest per-frame job at 24 v 24, and the offsets only drift slowly: solve it at 20 Hz and
 	# ease every frame (a zero-length step, the first frame of a round or a seek, always solves).
 	_spacing_clock += delta
 	if delta <= 0.0 or _spacing_clock >= SPACING_SOLVE_INTERVAL or _spacing_cache.size() != bodies.size():
 		_spacing_clock = 0.0
-		_spacing_cache = BattleTimeline.spacing_offsets(bodies)
+		_spacing_cache = BattleTimeline.spacing_offsets(bodies, 10, 2.5, 6.0)
 	var offsets := _spacing_cache
 	var ease := 1.0 if delta <= 0.0 else 1.0 - exp(-SPACING_EASE * delta)
 	# Ships closing on each other mid-maneuver need the push at once (a slow ease let an Oberth pass through a Galaxy
@@ -421,6 +426,7 @@ func _update_camera(t: float, delta: float, centroid: Vector3, spread: float) ->
 			continue
 		var info: Dictionary = by_id.get(fid, {})
 		var hs: Array = state.get(fid, [float(info.get("hull", 1)), float(info.get("shields", 0))])
+		ship.set_damage(1.0 - hs[0] / maxf(1.0, float(info.get("maxHull", hs[0]))))
 		var bow := ship.global_basis.x
 		bodies.append({"id": fid, "center": ship.global_position, "radius": camera.hull_radius(ship), "owner": ship.owner_id,
 			"mine": info.get("mine", ship.owner_id == me), "heading": rad_to_deg(atan2(bow.z, bow.x)),
@@ -440,7 +446,8 @@ func _update_camera(t: float, delta: float, centroid: Vector3, spread: float) ->
 	var subject: BattleShip = _ships.get(director.subject)
 	var other: BattleShip = _ships.get(director.other)
 	# Cutaways are occasional (coordinator, 8 Nov): about one round in four, or a kill; otherwise the tactical view.
-	var cutaway_round := force_cutaway or round_index % 4 == 2 or director.kind == BattleTimeline.Job.EXPLOSION
+	# Playback is group shots; the whole battle is shown once, as the establishing shot of round 1 (first ~2 s).
+	var cutaway_round := force_cutaway or not (round_index == 0 and t < 2.0)
 	if subject != null and cutaway_round and (_playing or not _finished_sent):
 		shot = {"key": "%d_%d_%d_%.2f" % [round_index, director.subject, director.other, director.since],
 			"kind": director.kind, "subject": subject.global_position, "subject_size": subject.length,

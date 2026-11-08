@@ -26,6 +26,12 @@ func load_encounter(e: Dictionary) -> void:
 		if key != _encounter_key:
 			_encounter_key = key
 			_show_deployment(e)
+		# Compile the weapon effects while the fleets deploy, not on the first round's first frame (R3.5: 370 ms).
+		if not _prewarmed:
+			_prewarmed = true
+			fx.prewarm.call_deferred()
+			BattleShip.flame_flipbook.call_deferred() # damage-fire textures are generated once, here
+			BattleShip.puff_texture.call_deferred()
 		return
 	_play_index(e, rounds.size() - 1, key)
 
@@ -79,6 +85,15 @@ func _show_deployment(e: Dictionary) -> void:
 				facing = rad_to_deg(atan2(d.y, d.x))
 		ships.append({"id": s.get("id", 0), "owner": s.get("owner", 0), "hullBefore": s.get("hull", 1),
 			"shieldBefore": s.get("shields", 0), "from": pos, "to": pos, "yaw": facing})
+	# Cloaked contacts carry no position, but their hulls are built now too (cloaked, invisible), so round 1 does not
+	# instance half a 24v24 fleet on its first frame (R3.5: 186 ms of round 1's 330-400 ms stall).
+	for s in e.get("ships", []):
+		if s.get("alive", true) and (s.get("hidden", false) or not s.get("position") is Dictionary):
+			var side: bool = s.get("mine", false)
+			var c: Vector2 = sum[side] / maxf(1, n[side])
+			var at := {"x": c.x, "y": c.y}
+			ships.append({"id": s.get("id", 0), "owner": s.get("owner", 0), "hullBefore": s.get("hull", 1),
+				"shieldBefore": s.get("shields", 0), "from": at, "to": at, "yaw": 0.0, "startsCloaked": true})
 	if ships.is_empty():
 		return
 	var staged := e.duplicate()

@@ -234,8 +234,50 @@ func _prepare(s: String) -> void:
 			var view: Node = app._current.host.view_node
 			var cam: BattleCamera = view.camera
 			var t0: float = maxf(0.0, view.time - 1.25)
+			if OS.get_environment("SHOT_KILL") != "":
+				# Kill strip: resolve rounds until one destroys a ship, then frame the explosion.
+				var kt := -1.0
+				for r in 12:
+					if view.timeline != null:
+						for j in view.timeline.jobs:
+							if j.kind == BattleTimeline.Job.EXPLOSION:
+								kt = j.start
+								break
+					if kt >= 0.0 or app.encounter.get("finished", false):
+						break
+					app._current._round()
+					await _wait(6)
+				print("KILL at ", kt)
+				if kt >= 0.0:
+					t0 = maxf(0.0, kt - 0.5)
+			if OS.get_environment("SHOT_DAMAGE") != "":
+				# Damage strip: resolve rounds until a ship is below half hull, then follow it (fires and venting).
+				var worst := 0
+				for r in 10:
+					var lo := 0.5
+					worst = 0
+					for sd in app.encounter.get("ships", []):
+						var f := float(sd.get("hull", 1)) / maxf(1.0, float(sd.get("maxHull", 1)))
+						if sd.get("alive", false) and not sd.get("station", false) and f < lo:
+							lo = f
+							worst = int(sd["id"])
+					if worst != 0 or app.encounter.get("finished", false):
+						break
+					app._current._round()
+					await _wait(6)
+				print("DAMAGE ship ", worst)
+				if worst != 0:
+					# One more round so the replay starts from the damaged hull (fires show from hullBefore).
+					if not app.encounter.get("finished", false):
+						app._current._round()
+						await _wait(6)
+					cam = view.camera
+					cam.follow_fleet(worst)
+					t0 = maxf(0.0, view.time - 1.25)
 			var shot := _live_shot(view)
 			view.force_cutaway = s == "battle-strip-close"
+			if OS.get_environment("SHOT_TACTICAL") != "":
+				cam.set_mode(BattleCamera.Mode.OVERVIEW) # the plan view (C / CAMERA)
 			view.seek(t0)
 			# -close: the director's own two-ship framing of the busiest beam exchange (no free camera).
 			view.playback_speed = 1.0
@@ -310,6 +352,8 @@ func _volley_drill(campaign := false) -> void:
 		var drill := {"station": true}
 		if OS.get_environment("SHOT_DRILL_SHIPS") != "":
 			drill["ships"] = int(OS.get_environment("SHOT_DRILL_SHIPS"))
+		if OS.get_environment("SHOT_FOE_STATION") != "":
+			drill["foeStation"] = true
 		app.start_drill("newBattleDrill", "Starbase drill", drill)
 		app.end_turn()
 	await _wait(4)
