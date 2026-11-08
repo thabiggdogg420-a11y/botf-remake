@@ -72,9 +72,7 @@ func _on_round_finished(_i: int) -> void:
 
 
 static func _load_fixture(path: String) -> Dictionary:
-	if not FileAccess.file_exists(path):
-		return {}
-	var data = JSON.parse_string(FileAccess.get_file_as_string(path))
+	var data = BattleAssets.read_json(path)
 	# Accept a raw encounter or a recorded botf_call reply {ok, result}.
 	if data is Dictionary and data.has("result") and data.result is Dictionary:
 		data = data.result
@@ -95,7 +93,7 @@ static func _user_args() -> Dictionary:
 
 func _capture(args: Dictionary) -> void:
 	var dir: String = args.capture
-	DirAccess.make_dir_recursive_absolute(dir)
+	DirAccess.make_dir_recursive_absolute(dir) # capture output (a dev tool, never in the web build)
 	if args.has("size"):
 		var wh: PackedStringArray = str(args.size).split("x")
 		get_window().size = Vector2i(int(wh[0]), int(wh[1]))

@@ -645,7 +645,7 @@ func _clear_of_hulls(eye: Vector3, look: Vector3) -> Vector3:
 
 ## Screen fit of a bounding sphere seen from eye toward look: [inside (with margin), height fraction of the frame].
 func _sphere_fit(eye: Vector3, look: Vector3, c: Vector3, r: float, aspect: float, margin := 0.9) -> Array:
-	var b := Basis.looking_at(look - eye, Vector3.UP)
+	var b := BattleCamera.safe_look(look - eye)
 	var v := b.inverse() * (c - eye)
 	var z := -v.z
 	if z <= r * 1.05:
@@ -724,7 +724,7 @@ func _fit_distance(fit: Array, aspect: float, side_sign: float) -> Array:
 	dist = maxf(dist * 2.0, 20.0)
 	for it in 10:
 		var eye := mid + dir * dist
-		var bs := Basis.looking_at(mid - eye, Vector3.UP)
+		var bs := BattleCamera.safe_look(mid - eye)
 		var inv := bs.inverse()
 		var x0 := INF
 		var x1 := -INF
@@ -811,7 +811,7 @@ func _cinematic_shot(_delta: float, shot: Dictionary, time: float) -> Array:
 
 
 func _sphere_outside(eye: Vector3, look: Vector3, c: Vector3, r: float, aspect: float) -> bool:
-	var bs := Basis.looking_at(look - eye, Vector3.UP)
+	var bs := BattleCamera.safe_look(look - eye)
 	var v := bs.inverse() * (c - eye)
 	var z := -v.z
 	if z < -r:
@@ -832,6 +832,7 @@ func _big_enough(eye: Vector3, look: Vector3, a: Vector3, ar: float, b: Vector3,
 ## of frame height, the group fills the frame (<= ~15% empty along its long axis), no hull is over 40%, and no other
 ## hull above 10% of frame height is cut by the edge. Falls back to smaller groups; [] when nothing qualifies.
 func _group_shot(a: Vector3, b: Vector3, aspect: float) -> Array:
+	group_stats["shots"] = int(group_stats.get("shots", 0)) + 1
 	var near := []
 	for o in bodies:
 		if float(o.radius) > 0.0:
@@ -859,15 +860,26 @@ func _group_shot(a: Vector3, b: Vector3, aspect: float) -> Array:
 		var group: Array = key + extra.slice(0, n_extra)
 		if group.is_empty():
 			continue
-		for elev in [25.0, 40.0, 12.0, 55.0]:
+		for elev in [25.0, 40.0, 12.0, 55.0, 70.0]:
 			for az in [90.0, -90.0, 135.0, -135.0, 45.0, -45.0, 180.0, 0.0]:
 				var e := deg_to_rad(elev)
 				var flat_dir: Vector3 = fwd.rotated(Vector3.UP, deg_to_rad(az))
 				var dir: Vector3 = (flat_dir * cos(e) + Vector3.UP * sin(e)).normalized()
-				var fit: Array = _fit_dir(group, dir, aspect, 0.9)
+				# M1 director profile (24v24: 825 of 1,365 rejections): in a crowd a neighbour crosses the frame edge.
+				# Take that neighbour into the group and refit, up to 8 hulls, instead of dropping the angle.
+				var g: Array = group.duplicate()
+				var fit: Array = _fit_dir(g, dir, aspect, 0.9)
 				var eye: Vector3 = fit[0] + dir * float(fit[1])
-				if _group_ok(eye, fit[0], group, aspect):
+				var ok := _group_ok(eye, fit[0], g, aspect)
+				while not ok and _offender != null and g.size() < 8 and not g.has(_offender):
+					g.append(_offender)
+					fit = _fit_dir(g, dir, aspect, 0.9)
+					eye = fit[0] + dir * float(fit[1])
+					ok = _group_ok(eye, fit[0], g, aspect)
+				if ok:
+					group_stats["accepted"] = int(group_stats.get("accepted", 0)) + 1
 					return [eye, fit[0]]
+	group_stats["no shot"] = int(group_stats.get("no shot", 0)) + 1
 	return []
 
 
@@ -882,9 +894,12 @@ func _fit_dir(group: Array, dir: Vector3, aspect: float, fill_to: float) -> Arra
 	for o in group:
 		dist = maxf(dist, mid.distance_to(o.center) + float(o.radius))
 	dist = maxf(dist * 2.5, 6.0)
+	var rmax := 0.0
+	for o in group:
+		rmax = maxf(rmax, float(o.radius))
 	for it in 12:
 		var eye := mid + dir * dist
-		var bs := Basis.looking_at(mid - eye, Vector3.UP)
+		var bs := BattleCamera.safe_look(mid - eye)
 		var inv := bs.inverse()
 		var x0 := INF
 		var x1 := -INF
@@ -899,31 +914,58 @@ func _fit_dir(group: Array, dir: Vector3, aspect: float, fill_to: float) -> Arra
 			y0 = minf(y0, v.y / (z * th) - ry)
 			y1 = maxf(y1, v.y / (z * th) + ry)
 		mid += bs.x * (x0 + x1) * 0.5 * dist * th * aspect * 0.8 + bs.y * (y0 + y1) * 0.5 * dist * th * 0.8
-		dist *= clampf(maxf((x1 - x0) * 0.5, (y1 - y0) * 0.5) / fill_to, 0.6, 1.6)
+		var k := maxf((x1 - x0) * 0.5, (y1 - y0) * 0.5) / fill_to
+		dist *= clampf(k, 0.6, 1.6) if is_finite(k) else 1.0
+		# M1 director profile: "group hull over 40%" rejected 425 of 617 candidates (6v6) because a tight pair fitted
+		# to 90% of the frame blows each hull past the 40% cap. Never come closer than the biggest hull at ~34%.
+		dist = maxf(dist, rmax / (0.34 * th))
 	return [mid, dist]
 
 
+## Basis.looking_at that never errors: a zero or non-finite direction keeps a level forward view, and a direction
+## parallel to UP picks another up vector (Odo, M0 verify: "The target vector can't be zero" from _group_shot).
+static func safe_look(fwd: Vector3) -> Basis:
+	if not fwd.is_finite() or fwd.length_squared() < 1e-10:
+		return Basis.looking_at(Vector3.FORWARD, Vector3.UP)
+	var up := Vector3.UP if absf(fwd.normalized().dot(Vector3.UP)) < 0.999 else Vector3.BACK
+	return Basis.looking_at(fwd, up)
+
+
+## Why candidates fail (director profiling, M1): reason -> count, plus "accepted" and "shots" (group shots asked for).
+var group_stats := {}
+
+func _reject(reason: String) -> bool:
+	group_stats[reason] = int(group_stats.get(reason, 0)) + 1
+	return false
+
+
+var _offender = null ## The hull that last failed a group shot by crossing the frame edge.
+
 func _group_ok(eye: Vector3, look: Vector3, group: Array, aspect: float) -> bool:
+	_offender = null
 	var sizes := []
 	for o in group:
 		var f: Array = _sphere_fit(eye, look, o.center, float(o.radius), aspect, 0.97)
-		if not f[0] or f[1] > 0.40:
-			return false
+		if not f[0]:
+			return _reject("group hull cut by edge")
+		if f[1] > 0.40:
+			return _reject("group hull over 40%")
 		sizes.append(f[1])
 	sizes.sort()
 	if sizes[sizes.size() / 2] * 2.0 < 0.08: # median hull height (diameter) at least 8% of the frame
-		return false
+		return _reject("median hull under 8%")
 	for o in bodies:
 		if group.has(o) or float(o.radius) <= 0.0:
 			continue
 		var c: Vector3 = o.center
 		if eye.distance_to(c) < float(o.radius) * 1.6:
-			return false
+			return _reject("lens inside another hull")
 		var f2: Array = _sphere_fit(eye, look, c, float(o.radius), aspect, 1.0)
 		if f2[1] > 0.40 and eye.distance_to(c) < eye.distance_to(look):
-			return false
+			return _reject("near hull over 40%")
 		if not f2[0] and f2[1] > 0.10 and not _sphere_outside(eye, look, c, float(o.radius), aspect):
-			return false
+			_offender = o
+			return _reject("other hull cut by edge")
 	return true
 
 

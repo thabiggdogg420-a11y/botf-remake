@@ -6,6 +6,10 @@ render_mode unshaded, blend_add, depth_draw_never, cull_disabled, shadows_disabl
 // xyz = impact direction in the bubble's local space (unit), w = age 0..1 (<0 = inactive).
 uniform vec4 hits[6];
 uniform vec4 hit_colors[6];
+// Tactical rules 4: xyz = the struck facing's axis in local space (fore +x, aft -x, port -z, starboard +z, dorsal +y,
+// ventral -y; zero = no facing), w = that facing's remaining strength 0..1. The whole facing segment lights up with a
+// bright rim at its border, so the player reads which of the six shields took the hit and how much it has left.
+uniform vec4 hit_facing[6];
 uniform float energy = 0.9;
 
 varying vec3 v_local;
@@ -42,6 +46,14 @@ void fragment() {
 		float ring = exp(-pow((d - ring_r) / 0.09, 2.0)) * 0.7;
 		float lattice = hex * exp(-d * d / (0.08 + age * 0.35)) * 0.8;
 		float glow = (flash + ring + lattice) * fade + fres * 0.25 * fade;
+		if (dot(hit_facing[i].xyz, hit_facing[i].xyz) > 0.5) {
+			float c = dot(n, normalize(hit_facing[i].xyz));
+			float sector = smoothstep(0.55, 0.68, c);                    // about 50 degrees round the facing axis
+			float rim = exp(-pow((c - 0.62) / 0.035, 2.0));              // the facing's border
+			float weak = 1.0 - clamp(hit_facing[i].w, 0.0, 1.0);
+			float seg = (sector * (0.18 + 0.55 * hex) + rim * 0.9) * pow(1.0 - age, 1.2) * (0.7 + 0.6 * weak);
+			glow += seg;
+		}
 		col += hit_colors[i].rgb * glow;
 	}
 	// R3.5: a close camera sat inside a flashing shell and the frame went white; fade it near the lens and cap it.

@@ -56,6 +56,7 @@ class Config:
 	var capital_height_spread := 0.45
 	var small_height_spread := 1.5
 	var side_height_offset := 0.3    ## The first side holds a little above the plane, the other below.
+	var deck_layer_cells := 1.4      ## Tactical rules 4: height of one deck layer (Ship.elevation -1..1), in cells.
 	var capital_climb_cells := 0.0   ## Height change per maneuver around the home height: capital ships hold altitude (R3.5).
 	var small_climb_cells := 0.35   ## Escorts change level a little, nose pitched with the climb.
 	var max_pitch_degrees := 32.0
@@ -638,6 +639,9 @@ static func build(events: Array, info: Array, cfg: Config = null) -> BattleTimel
 		t.length_meters = float(info_by_id[t.fleet_id].get("lengthMeters", 0.0)) if info_by_id.has(t.fleet_id) else 0.0
 		t.small_craft = is_small_ship(t.length_meters, cfg)
 		var home := home_height(t.fleet_id, t.length_meters, t.owner_id == first_owner, cfg)
+		# Rules 4: the core's deck layer decides who fires down on whose dorsal shield, so the ship flies on it.
+		if info_by_id.has(t.fleet_id) and info_by_id[t.fleet_id].get("elevation") != null:
+			home = float(info_by_id[t.fleet_id].elevation) * cfg.deck_layer_cells + (unit_hash(t.fleet_id, 1) - 0.5) * 0.3
 		var climb := cfg.small_climb_cells if t.small_craft else cfg.capital_climb_cells
 		var h := home
 		t.initial.altitude = h
@@ -697,11 +701,16 @@ static func build(events: Array, info: Array, cfg: Config = null) -> BattleTimel
 		var shield_dmg := int(_num(e, "shieldDamage"))
 		var hull_dmg := int(_num(e, "hullDamage"))
 		var weapon := str(_num(e, "weapon", ""))
+		# Tactical rules 4: the shield facing struck and what the hull hit did to a subsystem.
+		var wego := {"facing": str(_num(e, "shieldFacing", "")), "subsystem": str(_num(e, "subsystem", "none")),
+			"subsystem_damage": int(_num(e, "subsystemDamage")), "subsystem_destroyed": bool(_num(e, "subsystemDestroyed", false)),
+			"breach": int(_num(e, "breachDamage")), "aimed": bool(_num(e, "aimed", false))}
 		if shield_dmg > 0 or (bool(_num(e, "hit", false)) and hull_dmg <= 0):
 			var j := new_job(Job.SHIELD, time, cfg.impact_ticks * tk)
 			j.fleet_id = target; j.target_fleet_id = target; j.source_fleet_id = shooter
 			j.weapon = weapon; j.family = family; j.shield_damage = shield_dmg
 			j.color = weapon_color(weapon, shooter_owner); j.vfx_key = "vfx.impact.shield"
+			j.merge(wego, true)
 			add_job.call(j, ev)
 			add_sound.call(time, "ShieldHit", cue_keys("ShieldHit", 0), CUE_PRIORITY.ShieldHit, ev)
 		if hull_dmg > 0:
@@ -710,6 +719,7 @@ static func build(events: Array, info: Array, cfg: Config = null) -> BattleTimel
 			j.weapon = weapon; j.family = family; j.hull_damage = hull_dmg; j.shield_damage = shield_dmg
 			j.destroys_target = bool(_num(e, "destroyed", false))
 			j.color = weapon_color(weapon, shooter_owner); j.vfx_key = "vfx.impact.hull"
+			j.merge(wego, true)
 			add_job.call(j, ev)
 			add_sound.call(time, "HullHit", cue_keys("HullHit", 0), CUE_PRIORITY.HullHit, ev)
 		impacts.append({"time": time, "target": target, "source": shooter, "shield_damage": shield_dmg,
@@ -920,7 +930,8 @@ static func round_ship_info(encounter: Dictionary, round_index: int) -> Array:
 		out.append({"fleetId": fid, "ownerId": int(rs.get("owner", ship.get("owner", 0))),
 			"shields": int(rs.get("shieldBefore", 0)), "maxShields": int(ship.get("maxShields", 0)),
 			"startsCloaked": cloaked.has(fid) or bool(rs.get("startsCloaked", false)), "x": float(pos.x), "y": float(pos.y),
-			"facing": float(rs.get("yaw", 0)), "lengthMeters": ShipFactory.canon_length_meters(ship)})
+			"facing": float(rs.get("yaw", 0)), "lengthMeters": ShipFactory.canon_length_meters(ship),
+			"elevation": ship.get("elevation") if ship.has("wego") else null})
 	return out
 
 
@@ -928,7 +939,8 @@ static func new_job(kind: int, start: float, duration: float) -> Dictionary:
 	return {"kind": kind, "start": start, "duration": duration, "fleet_id": 0, "target_fleet_id": 0,
 		"source_fleet_id": 0, "mount_index": -1, "weapon": "", "family": 0, "index": 0, "count": 1,
 		"outcome": Outcome.HIT, "color": Color.WHITE, "arc_cells": 0.0, "overshoot_cells": 0.0, "end_fraction": 1.0,
-		"shield_damage": 0, "hull_damage": 0, "destroys_target": false, "event_index": -1, "vfx_key": ""}
+		"shield_damage": 0, "hull_damage": 0, "destroys_target": false, "event_index": -1, "vfx_key": "",
+		"facing": "", "subsystem": "none", "subsystem_damage": 0, "subsystem_destroyed": false, "breach": 0, "aimed": false}
 
 
 ## Array.sort_custom is not stable; this merge sort is.
