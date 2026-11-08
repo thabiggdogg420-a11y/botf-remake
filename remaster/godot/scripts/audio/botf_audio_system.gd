@@ -27,6 +27,9 @@ var recent: Array = []                 ## last played [{cue, key, bus, kind, t}]
 var music_context := ""
 var music_key := ""                    ## key or generated kind currently playing
 var clock_override := -1.0             ## tests drive time with this
+var chatter := BotfBridgeChatter.new()
+var chatter_enabled := true            ## the bridge chatter layer (battle only); settings can switch it off
+var era := ""                          ## "" = settings["audio_era"], else the default era (BotfAudioCues.DEFAULT_ERA)
 
 var _sfx: Array[AudioStreamPlayer] = []
 var _sfx_handle: Dictionary = {}       ## player -> scheduler handle
@@ -122,10 +125,9 @@ static func bus_names() -> PackedStringArray:
 ## Reads the vol_* settings from the client settings file (before the App has loaded it).
 func load_settings_file() -> void:
 	var s := {}
-	if FileAccess.file_exists(SETTINGS_PATH):
-		var data: Variant = JSON.parse_string(FileAccess.get_file_as_string(SETTINGS_PATH))
-		if data is Dictionary:
-			s = data
+	var data: Variant = AppLoader.json(SETTINGS_PATH)   # user:// (IndexedDB on web)
+	if data is Dictionary:
+		s = data
 	attach_settings(s)
 
 
@@ -200,6 +202,8 @@ func _tick(delta: float) -> void:
 	var line := scheduler.next_voice(now(), _voice != null and _voice.playing)
 	if not line.is_empty():
 		_start_voice(line)
+	elif chatter_enabled and music_context in ["battle", "tension"]:
+		chatter_tick()
 	var target := BotfAudioMix.duck_target(scheduler.voice_active())
 	if not is_equal_approx(duck_gain, target):
 		duck_gain = BotfAudioMix.duck_step(duck_gain, target, delta)
@@ -216,6 +220,31 @@ func _tick(delta: float) -> void:
 
 
 # ------------------------------------------------------------------------------------------------------------
+# Era
+# ------------------------------------------------------------------------------------------------------------
+
+## The era whose show sounds are preferred: set_era(), else settings["audio_era"], else the Dominion War default.
+## "auto" and unknown names mean the default.
+func current_era() -> String:
+	var e := BotfAudioCues.era_code(era if era != "" else str(settings.get("audio_era", "")))
+	return e if e != "" else BotfAudioCues.DEFAULT_ERA
+
+
+## Picks the era by code ("tng") or roster era name ("NextGeneration"); persists in the client settings.
+func set_era(name: String) -> void:
+	era = BotfAudioCues.era_code(name)
+	settings["audio_era"] = era if era != "" else "auto"
+
+
+## `keys` with their era twins in front, when the library holds any clip for the current era.
+func era_keys(keys: PackedStringArray) -> PackedStringArray:
+	var e := current_era()
+	if library != null and library.has_era(e):
+		return BotfAudioCues.with_era(keys, e)
+	return keys
+
+
+# ------------------------------------------------------------------------------------------------------------
 # Playing cues
 # ------------------------------------------------------------------------------------------------------------
 
@@ -227,13 +256,13 @@ func cue(cue_name: String, fac := "", other := "", detail := "") -> Dictionary:
 		return out
 	var voice_ok := false
 	if not c.voice.is_empty():
-		var r := library.resolve_files(c.voice)
+		var r := library.resolve_files(era_keys(c.voice))
 		if not r.is_empty():
 			voice_ok = request_voice(r.key, c.priority, cue_name, r)
 			if voice_ok:
 				out["voice"] = r.key
 	if not c.sfx.is_empty():
-		var key := _play_effect(c.sfx, c.bus, c.priority, cue_name, null, true)
+		var key := _play_effect(era_keys(c.sfx), c.bus, c.priority, cue_name, null, true)
 		if key != "":
 			out["sfx"] = key
 	elif c.beep and not voice_ok:
@@ -251,11 +280,15 @@ func play_keys(keys: PackedStringArray, priority := 1, extra_assets: BattleAsset
 	if keys.is_empty() or not enabled:
 		return ""
 	var bus := BotfAudioCues.bus_for_key(keys[0])
+	keys = era_keys(keys)
 	if bus == BotfAudioCues.BUS_VOICE:
 		var r := library.resolve_files(keys, extra_assets)
 		if r.is_empty():
 			return ""
-		return r.key if request_voice(r.key, priority, "", r) else ""
+		var ok := request_voice(r.key, priority, "", r)
+		if ok:
+			chatter.note_voice(now(), _combat_detail(r.key))
+		return r.key if ok else ""
 	if bus == BotfAudioCues.BUS_EFFECTS:
 		_combat_activity(keys[0])
 	return _play_effect(keys, bus, priority, "", extra_assets, tones)
@@ -322,6 +355,7 @@ func request_voice(key: String, priority: int, cue_name := "", resolved: Diction
 
 
 var _pending_voice := {}
+var _has_cache := {}                   ## chatter detail -> has a clip (files do not change while the game runs)
 
 
 func _start_voice(line: Dictionary) -> void:
@@ -403,6 +437,78 @@ func _on_music_finished(p: AudioStreamPlayer) -> void:
 func _combat_activity(key: String) -> void:
 	if music_context == "battle" and (key.begins_with("weapon.") or key.begins_with("sfx.shield") or key.begins_with("sfx.explosion")):
 		set_music("tension")
+	var kind := chatter_kind(key)
+	if kind != "":
+		chatter.note(kind, now())
+
+
+## What a played effect key tells the chatter layer ("" = nothing).
+static func chatter_kind(key: String) -> String:
+	if key.begins_with("weapon."):
+		return "torpedo" if key.to_lower().contains("torpedo") else "beam"
+	if key.begins_with("sfx.shield"):
+		return "shield"
+	if key.begins_with("sfx.explosion.small"):
+		return "hull"
+	if key.begins_with("sfx.explosion"):
+		return "destroyed"
+	return ""
+
+
+## "shields.50" from "vo.combat.shields.50.fed(.tng)"; "" for anything else. Used to keep chatter off a detail a bark just spoke.
+static func _combat_detail(key: String) -> String:
+	if not key.begins_with("vo.combat."):
+		return ""
+	var parts := key.trim_prefix("vo.combat.").split(".")
+	if parts.size() >= 3 and parts[0] == "shields" and parts[1].is_valid_int():
+		return "shields." + parts[1]
+	return parts[0] if parts.size() > 0 else ""
+
+
+## The bridge chatter layer: in a fight, a quiet crew line drawn from what just happened. Returns the key played ("" none).
+func chatter_tick() -> String:
+	if not chatter_enabled or not enabled or library == null:
+		return ""
+	if music_context != "battle" and music_context != "tension":
+		return ""
+	if scheduler.voice_active() or scheduler.queued_voices() > 0:
+		return ""
+	var fac := player_faction()
+	if fac == "":
+		return ""
+	var t := now()
+	var detail := chatter.next_line(t, func(d: String) -> bool:
+		var ck := fac + "/" + d + "/" + current_era()
+		if not _has_cache.has(ck):
+			_has_cache[ck] = library.has_files(era_keys(BotfAudioCues.combat_voice_keys(d, fac)))
+		return _has_cache[ck])
+	if detail == "":
+		return ""
+	var keys := era_keys(BotfAudioCues.combat_voice_keys(detail, fac))
+	var r := library.resolve_files(keys)
+	var played := not r.is_empty() and request_voice(r.key, 2, "chatter", r)
+	chatter.commit(detail, t, played)
+	return r.key if played else ""
+
+
+## An order button was pressed (Maneuver_<key> in the combat screen): the beep, then the crew's acknowledgement
+## (vo.combat.<detail>.<fac>, era twin first, "ack" last). Returns what played, like cue().
+func order_ack(maneuver: String) -> Dictionary:
+	var out := {}
+	if not enabled:
+		return out
+	var fac := player_faction()
+	var keys := era_keys(BotfAudioCues.order_voice_keys(maneuver, fac))
+	var r := library.resolve_files(keys) if not keys.is_empty() else {}
+	if not r.is_empty() and request_voice(r.key, 6, "order_accepted", r):
+		out["voice"] = r.key
+		chatter.note_voice(now())
+	var c := BotfAudioCues.cue_for("order_accepted", fac)
+	var k := _play_effect(c.sfx, c.bus, c.priority, "order_accepted", null, true)
+	if k != "":
+		out["sfx"] = k
+	_last_ui_frame = Engine.get_process_frames()
+	return out
 
 
 # ------------------------------------------------------------------------------------------------------------
@@ -428,6 +534,7 @@ static func cue_now(cue_name: String, fac := "", other := "", detail := "") -> v
 
 static func on_battle_joined() -> void:
 	if instance != null:
+		instance.chatter.reset()
 		instance.cue("encounter_opens")
 
 
@@ -458,6 +565,9 @@ func _on_screen(id: String) -> void:
 
 func _on_node_added(n: Node) -> void:
 	if _bound_buttons and n is BaseButton and not n.has_meta("botf_silent"):
+		var nm := str(n.name)
+		if nm.begins_with("Maneuver_"):
+			n.pressed.connect(order_ack.bind(nm.trim_prefix("Maneuver_")))   # before the click sound: it then skips the frame
 		n.pressed.connect(_on_button)
 
 
