@@ -27,6 +27,20 @@ static var dry_run := false
 static var last_applied := {}
 
 
+## Browser target: settings the web build cannot honour. The browser owns the window (size, mode, vsync, frame
+## pacing) and the Compatibility renderer has no FSR upscaling, so these rows are not offered there.
+const WEB_UNSUPPORTED := ["display.resolution", "display.windowMode", "display.vsync", "display.fpsCap", "display.renderScale"]
+## Test hook: true makes offered() answer as the web build does.
+static var web_preview := false
+
+static func is_web() -> bool:
+	return web_preview or OS.has_feature("web")
+
+## Whether the Settings overlay offers `key` on this platform.
+static func offered(key: String) -> bool:
+	return not (is_web() and WEB_UNSUPPORTED.has(key))
+
+
 static func fill_defaults(s: Dictionary) -> void:
 	for k in DEFAULTS:
 		if not s.has(k):

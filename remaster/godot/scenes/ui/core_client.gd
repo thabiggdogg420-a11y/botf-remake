@@ -68,8 +68,8 @@ func _load(set_name: String, name: String) -> Variant:
 		return _cache[key].duplicate(true) if _cache[key] is Dictionary or _cache[key] is Array else _cache[key]
 	for dir in FIXTURE_DIRS:
 		var path := "%s/%s/%s.json" % [dir, set_name, name]
-		if FileAccess.file_exists(path):
-			var data: Variant = JSON.parse_string(FileAccess.get_file_as_string(path))
+		var data: Variant = AppLoader.json(path)
+		if data != null:
 			_cache[key] = data
 			return data.duplicate(true) if data is Dictionary or data is Array else data
 	return null

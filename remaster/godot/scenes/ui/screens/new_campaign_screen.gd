@@ -1,43 +1,49 @@
 extends Control
-## New Campaign: faction cards, galaxy size, powers, seed, era, reference/prototype, Classic/Remastered.
-## Port of screens/NewCampaign.tsx.
+## New Campaign presentation: faction cards, galaxy, era and rules panels, summary and launch.
+## Choices live in NewCampaignVM (scripts/viewmodels/new_campaign_vm.gd); the fields below forward to it.
 
 var app: App
+var vm: NewCampaignVM:
+	get:
+		if vm == null:
+			vm = NewCampaignVM.new(app.session if app else null)
+			vm.roll_seed()
+		return vm
+var faction: int:
+	get: return vm.faction
+	set(v): vm.faction = v
+var empires: int:
+	get: return vm.empires
+	set(v): vm.empires = v
+var size_id: String:
+	get: return vm.size_id
+	set(v): vm.size_id = v
+var era: int:
+	get: return vm.era
+	set(v): vm.era = v
+var ruleset: String:
+	get: return vm.ruleset
+	set(v): vm.ruleset = v
+var preset: String:
+	get: return vm.preset
+	set(v): vm.preset = v
+var seed_value: int:
+	get: return vm.seed_value
+	set(v): vm.seed_value = v
+var events: bool:
+	get: return vm.events
+	set(v): vm.events = v
+var aggression: bool:
+	get: return vm.aggression
+	set(v): vm.aggression = v
 
-const SIZES := [
-	{"id": "small", "label": "Small", "width": 12, "height": 9, "systems": 16, "blurb": "Quick, crowded: contact comes early."},
-	{"id": "medium", "label": "Medium", "width": 16, "height": 12, "systems": 28, "blurb": "The classic reference galaxy."},
-	{"id": "large", "label": "Large", "width": 22, "height": 16, "systems": 48, "blurb": "Room to expand before borders meet."},
-	{"id": "huge", "label": "Huge", "width": 30, "height": 20, "systems": 80, "blurb": "A long campaign across a wide quadrant."},
-]
-const ERA_BLURBS := {
-	1: "Warp-capable newcomers. Build everything from the ground up.",
-	2: "Established powers with developed technology.",
-	3: "Expanded empires, advanced shipyards.",
-	4: "Advanced civilisations on the brink of dominance.",
-	5: "Supreme technology from turn one.",
-}
-
-var faction := 1
-var empires := 5
-var size_id := "medium"
-var era := 1
-var ruleset := "reference"
-var preset := "remastered"
-var seed_value := 0
-var events := true
-var aggression := true
-
-func _ready() -> void:
-	seed_value = randi_range(100000, 999999)
+const SIZES := NewCampaignVM.SIZES
 
 func options() -> Dictionary:
-	var sz: Dictionary = SIZES.filter(func(s): return s["id"] == size_id)[0]
-	return {"faction": faction, "empires": max(empires, faction), "seed": seed_value, "era": era, "ruleset": ruleset,
-		"width": sz["width"], "height": sz["height"], "systems": sz["systems"], "events": events, "aiAggression": aggression, "preset": preset}
+	return vm.options()
 
 func start() -> void:
-	app.start_campaign(options())
+	app.start_campaign(vm.options())
 
 func _unhandled_key_input(event: InputEvent) -> void:
 	var k := event as InputEventKey
@@ -50,13 +56,7 @@ func refresh() -> void:
 		c.queue_free()
 	Lcars.accent_empire = faction
 	app.theme = Lcars.build_theme(faction)
-	var margin := MarginContainer.new()
-	margin.set_anchors_preset(Control.PRESET_FULL_RECT)
-	for side in ["left", "right"]:
-		margin.add_theme_constant_override("margin_" + side, 64)
-	margin.add_theme_constant_override("margin_top", 40)
-	margin.add_theme_constant_override("margin_bottom", 40)
-	add_child(margin)
+	var margin := Lcars.screen_margin(self, Vector4(64, 64, 40, 40))
 	var col := Lcars.vbox(22)
 	margin.add_child(col)
 	var head := Lcars.hbox(18)
@@ -86,7 +86,7 @@ func refresh() -> void:
 	gb.add_child(Lcars.caption("Powers in play"))
 	var pw := Lcars.hbox(8)
 	for n in [2, 3, 4, 5]:
-		var t := Lcars.toggle(str(n), max(empires, faction) == n, func(_on): empires = n; refresh(), "%d major powers compete." % n)
+		var t := Lcars.toggle(str(n), vm.powers() == n, func(_on): empires = n; refresh(), "%d major powers compete." % n)
 		t.custom_minimum_size.x = 56
 		if n < faction:
 			t.disabled = true
@@ -102,17 +102,17 @@ func refresh() -> void:
 	seed_edit.value_changed.connect(func(v): seed_value = int(v))
 	seed_edit.name = "Seed"
 	sr.add_child(seed_edit)
-	sr.add_child(Lcars.pill("Randomise", "ghost", func(): seed_value = randi_range(100000, 999999); refresh(), "", "Roll a new galaxy"))
+	sr.add_child(Lcars.pill("Randomise", "ghost", func(): vm.roll_seed(); refresh(), "", "Roll a new galaxy"))
 	gb.add_child(sr)
 	var rules := Lcars.frame("Era & rules", "technology and gameplay", "tertiary")
 	rules.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	opts.add_child(rules)
 	var rb := Lcars.body(rules)
 	var eras := Lcars.hbox(6)
-	for e in app.meta.get("eras", []):
+	for e in vm.eras():
 		var eid := int(e["id"])
-		var lvl := int(e["techLevel"] if ruleset == "reference" else e["prototypeTechLevel"])
-		var t2 := Lcars.toggle("%s  T%d" % [e["name"], lvl], era == eid, func(_on): era = eid; refresh(), "%s\nStarting technology level %d in every field." % [ERA_BLURBS.get(eid, ""), lvl])
+		var lvl := int(e["level"])
+		var t2 := Lcars.toggle("%s  T%d" % [e["name"], lvl], era == eid, func(_on): era = eid; refresh(), "%s\nStarting technology level %d in every field." % [e["blurb"], lvl])
 		eras.add_child(t2)
 	rb.add_child(eras)
 	var rs := Lcars.hbox(8)
@@ -151,14 +151,11 @@ func refresh() -> void:
 	var sh := Lcars.hbox(12)
 	sh.add_child(Lcars.emblem(faction, 48))
 	var nm := Lcars.vbox(0)
-	nm.add_child(Lcars.label(app.empire_name(faction).to_upper() if not app.meta.is_empty() else "", "Heading", 30))
+	nm.add_child(Lcars.label(vm.faction_name(faction, ""), "Heading", 30))
 	nm.add_child(Lcars.caption("from " + Lcars.FACTIONS[faction - 1]["capital"]))
 	sh.add_child(nm)
 	sb.add_child(sh)
-	var o := options()
-	for line in ["%d major powers · %d systems · %dx%d sectors" % [o["empires"], o["systems"], o["width"], o["height"]],
-			"%s era · %s rules · %s gameplay" % [_era_name(), ruleset, preset.capitalize()],
-			"Seed %d%s%s" % [seed_value, " · events" if events else "", " · aggressive AI" if aggression else ""]]:
+	for line in vm.summary():
 		sb.add_child(Lcars.para("•  " + line, Lcars.TEXT2, 15))
 	var sp := Control.new()
 	sp.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -169,15 +166,8 @@ func refresh() -> void:
 	launch.add_theme_font_size_override("font_size", 28)
 	sb.add_child(launch)
 
-func _era_name() -> String:
-	for e in app.meta.get("eras", []):
-		if int(e["id"]) == era:
-			return str(e["name"])
-	return ""
-
 func _pick_faction(id: int) -> void:
-	faction = id
-	empires = max(empires, id)
+	vm.pick_faction(id)
 	refresh()
 
 func _faction_card(f: Dictionary) -> Control:
@@ -215,7 +205,7 @@ func _faction_card(f: Dictionary) -> Control:
 	v.add_child(band)
 	var top := Lcars.hbox(10)
 	top.add_child(Lcars.emblem(id, 46, col))
-	var nm := Lcars.label(app.empire_name(id).to_upper() if not app.meta.is_empty() else f["short"], "", 24, col)
+	var nm := Lcars.label(vm.faction_name(id, f["short"]), "", 24, col)
 	nm.add_theme_font_override("font", Lcars.font("display", 600))
 	nm.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	nm.size_flags_horizontal = Control.SIZE_EXPAND_FILL

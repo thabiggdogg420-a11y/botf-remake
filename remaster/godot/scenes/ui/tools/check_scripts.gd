@@ -1,10 +1,11 @@
 extends SceneTree
-## Loads every script under scenes/ui and scenes/galaxy so parse errors surface in one run.
+## Loads every script of the UI layers (shell, screens, widgets, view models) and scenes/galaxy so parse errors
+## surface in one run.
 ##   godot --headless --path remaster/godot -s res://scenes/ui/tools/check_scripts.gd
 
 func _initialize() -> void:
 	var failed := 0
-	for dir in ["res://scenes/ui", "res://scenes/ui/screens", "res://scenes/galaxy", "res://scenes/ui/tests"]:
+	for dir in ["res://scenes/ui", "res://scenes/ui/screens", "res://scenes/ui/widgets", "res://scripts", "res://scripts/viewmodels", "res://scripts/viewmodels/tests", "res://scenes/galaxy", "res://scenes/ui/tests"]:
 		var d := DirAccess.open(dir)
 		if d == null:
 			continue

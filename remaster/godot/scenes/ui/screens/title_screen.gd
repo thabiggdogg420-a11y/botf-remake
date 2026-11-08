@@ -1,12 +1,17 @@
 extends Control
-## Title screen: continue, new campaign, load, drills, settings. Port of screens/Title.tsx.
+## Title presentation: continue, new campaign, load, drills, settings. Data from TitleVM.
 ## Behind the menu a live 3D shot (TitleFleet, like Unreal's ConfigureTitleScene) films a hero fleet: the player's
 ## empire during a campaign (or of the latest save), otherwise a random power; a scrim keeps the text readable.
 ## $BOTF_TITLE_EMPIRE (1-5) pins the power, for screenshots.
 
-const EMPIRE_NAMES := {1: "federation", 2: "klingon", 3: "romulan", 4: "cardassian", 5: "ferengi"}
+const EMPIRE_NAMES := TitleVM.EMPIRE_NAMES
 
 var app: App
+var vm: TitleVM:
+	get:
+		if vm == null:
+			vm = TitleVM.new(app.session if app else null)
+		return vm
 var backdrop: Control       ## The live fleet and its scrim; kept across refreshes.
 var fleet: TitleFleet
 var fleet_empire := 0
@@ -15,6 +20,7 @@ func refresh() -> void:
 	for c in get_children():
 		if c != backdrop:
 			c.queue_free()
+	vm.fetch()
 	_ensure_backdrop(title_empire())
 	var root := Lcars.vbox(14)
 	root.position = Vector2(size.x * 0.09, size.y * 0.16)
@@ -41,9 +47,9 @@ func refresh() -> void:
 	var menu := Lcars.vbox(10)
 	menu.custom_minimum_size.x = 420
 	root.add_child(menu)
-	var saves := app.list_saves()
+	var saves := vm.saves
 	if saves.size() > 0:
-		var s: Dictionary = saves[0]
+		var s: Dictionary = vm.latest()
 		var b := Lcars.pill("Continue  ·  %s turn %d" % [s.get("playerName", ""), int(s.get("turn", 0))], "primary", func(): app.load_game(s), "", str(s.get("name", "")))
 		b.name = "Continue"
 		menu.add_child(b)
@@ -61,7 +67,7 @@ func refresh() -> void:
 	menu.add_child(row2)
 	var row3 := Lcars.hbox(10)
 	row3.add_child(_wide(Lcars.pill("Settings", "ghost", func(): app.open_overlay("settings"))))
-	var quit := _wide(Lcars.pill("Quit", "ghost", func(): preload("res://scenes/ui/screens/overlays.gd").confirm_quit_game(app), "", "Close the game", "Alt+F4"))
+	var quit := _wide(Lcars.pill("Quit", "ghost", func(): Overlays.confirm_quit_game(app), "", "Close the game", "Alt+F4"))
 	quit.name = "Quit"
 	row3.add_child(quit)
 	menu.add_child(row3)
@@ -71,7 +77,7 @@ func refresh() -> void:
 			b2.add_theme_font_size_override("font_size", 21)
 	var foot := Lcars.hbox(40)
 	foot.position = Vector2(size.x * 0.09, size.y - 48)
-	foot.add_child(Lcars.label("Simulation core %s · save schema %s · backend: %s" % [app.meta.get("contentVersion", "…"), str(app.meta.get("saveVersion", "…")), app.core.backend], "Mono", 13, Lcars.TEXT3))
+	foot.add_child(Lcars.label(vm.footer(), "Mono", 13, Lcars.TEXT3))
 	foot.add_child(Lcars.label("Unofficial fan reconstruction · not affiliated with any rights holder", "Muted"))
 	add_child(foot)
 	var first := menu.get_child(0) as Button
@@ -84,20 +90,7 @@ func _wide(b: Button) -> Button:
 
 ## The power the title films: the campaign's empire, else the latest save's, else a random one.
 func title_empire() -> int:
-	var pinned := int(OS.get_environment("BOTF_TITLE_EMPIRE"))
-	if pinned >= 1 and pinned <= 5:
-		return pinned
-	if app != null and not app.view.is_empty() and app.player() >= 1 and app.player() <= 5:
-		return app.player()
-	if fleet_empire > 0:
-		return fleet_empire  # a refresh keeps the power the screen opened with
-	var saves: Array = app.list_saves() if app != null else []
-	if saves.size() > 0:
-		var who := str(saves[0].get("playerName", "")).to_lower()
-		for id in EMPIRE_NAMES:
-			if who.find(EMPIRE_NAMES[id]) >= 0:
-				return id
-	return randi_range(1, 5)
+	return vm.title_empire(int(OS.get_environment("BOTF_TITLE_EMPIRE")), fleet_empire)
 
 func _ensure_backdrop(empire: int) -> void:
 	if backdrop != null and fleet_empire == empire:

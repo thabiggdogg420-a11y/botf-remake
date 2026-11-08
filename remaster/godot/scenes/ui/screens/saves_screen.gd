@@ -1,16 +1,17 @@
 extends Control
-## Save / load screen. Saves are core `save` blobs stored as JSON in user://saves. Port of screens/Saves.tsx.
+## Save / load presentation. Slots come from SavesVM (AppSaves: core `save` blobs as JSON in user://saves).
 
 var app: App
+var vm: SavesVM:
+	get:
+		if vm == null:
+			vm = SavesVM.new(app.session)
+		return vm
 
 func refresh() -> void:
 	for c in get_children():
 		c.queue_free()
-	var m := MarginContainer.new()
-	m.set_anchors_preset(Control.PRESET_FULL_RECT)
-	for side in ["left", "right", "top", "bottom"]:
-		m.add_theme_constant_override("margin_" + side, 56 if side in ["left", "right"] else 40)
-	add_child(m)
+	var m := Lcars.screen_margin(self, Vector4(56, 56, 40, 40))
 	var col := Lcars.vbox(18)
 	m.add_child(col)
 	var head := Lcars.hbox(16)
@@ -31,7 +32,8 @@ func refresh() -> void:
 	frame.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	col.add_child(frame)
 	var list := Lcars.vbox(8)
-	var saves := app.list_saves()
+	vm.fetch()
+	var saves := vm.saves
 	if saves.is_empty():
 		list.add_child(Lcars.empty_note("No saved campaigns yet. Campaigns autosave at the end of every turn."))
 	for s in saves:
@@ -41,7 +43,7 @@ func refresh() -> void:
 		h.add_child(Lcars.emblem(int(s.get("player", 0)), 34))
 		var t := Lcars.vbox(0)
 		t.add_child(Lcars.label(str(s.get("name", "?")), "SubHeading", 22, Lcars.TEXT))
-		t.add_child(Lcars.caption("%s · turn %d · %s · %s save · %s" % [s.get("playerName", ""), int(s.get("turn", 0)), s.get("scenario", "campaign"), s.get("kind", "game"), s.get("when", "")]))
+		t.add_child(Lcars.caption(SavesVM.describe(s)))
 		t.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		h.add_child(t)
 		var blob: Dictionary = s

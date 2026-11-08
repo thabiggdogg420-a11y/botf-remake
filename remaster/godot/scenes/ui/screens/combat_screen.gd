@@ -1,43 +1,48 @@
 extends Control
-## Tactical combat orders around the BattleHost: forces, ship cards, maneuver buttons with scope
-## (all / group / ship), encounter choice (take command / auto / hail), combat log; and the battle
-## archive (replays, reports) outside a battle. Port of screens/Combat.tsx.
+## Tactical combat presentation around the BattleHost: forces, ship cards, maneuver buttons with scope (all / group /
+## ship), the encounter choice (take command / auto / hail) and the combat log; and the battle archive (replays,
+## reports) outside a battle. Encounter state and tactical orders: CombatVM (scripts/viewmodels/combat_vm.gd).
 
 var app: App
 var host: BattleHost
-var ship := 0
-var target := 0
-var scope := "all"
-var choice := true
-var archive_sel := {}
+var vm: CombatVM:
+	get:
+		if vm == null:
+			vm = CombatVM.new(app.session)
+		return vm
+var ship: int:
+	get: return vm.ship
+	set(v): vm.ship = v
+var target: int:
+	get: return vm.target
+	set(v): vm.target = v
+var scope: String:
+	get: return vm.scope
+	set(v): vm.scope = v
+var choice: bool:
+	get: return vm.choice
+	set(v): vm.choice = v
+var archive_sel: Dictionary:
+	get: return vm.archive_sel
+	set(v): vm.archive_sel = v
 
-const ATTACK := "Attack order: a cloaked ship decloaks and fires a +25% ambush volley."
-const MANEUVERS := [
-	{"key": "Engage", "name": "Engage", "hint": "Advance to optimal weapon range and fire.\n" + ATTACK},
-	{"key": "Assault", "name": "Assault", "hint": "Disciplined advance to the medium beam/torpedo envelope.\n" + ATTACK},
-	{"key": "Charge", "name": "Charge", "hint": "Close to point-blank range: +20% beam damage, but +15% incoming.\n" + ATTACK},
-	{"key": "Strafe", "name": "Strafe", "hint": "Fast close pass: +25% beam, -20% torpedo, +10% incoming.\n" + ATTACK},
-	{"key": "Flyby", "name": "Flyby", "hint": "Fast pass at medium range: -15% incoming.\n" + ATTACK},
-	{"key": "Harry", "name": "Harry", "hint": "Close evasive circling: -10% beam, -20% incoming.\n" + ATTACK},
-	{"key": "Circle", "name": "Circle", "hint": "Stand-off orbit: -15% beam, -25% incoming. Keeps a cloak."},
-	{"key": "Evade", "name": "Evade", "hint": "Long-range evasion: -30% fire, -35% incoming. Keeps a cloak."},
-	{"key": "Hold", "name": "Hold", "hint": "Brace in place: -20% incoming damage. Shields do not recharge. Keeps a cloak."},
-	{"key": "Ram", "name": "Ram", "hint": "Collision: the target takes the rammer's hull as damage and the rammer takes the target's hull + shields as recoil."},
-	{"key": "Hail", "name": "Hail", "hint": "Offer a truce. If every active ship hails and the enemy accepts, the battle ends before any fire."},
-	{"key": "Retreat", "name": "Retreat", "hint": "Disengage: one round at -25% incoming with weapons offline, then escape if still retreating."},
-]
-const IMMOBILE_BLOCKED := ["Retreat", "Charge", "Circle", "Flyby", "Strafe", "Evade", "Ram", "Harry", "Assault"]
+const MANEUVERS := CombatVM.MANEUVERS
+const IMMOBILE_BLOCKED := CombatVM.IMMOBILE_BLOCKED
 
 static func is_active(s: Dictionary) -> bool:
-	return s.get("alive", false) and s.get("active", false) and not s.get("retreated", false)
+	return CombatVM.is_active(s)
 
 static func short_name(s: Dictionary) -> String:
-	if s.is_empty():
-		return "nearest enemy"
-	return "Cloaked contact" if s.get("hidden", false) else str(s["name"]).split(" — ")[0]
+	return CombatVM.short_name(s)
+
+static func round_log(e: Dictionary, r: Dictionary) -> Array:
+	return CombatVM.round_log(e, r)
+
+func hail_outlook(e: Dictionary, foe: String) -> Array:
+	return CombatVM.hail_outlook(e, foe)
 
 func _enc() -> Dictionary:
-	return app.encounter if app.encounter is Dictionary else {}
+	return vm.enc()
 
 func refresh() -> void:
 	# The 3D battle view survives refreshes. Rebuilding it on every order, ship pick and round reset the camera
@@ -46,11 +51,8 @@ func refresh() -> void:
 		host.get_parent().remove_child(host)
 	for c in get_children():
 		c.queue_free()
-	var live: bool = app.view.get("session", {}).get("active", false) or app.view.get("session", {}).get("battlePending", false)
-	if live and _enc().is_empty():
-		var e: Variant = app.core.request("tactical")
-		app.encounter = e
-	if live and not _enc().is_empty():
+	vm.ensure_encounter()
+	if vm.live() and not _enc().is_empty():
 		_live(_enc())
 	else:
 		_archive()
@@ -85,7 +87,7 @@ func _header(e: Dictionary, mine: Array, foes: Array, foe_name: String, last: Di
 	alert.custom_minimum_size = Vector2(26, 60)
 	h.add_child(alert)
 	var t := Lcars.vbox(0)
-	var title := "Truce agreed" if e.get("finished", false) and last.get("truce", false) else ("Engagement concluded" if e.get("finished", false) else "Red alert")
+	var title := CombatVM.title(e, last)
 	t.add_child(Lcars.label(title.to_upper(), "Heading", 38, Lcars.ALERT if not e.get("finished", false) else Lcars.accent()))
 	t.add_child(Lcars.caption("%s · sector %d.%d · round %d%s" % [e.get("location", ""), int(e["sectorX"]), int(e["sectorY"]), int(e["round"]), "" if e.get("finished", false) else " of up to %d" % int(e["maxRounds"])]))
 	h.add_child(t)
@@ -137,17 +139,11 @@ func refresh_round() -> void:
 	if not ok:
 		refresh()
 		return
-	var mine: Array = ships.filter(func(x): return x.get("mine", false))
-	var foes: Array = ships.filter(func(x): return not x.get("mine", false))
-	if ship == 0 or mine.filter(func(x): return int(x["id"]) == ship and is_active(x)).is_empty():
-		var a: Array = mine.filter(func(x): return is_active(x))
-		ship = int(a[0]["id"]) if a.size() > 0 else 0
-	if target == 0 or foes.filter(func(x): return int(x["id"]) == target and is_active(x) and not x.get("hidden", false)).is_empty():
-		var b: Array = foes.filter(func(x): return is_active(x) and not x.get("hidden", false))
-		target = int(b[0]["id"]) if b.size() > 0 else 0
-	var foe_name: String = foes[0]["ownerName"] if foes.size() > 0 else "enemy"
-	var rounds: Array = e.get("rounds", [])
-	var last: Dictionary = rounds.back() if rounds.size() > 0 else {}
+	var sd_ := vm.sides()
+	var mine: Array = sd_["mine"]
+	var foes: Array = sd_["foes"]
+	var foe_name: String = sd_["foe_name"]
+	var last: Dictionary = sd_["last"]
 	var old_h: Control = _root.get_child(0)
 	var nh := _header(e, mine, foes, foe_name, last)
 	_root.add_child(nh)
@@ -175,25 +171,14 @@ func refresh_round() -> void:
 
 func _live(e: Dictionary) -> void:
 	_cards.clear()
-	var ships: Array = e["ships"]
-	var mine: Array = ships.filter(func(s): return s.get("mine", false))
-	var foes: Array = ships.filter(func(s): return not s.get("mine", false))
-	if ship == 0 or mine.filter(func(s): return int(s["id"]) == ship and is_active(s)).is_empty():
-		var a: Array = mine.filter(func(s): return is_active(s))
-		ship = int(a[0]["id"]) if a.size() > 0 else 0
-	if target == 0 or foes.filter(func(s): return int(s["id"]) == target and is_active(s) and not s.get("hidden", false)).is_empty():
-		var b: Array = foes.filter(func(s): return is_active(s) and not s.get("hidden", false))
-		target = int(b[0]["id"]) if b.size() > 0 else 0
-	var foe_name: String = foes[0]["ownerName"] if foes.size() > 0 else "enemy"
-	var rounds: Array = e.get("rounds", [])
-	var last: Dictionary = rounds.back() if rounds.size() > 0 else {}
-	var m := MarginContainer.new()
-	m.set_anchors_preset(Control.PRESET_FULL_RECT)
-	for side in ["left", "right", "top", "bottom"]:
-		m.add_theme_constant_override("margin_" + side, 14)
-	add_child(m)
+	var sd_ := vm.sides()
+	var ships: Array = sd_["ships"]
+	var mine: Array = sd_["mine"]
+	var foes: Array = sd_["foes"]
+	var foe_name: String = sd_["foe_name"]
+	var last: Dictionary = sd_["last"]
 	var root := Lcars.vbox(10)
-	m.add_child(root)
+	Lcars.screen_margin(self, Vector4(14, 14, 14, 14)).add_child(root)
 	_root = root
 	var h := _header(e, mine, foes, foe_name, last)
 	root.add_child(h)
@@ -220,17 +205,9 @@ func _force(ships: Array, label: String) -> Control:
 	h.add_child(Lcars.emblem(int(ships[0]["owner"]) if ships.size() > 0 else 0, 30))
 	var v := Lcars.vbox(2)
 	v.add_child(Lcars.label(label.to_upper(), "SubHeading", 17, Lcars.TEXT))
-	var hull := 0
-	var mx := 0
-	var alive := 0
-	for s in ships:
-		if not s.get("hidden", false):
-			hull += max(0, int(s["hull"]))
-			mx += int(s["maxHull"])
-		if s.get("alive", false) and not s.get("retreated", false):
-			alive += 1
-	v.add_child(Lcars.meter(hull, max(1, mx), Color("#8fd18a"), 5, 160))
-	v.add_child(Lcars.label("%d/%d ships" % [alive, ships.size()], "Mono", 12))
+	var fo := CombatVM.force(ships)
+	v.add_child(Lcars.meter(fo["hull"], max(1, int(fo["max"])), Color("#8fd18a"), 5, 160))
+	v.add_child(Lcars.label("%d/%d ships" % [int(fo["alive"]), ships.size()], "Mono", 12))
 	h.add_child(v)
 	return h
 
@@ -244,12 +221,6 @@ func _ship_list(title: String, ships: Array, all: Array, sel: int, hostile: bool
 		list.add_child(cd)
 	Lcars.body(f).add_child(Lcars.scroll(list))
 	return f
-
-func _name_of(all: Array, id: int) -> String:
-	for s in all:
-		if int(s["id"]) == id:
-			return "%s #%d" % [short_name(s), id]
-	return "#%d" % id
 
 func _ship_card(s: Dictionary, all: Array, sel: int, hostile: bool) -> Control:
 	var id := int(s["id"])
@@ -295,7 +266,8 @@ func _fill_card(btn: Button, s: Dictionary, all: Array, sel: int, hostile: bool)
 	var id := int(s["id"])
 	btn.disabled = s.get("hidden", false)
 	var c := Lcars.owner_color(int(s["owner"]))
-	var status := "DESTROYED" if not s.get("alive", true) else ("WITHDRAWN" if s.get("retreated", false) else "")
+	var cs := CombatVM.card_state(s, all, hostile)
+	var status: String = cs["status"]
 	var sb := Lcars.box(Color(c, 0.18) if sel == id else Color(Lcars.PANEL2, 0.85), 12, c if sel == id else Lcars.LINE2, 2 if sel == id else 1)
 	btn.add_theme_stylebox_override("normal", sb)
 	btn.add_theme_stylebox_override("disabled", sb)
@@ -307,87 +279,37 @@ func _fill_card(btn: Button, s: Dictionary, all: Array, sel: int, hostile: bool)
 	parts[0].value = clampf(float(s["shields"]), 0.0, parts[0].max_value)
 	parts[1].max_value = max(1, int(s["maxHull"]))
 	parts[1].value = clampf(float(max(0, int(s["hull"]))), 0.0, parts[1].max_value)
-	var nx: Variant = s.get("next")
-	var line := status
-	if line == "":
-		if nx is Dictionary:
-			line = "%s%s%s  (%s)" % ["will " if hostile else "next: ", nx["maneuver"], (" → " + _name_of(all, int(nx["target"]))) if int(nx.get("target", 0)) != 0 else "", {"ai": "AI", "standing": "standing", "order": "ordered"}.get(nx.get("source", ""), "")]
-		else:
-			line = "beam %d · torp %d" % [int(s["beam"]), int(s["torpedo"])]
-	parts[2].text = line
-	parts[2].add_theme_color_override("font_color", Lcars.accent2() if nx is Dictionary and nx.get("source", "") == "order" else Lcars.TEXT2)
-	var flags := []
-	if s.get("cloaked", false) and s.get("alive", false):
-		flags.append("Cloaked")
-	if s.get("station", false):
-		flags.append("%s · immobile" % s.get("stationType", "Station"))
-	if s.get("disengaging", false):
-		flags.append("Disengaging")
-	if str(s.get("group", "")) != "":
-		flags.append(str(s["group"]))
-	if not hostile:
-		flags.append("B%d · T%d" % [int(s["beam"]), int(s["torpedo"])])
-	parts[3].text = "  ·  ".join(flags)
+	parts[2].text = cs["line"]
+	parts[2].add_theme_color_override("font_color", Lcars.accent2() if cs["ordered"] else Lcars.TEXT2)
+	parts[3].text = cs["flags"]
 
 func _pick(id: int) -> void:
-	var e := _enc()
-	for s in e.get("ships", []):
-		if int(s["id"]) == id and not s.get("hidden", false):
-			if s.get("mine", false):
-				ship = id
-				if scope == "all":
-					scope = "ship"
-			else:
-				target = id
+	vm.pick(id)
 	refresh()
 
 func _selected() -> Dictionary:
-	for s in _enc().get("ships", []):
-		if int(s["id"]) == ship:
-			return s
-	return {}
-
-func hail_outlook(e: Dictionary, foe: String) -> Array:
-	var h: Dictionary = e.get("hail", {})
-	var why := ("formally at war · trust %d · their strength %d vs ours %d" % [int(h.get("trust", 0)), int(h.get("theirStrength", 0)), int(h.get("ourStrength", 0)) ]) if h.get("atWar", false) else "not formally at war"
-	if h.get("accepts", false):
-		return ["If every one of our ships hails, the %s would accept a truce (%s)." % [foe, why], "good"]
-	return ["The %s would refuse a truce unless they hail too (%s)." % [foe, why], "alert"]
+	return vm.selected()
 
 func _orders(e: Dictionary, foe_name: String) -> Control:
 	var sel := _selected()
-	var scope_label := "all active ships" if scope == "all" else (("%s group" % sel.get("group", "")) if scope == "group" else short_name(sel))
-	var f := Lcars.frame("Orders", scope_label, "secondary")
+	var f := Lcars.frame("Orders", vm.scope_label(), "secondary")
 	f.name = "TacticalOrders"
 	f.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var b := Lcars.body(f)
 	var sc := Lcars.hbox(6)
 	sc.add_child(Lcars.caption("Scope"))
-	for pair in [["all", "All ships", "Every active ship"], ["group", "Group", "The selected ship's like-class tactical group"], ["ship", "Ship", "Only the selected ship"]]:
+	for pair in CombatVM.SCOPES:
 		var k: String = pair[0]
 		var tg := Lcars.toggle(pair[1], scope == k, func(_on): scope = k; refresh(), pair[2])
 		tg.name = "Scope_" + k
-		tg.disabled = k != "all" and (sel.is_empty() or not is_active(sel))
+		tg.disabled = vm.scope_disabled(k)
 		sc.add_child(tg)
 	b.add_child(sc)
 	var grid := Lcars.grid(6)
 	grid.add_theme_constant_override("h_separation", 6)
 	for mv in MANEUVERS:
 		var key: String = mv["key"]
-		var cannot := ""
-		if e.get("finished", false):
-			cannot = "The battle is over"
-		elif scope == "ship" and sel.get("station", false) and IMMOBILE_BLOCKED.has(key):
-			cannot = "Stations are immobile: they hold position and fire"
-		elif key == "Retreat" and scope == "ship" and not sel.is_empty() and not sel.get("canRetreat", false):
-			cannot = "No safe supplied withdrawal sector"
-		elif scope != "all" and (sel.is_empty() or not is_active(sel)):
-			cannot = "Select one of your active ships"
-		var tone := "alert" if key in ["Retreat", "Ram"] else ("ghost" if key == "Hail" else "secondary")
-		var hint: String = mv["hint"]
-		if target != 0 and not key in ["Retreat", "Hail"]:
-			hint += "\nTarget: #%d" % target
-		var p := Lcars.pill(mv["name"], tone, func(): order(key), cannot, hint)
+		var p := Lcars.pill(mv["name"], CombatVM.maneuver_tone(key), func(): order(key), vm.maneuver_block(key), vm.maneuver_hint(mv))
 		p.name = "Maneuver_" + key
 		p.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		if scope == "ship" and sel.get("maneuver", "") == key:
@@ -402,30 +324,15 @@ func _orders(e: Dictionary, foe_name: String) -> Control:
 
 ## Orders a maneuver for the current scope via tacticalOrder.
 func order(maneuver: String) -> void:
-	var sel := _selected()
-	var t := 0 if maneuver in ["Retreat", "Hail"] else target
-	var args := {"maneuver": maneuver, "targetFleetId": t}
-	if scope == "all":
-		args["all"] = true
-	elif scope == "group":
-		args["groupId"] = int(sel.get("groupId", 0))
-	else:
-		args["fleetId"] = ship
-	var r := app.core.invoke("tacticalOrder", args)
-	if not r["ok"]:
-		app.report_error(r["error"])
+	var note := vm.order(maneuver)
+	if note == "":
 		return
-	app.encounter = app.core.request("tactical")
-	app.toast("%s ordered for %s ship%s%s." % [maneuver, Lcars.num(r["result"]), "" if int(r["result"]) == 1 else "s", (", target #%d" % t) if t != 0 else ""], "info", 1.8)
+	app.toast(note, "info", 1.8)
 	refresh()
 
 func _round() -> void:
-	var r := app.core.invoke("tacticalRound", {})
-	if not r["ok"]:
-		app.report_error(r["error"])
+	if not vm.resolve(false):
 		return
-	app.encounter = r["result"]
-	choice = false
 	var _t1 := Time.get_ticks_usec()
 	refresh_round()
 	if OS.get_environment("ROUND_TIMING") != "":
@@ -435,16 +342,12 @@ func _round() -> void:
 		host.play_round.call_deferred(rounds.back(), _enc())
 
 func _auto() -> void:
-	var r := app.core.invoke("tacticalAuto", {})
-	if not r["ok"]:
-		app.report_error(r["error"])
+	if not vm.resolve(true):
 		return
-	app.encounter = r["result"]
-	choice = false
 	refresh()
 
 func _hail() -> void:
-	app.core.invoke("tacticalOrder", {"all": true, "maneuver": "Hail"})
+	vm.hail_all()
 	_round()
 
 func _encounter_choice(e: Dictionary, mine: Array, foes: Array, foe_name: String) -> void:
@@ -466,43 +369,12 @@ func _encounter_choice(e: Dictionary, mine: Array, foes: Array, foe_name: String
 	app.open_modal.call_deferred(col, "Enemy contact", Vector2(720, 0), "alert")
 	choice = false
 
-## Human-readable log lines for a round: [[tone, text], ...].
-static func round_log(e: Dictionary, r: Dictionary) -> Array:
-	var out := []
-	if r.is_empty():
-		return out
-	var names := {}
-	for s in e.get("ships", []):
-		names[int(s["id"])] = short_name(s)
-	for st in r.get("ships", []):
-		if st.get("decloaked", false):
-			out.append(["warn", "%s decloaks." % names.get(int(st["id"]), "?")])
-	for sv in r.get("salvos", []):
-		var dmg := int(sv.get("beam", 0)) + int(sv.get("torpedo", 0))
-		var txt := "%s → %s: %d damage%s%s%s" % [names.get(int(sv["from"]), "?"), names.get(int(sv["to"]), "?"), dmg, " (ram)" if sv.get("ram", false) else "", " (ambush)" if sv.get("ambush", false) else "", " (absorbed by shields)" if sv.get("absorbed", false) else ""]
-		out.append(["alert" if sv.get("ram", false) else "info", txt])
-	for id in r.get("lost", []):
-		out.append(["alert", "%s destroyed." % names.get(int(id), "?")])
-	for id in r.get("retreatedIds", []):
-		out.append(["warn", "%s withdrew." % names.get(int(id), "?")])
-	if r.get("truce", false):
-		out.append(["good", "Truce agreed."])
-	if r.get("ended", false):
-		out.append(["good", "The engagement is over."])
-	return out
-
 # ---------------------------------------------------------------------------------------------
 func _archive() -> void:
 	var v := app.view
-	var reps: Variant = app.core.request("replays")
-	var replays: Array = reps if reps is Array else []
-	var m := MarginContainer.new()
-	m.set_anchors_preset(Control.PRESET_FULL_RECT)
-	for side in ["left", "right", "top", "bottom"]:
-		m.add_theme_constant_override("margin_" + side, 16)
-	add_child(m)
+	var replays := vm.replays()
 	var row := Lcars.hbox(14)
-	m.add_child(row)
+	Lcars.screen_margin(self).add_child(row)
 	var f := Lcars.frame("Battle records", "%d recent" % v.get("battles", []).size(), "alert")
 	f.custom_minimum_size.x = 460
 	var b := Lcars.body(f)
@@ -520,14 +392,14 @@ func _archive() -> void:
 	right.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var rb := Lcars.body(right)
 	if archive_sel.get("kind", "") == "replay":
-		var e: Variant = app.core.request("replay", {"index": int(archive_sel["index"])})
+		var e: Variant = vm.archive_entry()
 		if e is Dictionary:
 			rb.add_child(_battle_host())
 			host.load_encounter.call_deferred(e)
 			for line in round_log(e, e["rounds"].back() if e["rounds"].size() > 0 else {}):
 				rb.add_child(Lcars.para(line[1], Lcars.tone_color(line[0]), 13))
 	elif archive_sel.get("kind", "") == "report":
-		var rep: Variant = app.core.request("battleReport", {"index": int(archive_sel["index"])})
+		var rep: Variant = vm.archive_entry()
 		if rep is Dictionary:
 			for p in rep.get("participants", []):
 				var h := Lcars.hbox(8)
@@ -540,11 +412,3 @@ func _archive() -> void:
 	else:
 		rb.add_child(Lcars.empty_note("Select a battle."))
 	row.add_child(right)
-
-class RedAlert extends Control:
-	func _process(_d: float) -> void:
-		queue_redraw()
-	func _draw() -> void:
-		var t := Time.get_ticks_msec() / 1000.0
-		var a: float = 0.45 + 0.55 * absf(sin(t * 3.0))
-		draw_rect(Rect2(Vector2.ZERO, size), Color(Lcars.ALERT, a))

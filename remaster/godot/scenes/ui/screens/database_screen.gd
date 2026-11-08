@@ -1,39 +1,52 @@
 extends Control
-## Database (encyclopedia): ships with the expanded roster and faction/role/era/source filters,
-## technologies, structures, races and minor races. Port of screens/Encyclopedia.tsx.
+## Database (encyclopedia) presentation: the filtered list and the entry detail for ships (expanded roster),
+## technologies, structures, races and minor races. Filters and lookups: DatabaseVM (scripts/viewmodels).
 
 var app: App
-var tab := "ships"
-var query := ""
-var faction := "__init"
-var role := ""
-var era := ""
-var source := ""
-var field := -1
-var selected := -1
+var vm: DatabaseVM:
+	get:
+		if vm == null:
+			vm = DatabaseVM.new(app.session)
+		return vm
+var tab: String:
+	get: return vm.tab
+	set(v): vm.tab = v
+var query: String:
+	get: return vm.query_text
+	set(v): vm.query_text = v
+var faction: String:
+	get: return vm.faction
+	set(v): vm.faction = v
+var role: String:
+	get: return vm.role
+	set(v): vm.role = v
+var era: String:
+	get: return vm.era
+	set(v): vm.era = v
+var source: String:
+	get: return vm.source
+	set(v): vm.source = v
+var field: int:
+	get: return vm.field
+	set(v): vm.field = v
+var selected: int:
+	get: return vm.selected
+	set(v): vm.selected = v
 var _list_box: VBoxContainer
 var _detail_host: Control
 var _count: Label
 
-const ROLE_NAMES := {0: "Scout", 1: "Destroyer", 2: "Cruiser", 3: "Strike cruiser", 4: "Command ship", 5: "Colony ship", 6: "Outpost", 7: "Starbase", 8: "Station", 9: "Troop transport"}
-const RACE_TO_EMPIRE := {1: 1, 3: 2, 4: 3, 0: 4, 2: 5}
-const RACE_TO_FACTION := {1: "Federation", 3: "Klingon", 4: "Romulan", 0: "Cardassian", 2: "Ferengi"}
-const MAJOR_FACTIONS := ["Federation", "Klingon", "Romulan", "Cardassian", "Ferengi"]
+const ROLE_NAMES := DatabaseVM.ROLE_NAMES
+const RACE_TO_EMPIRE := DatabaseVM.RACE_TO_EMPIRE
 
 func _data() -> Dictionary:
-	return app.get_encyclopedia()
-
-func _race_name(id: int) -> String:
-	for r in _data().get("races", []):
-		if int(r["id"]) == id:
-			return str(r["name"])
-	return "-"
+	return vm.data()
 
 func facets(s: Dictionary) -> Dictionary:
-	var r: Variant = s.get("roster")
-	if r is Dictionary:
-		return {"faction": str(r["faction"]), "role": Roster.role_label(str(r["hullRole"])), "era": str(r["era"]), "source": str(r["sourceKind"])}
-	return {"faction": RACE_TO_FACTION.get(int(s["race"]), _race_name(int(s["race"]))), "role": ROLE_NAMES.get(int(s["role"]), "Role %d" % int(s["role"])), "era": "Legacy", "source": "Legacy"}
+	return vm.facets(s)
+
+func rows() -> Array:
+	return vm.rows()
 
 func refresh() -> void:
 	for c in get_children():
@@ -42,30 +55,15 @@ func refresh() -> void:
 	if d.is_empty():
 		add_child(Lcars.empty_note("Database unavailable."))
 		return
-	if faction == "__init":
-		faction = ""
-		if not app.view.is_empty():
-			for e in app.meta.get("empires", []):
-				if int(e["id"]) == app.player():
-					faction = RACE_TO_FACTION.get(int(e["race"]), "")
-	var m := MarginContainer.new()
-	m.set_anchors_preset(Control.PRESET_FULL_RECT)
-	for side in ["left", "right", "top", "bottom"]:
-		m.add_theme_constant_override("margin_" + side, 16)
-	add_child(m)
+	vm.init_faction()
 	var row := Lcars.hbox(14)
-	m.add_child(row)
+	Lcars.screen_margin(self).add_child(row)
 	var f := Lcars.frame("Database", "reference catalogue", "primary")
 	f.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	f.size_flags_stretch_ratio = 1.1
 	row.add_child(f)
 	var b := Lcars.body(f)
-	var tabs := Lcars.hbox(6)
-	for t in [["ships", "Ships"], ["technologies", "Tech"], ["structures", "Structures"], ["races", "Races"], ["minors", "Minor races"]]:
-		var id: String = t[0]
-		var tg := Lcars.toggle(t[1], tab == id, func(_on): tab = id; selected = -1; refresh())
-		tg.name = "Tab_" + id
-		tabs.add_child(tg)
+	var tabs := Lcars.tab_bar(DatabaseVM.TABS, tab, func(id): vm.pick_tab(id); refresh())
 	tabs.add_child(Lcars.spacer())
 	_count = Lcars.label("", "Mono", 13, Lcars.TEXT3)
 	tabs.add_child(_count)
@@ -80,15 +78,15 @@ func refresh() -> void:
 	search.text_changed.connect(func(t): query = t; _fill_list())
 	filters.add_child(search)
 	if tab == "ships":
-		var fx := _ship_facets()
+		var fx := vm.ship_facets()
 		filters.add_child(_select("Faction", "All factions", fx["factions"], faction, func(v): faction = v; _fill_list(), func(x): return Roster.faction_label(x)))
 		filters.add_child(_select("Role", "All roles", fx["roles"], role, func(v): role = v; _fill_list()))
 		filters.add_child(_select("Era", "All eras", fx["eras"], era, func(v): era = v; _fill_list(), func(x): return "Legacy catalogue" if x == "Legacy" else Roster.era_label(x)))
-		filters.add_child(_select("Source", "All sources", ["Legacy", "Canon", "ModDerived", "Kelvin"], source, func(v): source = v; _fill_list(), func(x): return "Legacy catalogue" if x == "Legacy" else Roster.source_label(x)))
+		filters.add_child(_select("Source", "All sources", DatabaseVM.SOURCES, source, func(v): source = v; _fill_list(), func(x): return "Legacy catalogue" if x == "Legacy" else Roster.source_label(x)))
 	elif tab in ["technologies", "structures"]:
 		var ob := OptionButton.new()
 		ob.add_item("All fields", 0)
-		var fields: Array = app.meta.get("researchFields", [])
+		var fields := vm.fields()
 		for i in fields.size():
 			ob.add_item(str(fields[i]), i + 1)
 		ob.selected = field + 1
@@ -116,90 +114,18 @@ func _select(nm: String, all: String, items: Array, current: String, on_pick: Ca
 	ob.item_selected.connect(func(ix): on_pick.call(str(ob.get_item_metadata(ix))))
 	return ob
 
-func _ship_facets() -> Dictionary:
-	var factions := []
-	var roles := []
-	var eras := {}
-	for s in _data().get("ships", []):
-		var fc := facets(s)
-		if not factions.has(fc["faction"]):
-			factions.append(fc["faction"])
-		if not roles.has(fc["role"]):
-			roles.append(fc["role"])
-		eras[fc["era"]] = true
-	var extra: Array = factions.filter(func(x): return not MAJOR_FACTIONS.has(x))
-	extra.sort()
-	roles.sort()
-	var era_list := ["Legacy"]
-	for e in Roster.ERA_ORDER:
-		if eras.has(e):
-			era_list.append(e)
-	return {"factions": MAJOR_FACTIONS + extra, "roles": roles, "eras": era_list}
-
-func rows() -> Array:
-	var d := _data()
-	var q := query.strip_edges().to_lower()
-	var out := []
-	var fields: Array = app.meta.get("researchFields", [])
-	match tab:
-		"ships":
-			for s in d.get("ships", []):
-				var fc := facets(s)
-				if faction != "" and fc["faction"] != faction:
-					continue
-				if role != "" and fc["role"] != role:
-					continue
-				if era != "" and fc["era"] != era:
-					continue
-				if source != "" and fc["source"] != source:
-					continue
-				var ro: Variant = s.get("roster")
-				if q != "" and not ("%s %s %s %s" % [s["designClass"], s["designName"], s["description"], ro["source"] if ro is Dictionary else ""]).to_lower().contains(q):
-					continue
-				var badge := Roster.source_label(ro["sourceKind"]) if ro is Dictionary and ro["sourceKind"] != "Canon" else "%s ind" % Lcars.fmt(s["industryCost"])
-				out.append({"id": int(s["id"]), "title": str(s["designClass"]), "sub": "%s · %s%s" % [s["designName"], Roster.faction_label(fc["faction"]), (" · " + Roster.era_label(fc["era"])) if ro is Dictionary else ""], "badge": badge})
-		"technologies":
-			for t in d.get("technologies", []):
-				if (field < 0 or int(t["field"]) == field) and (q == "" or ("%s %s" % [t["name"], t["description"]]).to_lower().contains(q)):
-					out.append({"id": int(t["id"]), "title": str(t["name"]), "sub": "%s level %d" % [fields[int(t["field"])] if int(t["field"]) < fields.size() else "-", int(t["level"])], "badge": "%s pts" % Lcars.fmt(t["cost"])})
-		"structures":
-			for s2 in d.get("buildings", []):
-				if (field < 0 or int(s2["field"]) == field) and (q == "" or ("%s %s" % [s2["name"], s2["description"]]).to_lower().contains(q)):
-					out.append({"id": int(s2["id"]), "title": str(s2["name"]), "sub": "%s %d" % [fields[int(s2["field"])] if int(s2["field"]) >= 0 and int(s2["field"]) < fields.size() else "-", int(s2["level"])], "badge": "%s ind" % Lcars.fmt(s2["industryCost"])})
-		"minors":
-			for r in d.get("minorRaces", []):
-				if q == "" or ("%s %s %s %s" % [r["raceName"], r["homeworld"], r["temperament"], r["description"]]).to_lower().contains(q):
-					out.append({"id": int(r["raceId"]), "title": str(r["raceName"]), "sub": "%s · %s" % [r["temperament"], r["homeworld"]], "badge": str(r["bonus"])})
-		_:
-			for r in d.get("races", []):
-				if q == "" or str(r["name"]).to_lower().contains(q):
-					out.append({"id": int(r["id"]), "title": str(r["name"]), "sub": "Major power" if int(r["id"]) <= 4 else "Minor race", "badge": ""})
-	return out
-
 func _fill_list() -> void:
 	for c in _list_box.get_children():
 		c.queue_free()
 	var rs := rows()
 	_count.text = "%d entries" % rs.size()
-	var current := {}
-	for r in rs:
-		if int(r["id"]) == selected:
-			current = r
-	if current.is_empty() and rs.size() > 0:
-		current = rs[0]
+	var current := vm.current(rs)
 	if rs.is_empty():
 		_list_box.add_child(Lcars.empty_note("No matches."))
 	for r in rs.slice(0, 400):
-		var btn := Button.new()
-		btn.theme_type_variation = "GhostButton"
-		btn.custom_minimum_size.y = 44
 		var active: bool = not current.is_empty() and int(current["id"]) == int(r["id"])
-		if active:
-			btn.add_theme_stylebox_override("normal", Lcars.box(Color(Lcars.accent(), 0.2), 10, Lcars.accent(), 1))
-		var h := Lcars.hbox(10)
-		h.set_anchors_preset(Control.PRESET_FULL_RECT)
-		h.offset_left = 12
-		h.offset_right = -12
+		var btn := Lcars.row_button(active, 44, 10)
+		var h := Lcars.row_inner(btn, 12)
 		var t := Lcars.vbox(-3)
 		t.alignment = BoxContainer.ALIGNMENT_CENTER
 		t.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -210,9 +136,7 @@ func _fill_list() -> void:
 		h.add_child(t)
 		if str(r["badge"]) != "":
 			h.add_child(Lcars.label(str(r["badge"]), "Mono", 12, Lcars.accent2()))
-		for n in [h] + h.find_children("*", "Control", true, false):
-			n.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		btn.add_child(h)
+		Lcars.ignore_mouse(h)
 		var id := int(r["id"])
 		btn.pressed.connect(func(): selected = id; _fill_list())
 		_list_box.add_child(btn)
@@ -240,7 +164,7 @@ func _show_detail(r: Dictionary) -> void:
 			if RACE_TO_EMPIRE.has(id):
 				col.add_child(Lcars.emblem(RACE_TO_EMPIRE[id], 90))
 			col.add_child(Lcars.para("One of the five major powers of the quadrant." if id <= 4 else "A minor race that can be befriended, courted for membership, or absorbed into an empire."))
-			var n: int = _data().get("ships", []).filter(func(s): return int(s["race"]) == id).size()
+			var n := vm.ships_of_race(id)
 			col.add_child(Lcars.label("%d ship designs in the reference catalogue." % n, "Muted"))
 			b.add_child(col)
 
@@ -253,10 +177,7 @@ func _spec(pairs: Array) -> GridContainer:
 	return g
 
 func _ship_entry(id: int) -> Control:
-	var s := {}
-	for x in _data().get("ships", []):
-		if int(x["id"]) == id:
-			s = x
+	var s := vm.entry("ships", id)
 	var col := Lcars.vbox(10)
 	col.name = "ShipEntry"
 	var r: Variant = s.get("roster")
@@ -295,7 +216,7 @@ func _ship_entry(id: int) -> Control:
 			col.add_child(Lcars.label("%dx  %s  ·  %s  ·  %s" % [int(w["count"]), Roster.WEAPON_LABEL.get(w["type"], Roster.split_camel(str(w["type"]))), Roster.ARC_LABEL.get(w["arc"], w["arc"]), w["key"]], "", 14, Lcars.ALERT.lerp(Lcars.WARN, 0.5) if w.get("torpedo", false) else Lcars.SHIELD))
 	col.add_child(Lcars.caption("Technology requirements"))
 	var req := HFlowContainer.new()
-	var fields: Array = app.meta.get("researchFields", [])
+	var fields := vm.fields()
 	var reqs: Array = s.get("requires", [])
 	for i in reqs.size():
 		req.add_child(Lcars.badge("%s %d" % [fields[i] if i < fields.size() else "?", int(reqs[i])], "primary" if int(reqs[i]) > 0 else "dim"))
@@ -306,25 +227,19 @@ func _ship_entry(id: int) -> Control:
 	return col
 
 func _tech_entry(id: int) -> Control:
-	var t := {}
-	for x in _data().get("technologies", []):
-		if int(x["id"]) == id:
-			t = x
+	var t := vm.entry("technologies", id)
 	var col := Lcars.vbox(10)
-	var fields: Array = app.meta.get("researchFields", [])
+	var fields := vm.fields()
 	col.add_child(Lcars.label(str(t["name"]).to_upper(), "Heading", 30))
 	col.add_child(Lcars.caption("%s · level %d · %s points" % [fields[int(t["field"])], int(t["level"]), Lcars.fmt(t["cost"])]))
 	if not app.view.is_empty():
-		var have: bool = int(app.view["empire"]["techs"][int(t["field"])]["level"]) >= int(t["level"])
+		var have := vm.researched(t)
 		col.add_child(Lcars.badge("researched" if have else "not yet", "good" if have else "dim"))
 	col.add_child(Lcars.para(str(t["description"]), Lcars.TEXT2, 15))
 	return col
 
 func _structure_entry(id: int) -> Control:
-	var s := {}
-	for x in _data().get("buildings", []):
-		if int(x["id"]) == id:
-			s = x
+	var s := vm.entry("buildings", id)
 	var col := Lcars.vbox(10)
 	col.add_child(Lcars.label(str(s["name"]).to_upper(), "Heading", 30))
 	col.add_child(_spec([["Industry", Lcars.fmt(s["industryCost"])], ["Energy", s["energyCost"]], ["Population", s["populationCost"]], ["Morale", s["moraleBonus"]]]))
@@ -333,10 +248,7 @@ func _structure_entry(id: int) -> Control:
 	return col
 
 func _minor_entry(id: int) -> Control:
-	var r := {}
-	for x in _data().get("minorRaces", []):
-		if int(x["raceId"]) == id:
-			r = x
+	var r := vm.entry("minorRaces", id, "raceId")
 	var col := Lcars.vbox(10)
 	col.name = "MinorEntry"
 	col.add_child(Lcars.label("◇ " + str(r["raceName"]).to_upper(), "Heading", 30))
@@ -357,34 +269,3 @@ func _minor_entry(id: int) -> Control:
 		aff.add_child(h)
 	col.add_child(aff)
 	return col
-
-## A procedural top-down hull silhouette (no studio artwork), seeded by the design id.
-class ShipSilhouette extends Control:
-	var seed_id := 0
-	var color := Color.WHITE
-	func _draw() -> void:
-		var rng := RandomNumberGenerator.new()
-		rng.seed = seed_id * 7919 + 13
-		var c := Vector2(size.x / 2.0, size.y / 2.0)
-		var L: float = min(size.x * 0.5, 320.0)
-		var W: float = size.y * 0.32
-		draw_rect(Rect2(Vector2.ZERO, size), Color(Lcars.BG2, 0.6))
-		for k in range(0, int(size.x), 24):
-			draw_line(Vector2(k, 0), Vector2(k, size.y), Color(1, 1, 1, 0.03))
-		var saucer := rng.randf() < 0.5
-		var col := Color(color, 0.85)
-		if saucer:
-			draw_circle(c + Vector2(-L * 0.25, 0), W * 0.9, Color(col, 0.25))
-			draw_arc(c + Vector2(-L * 0.25, 0), W * 0.9, 0, TAU, 48, col, 2.0, true)
-			draw_rect(Rect2(c + Vector2(-L * 0.1, -W * 0.12), Vector2(L * 0.45, W * 0.24)), Color(col, 0.35))
-			for sgn in [-1, 1]:
-				var p := c + Vector2(L * 0.15, sgn * W * 0.7)
-				draw_rect(Rect2(p, Vector2(L * 0.4, W * 0.14)), Color(col, 0.5))
-				draw_line(c + Vector2(L * 0.1, 0), p + Vector2(L * 0.05, 0), col, 2.0)
-		else:
-			var pts := PackedVector2Array([c + Vector2(-L * 0.45, 0), c + Vector2(-L * 0.1, -W * rng.randf_range(0.3, 0.6)), c + Vector2(L * 0.3, -W * rng.randf_range(0.8, 1.1)),
-				c + Vector2(L * 0.4, -W * 0.2), c + Vector2(L * 0.4, W * 0.2), c + Vector2(L * 0.3, W * rng.randf_range(0.8, 1.1)), c + Vector2(-L * 0.1, W * rng.randf_range(0.3, 0.6))])
-			draw_colored_polygon(pts, Color(col, 0.25))
-			pts.append(pts[0])
-			draw_polyline(pts, col, 2.0, true)
-		draw_line(c + Vector2(-L * 0.5, 0), c + Vector2(L * 0.5, 0), Color(col, 0.2), 1.0)

@@ -1,94 +1,65 @@
 extends Control
-## Diplomacy: known powers and minors, incoming proposals and calls to arms, dossiers with
-## relation memory, the treaty builder and statecraft, treaty ledger and galactic news.
-## Port of screens/Diplomacy.tsx.
+## Diplomacy presentation: known powers and minors, incoming proposals and calls to arms, dossiers with relation
+## memory, the treaty builder and statecraft, the treaty ledger and galactic news.
+## Data and orders: DiplomacyVM (scripts/viewmodels/diplomacy_vm.gd).
 
 var app: App
-var d: Dictionary = {}
-var target := {}          # {minor: bool, id: int}
-var pane := ""
-var dossier_tab := "overview"
-var tb := {"type": "", "duration": 25, "tone": "Cordial", "offer": 0, "demand": 0}
-static var refused_calls := {}
+var vm: DiplomacyVM:
+	get:
+		if vm == null:
+			vm = DiplomacyVM.new(app.session)
+		return vm
+var d: Dictionary:
+	get: return vm.d
+	set(v): vm.d = v
+var target: Dictionary:
+	get: return vm.target
+	set(v): vm.target = v
+var pane: String:
+	get: return vm.pane
+	set(v): vm.pane = v
+var dossier_tab: String:
+	get: return vm.dossier_tab
+	set(v): vm.dossier_tab = v
+var tb: Dictionary:
+	get: return vm.tb
+	set(v): vm.tb = v
 
-const TREATY_EFFECTS := {
-	"NonAggression": "Honourable AIs will not attack while it holds. Trust grows +1 every 4 turns (up to 60).",
-	"Friendship": "+3 credits a turn to each party; trust +1 every 2 turns (up to 75).",
-	"Affiliation": "+5 credits a turn each; shared star charts and sensors; trust +1 a turn (up to 85).",
-	"Alliance": "+8 credits a turn each; shared charts, supply and mutual defence - you may be called to arms; trust +1 a turn.",
-	"Peace": "Ends the war; binds honourable AIs for its term.",
-	"Trade": "Enables trade routes between your empires (routes pay credits every turn).",
-	"Membership": "The minor joins your empire as a member world.",
-}
+const TREATY_EFFECTS := DiplomacyVM.TREATY_EFFECTS
 
 func _lock() -> String:
-	return "Finish the battle in progress first" if app.view.get("session", {}).get("active", false) else ""
+	return vm.lock_reason()
 
 static func proposal_title(p: Dictionary) -> String:
-	match str(p["kind"]):
-		"tribute": return "Tribute demand: ¢%s" % Lcars.fmt(p["creditDemand"])
-		"gift": return "Gift of ¢%s" % Lcars.fmt(p["creditOffer"])
-		"war": return "Declaration of war"
-	return "%s proposal" % p["typeName"]
+	return DiplomacyVM.proposal_title(p)
 
 static func consequences(p: Dictionary) -> Array:
-	match str(p["kind"]):
-		"tribute":
-			return ["Pay ¢%s. Paying tribute costs 5 trust and leaves us a grievance against them." % Lcars.fmt(p["creditDemand"]), "They gain 2 grievances against us and trust falls by 3."]
-		"gift":
-			return ["Receive ¢%s; trust rises." % Lcars.fmt(p["creditOffer"]), "The gift is returned."]
-	var effect: String = TREATY_EFFECTS.get(p["type"], "")
-	var acc := "%s signed for %s (+5 trust). %s" % [p["typeName"], str(p["duration"]).to_lower(), effect]
-	if int(p.get("creditOffer", 0)) > 0:
-		acc += " They pay ¢%s." % Lcars.fmt(p["creditOffer"])
-	if int(p.get("creditDemand", 0)) > 0:
-		acc += " We pay ¢%s." % Lcars.fmt(p["creditDemand"])
-	return [acc, "No treaty. Repeated refusals make them wait longer before proposing again."]
+	return DiplomacyVM.consequences(p)
 
 static func deadline(turn: int, due: int) -> Array:
-	var left := due - turn
-	return ["due now (turn %d)" % due if left <= 0 else "answer by turn %d · %d turn%s left" % [due, left, "" if left == 1 else "s"], "alert" if left <= 1 else ("warn" if left <= 2 else "dim")]
+	return DiplomacyVM.deadline(turn, due)
 
 func refresh() -> void:
 	for c in get_children():
 		c.queue_free()
-	var got: Variant = app.core.request("diplomacy")
-	d = got if got is Dictionary else {}
-	if d.is_empty():
+	var focus: Variant = null
+	if app.has_meta("diplomacy_focus"):
+		focus = app.get_meta("diplomacy_focus")
+		app.remove_meta("diplomacy_focus")
+	if not vm.fetch(focus):
 		add_child(Lcars.empty_note("Diplomacy unavailable."))
 		return
-	if app.has_meta("diplomacy_focus"):
-		target = app.get_meta("diplomacy_focus")
-		app.remove_meta("diplomacy_focus")
-		pane = "dossier"
-	var incoming: Array = d["proposals"].filter(func(p): return p.get("incoming", false) and p["status"] == "Pending")
-	var has_inbox: bool = incoming.size() > 0 or d["callsToArms"].size() > 0
-	if pane == "":
-		pane = "inbox" if has_inbox else "dossier"
-	if pane == "inbox" and not has_inbox:
-		pane = "dossier"
-	if target.is_empty():
-		for e in d["empires"]:
-			if e.get("contact", false) and not e.get("eliminated", false):
-				target = {"minor": false, "id": int(e["empire"])}
-				break
-		if target.is_empty() and d["minors"].size() > 0:
-			target = {"minor": true, "id": int(d["minors"][0]["systemId"])}
-	var m := MarginContainer.new()
-	m.set_anchors_preset(Control.PRESET_FULL_RECT)
-	for side in ["left", "right", "top", "bottom"]:
-		m.add_theme_constant_override("margin_" + side, 16)
-	add_child(m)
+	var incoming := vm.incoming()
+	var has_inbox := vm.has_inbox()
 	var row := Lcars.hbox(14)
-	m.add_child(row)
+	Lcars.screen_margin(self).add_child(row)
 	row.add_child(_race_list())
 	var main := Lcars.vbox(10)
 	main.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	row.add_child(main)
 	var tabs := Lcars.hbox(6)
 	if has_inbox:
-		var n: int = incoming.size() + d["callsToArms"].filter(func(c): return not c.get("honored", false)).size()
-		tabs.add_child(_pane_tab("inbox", "Incoming  %d" % n))
+		tabs.add_child(_pane_tab("inbox", "Incoming  %d" % vm.inbox_count()))
 	tabs.add_child(_pane_tab("dossier", "Dossier"))
 	tabs.add_child(_pane_tab("ledger", "Treaty ledger  %d" % (d["treaties"].size() + d["treatyHistory"].size())))
 	tabs.add_child(_pane_tab("news", "Galactic news  %d" % d["news"].size()))
@@ -108,23 +79,22 @@ func _pane_tab(id: String, text: String) -> Button:
 	return t
 
 func _race_list() -> Control:
-	var contacted: Array = d["empires"].filter(func(e): return e.get("contact", false))
+	var contacted := vm.contacted()
 	var f := Lcars.frame("Known powers", "%d contacted" % (contacted.size() + d["minors"].size()), "primary")
 	f.custom_minimum_size.x = 440
 	var b := Lcars.body(f)
 	var list := Lcars.vbox(4)
 	for e in d["empires"]:
 		var id := int(e["empire"])
-		var active: bool = not target.get("minor", true) and int(target.get("id", -1)) == id
-		var btn := _row_button(active)
+		var btn := Lcars.row_button(vm.is_selected(false, id))
 		btn.name = "Race%d" % id
 		btn.disabled = not e.get("contact", false)
-		var h := _row_inner(btn)
+		var h := Lcars.row_inner(btn)
 		h.add_child(Lcars.emblem(id, 30, Lcars.owner_color(id) if e.get("contact", false) else Lcars.TEXT3))
 		var t := Lcars.vbox(-2)
 		t.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		t.add_child(Lcars.label(str(e["name"]), "", 15, Lcars.TEXT if e.get("contact", false) else Lcars.TEXT3))
-		t.add_child(Lcars.label(_status(e), "Muted", 12))
+		t.add_child(Lcars.label(DiplomacyVM.status(e), "Muted", 12))
 		h.add_child(t)
 		if e.get("contact", false) and not e.get("eliminated", false):
 			h.add_child(Lcars.meter(e.get("trust", 0), 100, Lcars.ALERT if e.get("atWar", false) else Lcars.GOOD, 4, 70))
@@ -134,28 +104,24 @@ func _race_list() -> Control:
 			h.add_child(Lcars.badge("WAR", "alert"))
 		elif e.get("allied", false):
 			h.add_child(Lcars.badge("ALLY", "good"))
-		_ignore_mouse(h)
-		btn.pressed.connect(func(): target = {"minor": false, "id": id}; pane = "dossier"; refresh())
+		Lcars.ignore_mouse(h)
+		btn.pressed.connect(func(): vm.select(false, id); refresh())
 		list.add_child(btn)
 	if d["minors"].size() > 0:
 		list.add_child(Lcars.caption("Minor races"))
 	for mi in d["minors"]:
 		var sid := int(mi["systemId"])
-		var btn2 := _row_button(target.get("minor", false) and int(target.get("id", -1)) == sid)
-		var h2 := _row_inner(btn2)
+		var btn2 := Lcars.row_button(vm.is_selected(true, sid))
+		var h2 := Lcars.row_inner(btn2)
 		h2.add_child(Lcars.label("◇", "", 22, Color("#d8c3ff")))
 		var t2 := Lcars.vbox(-2)
 		t2.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		t2.add_child(Lcars.label(str(mi["name"]), "", 15, Lcars.TEXT))
-		var st := ("Member of " + app.empire_name(int(mi["memberOf"]))) if int(mi.get("memberOf", 0)) != 0 else ("Friendship" if mi.get("friendship", false) else "Independent")
-		st += " · " + str(mi["system"])
-		if mi.get("race") is Dictionary:
-			st += " · " + str(mi["race"]["temperament"])
-		t2.add_child(Lcars.label(st, "Muted", 12))
+		t2.add_child(Lcars.label(vm.minor_status(mi), "Muted", 12))
 		h2.add_child(t2)
 		h2.add_child(Lcars.meter(mi["attitude"], 100, Lcars.GOOD, 4, 70))
-		_ignore_mouse(h2)
-		btn2.pressed.connect(func(): target = {"minor": true, "id": sid}; pane = "dossier"; refresh())
+		Lcars.ignore_mouse(h2)
+		btn2.pressed.connect(func(): vm.select(true, sid); refresh())
 		list.add_child(btn2)
 	if contacted.is_empty() and d["minors"].is_empty():
 		list.add_child(Lcars.empty_note("No contact yet. Explore to meet other powers."))
@@ -167,11 +133,12 @@ func _race_list() -> Control:
 	st2.add_child(sv)
 	var rep := Lcars.hbox(8)
 	rep.add_child(Lcars.caption("Reputation"))
-	var betr := int(d["standing"].get("betrayals", 0))
-	rep.add_child(Lcars.badge(("%d treaty betrayal%s (last turn %d)" % [betr, "" if betr == 1 else "s", int(d["standing"]["lastBetrayalTurn"])]) if betr > 0 else "No betrayals", "alert" if betr > 0 else "good"))
+	var standing := vm.standing()
+	var betr: int = standing["betrayals"]
+	rep.add_child(Lcars.badge(("%d treaty betrayal%s (last turn %d)" % [betr, "" if betr == 1 else "s", int(standing["last"])]) if betr > 0 else "No betrayals", "alert" if betr > 0 else "good"))
 	sv.add_child(rep)
-	var vic: Variant = d.get("victory")
-	if vic is Dictionary and d.get("modern", false):
+	var vic: Dictionary = standing["bloc"]
+	if not vic.is_empty():
 		var br := Lcars.hbox(8)
 		br.add_child(Lcars.caption("Bloc"))
 		br.add_child(Lcars.meter(vic["bloc"], max(1, int(vic["galaxy"])), Lcars.GOOD if vic.get("achieved", false) else Lcars.accent(), 6))
@@ -182,45 +149,10 @@ func _race_list() -> Control:
 	b.add_child(st2)
 	return f
 
-func _row_button(active: bool) -> Button:
-	var btn := Button.new()
-	btn.theme_type_variation = "GhostButton"
-	btn.custom_minimum_size.y = 52
-	if active:
-		btn.add_theme_stylebox_override("normal", Lcars.box(Color(Lcars.accent(), 0.2), 12, Lcars.accent(), 1))
-	return btn
-
-func _row_inner(btn: Button) -> HBoxContainer:
-	var h := Lcars.hbox(10)
-	h.set_anchors_preset(Control.PRESET_FULL_RECT)
-	h.offset_left = 10
-	h.offset_right = -10
-	btn.add_child(h)
-	return h
-
-func _ignore_mouse(n: Control) -> void:
-	n.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	for c in n.find_children("*", "Control", true, false):
-		c.mouse_filter = Control.MOUSE_FILTER_IGNORE
-
-func _status(e: Dictionary) -> String:
-	if not e.get("contact", false):
-		return "No contact"
-	if e.get("eliminated", false):
-		return "Eliminated"
-	var parts := ["At war" if e.get("atWar", false) else ("Full alliance" if e.get("allied", false) else ("Affiliated" if e.get("sensorSharing", false) else ("Treaty in force" if e.get("treatyForbidsAttack", false) else "Peace")))]
-	if e.get("tradeTreaty", false):
-		parts.append("trade pact")
-	var bt := int(e.get("memory", {}).get("theirBetrayals", 0)) if e.get("memory") is Dictionary else 0
-	if bt > 0:
-		parts.append("%d betrayal%s" % [bt, "" if bt == 1 else "s"])
-	return " · ".join(parts)
-
 # ---------------------------------------------------------------------------------------------
 func _inbox(incoming: Array) -> Control:
 	var v := app.view
-	var n: int = incoming.size() + d["callsToArms"].filter(func(c): return not c.get("honored", false)).size()
-	var f := Lcars.frame("Incoming", "%d awaiting your answer" % n, "secondary")
+	var f := Lcars.frame("Incoming", "%d awaiting your answer" % vm.inbox_count(), "secondary")
 	f.name = "Inbox"
 	var list := Lcars.vbox(10)
 	var lock := _lock()
@@ -245,19 +177,16 @@ func _inbox(incoming: Array) -> Control:
 		col.add_child(Lcars.para("Reject: " + cons[1], Lcars.ALERT, 13))
 		h.add_child(col)
 		var acts := Lcars.vbox(6)
-		var drafted := {}
-		for c in v.get("pending", []):
-			if c["type"] == "RespondDiplomaticProposal" and int(c.get("proposalId", -1)) == pid:
-				drafted = c
+		var drafted := vm.drafted_response(pid)
 		if not drafted.is_empty():
 			acts.add_child(Lcars.badge("Response ordered", "good"))
 			var did := int(drafted["id"])
 			acts.add_child(Lcars.pill("Undo", "ghost", func(): app.cancel_orders([did], "Response withdrawn."), lock))
 		else:
-			var a := Lcars.pill("Accept", "good", func(): app.issue({"type": "RespondDiplomaticProposal", "proposalId": pid, "proposalAccept": true}, [], "Acceptance ordered for turn end."), lock)
+			var a := Lcars.pill("Accept", "good", func(): vm.respond(pid, true), lock)
 			a.name = "Accept%d" % pid
 			acts.add_child(a)
-			var r := Lcars.pill("Reject", "alert", func(): app.issue({"type": "RespondDiplomaticProposal", "proposalId": pid, "proposalAccept": false}, [], "Rejection ordered for turn end."), lock)
+			var r := Lcars.pill("Reject", "alert", func(): vm.respond(pid, false), lock)
 			r.name = "Reject%d" % pid
 			acts.add_child(r)
 		h.add_child(acts)
@@ -269,12 +198,8 @@ func _inbox(incoming: Array) -> Control:
 
 func _call_card(c: Dictionary) -> Control:
 	var v := app.view
-	var key := "%d:%d:%d" % [int(c["defender"]), int(c["aggressor"]), int(c["issuedTurn"])]
-	var refused := refused_calls.has(key)
-	var war := {}
-	for p in v.get("pending", []):
-		if p["type"] == "DeclareWar" and int(p.get("targetEmpire", -1)) == int(c["aggressor"]):
-			war = p
+	var refused := vm.refused(c)
+	var war := vm.war_order(c)
 	var lock := _lock()
 	var card := Lcars.card()
 	card.name = "Call%d" % int(c["aggressor"])
@@ -301,35 +226,22 @@ func _call_card(c: Dictionary) -> Control:
 		if not war.is_empty():
 			acts.add_child(Lcars.badge("War declaration ordered", "alert"))
 			var wid := int(war["id"])
-			acts.add_child(Lcars.pill("Refuse instead", "ghost", func(): app.cancel_orders([wid]); refused_calls[key] = true; refresh(), lock))
+			acts.add_child(Lcars.pill("Refuse instead", "ghost", func(): vm.refuse_instead(c, wid); refresh(), lock))
 		elif refused:
-			acts.add_child(Lcars.pill("Reconsider", "ghost", func(): refused_calls.erase(key); refresh()))
+			acts.add_child(Lcars.pill("Reconsider", "ghost", func(): vm.set_refused(c, false); refresh()))
 		else:
-			var body := "Honouring the %s's call to arms declares war on the %s at turn end.\n+10 trust with the %s.\n%s" % [c["defenderName"], c["aggressorName"], c["defenderName"],
-				("We are bound by a treaty with the %s: declaring war is a betrayal (-15 trust with them, -10 with every other empire, and a permanent mark on our reputation)." % c["aggressorName"]) if c.get("boundByTreaty", false) else "Any trade routes with the %s end and our open proposals with them are cancelled." % c["aggressorName"]]
-			var hb := Lcars.pill("Honour", "alert", func(): app.confirm("Declare war on the %s?" % c["aggressorName"], body, "Declare war", func():
-				if app.issue({"type": "DeclareWar", "targetEmpire": aggressor}, [], "War declaration ordered: the alliance is honoured."):
-					refused_calls.erase(key)), lock if lock != "" else str(c.get("honorBlocker", "")))
+			var hb := Lcars.pill("Honour", "alert", func(): app.confirm("Declare war on the %s?" % c["aggressorName"], DiplomacyVM.honour_body(c), "Declare war", func(): vm.honour(c)), lock if lock != "" else str(c.get("honorBlocker", "")))
 			hb.name = "Honor%d" % aggressor
 			acts.add_child(hb)
-			acts.add_child(Lcars.pill("Refuse", "ghost", func(): refused_calls[key] = true; refresh()))
+			acts.add_child(Lcars.pill("Refuse", "ghost", func(): vm.set_refused(c, true); refresh()))
 	h.add_child(acts)
 	return card
 
 # ---------------------------------------------------------------------------------------------
-func _event_tone(k: int) -> String:
-	if k in [6, 8, 12]:
-		return "alert"
-	if k in [2, 3, 13, 15, 16, 17, 18]:
-		return "warn"
-	if k in [1, 4, 9, 10, 11, 14]:
-		return "good"
-	return "dim"
-
 func _event_row(e: Dictionary, both: bool) -> Control:
 	var h := Lcars.hbox(10)
 	h.add_child(Lcars.label("T%d" % int(e["turn"]), "Mono", 13, Lcars.TEXT3))
-	h.add_child(Lcars.badge(str(e["type"]), _event_tone(int(e["typeKey"]))))
+	h.add_child(Lcars.badge(str(e["type"]), DiplomacyVM.event_tone(int(e["typeKey"]))))
 	var txt := str(e["text"])
 	if both:
 		txt = "%s → %s · %s" % [e["a"]["name"], e["b"]["name"], txt]
@@ -372,23 +284,15 @@ func _news() -> Control:
 # ---------------------------------------------------------------------------------------------
 func _dossier() -> Control:
 	var v := app.view
-	var is_minor: bool = target["minor"]
-	var tid := int(target["id"])
-	var rel := {}
-	var minor := {}
-	if is_minor:
-		for mi in d["minors"]:
-			if int(mi["systemId"]) == tid:
-				minor = mi
-	else:
-		for e in d["empires"]:
-			if int(e["empire"]) == tid:
-				rel = e
-	var name_: String = rel.get("name", minor.get("name", "Unknown"))
-	var match_party := func(p: Dictionary) -> bool: return int(p["id"]) == tid and bool(p.get("minor", false)) == is_minor
-	var treaties: Array = d["treaties"].filter(func(t): return match_party.call(t["counterparty"]))
-	var ended: Array = d["treatyHistory"].filter(func(t): return match_party.call(t["counterparty"]))
-	var events: Array = d["events"].filter(func(e): return match_party.call(e["a"]) or match_party.call(e["b"]))
+	var ds := vm.dossier()
+	var is_minor: bool = ds["is_minor"]
+	var tid: int = ds["id"]
+	var rel: Dictionary = ds["rel"]
+	var minor: Dictionary = ds["minor"]
+	var name_: String = ds["name"]
+	var treaties: Array = ds["treaties"]
+	var ended: Array = ds["ended"]
+	var events: Array = ds["events"]
 	var f := Lcars.frame(name_, "Minor race" if is_minor else ("Major power · %s temperament" % rel["personality"] if rel.has("personality") else "Major power"), "primary")
 	f.name = "Dossier"
 	var b := Lcars.body(f)
@@ -487,23 +391,19 @@ func _dossier() -> Control:
 						es.refresh(), "", "Link your colonies to theirs; each route pays 5 + a tenth of the smaller population")
 				tp.name = "ManageTrade"
 				body.add_child(tp)
-			var dossiers: Array = d.get("dossiers", []).filter(func(x): return int(x["target"]) == tid) if not is_minor else []
-			if dossiers.size() > 0:
-				body.add_child(Lcars.para("Intelligence (turn %d): %d known colonies, about ¢%s in reserve." % [int(dossiers[0]["turn"]), int(dossiers[0]["knownColonies"]), Lcars.fmt(dossiers[0]["estimatedCredits"])]))
+			var dz := vm.intel_dossier(tid) if not is_minor else {}
+			if not dz.is_empty():
+				body.add_child(Lcars.para("Intelligence (turn %d): %d known colonies, about ¢%s in reserve." % [int(dz["turn"]), int(dz["knownColonies"]), Lcars.fmt(dz["estimatedCredits"])]))
 			elif not is_minor:
 				body.add_child(Lcars.para("No intelligence dossier yet - run espionage from the Intel screen.", Lcars.TEXT3, 13))
 			body.add_child(Lcars.caption("Proposals"))
-			var props: Array = d["proposals"].filter(func(p): return match_party.call(p["proposer"] if p.get("incoming", false) else p["target"]))
+			var props: Array = ds["proposals"]
 			if props.is_empty():
 				body.add_child(Lcars.label("No proposals in progress.", "Muted"))
 			for p in props:
 				body.add_child(Lcars.label("%s: %s · due turn %d · %s" % ["From them" if p.get("incoming", false) else "From you", proposal_title(p), int(p["dueTurn"]), p["status"]], "", 14))
-			for o in d.get("majorOffers", []):
-				if int(o["proposer"]) == tid or int(o["target"]) == tid:
-					body.add_child(Lcars.label("%s %s offer is answered on turn %d." % ["Your" if int(o["proposer"]) == app.player() else "Their", "peace" if o["type"] == "OfferPeace" else "trade treaty", int(o["dueTurn"])], "", 14))
-			for o in d.get("minorOffers", []):
-				if int(o["systemId"]) == tid:
-					body.add_child(Lcars.label("Your %s arrives on turn %d." % ["gift" if o["type"] == "SendGift" else ("membership offer" if o["type"] == "OfferMembership" else "friendship offer"), int(o["dueTurn"])], "", 14))
+			for line in vm.offer_lines(tid):
+				body.add_child(Lcars.label(line, "", 14))
 			body.add_child(Lcars.caption("Treaties"))
 			if treaties.is_empty():
 				body.add_child(Lcars.label("No treaties in force.", "Muted"))
@@ -516,24 +416,14 @@ func _negotiate(is_minor: bool, tid: int, rel: Dictionary) -> Control:
 	var v := app.view
 	var col := Lcars.vbox(10)
 	var lock := _lock()
-	var elig := {}
-	for e in d.get("eligibility", []):
-		if int(e["target"]) == tid and bool(e.get("minor", false)) == is_minor:
-			elig = e
-	if d.get("modern", false):
+	if vm.modern():
 		var box := PanelContainer.new()
 		box.theme_type_variation = "Inset"
 		box.name = "TreatyBuilder"
 		var bv := Lcars.vbox(8)
 		box.add_child(bv)
 		bv.add_child(Lcars.label("TREATY PROPOSAL", "SubHeading", 20, Lcars.accent2()))
-		var treaties: Array = elig.get("treaties", [])
-		if tb["type"] == "" or treaties.filter(func(t): return t["type"] == tb["type"]).is_empty():
-			tb["type"] = "NonAggression"
-			for t in treaties:
-				if t.get("ok", false):
-					tb["type"] = t["type"]
-					break
+		var treaties := vm.treaty_options(is_minor, tid)
 		var types := HFlowContainer.new()
 		for t in treaties:
 			var ty: String = t["type"]
@@ -566,55 +456,28 @@ func _negotiate(is_minor: bool, tid: int, rel: Dictionary) -> Control:
 			cr.add_child(sp)
 		cr.add_child(Lcars.label("Treasury ¢%s" % Lcars.fmt(v["empire"].get("draftCredits", 0)), "Muted"))
 		bv.add_child(cr)
-		var proposal := {"type": "SubmitDiplomaticProposal", "proposalTreatyType": tb["type"], "proposalDuration": tb["duration"], "proposalTone": tb["tone"], "proposalCreditOffer": tb["offer"], "proposalCreditDemand": tb["demand"]}
-		if is_minor:
-			proposal["proposalTargetIsMinor"] = true
-			proposal["targetSystemId"] = tid
-		else:
-			proposal["targetEmpire"] = tid
-		var reason := lock
-		if reason == "":
-			for t in treaties:
-				if t["type"] == tb["type"] and not t.get("ok", false):
-					reason = str(t["reason"])
-		if reason == "":
-			reason = app.dry_run(proposal)
+		var proposal := vm.proposal_command(is_minor, tid)
+		var reason := vm.proposal_block(treaties, proposal)
 		var send := Lcars.hbox(8)
 		var rl := Lcars.para(reason if reason != "" else "Terms are ready to send.", Lcars.ALERT if reason != "" else Lcars.GOOD, 14)
 		rl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		send.add_child(rl)
-		var sb := Lcars.pill("Send proposal", "primary", func():
-			var p2 := proposal.duplicate()
-			p2["proposalCreditOffer"] = tb["offer"]
-			p2["proposalCreditDemand"] = tb["demand"]
-			app.issue(p2, [], "Proposal ordered for turn end."), reason)
+		var sb := Lcars.pill("Send proposal", "primary", func(): vm.send_proposal(proposal), reason)
 		sb.name = "SendProposal"
 		send.add_child(sb)
 		bv.add_child(send)
 		col.add_child(box)
 	col.add_child(Lcars.label("ENVOYS" if is_minor else "STATECRAFT", "SubHeading", 20, Lcars.accent2()))
-	var war_body := ("We are bound by a treaty with the %s. Declaring war now is a betrayal: they lose 15 more trust, every other empire loses 10, and our reputation carries the mark for good." % rel.get("name", "")) if rel.get("treatyForbidsAttack", false) else "War breaks treaties and allows attacks on their ships and colonies. Their allies may be called to arms against us."
-	var classic := []
-	if is_minor:
-		classic = [[{"type": "OfferFriendship", "systemId": tid}, "Offer friendship", "primary", "", "Delivered at turn end; their attitude decides the answer."],
-			[{"type": "SendGift", "systemId": tid}, "Send gift", "secondary", "", "Credits are paid at turn end; the gift improves relations."],
-			[{"type": "OfferMembership", "systemId": tid}, "Offer membership", "primary", "", "Needs strong relations and a friendship signed in an earlier turn."]]
-	else:
-		classic = [[{"type": "DeclareWar", "targetEmpire": tid}, "Declare war", "alert", war_body, "Required before attacking."],
-			[{"type": "OfferPeace", "targetEmpire": tid}, "Propose peace", "primary", "", "They answer after a delay."],
-			[{"type": "ProposeTradeTreaty", "targetEmpire": tid}, "Propose trade pact", "secondary", "", "Enables trade routes; they answer after a delay."]]
 	var row := Lcars.hbox(8)
-	for c in classic:
-		var cmd: Dictionary = c[0]
-		var label: String = c[1]
-		var confirm_body: String = c[3]
-		var why := lock if lock != "" else app.dry_run(cmd)
-		var p := Lcars.pill(label, c[2], func():
-			if confirm_body != "":
-				app.confirm("%s?" % label, confirm_body, label, func(): app.issue(cmd, [], "%s: ordered for turn end." % label))
+	for a in vm.classic_actions(is_minor, tid, rel):
+		var act: Dictionary = a
+		var label: String = act["label"]
+		var p := Lcars.pill(label, act["tone"], func():
+			if act["confirm"] != "":
+				app.confirm("%s?" % label, act["confirm"], label, func(): vm.order_classic(act))
 			else:
-				app.issue(cmd, [], "%s: ordered for turn end." % label), why, c[4])
-		p.name = "Dip_" + str(cmd["type"])
+				vm.order_classic(act), act["block"], act["hint"])
+		p.name = "Dip_" + str(act["command"]["type"])
 		row.add_child(p)
 	col.add_child(row)
 	return col
