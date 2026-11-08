@@ -67,7 +67,10 @@ func _ready() -> void:
 	_load_settings()
 	DisplaySettings.fill_defaults(settings)
 	DisplaySettings.apply(settings, get_tree())   # window mode, resolution, vsync, FPS cap, render scale, AA, shadows
+	if OS.has_feature("web"):
+		await AppLoader.fetch_web_packs(self)   # the web tier only: planets_web.pck beside index.html
 	AppLoader.mount_user_packs()   # asset bundles built by the pack step (planet textures ...)
+	PlanetTextures.reset()
 	BotfAudioSystem.attach(self)   # audio: shares settings, listens to screen changes (music, screen cue)
 	session.connect_core(CoreClient.create("fixture" if forced_backend == "fixture" else "auto"))
 	session.view_changed.connect(_on_view_changed)

@@ -18,6 +18,8 @@
   Exit code 0 only if every export, suite and smoke check passed. A blocked web step is reported, and counts as a failure of the
   web target (it is a real gap), so use -Target windows to leave it out.
 
+  -Sequential runs one Godot process at a time (exports, suites, captures, smoke), BelowNormal priority: use it on a shared PC.
+
   Environment: GODOT overrides the Godot console exe (default C:\Tools\Godot\Godot_v4.5-stable_win64_console.exe).
 #>
 [CmdletBinding()]
@@ -26,6 +28,7 @@ param(
     [switch]$SkipExport,
     [switch]$SkipTests,
     [switch]$SkipCapture,
+    [switch]$Sequential,
     [int]$SuiteTimeoutSec = 900,
     [int]$CaptureTimeoutSec = 900
 )
@@ -54,6 +57,8 @@ function Start-Godot([string]$Name, [string]$ArgString) {
     $p = Start-Process -FilePath $godot -ArgumentList $ArgString -PassThru -WindowStyle Hidden `
         -RedirectStandardOutput (Join-Path $logs "$Name.log") -RedirectStandardError (Join-Path $logs "$Name.err")
     $null = $p.Handle   # caches the handle so ExitCode is readable after redirected-output runs
+    try { $p.PriorityClass = [System.Diagnostics.ProcessPriorityClass]::BelowNormal } catch {}
+    if ($Sequential) { if (-not $p.WaitForExit(900 * 1000)) { try { Stop-Process -Id $p.Id -Force } catch {} } }
     [pscustomobject]@{ Name = $Name; Proc = $p; Start = Get-Date }
 }
 
@@ -259,6 +264,21 @@ if (-not $SkipTests) {
     $name = if ($note) { 'suite-battle-scene-retry' } else { 'suite-battle-scene' }
     $errs = @(Get-Content -LiteralPath (Join-Path $logs "$name.err"), (Join-Path $logs "$name.log") -ErrorAction SilentlyContinue | Where-Object { $_ -match 'SCRIPT ERROR|Parse Error' }).Count
     Add-Result 'suite-battle-scene' $(if ($bs.Exit -eq 0 -and $errs -eq 0) { 'ok' } else { 'FAIL' }) ((Tail-Summary $name) + $note)
+}
+
+# Web asset bundle: only the web tier goes beside the web export (packs/planets_web.pck, fetched by AppLoader.fetch_web_packs).
+# The desktop pack (planets_desktop.pck) is never copied here. Built by scenes/galaxy/tools/pack_planets.gd ... web and kept in the
+# user data folder's packs/ (private; not in git). Web bundle budget: under 40 MB all told.
+if ($wantWeb -and -not $SkipExport) {
+    $webPacks = Join-Path $proj 'build\web\packs'
+    New-Item -ItemType Directory -Force -Path $webPacks | Out-Null
+    Get-ChildItem -LiteralPath $webPacks -Filter '*.pck' -ErrorAction SilentlyContinue | Remove-Item -Force
+    $userPacks = Join-Path $env:APPDATA 'Godot\app_userdata\BOTF Remastered (Godot)\packs'
+    $wp = Join-Path $userPacks 'planets_web.pck'
+    if (Test-Path -LiteralPath $wp) { Copy-Item -LiteralPath $wp -Destination $webPacks -Force }
+    $webBytes = (Get-ChildItem -LiteralPath $webPacks -Filter '*.pck' -ErrorAction SilentlyContinue | Measure-Object Length -Sum).Sum
+    $webMb = [Math]::Round(([double]$webBytes) / 1MB, 1)
+    Add-Result 'web-packs' $(if ($webBytes -gt 0 -and $webBytes -lt 40MB) { 'ok' } else { 'FAIL' }) "$webMb MB in build\web\packs (budget 40 MB; desktop pack excluded)"
 }
 
 # ---- Phase 3: web capture -------------------------------------------------------------------------------------------------
