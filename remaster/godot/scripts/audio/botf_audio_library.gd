@@ -1,18 +1,25 @@
 class_name BotfAudioLibrary
 extends RefCounted
-## Resolves a sound key to local files, then to a generated tone. Everything is optional and private: files live in
-## the gitignored LocalAssets (remaster/game/LocalAssets), found through
-##   1. the resolved manifest record for the key (the Unreal importer's output, via BattleAssets), and its fallback chain;
-##   2. LocalAssets/audio/cues.json: {"cues": {key: ["voice/english_0001.ogg", ...]}} (paths relative to audio/), written by
-##      remaster/tools/build_audio_cues.py from the extracted BOTF banks;
-##   3. LocalAssets/audio/<key>.wav|ogg or <key>/*.wav|ogg (the Import-Assets.ps1 layout);
-##   4. res://scenes/battle/audio/<key>.wav|ogg.
-## $BOTF_AUDIO_DIR overrides the audio folder. A key with several files rotates through them.
+## Resolves a sound key to packed files, then to a generated tone. Everything is optional and private. Every load goes
+## through AppLoader (res:// and user:// only; no disk paths, no env-var paths, same code on desktop and web). Sources:
+##   1. the resolved manifest record for the key (BattleAssets), kept only when its files are res:// or user://;
+##   2. cues.json tables: {"cues": {key: ["voice/english_0001.ogg", ...]}} (paths relative to the table), from
+##      - the audio pack: res://scripts/audio/pack/<pack>/cues.json ("shared", "fed", "kli", ...), ogg only, built by
+##        remaster/tools/pack_audio_web.py from LocalAssets/audio (BOTF banks) and LocalAssets/audio/trek (Trek library);
+##      - user://audio/cues.json and user://audio/trek/cues.json, a mounted or hand-placed bundle;
+##   3. res://scenes/battle/audio/<key>.wav|ogg.
+## Trek-library clips sit beside the BOTF ones under era keys (weapon.Phaser.ds9); BotfAudioCues.with_era() asks for
+## those first. A key with several files rotates through them.
+
+const PACK_ROOT := "res://scripts/audio/pack"
+const USER_ROOT := "user://audio"
 
 var assets: BattleAssets
-var audio_dirs: PackedStringArray = []
-var cue_files := {}             ## key -> PackedStringArray of absolute paths (cues.json)
+var cue_files := {}             ## key -> PackedStringArray of res:// or user:// paths
 var cues_path := ""
+var cues_sources: PackedStringArray = []   ## every cues file merged, in load order
+var eras_present := {}          ## era code -> true when some key ends with .<era> (so era twins are worth looking up)
+var loaded_packs: PackedStringArray = []
 var _streams := {}              ## path -> AudioStream (or null when it would not load)
 var _tones := {}                ## kind -> AudioStream
 var _music_tasks := {}          ## kind -> WorkerThreadPool task id
@@ -21,69 +28,84 @@ var _mutex := Mutex.new()
 
 func _init(p_assets: BattleAssets = null) -> void:
 	assets = p_assets if p_assets != null else BattleAssets.new()
-	var env := OS.get_environment("BOTF_AUDIO_DIR")
-	if env != "":
-		audio_dirs.append(env)
-	if assets.root_dir != "":
-		audio_dirs.append(assets.root_dir.path_join("audio"))
-	for p in BattleAssets.candidate_paths():
-		var d := p.get_base_dir().path_join("audio")
-		if not audio_dirs.has(d):
-			audio_dirs.append(d)
-	for d in audio_dirs:
-		var f: String = d.path_join("cues.json")
-		if FileAccess.file_exists(f) and load_cues(f):
-			break
+	for rel in ["cues.json", "trek/cues.json"]:
+		var f := USER_ROOT.path_join(rel)
+		if AppLoader.exists(f):
+			load_cues(f, cues_sources.size() > 0)
+	# The packed audio (shared + every empire pack present). On a web export this is all there is.
+	for pack in pack_names():
+		load_pack(pack)
 
 
-## Loads a cues.json. Returns false when it is unreadable.
-func load_cues(path: String) -> bool:
-	var data = JSON.parse_string(FileAccess.get_file_as_string(path))
-	if not (data is Dictionary) or not (data.get("cues") is Dictionary):
+## Names of the packs listed in pack_manifest.json under PACK_ROOT (empty when no pack was built).
+static func pack_names() -> PackedStringArray:
+	var out := PackedStringArray()
+	var data: Variant = AppLoader.json(PACK_ROOT + "/pack_manifest.json")
+	if data is Dictionary and data.get("packs") is Dictionary:
+		for k in data.packs:
+			out.append(str(k))
+	return out
+
+
+## Mounts one pack's cue table (idempotent). A lazily fetched empire pack calls AppLoader.mount_pack, then this.
+func load_pack(pack: String) -> bool:
+	if loaded_packs.has(pack):
+		return true
+	if not load_cues(PACK_ROOT.path_join(pack).path_join("cues.json"), true):
 		return false
-	cues_path = path
-	cue_files.clear()
-	var base := path.get_base_dir()
-	for key in data.cues:
-		var list := PackedStringArray()
-		for rel in data.cues[key]:
-			var rp := str(rel).replace("\\", "/")
-			list.append(rp if rp.is_absolute_path() else base.path_join(rp))
-		cue_files[str(key)] = list
+	loaded_packs.append(pack)
 	return true
 
 
-## Existing local files for one key (not following fallbacks).
+## Loads a cues.json. Returns false when it is missing or unreadable. merge: keep what is loaded and add this file's
+## keys (a key already present gains the new files after its own).
+func load_cues(path: String, merge := false) -> bool:
+	var data: Variant = AppLoader.json(path)
+	if not (data is Dictionary) or not (data.get("cues") is Dictionary):
+		return false
+	if not merge:
+		cue_files.clear()
+		eras_present.clear()
+		cues_sources.clear()
+	cues_path = path
+	cues_sources.append(path)
+	var base := path.get_base_dir()
+	for key in data.cues:
+		var list: PackedStringArray = cue_files.get(str(key), PackedStringArray())
+		for rel in data.cues[key]:
+			var rp := str(rel).replace("\\", "/")
+			var full := rp if AppLoader.allowed(rp) else base.path_join(rp)
+			if not list.has(full):
+				list.append(full)
+		cue_files[str(key)] = list
+		var tail := str(key).get_extension()
+		if BotfAudioCues.ERAS.has(tail):
+			eras_present[tail] = true
+	return true
+
+
+## True when some loaded key carries this era's twin, so BotfAudioCues.with_era is worth applying.
+func has_era(era: String) -> bool:
+	return eras_present.has(era)
+
+
+## Existing files for one key (not following fallbacks).
 func files_for(key: String, extra: BattleAssets = null) -> PackedStringArray:
 	var out := PackedStringArray()
 	for a in [assets, extra]:
 		if a != null and a.has_manifest():
 			var rec: Dictionary = a.resolve(key)
 			if not rec.is_empty():
-				for f in a.local_files(rec, PackedStringArray(["wav", "ogg", "mp3"])):
-					if not out.has(f):
+				for f in a.local_files(rec, PackedStringArray(["wav", "ogg"])):
+					if AppLoader.allowed(f) and not out.has(f):   # a disk path never reaches the runtime
 						out.append(f)
 	if cue_files.has(key):
 		for f in cue_files[key]:
-			if not out.has(f) and FileAccess.file_exists(f):
+			if not out.has(f) and AppLoader.exists(f):
 				out.append(f)
-	for d in audio_dirs:
-		for ext in ["wav", "ogg"]:
-			var single: String = d.path_join(key + "." + ext)
-			if FileAccess.file_exists(single) and not out.has(single):
-				out.append(single)
-		var dir: String = d.path_join(key)
-		if DirAccess.dir_exists_absolute(dir):
-			var names := Array(DirAccess.get_files_at(dir))
-			names.sort()
-			for n in names:
-				if str(n).get_extension().to_lower() in ["wav", "ogg", "mp3"]:
-					var f: String = dir.path_join(str(n))
-					if not out.has(f):
-						out.append(f)
 	for ext in ["wav", "ogg"]:
 		var rp := "res://scenes/battle/audio/%s.%s" % [key, ext]
-		if ResourceLoader.exists(rp) and not out.has(rp):
+		if AppLoader.exists(rp) and not out.has(rp):
 			out.append(rp)
 	return out
 
@@ -101,21 +123,18 @@ func has_files(keys: PackedStringArray, extra: BattleAssets = null) -> bool:
 	return not resolve_files(keys, extra).is_empty()
 
 
-## An AudioStream for a path ("" never). Cached; null when the file would not load.
+## An AudioStream for a res:// or user:// path ("" never). Cached; null when the file would not load. res:// files are
+## imported resources (the same in the exe and the web pck); user:// files are read raw (wav or ogg).
 func stream_at(path: String) -> AudioStream:
 	if _streams.has(path):
 		return _streams[path]
 	var s: AudioStream = null
 	if path.begins_with("res://"):
-		s = load(path) as AudioStream if ResourceLoader.exists(path) else null
-	elif FileAccess.file_exists(path):
+		s = AppLoader.resource(path) as AudioStream if AppLoader.exists(path) else null
+	elif AppLoader.allowed(path) and AppLoader.exists(path):
 		match path.get_extension().to_lower():
 			"wav": s = AudioStreamWAV.load_from_file(path)
 			"ogg": s = AudioStreamOggVorbis.load_from_file(path)
-			"mp3":
-				var m := AudioStreamMP3.new()
-				m.data = FileAccess.get_file_as_bytes(path)
-				s = m
 	_streams[path] = s
 	return s
 

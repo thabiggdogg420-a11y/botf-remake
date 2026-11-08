@@ -66,6 +66,74 @@ const REGISTRY := {
 	"fleet_arrives": {"sfx": ["sfx.warp.in"], "bus": "Effects", "priority": 2},
 }
 
+## Eras (WS11: "TOS sounds for the TOS era, and so on"). A key gets an era twin ahead of it, so the show's own clip
+## wins where one exists: weapon.Phaser.fed -> weapon.Phaser.fed.tng, weapon.Phaser.fed. DEFAULT_ERA is the Dominion
+## War look (Simon, 8 Nov: DS9 battles are the visual benchmark) until the player or the roster picks another.
+const ERAS := ["tos", "ent", "tng", "ds9", "voy"]
+const DEFAULT_ERA := "ds9"
+const ERA_FOR_ROSTER := {"Enterprise": "ent", "Original": "tos", "Movie": "tos", "NextGeneration": "tng",
+	"DominionWar": "ds9", "Nemesis": "tng", "Kelvin": "tos", "Future": "ds9"}
+
+## Era code for a roster era name ("DominionWar"), a code ("tng") or anything else ("" = use the default).
+static func era_code(name: String) -> String:
+	var low := name.to_lower()
+	if ERAS.has(low):
+		return low
+	return str(ERA_FOR_ROSTER.get(name, ""))
+
+
+## `keys` with each key's era twin placed before it. era "" or an unknown era returns the keys unchanged.
+static func with_era(keys: PackedStringArray, era: String) -> PackedStringArray:
+	if not ERAS.has(era):
+		return keys
+	var out := PackedStringArray()
+	for k in keys:
+		if k.begins_with("sfx.ui.") or k.begins_with("mus."):
+			if not out.has(k):
+				out.append(k)
+			continue
+		var twin := k + "." + era
+		if not out.has(twin):
+			out.append(twin)
+		if not out.has(k):
+			out.append(k)
+	return out
+
+
+## Order buttons (the combat screen's Maneuver_<key> pills) -> voice details tried in order, most specific first.
+## "ack" is the original BOTF "Yes sir / Understood / Acknowledged" group, which every order can fall back on.
+const ORDER_DETAILS := {
+	"Engage": ["engage", "ack"], "Assault": ["engage", "ack"], "Charge": ["engage", "ack"],
+	"Strafe": ["ack"], "Flyby": ["ack"], "Ram": ["ack"],
+	"Harry": ["evade", "ack"], "Circle": ["evade", "ack"], "Evade": ["evade", "ack"],
+	"Hold": ["allstop", "ack"], "Hail": ["hail", "ack"], "Retreat": ["retreat", "ack"],
+}
+
+## Voice keys for an order, first match wins: vo.combat.<detail>.<fac> for each detail (era twins first).
+static func order_voice_keys(maneuver: String, fac: String, era := "") -> PackedStringArray:
+	var out := PackedStringArray()
+	if fac == "":
+		return out
+	for d in ORDER_DETAILS.get(maneuver, ["ack"]):
+		out.append("vo.combat.%s.%s" % [d, fac])
+	return with_era(out, era)
+
+
+## Keys for a chatter or bark detail: vo.combat.<detail>.<fac>, then the head of a dotted detail, era twins first.
+static func combat_voice_keys(detail: String, fac: String, era := "") -> PackedStringArray:
+	var out := PackedStringArray()
+	if fac == "" or detail == "":
+		return out
+	out.append("vo.combat.%s.%s" % [detail, fac])
+	var dot := detail.find(".")
+	if dot >= 0:
+		out.append("vo.combat.%s.%s" % [detail.substr(0, dot), fac])
+	return with_era(out, era)
+
+
+## Bridge chatter (BotfBridgeChatter): details drawn from the original BOTF combat groups. Each is a vo.combat.<d>.<fac>.
+const CHATTER_DETAILS := ["underattack", "phaser", "torpedo", "shields.75", "shields.50", "shields.25", "evade", "kill", "encounter"]
+
 ## Music contexts -> key chains (first with files wins), the generated fallback kind, and loop behaviour.
 const MUSIC := {
 	"title": {"keys": ["mus.botf.title", "mus.botf.all"], "tone": "title"},
