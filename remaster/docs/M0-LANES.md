@@ -9,7 +9,15 @@ Simon, 8 Nov 2026: "yes start M0, all decisions yes", with at most 6 lanes. Read
 
 The base is branch `claude/serene-archimedes-nvtcnw` at f2581a7 or later. The repo is `C:\Users\BiggDogg\Documents\ChatGPT\Game Remakes`. The rules core is `remaster/game/Source/BotfSim`; there is no `remaster/core`.
 
-## Rules for every lane
+## Browser target (Simon, 8 Nov: "it all needs to be planned around being playable in a browser too")
+
+The game ships two ways from one Godot project: a Windows exe, and a web export served locally, never hosted publicly. That has six consequences:
+- **Renderer.** Desktop uses Forward+. Web uses Compatibility (WebGL2). Every shader, VFX and material must work in Compatibility, or carry a declared fallback. Quality tiers are set in project settings and must not be hard-coded per scene.
+- **Native core.** The GDExtension core is built to wasm with Emscripten using Godot's dlink web template, alongside the MSVC DLL. Code must not assume threads unless the build is threaded, which needs COOP/COEP headers from the local server.
+- **No disk paths at runtime.** Assets, data and audio load through `res://` packs or a web-fetchable asset bundle. Nothing reaches `LocalAssets` or uses `$BOTF_*` env-var paths at runtime: those become a pack-building step.
+- **Budgets.** Each asset key has a web size budget: texture size, LOD count, compressed audio format. The art bible sets them.
+- **Saves.** Saves go to `user://`, which maps to IndexedDB on web. Settings must not offer options the web build can't honour.
+- **Verification.** The verify pipeline exports and tests both targets, and captures screenshots from both.
 - Lanes that write code work in their own worktree: `git worktree add "C:\Users\BiggDogg\Documents\ChatGPT\wt-<lane>" -b m0/<lane> claude/serene-archimedes-nvtcnw`. Copy in the DLLs from `remaster\godot\core\bin\*.dll`. The full setup is in GODOT-ROUND-BRIEF.md.
 - Docs-only lanes write directly to the paths they own, in the main checkout.
 - Stay inside the files you own. If you need a file outside them, stop and report.
