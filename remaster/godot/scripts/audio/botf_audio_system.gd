@@ -567,8 +567,11 @@ func _on_node_added(n: Node) -> void:
 	if _bound_buttons and n is BaseButton and not n.has_meta("botf_silent"):
 		var nm := str(n.name)
 		if nm.begins_with("Maneuver_"):
-			n.pressed.connect(order_ack.bind(nm.trim_prefix("Maneuver_")))   # before the click sound: it then skips the frame
-		n.pressed.connect(_on_button)
+			var ack := order_ack.bind(nm.trim_prefix("Maneuver_"))
+			if not n.pressed.is_connected(ack):
+				n.pressed.connect(ack)   # before the click sound: it then skips the frame
+		if not n.pressed.is_connected(_on_button):   # a node re-added to the tree must not be bound twice
+			n.pressed.connect(_on_button)
 
 
 func _on_button() -> void:
