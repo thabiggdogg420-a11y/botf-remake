@@ -83,7 +83,7 @@ func _run() -> void:
 	await frames(4)
 	var by_type := {}
 	for r in map._features.get_children():
-		var m := (r as ColorRect).material as ShaderMaterial
+		var m := GalaxyMap.feature_material(r)
 		by_type[r.get_index()] = m
 	# The shader layer draws the five volumetric types; the neutron star has its glyph in the drawer only.
 	check(map._features.get_child_count() == 5, "five volumetric feature quads (%d)" % map._features.get_child_count())

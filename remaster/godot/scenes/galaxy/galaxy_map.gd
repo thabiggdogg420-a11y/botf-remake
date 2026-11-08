@@ -1,94 +1,181 @@
 class_name GalaxyMap
 extends Control
-## The star chart: parallax starfield, nebula features, soft fog of war, territory tint, supply
-## range, animated routes with ETAs, fleet/contact/station markers, anomalies and wormholes.
-## Pan with drag, zoom with the wheel, left-click selects, right-click opens the order menu.
-## Port of remaster/web/src/map/renderer.ts + GalaxyMap.tsx.
+## The 3D star chart (MASTER-PLAN decision 2, Simon 8 Nov 2026). The core's 2D sector grid is lifted into a thin
+## disc (GalaxyLayout); every star is a typed impostor plus a real photosphere sphere, planets orbit at system zoom,
+## the galactic backdrop is a sky shader and a dust disc. Layers: territory and supply as soft regions on the
+## galactic plane, fog of war, trade routes and fleet paths with ETAs as lines in space, anomalies as ray-marched
+## volumes (Forward+) or billboards (Compatibility). Labels and icons are drawn in screen space (GalaxyOverlay: a static layer redrawn on camera or data change, an animated one every frame).
+##
+## Camera: an orbit camera around a focus point. `cam` is the focus in map space (pixels of the old 2D chart,
+## CELL per sector) and `zoom` is pixels per map unit at the focus, so code written for the 2D chart still reads.
+## Zoom runs smoothly from the whole galaxy, to a sector, to a system close-up (zoom_level()).
+## Input: left-drag or middle-drag pans, right-drag orbits, wheel zooms to the cursor, left-click selects,
+## double-click flies to the target, right-click (no drag) opens the order menu. Keys: WASD / arrows pan, Q/E rotate,
+## Page Up/Down tilt, +/- zoom, F frame the known sectors, H home system.
 
 signal cell_clicked(cell: int, double: bool)
 signal cell_context(cell: int, screen_pos: Vector2)
 signal hover_changed(cell: int, screen_pos: Vector2)
 
 const CELL := 84.0
-const STAR_COLORS := [Color("#fff4e0"), Color("#ffe3a3"), Color("#ffc27a"), Color("#ff9a6a"), Color("#bcd4ff"), Color("#e8eeff")]
+const FOV := 40.0
+const ZOOM_MIN := 0.2
+const ZOOM_MAX := 40.0
+## zoom_level() thresholds: below LEVEL_SECTOR the whole galaxy, from LEVEL_SYSTEM a system close-up.
+const LEVEL_SECTOR := 1.2
+const LEVEL_SYSTEM := 6.0
+## The zoom fly_to() uses for each level.
+const FLY_SECTOR := 2.6
+const FLY_SYSTEM := 16.0
+const PITCH_DEFAULT := 0.95   # radians above the plane (about 54 degrees)
+const PITCH_MIN := 0.3
+const PITCH_MAX := 1.52
+const PICK_RADIUS := 18.0
+const PLANET_RADIUS := {"GasGiant": 0.024, "M": 0.0125, "O": 0.013, "L": 0.012, "H": 0.011, "P": 0.011, "K": 0.009, "Y": 0.0105}
 
 var app: App
-var cam := Vector2.ZERO           # map-space point at the centre of the view
-var zoom := 1.0
+var cam := Vector2.ZERO           # map-space point at the focus of the view
+var zoom := 1.0                   # pixels per map unit at the focus
+var yaw := 0.0
+var pitch := PITCH_DEFAULT
 var hover_cell := -1
 var layers := {}
-
-var _starfield: ColorRect
-var _world: Node2D
-var _territory: Sprite2D
-var _supply: Sprite2D
-var _fog: Sprite2D
-var _features: Node2D
-var _drawer: MapDrawer
-var _labels: MapLabels
-var _supply_for := -1
-var _dragging := false
-var _drag_moved := 0.0
-var _glow: Texture2D
-var _target_cam := Vector2.ZERO
-var _target_zoom := 1.0
-var _animating := false
 ## Screen space covered by the host's panels (left, top, right, bottom). frame_known() fits the chart into the rest.
 var view_insets := Vector4.ZERO
+
+var _container: SubViewportContainer
+var _viewport: SubViewport
+var _root3d: Node3D
+var _camera: Camera3D
+var _env: Environment
+var _disc: MeshInstance3D
+var _territory: MeshInstance3D
+var _supply: MeshInstance3D
+var _fog: MeshInstance3D
+var _features: Node3D
+var _stars: Node3D
+var _decor: Node3D
+var _overlay: GalaxyOverlay
+var _overlay_fx: GalaxyOverlay
+var _overlay_sig := []
+var _overlay_dirty := true
+var _volumetric := true
+var _supply_for := -1
+var _focus_h := 0.0
+var _target_cam := Vector2.ZERO
+var _target_zoom := 1.0
+var _target_yaw := 0.0
+var _target_pitch := PITCH_DEFAULT
+var _animating := false
+var _drag_button := 0
+var _drag_moved := 0.0
+var _last_mouse := Vector2.ZERO
+var _seed := 0
+## system id -> {"pos": Vector3, "type": int, "cell": int, "node": Node3D, "impostor", "sphere", "planets": Node3D|null, "system": Dictionary}
+var systems3d := {}
+## cell -> system id
+var _cell_system := {}
+var _pending_tex: Array = []      # [ShaderMaterial, {albedo, clouds, night}]
+var _time := 0.0
+var _view_proj := Projection.IDENTITY
+var _vp_size := Vector2(1920, 1080)
 
 func _ready() -> void:
 	clip_contents = true
 	mouse_filter = Control.MOUSE_FILTER_STOP
-	_glow = _make_glow()
-	_starfield = ColorRect.new()
-	_starfield.set_anchors_preset(Control.PRESET_FULL_RECT)
-	_starfield.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_volumetric = RenderingServer.get_current_rendering_method() == "forward_plus"
+	_container = SubViewportContainer.new()
+	_container.name = "View3D"
+	_container.stretch = true
+	_container.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_container.set_anchors_preset(Control.PRESET_FULL_RECT)
+	add_child(_container)
+	_viewport = SubViewport.new()
+	_viewport.own_world_3d = true
+	_viewport.handle_input_locally = false
+	_viewport.msaa_3d = get_viewport().msaa_3d
+	_viewport.screen_space_aa = get_viewport().screen_space_aa
+	_viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+	_container.add_child(_viewport)
+	_root3d = Node3D.new()
+	_root3d.name = "Galaxy3D"
+	_viewport.add_child(_root3d)
+	_camera = Camera3D.new()
+	_camera.fov = FOV
+	_camera.current = true
+	_root3d.add_child(_camera)
+	_build_environment()
+	_disc = MeshInstance3D.new()
+	_disc.name = "GalacticDisc"
+	_root3d.add_child(_disc)
+	_territory = _field_mesh("Territory", 0, -3)
+	_supply = _field_mesh("Supply", 0, -2)
+	_fog = _field_mesh("Fog", 1, -1)
+	_features = Node3D.new()
+	_features.name = "Anomalies"
+	_root3d.add_child(_features)
+	_stars = Node3D.new()
+	_stars.name = "Stars"
+	_root3d.add_child(_stars)
+	_decor = Node3D.new()
+	_decor.name = "Decor"
+	_root3d.add_child(_decor)
+	for k in 2:
+		var o := GalaxyOverlay.new()
+		o.name = "Overlay" if k == 0 else "OverlayFx"
+		o.map = self
+		o.anim = k == 1
+		o.set_anchors_preset(Control.PRESET_FULL_RECT)
+		o.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		add_child(o)
+		if k == 0:
+			_overlay = o
+		else:
+			_overlay_fx = o
+	_apply_camera()
+
+func _build_environment() -> void:
+	var we := WorldEnvironment.new()
+	_env = Environment.new()
+	_env.background_mode = Environment.BG_SKY
+	var sky := Sky.new()
 	var sm := ShaderMaterial.new()
-	sm.shader = load("res://scenes/galaxy/starfield.gdshader")
-	_starfield.material = sm
-	add_child(_starfield)
-	_world = Node2D.new()
-	add_child(_world)
-	_territory = _field_sprite(0)
-	_features = Node2D.new()
-	_world.add_child(_features)
-	_world.move_child(_features, 0)
-	_supply = _field_sprite(0)
-	_drawer = MapDrawer.new()
-	_drawer.map = self
-	_world.add_child(_drawer)
-	_fog = _field_sprite(1)
-	_labels = MapLabels.new()
-	_labels.map = self
-	_labels.set_anchors_preset(Control.PRESET_FULL_RECT)
-	_labels.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(_labels)
+	sm.shader = load("res://scenes/galaxy/shaders/galaxy_sky.gdshader")
+	sky.sky_material = sm
+	sky.radiance_size = Sky.RADIANCE_SIZE_32
+	_env.sky = sky
+	_env.ambient_light_source = Environment.AMBIENT_SOURCE_DISABLED
+	_env.reflected_light_source = Environment.REFLECTION_SOURCE_DISABLED
+	# Art bible section 4: ACES, exposure 1, white 8; glow 0.4, HDR threshold 1.8 (the battle clamps).
+	_env.tonemap_mode = Environment.TONE_MAPPER_ACES
+	_env.tonemap_exposure = 1.0
+	_env.tonemap_white = 8.0
+	_env.glow_enabled = true
+	_env.glow_intensity = 0.4
+	_env.glow_hdr_threshold = 1.8
+	_env.glow_hdr_scale = 1.2
+	_env.glow_blend_mode = Environment.GLOW_BLEND_MODE_SCREEN
+	# Levels 1-4 only: the wide levels 5-6 wash the whole frame when a star's sphere fills the close-up.
+	for lv in range(1, 7):
+		_env.set_glow_level(lv, 1.0 if lv <= 4 else 0.0)
+	we.environment = _env
+	_root3d.add_child(we)
 
-func _field_sprite(mode: int) -> Sprite2D:
-	var s := Sprite2D.new()
-	s.centered = false
-	s.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
+func _field_mesh(name_: String, mode: int, priority: int) -> MeshInstance3D:
+	var mi := MeshInstance3D.new()
+	mi.name = name_
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	var m := ShaderMaterial.new()
-	m.shader = load("res://scenes/galaxy/field.gdshader")
+	m.shader = load("res://scenes/galaxy/shaders/field3d.gdshader")
 	m.set_shader_parameter("mode", mode)
-	s.material = m
-	_world.add_child(s)
-	return s
+	m.render_priority = priority
+	mi.material_override = m
+	_root3d.add_child(mi)
+	return mi
 
-func _make_glow() -> Texture2D:
-	var g := Gradient.new()
-	g.set_color(0, Color(1, 1, 1, 1))
-	g.set_color(1, Color(1, 1, 1, 0))
-	g.add_point(0.18, Color(1, 1, 1, 0.55))
-	g.add_point(0.45, Color(1, 1, 1, 0.12))
-	var t := GradientTexture2D.new()
-	t.gradient = g
-	t.fill = GradientTexture2D.FILL_RADIAL
-	t.fill_from = Vector2(0.5, 0.5)
-	t.fill_to = Vector2(1.0, 0.5)
-	t.width = 128
-	t.height = 128
-	return t
+## The ShaderMaterial of an anomaly node (volume or billboard); tests read its parameters.
+static func feature_material(node: Node) -> ShaderMaterial:
+	return (node as GeometryInstance3D).material_override as ShaderMaterial
 
 func view() -> Dictionary:
 	return app.view if app else {}
@@ -97,41 +184,141 @@ func grid_size() -> Vector2i:
 	var m: Dictionary = view().get("meta", {})
 	return Vector2i(int(m.get("width", 1)), int(m.get("height", 1)))
 
+func is_volumetric() -> bool:
+	return _volumetric
+
 # ---------------------------------------------------------------------------------------------
 # Camera
 # ---------------------------------------------------------------------------------------------
 func cell_center(x: float, y: float) -> Vector2:
 	return Vector2((x + 0.5) * CELL, (y + 0.5) * CELL)
 
+## World position of a map-space point on the focus plane.
+func map_to_world(p: Vector2, h: float = NAN) -> Vector3:
+	return Vector3(p.x / CELL, _focus_h if is_nan(h) else h, p.y / CELL)
+
+## The 3D anchor of a sector: its star if it has a system, else the sector centre on the galactic plane.
+func cell_anchor(cell: int) -> Vector3:
+	var sid: int = _cell_system.get(cell, 0)
+	if sid != 0 and systems3d.has(sid):
+		return systems3d[sid]["pos"]
+	var g := grid_size()
+	return Vector3(cell % g.x + 0.5, 0.0, cell / g.x + 0.5)
+
+## World -> screen through a projection cached per camera move (Camera3D.unproject_position rebuilds the
+## projection on every call, which cost several ms per frame at 80 systems).
+func world_to_screen(w: Vector3) -> Vector2:
+	if _camera == null:
+		return Vector2.ZERO
+	var c := _view_proj * Vector4(w.x, w.y, w.z, 1.0)
+	if absf(c.w) < 1e-6:
+		return Vector2.ZERO
+	return Vector2((c.x / c.w * 0.5 + 0.5) * _vp_size.x, (0.5 - c.y / c.w * 0.5) * _vp_size.y)
+
+func is_in_front(w: Vector3) -> bool:
+	return _camera != null and not _camera.is_position_behind(w)
+
 func map_to_screen(p: Vector2) -> Vector2:
-	return (p - cam) * zoom + size / 2.0
+	return world_to_screen(map_to_world(p))
+
+## Screen position of a sector's anchor (its star, or the sector centre).
+func cell_screen_pos(x: int, y: int) -> Vector2:
+	return world_to_screen(cell_anchor(y * grid_size().x + x))
 
 func screen_to_map(p: Vector2) -> Vector2:
-	return (p - size / 2.0) / zoom + cam
+	if _camera == null or size.x <= 0.0:
+		return (p - size / 2.0) / zoom + cam
+	var o := _camera.project_ray_origin(p)
+	var d := _camera.project_ray_normal(p)
+	if absf(d.y) < 1e-4:
+		return (p - size / 2.0) / zoom + cam
+	var t := (_focus_h - o.y) / d.y
+	if t < 0.0:
+		return (p - size / 2.0) / zoom + cam
+	var hit := o + d * t
+	return Vector2(hit.x * CELL, hit.z * CELL)
 
-func cell_at(screen_pos: Vector2) -> int:
-	var m := screen_to_map(screen_pos)
+## Pixels per world unit (sector) at distance `dist` from the camera.
+func pixels_per_unit(dist: float) -> float:
+	return size.y / (2.0 * tan(deg_to_rad(FOV) * 0.5) * maxf(dist, 1e-4))
+
+func camera_distance() -> float:
+	return size.y / (2.0 * tan(deg_to_rad(FOV) * 0.5) * CELL * maxf(zoom, 1e-4)) if size.y > 0.0 else 1080.0 / (2.0 * tan(deg_to_rad(FOV) * 0.5) * CELL * zoom)
+
+func camera_position() -> Vector3:
+	return _camera.global_position if _camera else Vector3.ZERO
+
+## "galaxy", "sector" or "system" for a zoom value (default: the current zoom).
+func zoom_level(z: float = -1.0) -> String:
+	var v := zoom if z <= 0.0 else z
+	if v >= LEVEL_SYSTEM:
+		return "system"
+	if v >= LEVEL_SECTOR:
+		return "sector"
+	return "galaxy"
+
+## Picks what is under a screen point: the nearest icon or star within PICK_RADIUS px, else the sector the cursor
+## ray meets on the focus plane. Returns {"cell", "kind" ("system", "fleet", "contact", "station", "space"), "id"}.
+func pick(screen_pos: Vector2) -> Dictionary:
+	var v := view()
 	var g := grid_size()
+	var best := {"cell": -1, "kind": "space", "id": 0}
+	var best_d := INF
+	if not v.is_empty():
+		for c in _overlay.pickables:
+			var d: float = screen_pos.distance_to(c["pos"]) - float(c.get("r", 0.0))
+			if d < PICK_RADIUS and d < best_d:
+				best_d = d
+				best = {"cell": int(c["cell"]), "kind": c["kind"], "id": int(c["id"])}
+	if best_d < INF:
+		return best
+	var m := screen_to_map(screen_pos)
 	var x := int(floor(m.x / CELL))
 	var y := int(floor(m.y / CELL))
 	if x < 0 or y < 0 or x >= g.x or y >= g.y:
-		return -1
-	return y * g.x + x
+		return best
+	best["cell"] = y * g.x + x
+	return best
+
+func cell_at(screen_pos: Vector2) -> int:
+	return int(pick(screen_pos)["cell"])
 
 func focus_cell(x: int, y: int, z: float = -1.0, animate: bool = true) -> void:
 	_target_cam = cell_center(x, y)
-	_target_zoom = zoom if z <= 0 else z
-	if animate and not app.settings.get("reducedMotion", false):
+	var a := cell_anchor(y * grid_size().x + x)
+	_target_cam = Vector2(a.x, a.z) * CELL
+	_target_zoom = zoom if z <= 0 else clampf(z, ZOOM_MIN, ZOOM_MAX)
+	_target_yaw = yaw
+	_target_pitch = pitch
+	if animate and not (app and app.settings.get("reducedMotion", false)):
 		_animating = true
 	else:
 		cam = _target_cam
 		zoom = _target_zoom
+		_animating = false
+		_update_focus_height(true)
 		_apply_camera()
+
+## Double-click: flies one level closer to the target (galaxy -> sector -> system close-up).
+func fly_to_cell(x: int, y: int) -> void:
+	var lvl := zoom_level(maxf(zoom, _target_zoom) if _animating else zoom)
+	var has_system := _cell_system.has(y * grid_size().x + x)
+	var z := FLY_SECTOR
+	if lvl != "galaxy" and has_system:
+		z = FLY_SYSTEM
+	elif lvl == "system":
+		z = zoom
+	focus_cell(x, y, maxf(z, zoom) if not has_system else z)
+
+## True when the view is centred on sector (x, y).
+func is_focused_on(x: int, y: int) -> bool:
+	var a := cell_anchor(y * grid_size().x + x)
+	return Vector2(a.x, a.z).distance_to(cam / CELL) < 0.25
 
 ## Frames every surveyed or sensed sector inside the part of the map the host's panels leave visible.
 ## Early in a campaign only a few sectors are known (often one), so the framed span has a floor of half the galaxy
 ## (at least 9 x 7 sectors): the chart opens on a neighbourhood with its nebulae and edges, not on one sector at 2.4x.
-## The view never runs past the galaxy's own edge.
+## The view never runs past the galaxy's own edge. Resets the orbit to the default tilt, north up.
 func frame_known() -> void:
 	var v := view()
 	if v.is_empty():
@@ -153,10 +340,8 @@ func frame_known() -> void:
 	var avail := Vector2(size.x - view_insets.x - view_insets.z, size.y - view_insets.y - view_insets.w)
 	avail = avail.max(Vector2(200, 160))
 	zoom = clamp(min(avail.x / span.x, avail.y / span.y), 0.35, 1.6)
-	# Centre of the visible area, in screen space, relative to the control's centre.
 	var shift := Vector2(view_insets.x - view_insets.z, view_insets.y - view_insets.w) * 0.5
 	var centre := (lo + hi + Vector2.ONE) * 0.5 * CELL
-	# Keep the visible area inside the galaxy (centred when the galaxy is smaller than the view).
 	var half := avail * 0.5 / zoom
 	var world := Vector2(g) * CELL
 	for axis in 2:
@@ -165,58 +350,391 @@ func frame_known() -> void:
 		else:
 			centre[axis] = clampf(centre[axis], half[axis], world[axis] - half[axis])
 	cam = centre - shift / zoom
+	yaw = 0.0
+	pitch = PITCH_DEFAULT
 	_target_cam = cam
 	_target_zoom = zoom
+	_target_yaw = yaw
+	_target_pitch = pitch
+	_animating = false
+	_update_focus_height(true)
 	_apply_camera()
 
 func _apply_camera() -> void:
-	_world.position = size / 2.0 - cam * zoom
-	_world.scale = Vector2(zoom, zoom)
-	var sm := _starfield.material as ShaderMaterial
-	sm.set_shader_parameter("offset", cam * zoom)
-	sm.set_shader_parameter("resolution", size)
-	sm.set_shader_parameter("accent", Lcars.accent())
-	_labels.queue_redraw()
+	if _camera == null:
+		return
+	var f := Vector3(cam.x / CELL, _focus_h, cam.y / CELL)
+	var d := camera_distance()
+	var off := Vector3(sin(yaw) * cos(pitch), sin(pitch), cos(yaw) * cos(pitch)) * d
+	_camera.near = clampf(d * 0.01, 0.001, 0.5)
+	_camera.far = d + 400.0
+	_camera.look_at_from_position(f + off, f, Vector3.UP)
+	_vp_size = size if size.x > 0.0 else Vector2(1920, 1080)
+	_view_proj = _camera.get_camera_projection() * Projection(_camera.global_transform.affine_inverse())
+	_redraw_overlay()
+
+## Marks the static overlay for redraw (data, selection or layer change).
+func mark_overlay_dirty() -> void:
+	_overlay_dirty = true
+
+## The static overlay redraws only when the camera moved or the data changed.
+func _redraw_overlay() -> void:
+	if _overlay == null:
+		return
+	var sig := [cam, zoom, yaw, pitch, snappedf(_focus_h, 0.0005), size, app.selection.get("cell", -1) if app else -1]
+	if _overlay_dirty or sig != _overlay_sig:
+		_overlay_sig = sig
+		_overlay_dirty = false
+		_overlay.queue_redraw()
+
+## The focus rides on the star under it at sector and system zoom, so a close-up of a star above the plane is
+## centred on the star; at galaxy zoom it settles back to the plane.
+func _update_focus_height(snap: bool, delta: float = 0.0) -> void:
+	var target := 0.0
+	if zoom >= LEVEL_SECTOR * 0.8 and not _cell_system.is_empty():
+		var g := grid_size()
+		var cx := int(floor(cam.x / CELL))
+		var cy := int(floor(cam.y / CELL))
+		if cx >= 0 and cy >= 0 and cx < g.x and cy < g.y:
+			var cell := cy * g.x + cx
+			if _cell_system.has(cell):
+				var a := cell_anchor(cell)
+				var w := clampf((zoom - LEVEL_SECTOR * 0.8) / (LEVEL_SECTOR * 1.5), 0.0, 1.0)
+				target = a.y * w
+	_focus_h = target if snap else lerpf(_focus_h, target, clampf(delta * 5.0, 0.0, 1.0))
 
 func _process(delta: float) -> void:
+	_time += delta
+	if is_visible_in_tree() and app and not app.has_modal():
+		_key_camera(delta)
 	if _animating:
-		var k: float = clamp(delta * 7.0, 0.0, 1.0)
+		var k: float = clamp(1.0 - exp(-delta * 6.5), 0.0, 0.2)  # capped: a long frame never jumps the flight
 		cam = cam.lerp(_target_cam, k)
-		zoom = lerp(zoom, _target_zoom, k)
-		if cam.distance_to(_target_cam) < 0.5 and abs(zoom - _target_zoom) < 0.002:
+		zoom = exp(lerpf(log(zoom), log(_target_zoom), k))
+		yaw = lerp_angle(yaw, _target_yaw, k)
+		pitch = lerpf(pitch, _target_pitch, k)
+		if cam.distance_to(_target_cam) < 0.5 and absf(log(zoom / _target_zoom)) < 0.004:
 			cam = _target_cam
 			zoom = _target_zoom
 			_animating = false
-		_apply_camera()
-	_drawer.queue_redraw()
-	_labels.queue_redraw()
+	_update_focus_height(false, delta)
+	_apply_camera()
+	_update_lod()
+	_redraw_overlay()
+	_overlay_fx.queue_redraw()
+
+func _key_camera(delta: float) -> void:
+	var gf := get_viewport().gui_get_focus_owner()
+	if gf is LineEdit or gf is TextEdit:
+		return
+	if Input.is_key_pressed(KEY_CTRL) or Input.is_key_pressed(KEY_ALT):
+		return
+	var pan := Vector2.ZERO
+	if Input.is_physical_key_pressed(KEY_A) or Input.is_physical_key_pressed(KEY_LEFT):
+		pan.x -= 1
+	if Input.is_physical_key_pressed(KEY_D) or Input.is_physical_key_pressed(KEY_RIGHT):
+		pan.x += 1
+	if Input.is_physical_key_pressed(KEY_W) or Input.is_physical_key_pressed(KEY_UP):
+		pan.y -= 1
+	if Input.is_physical_key_pressed(KEY_S) or Input.is_physical_key_pressed(KEY_DOWN):
+		pan.y += 1
+	var rot := 0.0
+	if Input.is_physical_key_pressed(KEY_Q):
+		rot -= 1
+	if Input.is_physical_key_pressed(KEY_E):
+		rot += 1
+	var tilt := 0.0
+	if Input.is_physical_key_pressed(KEY_PAGEUP):
+		tilt += 1
+	if Input.is_physical_key_pressed(KEY_PAGEDOWN):
+		tilt -= 1
+	if pan == Vector2.ZERO and rot == 0.0 and tilt == 0.0:
+		return
+	_animating = false
+	var step := pan.normalized() * 700.0 * delta / zoom
+	cam += step.rotated(-yaw)
+	yaw += rot * 1.6 * delta
+	pitch = clampf(pitch + tilt * 1.0 * delta, PITCH_MIN, PITCH_MAX)
 
 func _notification(what: int) -> void:
-	if what == NOTIFICATION_RESIZED and _world:
+	if what == NOTIFICATION_RESIZED and _camera:
 		_apply_camera()
 
 # ---------------------------------------------------------------------------------------------
-# Data -> layers
+# Data -> scene
 # ---------------------------------------------------------------------------------------------
-## Rebuilds textures and feature nodes from the current view.
+## Rebuilds stars, fields and anomalies from the current view.
 func rebuild() -> void:
 	var v := view()
 	if v.is_empty():
 		return
 	layers = app.map_layers
 	var g := grid_size()
+	_seed = int(v["meta"].get("seed", 0))
+	_build_stars(v, g)
+	_build_disc(g)
 	_build_territory(v, g)
 	_build_fog(v, g)
 	_supply_for = -1
 	update_supply()
 	_build_features(v)
+	_overlay_dirty = true
+	_update_focus_height(true)
 	_apply_camera()
+	_update_lod()
 
-func _set_field(sprite: Sprite2D, img: Image, g: Vector2i) -> void:
-	sprite.texture = ImageTexture.create_from_image(img)
-	(sprite.material as ShaderMaterial).set_shader_parameter("field_tex", sprite.texture)
-	sprite.scale = Vector2(CELL, CELL)
-	(sprite.material as ShaderMaterial).set_shader_parameter("cells", Vector2(g))
+func _build_disc(g: Vector2i) -> void:
+	var pm := PlaneMesh.new()
+	pm.size = Vector2(g) * 3.0
+	_disc.mesh = pm
+	_disc.position = Vector3(g.x * 0.5, -GalaxyLayout.DISC_HALF - 0.6, g.y * 0.5)
+	var m := ShaderMaterial.new()
+	m.shader = load("res://scenes/galaxy/shaders/galaxy_disc.gdshader")
+	m.set_shader_parameter("cells", Vector2(g))
+	m.render_priority = -5
+	_disc.material_override = m
+
+func _build_stars(v: Dictionary, g: Vector2i) -> void:
+	var keep := {}
+	_cell_system.clear()
+	for s in v.get("systems", []):
+		var sid := int(s["id"])
+		var x := int(s["x"])
+		var y := int(s["y"])
+		keep[sid] = true
+		_cell_system[y * g.x + x] = sid
+		if systems3d.has(sid) and systems3d[sid]["cell"] == y * g.x + x:
+			systems3d[sid]["system"] = s
+			continue
+		if systems3d.has(sid):
+			(systems3d[sid]["node"] as Node).queue_free()
+		var pos := GalaxyLayout.system_position(x, y, g, _seed)
+		var ti := GalaxyLayout.star_type(x, y, _seed)
+		var st: Dictionary = GalaxyLayout.STAR_TYPES[ti]
+		var node := Node3D.new()
+		node.name = "Star%d" % sid
+		node.position = pos
+		_stars.add_child(node)
+		var imp := MeshInstance3D.new()
+		var q := QuadMesh.new()
+		q.size = Vector2.ONE
+		imp.mesh = q
+		imp.extra_cull_margin = 16.0
+		imp.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		var im := ShaderMaterial.new()
+		im.shader = load("res://scenes/galaxy/shaders/star_impostor.gdshader")
+		im.set_shader_parameter("star_color", st["color"])
+		im.set_shader_parameter("sphere_radius", st["radius"])
+		im.set_shader_parameter("spike", st["spike"])
+		im.set_shader_parameter("twinkle_seed", float(sid))
+		im.render_priority = 2
+		imp.material_override = im
+		node.add_child(imp)
+		var sph := MeshInstance3D.new()
+		var sm := SphereMesh.new()
+		sm.radius = st["radius"]
+		sm.height = st["radius"] * 2.0
+		sm.radial_segments = 48
+		sm.rings = 24
+		sph.mesh = sm
+		sph.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		var ss := ShaderMaterial.new()
+		ss.shader = load("res://scenes/galaxy/shaders/star_surface.gdshader")
+		ss.set_shader_parameter("star_color", st["color"])
+		ss.set_shader_parameter("seed", float(sid))
+		sph.material_override = ss
+		sph.visible = false
+		node.add_child(sph)
+		systems3d[sid] = {"pos": pos, "type": ti, "cell": y * g.x + x, "node": node, "impostor": imp, "sphere": sph, "planets": null, "system": s}
+	for sid in systems3d.keys():
+		if not keep.has(sid):
+			(systems3d[sid]["node"] as Node).queue_free()
+			systems3d.erase(sid)
+
+## Planets of one system: built on first approach, kept afterwards. Textured from L7 sets when present.
+func _build_planets(sid: int) -> void:
+	var e: Dictionary = systems3d[sid]
+	var s: Dictionary = e["system"]
+	var root := Node3D.new()
+	root.name = "Planets"
+	(e["node"] as Node3D).add_child(root)
+	e["planets"] = root
+	var planets: Array = s.get("planets", [])
+	var x := int(s["x"])
+	var y := int(s["y"])
+	var st: Dictionary = GalaxyLayout.STAR_TYPES[int(e["type"])]
+	var colonised := int(s.get("owner", 0)) != 0
+	for i in planets.size():
+		var p: Dictionary = planets[i]
+		var cls := str(p.get("class", "K"))
+		var orb := GalaxyLayout.orbit(i, planets.size(), x, y, _seed)
+		var pivot := Node3D.new()
+		pivot.name = "Orbit%d" % i
+		pivot.rotation.y = orb.y
+		pivot.set_meta("phase", orb.y)
+		pivot.set_meta("speed", GalaxyLayout.orbit_speed(orb.x))
+		pivot.set_meta("radius", orb.x)
+		pivot.set_meta("planet", p)
+		root.add_child(pivot)
+		if cls == "Asteroids":
+			pivot.add_child(_asteroid_belt(orb.x, sid * 31 + i))
+			continue
+		var mi := MeshInstance3D.new()
+		mi.name = "Planet"
+		var r: float = PLANET_RADIUS.get(cls, 0.011)
+		var sm := SphereMesh.new()
+		sm.radius = r
+		sm.height = r * 2.0
+		sm.radial_segments = 64 if _volumetric else 32
+		sm.rings = 32 if _volumetric else 16
+		mi.mesh = sm
+		mi.position = Vector3(orb.x, 0.0, 0.0)
+		mi.rotation.z = deg_to_rad(GalaxyLayout.hash01(x, y, _seed, 40 + i) * 30.0 - 15.0)
+		var m := ShaderMaterial.new()
+		m.shader = load("res://scenes/galaxy/shaders/planet_globe.gdshader")
+		_planet_look(m, cls)
+		m.set_shader_parameter("seed", float(sid * 7 + i))
+		m.set_shader_parameter("star_pos", e["pos"])
+		m.set_shader_parameter("star_color", (st["color"] as Color).lerp(Color.WHITE, 0.55))
+		m.set_shader_parameter("colonised", 1.0 if colonised and int(p.get("capacity", 0)) > 0 else 0.0)
+		var sets := PlanetTextures.variants(cls)
+		if not sets.is_empty():
+			var set_: Dictionary = sets[(sid * 7 + i) % sets.size()]
+			_pending_tex.append([m, set_])
+		mi.material_override = m
+		pivot.add_child(mi)
+		if cls == "GasGiant" and GalaxyLayout.hash01(x, y, _seed, 60 + i) < 0.6:
+			mi.add_child(_ring(r))
+
+func _planet_look(m: ShaderMaterial, cls: String) -> void:
+	# Anchored on the art bible section 8 class table.
+	var look := {
+		"M": [0, Color("#1d4f8c"), Color("#4f8a46"), Color("#b39b74"), Color(0.55, 0.75, 1.0), 0.5, 0.82, 0.55],
+		"O": [0, Color("#1f5fb0"), Color("#5c8f5a"), Color("#c8b88a"), Color(0.4, 0.65, 1.0), 0.66, 0.86, 0.75],
+		"P": [0, Color("#6f8fb0"), Color("#cfe3f0"), Color("#ffffff"), Color(0.85, 0.92, 1.0), 0.42, 0.45, 0.3],
+		"L": [0, Color("#2a5a4a"), Color("#3f7a2a"), Color("#7fa35a"), Color(0.7, 0.9, 0.5), 0.4, 0.9, 0.6],
+		"H": [3, Color("#8a5a32"), Color("#d0a060"), Color("#e8c890"), Color(1.0, 0.7, 0.45), 0.0, 0.93, 0.1],
+		"K": [3, Color("#5a524c"), Color("#9a8a80"), Color("#c0b4aa"), Color(0, 0, 0), 0.0, 0.95, 0.0],
+		"Y": [2, Color("#2a1410"), Color("#5a2a1c"), Color("#c0503a"), Color(1.0, 0.45, 0.25), 0.0, 0.99, 0.3],
+		"GasGiant": [1, Color("#8a5a32"), Color("#d9a86a"), Color("#f0e0c0"), Color(0.75, 0.85, 1.0), 0.0, 0.99, 0.0],
+	}
+	var l: Array = look.get(cls, look["K"])
+	m.set_shader_parameter("kind", l[0])
+	m.set_shader_parameter("c_low", l[1])
+	m.set_shader_parameter("c_mid", l[2])
+	m.set_shader_parameter("c_high", l[3])
+	m.set_shader_parameter("atmosphere", l[4])
+	m.set_shader_parameter("atmo_strength", 0.0 if cls == "K" else 1.0)
+	m.set_shader_parameter("sea_level", l[5])
+	m.set_shader_parameter("ice", l[6])
+	m.set_shader_parameter("cloud_amount", l[7])
+
+func _ring(r: float) -> MeshInstance3D:
+	var mi := MeshInstance3D.new()
+	mi.name = "Ring"
+	var tm := TorusMesh.new()
+	tm.inner_radius = r * 1.5
+	tm.outer_radius = r * 2.3
+	tm.rings = 48
+	tm.ring_segments = 4
+	mi.mesh = tm
+	mi.scale = Vector3(1.0, 0.04, 1.0)
+	var m := StandardMaterial3D.new()
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	m.albedo_color = Color(0.85, 0.75, 0.6, 0.45)
+	mi.material_override = m
+	return mi
+
+func _asteroid_belt(radius: float, seed_: int) -> MultiMeshInstance3D:
+	var mmi := MultiMeshInstance3D.new()
+	mmi.name = "Belt"
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	var rock := SphereMesh.new()
+	rock.radius = 0.0016
+	rock.height = 0.0026
+	rock.radial_segments = 6
+	rock.rings = 3
+	mm.mesh = rock
+	var n := 160 if _volumetric else 80
+	mm.instance_count = n
+	for i in n:
+		var a := GalaxyLayout.hash01(i, seed_, 1, 7) * TAU
+		var rr := radius * (0.92 + 0.16 * GalaxyLayout.hash01(i, seed_, 2, 7))
+		var hh := (GalaxyLayout.hash01(i, seed_, 3, 7) - 0.5) * radius * 0.06
+		var sc := 0.5 + 1.2 * GalaxyLayout.hash01(i, seed_, 4, 7)
+		var b := Basis().rotated(Vector3.UP, a * 3.0).scaled(Vector3(sc, sc * 0.8, sc))
+		mm.set_instance_transform(i, Transform3D(b, Vector3(cos(a) * rr, hh, sin(a) * rr)))
+	mmi.multimesh = mm
+	var m := StandardMaterial3D.new()
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.albedo_color = Color(0.42, 0.4, 0.38)
+	mmi.material_override = m
+	return mmi
+
+## Per frame: star sphere and planet visibility by screen size, planet orbits, texture streaming.
+func _update_lod() -> void:
+	if _camera == null or systems3d.is_empty():
+		return
+	var cp := _camera.global_position
+	var reduced: bool = app != null and bool(app.settings.get("reducedMotion", false))
+	var t := 0.0 if reduced else _time
+	var focus := Vector3(cam.x / CELL, _focus_h, cam.y / CELL)
+	var built := false   # at most one system's planets are built per frame, so zooming in never stalls
+	for sid in systems3d:
+		var e: Dictionary = systems3d[sid]
+		var pos: Vector3 = e["pos"]
+		var dist := cp.distance_to(pos)
+		var ppu := pixels_per_unit(dist)
+		var st: Dictionary = GalaxyLayout.STAR_TYPES[int(e["type"])]
+		(e["sphere"] as Node3D).visible = float(st["radius"]) * ppu > 2.5
+		var near := zoom >= LEVEL_SECTOR * 2.0 and Vector2(pos.x - focus.x, pos.z - focus.z).length() < 5.0
+		if near and e["planets"] == null and not built:
+			_build_planets(sid)
+			built = true
+		var pr: Node3D = e["planets"]
+		if pr:
+			var show := near and 0.012 * ppu > 0.8
+			pr.visible = show
+			if show:
+				for pivot in pr.get_children():
+					pivot.rotation.y = float(pivot.get_meta("phase")) + t * float(pivot.get_meta("speed"))
+	if not _pending_tex.is_empty():
+		var left: Array = []
+		for job in _pending_tex:
+			var m: ShaderMaterial = job[0]
+			var set_: Dictionary = job[1]
+			var alb := PlanetTextures.get_texture(set_["albedo"])
+			var done := alb != null
+			if alb:
+				m.set_shader_parameter("albedo_tex", alb)
+				m.set_shader_parameter("has_albedo", true)
+			for layer in ["clouds", "night"]:
+				if set_.has(layer):
+					var lt := PlanetTextures.get_texture(set_[layer])
+					if lt:
+						m.set_shader_parameter(layer + "_tex", lt)
+						m.set_shader_parameter("has_" + layer, true)
+					else:
+						done = false
+			if not done:
+				left.append(job)
+		_pending_tex = left
+
+## True while planet textures are still streaming in (captures wait for this).
+func textures_pending() -> bool:
+	return not _pending_tex.is_empty()
+
+func _set_field(mi: MeshInstance3D, img: Image, g: Vector2i) -> void:
+	var tex := ImageTexture.create_from_image(img)
+	var pm := PlaneMesh.new()
+	pm.size = Vector2(g) + Vector2(2, 2)
+	mi.mesh = pm
+	mi.position = Vector3(g.x * 0.5, 0.0, g.y * 0.5)
+	var m := mi.material_override as ShaderMaterial
+	m.set_shader_parameter("field_tex", tex)
+	m.set_shader_parameter("cells", Vector2(g))
 
 func _build_territory(v: Dictionary, g: Vector2i) -> void:
 	var img := Image.create(g.x, g.y, false, Image.FORMAT_RGBAF)
@@ -243,9 +761,9 @@ func _build_territory(v: Dictionary, g: Vector2i) -> void:
 					best[i] = strength
 					img.set_pixel(x, y, Color(col.r * strength, col.g * strength, col.b * strength, strength))
 	_set_field(_territory, img, g)
-	var m := _territory.material as ShaderMaterial
-	m.set_shader_parameter("fill", 0.12)
-	m.set_shader_parameter("edge", 0.45)
+	var m := _territory.material_override as ShaderMaterial
+	m.set_shader_parameter("fill", 0.035)
+	m.set_shader_parameter("edge", 0.6)
 	_territory.visible = layers.get("territory", true)
 
 func _build_fog(v: Dictionary, g: Vector2i) -> void:
@@ -254,14 +772,17 @@ func _build_fog(v: Dictionary, g: Vector2i) -> void:
 	for i in fog.length():
 		var a := 0.0
 		if fog[i] == "0":
-			a = 0.9
+			a = 0.82
 		elif fog[i] == "1":
-			a = 0.38
+			a = 0.32
 		img.set_pixel(i % g.x, i / g.x, Color(0, 0, 0, a))
 	_set_field(_fog, img, g)
 	_fog.visible = layers.get("fog", true)
 
 func update_supply() -> void:
+	if app == null:
+		return
+	_overlay_dirty = true
 	var fid := int(app.selection.get("fleetId", 0))
 	var fleet := app.find_by_id("fleets", fid)
 	if fleet.is_empty() or not layers.get("supply", true):
@@ -283,22 +804,30 @@ func update_supply() -> void:
 		if s[i] == "1":
 			img.set_pixel(i % g.x, i / g.x, Color(col.r, col.g, col.b, 1.0))
 	_set_field(_supply, img, g)
-	var m := _supply.material as ShaderMaterial
-	m.set_shader_parameter("fill", 0.05)
-	m.set_shader_parameter("edge", 0.5)
+	var m := _supply.material_override as ShaderMaterial
+	m.set_shader_parameter("fill", 0.02)
+	m.set_shader_parameter("edge", 0.55)
 	m.set_shader_parameter("noise_amount", 0.02)
 	_supply.visible = true
 
+## One node per anomaly sector, in feature order: a ray-marched volume on Forward+, a billboard on Compatibility.
+## The neutron star is not a cloud: it gets a pulsing white star (decor) and its beam glyph in the overlay.
 func _build_features(v: Dictionary) -> void:
 	for c in _features.get_children():
+		_features.remove_child(c)
 		c.queue_free()
-	var shader: Shader = load("res://scenes/galaxy/nebula.gdshader")
+	for c in _decor.get_children():
+		_decor.remove_child(c)
+		c.queue_free()
+	var g := grid_size()
+	var vol_shader: Shader = load("res://scenes/galaxy/shaders/anomaly_volume.gdshader")
+	var bb_shader: Shader = load("res://scenes/galaxy/shaders/anomaly_billboard.gdshader")
 	for f in v.get("features", []):
 		var t := str(f["type"])
 		var spots := []
 		if f.has("cells") and f["cells"] is Array and f["cells"].size() > 0:
 			for c in f["cells"]:
-				spots.append(Vector2i(int(c) % grid_size().x, int(c) / grid_size().x))
+				spots.append(Vector2i(int(c) % g.x, int(c) / g.x))
 		else:
 			spots.append(Vector2i(int(f["x"]), int(f["y"])))
 		for p in spots:
@@ -307,6 +836,9 @@ func _build_features(v: Dictionary) -> void:
 			var intensity := 0.85
 			var swirl := 0.0
 			var crackle := 0.0
+			var disc := 0.0
+			var core := 0.0
+			var flat_ := 0.45
 			match t:
 				"Nebula":
 					tint = [Color(0.6, 0.3, 0.9), Color(0.3, 0.45, 0.95), Color(0.85, 0.35, 0.6)][int(f["id"]) % 3]
@@ -318,31 +850,79 @@ func _build_features(v: Dictionary) -> void:
 					tint = Color(0.9, 0.3, 0.5)
 					swirl = 1.2
 					sz = 1.6
+					flat_ = 0.6
 				"Wormhole":
 					tint = Color(0.45, 0.85, 1.0)
 					swirl = 1.6
 					sz = 1.2
 					intensity = 1.0
+					disc = 0.6
+					flat_ = 1.0
 				"BlackHole":
 					tint = Color(1.0, 0.6, 0.3)
 					swirl = 2.0
 					sz = 1.5
 					intensity = 0.9
+					disc = 1.0
+					core = 1.0
+					flat_ = 1.0
+				"NeutronStar":
+					_decor.add_child(_neutron_star(Vector3(p.x + 0.5, 0.0, p.y + 0.5), int(f["id"])))
+					continue
 				_:
 					continue
-			var r := ColorRect.new()
+			var mi := MeshInstance3D.new()
+			mi.name = "%s%d" % [t, int(f["id"])]
+			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 			var mat := ShaderMaterial.new()
-			mat.shader = shader
+			mat.shader = vol_shader if _volumetric else bb_shader
 			mat.set_shader_parameter("tint", tint)
 			mat.set_shader_parameter("seed", float(int(f["id"]) * 3 + p.x + p.y * 7))
 			mat.set_shader_parameter("intensity", intensity)
 			mat.set_shader_parameter("swirl", swirl)
 			mat.set_shader_parameter("crackle", crackle)
-			r.material = mat
-			r.size = Vector2(CELL * sz, CELL * sz)
-			r.position = cell_center(p.x, p.y) - r.size / 2.0
-			r.mouse_filter = Control.MOUSE_FILTER_IGNORE
-			_features.add_child(r)
+			mat.set_shader_parameter("disc", disc)
+			mat.set_shader_parameter("core", core)
+			mat.render_priority = 0
+			mi.material_override = mat
+			var centre := Vector3(p.x + 0.5, 0.0, p.y + 0.5)
+			if _volumetric:
+				var sm := SphereMesh.new()
+				sm.radius = 1.0
+				sm.height = 2.0
+				sm.radial_segments = 24
+				sm.rings = 12
+				mi.mesh = sm
+				mi.scale = Vector3(sz * 0.5, sz * 0.5 * flat_, sz * 0.5)
+				if disc > 0.0:
+					mi.rotation = Vector3(deg_to_rad(18.0), float(int(f["id"])) * 1.3, 0.0)
+			else:
+				var q := QuadMesh.new()
+				q.size = Vector2.ONE
+				mi.mesh = q
+				mi.scale = Vector3.ONE * sz
+				mi.extra_cull_margin = sz
+			mi.position = centre
+			_features.add_child(mi)
+
+func _neutron_star(pos: Vector3, id: int) -> Node3D:
+	var imp := MeshInstance3D.new()
+	imp.name = "NeutronStar%d" % id
+	var q := QuadMesh.new()
+	q.size = Vector2.ONE
+	imp.mesh = q
+	imp.extra_cull_margin = 16.0
+	var im := ShaderMaterial.new()
+	im.shader = load("res://scenes/galaxy/shaders/star_impostor.gdshader")
+	im.set_shader_parameter("star_color", Color(0.75, 0.9, 1.0))
+	im.set_shader_parameter("sphere_radius", 0.01)
+	im.set_shader_parameter("spike", 2.0)
+	im.set_shader_parameter("brightness", 1.3)
+	im.set_shader_parameter("twinkle_seed", float(id))
+	im.render_priority = 2
+	imp.material_override = im
+	imp.position = pos
+	return imp
 
 func set_layer(key: String, on: bool) -> void:
 	app.map_layers[key] = on
@@ -360,44 +940,61 @@ func _gui_input(event: InputEvent) -> void:
 		var mb := event as InputEventMouseButton
 		if mb.button_index == MOUSE_BUTTON_WHEEL_UP or mb.button_index == MOUSE_BUTTON_WHEEL_DOWN:
 			if mb.pressed:
-				var before := screen_to_map(mb.position)
-				zoom = clamp(zoom * (1.12 if mb.button_index == MOUSE_BUTTON_WHEEL_UP else 1.0 / 1.12), 0.3, 3.0)
-				cam += before - screen_to_map(mb.position)
-				_animating = false
-				_apply_camera()
+				zoom_at(mb.position, 1.15 if mb.button_index == MOUSE_BUTTON_WHEEL_UP else 1.0 / 1.15)
 			accept_event()
-		elif mb.button_index == MOUSE_BUTTON_LEFT or mb.button_index == MOUSE_BUTTON_MIDDLE:
+		elif mb.button_index in [MOUSE_BUTTON_LEFT, MOUSE_BUTTON_MIDDLE, MOUSE_BUTTON_RIGHT]:
 			if mb.pressed:
-				_dragging = true
+				_drag_button = mb.button_index
 				_drag_moved = 0.0
+				_last_mouse = mb.position
 				if mb.double_click and mb.button_index == MOUSE_BUTTON_LEFT:
 					var c := cell_at(mb.position)
 					if c >= 0:
 						cell_clicked.emit(c, true)
-					_dragging = false
+					_drag_button = 0
 			else:
-				if _dragging and _drag_moved < 6.0 and mb.button_index == MOUSE_BUTTON_LEFT:
+				if _drag_button == mb.button_index and _drag_moved < 6.0:
 					var c2 := cell_at(mb.position)
 					if c2 >= 0:
-						cell_clicked.emit(c2, false)
-				_dragging = false
-			accept_event()
-		elif mb.button_index == MOUSE_BUTTON_RIGHT and mb.pressed:
-			var c3 := cell_at(mb.position)
-			if c3 >= 0:
-				cell_context.emit(c3, mb.position)
+						if mb.button_index == MOUSE_BUTTON_LEFT:
+							cell_clicked.emit(c2, false)
+						elif mb.button_index == MOUSE_BUTTON_RIGHT:
+							cell_context.emit(c2, mb.position)
+				if _drag_button == mb.button_index:
+					_drag_button = 0
 			accept_event()
 	elif event is InputEventMouseMotion:
 		var mm := event as InputEventMouseMotion
-		if _dragging:
+		if _drag_button != 0:
 			_drag_moved += mm.relative.length()
-			cam -= mm.relative / zoom
-			_animating = false
-			_apply_camera()
+			if _drag_moved >= 6.0:
+				_animating = false
+				if _drag_button == MOUSE_BUTTON_RIGHT:
+					orbit(-mm.relative.x * 0.006, mm.relative.y * 0.004)
+				else:
+					cam += screen_to_map(mm.position - mm.relative) - screen_to_map(mm.position)
+					_apply_camera()
 		var c4 := cell_at(mm.position)
 		if c4 != hover_cell:
 			hover_cell = c4
 		hover_changed.emit(c4, mm.position)
+
+## Zooms by `factor`, keeping the point under `screen_pos` fixed.
+func zoom_at(screen_pos: Vector2, factor: float) -> void:
+	var before := screen_to_map(screen_pos)
+	zoom = clampf(zoom * factor, ZOOM_MIN, ZOOM_MAX)
+	_animating = false
+	_update_focus_height(true)
+	_apply_camera()
+	cam += before - screen_to_map(screen_pos)
+	_apply_camera()
+
+## Orbits the camera around the focus (radians).
+func orbit(d_yaw: float, d_pitch: float) -> void:
+	yaw += d_yaw
+	pitch = clampf(pitch + d_pitch, PITCH_MIN, PITCH_MAX)
+	_animating = false
+	_apply_camera()
 
 func _unhandled_key_input(event: InputEvent) -> void:
 	var k := event as InputEventKey
@@ -410,266 +1007,10 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		var cols: Array = view().get("colonies", [])
 		if cols.size() > 0:
 			var s := app.find_by_id("systems", int(cols[0]["systemId"]))
-			focus_cell(int(s["x"]), int(s["y"]), 1.4)
+			focus_cell(int(s["x"]), int(s["y"]), FLY_SECTOR)
 		get_viewport().set_input_as_handled()
 	elif k.keycode in [KEY_EQUAL, KEY_KP_ADD]:
-		zoom = clamp(zoom * 1.2, 0.3, 3.0)
-		_apply_camera()
+		zoom_at(size / 2.0, 1.25)
 	elif k.keycode in [KEY_MINUS, KEY_KP_SUBTRACT]:
-		zoom = clamp(zoom / 1.2, 0.3, 3.0)
-		_apply_camera()
+		zoom_at(size / 2.0, 1.0 / 1.25)
 
-# ---------------------------------------------------------------------------------------------
-# Drawing (map space)
-# ---------------------------------------------------------------------------------------------
-class MapDrawer extends Node2D:
-	var map: GalaxyMap
-
-	func _draw() -> void:
-		var v := map.view()
-		if v.is_empty():
-			return
-		var g := map.grid_size()
-		var C := GalaxyMap.CELL
-		var t := Time.get_ticks_msec() / 1000.0
-		var app := map.app
-		var fog: String = v["fog"]
-		var accent := Lcars.accent()
-		# Darken space outside the charted grid.
-		var big := 4000.0
-		var outside := Color(0.0, 0.0, 0.01, 0.55)
-		draw_rect(Rect2(-big, -big, g.x * C + 2 * big, big), outside)
-		draw_rect(Rect2(-big, g.y * C, g.x * C + 2 * big, big), outside)
-		draw_rect(Rect2(-big, 0, big, g.y * C), outside)
-		draw_rect(Rect2(g.x * C, 0, big, g.y * C), outside)
-		# Grid
-		if map.layers.get("grid", true):
-			var gc := Color(0.55, 0.67, 0.9, 0.06)
-			for x in range(g.x + 1):
-				draw_line(Vector2(x * C, 0), Vector2(x * C, g.y * C), gc, 1.0)
-			for y in range(g.y + 1):
-				draw_line(Vector2(0, y * C), Vector2(g.x * C, y * C), gc, 1.0)
-			draw_rect(Rect2(Vector2.ZERO, Vector2(g) * C), Color(accent, 0.25), false, 2.0)
-		# Hover / selection cell
-		var sel := int(app.selection.get("cell", -1))
-		if map.hover_cell >= 0:
-			draw_rect(Rect2(Vector2(map.hover_cell % g.x, map.hover_cell / g.x) * C, Vector2(C, C)), Color(1, 1, 1, 0.05))
-		if sel >= 0:
-			var r := Rect2(Vector2(sel % g.x, sel / g.x) * C, Vector2(C, C)).grow(-3)
-			var pulse := 0.55 + 0.25 * sin(t * 3.0)
-			draw_rect(r, Color(accent, pulse), false, 2.0)
-		# Trade routes
-		if map.layers.get("trade", true):
-			for tr in v.get("tradeRoutes", []):
-				var a := app.find_by_id("systems", int(tr["from"]))
-				var b := app.find_by_id("systems", int(tr["to"]))
-				if a.is_empty() or b.is_empty():
-					continue
-				_dashed(map.cell_center(a["x"], a["y"]), map.cell_center(b["x"], b["y"]), Color(Lcars.owner_color(int(tr["owner"])), 0.45), 2.0, 6.0, 8.0, t * 10.0)
-		# Wormhole links
-		for f in v.get("features", []):
-			if f["type"] == "Wormhole" and f.has("exit") and int(f["id"]) < int(f.get("pairId", 0)):
-				var a2 := map.cell_center(f["x"], f["y"])
-				var b2 := map.cell_center(f["exit"]["x"], f["exit"]["y"])
-				_arc_line(a2, b2, Color(0.45, 0.85, 1.0, 0.35), 2.0, t)
-		# Systems
-		for s in v.get("systems", []):
-			var p := map.cell_center(s["x"], s["y"])
-			var sc: Color = GalaxyMap.STAR_COLORS[int(s["id"]) % GalaxyMap.STAR_COLORS.size()]
-			var tw := 1.0 + 0.06 * sin(t * 2.0 + int(s["id"]))
-			draw_texture_rect(map._glow, Rect2(p - Vector2(46, 46) * tw, Vector2(92, 92) * tw), false, Color(sc, 0.55))
-			draw_circle(p, 7.5, sc)
-			draw_circle(p, 4.0, Color(1, 1, 1, 0.95))
-			var owner := int(s.get("owner", 0))
-			if owner != 0:
-				var oc := Lcars.owner_color(owner)
-				draw_arc(p, 17, 0, TAU, 40, oc, 2.5, true)
-				if owner == app.player():
-					draw_arc(p, 21, -t, -t + PI * 0.6, 16, Color(oc, 0.7), 1.5, true)
-			var minor: Dictionary = s.get("minor", {}) if s.has("minor") else {}
-			if not minor.is_empty():
-				var mc := Lcars.owner_color(int(minor.get("memberOf", 0))) if int(minor.get("memberOf", 0)) != 0 else Color("#d8c3ff")
-				var dia := PackedVector2Array([p + Vector2(0, -22), p + Vector2(22, 0), p + Vector2(0, 22), p + Vector2(-22, 0), p + Vector2(0, -22)])
-				draw_polyline(dia, Color(mc, 0.85), 1.5, true)
-			# planets as orbit dots
-			var n: int = s.get("planets", []).size()
-			for k in range(n):
-				var ang := t * (0.25 + 0.05 * k) + k * 2.1 + int(s["id"])
-				var rr := 27.0 + k * 4.0
-				draw_circle(p + Vector2(cos(ang), sin(ang) * 0.55) * rr, 1.8, Color(0.75, 0.82, 1.0, 0.6))
-		# Anomaly glyphs
-		for f in v.get("features", []):
-			var fp := map.cell_center(f["x"], f["y"])
-			match str(f["type"]):
-				"BlackHole":
-					draw_circle(fp, 15, Color(0, 0, 0, 1))
-					draw_arc(fp, 17, 0, TAU, 40, Color(1.0, 0.7, 0.35, 0.9), 2.5, true)
-					draw_arc(fp, 24, t * 0.8, t * 0.8 + PI * 1.2, 30, Color(1.0, 0.55, 0.3, 0.5), 2.0, true)
-				"NeutronStar":
-					var pl := 0.5 + 0.5 * sin(t * 6.0)
-					draw_texture_rect(map._glow, Rect2(fp - Vector2(30, 30), Vector2(60, 60)), false, Color(0.7, 0.9, 1.0, 0.7))
-					var beam := Vector2(cos(t * 1.5), sin(t * 1.5)) * (26 + 10 * pl)
-					draw_line(fp - beam, fp + beam, Color(0.8, 0.95, 1.0, 0.8), 2.0, true)
-					draw_circle(fp, 4, Color.WHITE)
-				"Wormhole":
-					draw_arc(fp, 12, t * 2.0, t * 2.0 + PI * 1.5, 24, Color(0.6, 0.95, 1.0, 0.9), 2.0, true)
-					draw_arc(fp, 7, -t * 3.0, -t * 3.0 + PI * 1.5, 18, Color(0.9, 1.0, 1.0, 0.9), 1.5, true)
-			if not f.get("surveyed", true):
-				draw_string(Lcars.font("display", 600), fp + Vector2(10, -12), "?", HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color(1, 1, 1, 0.7))
-		# Stations
-		for st in v.get("stations", []):
-			var sp := map.cell_center(st["x"], st["y"]) + Vector2(-C * 0.3, C * 0.28)
-			var sc2 := Lcars.owner_color(int(st["owner"]))
-			var rad := 9.0 if st["type"] == "Outpost" else 12.0
-			var hex := PackedVector2Array()
-			for k in range(7):
-				hex.append(sp + Vector2(cos(k * TAU / 6.0 + PI / 6.0), sin(k * TAU / 6.0 + PI / 6.0)) * rad)
-			draw_colored_polygon(hex, Color(sc2, 0.25))
-			draw_polyline(hex, sc2, 2.0, true)
-			if st["type"] == "Starbase":
-				draw_circle(sp, 3.5, sc2)
-			if st.has("upgrade"):
-				draw_arc(sp, rad + 5, -PI / 2, -PI / 2 + TAU * float(st["upgrade"]["work"]) / max(1.0, float(st["upgrade"]["cost"])), 24, Lcars.GOOD, 2.0, true)
-		# Routes
-		if map.layers.get("routes", true):
-			for f in v.get("fleets", []):
-				var route: Array = f.get("route", [])
-				if route.size() < 2:
-					continue
-				var pts := PackedVector2Array()
-				for c in route:
-					pts.append(map.cell_center(int(c) % g.x, int(c) / g.x))
-				var selected := int(f["id"]) == int(app.selection.get("fleetId", 0)) or (int(f.get("taskForceId", 0)) != 0 and int(f["taskForceId"]) == int(app.selection.get("taskForceId", 0)))
-				var rc := Lcars.WARN if f.get("routeBlocked", false) else (Lcars.accent2() if selected else Color(accent, 0.75))
-				for k in range(pts.size() - 1):
-					_dashed(pts[k], pts[k + 1], rc, 3.0 if selected else 2.0, 9.0, 7.0, -t * 26.0)
-				var end := pts[pts.size() - 1]
-				draw_arc(end, 10, 0, TAU, 24, rc, 2.0, true)
-				draw_circle(end, 3, rc)
-		# Contacts
-		var by_cell := {}
-		for c in v.get("contacts", []):
-			var key := int(c["y"]) * g.x + int(c["x"])
-			by_cell[key] = by_cell.get(key, 0) + 1
-			var cp := map.cell_center(c["x"], c["y"]) + Vector2(C * 0.28, C * 0.26) + Vector2(-(by_cell[key] - 1) * 8, 0)
-			var cc := Lcars.owner_color(int(c["owner"]))
-			var d := 8.0
-			var dia2 := PackedVector2Array([cp + Vector2(0, -d), cp + Vector2(d, 0), cp + Vector2(0, d), cp + Vector2(-d, 0)])
-			draw_colored_polygon(dia2, cc)
-			if c.get("atWar", false):
-				draw_arc(cp, 13, 0, TAU, 20, Color(Lcars.ALERT, 0.6 + 0.3 * sin(t * 4.0)), 2.0, true)
-			if int(c["id"]) == int(app.selection.get("fleetId", 0)):
-				draw_arc(cp, 16, 0, TAU, 24, Color.WHITE, 2.0, true)
-		# Own fleets
-		var own := {}
-		for f in v.get("fleets", []):
-			var key2 := int(f["y"]) * g.x + int(f["x"])
-			if not own.has(key2):
-				own[key2] = []
-			own[key2].append(f)
-		for key3 in own:
-			var list: Array = own[key3]
-			var f0: Dictionary = list[0]
-			var base := map.cell_center(f0["x"], f0["y"]) + Vector2(C * 0.27, -C * 0.27)
-			var heading := Vector2(0, -1)
-			var route2: Array = f0.get("route", [])
-			if route2.size() > 1:
-				heading = (map.cell_center(int(route2[1]) % g.x, int(route2[1]) / g.x) - map.cell_center(f0["x"], f0["y"])).normalized()
-			var oc2 := Lcars.owner_color(app.player())
-			var any_sel := false
-			var tf := false
-			for f in list:
-				if int(f["id"]) == int(app.selection.get("fleetId", 0)):
-					any_sel = true
-				if int(f.get("taskForceId", 0)) != 0:
-					tf = true
-			_chevron(base, heading, 11.0, oc2, tf)
-			if list.size() > 1:
-				draw_circle(base + Vector2(12, 10), 8, Lcars.BG)
-				draw_string(Lcars.font("mono"), base + Vector2(8, 14), str(list.size()), HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color.WHITE)
-			if any_sel:
-				var pr := 17.0 + 2.0 * sin(t * 5.0)
-				draw_arc(base, pr, 0, TAU, 28, Color.WHITE, 2.0, true)
-			if f0.get("routeBlocked", false):
-				draw_arc(base, 15, 0, TAU, 20, Lcars.WARN, 1.5, true)
-
-	func _chevron(p: Vector2, dir: Vector2, s: float, col: Color, double: bool) -> void:
-		var side := Vector2(-dir.y, dir.x)
-		var tip := p + dir * s
-		var pts := PackedVector2Array([tip, p - dir * s * 0.7 + side * s * 0.8, p - dir * s * 0.25, p - dir * s * 0.7 - side * s * 0.8])
-		draw_colored_polygon(pts, col)
-		pts.append(tip)
-		draw_polyline(pts, Color(1, 1, 1, 0.8), 1.2, true)
-		if double:
-			var back := p - dir * s * 0.9
-			draw_polyline(PackedVector2Array([back + side * s * 0.8, back - dir * s * 0.45, back - side * s * 0.8]), col, 2.0, true)
-
-	func _dashed(a: Vector2, b: Vector2, col: Color, w: float, dash: float, gap: float, phase: float) -> void:
-		var len := a.distance_to(b)
-		if len < 0.01:
-			return
-		var dir := (b - a) / len
-		var period := dash + gap
-		var s := fposmod(phase, period) - period
-		while s < len:
-			var s0: float = max(s, 0.0)
-			var s1: float = min(s + dash, len)
-			if s1 > s0:
-				draw_line(a + dir * s0, a + dir * s1, col, w, true)
-			s += period
-
-	func _arc_line(a: Vector2, b: Vector2, col: Color, w: float, t: float) -> void:
-		var mid := (a + b) / 2.0 + Vector2(-(b - a).y, (b - a).x) * 0.15
-		var prev := a
-		for k in range(1, 33):
-			var u := k / 32.0
-			var p := a.lerp(mid, u).lerp(mid.lerp(b, u), u)
-			if (k + int(t * 8.0)) % 3 != 0:
-				draw_line(prev, p, col, w, true)
-			prev = p
-
-# ---------------------------------------------------------------------------------------------
-# Screen-space labels (system names, ETAs) so text stays crisp at every zoom
-# ---------------------------------------------------------------------------------------------
-class MapLabels extends Control:
-	var map: GalaxyMap
-
-	func _draw() -> void:
-		var v := map.view()
-		if v.is_empty():
-			return
-		var app := map.app
-		var g := map.grid_size()
-		var f := Lcars.font("display", 560)
-		var mono := Lcars.font("mono")
-		if map.layers.get("labels", true):
-			var fs := int(clamp(15.0 * sqrt(map.zoom), 11.0, 22.0))
-			for s in v.get("systems", []):
-				var p := map.map_to_screen(map.cell_center(s["x"], s["y"]) + Vector2(0, 30))
-				if p.x < -100 or p.y < -40 or p.x > size.x + 100 or p.y > size.y + 40:
-					continue
-				var owner := int(s.get("owner", 0))
-				var col := Lcars.owner_color(owner) if owner != 0 else Color(Lcars.TEXT2, 0.85)
-				var name_ := str(s["name"]).to_upper()
-				var w := f.get_string_size(name_, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
-				draw_string_outline(f, p + Vector2(-w / 2.0, fs), name_, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, 4, Color(0, 0, 0, 0.75))
-				draw_string(f, p + Vector2(-w / 2.0, fs), name_, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, col)
-		if map.layers.get("routes", true):
-			for fl in v.get("fleets", []):
-				var route: Array = fl.get("route", [])
-				if route.size() < 2 or int(fl.get("eta", 0)) <= 0:
-					continue
-				var last := int(route[route.size() - 1])
-				var p2 := map.map_to_screen(map.cell_center(last % g.x, last / g.x)) + Vector2(14, -14)
-				var txt := "%dT" % int(fl["eta"])
-				var tw := mono.get_string_size(txt, HORIZONTAL_ALIGNMENT_LEFT, -1, 13).x
-				draw_style_box(Lcars.box(Color(Lcars.BG, 0.85), 6, Lcars.accent2(), 1, Vector4.ZERO), Rect2(p2 + Vector2(-4, -13), Vector2(tw + 8, 17)))
-				draw_string(mono, p2, txt, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Lcars.accent2())
-		if map.layers.get("grid", true) and map.zoom > 0.8:
-			var cf := Color(Lcars.TEXT3, 0.35)
-			for x in range(g.x):
-				var p3 := map.map_to_screen(Vector2((x + 0.5) * GalaxyMap.CELL, 0)) + Vector2(-6, -6)
-				draw_string(mono, p3, str(x), HORIZONTAL_ALIGNMENT_LEFT, -1, 11, cf)
-			for y in range(g.y):
-				var p4 := map.map_to_screen(Vector2(0, (y + 0.5) * GalaxyMap.CELL)) + Vector2(-20, 4)
-				draw_string(mono, p4, str(y), HORIZONTAL_ALIGNMENT_LEFT, -1, 11, cf)
