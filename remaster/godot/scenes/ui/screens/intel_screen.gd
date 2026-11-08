@@ -20,7 +20,7 @@ var _sliders := {}
 func refresh() -> void:
 	for c in get_children():
 		c.queue_free()
-	vm.load()
+	vm.fetch()
 	if not vm.available():
 		add_child(Lcars.empty_note("Intelligence unavailable."))
 		return

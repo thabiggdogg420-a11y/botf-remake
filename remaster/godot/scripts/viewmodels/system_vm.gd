@@ -39,7 +39,7 @@ func cycle(d: int) -> bool:
 	return true
 
 ## Loads the colony detail and resets the draft to its staffing. False (error in last_error) when the core fails.
-func load(sid: int) -> bool:
+func fetch(sid: int) -> bool:
 	var d: Variant = query("colony", {"systemId": sid})
 	if not d is Dictionary:
 		return false

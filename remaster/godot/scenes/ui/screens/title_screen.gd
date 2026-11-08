@@ -20,7 +20,7 @@ func refresh() -> void:
 	for c in get_children():
 		if c != backdrop:
 			c.queue_free()
-	vm.load()
+	vm.fetch()
 	_ensure_backdrop(title_empire())
 	var root := Lcars.vbox(14)
 	root.position = Vector2(size.x * 0.09, size.y * 0.16)
@@ -67,7 +67,7 @@ func refresh() -> void:
 	menu.add_child(row2)
 	var row3 := Lcars.hbox(10)
 	row3.add_child(_wide(Lcars.pill("Settings", "ghost", func(): app.open_overlay("settings"))))
-	var quit := _wide(Lcars.pill("Quit", "ghost", func(): preload("res://scenes/ui/screens/overlays.gd").confirm_quit_game(app), "", "Close the game", "Alt+F4"))
+	var quit := _wide(Lcars.pill("Quit", "ghost", func(): Overlays.confirm_quit_game(app), "", "Close the game", "Alt+F4"))
 	quit.name = "Quit"
 	row3.add_child(quit)
 	menu.add_child(row3)

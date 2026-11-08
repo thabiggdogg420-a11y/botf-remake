@@ -571,8 +571,7 @@ func quit_game() -> void:
 
 ## Named overlays: briefing, events, victory, end, menu, settings, help.
 func open_overlay(kind: String) -> Control:
-	var o := preload("res://scenes/ui/screens/overlays.gd")
-	return o.open(self, kind)
+	return Overlays.open(self, kind)
 
 func open_menu() -> void:
 	open_overlay("menu")

@@ -32,7 +32,7 @@ func refresh() -> void:
 	frame.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	col.add_child(frame)
 	var list := Lcars.vbox(8)
-	vm.load()
+	vm.fetch()
 	var saves := vm.saves
 	if saves.is_empty():
 		list.add_child(Lcars.empty_note("No saved campaigns yet. Campaigns autosave at the end of every turn."))

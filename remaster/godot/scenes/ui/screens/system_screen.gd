@@ -50,7 +50,7 @@ func refresh() -> void:
 		Lcars.body(f).add_child(Lcars.empty_note("You have no colonies."))
 		add_child(f)
 		return
-	if not vm.load(sid):
+	if not vm.fetch(sid):
 		app.report_error(app.core.last_error)
 		return
 	var c := vm.colony()

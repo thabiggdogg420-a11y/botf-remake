@@ -27,6 +27,15 @@ func find(node: Node, name_: String) -> Node:
 	return node.find_child(name_, true, false)
 
 func _run() -> void:
+	# Browser target: run_ui_compat.ps1 runs this suite windowed with --rendering-method gl_compatibility (WebGL2's
+	# renderer) and sets BOTF_EXPECT_RENDERER so the run proves which renderer it used.
+	var want := OS.get_environment("BOTF_EXPECT_RENDERER")
+	var got := str(ProjectSettings.get_setting_with_override("rendering/renderer/rendering_method"))
+	if DisplayServer.get_name() != "headless":
+		got = RenderingServer.get_current_rendering_method()
+	print("renderer: %s (display %s)" % [got, DisplayServer.get_name()])
+	if want != "":
+		check(got == want, "the UI suite runs on the %s renderer (got %s)" % [want, got])
 	var backends := ["fixture"]
 	if Engine.has_singleton("BotfCore"):
 		backends.append("native")

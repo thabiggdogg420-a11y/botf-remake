@@ -73,7 +73,7 @@ static func status(e: Dictionary) -> String:
 	return " · ".join(parts)
 
 ## Reloads diplomacy; `focus` (from another screen) selects a race and opens its dossier. False when unavailable.
-func load(focus: Variant = null) -> bool:
+func fetch(focus: Variant = null) -> bool:
 	d = query_dict("diplomacy")
 	if d.is_empty():
 		return false

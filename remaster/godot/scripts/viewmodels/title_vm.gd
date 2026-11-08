@@ -6,7 +6,7 @@ const EMPIRE_NAMES := {1: "federation", 2: "klingon", 3: "romulan", 4: "cardassi
 
 var saves: Array = []
 
-func load() -> void:
+func fetch() -> void:
 	saves = AppSaves.list()
 
 func latest() -> Dictionary:

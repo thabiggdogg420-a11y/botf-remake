@@ -1,6 +1,6 @@
 class_name Roster
 extends RefCounted
-## Presentation helpers for the expanded ship roster. Port of remaster/web/src/core/roster.ts.
+## Display labels for the expanded ship roster (eras, sources, roles, weapons, arcs), used by view models and screens.
 
 const ERA_ORDER := ["Enterprise", "Original", "Movie", "NextGeneration", "DominionWar", "Nemesis", "Kelvin", "Future"]
 const ERA_LABEL := {"Enterprise": "Enterprise era", "Original": "Original series", "Movie": "Movie era", "NextGeneration": "Next Generation",

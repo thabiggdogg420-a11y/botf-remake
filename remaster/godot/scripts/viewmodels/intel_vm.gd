@@ -10,7 +10,7 @@ var tab := "operations"
 var highlight := 0
 var targets := {}
 
-func load() -> void:
+func fetch() -> void:
 	intel = query_dict("intel")
 	budget = _from_intel()
 	original = budget.duplicate(true)

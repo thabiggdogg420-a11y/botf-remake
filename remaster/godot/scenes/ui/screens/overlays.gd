@@ -1,15 +1,14 @@
+class_name Overlays
 extends RefCounted
-## Modal overlays: turn briefing / chronicle, galactic event cards, victory panel, end screen,
-## game menu, settings and keyboard help. Port of Briefing.tsx, ui/Remaster.tsx, SettingsPanel.tsx, Help.tsx.
+## Modal overlays (presentation): turn briefing and chronicle, galactic event cards, victory panel, end screen,
+## game menu, settings and keyboard help. Their data comes from OverlaysVM (scripts/viewmodels/overlays_vm.gd).
 
-const ORDER := ["victory", "combat", "events", "diplomacy", "stations", "intel", "construction", "research", "colonization", "exploration", "fleets", "economy"]
-const CONDITION_BLURB := {
-	"Conquest": "Be the last power holding colonies.",
-	"Domination": "Hold 60% of all star systems after turn 20.",
-	"Scientific": "Master every field, then complete the era megaproject.",
-	"Diplomatic": "Lead an alliance bloc holding two-thirds of the galaxy's population.",
-}
-const CATEGORY_TONE := {"combat": "alert", "victory": "good", "events": "secondary", "diplomacy": "tertiary", "research": "info", "intel": "tertiary", "construction": "primary", "stations": "secondary"}
+const ORDER := OverlaysVM.ORDER
+const CONDITION_BLURB := OverlaysVM.CONDITION_BLURB
+const CATEGORY_TONE := OverlaysVM.CATEGORY_TONE
+
+static func _vm(app: App) -> OverlaysVM:
+	return OverlaysVM.new(app.session)
 
 static func open(app: App, kind: String) -> Control:
 	match kind:
@@ -24,12 +23,7 @@ static func open(app: App, kind: String) -> Control:
 
 # ---------------------------------------------------------------------------------------------
 static func briefing(app: App, filter: String = "all") -> Control:
-	var b: Variant = app.briefing
-	if not b is Dictionary:
-		var fetched: Variant = app.core.request("briefing")
-		if fetched is Dictionary:
-			b = fetched
-			app.briefing = b
+	var b: Variant = _vm(app).briefing()
 	var root := Lcars.vbox(12)
 	root.name = "Briefing"
 	if not b is Dictionary:
@@ -53,14 +47,7 @@ static func briefing(app: App, filter: String = "all") -> Control:
 	head.add_child(ack)
 	root.add_child(head)
 	var events: Array = b.get("events", [])
-	var cats := []
-	for c in ORDER:
-		for e in events:
-			if e["category"] == c and not cats.has(c):
-				cats.append(c)
-	for e in events:
-		if not cats.has(e["category"]):
-			cats.append(e["category"])
+	var cats := OverlaysVM.categories(events)
 	var tabs := Lcars.hbox(6)
 	var modal_holder := {"m": null}
 	var mk_tab := func(id: String, text: String):
@@ -114,7 +101,7 @@ static func _event_row(app: App, e: Dictionary, holder: Dictionary) -> Control:
 	b.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	b.add_theme_font_override("font", Lcars.font("ui", 440))
 	b.add_theme_font_size_override("font_size", 15)
-	var sb := Lcars.box(Color(Lcars.PANEL2, 0.7), 10, Lcars.tone_color("alert" if sev == "alert" else ("warn" if sev == "warn" else ("good" if sev == "good" else "info"))), 0, Vector4(16, 7, 16, 7))
+	var sb := Lcars.box(Color(Lcars.PANEL2, 0.7), 10, Lcars.tone_color(OverlaysVM.severity_tone(sev)), 0, Vector4(16, 7, 16, 7))
 	sb.border_width_left = 5
 	b.add_theme_stylebox_override("normal", sb)
 	var due := ""
@@ -159,13 +146,10 @@ static func _open_event(app: App, e: Dictionary) -> void:
 # ---------------------------------------------------------------------------------------------
 static func events(app: App) -> Control:
 	var v := app.view
+	var vm := _vm(app)
 	var root := Lcars.vbox(12)
 	root.name = "Events"
-	var evs: Array = v.get("events", []).duplicate()
-	evs.sort_custom(func(a, b):
-		if a["awaitingChoice"] != b["awaitingChoice"]:
-			return a["awaitingChoice"]
-		return int(a["deadline"]) < int(b["deadline"]))
+	var evs := vm.sorted_events()
 	if evs.is_empty():
 		# A compact note, not an empty 1120x600 card grid.
 		root.add_child(Lcars.empty_note("No galactic events concern your empire right now. New events are drawn every few turns."))
@@ -175,7 +159,6 @@ static func events(app: App) -> Control:
 	grid.add_theme_constant_override("h_separation", 14)
 	grid.add_theme_constant_override("v_separation", 14)
 	var turn := int(v["meta"]["turn"])
-	var locked: bool = v.get("session", {}).get("active", false)
 	for e in evs:
 		var c := Lcars.card()
 		c.custom_minimum_size = Vector2(520, 0)
@@ -205,7 +188,7 @@ static func events(app: App) -> Control:
 		col.add_child(Lcars.para(str(e["description"]), Lcars.TEXT2, 14))
 		var chosen := drafted if drafted >= 0 else int(e.get("choice", -1))
 		for o in e.get("choices", []):
-			var blocked := "Finish the battle in progress first" if locked else str(o.get("blocker", ""))
+			var blocked := vm.choice_block(o)
 			var ob := Button.new()
 			ob.theme_type_variation = "GhostButton"
 			ob.toggle_mode = true
@@ -217,13 +200,10 @@ static func events(app: App) -> Control:
 			ob.add_theme_font_size_override("font_size", 14)
 			ob.disabled = not e["awaitingChoice"] or blocked != ""
 			ob.tooltip_text = ("Unavailable: " + blocked) if blocked != "" else str(o["effect"])
-			var eid := int(e["id"])
-			var idx := int(o["index"])
-			var ids: Array = e.get("draftIds", [])
-			var name_: String = e["name"]
-			var lbl: String = o["label"]
+			var ev: Dictionary = e
+			var opt: Dictionary = o
 			ob.pressed.connect(func():
-				if app.issue({"type": "ResolveEventChoice", "eventId": eid, "eventOption": idx}, ids, "%s: “%s” takes effect next turn." % [name_, lbl]):
+				if vm.resolve_event_choice(ev, opt):
 					app.close_modal()
 					events(app))
 			col.add_child(ob)
@@ -234,19 +214,6 @@ static func events(app: App) -> Control:
 	var close := Lcars.pill("Close", "ghost", func(): app.close_modal(), "", "", "Esc")
 	root.add_child(close)
 	return app.open_modal(root, "Galactic events · decisions & developments", Vector2(1120, 0), "secondary")
-
-class EventGlyph extends Control:
-	var kind := ""
-	func _process(_d: float) -> void:
-		queue_redraw()
-	func _draw() -> void:
-		var c := size / 2.0
-		var t := Time.get_ticks_msec() / 1000.0
-		var col := Lcars.accent2()
-		draw_circle(c, 18, Color(col, 0.15))
-		draw_arc(c, 17, t, t + PI * 1.4, 24, col, 2.0, true)
-		draw_arc(c, 11, -t * 1.3, -t * 1.3 + PI, 24, Color(col, 0.7), 2.0, true)
-		draw_circle(c, 4, col)
 
 # ---------------------------------------------------------------------------------------------
 static func victory_rows(v: Dictionary, compact: bool = false) -> Control:
@@ -305,11 +272,12 @@ static func victory(app: App) -> Control:
 static func end_screen(app: App, preview: String = "") -> Control:
 	var v := app.view
 	var outcome := preview if preview != "" else str(v["meta"].get("outcome", "ongoing"))
-	var won := outcome == "victory"
+	var sum := _vm(app).end_summary(outcome)
+	var won: bool = sum["won"]
 	var root := Lcars.vbox(14)
 	root.name = "EndScreen"
 	root.alignment = BoxContainer.ALIGNMENT_CENTER
-	var winner := int(v["meta"].get("winner", 0))
+	var winner: int = sum["winner"]
 	var em := Lcars.emblem(app.player() if won or winner == 0 else winner, 84)
 	em.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	root.add_child(em)
@@ -320,30 +288,12 @@ static func end_screen(app: App, preview: String = "") -> Control:
 	title.add_theme_font_override("font", Lcars.font("display", 700))
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	root.add_child(title)
-	var reason := "Your empire commands the quadrant."
-	for c in v.get("victory", {}).get("conditions", []):
-		if c["achieved"] and won:
-			reason = "%s victory: %s" % [c["name"], c["explanation"]]
-	if not won:
-		reason = ("%s prevailed." % app.empire_name(winner)) if winner != 0 and winner != app.player() else ("Your last colony has fallen." if v.get("colonies", []).is_empty() else "Your empire has been defeated.")
-	var rl := Lcars.para(reason, Lcars.TEXT, 18)
+	var rl := Lcars.para(sum["reason"], Lcars.TEXT, 18)
 	rl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	root.add_child(rl)
 	var stats := Lcars.grid(4)
 	stats.add_theme_constant_override("h_separation", 40)
-	var techs := 0
-	for t in v["empire"].get("techs", []):
-		techs += int(t["level"])
-	var mine := 0
-	for s in v.get("stations", []):
-		if s.get("mine", false):
-			mine += 1
-	var contacts := 0
-	for e in v.get("empires", []):
-		if e.get("contact", false):
-			contacts += 1
-	for pair in [["Turns", v["meta"]["turn"]], ["Colonies", v["colonies"].size()], ["Population", Lcars.fmt(v["empire"]["population"])], ["Ships", v["fleets"].size()],
-			["Stations", mine], ["Treasury", Lcars.fmt(v["empire"]["credits"])], ["Tech levels", techs], ["Contacts", contacts]]:
+	for pair in sum["stats"]:
 		stats.add_child(Lcars.stat(pair[0], pair[1]))
 	var sc := CenterContainer.new()
 	sc.add_child(stats)
@@ -511,10 +461,12 @@ static func _display_rows(app: App, s: Dictionary, root: Control) -> void:
 	if not res_ids.has(str(s["display.resolution"])):
 		res_ids.push_front(str(s["display.resolution"]))
 		res_labels.push_front("Desktop size" if str(s["display.resolution"]) == "" else str(s["display.resolution"]))
-	root.add_child(_option_row("Resolution", "Window size in windowed mode. Borderless and fullscreen use the monitor's own size.",
-		"display.resolution", res_ids, res_labels, s, changed))
-	root.add_child(_option_row("Window mode", "Windowed, a borderless window covering the screen, or exclusive fullscreen.",
-		"display.windowMode", DisplaySettings.WINDOW_MODES.keys(), DisplaySettings.WINDOW_MODES.values(), s, changed))
+	if DisplaySettings.offered("display.resolution"):
+		root.add_child(_option_row("Resolution", "Window size in windowed mode. Borderless and fullscreen use the monitor's own size.",
+			"display.resolution", res_ids, res_labels, s, changed))
+	if DisplaySettings.offered("display.windowMode"):
+		root.add_child(_option_row("Window mode", "Windowed, a borderless window covering the screen, or exclusive fullscreen.",
+			"display.windowMode", DisplaySettings.WINDOW_MODES.keys(), DisplaySettings.WINDOW_MODES.values(), s, changed))
 	var vr := Lcars.hbox(12)
 	vr.name = "Setting_display_vsync"
 	vr.add_child(_setting_text("Vertical sync", "Locks frames to the monitor refresh: no tearing, slightly more input delay."))
@@ -524,11 +476,16 @@ static func _display_rows(app: App, s: Dictionary, root: Control) -> void:
 	vcb.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	vcb.toggled.connect(func(on): changed.call("display.vsync", on))
 	vr.add_child(vcb)
-	root.add_child(vr)
-	root.add_child(_option_row("Frame rate cap", "Upper limit on frames per second (with vsync off, or above the refresh rate).",
-		"display.fpsCap", DisplaySettings.FPS_CAPS, DisplaySettings.FPS_CAPS.map(func(c): return DisplaySettings.fps_label(c)), s, changed))
-	root.add_child(_option_row("Render scale", "3D resolution as a share of the window, upscaled with FSR. Lower is faster.",
-		"display.renderScale", DisplaySettings.RENDER_SCALES, DisplaySettings.RENDER_SCALES.map(func(v): return "%d%%" % roundi(v * 100)), s, changed))
+	if DisplaySettings.offered("display.vsync"):
+		root.add_child(vr)
+	else:
+		vr.queue_free()
+	if DisplaySettings.offered("display.fpsCap"):
+		root.add_child(_option_row("Frame rate cap", "Upper limit on frames per second (with vsync off, or above the refresh rate).",
+			"display.fpsCap", DisplaySettings.FPS_CAPS, DisplaySettings.FPS_CAPS.map(func(c): return DisplaySettings.fps_label(c)), s, changed))
+	if DisplaySettings.offered("display.renderScale"):
+		root.add_child(_option_row("Render scale", "3D resolution as a share of the window, upscaled with FSR. Lower is faster.",
+			"display.renderScale", DisplaySettings.RENDER_SCALES, DisplaySettings.RENDER_SCALES.map(func(v): return "%d%%" % roundi(v * 100)), s, changed))
 	root.add_child(_option_row("Anti-aliasing", "Smooths jagged edges on ships and planets. MSAA is sharper; FXAA is cheaper.",
 		"display.antiAlias", DisplaySettings.ANTI_ALIAS.keys(), DisplaySettings.ANTI_ALIAS.values(), s, changed))
 	root.add_child(_option_row("Shadow quality", "Shadow map size and softness in the battle and title scenes. Off draws no shadows.",

@@ -50,7 +50,7 @@ static func focus_alloc(field: int) -> Array:
 	return a
 
 ## Reloads research, forecast and the allocation in force.
-func load() -> void:
+func fetch() -> void:
 	research = query_dict("research")
 	forecast = query_dict("forecast")
 	alloc = current()

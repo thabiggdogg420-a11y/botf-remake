@@ -46,7 +46,7 @@ func refresh() -> void:
 	if app.has_meta("diplomacy_focus"):
 		focus = app.get_meta("diplomacy_focus")
 		app.remove_meta("diplomacy_focus")
-	if not vm.load(focus):
+	if not vm.fetch(focus):
 		add_child(Lcars.empty_note("Diplomacy unavailable."))
 		return
 	var incoming := vm.incoming()

@@ -321,7 +321,7 @@ func _prepare(s: String) -> void:
 			if s == "briefing":
 				app.briefing = app.core.request("briefing")
 			if s == "end":
-				preload("res://scenes/ui/screens/overlays.gd").end_screen(app, "victory")
+				Overlays.end_screen(app, "victory")
 			else:
 				app.open_overlay(s)
 		_:

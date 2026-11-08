@@ -4,7 +4,7 @@ extends ViewModel
 
 var saves: Array = []
 
-func load() -> void:
+func fetch() -> void:
 	saves = AppSaves.list()
 
 static func describe(s: Dictionary) -> String:

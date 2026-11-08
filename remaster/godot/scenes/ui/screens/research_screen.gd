@@ -21,7 +21,7 @@ static func rebalance(a: Array, field: int, value: int, locked: Array) -> Array:
 func refresh() -> void:
 	for c in get_children():
 		c.queue_free()
-	vm.load()
+	vm.fetch()
 	if not vm.available():
 		add_child(Lcars.empty_note("Research data unavailable."))
 		return
