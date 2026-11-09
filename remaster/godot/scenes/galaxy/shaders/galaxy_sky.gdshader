@@ -43,5 +43,11 @@ void sky() {
 	col += mix(vec3(0.05, 0.02, 0.08), vec3(0.01, 0.05, 0.07), veil) * smoothstep(0.45, 0.8, veil) * 0.6;
 	vec3 st = stars(dir, 140.0, 0.22, 0.09) + stars(dir, 320.0, 0.3 + 0.4 * band, 0.12) * 0.7;
 	col += st * star_strength * (1.0 - 0.6 * lanes * band);
+#if CURRENT_RENDERER == RENDERER_COMPATIBILITY
+	// Compatibility's sky pass reads COLOR as sRGB and converts it to linear before tonemapping (Godot 4.5
+	// drivers/gles3/shaders/sky.glsl); Forward+ reads it as linear. Encode it, so the web draws the desktop's sky (without
+	// this every dim value was squared toward black: the nebula and the galactic band all but vanished on the web).
+	col = mix(1.055 * pow(max(col, vec3(0.0)), vec3(1.0 / 2.4)) - 0.055, col * 12.92, lessThan(col, vec3(0.0031308)));
+#endif
 	COLOR = col;
 }

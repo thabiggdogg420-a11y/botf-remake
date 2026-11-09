@@ -99,7 +99,7 @@ func _stage_environment() -> void:
 	# Sun: a three-quarter front key from the upper left of the view, so the hulls face the light.
 	var sun: DirectionalLight3D = env.sun
 	sun.rotation_degrees = Vector3(-28.0, -38.0, 0.0)
-	sun.light_energy = 2.4
+	sun.light_energy = CompatLook.sun(2.4)
 	sun.directional_shadow_max_distance = 400.0
 	# Gas giant: large, low on the right, behind the fleet.
 	var planet: MeshInstance3D = env.planet
