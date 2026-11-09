@@ -114,6 +114,17 @@ func _warm_battle() -> void:
 	await tree.process_frame
 	if "fx" in view and view.fx != null:
 		view.fx.prewarm()
+	# Ship shaders (hero hull, plating, hull, shield, cloak, blink): a sphere each, in front of the warm-up camera, so
+	# their pipelines compile now and not when the first hull of a battle is drawn.
+	for sh in [HeroLook.HULL_SHADER, HeroLook.PLATED_SHADER, BattleShip.HULL_SHADER, BattleShip.SHIELD_SHADER, BattleShip.CLOAK_SHADER, BattleShip.BLINK_SHADER]:
+		var mi := MeshInstance3D.new()
+		mi.mesh = SphereMesh.new()
+		var mat := ShaderMaterial.new()
+		mat.shader = sh
+		mi.material_override = mat
+		view.add_child(mi)
+		if "camera" in view and view.camera != null:
+			mi.global_position = view.camera.global_position + (view.camera.global_transform.basis * Vector3(0, 0, -3.0))
 	BattleShip.flame_flipbook()
 	BattleShip.puff_texture()
 	for _i in 6:
@@ -335,19 +346,14 @@ func goto(id: String, remember: bool = true) -> void:
 	var path := AppRoutes.script_for(id)
 	if path == "":
 		return
-	var _g0 := Time.get_ticks_usec()
 	var s: Control = (AppLoader.resource(path) as GDScript).new()
 	s.name = "Screen_" + id
 	s.set("app", self)
 	_current = s
-	var _g1 := Time.get_ticks_usec()
 	_stage.add_child(s)
-	var _g2 := Time.get_ticks_usec()
 	_place_current()
 	_background.visible = id != "galaxy"
 	_build_chrome()
-	if id == "combat":
-		print("OPENPROF   goto parts: new %d add_child(_ready) %d place+chrome %d" % [(_g1 - _g0) / 1000, (_g2 - _g1) / 1000, (Time.get_ticks_usec() - _g2) / 1000])
 	if s.has_method("refresh"):
 		s.refresh()
 	Motion.enter(s, 0, "screen")
@@ -472,21 +478,19 @@ func preview_turn() -> void:
 
 ## Ends the turn. Returns the status ("battle" or "complete").
 func end_turn() -> String:
-	var _tp := Time.get_ticks_usec()
 	var res := session.end_turn()
 	if res.is_empty():
 		return "error"
 	if res.get("status", "") == "battle":
-		var _t1 := Time.get_ticks_usec()
+		# The screen we are leaving is not refreshed (its map rebuild cost ~30 ms of the battle-open frame).
+		var leaving := _current
+		_current = null
 		refresh()
-		var _t2 := Time.get_ticks_usec()
+		_current = leaving
 		session.fetch_encounter()
-		var _t3 := Time.get_ticks_usec()
 		goto("combat")
-		var _t4 := Time.get_ticks_usec()
-		BotfAudioSystem.on_battle_joined()
-		print("OPENPROF core %d refresh %d fetch %d goto %d audio %d" % [(_t1 - _tp) / 1000, (_t2 - _t1) / 1000, (_t3 - _t2) / 1000, (_t4 - _t3) / 1000, (Time.get_ticks_usec() - _t4) / 1000])
-		toast("Battle joined. Issue maneuvers or let the tactical AI command.", "warn")
+		get_tree().create_timer(0.25).timeout.connect(BotfAudioSystem.on_battle_joined) # off the frame that opens the screen
+		get_tree().create_timer(0.3).timeout.connect(func(): toast("Battle joined. Issue maneuvers or let the tactical AI command.", "warn"))
 		return "battle"
 	briefing = res.get("briefing")
 	refresh()

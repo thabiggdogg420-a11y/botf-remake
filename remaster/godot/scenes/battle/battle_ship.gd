@@ -75,10 +75,8 @@ func setup(ship: Dictionary, assets: BattleAssets = null) -> void:
 	model.name = "Model"
 	add_child(model)
 	var hull: Node3D = null
-	var _i0 := Time.get_ticks_usec()
 	if assets != null:
 		hull = assets.instantiate_ship(BattleShip.asset_keys_for(ship))
-	print("OPENPROF   instantiate_ship %s %d ms" % [ship_name, (Time.get_ticks_usec() - _i0) / 1000])
 	if hull != null:
 		imported = true
 		if hull.has_meta("botf_hero"):
@@ -193,11 +191,8 @@ func _fit_hero(hull: Node3D) -> void:
 		canon_length_m = maxf(box.size.x, 1e-3)
 	model_scale = length / canon_length_m
 	hull.transform = Transform3D(Basis.from_scale(Vector3.ONE * model_scale), -box.get_center() * model_scale)
-	var _h0 := Time.get_ticks_usec()
 	HeroLook.apply(hull, hero, str(hull.get_meta("botf_hero_root", "")))
-	var _h1 := Time.get_ticks_usec()
 	HeroLook.apply_lods(hull, hero, length)
-	print("OPENPROF   fit_hero %s apply %d ms lods %d ms" % [hero_key, (_h1 - _h0) / 1000, (Time.get_ticks_usec() - _h1) / 1000])
 	_collect_sockets(hull)
 
 

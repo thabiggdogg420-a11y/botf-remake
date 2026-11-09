@@ -68,23 +68,18 @@ var _carry := {}                 ## fleet_id -> Vector4(x, y, altitude, facing) 
 
 
 func _ready() -> void:
-	var _a := Time.get_ticks_usec()
 	assets = BattleAssets.new()
 	_env = BattleEnvironment.build(self, _arena * CELL)
-	print("OPENPROF scene env build %d" % [(Time.get_ticks_usec() - _a) / 1000])
-	print("OPENPROF   ready: assets+env %d ms" % [(Time.get_ticks_usec() - _a) / 1000])
 	camera = BattleCamera.new()
 	camera.name = "Camera"
 	add_child(camera)
 	camera.global_position = Vector3(0, 120, 220)
 	camera.look_at(Vector3.ZERO)
 	camera.ship_picked.connect(func(id): ship_picked.emit(id))
-	print("OPENPROF   ready: camera %d ms" % [(Time.get_ticks_usec() - _a) / 1000])
 	fx = BattleFx.new()
 	fx.name = "Fx"
 	fx.scene = self
 	add_child(fx)
-	print("OPENPROF   ready: fx %d ms" % [(Time.get_ticks_usec() - _a) / 1000])
 	plan = BattlePlan.new()
 	plan.name = "Plan"
 	plan.scene = self
@@ -95,7 +90,6 @@ func _ready() -> void:
 	audio.assets = assets
 	audio.generated_tones = generated_tones
 	add_child(audio)
-	print("OPENPROF   ready: done %d ms" % [(Time.get_ticks_usec() - _a) / 1000])
 
 
 # ------------------------------------------------------------------------------------------------------------------
@@ -105,9 +99,7 @@ func _ready() -> void:
 func play_round(p_encounter: Dictionary, p_round_index: int) -> void:
 	encounter = p_encounter
 	round_index = p_round_index
-	var _pa := Time.get_ticks_usec()
 	BattleEnvironment.set_planet_class(_env, str(encounter.get("planetClass", ""))) # the battle system's planet
-	print("OPENPROF set_planet_class %d (%s)" % [(Time.get_ticks_usec() - _pa) / 1000, encounter.get("planetClass", "")])
 	var rounds: Array = encounter.get("rounds", [])
 	if round_index < 0 or round_index >= rounds.size():
 		push_warning("BattleScene.play_round: no round %d" % round_index)
@@ -236,9 +228,7 @@ func _sync_ships(info: Array) -> void:
 		if not _ships.has(fid):
 			var ship := BattleShip.new()
 			add_child(ship)
-			var _s0 := Time.get_ticks_usec()
 			ship.setup(by_id.get(fid, {"id": fid, "owner": _owner_from_info(info, fid)}), assets)
-			print("OPENPROF ship %d %s setup %d ms (hero %s)" % [fid, ship.ship_name, (Time.get_ticks_usec() - _s0) / 1000, ship.hero_key])
 			_ships[fid] = ship
 	for fid in _ships.keys():
 		if not present.has(fid):

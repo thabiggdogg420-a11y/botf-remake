@@ -8,6 +8,7 @@ var app: App
 var out_dir := ""
 var failures := 0
 var fps := {}
+var worst_by := {}
 
 func _initialize() -> void:
 	var args := OS.get_cmdline_user_args()
@@ -84,8 +85,12 @@ func measure(label: String, seconds: float, from_us := 0) -> void:
 	var avg := 1000.0 * times.size() / maxf(total, 1.0)
 	var p99: float = sorted[mini(sorted.size() - 1, int(sorted.size() * 0.99))] if not sorted.is_empty() else 0.0
 	var worst: float = sorted[sorted.size() - 1] if not sorted.is_empty() else 0.0
+	worst_by[label] = worst_ms_of(sorted)
 	fps[label] = "%.0f fps avg, p99 %.1f ms, worst frame %.1f ms" % [avg, p99, worst]
 	print("SMOKE fps  ", label, ": ", fps[label])
+
+func worst_ms_of(sorted: Array) -> float:
+	return float(sorted[sorted.size() - 1]) if not sorted.is_empty() else 0.0
 
 func find(n: Node, name_: String) -> Node:
 	return n.find_child(name_, true, false)
@@ -157,6 +162,19 @@ func _run() -> void:
 		await click(choice)
 		await wait()
 	check(app.view["pending"].any(func(p): return p["type"] == "EnqueueBuilding"), "build queued on the System screen")
+	# Layout: every label inside a construction choice (name, meta, blocker reason) stays inside its button.
+	var overflow := 0
+	var reasons := 0
+	for ch in app.current_screen().find_children("Choice_*", "Button", true, false):
+		if not ch.is_visible_in_tree():
+			continue
+		var br: Rect2 = ch.get_global_rect()
+		for lb in ch.find_children("*", "Label", true, false):
+			if lb.get_global_rect().end.y > br.end.y + 1.0 or lb.get_global_rect().position.y < br.position.y - 1.0:
+				overflow += 1
+		if ch.disabled:
+			reasons += 1
+	check(overflow == 0, "System choice rows contain their text (%d disabled rows with a reason, %d overflowing labels)" % [reasons, overflow])
 	await shot("pc-05-system")
 
 	# ---- Every game screen by its function key
@@ -227,8 +245,11 @@ func _run() -> void:
 	await wait()
 	var t_open := Time.get_ticks_usec()
 	var status := app.end_turn()
+	print("SMOKE battle open: end_turn call took %.0f ms" % ((Time.get_ticks_usec() - t_open) / 1000.0))
 	await measure("battle open (ships built, models loaded)", 1.0, t_open)
 	await measure("battle open settle (hero hulls deploy)", 8.0) # the stall must not reappear when the models land
+	check(float(worst_by["battle open (ships built, models loaded)"]) < 150.0, "first battle open: worst frame %.0f ms (was 3818 with hero hulls; target 100)" % float(worst_by["battle open (ships built, models loaded)"]))
+	check(float(worst_by["battle open settle (hero hulls deploy)"]) < 100.0, "hulls deploy without a stall (worst %.0f ms)" % float(worst_by["battle open settle (hero hulls deploy)"]))
 	check(status == "battle" and app.screen == "combat", "drill opens the combat screen")
 	var take: Control = find(app, "TakeCommand")
 	check(take != null, "encounter offers Take command")
