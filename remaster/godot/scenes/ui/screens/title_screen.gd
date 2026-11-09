@@ -105,6 +105,13 @@ func _wide(b: Button) -> Button:
 func title_empire() -> int:
 	return vm.title_empire(int(OS.get_environment("BOTF_TITLE_EMPIRE")), fleet_empire)
 
+## Rebuilds the live fleet (the web build calls this when the title empire's hero hulls arrive in the background).
+func refresh_fleet() -> void:
+	if backdrop != null:
+		backdrop.queue_free()
+		backdrop = null
+	_ensure_backdrop(fleet_empire if fleet_empire > 0 else title_empire())
+
 func _ensure_backdrop(empire: int) -> void:
 	if backdrop != null and fleet_empire == empire:
 		move_child(backdrop, 0)

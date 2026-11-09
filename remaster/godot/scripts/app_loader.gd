@@ -57,6 +57,13 @@ static func art(key: String, category: String) -> Texture2D:
 			tex = load(p) as Texture2D
 			if tex:
 				break
+		elif FileAccess.file_exists(p):
+			# A raw image in an asset pack (art_desktop.pck / art_web.pck, tools/build_ship_packs.py --portraits): no import step.
+			var img := Image.load_from_file(p)
+			if img != null and not img.is_empty():
+				img.generate_mipmaps()
+				tex = ImageTexture.create_from_image(img)
+				break
 	_art_cache[ck] = tex
 	return tex
 
@@ -97,15 +104,13 @@ static func image(path: String, max_width: int = 2048) -> Image:
 		img.generate_mipmaps()
 	return img
 
-## Mounts the desktop asset bundles, `user://packs/*_desktop.pck` (built by tools/pack_planets.gd). Returns the count.
-## The web build mounts nothing here: its packs come from fetch_web_packs and are the `*_web.pck` files only.
+## Mounts the desktop asset bundles, `user://packs/*_desktop.pck` (planets_desktop.pck from tools/pack_planets.gd,
+## ships_desktop.pck from tools/build_ship_packs.py). Returns the count. The web build mounts nothing here: its packs are
+## fetched (or found in the IndexedDB cache) by fetch_web_pack after the title is up.
 static func mount_user_packs() -> int:
 	var n := 0
 	if OS.has_feature("web"):
-		for f in list("user://packs"):
-			if f.ends_with("_web.pck") and mount_pack("user://packs/" + f):
-				n += 1
-		return n
+		return 0
 	for f in list("user://packs"):
 		if f.ends_with("_desktop.pck") and mount_pack("user://packs/" + f):
 			n += 1
@@ -118,24 +123,86 @@ static func mount_user_packs() -> int:
 				n += 1
 	return n
 
-## Web bundles served beside index.html in packs/ (built by pack_planets.gd with `web`; budget 40 MB all told).
-const WEB_PACKS := ["planets_web.pck"]
+## Web bundles served beside index.html in packs/. Logical names; tools/verify/hash_web_packs.py renames each file to
+## <stem>.<content hash>.pck and lists the mapping in packs/manifest.json, so a file name never changes meaning: the
+## server lets the browser keep hashed files forever, and a pack already in user://packs (IndexedDB) is mounted with no
+## download at all on a return visit.
+const WEB_PACKS := ["planets_web.pck", "art_web.pck"]
+## The heavy web bundles, fetched one by one in the background after the title shows (App._fetch_background):
+## each faction's hero hulls (tools/build_ship_packs.py) and the full-resolution planet tier (tools/build_planet_hi_web.py).
+const WEB_SHIP_FACTIONS := ["fed", "kli", "rom", "car", "fer"]
+const WEB_PLANETS_HI := "planets_hi_web.pck"
 
-## Web only: downloads and mounts one extra bundle by name, e.g. "audio_kli_web.pck" (see fetch_empire_audio). True when mounted.
+static var _web_manifest: Variant = null
+static var _mounted := {}   ## logical name -> true once mounted this session
+## Bytes fetched over the network and served from the IndexedDB cache this session (web only; for the verify report).
+static var bytes_downloaded := 0
+static var bytes_cached := 0
+
+## True once the logical pack `name` is mounted in this session.
+static func web_pack_mounted(name: String) -> bool:
+	return _mounted.has(name)
+
+## packs/manifest.json: {"files": {logical name: hashed name}, "bytes": {hashed name: size}}. Fetched once per session,
+## never cached (the server marks it no-cache). {} when the build has none (unhashed packs, older exports).
+static func _manifest(host: Node) -> Dictionary:
+	if _web_manifest != null:
+		return _web_manifest
+	_web_manifest = {}
+	var req := HTTPRequest.new()
+	host.add_child(req)
+	var url := str(JavaScriptBridge.eval("new URL('packs/manifest.json', location.href).href"))
+	if req.request(url, PackedStringArray(["Cache-Control: no-cache"])) == OK:
+		var res: Array = await req.request_completed
+		if int(res[0]) == HTTPRequest.RESULT_SUCCESS and int(res[1]) == 200:
+			var d = JSON.parse_string((res[3] as PackedByteArray).get_string_from_utf8())
+			if d is Dictionary:
+				_web_manifest = d
+	req.queue_free()
+	return _web_manifest
+
+## Web only: mounts the bundle `name` (a logical name such as "audio_kli_web.pck"), from user://packs when this exact
+## content is already there, else downloaded first. Older copies of the same bundle are removed from user://packs.
 static func fetch_web_pack(host: Node, name: String) -> bool:
 	if not OS.has_feature("web"):
 		return false
+	if _mounted.has(name):
+		return true
 	DirAccess.make_dir_recursive_absolute("user://packs")
-	var dest := "user://packs/" + name
-	var url := str(JavaScriptBridge.eval("new URL('packs/%s', location.href).href" % name))
-	var req := HTTPRequest.new()
-	req.download_file = dest
-	host.add_child(req)
+	var man: Dictionary = await _manifest(host)
+	var file: String = str(man.get("files", {}).get(name, name))
+	var want := int(man.get("bytes", {}).get(file, -1))
+	var dest := "user://packs/" + file
 	var ok := false
-	if req.request(url) == OK:
-		var res: Array = await req.request_completed
-		ok = int(res[0]) == HTTPRequest.RESULT_SUCCESS and int(res[1]) == 200 and mount_pack(dest)
-	req.queue_free()
+	# A cached copy counts when its size matches the manifest (a hashed name already pins the content; the size check
+	# catches a download cut short). Unhashed builds (no manifest) always download.
+	var cached := -1
+	if file != name and FileAccess.file_exists(dest):
+		var have := FileAccess.open(dest, FileAccess.READ)
+		if have != null:
+			cached = have.get_length()
+	if cached > 0 and (want < 0 or cached == want):
+		bytes_cached += cached
+		ok = mount_pack(dest)
+	else:
+		var url := str(JavaScriptBridge.eval("new URL('packs/%s', location.href).href" % file))
+		var req := HTTPRequest.new()
+		req.download_file = dest
+		host.add_child(req)
+		if req.request(url) == OK:
+			var res: Array = await req.request_completed
+			ok = int(res[0]) == HTTPRequest.RESULT_SUCCESS and int(res[1]) == 200 and mount_pack(dest)
+			if ok:
+				bytes_downloaded += req.get_downloaded_bytes()
+			else:
+				push_warning("AppLoader: web pack %s not mounted (result %d, http %d)" % [file, int(res[0]), int(res[1])])
+		req.queue_free()
+	if ok:
+		_mounted[name] = true
+		var stem := name.get_basename() + "."
+		for f in list("user://packs"):
+			if f != file and (f == name or f.begins_with(stem)):
+				remove("user://packs/" + f)
 	return ok
 
 ## Web only: the chosen empire's audio (voice, sfx, music, about 12 MB) on top of the `shared` audio that ships in the main pck.
@@ -143,26 +210,15 @@ static func fetch_web_pack(host: Node, name: String) -> bool:
 static func fetch_empire_audio(host: Node, empire: String) -> bool:
 	return await fetch_web_pack(host, "audio_%s_web.pck" % empire)
 
-## Web only: downloads each WEB_PACKS file next to the page into user://packs (IndexedDB) and mounts it. Await it from a Node.
-## Returns the count mounted; a missing file is skipped (planets then stay procedural).
+## Web only: fetches and mounts each WEB_PACKS bundle (the small ones the galaxy and system screens want first). Await it
+## from a Node. Returns the count mounted; a missing file is skipped (planets then stay procedural).
 static func fetch_web_packs(host: Node) -> int:
 	if not OS.has_feature("web"):
 		return 0
 	var n := 0
-	DirAccess.make_dir_recursive_absolute("user://packs")
 	for name: String in WEB_PACKS:
-		var dest := "user://packs/" + name
-		var url := str(JavaScriptBridge.eval("new URL('packs/%s', location.href).href" % name))
-		var req := HTTPRequest.new()
-		req.download_file = dest
-		host.add_child(req)
-		if req.request(url) == OK:
-			var res: Array = await req.request_completed
-			if int(res[0]) == HTTPRequest.RESULT_SUCCESS and int(res[1]) == 200 and mount_pack(dest):
-				n += 1
-			else:
-				push_warning("AppLoader: web pack %s not mounted (result %d, http %d)" % [name, int(res[0]), int(res[1])])
-		req.queue_free()
+		if await fetch_web_pack(host, name):
+			n += 1
 	return n
 
 ## Parsed JSON from a res:// or user:// file, or null when missing or invalid.

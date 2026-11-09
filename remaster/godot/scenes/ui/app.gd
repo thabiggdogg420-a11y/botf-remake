@@ -67,12 +67,8 @@ func _ready() -> void:
 	_load_settings()
 	DisplaySettings.fill_defaults(settings)
 	DisplaySettings.apply(settings, get_tree())   # window mode, resolution, vsync, FPS cap, render scale, AA, shadows
-	if OS.has_feature("web"):
-		await AppLoader.fetch_web_packs(self)   # the web tier only: planets_web.pck beside index.html
-	AppLoader.mount_user_packs()   # asset bundles built by the pack step (planet textures ...)
+	AppLoader.mount_user_packs()   # desktop asset bundles (planets, hero ships); the web fetches its own after the title
 	PlanetTextures.reset()
-	if OS.has_feature("web"):
-		await _fetch_empire_audio(1)   # the default empire's audio at start; _enter_game fetches the chosen one
 	BotfAudioSystem.attach(self)   # audio: shares settings, listens to screen changes (music, screen cue)
 	session.connect_core(CoreClient.create("fixture" if forced_backend == "fixture" else "auto"))
 	session.view_changed.connect(_on_view_changed)
@@ -83,6 +79,41 @@ func _ready() -> void:
 	_build_layers()
 	goto("title")
 	_warm_battle.call_deferred()
+	if OS.has_feature("web"):
+		_fetch_background.call_deferred()
+
+## Web only, after the title is up (the first playable load is the engine and the main pck alone): fetches the bundles in
+## the order the player needs them, each from the IndexedDB cache when it is already there. The small planet tier and the
+## default empire's audio, then the hero hulls one faction at a time (the title's empire first, so its fleet swaps to the
+## real models), then the full-resolution planet tier. `web_packs_done` is set and emitted at the end.
+signal web_packs_changed(name: String)
+var web_packs_done := false
+
+func _fetch_background() -> void:
+	await AppLoader.fetch_web_packs(self)
+	PlanetTextures.reset()
+	web_packs_changed.emit("planets_web.pck")
+	await _fetch_empire_audio(1)
+	var order: Array = AppLoader.WEB_SHIP_FACTIONS.duplicate()
+	var title_fac: String = _EMPIRE_TOKENS.get(_title_empire(), "fed")
+	order.erase(title_fac)
+	order.push_front(title_fac)
+	for fac: String in order:
+		var name := "ships_%s_web.pck" % fac
+		if await AppLoader.fetch_web_pack(self, name):
+			web_packs_changed.emit(name)
+			if fac == title_fac and screen == "title" and current_screen().has_method("refresh_fleet"):
+				current_screen().refresh_fleet()
+	if await AppLoader.fetch_web_pack(self, AppLoader.WEB_PLANETS_HI):
+		PlanetTextures.reset()
+		web_packs_changed.emit(AppLoader.WEB_PLANETS_HI)
+	web_packs_done = true
+	print("web packs: %.1f MB downloaded, %.1f MB from cache" % [AppLoader.bytes_downloaded / 1048576.0, AppLoader.bytes_cached / 1048576.0])
+	web_packs_changed.emit("")
+
+func _title_empire() -> int:
+	var t := current_screen()
+	return int(t.get("fleet_empire")) if t != null and t.get("fleet_empire") != null else 1
 
 ## Loads the battle screen's scripts, scene, planet textures and effect materials one step per frame while the title and
 ## galaxy sit idle, so the first battle opens in a frame or two instead of a 300-500 ms stall (M1-BETAFIX; it was 1.5-4 s

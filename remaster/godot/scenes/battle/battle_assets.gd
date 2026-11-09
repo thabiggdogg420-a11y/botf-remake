@@ -4,14 +4,18 @@ extends RefCounted
 ## glTF / FBX models and WAV / OGG audio it points at. Everything here is optional and gitignored; when nothing
 ## resolves the battle uses procedural hulls and generated tones.
 ##
-## Manifest lookup order: $BOTF_RESOLVED_MANIFEST, <exe dir>/LocalAssets, res://../LocalAssets (remaster/LocalAssets),
-## res://../game/LocalAssets (where Import-Assets.ps1 writes it).
+## Manifest lookup order: $BOTF_RESOLVED_MANIFEST (dev override), the mounted ship pack (res://assets/ships/, from
+## ships_desktop.pck or the web ships_<fac>_web.pck, built by tools/build_ship_packs.py), then the dev-only disk folders:
+## <exe dir>/LocalAssets, res://../LocalAssets (remaster/LocalAssets), res://../game/LocalAssets (where Import-Assets.ps1
+## writes it). A packaged build needs no LocalAssets folder and no environment variable: the packs carry everything.
 ##
 ## Hero ships (remaster/game/Tools/blender_hero_ships.py --gltf) come from ships/godot-hero-manifest.json beside any of
 ## those (or $BOTF_HERO_MANIFEST): a hero glb wins over the resolved manifest's record for its key. Its instance
 ## carries meta "botf_hero" (the manifest entry: canon length, sockets, LODs, material hints) and "botf_hero_root".
 
 const HERO_MANIFEST := "godot-hero-manifest.json"
+## Where the ship packs put the manifests and glbs (res://assets/ships/<key>/SM_<slug>.glb).
+const PACK_DIR := "res://assets/ships"
 
 var manifest_path := ""
 var root_dir := ""
@@ -69,8 +73,10 @@ static func hero_candidate_paths() -> PackedStringArray:
 	var env := OS.get_environment("BOTF_HERO_MANIFEST")
 	if env != "":
 		out.append(env)
+	out.append(PACK_DIR.path_join(HERO_MANIFEST))
 	for p in candidate_paths():
-		out.append(p.get_base_dir().path_join("ships").path_join(HERO_MANIFEST))
+		if not p.begins_with(PACK_DIR):
+			out.append(p.get_base_dir().path_join("ships").path_join(HERO_MANIFEST))
 	return out
 
 
@@ -83,6 +89,29 @@ func load_hero_manifest(path: String) -> bool:
 	heroes = data.heroes
 	_hero_scenes.clear()
 	return true
+
+
+## Packaged-build check (pc_smoke, screenshot.gd SHOT_HERO_CHECK): for the ships of a battle `view` (a BattleScene), how many
+## have a hero model here and the names of those drawn with a fallback hull anyway. {heroes: int, fallback: PackedStringArray}.
+## A build that lost its ship pack has an empty `heroes` dictionary; callers fail on that too.
+func hero_report(view: Node, ships: Array) -> Dictionary:
+	var n := 0
+	var bad := PackedStringArray()
+	for sd in ships:
+		if not (sd is Dictionary):
+			continue
+		var want := ""
+		for k in BattleShip.asset_keys_for(sd):
+			if not hero(k).is_empty():
+				want = k
+				break
+		var node: BattleShip = view.ship_node(int(sd.get("id", 0))) if want != "" else null
+		if node == null:
+			continue
+		n += 1
+		if node.hero_key == "":
+			bad.append("%s (%s)" % [str(sd.get("name", "?")), want])
+	return {"heroes": n, "fallback": bad}
 
 
 ## The hero entry for `key` whose glb exists on this machine, or {}.
@@ -115,6 +144,7 @@ static func candidate_paths() -> PackedStringArray:
 	var env := OS.get_environment("BOTF_RESOLVED_MANIFEST")
 	if env != "":
 		out.append(env)
+	out.append(PACK_DIR.path_join("resolved-manifest.json"))
 	out.append(OS.get_executable_path().get_base_dir().path_join("LocalAssets/resolved-manifest.json"))
 	var res := ProjectSettings.globalize_path("res://")
 	out.append(res.path_join("../LocalAssets/resolved-manifest.json").simplify_path())
@@ -220,6 +250,8 @@ func instantiate_hero(key: String) -> Node3D:
 ## Returns the number of loads started.
 func warm(keys: PackedStringArray) -> int:
 	var started := 0
+	if not AppLoader.threads():
+		return 0 # the web build has no worker threads: a glb parses when its battle opens
 	for key in keys:
 		var e := hero(key)
 		if e.is_empty():
@@ -237,8 +269,8 @@ static var _instance: BattleAssets
 ## One BattleAssets for callers that only want to warm models early (the galaxy screen warms the player's own classes
 ## so the first battle opens without parsing them).
 static func shared() -> BattleAssets:
-	if _instance == null:
-		_instance = BattleAssets.new()
+	if _instance == null or _instance.heroes.is_empty():
+		_instance = BattleAssets.new() # again once a ship pack has been mounted (the web build fetches them after the title)
 	return _instance
 
 
