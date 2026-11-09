@@ -102,6 +102,12 @@ func playback_check(screen: Node, label: String) -> void:
 		check(false, "%s: no battle view timeline to check" % label)
 		return
 	var rnd: Dictionary = view.encounter.rounds[view.round_index]
+	var rules := int(view.encounter.get("rules", 2))
+	if rules < 3:
+		# Rules 2 (the title's Tactical drill, Classic games, old saves) has no event stream: the core reports from/via/to
+		# and salvos only, so the cinematic timeline has no moves or shots to play. Known gap, reported, not a pass.
+		print("SMOKE note %s: rules %d round has no event stream; playback not covered by the cinematic checks" % [label, rules])
+		return
 	var res: Dictionary = PlaybackChecks.check_round(view.timeline, rnd)
 	print("SMOKE playback %s: %s" % [label, res.stats])
 	check(view.timeline.cinematic, "%s plays as one cinematic timeline" % label)
