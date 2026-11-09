@@ -18,6 +18,15 @@
   Exit code 0 only if every export, suite and smoke check passed. A blocked web step is reported, and counts as a failure of the
   web target (it is a real gap), so use -Target windows to leave it out.
 
+  Sequential is the default: one Godot process at a time (exports, suites, captures, smoke), BelowNormal priority, so a shared PC
+  is not flooded with windows. -Parallel restores the old all-at-once phases.
+
+  Packs: before the import, the audio pack (godot\scripts\audio\pack, from tools\pack_audio_web.py) and the planet packs
+  (planets_desktop.pck, planets_web.pck, from scenes\galaxy\tools\pack_planets.gd) are built from LocalAssets when missing or stale.
+  The exe embeds the audio pack and carries build\packs\planets_desktop.pck beside it; the web export gets packs\planets_web.pck
+  and one audio_<empire>_web.pck per empire (the main web pck keeps only the shared audio). test_cue_trace must run with the pack
+  present: a 'pack: none' or SKIP line fails the run.
+
   Environment: GODOT overrides the Godot console exe (default C:\Tools\Godot\Godot_v4.5-stable_win64_console.exe).
 #>
 [CmdletBinding()]
@@ -26,11 +35,14 @@ param(
     [switch]$SkipExport,
     [switch]$SkipTests,
     [switch]$SkipCapture,
+    [switch]$Sequential,   # the default now; kept so old command lines still work
+    [switch]$Parallel,     # opt in to the old all-at-once phases (several GPU windows open together)
     [int]$SuiteTimeoutSec = 900,
     [int]$CaptureTimeoutSec = 900
 )
 
 $ErrorActionPreference = 'Stop'
+$Sequential = -not $Parallel
 $sw = [System.Diagnostics.Stopwatch]::StartNew()
 $remaster = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $proj = Join-Path $remaster 'godot'
@@ -54,6 +66,8 @@ function Start-Godot([string]$Name, [string]$ArgString) {
     $p = Start-Process -FilePath $godot -ArgumentList $ArgString -PassThru -WindowStyle Hidden `
         -RedirectStandardOutput (Join-Path $logs "$Name.log") -RedirectStandardError (Join-Path $logs "$Name.err")
     $null = $p.Handle   # caches the handle so ExitCode is readable after redirected-output runs
+    try { $p.PriorityClass = [System.Diagnostics.ProcessPriorityClass]::BelowNormal } catch {}
+    if ($Sequential) { if (-not $p.WaitForExit(900 * 1000)) { try { Stop-Process -Id $p.Id -Force } catch {} } }
     [pscustomobject]@{ Name = $Name; Proc = $p; Start = Get-Date }
 }
 
@@ -107,6 +121,63 @@ $packsOk = $packs.Count -gt 0 -and @($packs | Where-Object {
     (Get-FileHash -LiteralPath $_.FullName).Hash -ne (Get-FileHash -LiteralPath (Join-Path $packDir $_.Name)).Hash }).Count -eq 0
 Add-Result 'content-packs' $(if ($packsOk) { 'ok' } else { 'FAIL' }) "$($packs.Count) pack(s) copied to res://data"
 
+# ---- Pack build (before the import, so the audio .ogg files are imported and exported) -----------------------------------
+# LocalAssets is private and never in git: find it here, in the main checkout of this repo, or in $env:BOTF_LOCALASSETS.
+$localAssets = $null
+foreach ($c in @($env:BOTF_LOCALASSETS, (Join-Path $remaster 'game\LocalAssets'))) {
+    if ($c -and (Test-Path -LiteralPath (Join-Path $c 'audio\cues.json'))) { $localAssets = $c; break }
+}
+if (-not $localAssets) {
+    $common = (git -C $remaster rev-parse --git-common-dir 2>$null)
+    if ($common) {
+        $mainRoot = Split-Path -Parent (Resolve-Path -LiteralPath $common).Path
+        $c = Join-Path $mainRoot 'remaster\game\LocalAssets'
+        if (Test-Path -LiteralPath (Join-Path $c 'audio\cues.json')) { $localAssets = $c }
+    }
+}
+$userPacks = Join-Path $env:APPDATA 'Godot\app_userdata\BOTF Remastered (Godot)\packs'
+New-Item -ItemType Directory -Force -Path $userPacks | Out-Null
+$audioPack = Join-Path $proj 'scripts\audio\pack'
+$audioManifest = Join-Path $audioPack 'pack_manifest.json'
+if ($localAssets) {
+    $srcAudio = @('audio\cues.json', 'audio\trek\cues.json') | ForEach-Object { Join-Path $localAssets $_ } | Where-Object { Test-Path -LiteralPath $_ }
+    $newest = (@($srcAudio) + (Join-Path $remaster 'tools\pack_audio_web.py') | ForEach-Object { (Get-Item -LiteralPath $_).LastWriteTime } | Measure-Object -Maximum).Maximum
+    if (-not (Test-Path -LiteralPath $audioManifest) -or (Get-Item -LiteralPath $audioManifest).LastWriteTime -lt $newest) {
+        $ap = Start-Process -FilePath $python -ArgumentList "`"$(Join-Path $remaster 'tools\pack_audio_web.py')`" --audio `"$(Join-Path $localAssets 'audio')`" --out `"$audioPack`" --jobs 2" `
+            -PassThru -WindowStyle Hidden -RedirectStandardOutput (Join-Path $logs 'pack-audio.log') -RedirectStandardError (Join-Path $logs 'pack-audio.err')
+        $null = $ap.Handle
+        try { $ap.PriorityClass = [System.Diagnostics.ProcessPriorityClass]::BelowNormal } catch {}
+        if (-not $ap.WaitForExit(1800 * 1000)) { try { Stop-Process -Id $ap.Id -Force } catch {} }
+    }
+}
+$audioOk = Test-Path -LiteralPath $audioManifest
+$audioDetail = 'no LocalAssets found: audio pack missing'
+$am = $null
+if ($audioOk) {
+    $am = Get-Content -LiteralPath $audioManifest -Raw | ConvertFrom-Json
+    $shared = [Math]::Round($am.packs.shared.bytes / 1MB, 1)
+    $audioDetail = "$(@($am.packs.PSObject.Properties).Count) packs, shared $shared MB, $(@($am.violations).Count) budget notes"
+}
+Add-Result 'audio-pack' $(if ($audioOk) { 'ok' } else { 'FAIL' }) $audioDetail
+
+function Build-PlanetPack([string]$Mode) {
+    $out = Join-Path $userPacks "planets_$Mode.pck"
+    $tool = Join-Path $proj 'scenes\galaxy\tools\pack_planets.gd'
+    $src = if ($localAssets) { Join-Path $localAssets 'planets' } else { $null }
+    $stale = -not (Test-Path -LiteralPath $out) -or (Get-Item -LiteralPath $out).LastWriteTime -lt (Get-Item -LiteralPath $tool).LastWriteTime
+    if ($stale -and $src -and (Test-Path -LiteralPath $src)) {
+        $j = Start-Godot "pack-planets-$Mode" "--headless --audio-driver Dummy --path `"$proj`" -s res://scenes/galaxy/tools/pack_planets.gd -- `"$src`" `"$out`" $Mode"
+        Wait-Jobs @($j) 600
+    }
+    return (Test-Path -LiteralPath $out)
+}
+$planetsOk = (Build-PlanetPack 'web') -and (Build-PlanetPack 'desktop')
+$planetDetail = 'planet packs missing (no LocalAssets\planets)'
+if ($planetsOk) {
+    $planetDetail = 'planets_desktop.pck {0:N0} MB, planets_web.pck {1:N1} MB' -f ((Get-Item (Join-Path $userPacks 'planets_desktop.pck')).Length / 1MB), ((Get-Item (Join-Path $userPacks 'planets_web.pck')).Length / 1MB)
+}
+Add-Result 'planet-packs' $(if ($planetsOk) { 'ok' } else { 'FAIL' }) $planetDetail
+
 $imp = Start-Godot 'import' "--headless --audio-driver Dummy --path `"$proj`" --import"
 Wait-Jobs @($imp) 300
 Add-Result 'import' $(if ($imp.Exit -eq 0) { 'ok' } else { 'FAIL' }) "exit $($imp.Exit)"
@@ -121,7 +192,7 @@ try {
         # Stamp the Windows preset's version fields for the export; the finally block restores the committed file.
         $stamped = $presetsOriginal -replace 'application/file_version="[^"]*"', "application/file_version=`"$version.0`"" `
             -replace 'application/product_version="[^"]*"', "application/product_version=`"$productVersion`"" `
-            -replace 'include_filter="fixtures/\*\.json"', 'include_filter="fixtures/*.json, data/*.pack.json"'
+            -replace 'include_filter="fixtures/\*\.json"', 'include_filter="fixtures/*.json, data/*.pack.json, scripts/audio/pack/*.json, scripts/audio/pack/*/*.json"'
         [System.IO.File]::WriteAllText($presets, $stamped)
         New-Item -ItemType Directory -Force -Path (Join-Path $proj 'build\web') | Out-Null
         Set-Content -LiteralPath (Join-Path $proj 'build\VERSION.txt') -Value "BOTF Remastered $productVersion" -Encoding ASCII
@@ -146,6 +217,7 @@ try {
             @('title-fleet', 'res://scenes/battle/tests/test_title_fleet.gd'),
             @('galaxy-map', 'res://scenes/galaxy/tests/test_galaxy_map.gd'),
             @('audio', 'res://scripts/audio/tests/test_audio.gd'),
+            @('cue-trace', 'res://scripts/audio/tests/test_cue_trace.gd'),
             @('check-scripts', 'res://scenes/ui/tools/check_scripts.gd')
         )
         foreach ($s in $suites) {
@@ -224,6 +296,11 @@ if ($suiteJobs) {
         $errs = @(Get-Content -LiteralPath (Join-Path $logs "$($j.Name).err"), (Join-Path $logs "$($j.Name).log") -ErrorAction SilentlyContinue | Where-Object { $_ -match 'SCRIPT ERROR|Parse Error' }).Count
         $ok = ($j.Exit -eq 0 -and -not $j.TimedOut -and $errs -eq 0)
         if ($j.TimedOut) { $detail = 'timed out' } elseif ($errs -gt 0) { $detail = "$errs script errors; $detail" }
+        if ($j.Name -eq 'suite-cue-trace') {
+            $ct = (Get-Content -LiteralPath (Join-Path $logs 'suite-cue-trace.log') -ErrorAction SilentlyContinue) -join "`n"
+            if ($ct -match 'pack: none|SKIP') { $ok = $false; $detail = 'file checks SKIPPED (audio pack not loaded): ' + $detail }
+            else { $pl = ($ct -split "`n" | Where-Object { $_ -match 'pack:' } | Select-Object -First 1); $detail = "$($pl.Trim()); $detail" }
+        }
         Add-Result $j.Name $(if ($ok) { 'ok' } else { 'FAIL' }) $detail
     }
 }
@@ -259,6 +336,40 @@ if (-not $SkipTests) {
     $name = if ($note) { 'suite-battle-scene-retry' } else { 'suite-battle-scene' }
     $errs = @(Get-Content -LiteralPath (Join-Path $logs "$name.err"), (Join-Path $logs "$name.log") -ErrorAction SilentlyContinue | Where-Object { $_ -match 'SCRIPT ERROR|Parse Error' }).Count
     Add-Result 'suite-battle-scene' $(if ($bs.Exit -eq 0 -and $errs -eq 0) { 'ok' } else { 'FAIL' }) ((Tail-Summary $name) + $note)
+}
+
+# Asset bundles beside the exports. Desktop: build\packs\planets_desktop.pck beside the exe (AppLoader mounts <exe dir>/packs/*_desktop.pck);
+# the audio pack is embedded in the exe. Web: build\web\packs\ gets planets_web.pck and audio_<empire>_web.pck for each empire; the
+# main web pck carries only the shared audio (export preset excludes the empire folders). Never a desktop pack on the web side.
+if (-not $SkipExport) {
+    if ($wantWin) {
+        $winPacks = Join-Path $proj 'build\packs'
+        New-Item -ItemType Directory -Force -Path $winPacks | Out-Null
+        Get-ChildItem -LiteralPath $winPacks -Filter '*.pck' -ErrorAction SilentlyContinue | Remove-Item -Force
+        $dp = Join-Path $userPacks 'planets_desktop.pck'
+        if (Test-Path -LiteralPath $dp) { Copy-Item -LiteralPath $dp -Destination $winPacks -Force }
+        $exeFile = Join-Path $proj 'build\BOTFRemastered.exe'
+        $exeMb = if (Test-Path $exeFile) { [Math]::Round((Get-Item $exeFile).Length / 1MB) } else { 0 }
+        Add-Result 'windows-packs' $(if ((Test-Path (Join-Path $winPacks 'planets_desktop.pck')) -and $audioOk) { 'ok' } else { 'FAIL' }) "build\packs\planets_desktop.pck beside the exe; audio embedded (exe $exeMb MB)"
+    }
+    if ($wantWeb) {
+        $webPacks = Join-Path $proj 'build\web\packs'
+        New-Item -ItemType Directory -Force -Path $webPacks | Out-Null
+        Get-ChildItem -LiteralPath $webPacks -Filter '*.pck' -ErrorAction SilentlyContinue | Remove-Item -Force
+        $wp = Join-Path $userPacks 'planets_web.pck'
+        if (Test-Path -LiteralPath $wp) { Copy-Item -LiteralPath $wp -Destination $webPacks -Force }
+        if ($audioOk) {
+            $ej = Start-Godot 'pack-audio-empires' "--headless --audio-driver Dummy --path `"$proj`" -s res://tools/pack_audio_empire.gd -- `"$audioPack`" `"$webPacks`""
+            Wait-Jobs @($ej) 600
+        }
+        $pk = @(Get-ChildItem -LiteralPath $webPacks -Filter '*.pck' -ErrorAction SilentlyContinue)
+        $planetB = ($pk | Where-Object Name -like 'planets_*' | Measure-Object Length -Sum).Sum
+        $empB = ($pk | Where-Object Name -like 'audio_*' | Measure-Object Length -Maximum).Maximum
+        $sharedB = if ($am) { $am.packs.shared.bytes } else { 0 }
+        $firstDl = [double]$planetB + [double]$empB + [double]$sharedB
+        $names = ($pk | ForEach-Object { '{0} {1:N1} MB' -f $_.Name, ($_.Length / 1MB) }) -join ', '
+        Add-Result 'web-packs' $(if ($planetB -gt 0 -and $empB -gt 0 -and $firstDl -lt 40MB) { 'ok' } else { 'FAIL' }) ("web download = shared audio + one empire + planets = {0:N1} MB (budget 40 MB); {1}" -f ($firstDl / 1MB), $names)
+    }
 }
 
 # ---- Phase 3: web capture -------------------------------------------------------------------------------------------------

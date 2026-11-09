@@ -97,12 +97,72 @@ static func image(path: String, max_width: int = 2048) -> Image:
 		img.generate_mipmaps()
 	return img
 
-## Mounts every `user://packs/*.pck` (asset bundles built by the pack step, e.g. tools/pack_planets.gd). Returns the count.
+## Mounts the desktop asset bundles, `user://packs/*_desktop.pck` (built by tools/pack_planets.gd). Returns the count.
+## The web build mounts nothing here: its packs come from fetch_web_packs and are the `*_web.pck` files only.
 static func mount_user_packs() -> int:
 	var n := 0
+	if OS.has_feature("web"):
+		for f in list("user://packs"):
+			if f.ends_with("_web.pck") and mount_pack("user://packs/" + f):
+				n += 1
+		return n
 	for f in list("user://packs"):
-		if f.ends_with(".pck") and mount_pack("user://packs/" + f):
+		if f.ends_with("_desktop.pck") and mount_pack("user://packs/" + f):
 			n += 1
+	# Packs shipped beside the exe (build\packs\*_desktop.pck from the verify/package step). The loader is the one place a
+	# disk path is allowed, and only for this folder; an editor or test run finds no such folder and mounts nothing.
+	var beside := OS.get_executable_path().get_base_dir().path_join("packs")
+	if not OS.has_feature("editor") and DirAccess.dir_exists_absolute(beside):
+		for f in DirAccess.get_files_at(beside):
+			if f.ends_with("_desktop.pck") and ProjectSettings.load_resource_pack(beside.path_join(f)):
+				n += 1
+	return n
+
+## Web bundles served beside index.html in packs/ (built by pack_planets.gd with `web`; budget 40 MB all told).
+const WEB_PACKS := ["planets_web.pck"]
+
+## Web only: downloads and mounts one extra bundle by name, e.g. "audio_kli_web.pck" (see fetch_empire_audio). True when mounted.
+static func fetch_web_pack(host: Node, name: String) -> bool:
+	if not OS.has_feature("web"):
+		return false
+	DirAccess.make_dir_recursive_absolute("user://packs")
+	var dest := "user://packs/" + name
+	var url := str(JavaScriptBridge.eval("new URL('packs/%s', location.href).href" % name))
+	var req := HTTPRequest.new()
+	req.download_file = dest
+	host.add_child(req)
+	var ok := false
+	if req.request(url) == OK:
+		var res: Array = await req.request_completed
+		ok = int(res[0]) == HTTPRequest.RESULT_SUCCESS and int(res[1]) == 200 and mount_pack(dest)
+	req.queue_free()
+	return ok
+
+## Web only: the chosen empire's audio (voice, sfx, music, about 12 MB) on top of the `shared` audio that ships in the main pck.
+## Call it once when a campaign picks its empire (fed kli rom car fer), then BotfAudioLibrary.load_pack(empire).
+static func fetch_empire_audio(host: Node, empire: String) -> bool:
+	return await fetch_web_pack(host, "audio_%s_web.pck" % empire)
+
+## Web only: downloads each WEB_PACKS file next to the page into user://packs (IndexedDB) and mounts it. Await it from a Node.
+## Returns the count mounted; a missing file is skipped (planets then stay procedural).
+static func fetch_web_packs(host: Node) -> int:
+	if not OS.has_feature("web"):
+		return 0
+	var n := 0
+	DirAccess.make_dir_recursive_absolute("user://packs")
+	for name: String in WEB_PACKS:
+		var dest := "user://packs/" + name
+		var url := str(JavaScriptBridge.eval("new URL('packs/%s', location.href).href" % name))
+		var req := HTTPRequest.new()
+		req.download_file = dest
+		host.add_child(req)
+		if req.request(url) == OK:
+			var res: Array = await req.request_completed
+			if int(res[0]) == HTTPRequest.RESULT_SUCCESS and int(res[1]) == 200 and mount_pack(dest):
+				n += 1
+			else:
+				push_warning("AppLoader: web pack %s not mounted (result %d, http %d)" % [name, int(res[0]), int(res[1])])
+		req.queue_free()
 	return n
 
 ## Parsed JSON from a res:// or user:// file, or null when missing or invalid.

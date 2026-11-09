@@ -130,7 +130,10 @@ func stream_at(path: String) -> AudioStream:
 		return _streams[path]
 	var s: AudioStream = null
 	if path.begins_with("res://"):
-		s = AppLoader.resource(path) as AudioStream if AppLoader.exists(path) else null
+		if ResourceLoader.exists(path):
+			s = AppLoader.resource(path) as AudioStream
+		elif path.get_extension().to_lower() == "ogg" and AppLoader.exists(path):
+			s = AudioStreamOggVorbis.load_from_file(path)   # a raw ogg from a web empire pack (audio_<emp>_web.pck), not imported
 	elif AppLoader.allowed(path) and AppLoader.exists(path):
 		match path.get_extension().to_lower():
 			"wav": s = AudioStreamWAV.load_from_file(path)
