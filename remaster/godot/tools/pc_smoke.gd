@@ -8,6 +8,7 @@ var app: App
 var out_dir := ""
 var failures := 0
 var fps := {}
+var worst_by := {}
 
 func _initialize() -> void:
 	var args := OS.get_cmdline_user_args()
@@ -73,6 +74,8 @@ func measure(label: String, seconds: float, from_us := 0) -> void:
 		await process_frame
 		var now := Time.get_ticks_usec()
 		times.append((now - last) / 1000.0)
+		if (now - last) > 60000:
+			print("SMOKE   slow frame in %s: frame %d took %.0f ms" % [label, times.size(), (now - last) / 1000.0])
 		last = now
 	var sorted := times.duplicate()
 	sorted.sort()
@@ -82,8 +85,12 @@ func measure(label: String, seconds: float, from_us := 0) -> void:
 	var avg := 1000.0 * times.size() / maxf(total, 1.0)
 	var p99: float = sorted[mini(sorted.size() - 1, int(sorted.size() * 0.99))] if not sorted.is_empty() else 0.0
 	var worst: float = sorted[sorted.size() - 1] if not sorted.is_empty() else 0.0
+	worst_by[label] = worst_ms_of(sorted)
 	fps[label] = "%.0f fps avg, p99 %.1f ms, worst frame %.1f ms" % [avg, p99, worst]
 	print("SMOKE fps  ", label, ": ", fps[label])
+
+func worst_ms_of(sorted: Array) -> float:
+	return float(sorted[sorted.size() - 1]) if not sorted.is_empty() else 0.0
 
 func find(n: Node, name_: String) -> Node:
 	return n.find_child(name_, true, false)
@@ -155,6 +162,19 @@ func _run() -> void:
 		await click(choice)
 		await wait()
 	check(app.view["pending"].any(func(p): return p["type"] == "EnqueueBuilding"), "build queued on the System screen")
+	# Layout: every label inside a construction choice (name, meta, blocker reason) stays inside its button.
+	var overflow := 0
+	var reasons := 0
+	for ch in app.current_screen().find_children("Choice_*", "Button", true, false):
+		if not ch.is_visible_in_tree():
+			continue
+		var br: Rect2 = ch.get_global_rect()
+		for lb in ch.find_children("*", "Label", true, false):
+			if lb.get_global_rect().end.y > br.end.y + 1.0 or lb.get_global_rect().position.y < br.position.y - 1.0:
+				overflow += 1
+		if ch.disabled:
+			reasons += 1
+	check(overflow == 0, "System choice rows contain their text (%d disabled rows with a reason, %d overflowing labels)" % [reasons, overflow])
 	await shot("pc-05-system")
 
 	# ---- Every game screen by its function key
@@ -225,7 +245,11 @@ func _run() -> void:
 	await wait()
 	var t_open := Time.get_ticks_usec()
 	var status := app.end_turn()
+	print("SMOKE battle open: end_turn call took %.0f ms" % ((Time.get_ticks_usec() - t_open) / 1000.0))
 	await measure("battle open (ships built, models loaded)", 1.0, t_open)
+	await measure("battle open settle (hero hulls deploy)", 8.0) # the stall must not reappear when the models land
+	check(float(worst_by["battle open (ships built, models loaded)"]) < 150.0, "first battle open: worst frame %.0f ms (was 3818 with hero hulls; target 100)" % float(worst_by["battle open (ships built, models loaded)"]))
+	check(float(worst_by["battle open settle (hero hulls deploy)"]) < 100.0, "hulls deploy without a stall (worst %.0f ms)" % float(worst_by["battle open settle (hero hulls deploy)"]))
 	check(status == "battle" and app.screen == "combat", "drill opens the combat screen")
 	var take: Control = find(app, "TakeCommand")
 	check(take != null, "encounter offers Take command")
@@ -266,6 +290,31 @@ func _run() -> void:
 			check(cam.mode == BattleCamera.Mode.CINEMATIC, "C twice returns to cinematic")
 			await measure("battle cinematic", 3.0)
 			await shot("pc-11-battle-cinematic")
+			# The planet vista (M1-BETAFIX): the fleet framed against the backdrop planet. Asserts the planet is in the
+			# frustum, that its disc on screen is >= 4x the median hull's, then captures the frame.
+			cam.force_vista = true
+			await wait(120)
+			check(cam.vista_active, "planet vista shot is active when forced")
+			check(cam.is_position_in_frustum(cam.planet_center), "backdrop planet centre is in frame in the vista")
+			var vsize := root.get_visible_rect().size
+			var p_px := 0.0
+			var h_px := 0.0
+			var dist_p := cam.global_position.distance_to(cam.planet_center)
+			p_px = cam.planet_radius / (dist_p * tan(deg_to_rad(cam.fov) * 0.5)) * vsize.y * 0.5
+			var hull_in_frame := 0
+			var hull_px: Array = []
+			for bd in cam.bodies:
+				var dh := cam.global_position.distance_to(bd.center)
+				hull_px.append(float(bd.radius) / (dh * tan(deg_to_rad(cam.fov) * 0.5)) * vsize.y * 0.5)
+				if not cam.is_position_behind(bd.center) and cam.is_position_in_frustum(bd.center):
+					hull_in_frame += 1
+			hull_px.sort()
+			h_px = hull_px[hull_px.size() / 2] if not hull_px.is_empty() else 0.0
+			print("SMOKE planet radius %.0f px vs median hull radius %.0f px, %d hulls in frame" % [p_px, h_px, hull_in_frame])
+			check(hull_in_frame > 0, "a ship is in frame with the planet")
+			check(p_px >= 4.0 * h_px, "planet dwarfs the median hull (%.0f px vs %.0f px radius)" % [p_px, h_px])
+			await shot("pc-11b-planet-vista")
+			cam.force_vista = false
 		cs = app.current_screen()
 	check(rounds >= 3, "%d rounds commanded" % rounds)
 	if not app.encounter.get("finished", false):
@@ -293,6 +342,69 @@ func _run() -> void:
 	check(find(pcs, "ShipSystems") != null and find(pcs, "FacingBars") != null and find(pcs, "AimSelector") != null, "plan phase shows the ship systems panel")
 	check(find(pcs, "Facing_fore") != null and find(pcs, "Sys_warpCore") != null and find(pcs, "CrewBadge") != null, "six facing bars, five gauges and the crew badge")
 	await shot("pc-09b-plan-phase")
+	# ---- Aimed-subsystem round: click AIM ENG on a visible enemy, resolve, expect an engines hit in the round's events
+	# A real enemy ship (not the foe station, which has no engines to aim at), visible to the camera.
+	var foe_id := 0
+	for warm in 5:
+		for fs in app.encounter.get("ships", []):
+			if not fs.get("mine", false) and int(fs["id"]) < 1000000 and not pcs.host.view_node.camera.body(int(fs["id"])).is_empty():
+				foe_id = int(fs["id"])
+				break
+		if foe_id != 0 or app.encounter.get("finished", false):
+			break
+		# Klingon ships open cloaked: fight a round until one decloaks to fire.
+		pcs = app.current_screen()
+		pcs.order("Engage")
+		await wait(4)
+		pcs._round()
+		await wait(150)
+	if foe_id != 0:
+		pcs = app.current_screen()
+		pcs._pick(foe_id)
+		await wait(4)
+	var foe_body: Dictionary = pcs.host.view_node.camera.body(foe_id)
+	check(foe_id != 0 and not foe_body.is_empty(), "plan phase has a visible enemy target (#%d)" % foe_id)
+	var aim_btn: Control = find(pcs, "Aim_engines")
+	check(aim_btn != null, "AIM selector has an ENG button")
+	if aim_btn:
+		await click(aim_btn)
+		await wait(4)
+	check(pcs.vm.subsystem == "engines", "clicking ENG sets the aim to engines")
+	var arounds: Array = []
+	var aevents: Array = []
+	var aimed_hits := 0
+	var aimed_dmg := 0
+	var foe_eng := -1
+	for ar in 6:
+		pcs = app.current_screen()
+		pcs.vm.set_subsystem("engines")
+		pcs.order("Engage")
+		await wait(4)
+		pcs._round()
+		await wait(30)
+		arounds = app.encounter.get("rounds", [])
+		aevents = arounds.back().get("events", []) if not arounds.is_empty() else []
+		for ev in aevents:
+			if ev.get("kind", "") == "Fire" and ev.get("aimed", false) and str(ev.get("subsystem", "")) == "engines" and int(ev.get("targetFleetId", 0)) == foe_id:
+				aimed_hits += 1
+				aimed_dmg += int(ev.get("subsystemDamage", 0))
+		if not arounds.is_empty():
+			for w0 in arounds.back().get("wego", []):
+				if int(w0.get("id", 0)) == foe_id:
+					foe_eng = int(w0.get("subsystems", {}).get("engines", 100))
+		for st in arounds.back().get("ships", []):
+			if st.get("target", 0) != 0 and int(st.get("id", 0)) == 1:
+				print("SMOKE   ship ", st.get("id"), " target ", st.get("target"), " subsystem ", st.get("subsystem"), " vm.target ", pcs.vm.target)
+		print("SMOKE aimed try %d: %d aimed hits so far, foe engines %d" % [ar + 1, aimed_hits, foe_eng])
+		if aimed_hits > 0 or app.encounter.get("finished", false):
+			break
+	var fires := aevents.filter(func(e): return e.get("kind", "") == "Fire")
+	print("SMOKE   last round: %d Fire events, first: %s" % [fires.size(), str(fires[0]) if not fires.is_empty() else "none"])
+	print("SMOKE aimed round: %d events, %d aimed engine hits on #%d, subsystem damage %d, foe engines now %d" % [aevents.size(), aimed_hits, foe_id, aimed_dmg, foe_eng])
+	check(aimed_hits > 0 and (aimed_dmg > 0 or foe_eng < 100), "aimed round landed an engines hit (%d hits, %d damage, engines %d%%)" % [aimed_hits, aimed_dmg, foe_eng])
+	await wait(60)
+	await shot("pc-09c-aimed-round")
+	pcs = app.current_screen()
 	pcs.vm.set_subsystem("none")
 	pcs.refresh()
 	await wait(6)
@@ -304,6 +416,7 @@ func _run() -> void:
 	var t_big := Time.get_ticks_usec()
 	var big_status := app.end_turn()
 	await measure("24v24 open (ships built, models loaded)", 1.0, t_big)
+	await measure("24v24 open settle (hero hulls deploy)", 8.0)
 	check(big_status == "battle" and app.screen == "combat", "24v24 drill opens the combat screen")
 	app.close_all_modals()
 	await wait()

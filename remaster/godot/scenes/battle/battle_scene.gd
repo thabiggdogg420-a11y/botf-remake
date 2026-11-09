@@ -491,6 +491,12 @@ func _update_camera(t: float, delta: float, centroid: Vector3, spread: float) ->
 		shot = {"key": "%d_%d_%d_%.2f" % [round_index, director.subject, director.other, director.since],
 			"kind": director.kind, "subject": subject.global_position, "subject_size": subject.length,
 			"other": other.global_position if other != null else centroid, "other_size": other.length if other != null else subject.length, "centroid": centroid, "spread": spread}
+	# The planet vista: the establishing shot and the pull-back at the start of every third round frame the fleet against
+	# the planet, so its true size (radius 1100 beside hulls of ~10) reads on screen.
+	shot["vista"] = int(shot.get("kind", -1)) < 0 and round_index % 3 == 0 and t < 2.5 and _env.has("planet")
+	if _env.has("planet"):
+		camera.planet_center = (_env.planet as Node3D).global_position
+		camera.planet_radius = BattleEnvironment.PLANET_RADIUS
 	camera.film(delta, t, bodies, chase, shot)
 
 

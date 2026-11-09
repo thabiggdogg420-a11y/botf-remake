@@ -22,15 +22,33 @@ signal ship_picked(ship_id: int)
 const BATTLE_SCENE := "res://scenes/battle/battle_view.tscn"
 
 var view_node: Node = null
+var _last_encounter := {}
 
 func _ready() -> void:
 	name = "BattleHost"
 	clip_contents = true
 	if AppLoader.exists(BATTLE_SCENE):
-		var packed: PackedScene = AppLoader.resource(BATTLE_SCENE)
-		attach(packed.instantiate())
+		if DisplayServer.get_name() == "headless":
+			_mount()
+		else:
+			# The 3D view (environment, effects, camera) is built on the frame after the screen, so no single frame
+			# carries both (M1-BETAFIX: the first battle open cost 285 ms in one frame).
+			_mount_next_frame()
 	else:
 		push_error("BattleHost: %s is missing" % BATTLE_SCENE)
+
+func _mount_next_frame() -> void:
+	await get_tree().process_frame
+	if is_inside_tree():
+		_mount()
+
+
+func _mount() -> void:
+	var packed: PackedScene = AppLoader.resource(BATTLE_SCENE)
+	attach(packed.instantiate())
+	if not _last_encounter.is_empty():
+		load_encounter(_last_encounter) # the screen asked before the view existed
+
 
 ## Mounts a battle view (Control, or a Node3D which is wrapped in a SubViewport).
 func attach(node: Node) -> void:
@@ -105,6 +123,7 @@ func _camera_button(text: String, tip: String) -> Button:
 	return b
 
 func load_encounter(e: Dictionary) -> void:
+	_last_encounter = e
 	if view_node and view_node.has_method("load_encounter"):
 		view_node.load_encounter(e)
 

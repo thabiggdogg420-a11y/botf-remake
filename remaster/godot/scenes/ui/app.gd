@@ -77,6 +77,59 @@ func _ready() -> void:
 	_apply_theme(1)
 	_build_layers()
 	goto("title")
+	_warm_battle.call_deferred()
+
+## Loads the battle screen's scripts, scene, planet textures and effect materials one step per frame while the title and
+## galaxy sit idle, so the first battle opens in a frame or two instead of a 300-500 ms stall (M1-BETAFIX; it was 1.5-4 s
+## with hero models, see BattleAssets.mip_scene_images). The references are kept for the life of the process.
+static var _warm_refs: Array = []
+static var _warmed_battle := false
+
+func _warm_battle() -> void:
+	if _warmed_battle or DisplayServer.get_name() == "headless":
+		return
+	_warmed_battle = true
+	var tree := get_tree()
+	for _i in 30:
+		await tree.process_frame # let the title draw first
+	if not is_inside_tree():
+		_warmed_battle = false
+		return
+	_warm_refs.append(AppLoader.resource(AppRoutes.script_for("combat")))
+	await tree.process_frame
+	var packed: PackedScene = AppLoader.resource(BattleHost.BATTLE_SCENE)
+	_warm_refs.append(packed)
+	await tree.process_frame
+	# An off-screen battle view: compiles the sky, planet and effect shaders and uploads the backdrop planet's textures.
+	var sv := SubViewport.new()
+	sv.size = Vector2i(256, 144)
+	sv.own_world_3d = true
+	sv.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+	add_child(sv)
+	var view := packed.instantiate()
+	sv.add_child(view)
+	await tree.process_frame
+	if "_env" in view:
+		BattleEnvironment.set_planet_class(view._env, "M")
+	await tree.process_frame
+	if "fx" in view and view.fx != null:
+		view.fx.prewarm()
+	# Ship shaders (hero hull, plating, hull, shield, cloak, blink): a sphere each, in front of the warm-up camera, so
+	# their pipelines compile now and not when the first hull of a battle is drawn.
+	for sh in [HeroLook.HULL_SHADER, HeroLook.PLATED_SHADER, BattleShip.HULL_SHADER, BattleShip.SHIELD_SHADER, BattleShip.CLOAK_SHADER, BattleShip.BLINK_SHADER]:
+		var mi := MeshInstance3D.new()
+		mi.mesh = SphereMesh.new()
+		var mat := ShaderMaterial.new()
+		mat.shader = sh
+		mi.material_override = mat
+		view.add_child(mi)
+		if "camera" in view and view.camera != null:
+			mi.global_position = view.camera.global_position + (view.camera.global_transform.basis * Vector3(0, 0, -3.0))
+	BattleShip.flame_flipbook()
+	BattleShip.puff_texture()
+	for _i in 6:
+		await tree.process_frame
+	sv.queue_free()
 
 # ---------------------------------------------------------------------------------------------
 # Layers and chrome
@@ -429,11 +482,15 @@ func end_turn() -> String:
 	if res.is_empty():
 		return "error"
 	if res.get("status", "") == "battle":
+		# The screen we are leaving is not refreshed (its map rebuild cost ~30 ms of the battle-open frame).
+		var leaving := _current
+		_current = null
 		refresh()
+		_current = leaving
 		session.fetch_encounter()
 		goto("combat")
-		BotfAudioSystem.on_battle_joined()
-		toast("Battle joined. Issue maneuvers or let the tactical AI command.", "warn")
+		get_tree().create_timer(0.25).timeout.connect(BotfAudioSystem.on_battle_joined) # off the frame that opens the screen
+		get_tree().create_timer(0.3).timeout.connect(func(): toast("Battle joined. Issue maneuvers or let the tactical AI command.", "warn"))
 		return "battle"
 	briefing = res.get("briefing")
 	refresh()

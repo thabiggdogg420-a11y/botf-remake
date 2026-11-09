@@ -7,6 +7,9 @@ extends "res://scenes/battle/battle_scene.gd"
 ## only a new round (or a different encounter) starts playback.
 
 var _encounter_key := ""
+const DEPLOY_PER_FRAME := 2   ## Hero-model hulls built per frame while the fleets deploy (each can cost tens of ms)
+var _stage := {}              ## Staged deployment: {e, ships (the deployment's ship rows), n (rows shown so far)}
+var _pending_deploy := {}   ## the encounter whose deployment waits for its hero models (parsed on worker threads)
 
 
 static func encounter_key(e: Dictionary) -> String:
@@ -25,7 +28,13 @@ func load_encounter(e: Dictionary) -> void:
 	if rounds.is_empty():
 		if key != _encounter_key:
 			_encounter_key = key
-			_show_deployment(e)
+			if BattleAssets.loading():
+				# Hero models still parsing on worker threads: building the hulls now would block this frame until they
+				# finish (a 1.5-4 s stall on the first battle). Show the sky and planet, and deploy the fleets the frame
+				# after the last model lands (M1-BETAFIX).
+				_pending_deploy = e
+			else:
+				_show_deployment(e)
 		# Compile the weapon effects while the fleets deploy, not on the first round's first frame (R3.5: 370 ms).
 		if not _prewarmed:
 			_prewarmed = true
@@ -36,7 +45,22 @@ func load_encounter(e: Dictionary) -> void:
 	_play_index(e, rounds.size() - 1, key)
 
 
+func _process(delta: float) -> void:
+	super._process(delta)
+	if not _pending_deploy.is_empty() and not BattleAssets.loading():
+		var e := _pending_deploy
+		_pending_deploy = {}
+		_show_deployment(e)
+	if not _stage.is_empty():
+		_stage.n = mini(int(_stage.n) + DEPLOY_PER_FRAME, _stage.ships.size())
+		_deploy_rows(_stage.e, _stage.ships.slice(0, _stage.n))
+		if int(_stage.n) >= _stage.ships.size():
+			_stage = {}
+
+
 func play_round(r: Variant, e: Variant = null) -> void:
+	_pending_deploy = {} # a round that starts first deploys the fleets itself
+	_stage = {}
 	# BattleScene-style call: play_round(encounter, index).
 	if r is Dictionary and (e is int or e is float):
 		super.play_round(r, int(e))
@@ -98,6 +122,14 @@ func _show_deployment(e: Dictionary) -> void:
 				"shieldBefore": maxi(0, int(s.get("shields", 0))), "from": at, "to": at, "yaw": 0.0, "startsCloaked": true})
 	if ships.is_empty():
 		return
+	if assets != null and not assets.heroes.is_empty() and ships.size() > DEPLOY_PER_FRAME:
+		# Hero-model hulls cost tens of ms each to instance: build a couple per frame instead of the whole fleet on one.
+		_stage = {"e": e, "ships": ships, "n": 0}
+		return
+	_deploy_rows(e, ships)
+
+
+func _deploy_rows(e: Dictionary, ships: Array) -> void:
 	var staged := e.duplicate()
 	staged["rounds"] = [{"index": 0, "events": [], "ships": ships}]
 	super.play_round(staged, 0)

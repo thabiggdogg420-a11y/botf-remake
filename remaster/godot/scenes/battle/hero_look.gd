@@ -11,6 +11,16 @@ const PLATED_SHADER := preload("res://scenes/battle/shaders/hero_plated.gdshader
 const CAMERA_FOV := 48.0   ## BattleCamera's fov: LOD distances follow Unreal's screen sizes through it.
 
 static var _textures := {}  ## absolute path -> Texture2D (or null when it failed to load)
+static var _lock := Mutex.new() ## _textures and _mipped are also filled from the model worker threads (prime)
+
+
+## Builds the plating images of a hull ahead of apply() (the worker thread that parsed the glb calls this, so the first
+## instance of a class does not decode them on a battle frame). The glb's own images are mip-chained in the same thread by
+## BattleAssets.mip_scene_images.
+static func prime(hero: Dictionary, root_dir: String) -> void:
+	var plating: Dictionary = hero.get("plating", {})
+	for k in ["panels", "normal"]:
+		_texture(root_dir, str(plating.get(k, "")))
 
 
 ## Replaces every surface material under `hull` by its hero material. Returns the number of surfaces set.
@@ -57,15 +67,22 @@ static var _mipped := {}
 static func mipmapped(t: Texture2D) -> Texture2D:
 	if t == null:
 		return null
+	if t.has_meta("botf_mipped"):
+		return t # already mip-chained on the model's worker thread (BattleAssets.mip_scene_images)
 	var id := t.get_instance_id()
-	if _mipped.has(id):
-		return _mipped[id]
+	_lock.lock()
+	var hit: Variant = _mipped.get(id)
+	_lock.unlock()
+	if hit != null:
+		return hit
 	var out: Texture2D = t
 	var img := t.get_image()
 	if img != null and not img.has_mipmaps() and not img.is_compressed():
 		img.generate_mipmaps()
 		out = ImageTexture.create_from_image(img)
+	_lock.lock()
 	_mipped[id] = out
+	_lock.unlock()
 	return out
 
 
@@ -178,13 +195,19 @@ static func _texture(root_dir: String, rel: String) -> Texture2D:
 	if rel == "":
 		return null
 	var path := rel if rel.is_absolute_path() else root_dir.path_join(rel)
-	if _textures.has(path):
-		return _textures[path]
+	_lock.lock()
+	var known := _textures.has(path)
+	var cached: Variant = _textures.get(path)
+	_lock.unlock()
+	if known:
+		return cached
 	var tex: Texture2D = null
 	if BattleAssets.file_exists(path):
 		var img := Image.load_from_file(path)
 		if img != null and not img.is_empty():
 			img.generate_mipmaps()
 			tex = ImageTexture.create_from_image(img)
+	_lock.lock()
 	_textures[path] = tex
+	_lock.unlock()
 	return tex

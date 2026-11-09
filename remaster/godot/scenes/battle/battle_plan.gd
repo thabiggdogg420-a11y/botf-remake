@@ -71,7 +71,7 @@ func _ready() -> void:
 	_overlay.name = "Overlay"
 	_overlay.plan = self
 	_ui.add_child(_overlay)
-	_readout = _label(17, Color(1.0, 0.8, 0.45))
+	_readout = _label(14, Color(1.0, 0.8, 0.45)) # compact: it must not cover the fleet
 	_readout.name = "Readout"
 	_overlay.add_child(_readout)
 	for k in SUBSYSTEMS:
@@ -134,12 +134,30 @@ func declutter(cam: Camera3D) -> void:
 	_row_rects.clear()
 	_list_rect = Rect2()
 	_lead = PackedVector2Array()
-	# Forecast readout: inside the view, bottom-left (the camera bar owns the top edge), on a backing panel.
+	# Forecast readout: a compact panel in the corner of the view that clears the ships (bottom-left first, then
+	# bottom-right, top-right and top-left under the camera bar; the corner covering the fewest hulls if none is clear).
 	if _readout.visible:
 		var rsize := _readout.get_minimum_size()
 		_readout.size = rsize
 		var panel := rsize + Vector2(2.0 * TAG_PAD + 8.0, 2.0 * TAG_PAD)
-		_readout_rect = Rect2(Vector2(EDGE, maxf(EDGE, vp.y - EDGE - panel.y)), panel)
+		var hulls := _hull_rects(cam)
+		var corners := [
+			Vector2(EDGE, vp.y - EDGE - panel.y), Vector2(vp.x - EDGE - panel.x, vp.y - EDGE - panel.y),
+			Vector2(vp.x - EDGE - panel.x, EDGE), Vector2(EDGE, 48.0)]
+		var best := 0
+		var best_hits := 1 << 30
+		for ci in corners.size():
+			var r := Rect2(Vector2(maxf(EDGE, corners[ci].x), maxf(EDGE, corners[ci].y)), panel)
+			var hits := 0
+			for hr in hulls:
+				if r.intersects(hr):
+					hits += 1
+			if hits < best_hits:
+				best_hits = hits
+				best = ci
+			if hits == 0:
+				break
+		_readout_rect = Rect2(Vector2(maxf(EDGE, corners[best].x), maxf(EDGE, corners[best].y)), panel)
 		_readout.position = _readout_rect.position + Vector2(TAG_PAD + 4.0, TAG_PAD)
 	else:
 		_readout_rect = Rect2()
@@ -161,7 +179,8 @@ func declutter(cam: Camera3D) -> void:
 	x = clampf(x, EDGE, maxf(EDGE, vp.x - EDGE - size.x))
 	var y := clampf(tc.y - size.y * 0.5, EDGE, maxf(EDGE, vp.y - EDGE - size.y))
 	if _readout_rect.size != Vector2.ZERO and Rect2(Vector2(x, y), size).intersects(_readout_rect.grow(6.0)):
-		y = clampf(_readout_rect.position.y - 10.0 - size.y, EDGE, maxf(EDGE, vp.y - EDGE - size.y))
+		var above := _readout_rect.position.y - 10.0 - size.y
+		y = clampf(above if above >= EDGE else _readout_rect.end.y + 10.0, EDGE, maxf(EDGE, vp.y - EDGE - size.y))
 	_list_rect = Rect2(Vector2(x, y), size)
 	for i in n:
 		var k: String = SUBSYSTEMS[i]
@@ -178,6 +197,22 @@ func declutter(cam: Camera3D) -> void:
 	var elbow_x := lerpf(from.x, edge_x, 0.5)
 	_lead = PackedVector2Array([from, Vector2(elbow_x, tc.y), Vector2(elbow_x, ay), Vector2(edge_x, ay)])
 	_overlay.queue_redraw()
+
+
+## Screen rectangles of every ship on the camera's list (hull sphere projected, padded), so panels can keep clear of them.
+func _hull_rects(cam: Camera3D) -> Array:
+	var out := []
+	if not ("bodies" in cam):
+		return out
+	for b in cam.bodies:
+		var c: Vector3 = b.center
+		if cam.is_position_behind(c):
+			continue
+		var sp := cam.unproject_position(c)
+		var rpx := cam.unproject_position(c + cam.global_transform.basis.x * float(b.radius)).distance_to(sp)
+		var r := clampf(rpx, 8.0, 160.0) + 8.0
+		out.append(Rect2(sp - Vector2(r, r), Vector2(r, r) * 2.0))
+	return out
 
 
 ## Draws the panel backings and the leader (called by the overlay; the labels draw themselves on top of this).

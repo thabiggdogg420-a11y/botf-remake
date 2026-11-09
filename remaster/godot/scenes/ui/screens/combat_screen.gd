@@ -403,6 +403,7 @@ func _orders(e: Dictionary, foe_name: String) -> Control:
 			continue # rules 4: no warp, no withdrawal (warp core or engines down, or no safe sector)
 		var p := Lcars.pill(mv["name"], CombatVM.maneuver_tone(key), func(): order(key), vm.maneuver_block(key), vm.maneuver_hint(mv))
 		p.name = "Maneuver_" + key
+		p.text = str(mv["name"]).to_upper() # the ghost Hail pill kept mixed case, and Antonio's small "i" dot read as "Hall"
 		p.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		if scope == "ship" and sel.get("maneuver", "") == key:
 			p.add_theme_stylebox_override("normal", Lcars.box(Lcars.accent(), 16, Color.WHITE, 2, Vector4(16, 5, 16, 5)))
@@ -462,7 +463,7 @@ func _encounter_choice(e: Dictionary, mine: Array, foes: Array, foe_name: String
 	take.name = "TakeCommand"
 	row.add_child(take)
 	row.add_child(Lcars.pill("Auto-resolve", "secondary", func(): app.close_modal(); _auto(), "", "Your ships fight under automatic command"))
-	row.add_child(Lcars.pill("Hail", "ghost", func(): app.close_modal(); _hail(), "", "Every ship hails and one round resolves"))
+	row.add_child(Lcars.pill("HAIL", "ghost", func(): app.close_modal(); _hail(), "", "Every ship hails and one round resolves"))
 	col.add_child(row)
 	app.open_modal.call_deferred(col, "Enemy contact", Vector2(720, 0), "alert")
 	choice = false
