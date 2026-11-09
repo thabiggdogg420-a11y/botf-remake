@@ -8,4 +8,10 @@ void fragment() {
 	float soft = pow(across, 1.5);
 	ALBEDO = COLOR.rgb * soft * 3.0 + vec3(1.0) * pow(across, 12.0) * COLOR.a * 1.5;
 	ALPHA = clamp(COLOR.a * soft, 0.0, 1.0);
+#if CURRENT_RENDERER == RENDERER_COMPATIBILITY
+	// Compatibility (the web build) adds this glow with no HDR lift, so dim parts all but vanish on black: lift
+	// what is added (ALBEDO x ALPHA under blend_add) with an sRGB-like curve, as in shield.gdshader (M1 battleplay).
+	ALBEDO = pow(ALBEDO * ALPHA, vec3(1.0 / 2.2));
+	ALPHA = 1.0;
+#endif
 }

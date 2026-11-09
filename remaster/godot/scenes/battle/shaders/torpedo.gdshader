@@ -3,13 +3,14 @@
 // whose long horizontal rays shimmer, as photon and quantum torpedoes read in the shows. The R3.5 head used flare.gdshader,
 // whose core exp(-30 r^2) is about a fifth of the quad, so at the tactical camera's floor size it drew a 4 px dot behind
 // a 60 px trail: every torpedo read as a thin bolt. Standard render modes only: same pass in Forward+ and Compatibility.
+// Plain uniforms on a material per effect node (BattleFx._fxp), not instance uniforms: see there.
 shader_type spatial;
 render_mode unshaded, blend_add, depth_draw_never, cull_disabled, shadows_disabled;
 
-instance uniform vec4 torp_color : source_color = vec4(1.0, 0.25, 0.08, 1.0);
-instance uniform float torp_intensity = 1.0;
-instance uniform float torp_phase = 0.0;   // per torpedo, drives the flicker and the flare spin
-instance uniform float torp_core = 0.3;    // core radius as a share of the half-quad
+uniform vec4 torp_color : source_color = vec4(1.0, 0.25, 0.08, 1.0);
+uniform float torp_intensity = 1.0;
+uniform float torp_phase = 0.0;   // per torpedo, drives the flicker and the flare spin
+uniform float torp_core = 0.3;    // core radius as a share of the half-quad
 
 void vertex() {
 	// Billboard, keeping the node's scale.
@@ -36,4 +37,10 @@ void fragment() {
 	float near_fade = smoothstep(1.0, 8.0, -VERTEX.z); // a torpedo passing the lens does not blind it
 	ALBEDO = col * torp_intensity * flicker * near_fade;
 	ALPHA = clamp((glow + core + rays) * torp_intensity * near_fade, 0.0, 1.0);
+#if CURRENT_RENDERER == RENDERER_COMPATIBILITY
+	// Compatibility (the web build) adds this glow with no HDR lift, so dim parts all but vanish on black: lift
+	// what is added (ALBEDO x ALPHA under blend_add) with an sRGB-like curve, as in shield.gdshader (M1 battleplay).
+	ALBEDO = pow(ALBEDO * ALPHA, vec3(1.0 / 2.2));
+	ALPHA = 1.0;
+#endif
 }

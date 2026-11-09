@@ -140,6 +140,12 @@ func _run() -> void:
 			var img: Image = root.get_viewport().get_texture().get_image()
 			img.save_png(out_dir.path_join("f_%02d.png" % k))
 		print("FRAME %02d t=%.2f live=%s" % [k, view.time, _live(view)])
+		if OS.has_feature("web"):
+			# The browser driver screenshots the page when it reads the FRAME line, a few hundred ms later: hold the
+			# round still meanwhile so the web frame shows the same instant as the desktop f_NN.png.
+			view.playback_speed = 0.0
+			await create_timer(1.5).timeout
+			view.playback_speed = 1.0
 		k += 1
 		if not view.is_playing():
 			break
