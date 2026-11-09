@@ -10,7 +10,7 @@ extends Node3D
 ##                                        audio cue at the right moment: key = most specific key
 ##                                        (weapon.<Type>.<fac>, sfx.*, vo.combat.<detail>.<fac>), keys = the full
 ##                                        fallback list to try in order.
-## Plus: seek(seconds), stop(), is_playing(), camera (BattleCamera), playback_speed, player_empire.
+## Plus: seek(seconds), skip_round(), stop(), is_playing(), camera (BattleCamera), playback_speed, player_empire.
 
 signal round_finished(round_index: int)
 signal cue(key: String, keys: PackedStringArray, priority: int, fleet_id: int)
@@ -33,7 +33,10 @@ const FINISH_TAIL := 0.6        ## Seconds after the last job before round_finis
 const SPACING_SOLVE_INTERVAL := 0.05 ## Seconds between spacing solves (see _update_spacing).
 const MAX_FRAME_STEP := 0.05    ## Longest wall-clock step one frame may advance the timeline (a 20 fps floor).
 
-@export var round_seconds := 6.0
+## A round plays back as one continuous sequence this long at 1x (M1 battleplay: ships fly the whole round, fire is
+## spread across it, torpedoes travel; BattleTimeline "Cinematic playback").
+@export var round_seconds := 8.0
+@export var cinematic := true
 @export var playback_speed := 1.0
 @export var player_empire := 0  ## 0 = the encounter's own ships (ships[].mine), barks only for them.
 @export var play_audio := true  ## Play cues through BattleAudio (local files or generated tones).
@@ -107,6 +110,7 @@ func play_round(p_encounter: Dictionary, p_round_index: int) -> void:
 	_arena = Vector2(float(encounter.get("arenaWidth", 16)), float(encounter.get("arenaHeight", 12)))
 	var cfg := BattleTimeline.Config.new()
 	cfg.round_seconds = round_seconds
+	cfg.cinematic = cinematic
 	cfg.player_empire = _player_empire()
 	var _pt0 := Time.get_ticks_usec()
 	var info := BattleTimeline.round_ship_info(encounter, round_index)
@@ -170,12 +174,33 @@ func stop() -> void:
 	_playing = false
 
 
+## Skips the rest of the round: jumps to its end (no cues for what is skipped) and lets round_finished fire on the next
+## frame, so the host moves on as if it had played. The ships stand where the core left them.
+func skip_round() -> void:
+	if timeline == null or _finished_sent:
+		return
+	_playing = true
+	seek(timeline.end_seconds + FINISH_TAIL)
+
+
 func is_playing() -> bool:
 	return _playing
 
 
 func ship_node(fleet_id: int) -> BattleShip:
 	return _ships.get(fleet_id)
+
+
+## World transform of a ship at round time t (its flown pose, today's spacing offset), for effects that start from where
+## a ship was: a torpedo leaves the tube where it was at launch, and keeps flying when the ship moves on.
+func ship_transform_at(fleet_id: int, t: float) -> Transform3D:
+	var ship: BattleShip = _ships.get(fleet_id)
+	var track := timeline.track(fleet_id) if timeline != null else null
+	if ship == null or track == null:
+		return ship.global_transform if ship != null else Transform3D.IDENTITY
+	var p := _round_pose(track, t)
+	var idle := BattleTimeline.station_keeping(track, t, timeline.round_seconds)
+	return Transform3D(pose_basis(p.facing, p.pitch + idle.z, p.bank + idle.y), cell_to_world(p.x, p.y, p.altitude + idle.x) + ship.spacing)
 
 
 func cell_to_world(x: float, y: float, altitude := 0.0) -> Vector3:
@@ -449,8 +474,13 @@ func _update_camera(t: float, delta: float, centroid: Vector3, spread: float) ->
 		for w0 in src:
 			wego_state[int(w0.get("id", 0))] = w0
 		for rs in rounds[round_index].get("ships", []):
-			state[int(rs.get("id", 0))] = [float(rs.get("hullAfter" if done else "hullBefore", rs.get("hullBefore", 1))),
-				float(rs.get("shieldAfter" if done else "shieldBefore", rs.get("shieldBefore", 0)))]
+			var fid0 := int(rs.get("id", 0))
+			if done:
+				state[fid0] = [float(rs.get("hullAfter", rs.get("hullBefore", 1))), float(rs.get("shieldAfter", rs.get("shieldBefore", 0)))]
+			else:
+				# Damage shows as each impact lands (the core's figures, in the core's order per ship).
+				var lost := timeline.damage_until(fid0, t) if timeline != null else Vector2i.ZERO
+				state[fid0] = [maxf(0.0, float(rs.get("hullBefore", 1)) - lost.x), maxf(0.0, float(rs.get("shieldBefore", 0)) - lost.y)]
 	# What the camera can frame, follow, mark and pick: every ship not cloaked away or destroyed.
 	var bodies := []
 	for fid in _ships:

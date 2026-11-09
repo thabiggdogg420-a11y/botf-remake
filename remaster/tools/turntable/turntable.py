@@ -62,6 +62,7 @@ def main():
     ap.add_argument('--elev', default='14')
     ap.add_argument('--rig', choices=['show', 'bible'], default='show', help='show: hard key, near-zero ambient (benchmark); bible: section 4 rig')
     ap.add_argument('--variant', default='1', help='planet texture variant 1-6')
+    ap.add_argument('--lod', default='0', help='hero hull LOD to show alone (0 = full detail; clamped to the LOD count of the hull)')
     ap.add_argument('--category')
     ap.add_argument('--faction')
     ap.add_argument('--milestone')
@@ -77,7 +78,7 @@ def main():
         out = os.path.join(a.out, mode)
         os.makedirs(out, exist_ok=True)
         cmd = [godot, '--path', PROJECT, '--audio-driver', 'Dummy', '--resolution', '480x270'] + RENDERERS[mode] + [
-            '-s', SCRIPT, '--', '--keys=' + ','.join(keys), '--out=' + out, '--size=' + a.size, '--elev=' + a.elev, '--rig=' + a.rig, '--variant=' + a.variant] + planets_arg()
+            '-s', SCRIPT, '--', '--keys=' + ','.join(keys), '--out=' + out, '--size=' + a.size, '--elev=' + a.elev, '--rig=' + a.rig, '--variant=' + a.variant, '--lod=' + a.lod] + planets_arg()
         print('turntable [%s]: %d key(s) -> %s' % (mode, len(keys), out))
         p = subprocess.run(cmd, cwd=PROJECT, creationflags=0x4000 if os.name == 'nt' else 0)
         rc = rc or p.returncode

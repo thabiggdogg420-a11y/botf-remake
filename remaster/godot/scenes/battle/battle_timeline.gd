@@ -11,6 +11,20 @@ extends RefCounted
 ##     intercept), shield and hull impacts, rams, cloak shimmer, decloak, explosions, warp-outs;
 ##   * sound jobs and bark jobs timed to the visual jobs.
 ## Everything is in the tactical plane (cells, degrees, seconds) and deterministic.
+##
+## Cinematic playback (Config.cinematic, M1 battleplay; Simon, 9 Nov 2026: "all ships seem to fire their weapons at the
+## same time and only seem to move between turns, I want the combat to play out naturally similar to how ships fight in
+## the shows"). Godot only: the frozen Unreal port keeps the tick clock. The core resolves movement in ticks 0-4 and
+## fires mount i of every ship at tick 5 + i, so a tick clock draws every ship's first mount at one instant after the
+## ships have stopped. The cinematic clock keeps the core's ticks as the order of play but:
+##   * ships fly their plotted moves over the whole round on a cruise profile (speed up, cruise, slow down);
+##   * each fire tick owns a window of the round sized by how many shots it holds; a shot launches inside its window
+##     when the mount's arc bears on the target along the flown paths, with deterministic jitter;
+##   * torpedoes launch in their fire tick's window and fly 1.2-2.6 s by the core's range (real travel time);
+##   * small craft hold their wing formation mid-round and ease back onto their own cells at both ends;
+##   * impacts on one ship keep the core's resolution order (event resolveOrder when the bridge sends it, else
+##     impact tick, launch-before-arrival, event order), and a ship destroyed in a tick launches its shots before the
+##     blow that kills it. Hits, damage, kills and their order are the core's; only when they show is chosen here.
 
 const TICKS_PER_ROUND := 12
 
@@ -65,6 +79,24 @@ class Config:
 	var wing_radius_cells := 2.5     ## Small ships of one side starting this close together fly as a wing...
 	var wing_size := 4               ## ...of up to this many, in finger-four on the first (lowest id) ship.
 	var wing_spacing_cells := 0.55
+	# Cinematic clock (see the header). Shares are of round_seconds.
+	var cinematic := false
+	var fire_from := 0.08          ## The first fire window opens here...
+	var fire_to := 0.84            ## ...and the last closes here (torpedoes may still be in flight after it).
+	var flight_to := 0.94          ## The plotted moves are flown from 0 to here.
+	var cruise_accel := 0.22       ## Share of a flight spent speeding up, and again slowing down.
+	var launch_span := 0.6         ## Launches (and beam / bolt impacts) fall in this first share of their window.
+	var busy_weight := 0.5         ## Extra window width per shot in a tick: busy ticks get more of the round.
+	var idle_weight := 0.3         ## Width of a fire tick with no launches (a busy tick has 1 + busy_weight·n).
+	var beam_reach_seconds := 0.12 ## A beam reaches its target this long after it lights.
+	var beam_hold_seconds := 1.1   ## Phasers hold (and sweep) this long.
+	var bolt_gap_seconds := 0.12   ## Disruptor / pulse bolts in one burst.
+	var bolt_flight_seconds := 0.34
+	var torpedo_stagger_seconds := 0.16 ## Tubes in one spread.
+	var min_torpedo_flight_seconds := 1.2  ## A torpedo at point blank flies this long...
+	var torpedo_seconds_per_tick := 0.3    ## ...plus this per core tick of flight (impactTick - tick - 1, range)...
+	var max_torpedo_flight_seconds := 2.6  ## ...up to this. Later only if the core's order on the target needs it.
+	var effect_gap_seconds := 0.05 ## Least gap between two impacts on one ship, and between a dying ship's last launch and its death.
 
 
 ## Pose in the tactical plane: x, y in cells, facing in degrees (0 = +x, 90 = +y), bank = roll (+ = right wing down),
@@ -117,6 +149,7 @@ class ShipTrack:
 	var wing_back := 0.0      ## Station in the leader's frame (cells: aft, port, up).
 	var wing_side := 0.0
 	var wing_up := 0.0
+	var cruise := 0.0         ## Cinematic: share of each flight spent accelerating (0 = the tick clock's smoothstep).
 
 	## The ship's own flight (BattleTimeline.pose_of adds wing stations).
 	func pose_at(t: float) -> Pose:
@@ -130,7 +163,7 @@ class ShipTrack:
 				p.pitch = 0.0
 				continue
 			var u := (t - s.t0) / maxf(1e-9, s.t1 - s.t0)
-			var e := BattleTimeline.smoothstep01(u)
+			var e := BattleTimeline.flight_ease(u, cruise)
 			var e2 := e * e
 			var e3 := e2 * e
 			var h00 := 2 * e3 - 3 * e2 + 1
@@ -183,6 +216,26 @@ var sounds: Array[Dictionary] = []
 var barks: Array[Dictionary] = []
 ## Per input event: jobs / tracks produced from it (tests require every entry > 0).
 var consumed: PackedInt32Array = PackedInt32Array()
+## Round time at which each core tick's window opens (TICKS_PER_ROUND + 1 entries; the last closes the fire phase).
+var window_starts := PackedFloat64Array()
+var cinematic := false
+## Cinematic: small craft fly in their wing's formation only inside (formation_from, formation_until) and ease back onto
+## their own core cells at both ends, so every round starts and ends where the core put each ship.
+var formation_until := -1.0
+## Damage as it lands, in time order: {time, target, source, shield_damage, hull_damage, event_index, order}. `order` is
+## the core's resolution rank among impacts (playback keeps it per target).
+var impact_log: Array[Dictionary] = []
+
+
+## Hull and shield points lost by `fleet_id` to impacts shown at or before t (Vector2i(hull, shield)).
+func damage_until(fleet_id: int, t: float) -> Vector2i:
+	var out := Vector2i.ZERO
+	for imp in impact_log:
+		if imp.time > t:
+			break
+		if imp.target == fleet_id:
+			out += Vector2i(int(imp.hull_damage), int(imp.shield_damage))
+	return out
 
 
 func track(fleet_id: int) -> ShipTrack:
@@ -202,6 +255,9 @@ func pose_of(s: ShipTrack, t: float) -> Pose:
 	var w := 1.0
 	if lead.hide_at >= 0.0 and t > lead.hide_at:
 		w = 1.0 - smoothstep01((t - lead.hide_at) / maxf(1e-6, 2.0 * tick_seconds))
+	if formation_until > 0.0:
+		var edge := 0.18 * formation_until
+		w *= smoothstep01(t / edge) * smoothstep01((formation_until - t) / edge)
 	if w <= 0.0:
 		return own
 	var lp := lead.pose_at(t)
@@ -251,6 +307,22 @@ static func shortest_turn(a: float, b: float) -> float:
 static func smoothstep01(u: float) -> float:
 	u = clampf(u, 0.0, 1.0)
 	return u * u * (3.0 - 2.0 * u)
+
+
+## Progress along a flight for u in [0, 1]. accel 0: smoothstep. accel > 0: a cruise profile, speeding up evenly over the
+## first `accel` share, cruising, and slowing over the last (starts and ends at rest, like smoothstep).
+static func flight_ease(u: float, accel: float) -> float:
+	if accel <= 0.0:
+		return smoothstep01(u)
+	u = clampf(u, 0.0, 1.0)
+	var a := clampf(accel, 1e-3, 0.5)
+	var v := 1.0 / (1.0 - a)
+	if u < a:
+		return 0.5 * v * u * u / a
+	if u > 1.0 - a:
+		var r := 1.0 - u
+		return 1.0 - 0.5 * v * r * r / a
+	return v * (u - 0.5 * a)
 
 
 # ------------------------------------------------------------------------------------------------------------------
@@ -535,6 +607,18 @@ static func build(events: Array, info: Array, cfg: Config = null) -> BattleTimel
 	var tk := tl.tick_seconds
 	tl.consumed.resize(events.size())
 	tl.consumed.fill(0)
+	tl.cinematic = cfg.cinematic
+	tl.window_starts = _windows(events, cfg, tl.round_seconds)
+	tl.formation_until = cfg.flight_to * tl.round_seconds if cfg.cinematic else -1.0
+	var W := tl.window_starts
+	## Round time of a core tick: its window's opening.
+	var tick_time := func(tick: int) -> float:
+		return W[clampi(tick, 0, TICKS_PER_ROUND)]
+	## Round time of a movement tick: the tick clock, or the cinematic flight spread over the round.
+	var move_time := func(tick: int) -> float:
+		if not cfg.cinematic:
+			return tick * tk
+		return clampf(float(tick) / float(maxi(1, cfg.move_end_tick)), 0.0, 1.0) * cfg.flight_to * tl.round_seconds
 
 	var info_by_id := {}
 	for s in info:
@@ -593,12 +677,13 @@ static func build(events: Array, info: Array, cfg: Config = null) -> BattleTimel
 		var s := Segment.new()
 		s.from = from.copy()
 		s.to = Pose.new(float(e.x), float(e.y), wrap_degrees(float(e.facing)))
-		s.t0 = start_tick * tk
-		s.t1 = maxi(int(e.tick), start_tick + 1) * tk
+		s.t0 = move_time.call(start_tick)
+		s.t1 = move_time.call(maxi(int(e.tick), start_tick + 1))
 		if not t.segments.is_empty():
 			s.t0 = maxf(s.t0, t.segments.back().t1)
 		if s.t1 <= s.t0:
 			s.t1 = s.t0 + tk
+		t.cruise = cfg.cruise_accel if cfg.cinematic else 0.0
 		var slide := int(_num(e, "value"))
 		s.slide_cells = slide
 		s.maneuver = str(_num(e, "maneuver", ""))
@@ -687,7 +772,10 @@ static func build(events: Array, info: Array, cfg: Config = null) -> BattleTimel
 	# Weapon, impact and state jobs.
 	var impacts: Array = []
 	var kill_times := {}
+	var ram_times := {}
 	var ctx := {"torpedo_barked": false}
+	# Cinematic: each Fire / Ram event's launch and impact time (the tick clock derives them from the ticks below).
+	var sched: Dictionary = _schedule(tl, events, info_by_id, cfg) if cfg.cinematic else {}
 	var add_job := func(j: Dictionary, ev: int) -> void:
 		j.event_index = ev
 		tl.jobs.append(j)
@@ -724,12 +812,18 @@ static func build(events: Array, info: Array, cfg: Config = null) -> BattleTimel
 			add_sound.call(time, "HullHit", cue_keys("HullHit", 0), CUE_PRIORITY.HullHit, ev)
 		impacts.append({"time": time, "target": target, "source": shooter, "shield_damage": shield_dmg,
 			"destroyed": bool(_num(e, "destroyed", false)), "shooter_owner": shooter_owner})
+		tl.impact_log.append({"time": time, "target": target, "source": shooter, "shield_damage": shield_dmg,
+			"hull_damage": hull_dmg, "event_index": ev, "key": impact_key(e, ev), "destroyed": bool(_num(e, "destroyed", false))})
 
 	for i in events.size():
 		var e: Dictionary = events[i]
 		var fid := int(_num(e, "fleetId"))
 		var owner: int = owner_of.call(fid)
-		var t0 := int(e.tick) * tk
+		var tick_i := clampi(int(e.tick), 0, TICKS_PER_ROUND - 1)
+		var t0: float = tick_time.call(int(e.tick))
+		var tick_len: float = W[tick_i + 1] - W[tick_i]
+		var sc: Array = sched.get(i, [])
+		var cine := not sc.is_empty()
 		match str(e.kind):
 			"Fire":
 				var family := family_index(_num(e, "family", 0))
@@ -745,37 +839,57 @@ static func build(events: Array, info: Array, cfg: Config = null) -> BattleTimel
 				base.outcome = Outcome.INTERCEPTED if intercepted else (Outcome.HIT if hit else Outcome.MISS)
 				base.shield_damage = int(_num(e, "shieldDamage")); base.hull_damage = int(_num(e, "hullDamage"))
 				base.destroys_target = bool(_num(e, "destroyed", false))
+				var launch: float = sc[0] if cine else t0
 				var impact_time := t0
-				if family == 0:
+				# Cinematic: a disruptor (beam family in the core) is drawn as a burst of bolts, as in the shows.
+				var shown := 1 if cine and family == 0 and shows_as_bolts(weapon, owner) else family
+				if shown == 0:
 					for k in n:
 						var j := base.duplicate()
 						j.kind = Job.BEAM; j.index = k
-						j.start = t0 + k * cfg.beam_emitter_stagger_ticks * tk
-						j.duration = maxf(0.1, cfg.beam_ticks - k * cfg.beam_emitter_stagger_ticks) * tk
+						if cine:
+							j.start = launch + k * 0.05
+							j.duration = maxf(0.3, cfg.beam_hold_seconds - k * 0.05)
+						else:
+							j.start = t0 + k * cfg.beam_emitter_stagger_ticks * tk
+							j.duration = maxf(0.1, cfg.beam_ticks - k * cfg.beam_emitter_stagger_ticks) * tk
 						if not hit:
 							j.overshoot_cells = cfg.miss_overshoot_cells
 						add_job.call(j, i)
-					add_sound.call(t0, "BeamFire", keys, 3, i)
-					impact_time = t0 + 0.25 * tk
-				elif family == 1:
+					add_sound.call(launch, "BeamFire", keys, 3, i)
+					impact_time = float(sc[1]) if cine else t0 + 0.25 * tk
+				elif shown == 1:
+					var bolts := n if family == 1 or not cine else clampi(maxi(2, n), 2, 4)
 					var stagger := minf(cfg.pulse_stagger_ticks, 0.9 / n)
-					for k in n:
+					for k in bolts:
 						var j := base.duplicate()
 						j.kind = Job.PULSE; j.index = k
-						j.start = t0 + k * stagger * tk
-						j.duration = cfg.pulse_flight_ticks * tk
+						if cine:
+							j.count = bolts
+							j.start = launch + k * cfg.bolt_gap_seconds
+							j.duration = cfg.bolt_flight_seconds
+						else:
+							j.start = t0 + k * stagger * tk
+							j.duration = cfg.pulse_flight_ticks * tk
 						if not hit:
 							j.overshoot_cells = cfg.miss_overshoot_cells
 						add_job.call(j, i)
 						add_sound.call(j.start, "BeamFire", keys, 3, i)
 						impact_time = j.start + j.duration
+					if cine:
+						impact_time = float(sc[1]) # the first bolt lands with the damage; the rest follow it in
 				else:
 					var arrive := maxf(int(_num(e, "impactTick", e.tick)) * tk, t0 + cfg.min_torpedo_flight_ticks * tk)
 					var flight := maxf(0.2 * tk, arrive - t0)
+					var stagger_s := cfg.torpedo_stagger_ticks * tk
+					if cine:
+						# Every tube of the spread flies the same time; the last lands at the scheduled impact.
+						stagger_s = cfg.torpedo_stagger_seconds
+						flight = maxf(0.3, float(sc[1]) - launch - (n - 1) * stagger_s)
 					for k in n:
 						var j := base.duplicate()
 						j.kind = Job.TORPEDO; j.index = k
-						j.start = t0 + k * cfg.torpedo_stagger_ticks * tk
+						j.start = launch + k * stagger_s
 						j.arc_cells = (1.0 if k % 2 == 0 else -1.0) * cfg.torpedo_arc_cells * (1.0 + 0.3 * (k / 2))
 						if intercepted:
 							j.end_fraction = cfg.intercept_fraction; j.duration = flight * cfg.intercept_fraction
@@ -788,12 +902,13 @@ static func build(events: Array, info: Array, cfg: Config = null) -> BattleTimel
 						# One launch sound per tube, on its own stagger: the salvo ripples (R3.5).
 						add_sound.call(j.start, "TorpedoLaunch", keys, 3, i)
 					if cfg.player_empire > 0 and owner == cfg.player_empire and not ctx.torpedo_barked:
-						tl.barks.append({"time": t0, "detail": "torpedo", "priority": 3, "fleet_id": fid})
+						tl.barks.append({"time": launch, "detail": "torpedo", "priority": 3, "fleet_id": fid})
 						ctx.torpedo_barked = true
 					if intercepted:
 						var j := base.duplicate()
 						j.kind = Job.INTERCEPT
-						j.start = t0 + flight * cfg.intercept_fraction; j.duration = cfg.impact_ticks * tk
+						j.start = launch + flight * cfg.intercept_fraction; j.duration = cfg.impact_ticks * tk
+						j.launch = launch # the intercepted torpedo's path starts where it left the tube
 						j.vfx_key = "vfx.intercept"
 						add_job.call(j, i)
 						add_sound.call(j.start, "HullHit", cue_keys("HullHit", 0), CUE_PRIORITY.HullHit, i)
@@ -802,9 +917,9 @@ static func build(events: Array, info: Array, cfg: Config = null) -> BattleTimel
 					if base.destroys_target:
 						kill_times[base.target_fleet_id] = impact_time
 			"Ram":
-				var impact_at := maxi(int(_num(e, "impactTick", e.tick)), int(e.tick)) * tk
-				var start := t0 - 0.5 * tk if t0 - 0.5 * tk > 0 else t0
-				var j := new_job(Job.RAM, start, impact_at + 0.5 * tk - start)
+				var impact_at: float = float(sc[1]) if cine else float(maxi(int(_num(e, "impactTick", e.tick)), int(e.tick)) * tk)
+				var start: float = maxf(0.0, impact_at - 0.8) if cine else (t0 - 0.5 * tk if t0 - 0.5 * tk > 0 else t0)
+				var j := new_job(Job.RAM, start, (impact_at + 0.4 - start) if cine else (impact_at + 0.5 * tk - start))
 				j.fleet_id = fid; j.target_fleet_id = int(_num(e, "targetFleetId"))
 				j.shield_damage = int(_num(e, "shieldDamage")); j.hull_damage = int(_num(e, "hullDamage"))
 				j.destroys_target = bool(_num(e, "destroyed", false)); j.color = Color(1.0, 0.6, 0.2)
@@ -814,6 +929,7 @@ static func build(events: Array, info: Array, cfg: Config = null) -> BattleTimel
 				add_impacts.call(hit_event, impact_at, i, 0)
 				if j.destroys_target:
 					kill_times[j.target_fleet_id] = impact_at
+				ram_times[fid] = impact_at # the recoil may destroy the rammer at the same moment
 			"Cloak":
 				var j := new_job(Job.CLOAK, t0, cfg.cloak_ticks * tk)
 				j.fleet_id = fid; j.color = Color(0.55, 0.8, 1.0); j.vfx_key = "vfx.cloak"
@@ -829,9 +945,11 @@ static func build(events: Array, info: Array, cfg: Config = null) -> BattleTimel
 				track_for.call(fid).decloak_at = t0
 				add_sound.call(t0, "Decloak", cue_keys("Decloak", owner), CUE_PRIORITY.Decloak, i)
 			"Destroyed":
-				var when := t0 + 0.3 * tk
+				var when := t0 + 0.3 * (tick_len if cfg.cinematic else tk)
 				if kill_times.has(fid):
-					when = maxf(t0, kill_times[fid])
+					when = float(kill_times[fid]) if cfg.cinematic else maxf(t0, kill_times[fid])
+				elif cfg.cinematic and ram_times.has(fid):
+					when = float(ram_times[fid])
 				var j := new_job(Job.EXPLOSION, when, cfg.explosion_ticks * tk)
 				j.fleet_id = fid; j.target_fleet_id = fid; j.color = Color(1.0, 0.7, 0.3); j.vfx_key = "vfx.explosion"
 				add_job.call(j, i)
@@ -847,13 +965,17 @@ static func build(events: Array, info: Array, cfg: Config = null) -> BattleTimel
 				t.hide_at = minf(t.hide_at, job_end(j)) if t.hide_at >= 0 else job_end(j)
 				add_sound.call(t0, "Retreat", cue_keys("Retreat", 0), CUE_PRIORITY.Retreat, i)
 			"Disengage":
-				var j := new_job(Job.DISENGAGE, t0, maxi(1, cfg.move_end_tick) * tk)
+				var span: float = maxi(1, cfg.move_end_tick) * tk
+				if cfg.cinematic:
+					span = maxf(tk, float(move_time.call(cfg.move_end_tick)) - t0)
+				var j := new_job(Job.DISENGAGE, t0, span)
 				j.fleet_id = fid; j.color = Color(0.7, 0.85, 1.0)
 				add_job.call(j, i)
 				# The ship leaves the fight: its warp-out sounds as it goes (R3.5: the job had no cue).
 				add_sound.call(t0 + j.duration * 0.85, "Disengage", cue_keys("Retreat", 0), CUE_PRIORITY.Retreat, i)
 			"Truce":
 				add_job.call(new_job(Job.TRUCE, t0, tk), i)
+	tl.impact_log.assign(_stable_sorted(tl.impact_log, func(a, b): return a.time < b.time))
 
 	# Barks: shields crossing 75/50/25 percent on the player's ships (the worst crossing of the round), and kills.
 	impacts.sort_custom(func(a, b): return a.time < b.time)
@@ -897,6 +1019,191 @@ static func build(events: Array, info: Array, cfg: Config = null) -> BattleTimel
 	return tl
 
 
+# ------------------------------------------------------------------------------------------------------------------
+# Cinematic clock (Config.cinematic)
+# ------------------------------------------------------------------------------------------------------------------
+
+## Disruptors are beam family in the core; the cinematic playback draws them as bolts (Klingon and Romulan), as the
+## shows do. Cardassian disruptors are beams on screen and stay beams.
+static func shows_as_bolts(weapon: String, owner_faction: int) -> bool:
+	return weapon == "Disruptor" and owner_faction != 4
+
+
+## Window openings per core tick (TICKS_PER_ROUND + 1 entries). Tick clock: tick x tick_seconds. Cinematic: the
+## movement ticks share [0, fire_from], then each fire tick gets a share of [fire_from, fire_to] that grows with the
+## shots it holds.
+static func _windows(events: Array, cfg: Config, round_secs: float) -> PackedFloat64Array:
+	var w := PackedFloat64Array()
+	w.resize(TICKS_PER_ROUND + 1)
+	var tk := round_secs / TICKS_PER_ROUND
+	if not cfg.cinematic:
+		for k in w.size():
+			w[k] = k * tk
+		return w
+	var shots := PackedInt32Array()
+	shots.resize(TICKS_PER_ROUND)
+	shots.fill(0)
+	var first := TICKS_PER_ROUND
+	for e in events:
+		if e.kind == "Fire" or e.kind == "Ram":
+			var k := clampi(int(e.tick), 0, TICKS_PER_ROUND - 1)
+			shots[k] += 1
+			first = mini(first, k)
+	var fire0 := clampi(mini(first, cfg.move_end_tick + 1), 1, TICKS_PER_ROUND - 1)
+	var open := cfg.fire_from * round_secs
+	var close := cfg.fire_to * round_secs
+	for k in fire0 + 1:
+		w[k] = open * float(k) / float(fire0)
+	# A tick with nothing in it is a short beat, not dead air: the round's time goes to the ticks where shots launch
+	# (the core fires a mount on the same tick for every ship, so one tick often carries a whole broadside).
+	var weight := func(k: int) -> float:
+		if shots[k] == 0:
+			return cfg.idle_weight
+		return 1.0 + cfg.busy_weight * shots[k]
+	var total := 0.0
+	for k in range(fire0, TICKS_PER_ROUND):
+		total += weight.call(k)
+	for k in range(fire0, TICKS_PER_ROUND):
+		w[k + 1] = w[k] + (close - open) * weight.call(k) / total
+	return w
+
+
+## A mount's firing arc from round_ship_info's "arcs" (Vector2(centre, half-width) in degrees of |relative bearing|,
+## TacticalCombat.h arcCentre / arcHalfWidth); all round when unknown.
+static func _mount_arc(ship_info: Dictionary, mount: int) -> Vector2:
+	var arcs: Array = ship_info.get("arcs", [])
+	if mount >= 0 and mount < arcs.size() and arcs[mount] is Vector2:
+		return arcs[mount]
+	return Vector2(0.0, 180.0)
+
+
+## Where in its window (0..launch_span) a shot launches: the moment along the flown paths when the target sits best in
+## the mount's arc, pulled toward a deterministic jitter so a broadside does not fire as one.
+static func _aim_fraction(tl: BattleTimeline, fid: int, tgt: int, arc: Vector2, w0: float, ww: float, jit: float, cfg: Config) -> float:
+	var want := jit * cfg.launch_span
+	var s := tl.track(fid)
+	var t := tl.track(tgt)
+	if s == null or t == null:
+		return want
+	var best := INF
+	var best_f := want
+	for k in 13:
+		var f := cfg.launch_span * k / 12.0
+		var at := w0 + ww * f
+		var ps := tl.pose_of(s, at)
+		var pt := tl.pose_of(t, at)
+		var bearing := rad_to_deg(atan2(pt.y - ps.y, pt.x - ps.x))
+		var rel := absf(shortest_turn(ps.facing, bearing))
+		var outside := maxf(0.0, absf(rel - arc.x) - arc.y)
+		var score := outside / 30.0 + absf(f - want) * 2.0
+		if score < best:
+			best = score
+			best_f = f
+	return best_f
+
+
+## The core's resolution rank of an impact, compared with key_less: the bridge's resolveOrder (rules 4: the index of the
+## event's hit in RoundResult.hits, which the core fills as it resolves) when present, else (impact tick, launch-tick
+## impacts before arrivals, event order), which is the core's order except between arrivals of one tick.
+static func impact_key(e: Dictionary, index: int) -> Array:
+	if e.has("resolveOrder") and e.resolveOrder != null and int(e.resolveOrder) >= 0:
+		return [0, int(e.resolveOrder), 0, index]
+	var tick := int(_num(e, "tick"))
+	var impact := maxi(tick, int(_num(e, "impactTick", tick)))
+	return [1, impact, 0 if impact == tick else 1, index]
+
+
+static func key_less(a: Array, b: Array) -> bool:
+	for k in mini(a.size(), b.size()):
+		if a[k] != b[k]:
+			return a[k] < b[k]
+	return a.size() < b.size()
+
+
+## Cinematic launch and impact times: event index -> [launch, impact]. Launches fall in their fire tick's window by
+## arc and jitter; beams and bolts land a reach later, torpedoes late in their impact tick's window. Then, until
+## stable: impacts on each ship keep the core's order with effect_gap_seconds between them (moved later, never
+## earlier), and a ship destroyed in the round launches everything it fires before the blow that kills it.
+static func _schedule(tl: BattleTimeline, events: Array, info_by_id: Dictionary, cfg: Config) -> Dictionary:
+	var W := tl.window_starts
+	var out := {}
+	var together := {}     # event index -> true: launch and impact move as one (beams, bolts, rams)
+	var keys := {}
+	var by_target := {}    # target fleet id -> event indices that land on it
+	var launches_by := {}  # shooter fleet id -> event indices it fires
+	var kill_of := {}      # victim fleet id -> the event index that destroys it
+	for i in events.size():
+		var e: Dictionary = events[i]
+		var ram: bool = e.kind == "Ram"
+		if e.kind != "Fire" and not ram:
+			continue
+		var tick := clampi(int(e.tick), 0, TICKS_PER_ROUND - 1)
+		var impact_tick := clampi(int(_num(e, "impactTick", e.tick)), tick, TICKS_PER_ROUND - 1)
+		var fid := int(_num(e, "fleetId"))
+		var tgt := int(_num(e, "targetFleetId"))
+		var mount := int(_num(e, "mountIndex", -1))
+		var family := family_index(_num(e, "family", 0))
+		var n := maxi(1, int(_num(e, "projectiles", 1)))
+		var w0: float = W[tick]
+		var ww: float = W[tick + 1] - W[tick]
+		var jit := unit_hash(fid * 64 + maxi(0, mount) + 1, 7001 + i)
+		var f := 0.5 * cfg.launch_span if ram else _aim_fraction(tl, fid, tgt, _mount_arc(info_by_id.get(fid, {}), mount), w0, ww, jit, cfg)
+		var launch := w0 + ww * f
+		var impact := launch
+		if ram:
+			together[i] = true
+		elif family == 2:
+			# Flight time from the core's range (impact tick - fire tick), at a pace that reads as a torpedo run, not
+			# stretched over the core's ticks; the order pass below delays it only where the core's order demands.
+			var flight := minf(cfg.max_torpedo_flight_seconds, cfg.min_torpedo_flight_seconds + cfg.torpedo_seconds_per_tick * maxi(0, impact_tick - tick - 1))
+			impact = launch + flight + (n - 1) * cfg.torpedo_stagger_seconds
+		else:
+			var owner := int(info_by_id.get(fid, {}).get("ownerId", 0))
+			var bolts := family == 1 or shows_as_bolts(str(_num(e, "weapon", "")), owner)
+			impact = launch + (cfg.bolt_flight_seconds if bolts else cfg.beam_reach_seconds)
+			together[i] = true
+		out[i] = [launch, impact]
+		if not ram:
+			if not launches_by.has(fid):
+				launches_by[fid] = []
+			launches_by[fid].append(i)
+		if ram or (bool(_num(e, "hit", false)) and not bool(_num(e, "intercepted", false))):
+			keys[i] = impact_key(e, i)
+			if not by_target.has(tgt):
+				by_target[tgt] = []
+			by_target[tgt].append(i)
+			if bool(_num(e, "destroyed", false)):
+				kill_of[tgt] = i
+	for tgt in by_target:
+		var list: Array = by_target[tgt]
+		list.sort_custom(func(a, b): return key_less(keys[a], keys[b]))
+	var gap := cfg.effect_gap_seconds
+	for _pass in 24:
+		var changed := false
+		for tgt in by_target:
+			var prev := -INF
+			for i in by_target[tgt]:
+				var lag: float = prev + gap - float(out[i][1])
+				if lag > 1e-6:
+					out[i][1] += lag
+					if together.has(i):
+						out[i][0] += lag
+					changed = true
+				prev = out[i][1]
+		for victim in kill_of:
+			var k: int = kill_of[victim]
+			for i in launches_by.get(victim, []):
+				var lag: float = float(out[i][0]) + gap - float(out[k][1])
+				if i != k and lag > 1e-6:
+					out[k][1] += lag
+					if together.has(k):
+						out[k][0] += lag
+					changed = true
+		if not changed:
+			break
+	return out
+
+
 ## Ship info for round `round_index` (index into encounter.rounds) of a tactical encounter as returned by
 ## botf_call("tactical") / ("tacticalRound"): owner, shields at round start, cloak state carried from earlier rounds
 ## and a fallback pose. Ships already destroyed or gone before the round are left out.
@@ -927,7 +1234,11 @@ static func round_ship_info(encounter: Dictionary, round_index: int) -> Array:
 		var fid := int(rs.id)
 		var ship: Dictionary = by_id.get(fid, {})
 		var pos: Dictionary = rs.get("from", ship.get("position", {"x": 0, "y": 0}))
-		out.append({"fleetId": fid, "ownerId": int(rs.get("owner", ship.get("owner", 0))),
+		# Firing arcs per mount (the encounter's weapons list is indexed by Fire events' mountIndex).
+		var arcs := []
+		for wpn in ship.get("weapons", []):
+			arcs.append(Vector2(float(wpn.get("arcCentre", 0)), float(wpn.get("arcHalfWidth", 180))) if wpn is Dictionary else Vector2(0, 180))
+		out.append({"arcs": arcs, "fleetId": fid, "ownerId": int(rs.get("owner", ship.get("owner", 0))),
 			"shields": int(rs.get("shieldBefore", 0)), "maxShields": int(ship.get("maxShields", 0)),
 			"startsCloaked": cloaked.has(fid) or bool(rs.get("startsCloaked", false)), "x": float(pos.x), "y": float(pos.y),
 			"facing": float(rs.get("yaw", 0)), "lengthMeters": ShipFactory.canon_length_meters(ship),

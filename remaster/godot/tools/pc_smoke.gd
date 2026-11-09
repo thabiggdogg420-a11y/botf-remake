@@ -7,6 +7,7 @@ extends SceneTree
 var app: App
 var out_dir := ""
 var failures := 0
+const PlaybackChecks := preload("res://scenes/battle/tools/playback_checks.gd")
 var fps := {}
 var worst_by := {}
 
@@ -91,6 +92,22 @@ func measure(label: String, seconds: float, from_us := 0) -> void:
 
 func worst_ms_of(sorted: Array) -> float:
 	return float(sorted[sorted.size() - 1]) if not sorted.is_empty() else 0.0
+
+## The round now playing in the screen's battle view, measured against the core's round record (PlaybackChecks): shots
+## spread over the timeline, torpedoes in flight, ships moving while they fire, and the playback ending on the core's
+## resolved state.
+func playback_check(screen: Node, label: String) -> void:
+	var view: Node = screen.host.view_node if screen != null and "host" in screen and screen.host != null else null
+	if view == null or view.timeline == null or view.round_index < 0:
+		check(false, "%s: no battle view timeline to check" % label)
+		return
+	var rnd: Dictionary = view.encounter.rounds[view.round_index]
+	var res: Dictionary = PlaybackChecks.check_round(view.timeline, rnd)
+	print("SMOKE playback %s: %s" % [label, res.stats])
+	check(view.timeline.cinematic, "%s plays as one cinematic timeline" % label)
+	for p in res.problems:
+		check(false, "%s playback: %s" % [label, p])
+
 
 func find(n: Node, name_: String) -> Node:
 	return n.find_child(name_, true, false)
@@ -268,6 +285,16 @@ func _run() -> void:
 		cs._round()
 		rounds += 1
 		await measure("battle round %d" % rounds, 3.0, t_round)
+		playback_check(cs, "drill round %d" % rounds)
+		if r == 0:
+			# SKIP (M1 battleplay): the round jumps to its end, the ships stand where the core left them.
+			var view0: Node = cs.host.view_node
+			var skip: Control = find(cs, "SkipRound")
+			check(skip != null and find(cs, "Speed1") != null and find(cs, "Speed2") != null, "1x / 2x / SKIP on the camera bar")
+			if skip and view0.is_playing():
+				await click(skip)
+				await wait(3)
+				check(not view0.is_playing() and view0.time >= view0.timeline.end_seconds, "SKIP ends the round's playback (t=%.2f of %.2f)" % [view0.time, view0.timeline.end_seconds])
 		if r == 1:
 			await shot("pc-10-battle-round2")
 		if r == 2:
@@ -427,6 +454,7 @@ func _run() -> void:
 		var t_r := Time.get_ticks_usec()
 		big._round()
 		await measure("24v24 round %d" % (r + 1), 4.0, t_r)
+		playback_check(big, "24v24 round %d" % (r + 1))
 		big = app.current_screen()
 		if r == 2:
 			await measure("24v24 cinematic", 4.0) # the opening mode is cinematic

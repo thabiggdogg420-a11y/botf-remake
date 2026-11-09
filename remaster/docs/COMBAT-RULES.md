@@ -248,6 +248,11 @@ How a client plays a round:
 - **Impacts.** At `impactTick`, play the shield flare when `shieldDamage > 0`, the hull hit when `hullDamage > 0`,
   a miss or fly-by when `!hit`, and a point-defence burst when `intercepted`.
 - **Destruction.** Play the explosion at the Destroyed event's tick.
+- **Resolution order (rules 4, bridge only).** Each rules 4 Fire or Ram event in the bridge's encounter JSON carries
+  `resolveOrder`, the index of its hit in `RoundResult::hits`. That list is filled as shots resolve, so it is the exact
+  order in which damage landed, even where two arrivals on one tick were fired on different ticks (the event list is
+  sorted by fire tick, not arrival). It is read-only and presentation-only: the Godot cinematic playback uses it to
+  land impacts on a ship in the core's order. It is not stored in saves or tactical text.
 - **Audio.** Look up the fire and impact cues by `"weapon.<Type>"` (`roster::weaponTypeKey`). These are the same
   keys as `docs/ship-asset-manifest.template.json`.
 - **Mount lookup.** Mount positions come from the ship's `Encounter` mounts (`Ship::mounts[mountIndex]`, which has

@@ -88,10 +88,20 @@ func _run() -> void:
 		var arrays := mi.mesh.surface_get_arrays(0)
 		var cols = arrays[Mesh.ARRAY_COLOR]
 		check(cols is PackedColorArray and cols.size() > 0 and _close(cols[0], Color(0.19, 0.25, 0.16)), "vertex colour Col survives the glb")
-		check(mi.visibility_range_begin == 0.0 and mi.visibility_range_end > 0.0, "LOD0 range ends")
+		# The decimated LODs tear UV seams (Nebula, 9 Nov): LOD0 shows at every distance, the reduced copies are hidden.
+		check(mi.visibility_range_begin == 0.0 and mi.visibility_range_end == 0.0, "LOD0 shows at every distance")
 	var lod1 := ship.find_child("SM_testplated_LOD1", true, false) as MeshInstance3D
-	check(lod1 != null and lod1.visibility_range_begin > 0.0 and lod1.visibility_range_end == 0.0, "LOD1 range begins")
+	check(lod1 != null and not lod1.visible, "decimated LOD1 hidden")
+	# With a seam-safe chain the floor comes down and the switch distances apply again.
 	if mi != null and lod1 != null:
+		var floor0 := HeroLook.min_lod_ratio
+		HeroLook.min_lod_ratio = 0.5
+		lod1.visible = true
+		HeroLook.apply_lods(ship, {"lods": [{"node": "SM_testplated", "ratio": 1.0, "screen": 1.0},
+			{"node": "SM_testplated_LOD1", "ratio": 0.5, "screen": 0.35}]}, 8.0)
+		HeroLook.min_lod_ratio = floor0
+		check(mi.visibility_range_begin == 0.0 and mi.visibility_range_end > 0.0, "LOD0 range ends (floor 0.5)")
+		check(lod1.visibility_range_begin > 0.0 and lod1.visibility_range_end == 0.0, "LOD1 range begins (floor 0.5)")
 		check(is_equal_approx(mi.visibility_range_end, lod1.visibility_range_begin), "LOD ranges meet")
 		check(is_equal_approx(lod1.visibility_range_begin, HeroLook.lod_distance(8.0, 0.35)), "LOD1 distance from the screen size")
 

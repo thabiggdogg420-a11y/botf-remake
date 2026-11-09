@@ -15,7 +15,7 @@ const FACTION_OWNER := {"fed": 1, "kli": 2, "rom": 3, "car": 4, "fer": 5}
 const PLANET_COLORS := {"m": "#4fae6a", "l": "#7fa35a", "o": "#3f7fd0", "h": "#d0a060", "k": "#9a8a80", "p": "#cfe3f0", "y": "#c0503a",
 	"gasgiant": "#d9a86a", "asteroids": "#707078"}
 
-var _opts := {"keys": "", "out": "user://turntable", "size": "384", "elev": "14", "bg": "#05070d", "rig": "show", "planets": "", "variant": "1"}
+var _opts := {"keys": "", "out": "user://turntable", "size": "384", "elev": "14", "bg": "#05070d", "rig": "show", "planets": "", "variant": "1", "lod": "0"}
 var _assets: BattleAssets
 
 
@@ -170,6 +170,7 @@ func _ship(key: String, fac: String, info: Dictionary) -> Node3D:
 		var sc := SUBJECT_SIZE / canon
 		hull.transform = Transform3D(Basis.from_scale(Vector3.ONE * sc), -box.get_center() * sc)
 		HeroLook.apply(hull, hero, str(hull.get_meta("botf_hero_root", "")))
+		info["lod"] = _show_lod(hull, hero, int(_opts.lod))
 		info["source"] = "hero glb (third-party, private)"
 		info["length_m"] = canon
 	else:
@@ -182,6 +183,22 @@ func _ship(key: String, fac: String, info: Dictionary) -> Node3D:
 		info["length_m"] = ShipFactory.CANON_LENGTHS.get(key, 0)
 	holder.add_child(hull)
 	return holder
+
+
+## The glb's LOD meshes are siblings (SM_<slug>, SM_<slug>_LOD1..3); drawn together they z-fight. Shows only `lod`
+## (clamped to the hull's LOD count) and returns the node name shown, so a sheet can judge one LOD at a time.
+func _show_lod(hull: Node, hero: Dictionary, lod: int) -> String:
+	var lods: Array = hero.get("lods", [])
+	if lods.is_empty():
+		return ""
+	var pick := clampi(lod, 0, lods.size() - 1)
+	for i in lods.size():
+		var n := hull.find_child(str(lods[i].get("node", "")), true, false) as Node3D
+		if n == null and hull.name == str(lods[i].get("node", "")):
+			n = hull as Node3D
+		if n != null:
+			n.visible = i == pick
+	return str(lods[pick].get("node", ""))
 
 
 func parts_last(key: String) -> String:
@@ -478,7 +495,7 @@ func _compose(frames: Array[Image], s: int, key: String, info: Dictionary) -> Im
 		lb.add_theme_color_override("font_color", Color(0.7, 0.8, 1.0, 0.85))
 		vp.add_child(lb)
 	var cap := Label.new()
-	cap.text = "%s | %s | %s %s | elev %s deg | rig %s" % [key, info.get("source", ""), info.renderer, info.driver, _opts.elev, _opts.rig]
+	cap.text = "%s | %s | %s %s | elev %s deg | rig %s%s" % [key, info.get("source", ""), info.renderer, info.driver, _opts.elev, _opts.rig, (" | " + str(info.lod)) if str(info.get("lod", "")) != "" else ""]
 	cap.position = Vector2(8, 8)
 	cap.add_theme_font_size_override("font_size", 15)
 	vp.add_child(cap)
