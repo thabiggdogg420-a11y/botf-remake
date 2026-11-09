@@ -363,8 +363,191 @@ func _init() -> void:
 				check(absf(s.pose_at(tl.end_seconds).pitch) < 1e-6, "ends level")
 		return true)
 
+	# --- Cinematic playback (M1 battleplay; Simon, 9 Nov 2026) -------------------------------------------------------
+	run("cinematic: consumed, deterministic, smooth, rounds join", func():
+		for r in rounds.size():
+			var a := _build_cine(encounter, r)
+			var b := _build_cine(encounter, r)
+			check(a.all_consumed(), "cinematic round %d consumed all events" % r)
+			check(var_to_str(a.jobs) == var_to_str(b.jobs), "cinematic jobs equal round %d" % r)
+			for s in a.ships:
+				var prev: BattleTimeline.Pose = s.pose_at(0.0)
+				var t := 1.0 / 240.0
+				while t <= a.end_seconds:
+					var p: BattleTimeline.Pose = s.pose_at(t)
+					check(Vector2(p.x - prev.x, p.y - prev.y).length() < 0.1, "cinematic round %d ship %d jump at %.2f" % [r, s.fleet_id, t])
+					prev = p
+					t += 1.0 / 240.0
+		for r in rounds.size() - 1:
+			var a := _build_cine(encounter, r)
+			var b := _build_cine(encounter, r + 1)
+			for s in b.ships:
+				var prev := a.track(s.fleet_id)
+				if prev == null or prev.hide_at >= 0.0:
+					continue
+				var pa: BattleTimeline.Pose = prev.pose_at(a.end_seconds)
+				var pb: BattleTimeline.Pose = s.pose_at(0.0)
+				check(Vector2(pa.x - pb.x, pa.y - pb.y).length() < 1e-6, "cinematic round %d->%d ship %d joins" % [r, r + 1, s.fleet_id])
+		return true)
+
+	run("cinematic: shots spread over the round, not all at the start", func():
+		var rounds_with_fire := 0
+		for r in rounds.size():
+			var tl := _build_cine(encounter, r)
+			var starts := []
+			var fires := {}
+			for j in tl.jobs:
+				if j.kind in [BattleTimeline.Job.BEAM, BattleTimeline.Job.PULSE, BattleTimeline.Job.TORPEDO]:
+					starts.append(j.start)
+					fires[j.event_index] = true
+			if fires.size() < 2:
+				continue
+			rounds_with_fire += 1
+			var early := starts.filter(func(x): return x <= 0.1 * tl.end_seconds).size()
+			check(early < starts.size(), "round %d: not every shot in the first 10%% (%d of %d)" % [r, early, starts.size()])
+			var launch := {}
+			for j in tl.jobs:
+				if j.kind in [BattleTimeline.Job.BEAM, BattleTimeline.Job.PULSE, BattleTimeline.Job.TORPEDO] and j.index == 0:
+					launch[snappedf(j.start, 0.001)] = true
+			check(launch.size() >= mini(fires.size(), 2), "round %d: %d shots launch at %d distinct times" % [r, fires.size(), launch.size()])
+			starts.sort()
+			check(starts[-1] - starts[0] >= 0.1 * tl.round_seconds, "round %d: fire spans %.2f s" % [r, starts[-1] - starts[0]])
+		check(rounds_with_fire > 0, "fixture has rounds with fire")
+		return true)
+
+	run("cinematic: ships fly the whole round and fire on the move", func():
+		var moving_shots := 0
+		for r in rounds.size():
+			var tl := _build_cine(encounter, r)
+			for s in tl.ships:
+				for seg in s.segments:
+					if Vector2(seg.to.x - seg.from.x, seg.to.y - seg.from.y).length() > 0.0:
+						check(seg.t1 >= 0.9 * tl.round_seconds, "round %d ship %d flies to %.2f of %.2f" % [r, s.fleet_id, seg.t1, tl.round_seconds])
+						var mid := s.pose_at(0.5 * (seg.t0 + seg.t1))
+						check(not mid.plane_equals(seg.from) and not mid.plane_equals(seg.to), "round %d ship %d is between poses mid-flight" % [r, s.fleet_id])
+			for j in tl.jobs:
+				if j.kind in [BattleTimeline.Job.BEAM, BattleTimeline.Job.PULSE, BattleTimeline.Job.TORPEDO]:
+					var s := tl.track(j.fleet_id)
+					var a := s.pose_at(j.start - 0.05)
+					var b := s.pose_at(j.start + 0.05)
+					if Vector2(b.x - a.x, b.y - a.y).length() > 1e-5:
+						moving_shots += 1
+		check(moving_shots > 0, "some shots leave a ship that is still flying (%d)" % moving_shots)
+		return true)
+
+	run("cinematic: torpedoes travel, then strike", func():
+		var torps := 0
+		for r in rounds.size():
+			var tl := _build_cine(encounter, r)
+			var cfg := BattleTimeline.Config.new()
+			for j in tl.jobs:
+				if j.kind == BattleTimeline.Job.TORPEDO:
+					torps += 1
+					if j.outcome == BattleTimeline.Outcome.HIT:
+						check(j.duration >= cfg.min_torpedo_flight_seconds - 1e-6, "torpedo flies %.2f s" % j.duration)
+						var landed := false
+						for imp in tl.impact_log:
+							if imp.event_index == j.event_index:
+								landed = true
+								check(imp.time >= j.start + j.duration - 1e-6, "impact after the torpedo arrives")
+								check(imp.time > j.start + 1.0, "impact %.2f s after launch" % (imp.time - j.start))
+						check(landed, "a torpedo hit lands")
+		check(torps > 0, "fixture fires torpedoes")
+		var ev := _flight_events() + [
+			{"tick": 6, "kind": "Fire", "fleetId": 1, "targetFleetId": 2, "mountIndex": 1, "weapon": "QuantumTorpedo", "family": "torpedo", "projectiles": 3, "hit": true, "impactTick": 8, "shieldDamage": 30, "hullDamage": 0}]
+		var c := BattleTimeline.Config.new()
+		c.cinematic = true
+		c.round_seconds = 8.0
+		var tl2 := BattleTimeline.build(ev, _flight_info(400.0), c)
+		var tubes := tl2.jobs.filter(func(j): return j.kind == BattleTimeline.Job.TORPEDO)
+		check(tubes.size() == 3, "a 3-tube spread")
+		if tubes.size() == 3:
+			check(tubes[1].start - tubes[0].start >= 0.1 and tubes[2].start - tubes[1].start >= 0.1, "the spread launches with a stagger")
+		return true)
+
+	run("cinematic: impacts keep the core's order per ship, kills come last, final state is the core's", func():
+		for r in rounds.size():
+			var tl := _build_cine(encounter, r)
+			var evs: Array = rounds[r].events
+			_check_order(tl, evs, "round %d" % r)
+			# Every ship ends on its last ManeuverEnd pose; destroyed / retreated ships are gone at the end.
+			for s in tl.ships:
+				var last := {}
+				var gone := false
+				for e in evs:
+					if int(e.get("fleetId", 0)) == s.fleet_id and e.kind == "ManeuverEnd":
+						last = e
+					if int(e.get("fleetId", 0)) == s.fleet_id and e.kind in ["Destroyed", "Retreated"]:
+						gone = true
+				if not last.is_empty():
+					var p := tl.pose_of(s, tl.end_seconds) # as drawn: wingmen too end on their own cells
+					check(is_equal_approx(p.x, float(last.x)) and is_equal_approx(p.y, float(last.y)) and absf(BattleTimeline.shortest_turn(p.facing, float(last.facing))) < 1e-4, "round %d ship %d ends on the core's pose" % [r, s.fleet_id])
+				check((s.visibility_at(tl.end_seconds + 0.01) == 0.0 and s.hide_at >= 0.0) == gone or s.starts_cloaked, "round %d ship %d gone at the end iff the core says so" % [r, s.fleet_id])
+			# Damage shown over the round adds up to the core's per-event figures.
+			var want := {}
+			for e in evs:
+				if (e.kind == "Fire" and e.get("hit", false) and not e.get("intercepted", false)) or e.kind == "Ram":
+					var tgt := int(e.targetFleetId)
+					want[tgt] = want.get(tgt, Vector2i.ZERO) + Vector2i(int(e.get("hullDamage", 0)), int(e.get("shieldDamage", 0)))
+			for tgt in want:
+				check(tl.damage_until(tgt, tl.end_seconds) == want[tgt], "round %d ship %d shown damage %s == core %s" % [r, tgt, tl.damage_until(tgt, tl.end_seconds), want[tgt]])
+		# resolveOrder (rules 4 bridge) wins over the fallback order: two torpedoes arriving on one tick from different
+		# fire ticks, the later-fired one resolved first; and a ship that dies on tick 5 still fires its tick-5 beam first.
+		var ev := _flight_events() + [
+			{"tick": 5, "kind": "Fire", "fleetId": 1, "targetFleetId": 2, "mountIndex": 0, "weapon": "PhotonTorpedo", "family": "torpedo", "projectiles": 1, "hit": true, "impactTick": 9, "shieldDamage": 10, "hullDamage": 0, "resolveOrder": 3},
+			{"tick": 6, "kind": "Fire", "fleetId": 1, "targetFleetId": 2, "mountIndex": 1, "weapon": "PhotonTorpedo", "family": "torpedo", "projectiles": 1, "hit": true, "impactTick": 9, "shieldDamage": 5, "hullDamage": 0, "resolveOrder": 2},
+			{"tick": 5, "kind": "Fire", "fleetId": 2, "targetFleetId": 1, "mountIndex": 0, "weapon": "Disruptor", "family": "beam", "projectiles": 1, "hit": true, "impactTick": 5, "shieldDamage": 4, "hullDamage": 0, "resolveOrder": 1},
+			{"tick": 5, "kind": "Fire", "fleetId": 1, "targetFleetId": 2, "mountIndex": 2, "weapon": "PhaserArray", "family": "beam", "projectiles": 1, "hit": true, "impactTick": 5, "shieldDamage": 0, "hullDamage": 50, "destroyed": true, "resolveOrder": 0},
+			{"tick": 5, "kind": "Destroyed", "fleetId": 2, "x": 5, "y": 0, "facing": 135}]
+		var c := BattleTimeline.Config.new()
+		c.cinematic = true
+		c.round_seconds = 8.0
+		var tl2 := BattleTimeline.build(ev, _flight_info(400.0), c)
+		_check_order(tl2, ev, "synthetic")
+		var t_a := -1.0
+		var t_b := -1.0
+		for imp in tl2.impact_log:
+			if imp.event_index == 4: t_a = imp.time
+			if imp.event_index == 5: t_b = imp.time
+		check(t_b >= 0.0 and t_a > t_b, "resolveOrder: the tick-6 torpedo (rank 2) lands before the tick-5 one (rank 3)")
+		var bolt := tl2.jobs.filter(func(j): return j.kind == BattleTimeline.Job.PULSE and j.fleet_id == 2)
+		check(not bolt.is_empty(), "a Klingon disruptor shows as bolts")
+		return true)
+
 	print("%d passed, %d failures" % [passed, failures])
 	quit(1 if failures > 0 else 0)
+
+
+## Impacts on each ship land in the core's order (BattleTimeline.impact_key), and a ship destroyed this round launches
+## all its shots before the blow that kills it, which is when it explodes.
+func _check_order(tl: BattleTimeline, evs: Array, what: String) -> void:
+	var by_target := {}
+	for imp in tl.impact_log:
+		if not by_target.has(imp.target):
+			by_target[imp.target] = []
+		by_target[imp.target].append(imp)
+	for tgt in by_target:
+		var list: Array = by_target[tgt]
+		for k in range(1, list.size()):
+			check(list[k - 1].time < list[k].time, "%s ship %d: impacts at distinct times" % [what, tgt])
+			check(BattleTimeline.key_less(list[k - 1].key, list[k].key), "%s ship %d: impact %d before %d in the core's order" % [what, tgt, list[k - 1].event_index, list[k].event_index])
+	for imp in tl.impact_log:
+		if not imp.destroyed:
+			continue
+		var boom := tl.jobs.filter(func(j): return j.kind == BattleTimeline.Job.EXPLOSION and j.fleet_id == imp.target)
+		check(boom.size() == 1 and is_equal_approx(boom[0].start, imp.time), "%s ship %d explodes at the killing blow" % [what, imp.target])
+		for j in tl.jobs:
+			if j.fleet_id == imp.target and j.kind in [BattleTimeline.Job.BEAM, BattleTimeline.Job.PULSE, BattleTimeline.Job.TORPEDO] and j.index == 0:
+				check(j.start < imp.time, "%s ship %d fires (%.2f) before it dies (%.2f)" % [what, imp.target, j.start, imp.time])
+
+
+func _build_cine(encounter: Dictionary, r: int) -> BattleTimeline:
+	var info := BattleTimeline.round_ship_info(encounter, r)
+	var cfg := BattleTimeline.Config.new()
+	cfg.player_empire = 1
+	cfg.cinematic = true
+	cfg.round_seconds = 8.0
+	return BattleTimeline.build(encounter.rounds[r].events, info, cfg)
 
 
 ## What the scene shows (before spacing): own flight or wing station plus station-keeping.

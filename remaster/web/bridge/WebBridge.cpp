@@ -2112,7 +2112,10 @@ void writeEncounter(Writer& w, const tac::Encounter& e, int me, const botf::Game
                     w.field("hitChance", h->hitChance).field("shieldFacing", tac::shieldFacingName(h->facing))
                         .field("subsystem", enumName(h->subsystem, SubsystemKeys)).field("aimed", h->aimed)
                         .field("subsystemDamage", h->subsystemDamage).field("subsystemDestroyed", h->subsystemDestroyed)
-                        .field("breachDamage", h->breachDamage);
+                        .field("breachDamage", h->breachDamage)
+                        // Read-only presentation field (M1 battleplay): the hit's place in the core's resolution order
+                        // (RoundResult::hits is filled as shots resolve), so playback lands impacts in the core's order.
+                        .field("resolveOrder", static_cast<int>(h - r.hits.data()));
                 }
             }
             w.field("x", ev.x).field("y", ev.y).field("facing", ev.facing);

@@ -106,10 +106,36 @@ func _add_camera_bar() -> void:
 	reset.name = "CamReset"
 	reset.pressed.connect(func(): cam.frame_battle())
 	bar.add_child(reset)
+	_add_playback_buttons(bar)
 	cam.mode_changed.connect(func(m):
 		for i in buttons.size():
 			buttons[i].set_pressed_no_signal(i == m))
 	add_child(bar)
+
+
+## Round playback (M1 battleplay): 1x and 2x speed, and SKIP to the round's end (the ships stand where the core left
+## them and the next orders open). The speed holds from round to round.
+func _add_playback_buttons(bar: HBoxContainer) -> void:
+	if not ("playback_speed" in view_node):
+		return
+	var sep := Control.new()
+	sep.custom_minimum_size = Vector2(8, 0)
+	sep.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	bar.add_child(sep)
+	var group := ButtonGroup.new()
+	for speed in [1.0, 2.0]:
+		var b := _camera_button("%dx" % int(speed), "Play the round back at %dx speed." % int(speed))
+		b.name = "Speed%d" % int(speed)
+		b.toggle_mode = true
+		b.button_group = group
+		b.button_pressed = is_equal_approx(float(view_node.playback_speed), speed)
+		b.pressed.connect(func(): view_node.playback_speed = speed)
+		bar.add_child(b)
+	if view_node.has_method("skip_round"):
+		var skip := _camera_button("SKIP", "Skip to the end of this round's playback.")
+		skip.name = "SkipRound"
+		skip.pressed.connect(func(): view_node.skip_round())
+		bar.add_child(skip)
 
 
 func _camera_button(text: String, tip: String) -> Button:

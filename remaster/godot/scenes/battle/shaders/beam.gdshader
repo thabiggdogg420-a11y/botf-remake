@@ -1,12 +1,13 @@
 // Energy beam drawn on a cylinder (axis = local Y): a white-hot core inside a faction-coloured halo, with energy
 // pulses running from emitter to target. HDR output feeds the glow/bloom pass.
+// Plain uniforms on a material per effect node (BattleFx._fxp), not instance uniforms: see there.
 shader_type spatial;
 render_mode unshaded, blend_add, depth_draw_never, cull_disabled, shadows_disabled;
 
-instance uniform vec4 beam_color : source_color = vec4(1.0, 0.45, 0.05, 1.0);
-instance uniform float beam_intensity = 1.0;
-instance uniform float beam_phase = 0.0;
-instance uniform float beam_halo = 0.0; // 1 = the wide outer glow cylinder: soft colour only, no white core
+uniform vec4 beam_color : source_color = vec4(1.0, 0.45, 0.05, 1.0);
+uniform float beam_intensity = 1.0;
+uniform float beam_phase = 0.0;
+uniform float beam_halo = 0.0; // 1 = the wide outer glow cylinder: soft colour only, no white core
 uniform float core_power = 8.0;
 
 varying float end_on;
@@ -33,4 +34,10 @@ void fragment() {
 	dim *= smoothstep(4.0, 30.0, -VERTEX.z);
 	ALBEDO = col * beam_intensity * flicker * dim;
 	ALPHA = clamp(halo * beam_intensity, 0.0, 1.0);
+#if CURRENT_RENDERER == RENDERER_COMPATIBILITY
+	// Compatibility (the web build) adds this glow with no HDR lift, so dim parts all but vanish on black: lift
+	// what is added (ALBEDO x ALPHA under blend_add) with an sRGB-like curve, as in shield.gdshader (M1 battleplay).
+	ALBEDO = pow(ALBEDO * ALPHA, vec3(1.0 / 2.2));
+	ALPHA = 1.0;
+#endif
 }

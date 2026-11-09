@@ -3389,6 +3389,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 0,
       "x": 4,
       "y": 5,
       "facing": 0
@@ -3416,6 +3417,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 1,
       "x": 4,
       "y": 5,
       "facing": 0
@@ -3443,6 +3445,7 @@
       "subsystemDamage": 6,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 2,
       "x": 4,
       "y": 2,
       "facing": 0
@@ -3470,6 +3473,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 3,
       "x": 11,
       "y": 4,
       "facing": 180
@@ -3497,6 +3501,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 4,
       "x": 11,
       "y": 6,
       "facing": 180
@@ -3524,6 +3529,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 5,
       "x": 11,
       "y": 7,
       "facing": 180
@@ -4363,6 +4369,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 0,
       "x": 5,
       "y": 2,
       "facing": 0
@@ -4390,6 +4397,7 @@
       "subsystemDamage": 6,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 1,
       "x": 5,
       "y": 4,
       "facing": 0
@@ -4417,6 +4425,7 @@
       "subsystemDamage": 6,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 2,
       "x": 5,
       "y": 4,
       "facing": 0
@@ -4444,6 +4453,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 3,
       "x": 5,
       "y": 2,
       "facing": 0
@@ -4471,6 +4481,7 @@
       "subsystemDamage": 1,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 4,
       "x": 10,
       "y": 2,
       "facing": 180
@@ -4498,6 +4509,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 5,
       "x": 10,
       "y": 4,
       "facing": 180
@@ -4525,6 +4537,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 6,
       "x": 10,
       "y": 6,
       "facing": 180
@@ -4552,6 +4565,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 7,
       "x": 10,
       "y": 6,
       "facing": 180
@@ -5409,6 +5423,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 0,
       "x": 6,
       "y": 2,
       "facing": 0
@@ -5436,6 +5451,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 1,
       "x": 6,
       "y": 4,
       "facing": 315
@@ -5463,6 +5479,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 2,
       "x": 6,
       "y": 4,
       "facing": 315
@@ -5490,6 +5507,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 3,
       "x": 6,
       "y": 2,
       "facing": 0
@@ -5517,6 +5535,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 4,
       "x": 9,
       "y": 4,
       "facing": 180
@@ -5544,6 +5563,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 5,
       "x": 9,
       "y": 6,
       "facing": 225
@@ -5571,6 +5591,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 6,
       "x": 9,
       "y": 6,
       "facing": 225
@@ -5598,6 +5619,7 @@
       "subsystemDamage": 6,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 7,
       "x": 6,
       "y": 2,
       "facing": 0
@@ -5625,6 +5647,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 8,
       "x": 6,
       "y": 4,
       "facing": 315
@@ -5652,6 +5675,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 9,
       "x": 6,
       "y": 4,
       "facing": 315
@@ -5679,6 +5703,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 10,
       "x": 6,
       "y": 2,
       "facing": 0
@@ -5706,6 +5731,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 11,
       "x": 9,
       "y": 4,
       "facing": 180
@@ -5733,6 +5759,7 @@
       "subsystemDamage": 10,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 12,
       "x": 9,
       "y": 6,
       "facing": 225
@@ -5760,6 +5787,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 13,
       "x": 9,
       "y": 6,
       "facing": 225
@@ -6638,6 +6666,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 0,
       "x": 7,
       "y": 2,
       "facing": 0
@@ -6665,6 +6694,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 1,
       "x": 7,
       "y": 3,
       "facing": 315
@@ -6692,6 +6722,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 2,
       "x": 7,
       "y": 3,
       "facing": 315
@@ -6719,6 +6750,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 3,
       "x": 7,
       "y": 3,
       "facing": 315
@@ -6746,6 +6778,7 @@
       "subsystemDamage": 73,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 4,
       "x": 7,
       "y": 2,
       "facing": 0
@@ -6773,6 +6806,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 5,
       "x": 8,
       "y": 3,
       "facing": 135
@@ -6800,6 +6834,7 @@
       "subsystemDamage": 3,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 6,
       "x": 8,
       "y": 4,
       "facing": 180
@@ -6827,6 +6862,7 @@
       "subsystemDamage": 7,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 7,
       "x": 8,
       "y": 5,
       "facing": 225
@@ -6854,6 +6890,7 @@
       "subsystemDamage": 56,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 8,
       "x": 8,
       "y": 5,
       "facing": 225
@@ -6890,6 +6927,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 9,
       "x": 7,
       "y": 3,
       "facing": 315
@@ -6917,6 +6955,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 10,
       "x": 7,
       "y": 2,
       "facing": 0
@@ -6944,6 +6983,7 @@
       "subsystemDamage": 1,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 11,
       "x": 8,
       "y": 4,
       "facing": 180
@@ -6971,6 +7011,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 12,
       "x": 8,
       "y": 5,
       "facing": 225
@@ -6998,6 +7039,7 @@
       "subsystemDamage": 18,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 13,
       "x": 8,
       "y": 5,
       "facing": 225
@@ -7025,6 +7067,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 14,
       "x": 1,
       "y": 6,
       "facing": 0
@@ -7856,6 +7899,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 0,
       "x": 7,
       "y": 2,
       "facing": 45
@@ -7883,6 +7927,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 1,
       "x": 7,
       "y": 3,
       "facing": 45
@@ -7910,6 +7955,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 2,
       "x": 7,
       "y": 3,
       "facing": 45
@@ -7937,6 +7983,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 3,
       "x": 7,
       "y": 2,
       "facing": 45
@@ -7964,6 +8011,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 4,
       "x": 8,
       "y": 4,
       "facing": 225
@@ -7991,6 +8039,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 5,
       "x": 8,
       "y": 4,
       "facing": 225
@@ -8018,6 +8067,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 6,
       "x": 8,
       "y": 4,
       "facing": 225
@@ -8045,6 +8095,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 7,
       "x": 7,
       "y": 2,
       "facing": 45
@@ -8072,6 +8123,7 @@
       "subsystemDamage": 2,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 8,
       "x": 7,
       "y": 3,
       "facing": 45
@@ -8099,6 +8151,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 9,
       "x": 7,
       "y": 2,
       "facing": 45
@@ -8126,6 +8179,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 10,
       "x": 8,
       "y": 4,
       "facing": 225
@@ -8153,6 +8207,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 11,
       "x": 8,
       "y": 4,
       "facing": 225
@@ -8180,6 +8235,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 12,
       "x": 8,
       "y": 4,
       "facing": 225
@@ -8207,6 +8263,7 @@
       "subsystemDamage": 2,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 13,
       "x": 1,
       "y": 6,
       "facing": 0
@@ -9040,6 +9097,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 0,
       "x": 7,
       "y": 2,
       "facing": 45
@@ -9067,6 +9125,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 1,
       "x": 7,
       "y": 3,
       "facing": 45
@@ -9094,6 +9153,7 @@
       "subsystemDamage": 6,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 2,
       "x": 7,
       "y": 3,
       "facing": 45
@@ -9121,6 +9181,7 @@
       "subsystemDamage": 13,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 3,
       "x": 7,
       "y": 2,
       "facing": 45
@@ -9148,6 +9209,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 4,
       "x": 8,
       "y": 4,
       "facing": 225
@@ -9175,6 +9237,7 @@
       "subsystemDamage": 5,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 5,
       "x": 8,
       "y": 4,
       "facing": 225
@@ -9202,6 +9265,7 @@
       "subsystemDamage": 94,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 6,
       "x": 8,
       "y": 4,
       "facing": 225
@@ -9238,6 +9302,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 7,
       "x": 7,
       "y": 3,
       "facing": 45
@@ -9265,6 +9330,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 8,
       "x": 7,
       "y": 2,
       "facing": 45
@@ -9292,6 +9358,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 9,
       "x": 8,
       "y": 4,
       "facing": 225
@@ -9319,6 +9386,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 10,
       "x": 8,
       "y": 4,
       "facing": 225
@@ -9346,6 +9414,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 11,
       "x": 8,
       "y": 4,
       "facing": 225
@@ -9373,6 +9442,7 @@
       "subsystemDamage": 2,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 12,
       "x": 1,
       "y": 6,
       "facing": 0
@@ -10166,6 +10236,7 @@
       "subsystemDamage": 2,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 0,
       "x": 7,
       "y": 3,
       "facing": 45
@@ -10193,6 +10264,7 @@
       "subsystemDamage": 22,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 1,
       "x": 7,
       "y": 3,
       "facing": 45
@@ -10220,6 +10292,7 @@
       "subsystemDamage": 22,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 2,
       "x": 7,
       "y": 2,
       "facing": 45
@@ -10247,6 +10320,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 3,
       "x": 8,
       "y": 4,
       "facing": 225
@@ -10274,6 +10348,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 4,
       "x": 8,
       "y": 4,
       "facing": 225
@@ -10301,6 +10376,7 @@
       "subsystemDamage": 32,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 5,
       "x": 8,
       "y": 4,
       "facing": 225
@@ -10328,6 +10404,7 @@
       "subsystemDamage": 4,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 6,
       "x": 7,
       "y": 3,
       "facing": 45
@@ -10355,6 +10432,7 @@
       "subsystemDamage": 22,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 7,
       "x": 7,
       "y": 2,
       "facing": 45
@@ -10382,6 +10460,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 8,
       "x": 8,
       "y": 4,
       "facing": 225
@@ -10409,6 +10488,7 @@
       "subsystemDamage": 16,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 9,
       "x": 8,
       "y": 4,
       "facing": 225
@@ -10436,6 +10516,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 10,
       "x": 1,
       "y": 6,
       "facing": 0
@@ -11205,6 +11286,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 0,
       "x": 7,
       "y": 3,
       "facing": 45
@@ -11232,6 +11314,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 1,
       "x": 7,
       "y": 3,
       "facing": 45
@@ -11259,6 +11342,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 2,
       "x": 7,
       "y": 2,
       "facing": 45
@@ -11286,6 +11370,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 3,
       "x": 8,
       "y": 4,
       "facing": 225
@@ -11313,6 +11398,7 @@
       "subsystemDamage": 50,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 4,
       "x": 8,
       "y": 4,
       "facing": 225
@@ -11340,6 +11426,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 5,
       "x": 7,
       "y": 3,
       "facing": 45
@@ -11367,6 +11454,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 6,
       "x": 7,
       "y": 2,
       "facing": 45
@@ -11394,6 +11482,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 7,
       "x": 8,
       "y": 4,
       "facing": 225
@@ -11421,6 +11510,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 8,
       "x": 8,
       "y": 4,
       "facing": 225
@@ -11448,6 +11538,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 9,
       "x": 1,
       "y": 6,
       "facing": 0
@@ -12210,6 +12301,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 0,
       "x": 7,
       "y": 3,
       "facing": 45
@@ -12237,6 +12329,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 1,
       "x": 7,
       "y": 3,
       "facing": 45
@@ -12264,6 +12357,7 @@
       "subsystemDamage": 1,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 2,
       "x": 7,
       "y": 2,
       "facing": 45
@@ -12291,6 +12385,7 @@
       "subsystemDamage": 1,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 3,
       "x": 8,
       "y": 4,
       "facing": 225
@@ -12318,6 +12413,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 4,
       "x": 8,
       "y": 4,
       "facing": 225
@@ -12354,6 +12450,7 @@
       "subsystemDamage": 1,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 5,
       "x": 7,
       "y": 3,
       "facing": 45
@@ -12381,6 +12478,7 @@
       "subsystemDamage": 9,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 6,
       "x": 7,
       "y": 2,
       "facing": 45
@@ -12408,6 +12506,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 7,
       "x": 8,
       "y": 4,
       "facing": 225
@@ -12435,6 +12534,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 8,
       "x": 8,
       "y": 4,
       "facing": 225
@@ -12462,6 +12562,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 9,
       "x": 1,
       "y": 6,
       "facing": 0
@@ -13200,6 +13301,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 0,
       "x": 7,
       "y": 3,
       "facing": 45
@@ -13227,6 +13329,7 @@
       "subsystemDamage": 8,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 1,
       "x": 7,
       "y": 2,
       "facing": 45
@@ -13254,6 +13357,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 2,
       "x": 8,
       "y": 4,
       "facing": 225
@@ -13281,6 +13385,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 3,
       "x": 8,
       "y": 4,
       "facing": 225
@@ -13308,6 +13413,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 4,
       "x": 7,
       "y": 3,
       "facing": 45
@@ -13335,6 +13441,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 5,
       "x": 7,
       "y": 2,
       "facing": 45
@@ -13362,6 +13469,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 6,
       "x": 8,
       "y": 4,
       "facing": 225
@@ -13389,6 +13497,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 7,
       "x": 8,
       "y": 4,
       "facing": 225
@@ -13416,6 +13525,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 8,
       "x": 1,
       "y": 6,
       "facing": 0
@@ -14145,6 +14255,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 0,
       "x": 7,
       "y": 3,
       "facing": 45
@@ -14172,6 +14283,7 @@
       "subsystemDamage": 8,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 1,
       "x": 7,
       "y": 2,
       "facing": 45
@@ -14199,6 +14311,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 2,
       "x": 8,
       "y": 4,
       "facing": 225
@@ -14226,6 +14339,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 3,
       "x": 8,
       "y": 4,
       "facing": 225
@@ -14253,6 +14367,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 4,
       "x": 7,
       "y": 3,
       "facing": 45
@@ -14280,6 +14395,7 @@
       "subsystemDamage": 9,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 5,
       "x": 7,
       "y": 2,
       "facing": 45
@@ -14307,6 +14423,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 6,
       "x": 8,
       "y": 4,
       "facing": 225
@@ -14334,6 +14451,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 7,
       "x": 8,
       "y": 4,
       "facing": 225
@@ -14361,6 +14479,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 8,
       "x": 1,
       "y": 6,
       "facing": 0
@@ -15090,6 +15209,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 0,
       "x": 7,
       "y": 3,
       "facing": 45
@@ -15117,6 +15237,7 @@
       "subsystemDamage": 8,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 1,
       "x": 7,
       "y": 2,
       "facing": 45
@@ -15144,6 +15265,7 @@
       "subsystemDamage": 1,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 2,
       "x": 8,
       "y": 4,
       "facing": 225
@@ -15171,6 +15293,7 @@
       "subsystemDamage": 13,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 3,
       "x": 8,
       "y": 4,
       "facing": 225
@@ -15198,6 +15321,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 4,
       "x": 7,
       "y": 3,
       "facing": 45
@@ -15225,6 +15349,7 @@
       "subsystemDamage": 9,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 5,
       "x": 7,
       "y": 2,
       "facing": 45
@@ -15252,6 +15377,7 @@
       "subsystemDamage": 1,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 6,
       "x": 8,
       "y": 4,
       "facing": 225
@@ -15279,6 +15405,7 @@
       "subsystemDamage": 6,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 7,
       "x": 8,
       "y": 4,
       "facing": 225
@@ -15306,6 +15433,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 8,
       "x": 1,
       "y": 6,
       "facing": 0
@@ -16044,6 +16172,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 0,
       "x": 7,
       "y": 3,
       "facing": 45
@@ -16071,6 +16200,7 @@
       "subsystemDamage": 7,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 1,
       "x": 7,
       "y": 2,
       "facing": 45
@@ -16098,6 +16228,7 @@
       "subsystemDamage": 9,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 2,
       "x": 8,
       "y": 4,
       "facing": 225
@@ -16125,6 +16256,7 @@
       "subsystemDamage": 15,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 3,
       "x": 8,
       "y": 4,
       "facing": 225
@@ -16152,6 +16284,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 4,
       "x": 7,
       "y": 3,
       "facing": 45
@@ -16179,6 +16312,7 @@
       "subsystemDamage": 8,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 5,
       "x": 7,
       "y": 2,
       "facing": 45
@@ -16206,6 +16340,7 @@
       "subsystemDamage": 1,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 6,
       "x": 8,
       "y": 4,
       "facing": 225
@@ -16233,6 +16368,7 @@
       "subsystemDamage": 6,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 7,
       "x": 8,
       "y": 4,
       "facing": 225
@@ -16260,6 +16396,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 8,
       "x": 1,
       "y": 6,
       "facing": 0
@@ -16998,6 +17135,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 0,
       "x": 7,
       "y": 3,
       "facing": 45
@@ -17025,6 +17163,7 @@
       "subsystemDamage": 7,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 1,
       "x": 7,
       "y": 2,
       "facing": 45
@@ -17052,6 +17191,7 @@
       "subsystemDamage": 8,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 2,
       "x": 8,
       "y": 4,
       "facing": 225
@@ -17079,6 +17219,7 @@
       "subsystemDamage": 14,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 3,
       "x": 8,
       "y": 4,
       "facing": 225
@@ -17106,6 +17247,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 4,
       "x": 7,
       "y": 3,
       "facing": 45
@@ -17133,6 +17275,7 @@
       "subsystemDamage": 9,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 5,
       "x": 7,
       "y": 2,
       "facing": 45
@@ -17160,6 +17303,7 @@
       "subsystemDamage": 1,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 6,
       "x": 8,
       "y": 4,
       "facing": 225
@@ -17187,6 +17331,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 7,
       "x": 8,
       "y": 4,
       "facing": 225
@@ -17214,6 +17359,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 8,
       "x": 1,
       "y": 6,
       "facing": 0
@@ -17946,6 +18092,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 0,
       "x": 7,
       "y": 3,
       "facing": 45
@@ -17973,6 +18120,7 @@
       "subsystemDamage": 6,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 1,
       "x": 7,
       "y": 2,
       "facing": 45
@@ -18000,6 +18148,7 @@
       "subsystemDamage": 9,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 2,
       "x": 8,
       "y": 4,
       "facing": 225
@@ -18027,6 +18176,7 @@
       "subsystemDamage": 11,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 3,
       "x": 8,
       "y": 4,
       "facing": 225
@@ -18063,6 +18213,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 4,
       "x": 7,
       "y": 2,
       "facing": 45
@@ -18090,6 +18241,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 5,
       "x": 8,
       "y": 4,
       "facing": 225
@@ -18117,6 +18269,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 6,
       "x": 8,
       "y": 4,
       "facing": 225
@@ -18144,6 +18297,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 7,
       "x": 1,
       "y": 6,
       "facing": 0
@@ -18820,6 +18974,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 0,
       "x": 7,
       "y": 2,
       "facing": 45
@@ -18847,6 +19002,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 1,
       "x": 8,
       "y": 4,
       "facing": 225
@@ -18874,6 +19030,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 2,
       "x": 7,
       "y": 2,
       "facing": 45
@@ -18901,6 +19058,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 3,
       "x": 8,
       "y": 4,
       "facing": 225
@@ -18928,6 +19086,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 4,
       "x": 1,
       "y": 6,
       "facing": 0
@@ -19595,6 +19754,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 0,
       "x": 7,
       "y": 2,
       "facing": 45
@@ -19622,6 +19782,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 1,
       "x": 8,
       "y": 4,
       "facing": 225
@@ -19649,6 +19810,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 2,
       "x": 7,
       "y": 2,
       "facing": 45
@@ -19676,6 +19838,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 3,
       "x": 8,
       "y": 4,
       "facing": 225
@@ -19703,6 +19866,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 4,
       "x": 1,
       "y": 6,
       "facing": 0
@@ -20379,6 +20543,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 0,
       "x": 7,
       "y": 2,
       "facing": 45
@@ -20406,6 +20571,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 1,
       "x": 8,
       "y": 4,
       "facing": 225
@@ -20433,6 +20599,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 2,
       "x": 7,
       "y": 2,
       "facing": 45
@@ -20460,6 +20627,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 3,
       "x": 8,
       "y": 4,
       "facing": 225
@@ -20487,6 +20655,7 @@
       "subsystemDamage": 1,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 4,
       "x": 1,
       "y": 6,
       "facing": 0
@@ -21163,6 +21332,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 0,
       "x": 7,
       "y": 2,
       "facing": 45
@@ -21190,6 +21360,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 1,
       "x": 8,
       "y": 4,
       "facing": 225
@@ -21217,6 +21388,7 @@
       "subsystemDamage": 5,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 2,
       "x": 7,
       "y": 2,
       "facing": 45
@@ -21244,6 +21416,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 3,
       "x": 8,
       "y": 4,
       "facing": 225
@@ -21271,6 +21444,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 4,
       "x": 1,
       "y": 6,
       "facing": 0
@@ -21947,6 +22121,7 @@
       "subsystemDamage": 6,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 0,
       "x": 7,
       "y": 2,
       "facing": 45
@@ -21974,6 +22149,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 1,
       "x": 8,
       "y": 4,
       "facing": 225
@@ -22001,6 +22177,7 @@
       "subsystemDamage": 12,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 2,
       "x": 7,
       "y": 2,
       "facing": 45
@@ -22028,6 +22205,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 3,
       "x": 8,
       "y": 4,
       "facing": 225
@@ -22055,6 +22233,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 4,
       "x": 1,
       "y": 6,
       "facing": 0
@@ -22731,6 +22910,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 0,
       "x": 7,
       "y": 2,
       "facing": 45
@@ -22758,6 +22938,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 1,
       "x": 8,
       "y": 4,
       "facing": 225
@@ -22785,6 +22966,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 2,
       "x": 7,
       "y": 2,
       "facing": 45
@@ -22812,6 +22994,7 @@
       "subsystemDamage": 12,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 3,
       "x": 8,
       "y": 4,
       "facing": 225
@@ -22839,6 +23022,7 @@
       "subsystemDamage": 1,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 4,
       "x": 1,
       "y": 6,
       "facing": 0
@@ -23515,6 +23699,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 0,
       "x": 7,
       "y": 2,
       "facing": 45
@@ -23542,6 +23727,7 @@
       "subsystemDamage": 3,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 1,
       "x": 8,
       "y": 4,
       "facing": 225
@@ -23569,6 +23755,7 @@
       "subsystemDamage": 12,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 2,
       "x": 7,
       "y": 2,
       "facing": 45
@@ -23596,6 +23783,7 @@
       "subsystemDamage": 12,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 3,
       "x": 8,
       "y": 4,
       "facing": 225
@@ -23623,6 +23811,7 @@
       "subsystemDamage": 1,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 4,
       "x": 1,
       "y": 6,
       "facing": 0
@@ -24299,6 +24488,7 @@
       "subsystemDamage": 5,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 0,
       "x": 7,
       "y": 2,
       "facing": 45
@@ -24326,6 +24516,7 @@
       "subsystemDamage": 3,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 1,
       "x": 8,
       "y": 4,
       "facing": 225
@@ -24353,6 +24544,7 @@
       "subsystemDamage": 11,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 2,
       "x": 7,
       "y": 2,
       "facing": 45
@@ -24380,6 +24572,7 @@
       "subsystemDamage": 12,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 3,
       "x": 8,
       "y": 4,
       "facing": 225
@@ -24407,6 +24600,7 @@
       "subsystemDamage": 1,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 4,
       "x": 1,
       "y": 6,
       "facing": 0
@@ -25083,6 +25277,7 @@
       "subsystemDamage": 4,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 0,
       "x": 7,
       "y": 2,
       "facing": 45
@@ -25110,6 +25305,7 @@
       "subsystemDamage": 3,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 1,
       "x": 8,
       "y": 4,
       "facing": 225
@@ -25137,6 +25333,7 @@
       "subsystemDamage": 12,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 2,
       "x": 7,
       "y": 2,
       "facing": 45
@@ -25164,6 +25361,7 @@
       "subsystemDamage": 12,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 3,
       "x": 8,
       "y": 4,
       "facing": 225
@@ -25191,6 +25389,7 @@
       "subsystemDamage": 1,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 4,
       "x": 1,
       "y": 6,
       "facing": 0
@@ -25867,6 +26066,7 @@
       "subsystemDamage": 4,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 0,
       "x": 7,
       "y": 2,
       "facing": 45
@@ -25894,6 +26094,7 @@
       "subsystemDamage": 3,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 1,
       "x": 8,
       "y": 4,
       "facing": 225
@@ -25921,6 +26122,7 @@
       "subsystemDamage": 11,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 2,
       "x": 7,
       "y": 2,
       "facing": 45
@@ -25948,6 +26150,7 @@
       "subsystemDamage": 10,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 3,
       "x": 8,
       "y": 4,
       "facing": 225
@@ -25975,6 +26178,7 @@
       "subsystemDamage": 8,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 4,
       "x": 1,
       "y": 6,
       "facing": 0
@@ -26644,6 +26848,7 @@
       "subsystemDamage": 4,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 0,
       "x": 7,
       "y": 2,
       "facing": 45
@@ -26671,6 +26876,7 @@
       "subsystemDamage": 1,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 1,
       "x": 8,
       "y": 4,
       "facing": 225
@@ -26698,6 +26904,7 @@
       "subsystemDamage": 1,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 2,
       "x": 7,
       "y": 2,
       "facing": 45
@@ -26725,6 +26932,7 @@
       "subsystemDamage": 10,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 3,
       "x": 8,
       "y": 4,
       "facing": 225
@@ -26752,6 +26960,7 @@
       "subsystemDamage": 0,
       "subsystemDestroyed": false,
       "breachDamage": 0,
+      "resolveOrder": 4,
       "x": 1,
       "y": 6,
       "facing": 0

@@ -225,7 +225,8 @@ func _prepare(s: String) -> void:
 					var nodes: Array = fx._active[k].nodes
 					for nd in nodes:
 						if nd is Node3D and is_instance_valid(nd):
-							var extra = nd.get_instance_shader_parameter("beam_intensity") if nd is GeometryInstance3D else null
+							var mat = nd.material_override if nd is GeometryInstance3D else null
+							var extra = mat.get_shader_parameter("beam_intensity") if mat is ShaderMaterial else null
 							print("  job ", k, " kind ", j.kind, " u ", snappedf((view.time - j.start) / j.duration, 0.01), " ", nd.global_position, " scale ", nd.global_basis.get_scale(), " vis ", nd.is_visible_in_tree(), " bi ", extra)
 		"battle-strip", "battle-strip-close":
 			# Motion check: 10 frames 0.25 s of round time apart around the busiest volley, saved from the 3D view as

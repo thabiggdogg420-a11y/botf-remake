@@ -58,5 +58,10 @@ void fragment() {
 	}
 	// R3.5: a close camera sat inside a flashing shell and the frame went white; fade it near the lens and cap it.
 	ALBEDO = min(col * energy * 0.35, vec3(1.2)) * smoothstep(2.0, 18.0, -VERTEX.z);
+#if CURRENT_RENDERER == RENDERER_COMPATIBILITY
+	// Compatibility (the web build) adds this low-energy glow with no HDR lift or glow pass: on black the bubble's peak
+	// was 0.013 against Forward+'s 0.214 (M1 battleplay probe) and it vanished in battle. An sRGB-like curve restores it.
+	ALBEDO = pow(ALBEDO, vec3(1.0 / 2.2));
+#endif
 	ALPHA = 1.0;
 }

@@ -145,13 +145,32 @@ static func material_for(slot: Dictionary, src: Material, hero: Dictionary, root
 	return m
 
 
-## Shows one LOD at a time: SM_<slug> up close, SM_<slug>_LOD1..3 further out, at the distances where a hull
-## `length_units` long shrinks to each LOD's screen size (Unreal's set_lods steps).
+## Reduced LODs kept in the switch: those with at least this share of LOD0's triangles. The glbs' SM_<slug>_LOD1..3 are
+## Blender collapse-decimate copies (blender_hero_ships.py export_gltf, ratio 0.5 / 0.25 / 0.1) made with no UV-seam or
+## normal protection: every one tears the saucer rims and smears the texture across the collapsed seams, and the
+## battle's tactical camera (20+ hull lengths out) showed them, LOD3 at 10% on the 25 hulls big enough to get one.
+## That was Simon's "wonky" Nebula (9 Nov 2026; turntable --lod 0..3 sheets in M1-battleplay). LOD0 is drawn at every
+## distance until a seam-safe LOD chain exists; then lower this floor.
+static var min_lod_ratio := 1.0
+
+## Shows one LOD at a time among those at or above min_lod_ratio: SM_<slug> up close, further LODs further out, at the
+## distances where a hull `length_units` long shrinks to each LOD's screen size (Unreal's set_lods steps). LODs below the
+## floor are hidden. Returns the number of LOD nodes set (shown or hidden).
 static func apply_lods(hull: Node, hero: Dictionary, length_units: float) -> int:
-	var lods: Array = hero.get("lods", [])
-	if lods.size() < 2:
+	var all_lods: Array = hero.get("lods", [])
+	if all_lods.size() < 2:
 		return 0
+	var lods: Array = []
 	var set_count := 0
+	for i in all_lods.size():
+		if i == 0 or float(all_lods[i].get("ratio", 1.0)) >= min_lod_ratio:
+			lods.append(all_lods[i])
+			continue
+		var dropped := _find(hull, str(all_lods[i].get("node", "")))
+		if dropped != null:
+			for gi: GeometryInstance3D in _geometry(dropped):
+				gi.visible = false
+			set_count += 1
 	for i in lods.size():
 		var node := _find(hull, str(lods[i].get("node", "")))
 		if node == null:
