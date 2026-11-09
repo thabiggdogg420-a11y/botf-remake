@@ -527,6 +527,11 @@ static func attach(app: Node) -> void:
 		app.screen_changed.connect(sys._on_screen)
 
 
+## Web: after an empire's audio pck is mounted, reads its cue table (the library only loaded the packs present at boot).
+static func load_empire_pack(empire: String) -> bool:
+	return instance != null and instance.library != null and instance.library.load_pack(empire)
+
+
 static func cue_now(cue_name: String, fac := "", other := "", detail := "") -> void:
 	if instance != null:
 		instance.cue(cue_name, fac, other, detail)

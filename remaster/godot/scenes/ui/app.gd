@@ -71,6 +71,8 @@ func _ready() -> void:
 		await AppLoader.fetch_web_packs(self)   # the web tier only: planets_web.pck beside index.html
 	AppLoader.mount_user_packs()   # asset bundles built by the pack step (planet textures ...)
 	PlanetTextures.reset()
+	if OS.has_feature("web"):
+		await _fetch_empire_audio(1)   # the default empire's audio at start; _enter_game fetches the chosen one
 	BotfAudioSystem.attach(self)   # audio: shares settings, listens to screen changes (music, screen cue)
 	session.connect_core(CoreClient.create("fixture" if forced_backend == "fixture" else "auto"))
 	session.view_changed.connect(_on_view_changed)
@@ -382,10 +384,23 @@ func unit_order_ids(fleet_id: int, task_force_id: int, types: Array = []) -> Arr
 # ---------------------------------------------------------------------------------------------
 # Campaign lifecycle
 # ---------------------------------------------------------------------------------------------
+const _EMPIRE_TOKENS := {1: "fed", 2: "kli", 3: "rom", 4: "car", 5: "fer"}
+var _empire_audio := {}
+
+## Web only: downloads and reads one empire's audio pack (shared audio is already in the main pck). Idempotent.
+func _fetch_empire_audio(player: int) -> void:
+	var tok: String = _EMPIRE_TOKENS.get(player, "")
+	if tok == "" or _empire_audio.has(tok) or not OS.has_feature("web"):
+		return
+	_empire_audio[tok] = true
+	if await AppLoader.fetch_empire_audio(self, tok):
+		BotfAudioSystem.load_empire_pack(tok)
+
 func _enter_game(v: Dictionary, name_: String) -> void:
 	history.clear()
 	save_name = name_
 	_apply_theme(int(v["meta"]["player"]))
+	_fetch_empire_audio(int(v["meta"]["player"]))   # web: not awaited, the campaign starts while the pack downloads
 	session.enter(v)
 	screen = ""
 	goto("galaxy", false)

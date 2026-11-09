@@ -192,7 +192,7 @@ try {
         # Stamp the Windows preset's version fields for the export; the finally block restores the committed file.
         $stamped = $presetsOriginal -replace 'application/file_version="[^"]*"', "application/file_version=`"$version.0`"" `
             -replace 'application/product_version="[^"]*"', "application/product_version=`"$productVersion`"" `
-            -replace 'include_filter="fixtures/\*\.json"', 'include_filter="fixtures/*.json, data/*.pack.json, scripts/audio/pack/*.json"'
+            -replace 'include_filter="fixtures/\*\.json"', 'include_filter="fixtures/*.json, data/*.pack.json, scripts/audio/pack/*.json, scripts/audio/pack/*/*.json"'
         [System.IO.File]::WriteAllText($presets, $stamped)
         New-Item -ItemType Directory -Force -Path (Join-Path $proj 'build\web') | Out-Null
         Set-Content -LiteralPath (Join-Path $proj 'build\VERSION.txt') -Value "BOTF Remastered $productVersion" -Encoding ASCII
