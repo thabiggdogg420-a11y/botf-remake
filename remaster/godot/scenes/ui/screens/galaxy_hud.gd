@@ -175,11 +175,16 @@ func _layers() -> Control:
 	var leg := Lcars.hbox(14)
 	leg.name = "Legend"
 	for item in vm.legend():
-		var sw := Panel.new()
-		sw.add_theme_stylebox_override("panel", Lcars.box(_legend_color(item["color"]), 5, Color.TRANSPARENT, 0, Vector4.ZERO))
-		sw.custom_minimum_size = Vector2(10, 10)
-		sw.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		leg.add_child(sw)
+		# Ships, contacts and stations are drawn on the chart as hull silhouettes and marks, so the legend shows the same marks.
+		var glyph: String = {"Your ships": "ship", "Contacts": "contact", "Station": "starbase"}.get(str(item["label"]), "")
+		if glyph != "":
+			leg.add_child(UiIcon.make(glyph, 18, _legend_color(item["color"])))
+		else:
+			var sw := Panel.new()
+			sw.add_theme_stylebox_override("panel", Lcars.box(_legend_color(item["color"]), 5, Color.TRANSPARENT, 0, Vector4.ZERO))
+			sw.custom_minimum_size = Vector2(10, 10)
+			sw.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+			leg.add_child(sw)
 		leg.add_child(Lcars.label(item["label"], "Muted", 12))
 	col.add_child(leg)
 	return p

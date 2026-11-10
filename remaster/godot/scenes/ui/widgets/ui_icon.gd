@@ -7,7 +7,10 @@ const NAMES := ["credits", "research", "industry", "food", "population", "intel"
 	"fleet", "shield", "attack", "speed", "range", "hull", "build", "colony", "planet", "star", "galaxy", "system", "empire",
 	"fleets", "diplomacy", "database", "treaty", "war", "peace", "trade", "alert", "warn", "good", "info", "clock", "turn",
 	"search", "settings", "save", "menu", "events", "victory", "chronicle", "combat", "close", "plus", "minus", "up", "down",
-	"arrow_right", "lock", "eye", "orders"]
+	"arrow_right", "lock", "eye", "orders", "tech_biotech", "tech_computers", "tech_construction", "tech_energy", "tech_propulsion",
+	"tech_weapons", "ev_plague", "ev_supernova", "ev_rift", "ev_trade", "ev_derelict", "ev_unrest", "ev_breakthrough", "starbase", "contact"]
+## The six research fields in core order (research_screen.gd field index).
+const TECH_FIELDS := ["tech_biotech", "tech_computers", "tech_construction", "tech_energy", "tech_propulsion", "tech_weapons"]
 
 var icon := "info"
 var color := Color.WHITE
@@ -67,10 +70,67 @@ static func draw_icon(ci: CanvasItem, name_: String, r: Rect2, c: Color) -> void
 			L.call([[4, 18], [10, 12], [14, 15], [20, 7]]); L.call([[15, 7], [20, 7], [20, 12]])
 		"down":
 			L.call([[4, 6], [10, 12], [14, 9], [20, 17]]); L.call([[15, 17], [20, 17], [20, 12]])
-		"ship", "combat":
-			L.call([[3, 12], [10, 6], [21, 12], [10, 18], [3, 12]]); L.call([[10, 6], [7, 3]]); L.call([[10, 18], [7, 21]])
+		"ship":
+			ShipGlyph.draw_hull(ci, "saucer", o + Vector2(12, 12) * k, 23.0 * k, 0.0, c, false, true, 0.0)
 		"fleet", "fleets":
-			L.call([[2, 9], [7, 6], [13, 9], [7, 12], [2, 9]]); L.call([[10, 16], [15, 13], [21, 16], [15, 19], [10, 16]])
+			ShipGlyph.draw_hull(ci, "saucer", o + Vector2(10, 7.5) * k, 17.0 * k, 0.0, c, false, true, 0.0)
+			ShipGlyph.draw_hull(ci, "saucer", o + Vector2(14, 16.5) * k, 17.0 * k, 0.0, c, false, true, 0.0)
+		"starbase":
+			ShipGlyph.draw_station(ci, o + Vector2(12, 12) * k, 9.0 * k, c, true)
+		"contact":
+			ShipGlyph.draw_contact(ci, o + Vector2(12, 12) * k, 7.0 * k, c, 0, "")
+		"combat", "tech_weapons":
+			L.call([[3, 10], [13, 10], [19, 12], [13, 14], [3, 14], [3, 10]]); L.call([[3, 10], [1, 7]]); L.call([[3, 14], [1, 17]])
+			L.call([[16, 6], [22, 4]]); L.call([[17, 18], [23, 20]]); L.call([[20, 12], [23, 12]]); L.call([[6, 12], [11, 12]])
+		"tech_biotech":
+			var pa := []
+			var pb := []
+			for n in 13:
+				var yy := 2.0 + n * 20.0 / 12.0
+				pa.append([12.0 + 6.0 * sin(n * 0.55), yy])
+				pb.append([12.0 - 6.0 * sin(n * 0.55), yy])
+			L.call(pa); L.call(pb)
+			for n in [1, 3, 5, 7, 9, 11]:
+				L.call([pa[n], pb[n]])
+		"tech_computers":
+			L.call([[6, 6], [18, 6], [18, 18], [6, 18], [6, 6]]); L.call([[9.5, 9.5], [14.5, 9.5], [14.5, 14.5], [9.5, 14.5], [9.5, 9.5]])
+			for q in [9.0, 12.0, 15.0]:
+				L.call([[q, 3], [q, 6]]); L.call([[q, 18], [q, 21]]); L.call([[3, q], [6, q]]); L.call([[18, q], [21, q]])
+		"tech_construction":
+			L.call([[3, 5], [21, 5], [21, 19], [3, 19], [3, 5]]); L.call([[3, 19], [12, 5], [21, 19]]); L.call([[3, 5], [12, 19], [21, 5]])
+			L.call([[3, 12], [21, 12]])
+		"tech_energy":
+			L.call([[12, 2], [18, 8], [17, 17], [12, 22], [7, 17], [6, 8], [12, 2]]); L.call([[6, 8], [12, 12], [18, 8]]); L.call([[12, 12], [12, 22]])
+		"tech_propulsion":
+			L.call([[2, 9], [13, 8], [18, 12], [13, 16], [2, 15], [2, 9]]); L.call([[5, 12], [13, 12]])
+			ci.draw_arc(P.call(15, 12), 4.5 * k, -1.1, 1.1, 10, c, w * 0.8, true); ci.draw_arc(P.call(15, 12), 8.0 * k, -1.0, 1.0, 12, c, w * 0.8, true)
+			L.call([[2, 4], [9, 4]]); L.call([[2, 20], [9, 20]])
+		"ev_plague":
+			C.call(12, 12, 3.0)
+			for n in 3:
+				var a1 := -PI / 2.0 + TAU * n / 3.0
+				ci.draw_arc(P.call(12 + cos(a1) * 6.0, 12 + sin(a1) * 6.0), 4.8 * k, a1 - 2.4, a1 + 2.4, 12, c, w, true)
+			C.call(12, 12, 10.0)
+		"ev_supernova":
+			D.call(12, 12, 3.0)
+			for n in 8:
+				var a2 := TAU * n / 8.0
+				var r1 := 5.0
+				var r2 := 11.0 if n % 2 == 0 else 8.0
+				L.call([[12 + cos(a2) * r1, 12 + sin(a2) * r1], [12 + cos(a2) * r2, 12 + sin(a2) * r2]])
+		"ev_rift":
+			L.call([[12, 1], [9, 7], [14, 11], [9, 16], [13, 23]])
+			ci.draw_arc(P.call(12, 12), 8.5 * k, 2.2, 4.1, 10, c, w * 0.8, true); ci.draw_arc(P.call(12, 12), 8.5 * k, -0.95, 0.95, 10, c, w * 0.8, true)
+		"ev_trade":
+			L.call([[3, 8], [18, 8]]); L.call([[14, 4], [18, 8], [14, 12]]); L.call([[21, 16], [6, 16]]); L.call([[10, 12], [6, 16], [10, 20]])
+		"ev_derelict":
+			ShipGlyph.draw_hull(ci, "saucer", o + Vector2(12, 12) * k, 20.0 * k, -0.45, c, false, true, 0.0)
+			L.call([[3, 4], [21, 20]])
+		"ev_unrest":
+			C.call(12, 12, 9.5); L.call([[12, 5], [12, 14]]); D.call(12, 18, 1.4)
+		"ev_breakthrough":
+			D.call(12, 12, 2.0); C.call(12, 12, 9.0); ci.draw_arc(P.call(12, 12), 4.5 * k, 0, TAU, 16, c, w * 0.8, true)
+			L.call([[12, 1], [12, 4]]); L.call([[12, 20], [12, 23]]); L.call([[1, 12], [4, 12]]); L.call([[20, 12], [23, 12]])
 		"shield":
 			L.call([[12, 2], [20, 5], [20, 12], [12, 22], [4, 12], [4, 5], [12, 2]])
 		"attack":

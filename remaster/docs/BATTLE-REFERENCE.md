@@ -73,3 +73,32 @@ What the playback and the core would need for a round to play like the footage. 
 6. **Variable weapon recharge per class (R).** The footage shows big ships firing more often than the core's one-shot-per-mount-per-round allows; changing fire rate is a rules change.
 7. **Torpedo spreads from one launcher (R if counted as more shots).** The show fires 4-5 torpedoes per salvo; the core decides projectile counts.
 8. **Camera language (P).** Short cuts (1-3 s) near a firing ship, fleet-wide shots brief; an optional "cinematic camera" mode.
+
+## M1 battlechoreo: what is built (presentation only)
+
+Outcomes stay the core's: hits, damage, order on each target, kills and end poses. Rules calls (coordinator, 10 Nov, recorded in `standing\simon\botf-rulings.md`): pulse volleys, torpedo spreads and recharge stay presentation only.
+
+| Proposal | Built | Where |
+|---|---|---|
+| 1 Per-ship fire clock | Each ship fires on its own seeded cadence (0.4-1.2 s; escorts 0.3-0.55 s bunched into their pass; capitals' many mounts spread evenly over the whole round as sustained fire; a ship that dies this round fires early). At most 4 beams held at once across the battle (a beam waits for one to end), re-applied after every order pass. | `battle_timeline.gd` `_ship_clocks`, `_beam_limit` |
+| 2 Movement inside the round | Escorts fly an attack run timed on their own shots (approach, strafe past the target at about a hull length, break away, come about); cruisers swing to a broadside and slide 1.8-3.2 cells; capitals ease their bow round and creep 1.2-2.2 cells; all change height. Wingmen hold station on the leader's run. Zero at the round's start and from 0.94 of the round on, so every ship ends on the core's cell and facing. | `flown`, `_alive`, `_choreograph` |
+| 3 Pulse bursts (draw) | One core shot = 3-4 pairs, 0.125 s apart; on a hit about a quarter of the later bolts go wide. Damage lands once. | `build` Fire/pulse |
+| 3b Torpedo spreads (draw) | One core shot = a spread by class: escort 1-2, cruiser 2-3, capital 4-5, 0.12 s apart, fanned; earlier tubes spark on arrival, damage lands with the last. | `spread_tubes`, `battle_fx.gd` TORPEDO |
+| 4 Beams cut out and re-fire | 45% of beams: 0.55 s, dark 0.2 s, 0.35 s. Both ends follow the moving ships. | `build` Fire/beam |
+| 5 Reactions | A hull hit of a tenth of the hull or more rolls the ship up to 32 degrees and turns it away up to 24 degrees with a small shove. A killed ship keeps its way on, sinks, rolls and yaws for 1.25 s, venting fire and plasma, then breaks up into the fireball. | `kicks`, `_dying`, `battle_fx.gd` `_fireball` |
+| 8 Camera | Cinematic mode cuts every 1-3 s: over the shooter's shoulder, chasing a torpedo salvo, a fixed-lens fly-by of an escort; every third cut a brief wide. Any camera-mode key takes manual control. | `battle_scene.gd` `_film_shot`, `battle_camera.gd` `_film_pose` |
+
+Still listed for Simon, not built: none new (6 and 7 settled as presentation by the coordinator).
+
+## Footage added in M1 battlechoreo (movement, camera, Romulan)
+
+Frames in `battle-reference\ds9\die-is-cast\strip\` (never committed). `d_2052.png` is 16 s at 4 fps from 2052 s (tile k = 2052 + k/4 s); `overview_1900.png` is one frame per 5 s from 1900 s.
+
+| Measure | Value | Frames |
+|---|---|---|
+| Romulan weapon, DS9 era (Warbird vs Jem'Hadar fighters) | A thin blue-white beam with a soft blue halo from the Warbird's dorsal hull; held ~0.5 s per beam, a second beam 0.25-0.5 s later. Thin: about 1/40 of the Warbird's width. (Our Romulan look is green bolts; this footage says the DS9-era Warbird beam reads blue-white.) | DIC d_2052 tiles 33-35, 40-41, 54-60 |
+| Kill of a small craft | Hit, white flash, then an orange fireball about 2 fighter lengths, holding 1.5-2 s while debris spreads; the hulk is gone inside 0.25 s. | DIC d_2052 tiles 34-38, 42-46 |
+| Pass distance | A Jem'Hadar fighter strafes the Warbird within about one fighter length of its dorsal hull and is destroyed in the pass. | DIC d_2052 tiles 46-51 |
+| Shot length in a battle | One shot held 5.25 s (tiles 32-53) over a fighter pass; the next 2 s and more. Space shots in this episode alternate with bridge interiors (overview_1900: 10 of 128 tiles are space). Our 1-3 s cuts are shorter than this episode's; DS9 season 6-7 fleet battles (SoA, measured before) cut faster. | DIC d_2052, overview_1900 |
+
+Not reached this pass (scanned but the colour scan picked interiors): Call to Arms, A Time to Stand, the Voyager and TNG episodes, Nemesis. The keyframe colour scanner (`bc_scan.py`, kept outside the repo) needs a better space-shot test before it is useful.

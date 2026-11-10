@@ -792,6 +792,8 @@ func _cinematic_shot(_delta: float, shot: Dictionary, time: float) -> Array:
 	var vsize := get_viewport().get_visible_rect().size if is_inside_tree() else Vector2.ZERO
 	if vsize.y > 0.0:
 		aspect = vsize.x / vsize.y
+	if shot.has("film"):
+		return _film_pose(shot, key, time)
 	if key != _shot_key:
 		var was_tactical := _shot_key.begins_with("wide") or _shot_key == "" or _cut_pose.is_empty()
 		_shot_key = key
@@ -818,6 +820,56 @@ func _cinematic_shot(_delta: float, shot: Dictionary, time: float) -> Array:
 		fov = 48.0
 		return vp
 	return _tactical
+
+
+## Battlechoreo film cuts (BattleScene._film_shot): [eye, look] recomputed every frame so the lens rides with the
+## moving ships. A new key is a hard cut. behind: over the shooter's shoulder toward its target; torpedo: chasing the
+## salvo onto the target; flyby: a fixed lens ahead of the escort's path, panning as it passes.
+var _film_eye := Vector3.ZERO
+
+func _film_pose(shot: Dictionary, key: String, time: float) -> Array:
+	var a: Vector3 = shot.subject
+	var b: Vector3 = shot.get("other", a)
+	var ra := maxf(float(shot.get("subject_size", 10.0)) * 0.5, 3.0)
+	var rb := maxf(float(shot.get("other_size", 10.0)) * 0.5, 3.0)
+	var to_b := b - a
+	if to_b.length() < 1e-3:
+		to_b = shot.get("subject_fwd", Vector3(1, 0, 0))
+	var dir := to_b.normalized()
+	var side := dir.cross(Vector3.UP).normalized()
+	if side.length() < 0.5:
+		side = Vector3(0, 0, 1)
+	var sgn := 1.0 if (hash(key) & 1) == 0 else -1.0
+	var fresh := key != _shot_key
+	if fresh:
+		_shot_key = key
+		_shot_start = time
+		_cut = true
+		_cut_pose = []
+	var eye: Vector3
+	var look: Vector3
+	match str(shot.film):
+		"torpedo":
+			var p: Vector3 = shot.get("torp", a)
+			var d := (b - p)
+			var dn := d.normalized() if d.length() > 1e-3 else dir
+			var s2 := dn.cross(Vector3.UP).normalized()
+			eye = p - dn * maxf(rb * 1.6, 14.0) + s2 * sgn * maxf(rb * 0.7, 6.0) + Vector3.UP * maxf(rb * 0.5, 4.0)
+			look = p.lerp(b, 0.7)
+			fov = 50.0
+		"flyby":
+			if fresh or _film_eye == Vector3.ZERO:
+				var fwd: Vector3 = shot.get("subject_fwd", dir)
+				_film_eye = a + fwd * ra * 9.0 + fwd.cross(Vector3.UP).normalized() * sgn * ra * 3.5 + Vector3.UP * ra * 1.2
+			eye = _film_eye
+			look = a.lerp(b, 0.15)
+			fov = 42.0
+		_:
+			eye = a - dir * ra * 3.4 + side * sgn * ra * 1.3 + Vector3.UP * ra * 1.0
+			look = a.lerp(b, 0.65)
+			fov = 46.0
+	eye = _clear_of_hulls(eye, look)
+	return [eye, look]
 
 
 ## The planet vista: from a little beside and above the fleet, looking back past it so the fleet sits low in the
