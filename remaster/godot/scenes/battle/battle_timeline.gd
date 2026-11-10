@@ -85,11 +85,14 @@ class Config:
 	var fire_to := 0.84            ## ...and the last closes here (torpedoes may still be in flight after it).
 	var flight_to := 0.94          ## The plotted moves are flown from 0 to here.
 	var cruise_accel := 0.22       ## Share of a flight spent speeding up, and again slowing down.
-	var launch_span := 0.6         ## Launches (and beam / bolt impacts) fall in this first share of their window.
+	var launch_span := 1.0         ## Launches (and beam / bolt impacts) fall in this share of their window...
+	var window_lead := 0.9         ## ...which opens this many window widths early (clamped to the first window), so one
+	                               ## fire tick's shots overlap the last one's: in the show a fleet's fire ripples, 2-5
+	                               ## ships at once, never a whole line on one beat (M1 weaponfx, BATTLE-REFERENCE.md).
 	var busy_weight := 0.5         ## Extra window width per shot in a tick: busy ticks get more of the round.
 	var idle_weight := 0.3         ## Width of a fire tick with no launches (a busy tick has 1 + busy_weight·n).
 	var beam_reach_seconds := 0.12 ## A beam reaches its target this long after it lights.
-	var beam_hold_seconds := 1.1   ## Phasers hold (and sweep) this long.
+	var beam_hold_seconds := 0.9   ## Phasers hold (and sweep) this long (footage: 0.4-1.5 s, BATTLE-REFERENCE.md).
 	var bolt_gap_seconds := 0.12   ## Disruptor / pulse bolts in one burst.
 	var bolt_flight_seconds := 0.34
 	var torpedo_stagger_seconds := 0.16 ## Tubes in one spread.
@@ -482,13 +485,14 @@ static func weapon_color(weapon: String, owner_faction: int) -> Color:
 		"BioEnergy": return Color(0.8, 1.0, 0.2)
 		"TemporalWeapon": return Color(0.8, 0.3, 1.0)
 		"PhotonTorpedo", "PhotonicTorpedo", "Torpedo":
-			# Each empire its own torpedo colour (coordinator, 8 Nov): Federation red-orange, Klingon green-gold.
+			# Each empire its own torpedo colour (coordinator, 8 Nov): Federation orange-red, Klingon red (M1 weaponfx: the
+			# show's Klingon torpedoes are red, and lime read the same as their green disruptor bolts).
 			match owner_faction:
-				2: return Color(0.75, 1.0, 0.15)
+				2: return Color(1.0, 0.3, 0.12)
 				3: return Color(0.2, 1.0, 0.5)
 				4: return Color(1.0, 0.8, 0.1)
 				5: return Color(0.6, 0.4, 1.0)
-			return Color(1.0, 0.25, 0.08)
+			return Color(1.0, 0.55, 0.2) # footage WotW 4891 s: an orange star, near-white core; (1.0, 0.25, 0.08) read red-pink
 		"QuantumTorpedo": return Color(0.4, 0.65, 1.0)
 		"PlasmaTorpedo": return Color(0.25, 1.0, 0.4)
 		"SpatialTorpedo": return Color(1.0, 0.55, 0.2)
@@ -1146,6 +1150,12 @@ static func _schedule(tl: BattleTimeline, events: Array, info_by_id: Dictionary,
 		var n := maxi(1, int(_num(e, "projectiles", 1)))
 		var w0: float = W[tick]
 		var ww: float = W[tick + 1] - W[tick]
+		if not ram and tick > 0:
+			# Presentation only: the window opens early so ticks overlap (window_lead); the core's tick order still
+			# holds on each target through the order pass below.
+			var lead := minf(cfg.window_lead * ww, w0 - W[0])
+			w0 -= lead
+			ww += lead
 		var jit := unit_hash(fid * 64 + maxi(0, mount) + 1, 7001 + i)
 		var f := 0.5 * cfg.launch_span if ram else _aim_fraction(tl, fid, tgt, _mount_arc(info_by_id.get(fid, {}), mount), w0, ww, jit, cfg)
 		var launch := w0 + ww * f
