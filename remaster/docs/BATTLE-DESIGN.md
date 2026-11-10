@@ -51,3 +51,13 @@ Simon, 9 Nov 2026, verbatim: "the torpedoes still never got fixed, and all ships
 - P built: **impacts.** The shield bubble flares at the facing hit; hull hits throw sparks, debris and a venting plume; a damaged subsystem sparks at its spot.
 - P built: **1x, 2x and SKIP** on the camera bar.
 - P built: **web and Compatibility parity.** Effect nodes (beams, flares, torpedo heads, shock rings) carry a material each with plain uniforms. With instance uniforms, torpedo heads and impact flares spawned mid-battle drew nothing in the web build while the plain-uniform trails beside them drew; with plain uniforms they draw. Compatibility also gives instance uniforms a single 4,096-slot pool that the ships' nav lights overrun at 24v24 (2 lights miss a slot). The additive effect shaders and the shield also lift their output with an sRGB-like curve under Compatibility, where it was about 16 times dimmer on black than Forward+ and the shield bubble vanished.
+
+## M1 weaponfx build notes (10 Nov 2026)
+Simon, 9 Nov 2026, verbatim: "torpedoes still havent been done properly, phaser either, despite having proper benchmarks to work towards". The benchmark is the DS9 Dominion War battles (ruling, 8 Nov). The spec is `docs/WEAPON-FX.md`.
+
+- P built: **phasers** draw as a camera-facing ribbon (`shaders/weapon_beam.gdshader`): 1.3 wu wide with an 18 px floor applied per vertex, a warm white core, an amber body and a red-orange glow into the bloom, crackle and flicker. A 0.3 s charge runs along a strip on the hull to the emitter before the beam lights. On a shield the contact point splashes and ripples the bubble every 0.25 s; on the hull it burns with a spark stream.
+- P built: **torpedoes** are a pulsing spiked star (8 thin twinkling spikes) with a screen-horizontal lens streak, a short motion smear and a launch flash. A hit makes a big flash and an expanding shockwave ring. Federation photon red-orange, Klingon deep red (was lime), quantum blue-white with a ring halo, Romulan plasma a churning green ball.
+- P built: **bolts** (Klingon and Romulan disruptors) are capsules with a bright head, at least 13 by 60 px. Cardassian beams twist with two strands; polarons are violet with a stutter.
+- **Outcomes, timing and the core are unchanged.** Only the look changed: the timeline's jobs and times are the same; the phaser charge plays in the 0.3 s before a beam's start.
+- Glare: beams converging on one target dim their last stretch to 1/sqrt(n). Close-ups of ten-beam focus fire and of a kill explosion still go over 1% pure white (measured 1.5 to 4%); wide and salvo shots stay under 0.6%.
+- Proof tool: `scenes/battle/tools/weaponfx_capture.gd` (close-ups, frame strips and `--fps`).
