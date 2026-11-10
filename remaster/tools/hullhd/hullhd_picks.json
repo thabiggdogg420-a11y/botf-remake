@@ -306,6 +306,10 @@
   "ship.rom.dderidex": [
    "DS9FXWarbird",
    "12.6k tris vs 10.0k, same 1024 native, cleaner teal skin"
+  ],
+  "ship.fed.excelsior": [
+   "ExcelsiorII",
+   "in-engine retest: 4096 px native, 40.1k tris, detailed modern hull, lit correctly (the dark review render was an unlit-render artefact)"
   ]
  },
  "selection_note": "10 Nov 2026, Simon: pick the best-looking library variant per class; stats alone do not decide. Reviewed by the library review/iso renders (families: Fed, Klingon, Romulan, Cardassian, Ferengi, Dominion, Borg, Breen, Hirogen, Kazon). 'stock kept' = nothing better on disk. Rejected despite stats: ExcelsiorII (4096, dark grey, off-model colour), NeoConstitution (2048, dark, not TOS/refit look), JLSYOHVoyager (broken white texture), Peregrine__km and Peregrine (re-skinned Nebula), MirandaCVL/KTinga/KD7CVL/Galor/Keldon review renders dark so unverified in review (stock builds render fine in-engine), DJRaptor (Fed reskin), DS9FXBirdOfPrey (Fed mesh).",
@@ -345,12 +349,6 @@
    "Warbird (10.0k / 1024)",
    "DS9FXWarbird (12.6k / 1024)",
    "more detail, cleaner skin"
-  ],
-  [
-   "ship.fed.excelsior",
-   "Excelsior (23.8k / 1024)",
-   "stock kept",
-   "ExcelsiorII 4096 renders dark grey, wrong palette"
   ],
   [
    "ship.fed.constitution",
@@ -417,6 +415,45 @@
    "Marauder, Merchantman",
    "stock kept (stand-ins)",
    "only Ferengi-looking hulls on disk"
+  ],
+  [
+   "ship.fed.excelsior",
+   "Excelsior (23.8k / 1024)",
+   "ExcelsiorII (40.1k / 4096)",
+   "in-engine retest 10 Nov: lit hull is detailed grey-blue, good; earlier rejection came from an unlit review render"
+  ],
+  [
+   "ship.fed.nebula (material)",
+   "metallic 0.55",
+   "metallic 0.08",
+   "retest: port-rim glare is specular from the uniform 0.55 metallic on a near-white hull. In-engine starboard frames: 0.55 strong glare, 0.25 about half, 0.05 nearly none. 0.08 shipped"
+  ],
+  [
+   "ship.fed.constitution",
+   "Constitution",
+   "stock kept (retest)",
+   "NeoConstitution renders fine in-engine but is a different stylised hull, not the TOS Constitution"
+  ],
+  [
+   "ship.fed.miranda",
+   "Miranda",
+   "stock kept (retest)",
+   "MirandaCVL renders fine in-engine but is a redesigned carrier variant, not a recognisable Miranda"
+  ],
+  [
+   "ship.kli.ktinga / ship.kli.d7",
+   "KTinga, K_TOS_D7",
+   "stock kept (retest)",
+   "KTingaCVL is the same mesh and tex as KTinga; KD7CVL is a K'Tinga hull (wrong class for D7); D7TOS equal tex, no gain"
+  ],
+  [
+   "ship.car.galor / ship.car.keldon",
+   "Galor, Keldon",
+   "stock kept (retest)",
+   "GalorCVL identical to Galor; DS9FXGalor/DS9FXKeldon and the BC-Aftermath Keldon are 0.8k-1.2k tris at 512 px: richer colour but far less geometry. Colour of the stock pair is washed out cream: open question"
   ]
- ]
+ ],
+ "metallic": {
+  "ship.fed.nebula": 0.08
+ }
 }

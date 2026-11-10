@@ -91,10 +91,10 @@ for key, (bc, role, note) in sorted(targets.items()):
         if e:
             maps[m["name"]] = e
     pk = picks.get(key, {})
-    base = key[:-2] if key.endswith("_t") else key
+    base = re.sub(r"_t\d*$", "", key)
     length = canon.get(base) or manifest.get(base, {}).get("lengthMeters") or pk.get("lengthMeters")
     s = {"key": key, "bcShip": bc, "role": role, "note": note, "source": "%s/SM_%s.fbx" % (src, bc), "forward": "+X", "up": "+Z",
-         "lengthMeters": length, "metallic": pk.get("metallic", 0.55), "bcMaps": maps, "maxTex": a.tex,
+         "lengthMeters": length, "metallic": mine.get("metallic", {}).get(re.sub(r"_t\d*$", "", key), pk.get("metallic", 0.55)), "bcMaps": maps, "maxTex": a.tex,
          "hdMaps": hd, "oneXMaps": one}
     for extra in ("bcTint", "variant", "maxTriangles"):
         if extra in pk and role == "rebuild":
