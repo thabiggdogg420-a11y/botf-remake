@@ -42,7 +42,7 @@ void fragment() {
 	float core_r = torp_style == 1 ? 0.16 : (torp_style == 2 ? 0.17 : 0.13);
 	float core = 1.0 - smoothstep(core_r * 0.55, core_r, r);
 	// Two-tone glow: a warm inner glow round the core, then the weapon colour further out.
-	float glow = exp(-r * 6.0 / pulse) * rim; // footage WotW 4891: a tight halo, the spikes carry the size
+	float glow = exp(-r * (torp_style == 0 ? 4.2 : 6.0) / pulse) * rim; // battlechoreo compare 02: a soft round halo
 	float inner = exp(-r * 11.0 / pulse);
 	vec3 tint = torp_color.rgb;
 	vec3 warm = mix(tint, vec3(1.0, 0.82, 0.55), torp_style == 1 ? 0.3 : 0.55);
@@ -60,9 +60,9 @@ void fragment() {
 	float fi = floor(k + 0.5);
 	float off = (k - fi) * 6.2831853 / n;
 	float h = hash1(fi + ph * 13.0);
-	float slen = torp_style == 0 ? 0.85 + 0.15 * h : 0.55 + 0.45 * h; // long glints to the sprite edge
+	float slen = torp_style == 0 ? 0.5 + 0.12 * h : 0.55 + 0.45 * h; // battlechoreo compare 02: short flared spikes
 	float twinkle = 0.75 + 0.25 * sin(t * (9.0 + 6.0 * h) + fi * 1.7 + ph);
-	float thin = torp_style == 1 ? 0.02 : 0.034;
+	float thin = torp_style == 1 ? 0.02 : (torp_style == 0 ? mix(0.09, 0.02, clamp(r / 0.55, 0.0, 1.0)) : 0.034); // photon: flared at the base
 	float spike = exp(-abs(r * sin(off)) / thin) * (1.0 - smoothstep(0.0, slen, r)) * twinkle * rim;
 	spike *= torp_style == 2 ? 0.35 : 1.0;
 	// The lens streak: screen-horizontal (it does not turn), the full width of the sprite.
