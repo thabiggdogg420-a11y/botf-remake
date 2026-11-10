@@ -2,12 +2,14 @@ class_name ShipIcons
 extends RefCounted
 ## Baked ship pictures: LocalAssets/ship_icons/<fac>_<class>_<view>.png (256 px) and ..._<view>_64.png, written by
 ## godot/tools/bake_ship_icons.gd from the hero models. LocalAssets is third-party-derived and never committed, so the
-## icons are found at run time, in the same order as the battle manifests:
-##   $BOTF_SHIP_ICONS (a folder; "none" hides every baked icon and shows the vector fallback), then
+## packaged game reads them from ship_icons_desktop.pck (tools/build_ship_icons.py; AppLoader mounts it from <exe dir>/packs or
+## user://packs, files under res://assets/ship_icons/). The disk folders are the dev fallback, looked up in this order:
+##   $BOTF_SHIP_ICONS (a folder; "none" hides every baked icon and shows the vector fallback), then the mounted pack, then
 ##   dir of $BOTF_RESOLVED_MANIFEST, <exe dir>/LocalAssets, res://../LocalAssets, res://../game/LocalAssets (each + /ship_icons).
 ## Views: "iso" (three-quarter top view) and "top" (clean top-down, bow to the right).
 
 const FAC := ["", "fed", "kli", "rom", "car", "fer"]
+const PACK_DIR := "res://assets/ship_icons"
 
 static var _tex := {}      ## path -> Texture2D or null
 static var _dir := ""
@@ -53,11 +55,19 @@ static func folder() -> String:
 	_dir = ""
 	if OS.has_feature("web") or OS.get_environment("BOTF_SHIP_ICONS").to_lower() == "none":
 		return _dir
+	if OS.get_environment("BOTF_SHIP_ICONS") == "" and AppLoader.exists(PACK_DIR + "/_pack.txt"):
+		_dir = PACK_DIR
+		return _dir
 	for d in dirs():
 		if DirAccess.dir_exists_absolute(d):
 			_dir = d
 			break
 	return _dir
+
+## Where the icons come from: "pack" (ship_icons_desktop.pck), "disk" (a dev folder) or "none" (the vector fallback is drawn).
+static func source() -> String:
+	var f := folder()
+	return "none" if f == "" else ("pack" if f == PACK_DIR else "disk")
 
 ## Test hook: forget the cached folder and textures (after changing BOTF_SHIP_ICONS).
 static func reset() -> void:
@@ -83,7 +93,11 @@ static func texture(owner: Variant, klass: String, view: String = "iso", px: int
 	if _tex.has(path):
 		return _tex[path]
 	var t: Texture2D = null
-	if FileAccess.file_exists(path):
+	if base == PACK_DIR:
+		var pimg := AppLoader.image(path, 1024)
+		if pimg != null:
+			t = ImageTexture.create_from_image(pimg)
+	elif FileAccess.file_exists(path):
 		var img := Image.load_from_file(path)
 		if img != null and not img.is_empty():
 			img.generate_mipmaps()
