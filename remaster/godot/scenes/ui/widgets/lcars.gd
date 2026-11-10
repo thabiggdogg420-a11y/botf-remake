@@ -563,10 +563,15 @@ class EmblemView extends Control:
 	var empire: Variant = 0
 	var tint := Color.WHITE
 	var bg: Variant = null
+	var style := "auto"  ## "seal" draws the Federation's UFP seal (other powers keep their mark)
 	func _ready() -> void:
 		mouse_filter = Control.MOUSE_FILTER_IGNORE
 	func _draw() -> void:
-		Lcars.draw_emblem(self, empire, size / 2.0, min(size.x, size.y), tint, false, bg)
+		if style == "seal":
+			var s: float = min(size.x, size.y)
+			Insignia.draw(self, empire, Rect2(size / 2.0 - Vector2(s, s) / 2.0, Vector2(s, s)), tint, "seal", bg)
+		else:
+			Lcars.draw_emblem(self, empire, size / 2.0, min(size.x, size.y), tint, false, bg)
 
 # ---------------------------------------------------------------------------------------------
 # Layout components shared by the screens

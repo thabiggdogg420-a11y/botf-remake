@@ -22,6 +22,23 @@ static func make(owner: int, klass_: String, px: float, view_: String = "iso", t
 	p.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	return p
 
+static var _used := {}
+
+## The part of a baked icon that is not transparent (cached per texture), grown a little so edges and glow stay in.
+static func _used_rect(tex: Texture2D) -> Rect2:
+	var id := tex.get_instance_id()
+	if not _used.has(id):
+		var full := Rect2(Vector2.ZERO, tex.get_size())
+		var img := tex.get_image()
+		var r := full
+		if img != null and not img.is_empty():
+			var u := Rect2(img.get_used_rect())
+			if u.size.x > 4.0 and u.size.y > 4.0:
+				var pad := maxf(u.size.x, u.size.y) * 0.03
+				r = u.grow(pad).intersection(full)
+		_used[id] = r
+	return _used[id]
+
 func _draw() -> void:
 	if plate:
 		draw_rect(Rect2(Vector2.ZERO, size), Color(Lcars.BG2, 0.6))
@@ -30,8 +47,12 @@ func _draw() -> void:
 	var s := minf(size.x, size.y)
 	var tex := ShipIcons.texture(owner_id, klass, view, 256 if s > 72.0 else 64, asset_key)
 	if tex != null:
-		var side := s if not plate else s * 0.96
-		draw_texture_rect(tex, Rect2((size - Vector2(side, side)) / 2.0, Vector2(side, side)), false)
+		# The picture fills its box: the empty margin around the hull is cropped away.
+		var src := _used_rect(tex)
+		var box := size if not plate else size * 0.96
+		var k := minf(box.x / src.size.x, box.y / src.size.y)
+		var dst := src.size * k
+		draw_texture_rect_region(tex, Rect2((size - dst) / 2.0, dst), src)
 		return
 	var fam := ShipGlyph.family_for(owner_id, klass)
 	var len_px := minf(size.x * 0.86, size.y * 1.5) if plate else s * 0.9

@@ -73,13 +73,13 @@ func _row(u: Dictionary, active: bool) -> Control:
 		r.add_child(cb)
 	else:
 		r.add_child(Lcars.badge("TF", "secondary"))
-	var b := Lcars.row_button(active, 46)
+	var b := Lcars.row_button(active, 66)
 	b.name = "FleetRow%d" % int(lead["id"])
 	b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	if active:
 		b.add_theme_stylebox_override("normal", Lcars.box(Color(Lcars.accent(), 0.22), 12, Lcars.accent(), 1))
 	var inner := Lcars.row_inner(b, 12)
-	inner.add_child(ShipPicture.make(int(lead.get("owner", app.player())), ShipGlyph.class_of(lead), 34, "iso"))
+	inner.add_child(ShipPicture.make(int(lead.get("owner", app.player())), ShipGlyph.class_of(lead), 58, "iso"))
 	var nm := Lcars.vbox(-2)
 	nm.alignment = BoxContainer.ALIGNMENT_CENTER
 	nm.add_child(Lcars.label(str(tf["name"]) if not tf.is_empty() else str(lead["name"]), "", 15, Lcars.TEXT))
@@ -132,7 +132,7 @@ func _detail(u: Dictionary) -> Control:
 	hero.klass = ShipGlyph.class_of(lead)
 	hero.view = "iso"
 	hero.color = Lcars.owner_color(app.player())
-	hero.custom_minimum_size = Vector2(0, 210)
+	hero.custom_minimum_size = Vector2(0, 260)
 	hero.tooltip_text = "%s %s, hull picture." % [lead.get("designClass", ""), lead.get("designName", lead["className"])]
 	b.add_child(hero)
 	if tf.is_empty() and lead.get("roster") is Dictionary:

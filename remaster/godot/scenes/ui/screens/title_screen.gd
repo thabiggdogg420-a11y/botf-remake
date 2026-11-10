@@ -26,6 +26,9 @@ func refresh() -> void:
 	root.position = Vector2(size.x * 0.09, size.y * 0.16)
 	root.custom_minimum_size = Vector2(620, 0)
 	add_child(root)
+	var crest: Variant = Lcars.emblem(title_empire(), 104, Lcars.owner_color(title_empire()))
+	crest.style = "seal"
+	root.add_child(crest)
 	var emblems := Lcars.hbox(14)
 	for id in range(1, 6):
 		emblems.add_child(Lcars.emblem(id, 30))

@@ -109,7 +109,7 @@ func _header(c: Dictionary) -> Control:
 	tb.add_child(Lcars.caption("Colony %d of %d · %s" % [int(pos[0]) + 1, count, _sector()]))
 	var badges := Lcars.hbox(6)
 	var gov := str(c["governor"]["workforce"])
-	badges.add_child(Lcars.badge("Governor " + ("manual" if gov == "Manual" else gov), "secondary" if gov != "Manual" else "dim"))
+	badges.add_child(Lcars.badge(TrekText.term(app.player(), "governor", "Governor") + " " + ("manual" if gov == "Manual" else gov), "secondary" if gov != "Manual" else "dim"))
 	if int(c["economy"]["foodDeficit"]) > 0:
 		badges.add_child(Lcars.badge("Food short", "alert"))
 	if not (c.get("building") is Dictionary):
@@ -308,7 +308,7 @@ func apply_workers() -> void:
 
 func _governor(c: Dictionary) -> Control:
 	var g: Dictionary = c["governor"]
-	var f := Lcars.frame("Governor", "automation", "secondary", "settings")
+	var f := Lcars.frame(TrekText.term(app.player(), "governor", "Governor"), "automation", "secondary", "settings")
 	var b := Lcars.body(f)
 	for which in ["workforce", "queue"]:
 		var row := Lcars.hbox(4)

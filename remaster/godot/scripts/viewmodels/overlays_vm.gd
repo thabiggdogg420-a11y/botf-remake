@@ -22,6 +22,17 @@ func briefing() -> Variant:
 			session.briefing = b
 	return b
 
+## The briefing's events as the empire's own log (scripts/trek_text.gd): each entry keeps the core's line in "text" and carries
+## the empire's wording in "voice". Also adds the lines the core leaves to the UI (construction complete, food, treasury).
+func log_entries() -> Array:
+	var b: Variant = briefing()
+	if not b is Dictionary:
+		return []
+	var names := {}
+	for c in view().get("colonies", []):
+		names[int(c["systemId"])] = str(c["name"])
+	return TrekText.log_entries(player(), b, {"own_name": str(view()["meta"].get("playerName", "")), "sysnames": names})
+
 ## Briefing event categories in display order (known first, then any others as they appear).
 static func categories(events: Array) -> Array:
 	var cats := []

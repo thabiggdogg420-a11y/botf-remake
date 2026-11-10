@@ -54,7 +54,8 @@ func _draw() -> void:
 		for k in 8:
 			var rr: float = min(size.x, size.y) * (0.62 - k * 0.06)
 			draw_circle(c, rr, Color(col, 0.05 + k * 0.012))
-		Lcars.draw_emblem(self, empire, c - Vector2(0, size.y * 0.04), min(size.x, size.y) * 0.56, Color(col.lightened(0.15), 0.92))
+		var ems: float = min(size.x, size.y) * 0.56
+		Insignia.draw(self, empire, Rect2(c - Vector2(0, size.y * 0.04) - Vector2(ems, ems) / 2.0, Vector2(ems, ems)), Color(col.lightened(0.15), 0.92), "seal" if int(empire) == 1 and ems >= 70.0 else "auto")
 		for y in range(0, int(size.y), 4):
 			draw_line(Vector2(4, y), Vector2(size.x - 4, y), Color(0, 0, 0, 0.18), 1.0)
 	if live and not UiTokens.reduced_motion:
