@@ -350,6 +350,9 @@ func stage_rect() -> Rect2:
 		return Rect2(Vector2.ZERO, size)
 	return Rect2(Vector2(RAIL_W + 14, TOP_H + 4), size - Vector2(RAIL_W + 14, TOP_H + 4))
 
+func _exit_tree() -> void:
+	BattleAssets.wait_for_loads() # a hull still converting on a worker thread hangs the process at exit
+
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_RESIZED and _chrome:
 		_build_chrome()

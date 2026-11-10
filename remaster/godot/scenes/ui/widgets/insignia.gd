@@ -183,6 +183,16 @@ static func _blade(c: Vector2, ang: float, L: float, bw: float, curl: float) -> 
 	var right := _quad(tip, c + d * L * 0.5 + n * (curl * 0.2 - bw * 0.9), c - n * bw, 12)
 	return _join([left, right])
 
+## Borg glyph helpers: coordinates traced from a 540 x 780 px reference crop, mapped into the 0..100 box (height 100, x stretched a little so the gaps survive at menu size, centred on x 50).
+static func _bpt(p: Array) -> Vector2:
+	return Vector2(50.0 + (float(p[0]) - 247.0) * 0.19, (float(p[1]) - 35.0) * 0.147)
+
+static func _bp(a: Array, b: Array, c: Array, d: Array) -> PackedVector2Array:
+	return _bez(_bpt(a), _bpt(b), _bpt(c), _bpt(d), 12)
+
+static func _bp_ellipse(cx: float, cy: float, rx: float, ry: float) -> PackedVector2Array:
+	return _ellipse(_bpt([cx, cy]), rx * 0.19, ry * 0.147, 0.0, 36)
+
 # ---------------------------------------------------------------------------------------------
 # The marks
 # ---------------------------------------------------------------------------------------------
@@ -190,23 +200,19 @@ static func _build(key: String, small: bool) -> Array:
 	var o: Array = []
 	match key:
 		"federation":
-			# TNG/DS9 combadge: the Starfleet delta (swept arrowhead, concave trailing edge, centre crease) laid over a
-			# horizontal oval. The oval is filled; the delta is cut free of it by a halo.
-			var t := Vector2(50, 0)
-			var r_ := Vector2(74, 88)
-			var l_ := Vector2(26, 88)
-			var n_ := Vector2(50, 70)
-			var delta := _join([_bez(t, Vector2(56, 30), Vector2(70, 60), r_), _bez(r_, Vector2(70, 84), Vector2(60, 76), n_),
-				_bez(n_, Vector2(40, 76), Vector2(30, 84), l_), _bez(l_, Vector2(30, 60), Vector2(44, 30), t)])
+			# TNG/DS9 combadge: the Starfleet delta, a tall straight-sided arrowhead with a notch cut up into its foot and a crease
+			# down one face, standing in front of a horizontal oval. The delta is the mark: a halo cuts it free of the oval.
+			var delta := _poly([[50, 0], [88, 100], [50, 66], [12, 100]])
 			if small:
-				o.append(["f", _ellipse(Vector2(50, 72), 50, 22, 0.0, 40)])
-				o.append(["h", delta, 11.0])
+				o.append(["f", _ellipse(Vector2(50, 78), 50, 17, 0.0, 36)])
+				o.append(["h", delta, 12.0])
 				o.append(["f", delta])
 			else:
-				o.append(["f", _ellipse(Vector2(50, 72), 50, 22, 0.0, 48)])
-				o.append(["h", delta, 9.0])
+				o.append(["S", _ellipse(Vector2(50, 70), 49, 24, 0.0, 48), 5.0])
+				o.append(["h", delta, 10.0])
 				o.append(["f", delta])
-				o.append(["x", _bez(Vector2(50, 16), Vector2(47, 36), Vector2(49, 56), n_ + Vector2(0, -3)), 2.8])
+				o.append(["x", _poly([[50, 10], [56, 50]]), 2.4])
+				o.append(["c", _poly([[50, 82], [64, 100], [36, 100]])])
 		"ufp":
 			# United Federation of Planets seal: a starfield disc inside a ring, held in two laurel branches.
 			o.append(["S", _circle(Vector2(50, 50), 32.0, 40), 3.2])
@@ -308,16 +314,23 @@ static func _build(key: String, small: bool) -> Array:
 				o.append(["f", _poly([[34, 44], [37, 53], [46, 56], [37, 59], [34, 68], [31, 59], [22, 56], [31, 53]])])
 				o.append(["s", _poly([[12, 56], [20, 56]]), 2.6])
 		"borg":
-			# Collective glyph: a tall ovoid, three slits in its crown, nested arches below.
-			o.append(["f", _ellipse(Vector2(50, 50), 31, 50, 0.0, 48)])
-			if small:
-				o.append(["x", _poly([[50, 10], [50, 44]]), 6.0])
-				o.append(["x", _join([_bez(Vector2(36, 92), Vector2(34, 60), Vector2(44, 52), Vector2(50, 52)), _bez(Vector2(50, 52), Vector2(56, 52), Vector2(66, 60), Vector2(64, 92))]), 5.0])
-			else:
-				for xs in [36.0, 50.0, 64.0]:
-					o.append(["x", _bez(Vector2(xs, 46), Vector2(xs - 1.5, 30), Vector2(xs - 1.5, 18), Vector2(xs, 8)), 3.2])
-				o.append(["x", _join([_bez(Vector2(32, 92), Vector2(28, 62), Vector2(42, 54), Vector2(50, 54)), _bez(Vector2(50, 54), Vector2(58, 54), Vector2(72, 62), Vector2(68, 92))]), 3.4])
-				o.append(["x", _join([_bez(Vector2(41, 92), Vector2(40, 72), Vector2(46, 66), Vector2(50, 66)), _bez(Vector2(50, 66), Vector2(54, 66), Vector2(60, 72), Vector2(59, 92))]), 3.0])
+			# Collective glyph (traced from the reference): a tall shell with a hollow on its left, three long claws sweeping down
+			# from its crown on the right, and a nested pair of arches at its foot.
+			var shell := _join([_bp([165, 145], [95, 260], [80, 430], [185, 692]), _bp([185, 692], [175, 600], [195, 500], [215, 435]),
+				_bp([215, 435], [160, 410], [130, 330], [135, 265]), _bp([135, 265], [135, 200], [150, 170], [165, 145])])
+			var claw_c := _join([_bp([250, 38], [390, 100], [415, 300], [405, 430]), _bp([405, 430], [390, 540], [350, 640], [312, 702]),
+				_bp([302, 702], [335, 650], [370, 540], [378, 400]), _bp([378, 400], [376, 260], [330, 110], [238, 40])])
+			var claw_b := _join([_bp([214, 72], [280, 150], [310, 300], [318, 470]), _bp([332, 470], [350, 300], [300, 140], [242, 66])])
+			var claw_a := _join([_bp([190, 100], [230, 170], [252, 300], [242, 430]), _bp([280, 425], [285, 300], [255, 170], [212, 98])])
+			var dome := _join([_bp([200, 706], [188, 560], [215, 470], [255, 468]), _bp([255, 468], [300, 470], [330, 560], [302, 706])])
+			o.append(["f", shell])
+			o.append(["f", claw_c])
+			o.append(["f", claw_b])
+			if not small:
+				o.append(["f", claw_a])
+			o.append(["f", dome])
+			o.append(["c", _bp_ellipse(250, 645, 46, 80)])
+			o.append(["f", _bp_ellipse(250, 648, 32 if not small else 34, 66)])
 		"species8472":
 			var c2 := Vector2(50, 52)
 			o.append(["f", _blade(c2, deg_to_rad(-90), 48, 6.0, -8)])

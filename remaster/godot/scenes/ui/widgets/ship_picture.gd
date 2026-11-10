@@ -39,6 +39,9 @@ static func _used_rect(tex: Texture2D) -> Rect2:
 		_used[id] = r
 	return _used[id]
 
+func _ready() -> void:
+	clip_contents = true # nothing a picture draws may leave its box (title and bars sit right beside it)
+
 func _draw() -> void:
 	if plate:
 		draw_rect(Rect2(Vector2.ZERO, size), Color(Lcars.BG2, 0.6))
@@ -55,5 +58,6 @@ func _draw() -> void:
 		draw_texture_rect_region(tex, Rect2((size - dst) / 2.0, dst), src)
 		return
 	var fam := ShipGlyph.family_for(owner_id, klass)
-	var len_px := minf(size.x * 0.86, size.y * 1.5) if plate else s * 0.9
+	# Every family's outline spans about +-0.5 of its length on both axes, so the length is bounded by the shorter side of the box.
+	var len_px := minf(size.x * 0.86, size.y * 0.9) if plate else s * 0.9
 	ShipGlyph.draw_hull(self, fam, size / 2.0, len_px, 0.0, color, true, true, 0.3)

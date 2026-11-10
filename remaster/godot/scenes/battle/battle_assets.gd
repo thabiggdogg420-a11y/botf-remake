@@ -289,6 +289,13 @@ static func ships_keys(ships: Array) -> PackedStringArray:
 	return out
 
 
+## Blocks until every model load started by warm() has finished. Quitting while a glb is still converting on a worker
+## thread hangs the process at shutdown (verify: suite-galaxy-map never exited), so App calls this as the tree closes.
+static func wait_for_loads() -> void:
+	for path in _tasks:
+		WorkerThreadPool.wait_for_task_completion(_tasks[path])
+
+
 ## True while any worker-thread model load started by warm() is still running.
 static func loading() -> bool:
 	for path in _tasks:

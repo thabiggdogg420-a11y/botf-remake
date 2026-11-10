@@ -10,6 +10,7 @@ var view := "top"
 var _pic: ShipPicture
 
 func _ready() -> void:
+	clip_contents = true
 	_pic = ShipPicture.new()
 	_pic.plate = true
 	_pic.set_anchors_preset(Control.PRESET_FULL_RECT)
