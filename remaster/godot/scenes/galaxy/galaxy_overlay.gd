@@ -158,14 +158,16 @@ func _draw_static(v: Dictionary) -> void:
 			draw_arc(p, ring_r, 0, TAU, 32, Color(oc, 0.85), 2.0, true)
 			if owner == app.player():
 				player_rings.append([p, ring_r + 4.0, oc])
+			var omk := Vector2(ring_r * 0.72, -ring_r * 0.72) + Vector2(7, -7)
+			Insignia.draw(self, owner, Rect2(p + omk - Vector2(8, 8), Vector2(16, 16)), Color(oc, 0.95), "small", Lcars.BG)
 		elif not charted:
 			# Uncharted: the star is on the chart, nothing else is known. A neutral dim ring marks it.
 			draw_arc(p, ring_r, 0, TAU, 32, Color(0.62, 0.72, 0.9, 0.42), 1.5, true)
 		var minor: Dictionary = s.get("minor", {}) if s.has("minor") else {}
 		if not minor.is_empty():
 			var mc := Lcars.owner_color(int(minor.get("memberOf", 0))) if int(minor.get("memberOf", 0)) != 0 else Color("#d8c3ff")
-			var dr := ring_r + 6.0
-			draw_polyline(PackedVector2Array([p + Vector2(0, -dr), p + Vector2(dr, 0), p + Vector2(0, dr), p + Vector2(-dr, 0), p + Vector2(0, -dr)]), Color(mc, 0.85), 1.5, true)
+			var mk := Vector2(ring_r * 0.72, -ring_r * 0.72) + Vector2(7, -7)
+			Insignia.draw(self, "minor", Rect2(p + mk - Vector2(8, 8), Vector2(16, 16)), Color(mc, 0.95), "small", Lcars.BG)
 		if labels_on:
 			var col: Color = owner_cols[owner] if owner != 0 else (Color(Lcars.TEXT2, 0.9) if charted else Color(Lcars.TEXT3, 0.85))
 			var name_ := str(s["name"]).to_upper()
@@ -218,13 +220,7 @@ func _draw_static(v: Dictionary) -> void:
 		var sp := map.world_to_screen(aw) + Vector2(-22, 18)
 		var sc2 := Lcars.owner_color(int(st2["owner"]))
 		var rad := 8.0 if st2["type"] == "Outpost" else 11.0
-		var hex := PackedVector2Array()
-		for k in range(7):
-			hex.append(sp + Vector2(cos(k * TAU / 6.0 + PI / 6.0), sin(k * TAU / 6.0 + PI / 6.0)) * rad)
-		draw_colored_polygon(hex, Color(sc2, 0.3))
-		draw_polyline(hex, sc2, 2.0, true)
-		if st2["type"] == "Starbase":
-			draw_circle(sp, 3.5, sc2)
+		ShipGlyph.draw_station(self, sp, rad, sc2, st2["type"] != "Outpost")
 		if st2.has("upgrade"):
 			draw_arc(sp, rad + 5, -PI / 2, -PI / 2 + TAU * float(st2["upgrade"]["work"]) / maxf(1.0, float(st2["upgrade"]["cost"])), 24, Lcars.GOOD, 2.0, true)
 		pickables.append({"pos": sp, "r": rad - 4.0, "cell": cell, "kind": "station", "id": int(st2.get("id", 0))})
@@ -256,8 +252,7 @@ func _draw_static(v: Dictionary) -> void:
 			continue
 		by_cell[key] = by_cell.get(key, 0) + 1
 		var cp2 := map.world_to_screen(aw2) + Vector2(22, 16) + Vector2(-(by_cell[key] - 1) * 9, 0)
-		var d := 7.0
-		draw_colored_polygon(PackedVector2Array([cp2 + Vector2(0, -d), cp2 + Vector2(d, 0), cp2 + Vector2(0, d), cp2 + Vector2(-d, 0)]), Lcars.owner_color(int(c["owner"])))
+		ShipGlyph.draw_contact(self, cp2, 8.0, Lcars.owner_color(int(c["owner"])), int(c["owner"]), ShipGlyph.class_of(c))
 		pickables.append({"pos": cp2, "r": 0.0, "cell": key, "kind": "contact", "id": int(c["id"]), "war": c.get("atWar", false)})
 	# ---- Own fleets
 	var own := {}
@@ -275,7 +270,7 @@ func _draw_static(v: Dictionary) -> void:
 			continue
 		var at := map.world_to_screen(aw3)
 		var base := at + Vector2(22, -20)
-		var heading := Vector2(0, -1)
+		var heading := Vector2.RIGHT
 		var route2: Array = f0.get("route", [])
 		if route2.size() > 1:
 			var nx := map.world_to_screen(map.cell_anchor(int(route2[1])))
@@ -287,7 +282,9 @@ func _draw_static(v: Dictionary) -> void:
 			ids.append(int(f["id"]))
 			if int(f.get("taskForceId", 0)) != 0:
 				tf = true
-		_chevron(base, heading, 10.0, oc2, tf)
+		ShipGlyph.draw_hull(self, ShipGlyph.family_for(app.player(), ShipGlyph.class_of(f0)), base, 46.0, heading.angle(), oc2, true, true, 0.5)
+		if tf:
+			draw_arc(base, 26.0, 0, TAU, 24, Color(oc2, 0.8), 1.5, true)
 		if list.size() > 1:
 			draw_circle(base + Vector2(12, 10), 8, Lcars.BG)
 			_txt(mono, base + Vector2(8, 14), str(list.size()), 12, Color.WHITE)
@@ -476,14 +473,3 @@ func _dashed(a: Vector2, b: Vector2, col: Color, w: float, dash: float, gap: flo
 			draw_line(a + dir * s0, a + dir * s1, col, w, true)
 		s += period
 	return phase - len
-
-func _chevron(p: Vector2, dir: Vector2, s: float, col: Color, double: bool) -> void:
-	var side := Vector2(-dir.y, dir.x)
-	var tip := p + dir * s
-	var pts := PackedVector2Array([tip, p - dir * s * 0.7 + side * s * 0.8, p - dir * s * 0.25, p - dir * s * 0.7 - side * s * 0.8])
-	draw_colored_polygon(pts, col)
-	pts.append(tip)
-	draw_polyline(pts, Color(1, 1, 1, 0.8), 1.2, true)
-	if double:
-		var back := p - dir * s * 0.9
-		draw_polyline(PackedVector2Array([back + side * s * 0.8, back - dir * s * 0.45, back - side * s * 0.8]), col, 2.0, true)

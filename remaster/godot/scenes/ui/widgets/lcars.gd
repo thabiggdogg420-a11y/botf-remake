@@ -58,15 +58,7 @@ const CATEGORY_LABELS := {
 	"intel": "Intelligence", "combat": "Combat", "colonization": "Colonization", "events": "Galactic events",
 	"stations": "Stations", "victory": "Victory", "economy": "Colonies & economy", "fleets": "Fleet operations",
 }
-## Emblem outlines in a 0..100 box: distinct silhouettes so owners read without colour.
-const EMBLEMS := {
-	0: [Vector2(50, 12), Vector2(88, 50), Vector2(50, 88), Vector2(12, 50)],
-	1: [Vector2(50, 8), Vector2(78, 86), Vector2(50, 68), Vector2(22, 86)],
-	2: [Vector2(50, 6), Vector2(60, 42), Vector2(94, 58), Vector2(58, 60), Vector2(50, 94), Vector2(42, 60), Vector2(6, 58), Vector2(40, 42)],
-	3: [Vector2(50, 20), Vector2(62, 44), Vector2(96, 30), Vector2(72, 62), Vector2(56, 60), Vector2(50, 84), Vector2(44, 60), Vector2(28, 62), Vector2(4, 30), Vector2(38, 44)],
-	4: [Vector2(10, 16), Vector2(90, 16), Vector2(78, 38), Vector2(70, 38), Vector2(50, 90), Vector2(30, 38), Vector2(22, 38)],
-	5: [],
-}
+## Emblems are drawn by Insignia (insignia.gd): one vector mark per empire and power, with a heavier small variant.
 
 static var colorblind := false
 static var accent_empire := 1
@@ -555,35 +547,26 @@ static func signed(n: float) -> String:
 static func fmt(n: float) -> String:
 	return Fmt.fmt(n)
 
-## Draws a faction emblem into a CanvasItem at centre c with size s.
-static func draw_emblem(ci: CanvasItem, empire: int, c: Vector2, s: float, color: Color, outline: bool = false) -> void:
-	var pts: Array = EMBLEMS.get(empire, EMBLEMS[0])
-	if empire == 5 or pts.is_empty():
-		ci.draw_arc(c, s * 0.36, 0, TAU, 32, color, s * 0.16, true)
-		return
-	var poly := PackedVector2Array()
-	for p in pts:
-		poly.append(c + (p - Vector2(50, 50)) * s / 100.0)
-	if outline:
-		poly.append(poly[0])
-		ci.draw_polyline(poly, color, 1.5, true)
-	else:
-		ci.draw_colored_polygon(poly, color)
+## Draws a faction emblem into a CanvasItem at centre c with size s (routes to Insignia; `empire` may also be a power key
+## such as "dominion" or "borg"). `bg` is the surface behind it, for the mark's cut-outs.
+static func draw_emblem(ci: CanvasItem, empire: Variant, c: Vector2, s: float, color: Color, outline: bool = false, bg: Variant = null) -> void:
+	Insignia.draw(ci, empire, Rect2(c - Vector2(s, s) / 2.0, Vector2(s, s)), color, "outline" if outline else "auto", bg)
 
-static func emblem(empire: int, size: float = 28.0, color: Variant = null) -> Control:
+static func emblem(empire: Variant, size: float = 28.0, color: Variant = null) -> Control:
 	var e := EmblemView.new()
 	e.empire = empire
 	e.custom_minimum_size = Vector2(size, size)
-	e.tint = owner_color(empire) if color == null else color
+	e.tint = (owner_color(int(empire)) if empire is int else TEXT2) if color == null else color
 	return e
 
 class EmblemView extends Control:
-	var empire := 0
+	var empire: Variant = 0
 	var tint := Color.WHITE
+	var bg: Variant = null
 	func _ready() -> void:
 		mouse_filter = Control.MOUSE_FILTER_IGNORE
 	func _draw() -> void:
-		Lcars.draw_emblem(self, empire, size / 2.0, min(size.x, size.y), tint)
+		Lcars.draw_emblem(self, empire, size / 2.0, min(size.x, size.y), tint, false, bg)
 
 # ---------------------------------------------------------------------------------------------
 # Layout components shared by the screens

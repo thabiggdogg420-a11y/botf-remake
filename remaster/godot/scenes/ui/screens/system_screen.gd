@@ -395,6 +395,13 @@ func _construction() -> Control:
 	b.add_child(Lcars.scroll(list))
 	return f
 
+## The class name ("Oberth") of a ship choice: the encyclopedia entry of its reference ship, else the front of its name.
+func _ship_class(ch: Dictionary) -> String:
+	for sh in app.get_encyclopedia().get("ships", []):
+		if int(sh.get("id", -1)) == int(ch.get("referenceId", -2)) and str(sh.get("designClass", "")) != "":
+			return str(sh["designClass"])
+	return ShipGlyph.class_of({"name": str(ch.get("name", ""))})
+
 func _choice(ch: Dictionary) -> Control:
 	var reason := vm.choice_block(ch)
 	var btn := Button.new()
@@ -410,6 +417,9 @@ func _choice(ch: Dictionary) -> Control:
 	var icon := ChoiceIcon.new()
 	icon.product = str(ch["product"])
 	icon.ship = ch["isShip"]
+	if icon.ship:
+		icon.owner_id = app.player()
+		icon.klass = _ship_class(ch)
 	icon.custom_minimum_size = Vector2(34, 34)
 	icon.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	row.add_child(icon)
@@ -446,6 +456,9 @@ func _queue(c: Dictionary) -> Control:
 		card.add_child(col)
 		var h := Lcars.hbox(8)
 		h.add_child(Lcars.label(str(i + 1), "Mono", 16, Lcars.accent() if i == 0 else Lcars.TEXT3))
+		var pl := str(it.get("product", "")).to_lower()
+		if bool(it.get("isShip", false)) or pl.begins_with("ship") or pl.begins_with("starship"):
+			h.add_child(ShipPicture.make(app.player(), _ship_class({"name": str(it["name"]), "referenceId": int(it.get("referenceId", -1))}), 30, "top", Lcars.accent()))
 		var n := Lcars.label(str(it["name"]), "", 15, Lcars.TEXT)
 		n.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		h.add_child(n)
