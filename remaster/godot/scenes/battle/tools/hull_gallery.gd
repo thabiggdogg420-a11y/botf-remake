@@ -32,7 +32,9 @@ func _run() -> void:
 		BattleAssets.shared()
 	var code := 0
 	for ki in range(1, args.size()):
-		var key := str(args[ki])
+		var spec := str(args[ki])
+		var key := spec.get_slice(":", 0)
+		var view := spec.get_slice(":", 1) if spec.contains(":") else ""
 		var parts := key.split(".")
 		var empire: int = {"fed": 1, "kli": 2, "rom": 3, "car": 4, "fer": 5}.get(parts[1] if parts.size() > 1 else "fed", 1)
 		var root := Node3D.new()
@@ -45,7 +47,7 @@ func _run() -> void:
 		var ship := BattleShip.new()
 		root.add_child(ship)
 		ship.setup({"id": 1, "owner": empire, "name": key, "assetKey": key, "maxHull": 150}, assets)
-		ship.transform = Transform3D(Basis(Vector3.UP, deg_to_rad(-138.0)), Vector3.ZERO)
+		ship.transform = Transform3D(Basis(Vector3.UP, deg_to_rad(-138.0)), Vector3.ZERO) if view == "" else Transform3D.IDENTITY
 		var cam := Camera3D.new()
 		cam.fov = 40.0
 		cam.near = 0.5
@@ -54,20 +56,28 @@ func _run() -> void:
 		cam.current = true
 		var l: float = ship.length
 		cam.position = Vector3(0.18 * l, 0.32 * l, 1.15 * l)
-		cam.look_at(Vector3.ZERO, Vector3.UP)
+		if view != "":
+			# Hull-relative views (ship local axes: bow is -Z, up is +Y): top bottom port starboard bow stern.
+			var d: Vector3 = {"top": Vector3(0, 1, 0.001), "bottom": Vector3(0, -1, 0.001), "port": Vector3(-1, 0.15, 0), "starboard": Vector3(1, 0.15, 0),
+				"bow": Vector3(0, 0.15, -1), "stern": Vector3(0, 0.15, 1)}.get(view, Vector3(0.2, 0.3, 1))
+			var c := ship.to_global(Vector3.ZERO)
+			cam.position = c + ship.global_transform.basis * (d.normalized() * 0.95 * l)
+			cam.look_at(c, ship.global_transform.basis.y if absf(d.y) < 0.9 else ship.global_transform.basis.z)
+		else:
+			cam.look_at(Vector3.ZERO, Vector3.UP)
 		await _wait(90)
 		var hero_ok: bool = ship.hero_key != ""
-		print("HULL ", "ok" if hero_ok else "FAIL", " ", key, ": ", "hero " + ship.hero_key if hero_ok else "fallback hull")
+		print("HULL ", "ok" if hero_ok else "FAIL", " ", spec, ": ", "hero " + ship.hero_key if hero_ok else "fallback hull")
 		if not hero_ok:
 			code = 1
 		var img := get_root().get_viewport().get_texture().get_image()
-		img.save_png("%s/hull-%s.png" % [out_dir, key])
+		img.save_png("%s/hull-%s%s.png" % [out_dir, key, "-" + view if view != "" else ""])
 		if OS.has_feature("web"):
 			# tools/verify/web_parity.py --script res://scenes/battle/tools/hull_gallery.gd: hand the frame to the page, wait for its ack.
 			JavaScriptBridge.eval("window.__shotPng = '%s';" % Marshalls.raw_to_base64(img.save_png_to_buffer()))
-			print("SHOT_READY ", key)
+			print("SHOT_READY ", spec)
 			var t0 := Time.get_ticks_msec()
-			while str(JavaScriptBridge.eval("window.__shotAck || ''")) != key and Time.get_ticks_msec() - t0 < 120000:
+			while str(JavaScriptBridge.eval("window.__shotAck || ''")) != spec and Time.get_ticks_msec() - t0 < 120000:
 				await _wait(1)
 		root.queue_free()
 		await _wait(5)
