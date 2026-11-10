@@ -41,6 +41,7 @@ const MAX_FRAME_STEP := 0.05    ## Longest wall-clock step one frame may advance
 @export var player_empire := 0  ## 0 = the encounter's own ships (ships[].mine), barks only for them.
 @export var play_audio := true  ## Play cues through BattleAudio (local files or generated tones).
 @export var generated_tones := true
+@export var film_cuts := true ## Cinematic camera cuts in 1-3 s shots near the action (battlechoreo, proposal 8).
 @export var formation_spread := 1.0 ## Scales the spacing offsets that keep true-scale hulls apart (0 = off).
 
 var encounter: Dictionary = {}
@@ -65,6 +66,8 @@ var _prewarmed := false
 var _spacing_clock := 0.0
 var _spacing_cache: Array[Vector3] = []
 var _ship_jobs := {}             ## fleet_id -> the round's cloak/decloak/explosion/warp jobs for that ship
+var prof := [0, 0, 0, 0]       ## Tools: usec of poses, spacing, ships, effects in the last _apply.
+var last_apply_usec := 0     ## Tools: script time of the last frame's _apply (poses, spacing, effects, camera).
 var force_cutaway := false      ## Tools: offer the director's cutaway every round (the close-up strip).
 var _shown := {}                 ## fleet_id -> Pose the ship was last shown at (before spacing and station-keeping)
 var _carry := {}                 ## fleet_id -> Vector4(x, y, altitude, facing) eased out at the start of the round
@@ -230,7 +233,9 @@ func _process(delta: float) -> void:
 			_finished_sent = true
 			_playing = false
 			round_finished.emit(round_index)
+	var t_us := Time.get_ticks_usec()
 	_apply(time, delta)
+	last_apply_usec = Time.get_ticks_usec() - t_us
 
 
 func _player_empire() -> int:
@@ -300,7 +305,7 @@ func _update_spacing(t: float, delta: float, poses: Dictionary) -> void:
 	_spacing_clock += delta
 	if delta <= 0.0 or _spacing_clock >= SPACING_SOLVE_INTERVAL or _spacing_cache.size() != bodies.size():
 		_spacing_clock = 0.0
-		_spacing_cache = BattleTimeline.spacing_offsets(bodies, 10, 2.5, 6.0)
+		_spacing_cache = BattleTimeline.spacing_offsets(bodies, 6, 2.5, 6.0) # battlechoreo fps: 10 passes cost 5 ms a solve with ships on the move
 	var offsets := _spacing_cache
 	var ease := 1.0 if delta <= 0.0 else 1.0 - exp(-SPACING_EASE * delta)
 	# Ships closing on each other mid-maneuver need the push at once (a slow ease let an Oberth pass through a Galaxy
@@ -364,11 +369,14 @@ func _apply(t: float, delta: float) -> void:
 	var n_theirs := 0
 	var ours_lo := Vector3(INF, INF, INF)
 	var ours_hi := -ours_lo
+	var _u0 := Time.get_ticks_usec()
 	var poses := {}
 	for track in timeline.ships:
 		if _ships.has(track.fleet_id):
 			poses[track.fleet_id] = _round_pose(track, t)
-	_update_spacing(t, delta, poses) # wall-clock easing: the drift reads the same at any playback speed
+	var _u1 := Time.get_ticks_usec()
+	_update_spacing(t, delta, poses)
+	var _u2 := Time.get_ticks_usec() # wall-clock easing: the drift reads the same at any playback speed
 	for track in timeline.ships:
 		var ship: BattleShip = _ships.get(track.fleet_id)
 		if ship == null:
@@ -390,7 +398,11 @@ func _apply(t: float, delta: float) -> void:
 					shimmer = maxf(shimmer, sin(PI * u))
 				BattleTimeline.Job.EXPLOSION:
 					# Tumble and crumple inside the fireball until it swallows the ship.
-					var k := smoothstep(0.0, 0.35, u)
+					# Battlechoreo: a crippled ship drifts whole (the timeline rolls it) until it breaks up.
+					var bu: float = float(j.get("breakup", 0.0))
+					if bu > 0.0 and t - j.start < bu:
+						continue
+					var k := smoothstep(0.0, 0.35, u) if bu <= 0.0 else smoothstep(bu, bu + 0.15, t - j.start)
 					var axis := Vector3(0.3, 1.0, 0.6).normalized()
 					ship.model.transform = Transform3D(Basis(axis, k * 1.2).scaled(Vector3.ONE * (1.0 - 0.35 * k)), Vector3.ZERO)
 				BattleTimeline.Job.WARP:
@@ -412,7 +424,10 @@ func _apply(t: float, delta: float) -> void:
 			else:
 				theirs += pos
 				n_theirs += 1
+	var _u3 := Time.get_ticks_usec()
 	fx.update(t)
+	var _u4 := Time.get_ticks_usec()
+	prof = [_u1 - _u0, _u2 - _u1, _u3 - _u2, _u4 - _u3]
 	if count > 0:
 		centroid /= count
 	else:
@@ -521,6 +536,10 @@ func _update_camera(t: float, delta: float, centroid: Vector3, spread: float) ->
 		shot = {"key": "%d_%d_%d_%.2f" % [round_index, director.subject, director.other, director.since],
 			"kind": director.kind, "subject": subject.global_position, "subject_size": subject.length,
 			"other": other.global_position if other != null else centroid, "other_size": other.length if other != null else subject.length, "centroid": centroid, "spread": spread}
+	if film_cuts and (_playing or not _finished_sent) and not (round_index == 0 and t < 1.2):
+		var fs := _film_shot(t, centroid, spread)
+		if not fs.is_empty():
+			shot = fs
 	# The planet vista: the establishing shot and the pull-back at the start of every third round frame the fleet against
 	# the planet, so its true size (radius 1100 beside hulls of ~10) reads on screen.
 	shot["vista"] = int(shot.get("kind", -1)) < 0 and round_index % 3 == 0 and t < 2.5 and _env.has("planet")
@@ -528,6 +547,83 @@ func _update_camera(t: float, delta: float, centroid: Vector3, spread: float) ->
 		camera.planet_center = (_env.planet as Node3D).global_position
 		camera.planet_radius = BattleEnvironment.PLANET_RADIUS
 	camera.film(delta, t, bodies, chase, shot)
+
+
+## Battlechoreo, proposal 8 (camera language, footage: 1-3 s cuts near the action, brief wide shots): the film cut at
+## round time t. Cuts of 1-3 s, seeded per round and cut; each picks a type and a subject from what is about to happen:
+## behind a firing ship, chasing a torpedo salvo, a fly-by of an escort on its run; every third cut is a brief wide.
+## Returns {} for the tactical shot. The player takes manual control by switching camera mode (BattleCamera input).
+var _film := {"n": -1, "until": -1.0, "round": -1}
+
+func _film_shot(t: float, centroid: Vector3, spread: float) -> Dictionary:
+	if _film.round != round_index or t < float(_film.get("from", 0.0)) or t >= float(_film.until):
+		var n: int = int(_film.n) + 1 if _film.round == round_index and t >= float(_film.get("from", 0.0)) else 0
+		var h := BattleTimeline.unit_hash(round_index * 977 + n, 61)
+		var length := 1.0 + 2.0 * h
+		_film = {"n": n, "from": t, "until": t + length, "round": round_index, "type": "wide"}
+		if n % 3 != 2:
+			_film.merge(_pick_film(t, length, n), true)
+		if _film.type == "wide":
+			_film.until = t + 1.0 + 0.5 * h
+	var typ: String = _film.type
+	if typ == "wide":
+		return {}
+	var a: BattleShip = _ships.get(int(_film.subject))
+	var b: BattleShip = _ships.get(int(_film.get("other", 0)))
+	var tr := timeline.track(int(_film.subject))
+	if a == null or (tr != null and tr.hide_at >= 0.0 and t >= tr.hide_at + 0.6):
+		_film.type = "wide"
+		return {}
+	var out := {"key": "film_%d_%d" % [round_index, int(_film.n)], "kind": 0, "film": typ, "subject": a.global_position,
+		"subject_size": a.length, "subject_fwd": a.global_basis.x.normalized(), "other": b.global_position if b != null else centroid,
+		"other_size": b.length if b != null else a.length, "centroid": centroid, "spread": spread}
+	if typ == "torpedo":
+		var j: Dictionary = timeline.jobs[int(_film.job)]
+		var u := clampf((t - float(j.start)) / maxf(0.1, float(j.duration)), 0.0, 0.92)
+		out["torp"] = fx._torpedo_pos(j, u * float(j.end_fraction))
+	return out
+
+
+## The subject of a film cut starting at t: the most watchable shot starting soon.
+func _pick_film(t: float, length: float, n: int) -> Dictionary:
+	var want: String = ["behind", "torpedo", "flyby"][n % 3] if n % 3 != 2 else "wide"
+	if BattleTimeline.unit_hash(round_index * 31 + n, 62) < 0.5:
+		want = "torpedo" if want == "behind" else ("flyby" if want == "torpedo" else want)
+	var best := {}
+	var best_score := -INF
+	for k in timeline.jobs.size():
+		var j: Dictionary = timeline.jobs[k]
+		if j.start > t + 0.6 * length:
+			break
+		if j.start + j.duration < t + 0.3:
+			continue
+		var tr := timeline.track(int(j.fleet_id))
+		if tr == null or not _ships.has(int(j.fleet_id)) or (tr.hide_at >= 0.0 and tr.hide_at < t + length):
+			continue
+		var score := -absf(float(j.start) - (t + 0.2))
+		var typ := ""
+		match int(j.kind):
+			BattleTimeline.Job.TORPEDO:
+				typ = "torpedo"
+				if j.start > t - 0.2:
+					score -= 0.5 # join the salvo in flight, not before it leaves
+			BattleTimeline.Job.BEAM, BattleTimeline.Job.PULSE:
+				typ = "flyby" if tr.style == 2 else "behind"
+			BattleTimeline.Job.EXPLOSION:
+				typ = "behind"
+				score += 3.0
+			_:
+				continue
+		if typ == want:
+			score += 2.0
+		if score > best_score:
+			best_score = score
+			var other := int(j.target_fleet_id)
+			best = {"type": typ, "subject": int(j.fleet_id) if j.kind != BattleTimeline.Job.EXPLOSION else int(j.source_fleet_id), "other": other, "job": k}
+			if int(j.kind) == BattleTimeline.Job.EXPLOSION:
+				best.subject = other
+				best.other = 0
+	return best
 
 
 ## fleet_id -> 0..3: distance from the ship's own side's centre, as a share of that side's widest member.

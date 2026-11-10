@@ -32,8 +32,8 @@ const BOLT_LENGTH := 6.0       ## Disruptor / pulse bolt: capsule length ...
 const BOLT_LENGTH_PX := 50.0 ## footage SoA 1249: a teardrop about 3:1, not a rod
 const BOLT_WIDTH := 1.4         ## ... and width.
 const BOLT_WIDTH_PX := 22.0
-const TORPEDO_SIZE := 8.0       ## Torpedo star height S (the sprite is TORPEDO_ASPECT x S wide for the lens streak).
-const MIN_TORPEDO_PX := 48.0    ## S never draws under this: the white core then spans about 6 px inside a 20 px glow.
+const TORPEDO_SIZE := 6.0       ## Torpedo star height S (the sprite is TORPEDO_ASPECT x S wide for the lens streak).
+const MIN_TORPEDO_PX := 30.0 ## battlechoreo compare 02: 48 read bigger than the show's star;    ## S never draws under this: the white core then spans about 6 px inside a 20 px glow.
 const TORPEDO_ASPECT := 1.0 ## round: the footage shows no horizontal lens streak on torpedoes
 const SHIELD_BLUE := Color(0.5, 0.8, 1.0)
 
@@ -259,7 +259,10 @@ func prewarm() -> void:
 
 
 ## Clears job visuals (one-shot particles and decals finish on their own).
+var _launch_cache := {} ## job -> launcher transform at launch (BattleFx._torpedo_path)
+
 func reset(tl: BattleTimeline) -> void:
+	_launch_cache.clear()
 	for k in _active.keys():
 		_despawn(k)
 	_active.clear()
@@ -382,8 +385,9 @@ static func weapon_style(weapon: String, owner: int, kind: int, color: Color) ->
 		return st
 	if phaser:
 		# Footage: SoA 1160 s / 782 s (Excelsior, Galaxy): pale gold with a white core; WotW 4916 s (station): amber.
-		st.merge({"ribbon": 0, "core": Color.html("FFF8E0"), "body": Color.html("F5CB62"), "glow": Color.html("C8781A"),
-			"charge": kind == Job.BEAM}, true)
+		# Battlechoreo compare 01: ours read wider and brighter than the show's thin gold line.
+		st.merge({"ribbon": 0, "core": Color.html("FFF4D8"), "body": Color.html("E8B850"), "glow": Color.html("A8640F"),
+			"charge": kind == Job.BEAM, "width": BEAM_WIDTH * 0.7, "min_px": BEAM_MIN_PX * 0.6}, true)
 		if owner == 5:
 			st.merge({"body": Color.html("FFC21E"), "glow": Color.html("FF9A0A")}, true)
 	elif weapon == "PolaronBeam":
@@ -407,6 +411,11 @@ static func weapon_style(weapon: String, owner: int, kind: int, color: Color) ->
 		st.ribbon = 5
 		st.width = BOLT_WIDTH
 		st.min_px = BOLT_WIDTH_PX
+		if not romulan and not phaser and weapon.begins_with("Disruptor") and owner != 4:
+			# Battlechoreo compare 04 (SoA d_1249): a fat glowing green blob with a wide halo, not a thin dart.
+			st.merge({"core": Color.html("F4FFEE"), "body": Color.html("5CFF6A"), "glow": Color.html("22E040"),
+				"width": BOLT_WIDTH * 2.4, "min_px": BOLT_WIDTH_PX * 1.3, "length": BOLT_LENGTH * 0.8,
+				"length_px": BOLT_LENGTH_PX * 0.85}, true)
 		if romulan:
 			st.merge({"heavy": 1.0, "width": BOLT_WIDTH * 1.5, "min_px": BOLT_WIDTH_PX * 1.5, "length": BOLT_LENGTH * 1.2,
 				"length_px": BOLT_LENGTH_PX * 1.2}, true)
@@ -506,9 +515,15 @@ func _torpedo_path(j: Dictionary) -> Array:
 	if shooter == null:
 		return []
 	var now_src := shooter.hardpoint(2, j.mount_index, j.index)
-	var launch_xf := shooter.global_transform
-	if scene != null and scene.has_method("ship_transform_at"):
-		launch_xf = scene.ship_transform_at(j.fleet_id, float(j.get("launch", j.start)))
+	# The launch pose is fixed in time: computed once per job (battlechoreo fps: 60 torpedoes each re-ran the flown
+	# pose of their launcher every frame).
+	var ck := int(j.event_index) * 64 + int(j.index) + (100000000 if j.kind == Job.INTERCEPT else 0)
+	var launch_xf: Transform3D = _launch_cache.get(ck, Transform3D())
+	if not _launch_cache.has(ck):
+		launch_xf = shooter.global_transform
+		if scene != null and scene.has_method("ship_transform_at"):
+			launch_xf = scene.ship_transform_at(j.fleet_id, float(j.get("launch", j.start)))
+		_launch_cache[ck] = launch_xf
 	var src: Vector3 = launch_xf * (shooter.global_transform.affine_inverse() * now_src)
 	var bow := launch_xf.basis.x.normalized()
 	var dst := target.shield_point(src) if target != null else src + bow * 20.0
@@ -620,7 +635,7 @@ func _spawn(i: int, j: Dictionary) -> void:
 			_fxp(head, "aspect", TORPEDO_ASPECT if sty.torp != 2 else 1.0)
 			st.nodes = [head, _trail_node(), _flare(sty.torp_color.lerp(Color.WHITE, 0.3), 30.0 * UE, 0.0, 1.0)]
 			var shooter := _ship(j.fleet_id)
-			if shooter != null:
+			if shooter != null and int(j.index) == 0: # one launch light per spread (battlechoreo fps)
 				_flash_light(shooter.hardpoint(2, j.mount_index, j.index), sty.torp_color, 3.0, 160.0 * UE, 0.25)
 		Job.INTERCEPT:
 			var tpos := _torpedo_pos(j, j.end_fraction if j.end_fraction < 1.0 else 0.78)
@@ -693,38 +708,54 @@ func _spawn(i: int, j: Dictionary) -> void:
 				st.nodes = [_flare(col, s.length * 1.4, 0.0, 0.6)]
 		Job.EXPLOSION:
 			var s := _ship(j.fleet_id)
-			if s != null:
-				var p := s.global_position
-				var size := s.length
-				st.point = p
-				st.size = size
-				var ring := MeshInstance3D.new()
-				ring.mesh = _plane
-				ring.material_override = _shock_mat.duplicate()
-				ring.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-				add_child(ring)
-				ring.global_position = p
-				ring.rotation_degrees = Vector3(rng_angle(i, 20.0), rng_angle(i + 3, 180.0), rng_angle(i + 5, 20.0))
-				# A second ring crossed with the first: the shock reads as a shell, not a flat disc (R3.5).
-				var ring2 := MeshInstance3D.new()
-				ring2.mesh = _plane
-				ring2.material_override = _shock_mat.duplicate()
-				ring2.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-				add_child(ring2)
-				ring2.global_position = p
-				ring2.rotation_degrees = ring.rotation_degrees + Vector3(70.0, 35.0, 0.0)
-				st.nodes = [_flare(Color(1.0, 0.75, 0.4), size * 1.5, 2.0, 1.5), ring, ring2]
-				_burst(p, Color(1.0, 0.5, 0.15), "fireball", 160, size / 5.0)
-				_burst(p, Color(1.0, 0.7, 0.3), "sparks", 90, size / 5.0)
-				_burst(p, Color(1.0, 0.45, 0.1), "debris", 70, size / 3.0)
-				_burst(p, Color(0.35, 0.3, 0.28), "smoke", 24, size / 3.0)
-				_flash_light(p, Color(1.0, 0.65, 0.3), 7.0, size * 6.0, 1.4)
+			if s != null and float(j.get("breakup", 0.0)) > 0.0:
+				# Battlechoreo, proposal 5: the killing blow first: a hull flash, fire and venting plasma; the ship drifts
+				# on, venting, and breaks up into the fireball j.breakup seconds later (_animate).
+				var p0 := s.global_position
+				var k0 := maxf(1.5, s.length * 0.08)
+				st.point = p0
+				st.size = s.length
+				st.boomed = false
+				st.next_vent = j.start + 0.3
+				st.nodes = [_flare(Color(1.0, 0.6, 0.25), s.length * 0.6, 1.4, 1.0)]
+				_burst(p0, Color(1.0, 0.5, 0.15), "fire_small", 30, k0 * 1.5)
+				_burst(p0, Color(1.0, 0.6, 0.2), "sparks", 50, k0 * 1.5)
+				_burst(p0, Color(0.7, 0.85, 1.0), "vent", 40, k0)
+				_flash_light(p0, Color(1.0, 0.6, 0.3), 6.0, s.length * 4.0, 0.6)
+			elif s != null:
+				_fireball(i, st, s.global_position, s.length)
 		Job.WARP:
 			var s := _ship(j.fleet_id)
 			if s != null:
 				st.nodes = [_flare(Color(0.7, 0.85, 1.0), s.length * 1.5, 0.0, 1.5)]
 		_:
 			pass
+
+
+## The kill fireball (footage SoA 1160, WotW 4891): flare, sparks, debris, smoke; nodes [flare, ring, ring2].
+func _fireball(i: int, st: Dictionary, p: Vector3, size: float) -> void:
+	st.point = p
+	st.size = size
+	var ring := MeshInstance3D.new()
+	ring.mesh = _plane
+	ring.material_override = _shock_mat.duplicate()
+	ring.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(ring)
+	ring.global_position = p
+	ring.rotation_degrees = Vector3(rng_angle(i, 20.0), rng_angle(i + 3, 180.0), rng_angle(i + 5, 20.0))
+	var ring2 := MeshInstance3D.new()
+	ring2.mesh = _plane
+	ring2.material_override = _shock_mat.duplicate()
+	ring2.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(ring2)
+	ring2.global_position = p
+	ring2.rotation_degrees = ring.rotation_degrees + Vector3(70.0, 35.0, 0.0)
+	st.nodes = [_flare(Color(1.0, 0.75, 0.4), size * 1.5, 2.0, 1.5), ring, ring2]
+	_burst(p, Color(1.0, 0.5, 0.15), "fireball", 160, size / 5.0)
+	_burst(p, Color(1.0, 0.7, 0.3), "sparks", 90, size / 5.0)
+	_burst(p, Color(1.0, 0.45, 0.1), "debris", 70, size / 3.0)
+	_burst(p, Color(0.35, 0.3, 0.28), "smoke", 24, size / 3.0)
+	_flash_light(p, Color(1.0, 0.65, 0.3), 7.0, size * 6.0, 1.4)
 
 
 ## Torpedo impact (docs/WEAPON-FX.md): a big spiked flash and a camera-facing shockwave ring that grows to twice the
@@ -870,9 +901,17 @@ func _animate(i: int, j: Dictionary, t: float) -> void:
 			var plen := maxf(((path[2] as Vector3) - (path[0] as Vector3)).length(), 1e-3)
 			var step := minf(0.03, head_size * TORPEDO_TAIL_HEADS / plen / 11.0)
 			var pts := PackedVector3Array()
-			for k in 12:
+			# Photons: no tail at all (footage); skip the per-frame ribbon rebuild.
+			for k in (12 if int(sty.torp) != 0 else 0):
 				pts.append(_path_pos(path, maxf(0.0, path_u - k * step)))
-			_draw_ribbon(st.nodes[1], pts, head_size * 0.1, (sty.torp_color as Color) * fade * 0.6)
+			if int(sty.torp) != 0:
+				_draw_ribbon(st.nodes[1], pts, head_size * 0.1, (sty.torp_color as Color) * fade * 0.6)
+			# Battlechoreo: a spread's earlier tubes strike too (drawn only; the damage and the impact job land with the last).
+			if j.outcome == BattleTimeline.Outcome.HIT and int(j.index) < int(j.get("count", 1)) - 1 and u >= 0.96 and not st.get("struck", false):
+				st.struck = true
+				var tg := _ship(j.target_fleet_id)
+				var r0 := tg.radius() if tg != null else 4.0
+				_burst(head, (sty.torp_color as Color).lerp(Color.WHITE, 0.3), "sparks_small", 14, maxf(1.2, r0 * 0.07))
 			# Launch flash at the tube: a spiked flare that fades in 0.18 s.
 			st.nodes[2].global_position = path[0]
 			st.nodes[2].scale = Vector3.ONE * maxf(1.6 * TORPEDO_SIZE, _px_world_1080(path[0], 1.4 * MIN_TORPEDO_PX))
@@ -923,6 +962,34 @@ func _animate(i: int, j: Dictionary, t: float) -> void:
 		Job.EXPLOSION:
 			if st.nodes.is_empty():
 				return
+			if st.has("boomed") and not st.boomed:
+				var s := _ship(j.fleet_id)
+				var el: float = t - j.start
+				var p0: Vector3 = s.global_position if s != null else st.point
+				st.point = p0
+				st.nodes[0].global_position = p0
+				_fxp(st.nodes[0], "flare_intensity", 1.2 * exp(-el * 5.0) + 0.25)
+				st.nodes[0].scale = Vector3.ONE * maxf(st.size * (0.5 + 0.2 * sin(el * 23.0)), _px_world(p0, 30.0))
+				if t >= float(st.next_vent):
+					st.next_vent = t + 0.3
+					var q: Vector3 = s.hull_point(p0 + Vector3(sin(el * 7.0), 0.4, cos(el * 5.0)) * 50.0, int(el * 10.0)) if s != null else p0
+					var k0 := maxf(1.5, float(st.size) * 0.08)
+					_burst(q, Color(1.0, 0.45, 0.1), "fire_small", 14, k0)
+					_burst(q, Color(0.7, 0.85, 1.0), "vent", 20, k0 * 0.8, (q - p0).normalized())
+					_flash_light(q, Color(1.0, 0.55, 0.2), 3.0, float(st.size) * 2.5, 0.3)
+				if el < float(j.breakup):
+					return
+				# Breakup: the fireball where the hulk has drifted to.
+				st.boomed = true
+				for n in st.nodes:
+					if is_instance_valid(n):
+						n.queue_free()
+				_fireball(i, st, p0, float(st.size))
+				st.boom_at = t
+			var u2 := u
+			if st.has("boom_at"):
+				u2 = clampf((t - float(st.boom_at)) / maxf(0.1, j.start + j.duration - float(st.boom_at)), 0.0, 1.0)
+			u = u2
 			var size: float = st.size
 			st.nodes[0].global_position = st.point
 			_fxp(st.nodes[0], "flare_intensity", 1.5 * exp(-u * 7.0) + 0.25 * (1.0 - u)) # R3.5: the 2.5 peak whited out the kill frame
