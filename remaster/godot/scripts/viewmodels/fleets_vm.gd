@@ -99,7 +99,7 @@ func form(name_: String) -> bool:
 
 ## Known systems other than the unit's own sector.
 func destinations(lead: Dictionary) -> Array:
-	return view()["systems"].filter(func(s): return not (int(s["x"]) == int(lead["x"]) and int(s["y"]) == int(lead["y"])))
+	return view()["systems"].filter(func(s): return AppSession.is_charted(s) and not (int(s["x"]) == int(lead["x"]) and int(s["y"]) == int(lead["y"])))
 
 ## {target, route, eta_text, block}: the chosen destination and the core's route to it.
 func send_plan(lead: Dictionary) -> Dictionary:

@@ -126,6 +126,15 @@ func _draw_static(v: Dictionary) -> void:
 	ranked.sort_custom(func(a, b): return a[0] > b[0])
 	var owner_cols := {}
 	var labels_on: bool = map.layers.get("labels", true)
+	# Every on-screen star's ring is an obstacle for labels, so a label never lands on another star or on another label.
+	var discs: Array = []
+	for r0 in ranked:
+		var e0: Dictionary = map.systems3d[r0[1]]
+		if front(e0["pos"]):
+			var p0 := map.world_to_screen(e0["pos"])
+			if on_screen(p0, 120.0):
+				var st0: Dictionary = GalaxyLayout.STAR_TYPES[int(e0["type"])]
+				discs.append([r0[1], p0, maxf(13.0, float(st0["radius"]) * map.pixels_per_unit(cp.distance_to(e0["pos"])) * 1.6) + 2.0])
 	for r in ranked:
 		var sid: int = r[1]
 		var e2: Dictionary = map.systems3d[sid]
@@ -140,7 +149,8 @@ func _draw_static(v: Dictionary) -> void:
 		var sphere_px := float(st["radius"]) * map.pixels_per_unit(cp.distance_to(pos2))
 		var ring_r := maxf(13.0, sphere_px * 1.6)
 		pickables.append({"pos": p, "r": maxf(0.0, sphere_px - 6.0), "cell": int(e2["cell"]), "kind": "system", "id": sid})
-		var owner := int(s.get("owner", 0))
+		var charted := AppSession.is_charted(s)
+		var owner := int(s.get("owner", 0)) if charted else 0
 		if owner != 0 and not owner_cols.has(owner):
 			owner_cols[owner] = Lcars.owner_color(owner)
 		if owner != 0:
@@ -148,23 +158,41 @@ func _draw_static(v: Dictionary) -> void:
 			draw_arc(p, ring_r, 0, TAU, 32, Color(oc, 0.85), 2.0, true)
 			if owner == app.player():
 				player_rings.append([p, ring_r + 4.0, oc])
+		elif not charted:
+			# Uncharted: the star is on the chart, nothing else is known. A neutral dim ring marks it.
+			draw_arc(p, ring_r, 0, TAU, 32, Color(0.62, 0.72, 0.9, 0.42), 1.5, true)
 		var minor: Dictionary = s.get("minor", {}) if s.has("minor") else {}
 		if not minor.is_empty():
 			var mc := Lcars.owner_color(int(minor.get("memberOf", 0))) if int(minor.get("memberOf", 0)) != 0 else Color("#d8c3ff")
 			var dr := ring_r + 6.0
 			draw_polyline(PackedVector2Array([p + Vector2(0, -dr), p + Vector2(dr, 0), p + Vector2(0, dr), p + Vector2(-dr, 0), p + Vector2(0, -dr)]), Color(mc, 0.85), 1.5, true)
 		if labels_on:
-			var col: Color = owner_cols[owner] if owner != 0 else Color(Lcars.TEXT2, 0.9)
+			var col: Color = owner_cols[owner] if owner != 0 else (Color(Lcars.TEXT2, 0.9) if charted else Color(Lcars.TEXT3, 0.85))
 			var name_ := str(s["name"]).to_upper()
 			var w := _tw(f_disp, name_, fs)
-			var lp := p + Vector2(-w / 2.0, ring_r + 6.0 + fs)
-			var rect := Rect2(lp + Vector2(-2, -fs), Vector2(w + 4, fs + 4))
-			var clash := false
-			for t in taken:
-				if rect.intersects(t):
-					clash = true
+			# Try below the ring, then above, then to the right and left; hide the label when none is free.
+			var spots := [Vector2(-w / 2.0, ring_r + 6.0 + fs), Vector2(-w / 2.0, -ring_r - 6.0),
+				Vector2(ring_r + 6.0, fs * 0.35), Vector2(-ring_r - 6.0 - w, fs * 0.35)]
+			var lp := Vector2.ZERO
+			var rect := Rect2()
+			var placed := false
+			for off in spots:
+				lp = p + off
+				rect = Rect2(lp + Vector2(-2, -fs), Vector2(w + 4, fs + 4))
+				var clash := false
+				for t in taken:
+					if rect.intersects(t):
+						clash = true
+						break
+				if not clash:
+					for d in discs:
+						if int(d[0]) != sid and rect.intersects(Rect2(d[1] - Vector2(d[2], d[2]), Vector2(d[2], d[2]) * 2.0)):
+							clash = true
+							break
+				if not clash:
+					placed = true
 					break
-			if clash:
+			if not placed:
 				continue
 			taken.append(rect)
 			_txt(f_disp, lp, name_, fs, Color(0, 0, 0, 0.8), 4)
@@ -292,6 +320,8 @@ func _label_rank(sid: int) -> int:
 	var rank := 0
 	if int(e["cell"]) == int(map.app.selection.get("cell", -1)):
 		rank += 100
+	if not AppSession.is_charted(s):
+		return rank
 	var owner := int(s.get("owner", 0))
 	if owner == map.app.player():
 		rank += 50

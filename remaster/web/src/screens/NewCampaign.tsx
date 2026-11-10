@@ -6,10 +6,11 @@ import { Starfield } from '../ui/Starfield';
 import { FACTIONS, palette } from '../ui/theme';
 
 const SIZES = [
-  { id: 'small', label: 'Small', width: 12, height: 9, systems: 16, blurb: 'Quick, crowded — contact comes early.' },
-  { id: 'medium', label: 'Medium', width: 16, height: 12, systems: 28, blurb: 'The classic reference galaxy.' },
-  { id: 'large', label: 'Large', width: 22, height: 16, systems: 48, blurb: 'Room to expand before borders meet.' },
-  { id: 'huge', label: 'Huge', width: 30, height: 20, systems: 80, blurb: 'A long campaign across a wide quadrant.' },
+  // The one place the web client's galaxy sizes live (twin: godot/scripts/viewmodels/new_campaign_vm.gd SIZES).
+  { id: 'small', label: 'Small', width: 16, height: 13, systems: 30, blurb: 'Quick, crowded — contact comes early.' },
+  { id: 'medium', label: 'Medium', width: 22, height: 16, systems: 50, blurb: 'The default: room to grow, rivals within reach.' },
+  { id: 'large', label: 'Large', width: 28, height: 20, systems: 80, blurb: 'Room to expand before borders meet.' },
+  { id: 'huge', label: 'Huge', width: 34, height: 24, systems: 120, blurb: 'A long campaign across a wide quadrant.' },
 ] as const;
 
 const ERA_BLURBS: Record<number, string> = {

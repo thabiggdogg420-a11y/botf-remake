@@ -1,5 +1,5 @@
 extends SceneTree
-## Galaxy chart: it opens framed (a neighbourhood of the known sectors, inside the galaxy, clear of the panels) and every
+## Galaxy chart: it opens framed on the whole galaxy (every star inside the free area, clear of the panels) and every
 ## feature type (nebula, ion storm, subspace rift, wormhole, black hole, neutron star) gets drawn.
 ##   godot --headless --path remaster/godot -s res://scenes/galaxy/tests/test_galaxy_map.gd
 ## Exit code 0 on success, 1 on any failure.
@@ -38,34 +38,26 @@ func _run() -> void:
 
 	# ---- Framing on open
 	check(gs._framed, "the chart framed itself when the screen opened")
-	check(map.zoom >= 0.35 and map.zoom <= 1.6, "zoom %.2f within the framed range (no 2.4x single-sector view)" % map.zoom)
-	var world := Vector2(g) * GalaxyMap.CELL
-	var avail := Vector2(map.size.x - map.view_insets.x - map.view_insets.z, map.size.y - map.view_insets.y - map.view_insets.w)
-	var shown := avail / map.zoom
-	check(shown.x >= minf(world.x, 9.0 * GalaxyMap.CELL) - 1.0, "the chart shows at least 9 sectors across (%.1f)" % (shown.x / GalaxyMap.CELL))
-	# The visible rectangle sits inside the galaxy (or the galaxy is centred when it is smaller than the view).
-	var centre := map.cam + Vector2(map.view_insets.x - map.view_insets.z, map.view_insets.y - map.view_insets.w) * 0.5 / map.zoom
-	for axis in 2:
-		if shown[axis] < world[axis]:
-			check(centre[axis] - shown[axis] * 0.5 >= -1.0 and centre[axis] + shown[axis] * 0.5 <= world[axis] + 1.0, "view inside the galaxy on axis %d" % axis)
-		else:
-			check(absf(centre[axis] - world[axis] * 0.5) < 1.0, "galaxy centred on axis %d" % axis)
-	# A known sector is on screen, clear of the inspector panel on the right.
-	var fog: String = app.view["fog"]
-	var known := -1
-	for i in fog.length():
-		if fog[i] != "0":
-			known = i
-			break
-	check(known >= 0, "a known sector exists")
-	if known >= 0:
-		var sp := map.map_to_screen(map.cell_center(known % g.x, known / g.x))
-		check(sp.x > map.view_insets.x and sp.x < map.size.x - map.view_insets.z and sp.y > 0.0 and sp.y < map.size.y - map.view_insets.w,
-			"the first known sector is inside the visible area (%s)" % sp)
-	# Home / F re-frames.
-	map.zoom = 0.4
+	check(map.zoom >= GalaxyMap.ZOOM_MIN and map.zoom <= 1.6, "zoom %.2f within the framed range" % map.zoom)
+	check(is_equal_approx(map.yaw, 0.0) and is_equal_approx(map.pitch, GalaxyMap.PITCH_DEFAULT), "the opening view is north up at the default tilt")
+	# The whole galaxy is framed: the four corners of the tilted disc and every star sit inside the free rectangle,
+	# clear of the right-hand inspector and the layer bar (and the nav rail and top bar, which lie outside the map).
+	var free := Rect2(Vector2(map.view_insets.x, map.view_insets.y), map.size - Vector2(map.view_insets.x + map.view_insets.z, map.view_insets.y + map.view_insets.w))
+	var corners := [Vector3(0, 0, 0), Vector3(g.x, 0, 0), Vector3(g.x, 0, g.y), Vector3(0, 0, g.y)]
+	for c in corners:
+		var cp := map.world_to_screen(c)
+		check(free.grow(2.0).has_point(cp), "galaxy corner %s is inside the free area %s" % [cp, free])
+	var out_of_frame := 0
+	for sid in map.systems3d:
+		if not free.grow(2.0).has_point(map.world_to_screen(map.systems3d[sid]["pos"])):
+			out_of_frame += 1
+	check(out_of_frame == 0, "every star is inside the free area (%d outside)" % out_of_frame)
+	# F (frame_known) re-frames from any camera.
+	var z0 := map.zoom
+	map.zoom = 3.0
+	map.cam = Vector2.ZERO
 	map.frame_known()
-	check(map.zoom >= 0.35 and map.zoom <= 1.6 and not is_equal_approx(map.zoom, 0.4), "frame_known re-frames")
+	check(absf(map.zoom - z0) < 0.01 and map.cam != Vector2.ZERO, "frame_known re-frames the whole galaxy")
 
 	# ---- Every feature type is drawn
 	var types := ["Nebula", "IonStorm", "SubspaceRift", "Wormhole", "BlackHole", "NeutronStar"]

@@ -55,8 +55,15 @@ test('new reference campaign returns a fog-respecting view', () => {
   assert.equal(view.fog.length, view.meta.width * view.meta.height);
   const home = view.colonies[0];
   assert.ok(home && home.population > 0);
-  // Only surveyed systems are exposed.
-  for (const system of view.systems) assert.notEqual(view.fog[system.y * view.meta.width + system.x], '0');
+  // Every star is listed; an unexplored one is uncharted: id, position, a catalogue designation and explored:false, nothing more.
+  const uncharted = view.systems.filter((s) => s.explored === false);
+  for (const system of view.systems.filter((s) => s.explored !== false)) assert.notEqual(view.fog[system.y * view.meta.width + system.x], '0');
+  for (const system of uncharted) {
+    assert.deepEqual(Object.keys(system).sort(), ['explored', 'id', 'name', 'x', 'y']);
+    assert.match(system.name, /^FGC-\d{3}$/);
+    assert.equal(view.fog[system.y * view.meta.width + system.x], '0');
+  }
+  assert.ok(uncharted.length > 0 && view.systems.length > uncharted.length);
   // Foreign ships only appear inside sensor range.
   for (const c of view.contacts) assert.equal(view.fog[c.y * view.meta.width + c.x], '2');
   assert.ok(view.fleets.length >= 2, 'player starts with ships');

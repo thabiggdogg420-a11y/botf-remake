@@ -24,6 +24,7 @@
 #include <algorithm>
 #include <array>
 #include <cctype>
+#include <cstdio>
 #include <cstring>
 #include <functional>
 #include <optional>
@@ -161,6 +162,12 @@ std::string systemLabel(const botf::GameState& s, int id) {
     const auto* sys = systemById(s, id);
     if (sys && knownSystem(s, *sys)) return sys->name;
     return "System " + std::to_string(id);
+}
+// Catalogue designation of a system the player has not explored: deterministic from the id, carries no real name.
+std::string uncharted_designation(int id) {
+    char buf[24];
+    std::snprintf(buf, sizeof buf, "FGC-%03d", id);
+    return buf;
 }
 std::string empireLabel(int id) {
     try { return botf::empireName(id); } catch (...) { return "Empire " + std::to_string(id); }
@@ -957,15 +964,26 @@ void writeView(Writer& w) {
     }
     w.field("fog", fog);
 
-    // --- systems (explored only)
+    // --- systems: every star in the galaxy is on the chart from turn 1 (Simon, 10 Nov 2026: the galaxy screen shows the whole
+    // disc). A system the player has not explored is "uncharted": id, position and a catalogue designation only, so nothing
+    // about it (name, owner, planets, minor race, structures, capacity) reaches the client. The star's type and colour are
+    // the client's own deterministic hash of (x, y, seed); the core holds none. Explored systems are listed in full as before.
     w.key("systems").beginArray();
     for (const auto& sys : s.systems) {
-        if (!knownSystem(s, sys)) continue;
+        if (!knownSystem(s, sys)) {
+            w.beginObject();
+            w.field("id", sys.id); w.field("x", sys.x); w.field("y", sys.y);
+            w.field("name", uncharted_designation(sys.id));
+            w.field("explored", false);
+            w.endObject();
+            continue;
+        }
         const bool seen = botf::visible(s, me, sys.x, sys.y);
         const auto* col = botf::colonyAt(s, sys.id);
         const auto* minor = botf::minorAt(s, sys.id);
         w.beginObject();
         w.field("id", sys.id); w.field("x", sys.x); w.field("y", sys.y); w.field("name", sys.name);
+        w.field("explored", true);
         w.field("visible", seen);
         int owner = 0;
         if (col && (col->ownerId == me || seen)) owner = col->ownerId;

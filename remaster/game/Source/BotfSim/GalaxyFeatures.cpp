@@ -68,8 +68,11 @@ void generateGalaxyFeatures(GameState& s) {
     };
     auto claim = [&](int x, int y) { blocked[static_cast<std::size_t>(y * w + x)] = 1; };
     int x = 0, y = 0, cluster = 0;
+    // Anomaly counts keep pace with the galaxy: the original steps (area 150, 250, 300) hold up to a 22x16 Medium, and the
+    // bigger grids (Large 28x20, Huge 34x24) add one and two more of each kind. No change below area 500.
+    const int extra = area >= 700 ? 2 : (area >= 500 ? 1 : 0);
     // Nebula clouds: short random walks of 3-5 cells.
-    const int clouds = area >= 150 ? 2 : 1;
+    const int clouds = (area >= 150 ? 2 : 1) + extra;
     for (int cloud = 0; cloud < clouds; ++cloud) {
         if (!pick(freeCell, x, y)) break;
         ++cluster;
@@ -89,7 +92,7 @@ void generateGalaxyFeatures(GameState& s) {
     }
     // Black holes: interior cells clear of systems and other anomalies, so the
     // 8-connected map stays connected.
-    const int blackHoles = area >= 300 ? 2 : 1;
+    const int blackHoles = (area >= 300 ? 2 : 1) + (extra > 1 ? 1 : 0);
     for (int i = 0; i < blackHoles; ++i) {
         const auto ok = [&](int px, int py) {
             if (!freeCell(px, py) || border(px, py)) return false;
@@ -101,13 +104,13 @@ void generateGalaxyFeatures(GameState& s) {
         addFeature(s, GalaxyFeatureType::BlackHole, x, y, 0);
         claim(x, y);
     }
-    const int neutronStars = area >= 250 ? 2 : 1;
+    const int neutronStars = (area >= 250 ? 2 : 1) + extra;
     for (int i = 0; i < neutronStars; ++i) {
         if (!pick(freeCell, x, y)) break;
         addFeature(s, GalaxyFeatureType::NeutronStar, x, y, 0);
         claim(x, y);
     }
-    const int wormholes = area >= 300 ? 2 : 1;
+    const int wormholes = (area >= 300 ? 2 : 1) + extra;
     const int span = std::max(5, std::max(w, h) / 2);
     for (int i = 0; i < wormholes; ++i) {
         int ax = 0, ay = 0, bx = 0, by = 0;
@@ -123,7 +126,7 @@ void generateGalaxyFeatures(GameState& s) {
         s.galaxyFeatures[s.galaxyFeatures.size() - 2].pairId = second;
         s.galaxyFeatures.back().pairId = first;
     }
-    const int storms = area >= 300 ? 2 : 1;
+    const int storms = (area >= 300 ? 2 : 1) + extra;
     for (int i = 0; i < storms; ++i) {
         if (!pick([&](int px, int py) { return freeCell(px, py) && !border(px, py); }, x, y)) break;
         addFeature(s, GalaxyFeatureType::IonStorm, x, y, 0);

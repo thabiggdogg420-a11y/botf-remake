@@ -238,11 +238,14 @@ func _on_hover(cell: int, pos: Vector2) -> void:
 		var y := cell / w
 		var fog: String = str(v["fog"])[cell]
 		var s := app.system_at(x, y)
+		var uc := app.session.uncharted_at(x, y)
 		var col := Lcars.vbox(2)
 		var title := Lcars.hbox(8)
-		title.add_child(Lcars.label((str(s["name"]) if not s.is_empty() else ("Uncharted space" if fog == "0" else "Open space")).to_upper(), "SubHeading", 18, Lcars.TEXT))
+		title.add_child(Lcars.label((str(s["name"]) if not s.is_empty() else (str(uc["name"]) if not uc.is_empty() else ("Uncharted space" if fog == "0" else "Open space"))).to_upper(), "SubHeading", 18, Lcars.TEXT))
 		title.add_child(Lcars.label("%d.%d" % [x, y], "Mono", 12, Lcars.TEXT3))
 		col.add_child(title)
+		if not uc.is_empty():
+			col.add_child(Lcars.label("Uncharted star system", "Muted"))
 		if not s.is_empty() and int(s.get("owner", 0)) != 0:
 			col.add_child(Lcars.label("Your colony" if int(s["owner"]) == app.player() else app.empire_name(int(s["owner"])), "", 13, Lcars.owner_color(int(s["owner"]))))
 		if not s.is_empty() and s.has("minor"):
@@ -476,6 +479,7 @@ func _sector_card(cell: int, primary: bool) -> Control:
 	var x := cell % w
 	var y := cell / w
 	var s := app.system_at(x, y)
+	var uc := app.session.uncharted_at(x, y)
 	var fog: String = str(v["fog"])[cell]
 	var card := Lcars.card()
 	card.name = "SectorCard"
@@ -489,7 +493,13 @@ func _sector_card(cell: int, primary: bool) -> Control:
 		sub += " · " + str(s["minor"]["name"])
 	elif not s.is_empty():
 		sub += " · unclaimed"
-	col.add_child(_card_head(owner, str(s["name"]) if not s.is_empty() else ("Uncharted space" if fog == "0" else "Open space"), sub))
+	elif not uc.is_empty():
+		sub += " · uncharted star"
+	col.add_child(_card_head(owner, str(s["name"]) if not s.is_empty() else (str(uc["name"]) if not uc.is_empty() else ("Uncharted space" if fog == "0" else "Open space")), sub))
+	if not uc.is_empty():
+		var up := Lcars.para("Uncharted. A star shows here on the chart, but nothing is known of it until a ship or a sensor reaches it. Send a ship to chart it: select one of yours and right-click this star.", Lcars.TEXT2, 13)
+		up.name = "UnchartedNote"
+		col.add_child(up)
 	for f in _features_at(cell):
 		var fc := PanelContainer.new()
 		fc.theme_type_variation = "Inset"

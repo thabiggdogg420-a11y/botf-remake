@@ -31,19 +31,26 @@ function call<T>(method: string, args: object = {}): T {
 
 export interface OrderOptions { cancelIds?: number[] }
 
+
+// The core lists every star from turn 1; one the player has not explored arrives as {id, x, y, name: designation,
+// explored: false}. The browser client's map draws known systems only, so uncharted entries are dropped here.
+function charted(v: GameView): GameView {
+  return v && Array.isArray(v.systems) ? { ...v, systems: v.systems.filter((s) => (s as { explored?: boolean }).explored !== false) } : v;
+}
+
 export const core = {
   meta: () => call<Meta>('meta'),
   encyclopedia: () => call<Encyclopedia>('encyclopedia'),
   newCampaign: (options: {
     faction: number; empires: number; seed: number; era: number; ruleset: 'reference' | 'prototype';
     width: number; height: number; systems: number; events: boolean; aiAggression: boolean; preset?: 'classic' | 'remastered';
-  }) => call<GameView>('newCampaign', options),
-  newBattleDrill: (station = false) => call<GameView>('newBattleDrill', { station }),
-  newFrontierDrill: () => call<GameView>('newFrontierDrill'),
+  }) => charted(call<GameView>('newCampaign', options)),
+  newBattleDrill: (station = false) => charted(call<GameView>('newBattleDrill', { station })),
+  newFrontierDrill: () => charted(call<GameView>('newFrontierDrill')),
   station: (stationId: number) => call<StationDetail>('station', { stationId }),
-  newDiplomacyDrill: () => call<GameView>('newDiplomacyDrill'),
+  newDiplomacyDrill: () => charted(call<GameView>('newDiplomacyDrill')),
   headlessFingerprint: () => call<string | number>('headlessFingerprint'),
-  view: () => call<GameView>('view'),
+  view: () => charted(call<GameView>('view')),
   submit: (command: Command, options: OrderOptions = {}) => call<{ id: number }>('submit', { command, ...options }),
   dryRun: (command: Command | null, options: OrderOptions = {}) =>
     call<{ ok: boolean; error: string }>('dryRun', command ? { command, ...options } : { ...options }),
@@ -70,6 +77,6 @@ export const core = {
   replay: (index: number) => call<Encounter>('replay', { index }),
   battleReport: (index: number) => call<BattleReport>('battleReport', { index }),
   save: () => call<SaveBlob>('save'),
-  load: (data: string, scenario = 'campaign', briefing = '') => call<GameView>('load', { data, scenario, briefing }),
+  load: (data: string, scenario = 'campaign', briefing = '') => charted(call<GameView>('load', { data, scenario, briefing })),
   fingerprint: () => call<string | number>('fingerprint'),
 };
