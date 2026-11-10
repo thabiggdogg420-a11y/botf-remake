@@ -283,20 +283,33 @@ func pose_of(s: ShipTrack, t: float) -> Pose:
 	if lead == null:
 		return own
 	var w := 1.0
-	if lead.hide_at >= 0.0 and t > lead.hide_at:
-		w = 1.0 - smoothstep01((t - lead.hide_at) / maxf(1e-6, 2.0 * tick_seconds))
+	# A leader that takes its killing blow stops leading then: its wreck tumbles and is hidden later, and a wingman that copied
+	# that tumble swung round it (and snapped when the wreck was hidden). The wingman holds the leader's last pose at the blow
+	# and peels back to its own track from there.
+	var t_dead := lead.kill_at if lead.kill_at >= 0.0 else lead.hide_at
+	if t_dead >= 0.0 and t > t_dead:
+		w = 1.0 - smoothstep01((t - t_dead) / maxf(1e-6, 2.0 * tick_seconds))
 	if formation_until > 0.0:
 		var edge := 0.18 * formation_until
 		w *= smoothstep01(t / edge) * smoothstep01((formation_until - t) / edge)
 	if w <= 0.0:
 		return own
-	var lp := flown(lead, t)
+	var lt := t if t_dead < 0.0 else minf(t, t_dead - 0.001)
+	var lp := flown(lead, lt)
 	var f := deg_to_rad(lp.facing)
 	var p := Pose.new()
 	p.x = own.x + (lp.x - cos(f) * s.wing_back - sin(f) * s.wing_side - own.x) * w
 	p.y = own.y + (lp.y - sin(f) * s.wing_back + cos(f) * s.wing_side - own.y) * w
 	p.altitude = own.altitude + (lp.altitude + s.wing_up - own.altitude) * w
-	p.facing = wrap_degrees(own.facing + shortest_turn(own.facing, lp.facing) * w)
+	if t_dead >= 0.0 and t > t_dead:
+		# Peeling off a wreck: the turn back to its own heading is measured once, at the blow, and followed from there (a fresh
+		# shortest turn each frame flips the wingman half a circle when its own heading passes opposite the held wreck's).
+		var t_h := t_dead - 0.001
+		var own_h := flown(s, t_h)
+		var back := shortest_turn(lp.facing, own_h.facing) + shortest_turn(own_h.facing, own.facing)
+		p.facing = wrap_degrees(lp.facing + back * (1.0 - w))
+	else:
+		p.facing = wrap_degrees(own.facing + shortest_turn(own.facing, lp.facing) * w)
 	p.bank = own.bank + (lp.bank - own.bank) * w
 	p.pitch = own.pitch + (lp.pitch - own.pitch) * w
 	return p
@@ -305,6 +318,9 @@ func pose_of(s: ShipTrack, t: float) -> Pose:
 # ------------------------------------------------------------------------------------------------------------------
 # In-round choreography (M1 battlechoreo; presentation only)
 # ------------------------------------------------------------------------------------------------------------------
+
+## Half-width (seconds) of the window an escort's bow turn is averaged over (see _run_turn).
+const RUN_HEADING_WINDOW := 0.5
 
 const METERS_PER_CELL := 592.0 ## A Galaxy (640 m) spans 1.08 plane cells as drawn (BattleScene CELL x SPREAD).
 
@@ -340,7 +356,9 @@ func _flown_uncached(s: ShipTrack, t: float) -> Pose:
 static func _choreo_env(s: ShipTrack, t: float) -> float:
 	if s.choreo_end <= 0.0:
 		return 0.0
-	return smoothstep01(t / 0.8) * smoothstep01((s.choreo_end - t) / 1.0)
+	# An escort blends onto a run that begins at its own cell and then flies 4-5 cells/s; blending in over 0.8 s made the
+	# hand-over itself peak near 7 cells/s (a visible lurch), so its blend-in takes 1.6 s.
+	return smoothstep01(t / (1.6 if s.style == 2 else 0.8)) * smoothstep01((s.choreo_end - t) / 1.0)
 
 
 ## Plane x, plane y, altitude (cells) of the choreographed path without reactions.
@@ -385,6 +403,26 @@ static func _run_tangent(T: PackedFloat64Array, P: Array[Vector3], i: int) -> Ve
 
 
 ## Reaction shove: a hard hit pushes the ship sideways a little (cells, plane + altitude).
+## How far an escort's bow is turned off the core's facing by its run at t: toward the direction of travel, let go of where
+## the run is nearly still, and averaged over +-RUN_HEADING_WINDOW so the bow swings round at a visible rate (at the
+## turnaround the direction of travel reverses inside a frame; a raw heading would snap the hull and its wingmen with it).
+static func _run_turn(s: ShipTrack, t: float) -> float:
+	var sum := 0.0
+	const N := 8
+	for i in range(-N, N + 1):
+		var ti := t + RUN_HEADING_WINDOW * float(i) / float(N)
+		var e := _choreo_env(s, ti)
+		if e <= 0.0:
+			continue
+		var qa := _alive_pos(s, ti - 0.05)
+		var qb := _alive_pos(s, ti + 0.05)
+		var flat := Vector2(qb.x - qa.x, qb.y - qa.y).length() / 0.1
+		var wv := e * clampf(flat / 0.6, 0.0, 1.0)
+		var heading := rad_to_deg(atan2(qb.y - qa.y, qb.x - qa.x))
+		sum += shortest_turn(s.pose_at(ti).facing, heading) * wv
+	return sum / float(2 * N + 1)
+
+
 static func _kick_pos(s: ShipTrack, t: float, facing: float) -> Vector3:
 	var out := Vector3.ZERO
 	var e := _choreo_env(s, t)
@@ -414,8 +452,7 @@ func _alive(s: ShipTrack, t: float) -> Pose:
 		var v := (qb - qa) / (2.0 * h)
 		var flat := Vector2(v.x, v.y).length()
 		var wv := e * clampf(flat / 0.6, 0.0, 1.0)
-		var heading := rad_to_deg(atan2(v.y, v.x))
-		face = p.facing + shortest_turn(p.facing, heading) * wv
+		face = p.facing + _run_turn(s, t)
 		var qm := _alive_pos(s, t)
 		var h0 := rad_to_deg(atan2(qm.y - qa.y, qm.x - qa.x))
 		var h1 := rad_to_deg(atan2(qb.y - qm.y, qb.x - qm.x))
