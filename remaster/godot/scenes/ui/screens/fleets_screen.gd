@@ -79,7 +79,7 @@ func _row(u: Dictionary, active: bool) -> Control:
 	if active:
 		b.add_theme_stylebox_override("normal", Lcars.box(Color(Lcars.accent(), 0.22), 12, Lcars.accent(), 1))
 	var inner := Lcars.row_inner(b, 12)
-	inner.add_child(UiIcon.make("fleet" if not tf.is_empty() else "ship", 20, Lcars.owner_color(app.player())))
+	inner.add_child(ShipPicture.make(int(lead.get("owner", app.player())), ShipGlyph.class_of(lead), 34, "iso"))
 	var nm := Lcars.vbox(-2)
 	nm.alignment = BoxContainer.ALIGNMENT_CENTER
 	nm.add_child(Lcars.label(str(tf["name"]) if not tf.is_empty() else str(lead["name"]), "", 15, Lcars.TEXT))
@@ -128,9 +128,12 @@ func _detail(u: Dictionary) -> Control:
 	b.add_child(top)
 	var hero := ShipSilhouette.new()
 	hero.seed_id = int(lead.get("referenceShipId", lead["id"]))
+	hero.owner_id = int(lead.get("owner", app.player()))
+	hero.klass = ShipGlyph.class_of(lead)
+	hero.view = "iso"
 	hero.color = Lcars.owner_color(app.player())
-	hero.custom_minimum_size = Vector2(0, 150)
-	hero.tooltip_text = "%s %s, procedural silhouette (hull art by lane L7 replaces it)." % [lead.get("designClass", ""), lead.get("designName", lead["className"])]
+	hero.custom_minimum_size = Vector2(0, 210)
+	hero.tooltip_text = "%s %s, hull picture." % [lead.get("designClass", ""), lead.get("designName", lead["className"])]
 	b.add_child(hero)
 	if tf.is_empty() and lead.get("roster") is Dictionary:
 		b.add_child(Lcars.para(Roster.weapon_summary(lead["roster"].get("weapons", [])), Lcars.TEXT3, 13))

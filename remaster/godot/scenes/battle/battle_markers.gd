@@ -228,19 +228,11 @@ func _draw_icon(view: CameraRig.View, b: Dictionary, c: Vector2, col: Color, key
 	var pb := CameraRig.project(view, bow3, 0.0)
 	var d := Vector2(pb.u * size.x, pb.v * size.y) - c
 	d = d.normalized() if d.length() > 0.01 else Vector2.UP
-	var n := Vector2(-d.y, d.x)
 	var rad: float = float(b.radius)
 	var k := 7.0 if rad < 6.0 else (9.0 if rad < 14.0 else 11.0)
-	var pts: PackedVector2Array
+	var tint := col.lightened(0.3) if key else col
 	if int(b.get("id", 0)) >= 2000000:
-		pts = PackedVector2Array([c + Vector2(-k, -k), c + Vector2(k, -k), c + Vector2(k, k), c + Vector2(-k, k)])
-	elif rad < 6.0:
-		pts = PackedVector2Array([c + d * k, c - d * k * 0.6 + n * k * 0.7, c - d * k * 0.2, c - d * k * 0.6 - n * k * 0.7])
-	elif rad < 14.0:
-		pts = PackedVector2Array([c + d * k, c + n * k * 0.6, c - d * k * 0.8, c - n * k * 0.6])
+		ShipGlyph.draw_station(self, c, k, tint, true)
 	else:
-		pts = PackedVector2Array([c + d * k * 1.1, c + n * k * 0.8 + d * k * 0.1, c + n * k * 0.6 - d * k * 0.8, c - n * k * 0.6 - d * k * 0.8, c - n * k * 0.8 + d * k * 0.1])
-	draw_colored_polygon(pts, Color(col, 0.35))
-	var loop := pts.duplicate()
-	loop.append(pts[0])
-	draw_polyline(loop, col.lightened(0.3) if key else col, 2.0 if key else 1.3, true)
+		# The plan-view icon is the hull family's silhouette (saucer and nacelles, bird of prey, warbird, ...) along its heading.
+		ShipGlyph.draw_hull(self, ShipGlyph.family_for(int(b.get("owner", 0)), str(b.get("name", ""))), c, k * 2.6, d.angle(), tint, false, true, 0.35)

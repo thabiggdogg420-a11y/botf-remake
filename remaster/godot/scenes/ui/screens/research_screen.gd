@@ -81,6 +81,7 @@ func _field_card(i: int, fd: Dictionary, lock: String) -> Control:
 	v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	outer.add_child(v)
 	var top := Lcars.hbox(8)
+	top.add_child(UiIcon.make(UiIcon.TECH_FIELDS[i % UiIcon.TECH_FIELDS.size()], 26, col_c))
 	var nm := Lcars.label(str(fd["name"]).to_upper(), "SubHeading", 22, col_c)
 	nm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	Lcars.tip(nm, Lcars.RESEARCH_BLURBS[i] if i < Lcars.RESEARCH_BLURBS.size() else "")

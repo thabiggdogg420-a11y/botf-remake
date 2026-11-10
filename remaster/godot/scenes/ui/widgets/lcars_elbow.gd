@@ -21,5 +21,7 @@ func _draw() -> void:
 		pts.append(Vector2(w + 30, h + 30) + Vector2(cos(ang), sin(ang)) * 30)
 	pts.append(Vector2(w + 30, h + 30))
 	draw_colored_polygon(pts, Lcars.BG)
-	Lcars.draw_emblem(self, empire, Vector2(34, 34), 40, Lcars.ink())
-	draw_string(Lcars.font("display", 600), Vector2(62, 44), "LCARS", HORIZONTAL_ALIGNMENT_LEFT, -1, 22, Lcars.ink())
+	Lcars.draw_emblem(self, empire, Vector2(34, 34), 44, Lcars.ink(), false, a)
+	# The label is LCARS only for the Federation; another empire's console shows that empire's name beside its insignia.
+	var label := "LCARS" if empire == 1 else str(Lcars.FACTIONS[clampi(empire, 1, Lcars.FACTIONS.size()) - 1]["short"]).to_upper()
+	draw_string(Lcars.font("display", 600), Vector2(62, 44), label, HORIZONTAL_ALIGNMENT_LEFT, -1, 22 if label.length() < 8 else 18, Lcars.ink())
