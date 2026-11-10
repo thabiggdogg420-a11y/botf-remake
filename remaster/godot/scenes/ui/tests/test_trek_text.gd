@@ -125,6 +125,8 @@ func _run() -> void:
 			seen[l] = true
 		if seen.size() == 6:
 			distinct_per_kind += 1
+		else:
+			printerr("    not distinct: ", kind, " -> ", seen.keys())
 	check(empties == 0, "no empty voiced line")
 	check(leftovers == 0, "no unfilled {slot} in any voiced line")
 	check(distinct_per_kind == CORE_LINES.size(), "six empires give six different lines for every kind")

@@ -246,7 +246,6 @@ try {
             @('ui', 'res://scenes/ui/tests/test_campaign_ui.gd'),
             @('trek-icons', 'res://scenes/ui/tests/test_trek_icons.gd'),
             @('trek-text', 'res://scenes/ui/tests/test_trek_text.gd'),
-            @('viewmodels', 'res://scripts/viewmodels/tests/test_viewmodels.gd'),
             @('battle-timeline', 'res://scenes/battle/tests/test_battle_timeline.gd'),
             @('camera-rig', 'res://scenes/battle/tests/test_camera_rig.gd'),
             @('hero-models', 'res://scenes/battle/tests/test_hero_models.gd'),

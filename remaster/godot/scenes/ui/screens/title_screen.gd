@@ -28,6 +28,7 @@ func refresh() -> void:
 	add_child(root)
 	var crest: Variant = Lcars.emblem(title_empire(), 104, Lcars.owner_color(title_empire()))
 	crest.style = "seal"
+	crest.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 	root.add_child(crest)
 	var emblems := Lcars.hbox(14)
 	for id in range(1, 6):

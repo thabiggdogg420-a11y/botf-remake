@@ -105,7 +105,7 @@ static func _event_row(app: App, e: Dictionary, holder: Dictionary) -> Control:
 	b.add_theme_stylebox_override("normal", sb)
 	var due := ""
 	if e.has("dueTurn"):
-		due = "   (due turn %d)" % int(e["dueTurn"])
+		due = "" if str(e.get("voice", "")).find("turn %d" % int(e["dueTurn"])) >= 0 else "   (due turn %d)" % int(e["dueTurn"])
 	b.text = str(e.get("voice", e["text"])) + due
 	b.tooltip_text = str(e["text"]) if e.has("voice") and str(e["voice"]) != str(e["text"]) else ""
 	b.pressed.connect(func():

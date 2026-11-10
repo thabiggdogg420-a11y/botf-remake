@@ -55,4 +55,74 @@ func _marks() -> void:
 	await _save("ours.png")
 
 func _screens(faction: int) -> void:
-	pass
+	var tag: String = ["x", "fed", "kli", "rom", "car", "fer"][faction]
+	OS.set_environment("BOTF_TITLE_EMPIRE", str(faction))
+	var app: App = load("res://scenes/ui/app.tscn").instantiate()
+	root.add_child(app)
+	await _wait(6)
+	app.start_campaign({"faction": faction, "seed": 424242, "era": 3, "ruleset": "reference", "width": 22, "height": 16, "systems": 48, "preset": "remastered", "events": true, "aiAggression": true})
+	var best: Variant = null
+	var best_n := -1
+	if app.core.is_native():
+		for n in 10:
+			app.end_turn()
+			app.close_all_modals()
+			var b: Variant = app.briefing
+			if b is Dictionary and b.get("events", []).size() >= best_n:
+				best = b
+				best_n = b.get("events", []).size()
+	app.close_all_modals()
+	if best is Dictionary:
+		app.briefing = best
+	print(tag, " briefing events: ", best_n)
+	var shots: Array = args2.slice(1) if args2.size() > 1 else ["galaxy", "galaxy-whole", "fleets", "report", "events", "chronicle", "diplomacy", "title", "new"]
+	for sh in shots:
+		match sh:
+			"galaxy":
+				app.goto("galaxy")
+				var cols: Array = app.view.get("fleets", [])
+				if cols.size() > 0:
+					app.select_fleet(int(cols[0]["id"]))
+			"galaxy-whole":
+				app.goto("galaxy")
+				await _wait(4)
+				var gm: GalaxyMap = app.current_screen().map
+				var fl: Array = app.view.get("fleets", [])
+				gm.focus_cell(int(fl[0]["x"]) if fl.size() > 0 else 11, int(fl[0]["y"]) if fl.size() > 0 else 8, 0.7, false)
+			"report":
+				app.goto("galaxy")
+				app.open_overlay("briefing")
+			"chronicle":
+				app.goto("galaxy")
+				Overlays.briefing(app, "diplomacy")
+			"events":
+				app.goto("galaxy")
+				app.open_overlay("events")
+			"title":
+				var keep_t: Dictionary = app.view
+				app.view = {}
+				app.goto("title")
+				await _wait(14)
+				await _save("%s-title.png" % tag)
+				app.view = keep_t
+				continue
+			"new":
+				var keep: Dictionary = app.view
+				app.view = {}
+				app.goto("new")
+				await _wait(4)
+				app.current_screen()._pick_faction(faction)
+				await _wait(10)
+				for t in app.get_node("Toasts").get_children():
+					t.queue_free()
+				await _save("%s-new.png" % tag)
+				app.view = keep
+				continue
+			_:
+				app.goto(sh)
+		await _wait(10)
+		for t in app.get_node("Toasts").get_children():
+			t.queue_free()
+		await _save("%s-%s.png" % [tag, sh])
+		app.close_all_modals()
+	app.queue_free()
