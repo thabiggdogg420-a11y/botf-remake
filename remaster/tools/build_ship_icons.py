@@ -9,7 +9,9 @@ derived: the pck is a build output only, never committed. ShipIcons (scenes/ui/w
 res://assets/ship_icons/ once AppLoader has mounted the pck (user://packs or <exe dir>/packs); the disk folders stay a dev
 fallback.
 
-  --bake      first re-render every icon from the current hero models (needs a GPU window: godot/tools/bake_ship_icons.gd).
+  --bake      first re-render every icon from the current hero models (needs a GPU window: godot/tools/bake_ship_icons.gd),
+              in chunks of --chunk classes, one Godot process each (a single process that renders hundreds of hulls loses the
+              Vulkan device).
               Do this after the hero models change (the hullhd lane), then rebuild the pack: ONE command does both:
                   python remaster/tools/build_ship_icons.py --bake
   --filter    with --bake: only keys containing this text (e.g. "fed.galaxy"); the pack is built from whatever is on disk.
@@ -20,6 +22,7 @@ repo (a worktree has none); --out to %APPDATA%/Godot/app_userdata/BOTF Remastere
 Exit 0 when the pack exists and holds at least one icon.
 """
 import argparse
+import json
 import os
 import subprocess
 import sys
@@ -51,6 +54,7 @@ def main():
     ap.add_argument("--localassets")
     ap.add_argument("--out")
     ap.add_argument("--filter", default="")
+    ap.add_argument("--chunk", type=int, default=16, help="classes per Godot launch when baking")
     ap.add_argument("--godot", default=os.environ.get("GODOT", r"C:\Tools\Godot\Godot_v4.5-stable_win64_console.exe"))
     ap.add_argument("--proj", default=os.path.join(REMASTER, "godot"))
     a = ap.parse_args()
@@ -63,14 +67,21 @@ def main():
     if a.bake:
         os.makedirs(icons, exist_ok=True)
         env = dict(os.environ, BOTF_HERO_MANIFEST=os.path.join(la, "ships", "godot-hero-manifest.json"))
-        cmd = [a.godot, "--path", a.proj, "--resolution", "640x640", "--audio-driver", "Dummy", "-s", "res://tools/bake_ship_icons.gd", "--", icons]
-        if a.filter:
-            cmd.append(a.filter)
-        print("baking icons into", icons)
-        r = subprocess.run(cmd, env=env, creationflags=LOW)
-        if r.returncode != 0:
-            sys.exit("bake failed (exit %d)" % r.returncode)
-
+        man = os.path.join(la, "ships", "godot-hero-manifest.json")
+        keys = sorted(k for k in json.load(open(man, encoding="utf-8"))["heroes"] if a.filter in k)
+        failed = []
+        print("baking %d classes into %s in chunks of %d" % (len(keys), icons, a.chunk))
+        for start in range(0, len(keys), a.chunk):
+            cmd = [a.godot, "--path", a.proj, "--resolution", "640x640", "--audio-driver", "Dummy", "-s", "res://tools/bake_ship_icons.gd", "--",
+                   icons, a.filter, "--start=%d" % start, "--count=%d" % a.chunk]
+            r = subprocess.run(cmd, env=env, capture_output=True, text=True, creationflags=LOW)
+            tail = [l for l in r.stdout.splitlines() if l.startswith("baked ")]
+            print("chunk %d-%d: exit %d  %s" % (start, min(start + a.chunk, len(keys)) - 1, r.returncode, tail[-1][:120] if tail else ""))
+            if r.returncode != 0:
+                failed.append(start)
+        if failed:
+            sys.exit("bake failed in chunks starting at %s" % failed)
+        print("baked %d classes" % len(keys))
     pngs = sorted(f for f in os.listdir(icons) if f.endswith(".png")) if os.path.isdir(icons) else []
     if not pngs:
         sys.exit("no icons in %s (run with --bake)" % icons)
