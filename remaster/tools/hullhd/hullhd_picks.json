@@ -184,6 +184,34 @@
   "ship.orion.interceptor": [
    "OrionDD",
    "Orion pirate hull, 456 tris"
+  ],
+  "ship.fer.bronta": [
+   "Marauder",
+   "scout. stand-in: only Ferengi hull on disk"
+  ],
+  "ship.fer.ngort": [
+   "Marauder",
+   "destroyer. stand-in: only Ferengi hull on disk"
+  ],
+  "ship.fer.goront": [
+   "Marauder",
+   "cruiser. stand-in: only Ferengi hull on disk"
+  ],
+  "ship.fer.ooron": [
+   "Marauder",
+   "stand-in: only Ferengi hull on disk"
+  ],
+  "ship.fer.tokorn": [
+   "Marauder",
+   "stand-in: only Ferengi hull on disk"
+  ],
+  "ship.fer.tomax": [
+   "Merchantman",
+   "colony ship; brown cargo hull, stand-in"
+  ],
+  "ship.fer.glantor": [
+   "Merchantman",
+   "troop ship; stand-in"
   ]
  },
  "swap": {
@@ -226,6 +254,38 @@
   "ship.fed.nx": [
    "NXRefit",
    "cleaner NX-01 refit skin, 2048 px native (chosen by side-by-side over the mottled NX)"
+  ],
+  "ship.fed.edward": [
+   "Freighter",
+   "colony ship; replaces Nebula kitbash"
+  ],
+  "ship.fed.sydney": [
+   "Transport",
+   "transport; replaces Oberth kitbash"
+  ],
+  "ship.fed.yclass": [
+   "Freighter__base",
+   "utility transport"
+  ],
+  "ship.fed.soyuz": [
+   "F_TNG_SITAK",
+   "frigate stand-in"
+  ],
+  "ship.fed.wells": [
+   "VentureScout",
+   "stand-in (no ring ship on disk)"
+  ],
+  "ship.fed.vengeance": [
+   "Yamato",
+   "dreadnought stand-in"
+  ],
+  "ship.fed.k7": [
+   "F_TNG_COMMAND_POST",
+   "station stand-in (no K-7 on disk)"
+  ],
+  "ship.fed.peregrine": [
+   "DS9FXPeragrine",
+   "real Peregrine fighter, 866 tris"
   ]
  }
 }
