@@ -39,10 +39,11 @@ static func compat() -> bool:
 
 ## The variants available for a planet class (each a dict of file paths), [] when L7 has none. `hi` asks for the
 ## desktop tier (4096 source, capped at MAX_WIDTH on load, with normal map) where the renderer allows it: for a planet that
-## fills a good part of the screen (battle backdrop, big system orb). Compatibility always gets the web tier, which
-## has the relief baked into the albedo.
+## fills a good part of the screen (battle backdrop, big system orb). The web build gets the same tier from
+## planets_hi_web.pck (tools/build_planet_hi_web.py: 2048 WebP, fetched after the title) once it is mounted, and the
+## web tier until then. A desktop gl_compatibility run keeps the web tier (relief baked into the albedo).
 static func variants(cls: String, hi: bool = false) -> Array:
-	hi = hi and not compat()
+	hi = hi and (OS.has_feature("web") or not compat())
 	var key := cls + ("#hi" if hi else "")
 	if _sets.has(key):
 		return _sets[key]
@@ -50,7 +51,7 @@ static func variants(cls: String, hi: bool = false) -> Array:
 	if disabled:
 		return out
 	var tiers := ["desktop", "web"] if hi else ["web", "desktop"]
-	if compat():
+	if compat() and not hi:
 		tiers = ["web"]
 	for root in [ROOT]:
 		for d in CLASS_DIRS.get(cls, [cls.to_lower()]):
@@ -69,9 +70,11 @@ static func variants(cls: String, hi: bool = false) -> Array:
 						continue
 					var v := {"albedo": alb}
 					for layer in ["clouds", "night", "rough", "normal"]:
-						var lp := dir.path_join("v%d_%s.png" % [n, layer])
-						if AppLoader.exists(lp):
-							v[layer] = lp
+						for ext in ["png", "webp"]:
+							var lp := dir.path_join("v%d_%s.%s" % [n, layer, ext])
+							if AppLoader.exists(lp):
+								v[layer] = lp
+								break
 					out.append(v)
 				if not out.is_empty():
 					break
@@ -88,6 +91,10 @@ static func get_texture(path: String) -> Texture2D:
 	if _tex.has(path):
 		return _tex[path]
 	if not AppLoader.threads():
+		# One decode per frame on the main thread (a 2048 WebP plus its mips is tens of ms in wasm): callers retry next frame.
+		if Engine.get_process_frames() == _sync_frame:
+			return null
+		_sync_frame = Engine.get_process_frames()
 		var img := _read(path)
 		_tex[path] = ImageTexture.create_from_image(img)
 		return _tex[path]
@@ -106,8 +113,11 @@ static func get_texture(path: String) -> Texture2D:
 		_pending[path] = WorkerThreadPool.add_task(_load_image.bind(path), false, "planet texture")
 	return null
 
+static var _sync_frame := -1
+
 static func _read(path: String) -> Image:
-	var img := AppLoader.image(path, WEB_MAX_WIDTH if OS.has_feature("web") else MAX_WIDTH)
+	# The web tier is 1024 wide already; the hi tier is capped at MAX_WIDTH like the desktop's.
+	var img := AppLoader.image(path, MAX_WIDTH)
 	if img == null:
 		img = Image.create(2, 1, false, Image.FORMAT_RGB8)
 	return img

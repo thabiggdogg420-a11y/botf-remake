@@ -178,6 +178,39 @@ if ($planetsOk) {
 }
 Add-Result 'planet-packs' $(if ($planetsOk) { 'ok' } else { 'FAIL' }) $planetDetail
 
+# Hero ships (M1 webparity): the packaged game reads them from packs, never from LocalAssets. ships_desktop.pck (every glb as
+# the dev run reads it) goes to the user packs folder (editor runs, pc_smoke) and beside the exe; the web gets one reduced pack
+# per faction plus planets_hi_web.pck (the desktop planet tier as 2048 WebP), staged here and copied to build\web\packs after
+# the export. Each tool rebuilds only what is stale.
+$webStage = Join-Path $proj 'build\web-pack-stage'
+New-Item -ItemType Directory -Force -Path $webStage | Out-Null
+$shipsDesk = Join-Path $userPacks 'ships_desktop.pck'
+$shipsOk = $false
+$shipDetail = 'no LocalAssets\ships: hero ship packs missing'
+if ($localAssets -and (Test-Path -LiteralPath (Join-Path $localAssets 'ships\godot-hero-manifest.json'))) {
+    $sp = Start-Process -FilePath $python -ArgumentList "`"$(Join-Path $remaster 'tools\build_ship_packs.py')`" --ships `"$(Join-Path $localAssets 'ships')`" --portraits `"$(Join-Path $localAssets 'portraits')`" --desktop `"$shipsDesk`" --web `"$webStage`" --godot `"$godot`" --proj `"$proj`"" `
+        -PassThru -WindowStyle Hidden -RedirectStandardOutput (Join-Path $logs 'pack-ships.log') -RedirectStandardError (Join-Path $logs 'pack-ships.err')
+    $null = $sp.Handle
+    try { $sp.PriorityClass = [System.Diagnostics.ProcessPriorityClass]::BelowNormal } catch {}
+    if (-not $sp.WaitForExit(3600 * 1000)) { try { Stop-Process -Id $sp.Id -Force } catch {} }
+    $hp = Start-Process -FilePath $python -ArgumentList "`"$(Join-Path $remaster 'tools\build_planet_hi_web.py')`" --planets `"$(Join-Path $localAssets 'planets')`" --out `"$(Join-Path $webStage 'planets_hi_web.pck')`" --godot `"$godot`" --proj `"$proj`"" `
+        -PassThru -WindowStyle Hidden -RedirectStandardOutput (Join-Path $logs 'pack-planets-hi.log') -RedirectStandardError (Join-Path $logs 'pack-planets-hi.err')
+    $null = $hp.Handle
+    try { $hp.PriorityClass = [System.Diagnostics.ProcessPriorityClass]::BelowNormal } catch {}
+    if (-not $hp.WaitForExit(3600 * 1000)) { try { Stop-Process -Id $hp.Id -Force } catch {} }
+    $webShips = @(Get-ChildItem -LiteralPath $webStage -Filter 'ships_*_web.pck' -ErrorAction SilentlyContinue)
+    $shipsOk = (Test-Path -LiteralPath $shipsDesk) -and $webShips.Count -ge 5 -and (Test-Path -LiteralPath (Join-Path $webStage 'planets_hi_web.pck'))
+    $shipDetail = 'ships_desktop.pck {0:N0} MB; web: {1} faction packs {2:N1} MB, planets_hi_web.pck {3:N1} MB' -f ((Get-Item -LiteralPath $shipsDesk -ErrorAction SilentlyContinue).Length / 1MB), $webShips.Count, (($webShips | Measure-Object Length -Sum).Sum / 1MB), ((Get-Item -LiteralPath (Join-Path $webStage 'planets_hi_web.pck') -ErrorAction SilentlyContinue).Length / 1MB)
+}
+Add-Result 'ship-packs' $(if ($shipsOk) { 'ok' } else { 'FAIL' }) $shipDetail
+
+# Large packs go beside the exports as hard links where the volume allows (no second copy of 1 GB), else copies.
+function Link-Pack([string]$Src, [string]$DestDir) {
+    $dest = Join-Path $DestDir (Split-Path -Leaf $Src)
+    if (Test-Path -LiteralPath $dest) { Remove-Item -LiteralPath $dest -Force }
+    try { New-Item -ItemType HardLink -Path $dest -Target $Src -ErrorAction Stop | Out-Null } catch { Copy-Item -LiteralPath $Src -Destination $dest -Force }
+}
+
 $imp = Start-Godot 'import' "--headless --audio-driver Dummy --path `"$proj`" --import"
 Wait-Jobs @($imp) 300
 Add-Result 'import' $(if ($imp.Exit -eq 0) { 'ok' } else { 'FAIL' }) "exit $($imp.Exit)"
@@ -346,29 +379,63 @@ if (-not $SkipExport) {
         $winPacks = Join-Path $proj 'build\packs'
         New-Item -ItemType Directory -Force -Path $winPacks | Out-Null
         Get-ChildItem -LiteralPath $winPacks -Filter '*.pck' -ErrorAction SilentlyContinue | Remove-Item -Force
-        $dp = Join-Path $userPacks 'planets_desktop.pck'
-        if (Test-Path -LiteralPath $dp) { Copy-Item -LiteralPath $dp -Destination $winPacks -Force }
+        foreach ($n in 'planets_desktop.pck', 'ships_desktop.pck') {
+            $dp = Join-Path $userPacks $n
+            if (Test-Path -LiteralPath $dp) { Link-Pack $dp $winPacks }
+        }
         $exeFile = Join-Path $proj 'build\BOTFRemastered.exe'
         $exeMb = if (Test-Path $exeFile) { [Math]::Round((Get-Item $exeFile).Length / 1MB) } else { 0 }
-        Add-Result 'windows-packs' $(if ((Test-Path (Join-Path $winPacks 'planets_desktop.pck')) -and $audioOk) { 'ok' } else { 'FAIL' }) "build\packs\planets_desktop.pck beside the exe; audio embedded (exe $exeMb MB)"
+        $winOk = (Test-Path (Join-Path $winPacks 'planets_desktop.pck')) -and (Test-Path (Join-Path $winPacks 'ships_desktop.pck')) -and $audioOk
+        Add-Result 'windows-packs' $(if ($winOk) { 'ok' } else { 'FAIL' }) "build\packs\planets_desktop.pck and ships_desktop.pck beside the exe; audio embedded (exe $exeMb MB)"
+
+        # The packaged exe in a folder with no LocalAssets and no BOTF_* variables (M1 webparity: the beta fell back to
+        # procedural hulls because the models were only on the dev disk). Every ship whose class has a hero model must be
+        # drawn with it: screenshot.gd SHOT_HERO_CHECK prints HERO_CHECK lines and exits 1 on a fallback hull.
+        $clean = Join-Path $env:TEMP 'botf-clean-exe'
+        if (Test-Path -LiteralPath $clean) { Remove-Item -LiteralPath $clean -Recurse -Force }
+        New-Item -ItemType Directory -Force -Path (Join-Path $clean 'packs') | Out-Null
+        foreach ($f in 'BOTFRemastered.exe', 'libbotf_core.windows.template_release.x86_64.dll') { Link-Pack (Join-Path $proj "build\$f") $clean }
+        Get-ChildItem -LiteralPath $winPacks -Filter '*.pck' | ForEach-Object { Link-Pack $_.FullName (Join-Path $clean 'packs') }
+        $exeShots = Join-Path $run 'exe-clean'
+        New-Item -ItemType Directory -Force -Path $exeShots | Out-Null
+        $saved = @{}
+        foreach ($v in 'BOTF_HERO_MANIFEST', 'BOTF_RESOLVED_MANIFEST') { $saved[$v] = [Environment]::GetEnvironmentVariable($v); [Environment]::SetEnvironmentVariable($v, $null) }
+        $env:SHOT_HERO_CHECK = '1'; $env:SHOT_FULL = '1'
+        # The exe shares user:// with the editor runs (user\packs\*_desktop.pck from this script): a private APPDATA keeps the run from mounting those.
+        $savedAppData = $env:APPDATA; $env:APPDATA = Join-Path $clean 'appdata'; New-Item -ItemType Directory -Force -Path $env:APPDATA | Out-Null
+        $hc = Start-Process -FilePath (Join-Path $clean 'BOTFRemastered.exe') -WorkingDirectory $clean -PassThru `
+            -ArgumentList "--audio-driver Dummy --resolution 1920x1080 -s res://scenes/ui/tools/screenshot.gd -- `"$exeShots`" battle-closeup battle-overview" `
+            -RedirectStandardOutput (Join-Path $logs 'exe-hero-hulls.log') -RedirectStandardError (Join-Path $logs 'exe-hero-hulls.err')
+        $null = $hc.Handle
+        try { $hc.PriorityClass = [System.Diagnostics.ProcessPriorityClass]::BelowNormal } catch {}
+        if (-not $hc.WaitForExit(600 * 1000)) { try { Stop-Process -Id $hc.Id -Force } catch {} }
+        Remove-Item Env:\SHOT_HERO_CHECK, Env:\SHOT_FULL -ErrorAction SilentlyContinue; $env:APPDATA = $savedAppData
+        foreach ($v in $saved.Keys) { [Environment]::SetEnvironmentVariable($v, $saved[$v]) }
+        $hl = @(Get-Content -LiteralPath (Join-Path $logs 'exe-hero-hulls.log') -ErrorAction SilentlyContinue | Where-Object { $_ -match '^HERO_CHECK' })
+        $heroOk = $hc.ExitCode -eq 0 -and $hl.Count -ge 2 -and -not ($hl -match 'FAIL')
+        Add-Result 'exe-hero-hulls' $(if ($heroOk) { 'ok' } else { 'FAIL' }) ((@($hl | ForEach-Object { $_ -replace '^HERO_CHECK\s+', '' -replace 'manifest \S+, ', '' }) -join ' | ') + " (clean folder $clean)")
     }
     if ($wantWeb) {
         $webPacks = Join-Path $proj 'build\web\packs'
         New-Item -ItemType Directory -Force -Path $webPacks | Out-Null
         Get-ChildItem -LiteralPath $webPacks -Filter '*.pck' -ErrorAction SilentlyContinue | Remove-Item -Force
+        Get-ChildItem -LiteralPath $webPacks -ErrorAction SilentlyContinue | Where-Object { $_.Name -like '*.pck.gz' -or $_.Name -eq 'manifest.json' } | Remove-Item -Force
         $wp = Join-Path $userPacks 'planets_web.pck'
         if (Test-Path -LiteralPath $wp) { Copy-Item -LiteralPath $wp -Destination $webPacks -Force }
+        Get-ChildItem -LiteralPath $webStage -Filter '*_web.pck' -ErrorAction SilentlyContinue | ForEach-Object { Copy-Item -LiteralPath $_.FullName -Destination $webPacks -Force }
         if ($audioOk) {
             $ej = Start-Godot 'pack-audio-empires' "--headless --audio-driver Dummy --path `"$proj`" -s res://tools/pack_audio_empire.gd -- `"$audioPack`" `"$webPacks`""
             Wait-Jobs @($ej) 600
         }
+        # Content-hashed names, packs\manifest.json, gzip sidecars and the download sizes (hash_web_packs.py). Budgets (coordinator,
+        # 9 Nov): the first playable load (engine, main pck, page) under 60 MB as sent, everything under 400 MB.
+        $ho = & $python (Join-Path $PSScriptRoot 'hash_web_packs.py') (Join-Path $proj 'build\web') 2>&1 | Out-String
+        $hx = $LASTEXITCODE
+        $ho | Set-Content -LiteralPath (Join-Path $logs 'web-sizes.log')
         $pk = @(Get-ChildItem -LiteralPath $webPacks -Filter '*.pck' -ErrorAction SilentlyContinue)
-        $planetB = ($pk | Where-Object Name -like 'planets_*' | Measure-Object Length -Sum).Sum
-        $empB = ($pk | Where-Object Name -like 'audio_*' | Measure-Object Length -Maximum).Maximum
-        $sharedB = if ($am) { $am.packs.shared.bytes } else { 0 }
-        $firstDl = [double]$planetB + [double]$empB + [double]$sharedB
-        $names = ($pk | ForEach-Object { '{0} {1:N1} MB' -f $_.Name, ($_.Length / 1MB) }) -join ', '
-        Add-Result 'web-packs' $(if ($planetB -gt 0 -and $empB -gt 0 -and $firstDl -lt 40MB) { 'ok' } else { 'FAIL' }) ("web download = shared audio + one empire + planets = {0:N1} MB (budget 40 MB); {1}" -f ($firstDl / 1MB), $names)
+        $kinds = @('planets_web', 'planets_hi_web', 'ships_fed_web', 'audio_fed_web') | Where-Object { $k = $_; -not ($pk | Where-Object { $_.Name -like "$k.*.pck" }) }
+        $sz = ($ho -split "`n" | Where-Object { $_ -match '^(first playable|total with)' } | ForEach-Object { $_.Trim() }) -join '; '
+        Add-Result 'web-packs' $(if ($hx -eq 0 -and -not $kinds) { 'ok' } else { 'FAIL' }) ("$($pk.Count) hashed packs; $sz" + $(if ($kinds) { "; missing: $($kinds -join ', ')" } else { '' }))
     }
 }
 

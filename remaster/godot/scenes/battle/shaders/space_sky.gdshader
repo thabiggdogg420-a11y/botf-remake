@@ -78,15 +78,25 @@ void sky() {
 	col -= band * band_strength * 0.05 * smoothstep(0.55, 0.75, fbm(dir * 11.0 + 4.0));
 
 	// Nebula: domain-warped fbm, three hues.
+	vec3 na = nebula_a;
+	vec3 nb = nebula_b;
+	vec3 nc = nebula_c;
+#if CURRENT_RENDERER == RENDERER_COMPATIBILITY
+	// Forward+ hands a source_color uniform to the shader in linear; Compatibility's sky pass hands it over as written
+	// (sRGB). Decode, or the web's nebula comes out pale cyan instead of deep blue.
+	na = mix(pow((na + 0.055) / 1.055, vec3(2.4)), na / 12.92, lessThan(na, vec3(0.04045)));
+	nb = mix(pow((nb + 0.055) / 1.055, vec3(2.4)), nb / 12.92, lessThan(nb, vec3(0.04045)));
+	nc = mix(pow((nc + 0.055) / 1.055, vec3(2.4)), nc / 12.92, lessThan(nc, vec3(0.04045)));
+#endif
 	vec3 q = dir * 1.6;
 	vec3 warp = vec3(fbm(q + 1.3), fbm(q + 7.7), fbm(q + 3.1));
 	float n = fbm(q * 1.4 + warp * 1.8);
 	float m = fbm(q * 2.6 - warp * 1.2 + 11.0);
 	float mask = smoothstep(0.42, 0.85, n) * (0.35 + 0.65 * smoothstep(-0.6, 0.6, dot(dir, normalize(vec3(-0.6, 0.2, -0.75)))));
-	vec3 neb = mix(nebula_b, nebula_a, smoothstep(0.3, 0.7, m));
-	neb = mix(neb, nebula_c, smoothstep(0.62, 0.8, m) * smoothstep(0.55, 0.8, n));
+	vec3 neb = mix(nb, na, smoothstep(0.3, 0.7, m));
+	neb = mix(neb, nc, smoothstep(0.62, 0.8, m) * smoothstep(0.55, 0.8, n));
 	col += neb * mask * nebula_strength * 0.55;
-	col += nebula_a * pow(max(n - 0.35, 0.0), 2.0) * nebula_strength * 0.35;
+	col += na * pow(max(n - 0.35, 0.0), 2.0) * nebula_strength * 0.35;
 
 	// Stars (fewer inside dense nebula).
 	vec3 stars = star_layer(dir, 260.0, 0.975, 0.16) * 0.6 + star_layer(dir, 120.0, 0.99, 0.08)
@@ -102,5 +112,11 @@ void sky() {
 		col += sun * disc * 30.0;
 		col += sun * (pow(max(d, 0.0), 900.0) * 3.0 + pow(max(d, 0.0), 60.0) * 0.25 + pow(max(d, 0.0), 6.0) * 0.03);
 	}
+#if CURRENT_RENDERER == RENDERER_COMPATIBILITY
+	// Compatibility's sky pass reads COLOR as sRGB and converts it to linear before tonemapping (Godot 4.5
+	// drivers/gles3/shaders/sky.glsl); Forward+ reads it as linear. Encode it, so the web draws the desktop's sky (without
+	// this every dim value was squared toward black: the nebula and the galactic band all but vanished on the web).
+	col = mix(1.055 * pow(max(col, vec3(0.0)), vec3(1.0 / 2.4)) - 0.055, col * 12.92, lessThan(col, vec3(0.0031308)));
+#endif
 	COLOR = col;
 }

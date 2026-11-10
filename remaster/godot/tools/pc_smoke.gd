@@ -115,6 +115,17 @@ func playback_check(screen: Node, label: String) -> void:
 		check(false, "%s playback: %s" % [label, p])
 
 
+## The battle draws the hero model of every class that has one (M1 webparity: the packaged beta silently fell back to
+## procedural hulls because the models lived only in LocalAssets). Fails when no hero model is reachable at all.
+func hero_check(screen: Node, label: String) -> void:
+	var view: Node = screen.host.view_node if screen != null and screen.get("host") != null else null
+	if view == null:
+		check(false, "%s: no battle view for the hero-hull check" % label)
+		return
+	check(not view.assets.heroes.is_empty(), "%s: hero ship manifest found (%s)" % [label, view.assets.hero_manifest_path])
+	var r: Dictionary = view.assets.hero_report(view, app.encounter.get("ships", []))
+	check(int(r.heroes) > 0 and r.fallback.is_empty(), "%s: %d ships with a hero model, all drawn with it%s" % [label, int(r.heroes), "" if r.fallback.is_empty() else "; fallback hulls: " + ", ".join(r.fallback)])
+
 func find(n: Node, name_: String) -> Node:
 	return n.find_child(name_, true, false)
 
@@ -281,6 +292,7 @@ func _run() -> void:
 		await click(take)
 		await wait()
 	var cs := app.current_screen()
+	hero_check(cs, "tactical drill")
 	var rounds := 0
 	for r in 5:
 		if app.encounter.get("finished", false):

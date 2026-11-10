@@ -3,7 +3,7 @@ extends SceneTree
 ##   godot --path remaster/godot --rendering-driver opengl3 --resolution 1920x1080 \
 ##     -s res://scenes/ui/tools/screenshot.gd -- <out_dir> [shot ...]
 ## Shots: title new galaxy galaxy-menu system research fleets empire diplomacy intel database combat briefing events victory end settings saves
-## Battle: battle-r1 battle-r3, and the camera modes battle-overview battle-chase battle-ship battle-target battle-topdown
+## Battle: battle-plan (plan phase, no round yet) battle-r1 battle-r3, and the camera modes battle-overview battle-chase battle-ship battle-target battle-topdown
 ## battle-cinematic battle-free (BattleCamera), and the close-ups battle-closeup (the player's flagship fills the frame;
 ## SHOT_CLASS=<ship class name> frames the first ship of that class instead, e.g. Galaxy or "Negh'Var").
 ## Galaxy: galaxy-open (as it opens), galaxy-features (one of each feature type across a revealed chart), and
@@ -18,12 +18,23 @@ var _ft: Array = []   ## frame times (ms) recorded while SHOT_FPS is set
 var _last_us := 0
 var _recording := false
 
+## SHOT_* switches come from the environment or, where there is none (the web build, whose arguments come from the page's
+## GODOT_CONFIG.args), from user arguments of the form SHOT_NAME=value after the shot names.
+static var _arg_env := {}
+static func _env(k: String) -> String:
+	var v := OS.get_environment(k)
+	return v if v != "" else str(_arg_env.get(k, ""))
+
 func _initialize() -> void:
-	var args := OS.get_cmdline_user_args()
+	var args := Array(OS.get_cmdline_user_args())
+	for a in args.duplicate():
+		if str(a).begins_with("SHOT_") and str(a).contains("="):
+			_arg_env[str(a).get_slice("=", 0)] = str(a).substr(str(a).find("=") + 1)
+			args.erase(a)
 	if args.size() > 0:
 		out_dir = args[0]
 	shots = args.slice(1) if args.size() > 1 else ["title", "new", "galaxy", "galaxy-menu", "system", "research", "fleets", "empire", "diplomacy", "intel", "database", "combat", "briefing", "events", "victory", "end", "settings", "saves"]
-	if OS.get_environment("SHOT_NOVSYNC") != "":
+	if _env("SHOT_NOVSYNC") != "":
 		DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
 	process_frame.connect(_on_frame)
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(out_dir) if out_dir.begins_with("res://") else out_dir)
@@ -67,8 +78,19 @@ func _wait(frames: int = 8) -> void:
 
 func _run() -> void:
 	await _wait(4)
+	if OS.has_feature("web"):
+		# The web App shows the title first and fetches its packs (planets, hero hulls, audio) in the background: the
+		# parity shots wait for all of them, so they show what a player sees once loading is over.
+		var t0 := Time.get_ticks_msec()
+		while not app.web_packs_done and Time.get_ticks_msec() - t0 < 300000:
+			await _wait(1)
+		print("SHOT web packs ", "done" if app.web_packs_done else "NOT done", " after ", (Time.get_ticks_msec() - t0) / 1000.0, " s")
+		await _wait(30)
+	var code := 0
 	for s in shots:
 		await _prepare(s)
+		if _env("SHOT_HERO_CHECK") != "" and s.begins_with("battle") and not _hero_check(s):
+			code = 1
 		for t in app.get_node("Toasts").get_children():
 			t.queue_free()
 		await _wait(10)
@@ -77,12 +99,36 @@ func _run() -> void:
 		if (s == "battle-closeup" or (s.begins_with("battle-volley") or s.begins_with("battle-strip") or s == "battle-campaign")) and app._current != null and app._current.get("host") != null and app._current.host.view_node != null:
 			img = app._current.host.view_node.get_viewport().get_texture().get_image() # the 3D view alone, no panels
 		# Committed screenshots are kept small: 960x540.
-		if OS.get_environment("SHOT_FULL") == "":
+		if _env("SHOT_FULL") == "":
 			img.resize(960, 540, Image.INTERPOLATE_LANCZOS)
 		var path := "%s/ui-%s.png" % [out_dir, s]
 		img.save_png(path)
 		print("saved ", path)
-	quit(0)
+		if OS.has_feature("web"):
+			await _web_hold(s, img)
+	quit(code)
+
+## SHOT_HERO_CHECK=1 (verify's packaged-exe step): every ship of the battle on screen whose class has a hero model is drawn
+## with it, and some ship has one. Prints "HERO_CHECK ok|FAIL <shot>: ..."; a failure makes the exit code 1.
+func _hero_check(s: String) -> bool:
+	var view: Node = app._current.host.view_node if app._current != null and app._current.get("host") != null else null
+	if view == null:
+		print("HERO_CHECK FAIL ", s, ": no battle view")
+		return false
+	var r: Dictionary = view.assets.hero_report(view, app.encounter.get("ships", []))
+	var ok: bool = not view.assets.heroes.is_empty() and int(r.heroes) > 0 and r.fallback.is_empty()
+	print("HERO_CHECK ", "ok " if ok else "FAIL ", s, ": manifest ", view.assets.hero_manifest_path, ", ", int(r.heroes),
+		" ships with a hero model", "" if r.fallback.is_empty() else ", fallback hulls: " + ", ".join(r.fallback))
+	return ok
+
+## Web capture (tools/verify/web_parity.py): hands the frame Godot read back to the page as base64 PNG, prints SHOT_READY and
+## holds the scene until the page has taken its own screenshot and set window.__shotAck to the shot name (2 min at most).
+func _web_hold(s: String, img: Image) -> void:
+	JavaScriptBridge.eval("window.__shotPng = '%s';" % Marshalls.raw_to_base64(img.save_png_to_buffer()))
+	print("SHOT_READY ", s)
+	var t0 := Time.get_ticks_msec()
+	while str(JavaScriptBridge.eval("window.__shotAck || ''")) != s and Time.get_ticks_msec() - t0 < 120000:
+		await _wait(1)
 
 ## The first ship in the battle view whose name starts with `klass` ("Galaxy" finds "Galaxy — Command Cruiser").
 func _find_ship(klass: String) -> BattleShip:
@@ -137,13 +183,23 @@ func _prepare(s: String) -> void:
 		"combat":
 			app.start_drill("newBattleDrill", "Tactical drill")
 			app.end_turn()
+		"battle-plan":
+			# The plan phase of the starbase drill (Remastered rules 4): command taken, no round resolved yet.
+			var drill := {"station": true}
+			if _env("SHOT_DRILL_SHIPS") != "":
+				drill["ships"] = int(_env("SHOT_DRILL_SHIPS"))
+			app.start_drill("newBattleDrill", "Starbase drill", drill)
+			app.end_turn()
+			await _wait(4)
+			app.close_all_modals()
+			await _wait(90)
 		"battle-r1", "battle-r3":
 			# Starbase drill (Remastered rules 3): take command and resolve rounds, then let the 3D view play.
 			# SHOT_DRILL_SHIPS sets the ships a side (default 3, max 24) for the large-battle shots.
 			var drill := {"station": true}
-			if OS.get_environment("SHOT_DRILL_SHIPS") != "":
-				drill["ships"] = int(OS.get_environment("SHOT_DRILL_SHIPS"))
-			_recording = OS.get_environment("SHOT_FPS") != ""
+			if _env("SHOT_DRILL_SHIPS") != "":
+				drill["ships"] = int(_env("SHOT_DRILL_SHIPS"))
+			_recording = _env("SHOT_FPS") != ""
 			_ft.clear()
 			app.start_drill("newBattleDrill", "Starbase drill", drill)
 			app.end_turn()
@@ -152,7 +208,7 @@ func _prepare(s: String) -> void:
 			for n in (1 if s == "battle-r1" else 3):
 				app._current._round()
 				await _wait(4)
-			await _wait(int(OS.get_environment("SHOT_BATTLE_FRAMES")) if OS.get_environment("SHOT_BATTLE_FRAMES") != "" else 150)
+			await _wait(int(_env("SHOT_BATTLE_FRAMES")) if _env("SHOT_BATTLE_FRAMES") != "" else 150)
 		"battle-overview", "battle-chase", "battle-ship", "battle-target", "battle-topdown", "battle-cinematic", "battle-free", "battle-closeup":
 			# The battle camera modes on the starbase drill after round 2 (BattleCamera; the mode bar shows the mode).
 			if not (app._current != null and app._current.get("host") != null and app._current.host.view_node != null):
@@ -176,7 +232,7 @@ func _prepare(s: String) -> void:
 				# A named class fills the frame: the free camera sits 1.15 hull lengths from it at a three-quarter angle.
 				# Saved from the battle's own viewport (no LCARS panels around it). SHOT_CLASS defaults to Galaxy.
 				await _wait(60)
-				var want := OS.get_environment("SHOT_CLASS") if OS.get_environment("SHOT_CLASS") != "" else "Galaxy"
+				var want := _env("SHOT_CLASS") if _env("SHOT_CLASS") != "" else "Galaxy"
 				var target := _find_ship(want)
 				if target != null:
 					app._current.host.view_node.playback_speed = 0.0 # hold the moment: the ship must stay in frame
@@ -192,7 +248,7 @@ func _prepare(s: String) -> void:
 				else:
 					push_warning("battle-closeup: no ship of class %s in the battle" % want)
 			if s != "battle-closeup":
-				await _wait(int(OS.get_environment("SHOT_BATTLE_FRAMES")) if OS.get_environment("SHOT_BATTLE_FRAMES") != "" else 120)
+				await _wait(int(_env("SHOT_BATTLE_FRAMES")) if _env("SHOT_BATTLE_FRAMES") != "" else 120)
 		"battle-volley", "battle-volley-close", "battle-campaign":
 			# Mid-volley: the starbase drill (SHOT_DRILL_SHIPS a side) plays a round until the most weapon jobs are in
 			# flight, then holds that instant. -close parks the free camera beside a ship that is firing.
@@ -217,7 +273,7 @@ func _prepare(s: String) -> void:
 						await _wait(1)
 			await _wait(6)
 			print("VOLLEY ", s, ": ", _volley_count(view), " weapon jobs live at t=", snappedf(view.time, 0.01))
-			if OS.get_environment("SHOT_FXDEBUG") != "":
+			if _env("SHOT_FXDEBUG") != "":
 				var fx: BattleFx = view.fx
 				print("FXDBG active=", fx._active.size(), " children=", fx.get_child_count(), " cam=", view.camera.global_position)
 				for k in fx._active:
@@ -231,11 +287,11 @@ func _prepare(s: String) -> void:
 		"battle-strip", "battle-strip-close":
 			# Motion check: 10 frames 0.25 s of round time apart around the busiest volley, saved from the 3D view as
 			# ui-<shot>-NN.png (the final ui-<shot>.png is the last frame). -close holds a free camera near a shooter.
-			await _volley_drill(OS.get_environment("SHOT_CAMPAIGN") != "")
+			await _volley_drill(_env("SHOT_CAMPAIGN") != "")
 			var view: Node = app._current.host.view_node
 			var cam: BattleCamera = view.camera
 			var t0: float = maxf(0.0, view.time - 1.25)
-			if OS.get_environment("SHOT_KILL") != "":
+			if _env("SHOT_KILL") != "":
 				# Kill strip: resolve rounds until one destroys a ship, then frame the explosion.
 				var kt := -1.0
 				for r in 12:
@@ -251,7 +307,7 @@ func _prepare(s: String) -> void:
 				print("KILL at ", kt)
 				if kt >= 0.0:
 					t0 = maxf(0.0, kt - 0.5)
-			if OS.get_environment("SHOT_DAMAGE") != "":
+			if _env("SHOT_DAMAGE") != "":
 				# Damage strip: resolve rounds until a ship is below half hull, then follow it (fires and venting).
 				var worst := 0
 				for r in 10:
@@ -277,7 +333,7 @@ func _prepare(s: String) -> void:
 					t0 = maxf(0.0, view.time - 1.25)
 			var shot := _live_shot(view)
 			view.force_cutaway = s == "battle-strip-close"
-			if OS.get_environment("SHOT_TACTICAL") != "":
+			if _env("SHOT_TACTICAL") != "":
 				cam.set_mode(BattleCamera.Mode.OVERVIEW) # the plan view (C / CAMERA)
 			view.seek(t0)
 			# -close: the director's own two-ship framing of the busiest beam exchange (no free camera).
@@ -341,7 +397,7 @@ func _volley_drill(campaign := false) -> void:
 		for n in 80:
 			_force_contact()
 			st = app.end_turn()
-			if OS.get_environment("SHOT_FXDEBUG") != "" and n % 5 == 0:
+			if _env("SHOT_FXDEBUG") != "" and n % 5 == 0:
 				var e0: Dictionary = app.view.get("empires", [{}])[0] if app.view.get("empires", []).size() > 0 else {}
 				print("TURN ", n, " st=", st, " contacts=", app.view.get("contacts", []).size(), " battles=", app.view.get("battles", []).size(), " fleets=", app.view.get("fleets", []).map(func(f): return [f.x, f.y]), " empire0=", str(e0).left(300))
 			await _wait(1)
@@ -351,9 +407,9 @@ func _volley_drill(campaign := false) -> void:
 		print("CAMPAIGN battle status=", st, " turn=", app.view.get("meta", {}).get("turn", 0))
 	else:
 		var drill := {"station": true}
-		if OS.get_environment("SHOT_DRILL_SHIPS") != "":
-			drill["ships"] = int(OS.get_environment("SHOT_DRILL_SHIPS"))
-		if OS.get_environment("SHOT_FOE_STATION") != "":
+		if _env("SHOT_DRILL_SHIPS") != "":
+			drill["ships"] = int(_env("SHOT_DRILL_SHIPS"))
+		if _env("SHOT_FOE_STATION") != "":
 			drill["foeStation"] = true
 		app.start_drill("newBattleDrill", "Starbase drill", drill)
 		app.end_turn()
@@ -370,7 +426,7 @@ func _volley_drill(campaign := false) -> void:
 		await _wait(4)
 		if view.timeline == null:
 			continue
-		var want_beam := OS.get_environment("SHOT_WANT_BEAM") != "" and r < 7
+		var want_beam := _env("SHOT_WANT_BEAM") != "" and r < 7
 		var has_beam := false
 		for j in view.timeline.jobs:
 			has_beam = has_beam or j.kind in [BattleTimeline.Job.BEAM, BattleTimeline.Job.PULSE]
@@ -382,7 +438,7 @@ func _volley_drill(campaign := false) -> void:
 			var n := 0
 			for j in view.timeline.jobs:
 				if j.kind in [BattleTimeline.Job.BEAM, BattleTimeline.Job.PULSE, BattleTimeline.Job.TORPEDO] and t >= j.start + 0.25 * j.duration and t <= j.start + 0.7 * j.duration:
-					n += (20 if OS.get_environment("SHOT_WANT_BEAM") != "" else 3) if j.kind == BattleTimeline.Job.BEAM else 1
+					n += (20 if _env("SHOT_WANT_BEAM") != "" else 3) if j.kind == BattleTimeline.Job.BEAM else 1
 			if n > best:
 				best = n
 				best_t = t
@@ -394,7 +450,7 @@ func _volley_drill(campaign := false) -> void:
 			for j in view.timeline.jobs:
 				kinds[BattleTimeline.JOB_NAMES[j.kind]] = kinds.get(BattleTimeline.JOB_NAMES[j.kind], 0) + 1
 			print("VOLLEY round ", r + 1, " jobs ", kinds, " best ", best, " at ", best_t, "-", best_end)
-			if OS.get_environment("SHOT_FXDEBUG") != "":
+			if _env("SHOT_FXDEBUG") != "":
 				for j in view.timeline.jobs:
 					if j.kind == BattleTimeline.Job.BEAM:
 						print("  beam start ", snappedf(j.start, 0.01), " dur ", snappedf(j.duration, 0.01))
@@ -453,5 +509,5 @@ func _force_contact() -> void:
 				bd = d
 				best = t
 		var r: Dictionary = app.core.invoke("submit", {"command": {"type": "MoveFleet", "fleetId": int(f.get("id", 0)), "targetX": best.x, "targetY": best.y}, "cancelIds": []})
-		if not r.get("ok", false) and OS.get_environment("SHOT_FXDEBUG") != "":
+		if not r.get("ok", false) and _env("SHOT_FXDEBUG") != "":
 			print("move refused: ", r.get("error", ""))

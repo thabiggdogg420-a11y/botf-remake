@@ -5,14 +5,24 @@ address, so the build can never be reached from the network or published by acci
 Sends the cross-origin isolation headers (COOP same-origin, COEP require-corp) that a threaded or SharedArrayBuffer
 build needs, and the right MIME type for .wasm / .pck so streaming instantiation works.
 
+Caching (M1 webparity): content-hashed packs (packs/<stem>.<12 hex>.pck, from hash_web_packs.py) are sent with
+"Cache-Control: public, max-age=31536000, immutable"; everything else with "no-cache", so the browser revalidates and gets
+a 304 with no body when the file is unchanged. A return visit therefore downloads nothing. Where a .gz sidecar exists and
+the browser accepts gzip, the sidecar is sent with Content-Encoding: gzip. Not under packs/: Godot's web HTTPRequest fails
+(result 8, request failed) on a content-encoded body saved with download_file, so packs go out as they are.
+
   python serve_web.py [--dir remaster/godot/build/web] [--port 8060]
 Prints the URL, then serves until Ctrl+C. web_capture.py starts it on a free port (--port 0) for the browser capture.
 """
 import argparse
+import email.utils
 import functools
 import http.server
 import os
+import re
 import sys
+
+HASHED = re.compile(r"\.[0-9a-f]{12}\.pck$")
 
 
 class Handler(http.server.SimpleHTTPRequestHandler):
@@ -24,8 +34,35 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         self.send_header("Cross-Origin-Opener-Policy", "same-origin")
         self.send_header("Cross-Origin-Embedder-Policy", "require-corp")
         self.send_header("Cross-Origin-Resource-Policy", "same-origin")
-        self.send_header("Cache-Control", "no-store")
+        path = self.path.split("?", 1)[0]
+        self.send_header("Cache-Control", "public, max-age=31536000, immutable" if HASHED.search(path) else "no-cache")
         super().end_headers()
+
+    def send_head(self):
+        # A .gz sidecar for a browser that accepts gzip: same Last-Modified / 304 handling as the plain file.
+        path = self.translate_path(self.path)
+        gz = path + ".gz"
+        if "/packs/" in self.path.split("?")[0] or "gzip" not in self.headers.get("Accept-Encoding", "") or not os.path.isfile(path) or not os.path.isfile(gz):
+            return super().send_head()
+        st = os.stat(path)
+        ims = self.headers.get("If-Modified-Since")
+        if ims:
+            try:
+                if int(st.st_mtime) <= email.utils.parsedate_to_datetime(ims).timestamp():
+                    self.send_response(304)
+                    self.end_headers()
+                    return None
+            except (TypeError, ValueError, IndexError, OverflowError):
+                pass
+        f = open(gz, "rb")
+        self.send_response(200)
+        self.send_header("Content-Type", self.guess_type(path))
+        self.send_header("Content-Encoding", "gzip")
+        self.send_header("Vary", "Accept-Encoding")
+        self.send_header("Content-Length", str(os.fstat(f.fileno()).st_size))
+        self.send_header("Last-Modified", self.date_time_string(int(st.st_mtime)))
+        self.end_headers()
+        return f
 
     def log_message(self, fmt, *args):
         if os.environ.get("SERVE_QUIET") != "1":

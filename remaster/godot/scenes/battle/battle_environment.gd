@@ -53,6 +53,7 @@ static func build(parent: Node3D, arena_size: Vector2, planet_class: String = "G
 	env.adjustment_enabled = true
 	env.adjustment_contrast = 1.06
 	env.adjustment_saturation = 1.12
+	CompatLook.tune(env) # web (Compatibility): glow for its range (no-op under Forward+)
 	var we := WorldEnvironment.new()
 	we.name = "WorldEnvironment"
 	we.environment = env
@@ -62,7 +63,7 @@ static func build(parent: Node3D, arena_size: Vector2, planet_class: String = "G
 	var sun := DirectionalLight3D.new()
 	sun.name = "Sun"
 	sun.light_color = Color(1.0, 0.93, 0.82)
-	sun.light_energy = 3.0
+	sun.light_energy = CompatLook.sun(3.0)
 	sun.shadow_enabled = DisplaySettings.shadows_enabled # Settings > Shadow quality: Off
 	sun.directional_shadow_max_distance = 320.0
 	# R3.5: the default biases left shadow acne as black speckle over the hero hulls (title close-ups).
@@ -142,6 +143,15 @@ static func build(parent: Node3D, arena_size: Vector2, planet_class: String = "G
 		fog2.material = fmat2
 		fog2.position = Vector3(arena_size.x * 0.3, -45.0, arena_size.y * 0.4)
 		parent.add_child(fog2)
+
+	else:
+		# Compatibility (the web build) has no volumetric fog: the same two nebula ellipsoids as slices (CompatNebula).
+		parent.add_child(CompatNebula.create([
+			{"position": Vector3(0.0, -30.0, -arena_size.y * 0.9), "size": Vector3(arena_size.x * 2.6, 90.0, arena_size.y * 1.4),
+				"albedo": Color(0.35, 0.25, 0.55), "density": 0.02},
+			{"position": Vector3(arena_size.x * 0.3, -45.0, arena_size.y * 0.4), "size": Vector3(arena_size.x * 1.8, 50.0, arena_size.y * 1.6),
+				"albedo": Color(0.25, 0.35, 0.6), "density": 0.012},
+		], [sun, fill, rim], env.volumetric_fog_length))
 
 	parent.add_child(_dust(arena_size))
 	return out
