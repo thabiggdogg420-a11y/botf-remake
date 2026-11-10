@@ -287,7 +287,7 @@ func _build_chrome() -> void:
 	for s in GAME_SCREENS:
 		var b := Button.new()
 		b.theme_type_variation = "RailButton"
-		b.text = "%s" % s["label"].to_upper()
+		b.text = TrekText.rail_label(player(), str(s["id"]), str(s["label"])).to_upper()
 		b.alignment = HORIZONTAL_ALIGNMENT_RIGHT
 		b.custom_minimum_size = Vector2(RAIL_W, 50)
 		b.tooltip_text = "%s  [%s]" % [s["hint"], s["key"]]
@@ -316,7 +316,7 @@ func _build_chrome() -> void:
 	for ex in shell.rail_extras():
 		var b2 := Button.new()
 		b2.theme_type_variation = "RailButton"
-		b2.text = str(ex["label"]).to_upper()
+		b2.text = TrekText.rail_label(player(), str(ex["id"]), str(ex["label"])).to_upper()
 		b2.alignment = HORIZONTAL_ALIGNMENT_RIGHT
 		b2.custom_minimum_size = Vector2(RAIL_W, 38)
 		b2.add_theme_font_size_override("font_size", 16)
@@ -349,6 +349,9 @@ func stage_rect() -> Rect2:
 	if view.is_empty() or AppRoutes.is_bare(screen):
 		return Rect2(Vector2.ZERO, size)
 	return Rect2(Vector2(RAIL_W + 14, TOP_H + 4), size - Vector2(RAIL_W + 14, TOP_H + 4))
+
+func _exit_tree() -> void:
+	BattleAssets.wait_for_loads() # a hull still converting on a worker thread hangs the process at exit
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_RESIZED and _chrome:

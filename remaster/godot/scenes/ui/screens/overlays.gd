@@ -31,12 +31,12 @@ static func briefing(app: App, filter: String = "all") -> Control:
 	root.name = "Briefing"
 	if not b is Dictionary:
 		root.add_child(Lcars.empty_note("No briefing yet. End a turn to receive the chronicle."))
-		return app.open_modal(root, "Turn briefing", Vector2(900, 0))
+		return app.open_modal(root, TrekText.log_title(app.player()), Vector2(900, 0))
 	var head := Lcars.hbox(24)
 	var t := Lcars.vbox(0)
-	t.add_child(Lcars.caption("Turn briefing · chronicle"))
+	t.add_child(Lcars.caption("Stardate %s · turn %d" % [TrekText.stardate_text(int(b["turn"])), int(b["turn"])]))
 	var outcome := str(b.get("outcome", "ongoing"))
-	t.add_child(Lcars.heading("Turn %d %s" % [int(b["turn"]), "- Victory" if outcome == "victory" else ("- Defeat" if outcome == "defeat" else "report")], 34))
+	t.add_child(Lcars.heading("%s%s" % [TrekText.log_title(app.player()), " - Victory" if outcome == "victory" else (" - Defeat" if outcome == "defeat" else "")], 34))
 	head.add_child(t)
 	head.add_child(Lcars.spacer())
 	var credits := int(b.get("creditsAfter", 0)) - int(b.get("creditsBefore", 0))
@@ -44,12 +44,12 @@ static func briefing(app: App, filter: String = "all") -> Control:
 	head.add_child(Lcars.kpi("save", "Treasury", Lcars.fmt(b.get("creditsAfter", 0)), "", "", {"title": "Treasury", "value": Lcars.fmt(b.get("creditsAfter", 0)), "effect": "Credits held after the turn resolved."}))
 	head.add_child(Lcars.kpi("research", "Research", "+" + Lcars.fmt(b.get("researchGained", 0)), "", "info", {"title": "Research gained", "value": "+" + Lcars.fmt(b.get("researchGained", 0)), "effect": "Points added across the six fields by the allocation."}))
 	head.add_child(Lcars.kpi("orders", "Orders", int(b.get("ordersApplied", 0)), "", "", {"title": "Orders applied", "value": str(int(b.get("ordersApplied", 0))), "effect": "Drafted orders that resolved this turn."}))
-	var ack := Lcars.pill("Acknowledge", "primary", func(): app.close_modal(), "", "", "Enter")
+	var ack := Lcars.pill(TrekText.term(app.player(), "log_filed", "Acknowledge"), "primary", func(): app.close_modal(), "", "", "Enter")
 	ack.name = "Acknowledge"
 	ack.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	head.add_child(ack)
 	root.add_child(head)
-	var events: Array = b.get("events", [])
+	var events: Array = _vm(app).log_entries()
 	var cats := OverlaysVM.categories(events)
 	var tabs := Lcars.hbox(6)
 	var modal_holder := {"m": null}
@@ -105,8 +105,9 @@ static func _event_row(app: App, e: Dictionary, holder: Dictionary) -> Control:
 	b.add_theme_stylebox_override("normal", sb)
 	var due := ""
 	if e.has("dueTurn"):
-		due = "   (due turn %d)" % int(e["dueTurn"])
-	b.text = str(e["text"]) + due
+		due = "" if str(e.get("voice", "")).find("turn %d" % int(e["dueTurn"])) >= 0 else "   (due turn %d)" % int(e["dueTurn"])
+	b.text = str(e.get("voice", e["text"])) + due
+	b.tooltip_text = str(e["text"]) if e.has("voice") and str(e["voice"]) != str(e["text"]) else ""
 	b.pressed.connect(func():
 		app.close_modal(holder["m"])
 		_open_event(app, e))
@@ -151,9 +152,9 @@ static func events(app: App) -> Control:
 	var evs := vm.sorted_events()
 	if evs.is_empty():
 		# A compact note, not an empty 1120x600 card grid.
-		root.add_child(Lcars.empty_note("No galactic events concern your empire right now. New events are drawn every few turns."))
+		root.add_child(Lcars.empty_note(TrekText.term(app.player(), "events_empty", "No galactic events concern your empire right now.") + " New events are drawn every few turns."))
 		root.add_child(Lcars.pill("Close", "ghost", func(): app.close_modal(), "", "", "Esc"))
-		return app.open_modal(root, "Galactic events", Vector2(560, 0), "secondary")
+		return app.open_modal(root, TrekText.term(app.player(), "events_title", "Galactic events"), Vector2(560, 0), "secondary")
 	var grid := Lcars.grid(2)
 	grid.add_theme_constant_override("h_separation", 14)
 	grid.add_theme_constant_override("v_separation", 14)
@@ -212,7 +213,7 @@ static func events(app: App) -> Control:
 	root.add_child(sc)
 	var close := Lcars.pill("Close", "ghost", func(): app.close_modal(), "", "", "Esc")
 	root.add_child(close)
-	return app.open_modal(root, "Galactic events · decisions & developments", Vector2(1120, 0), "secondary")
+	return app.open_modal(root, TrekText.term(app.player(), "events_title", "Galactic events") + " · decisions & developments", Vector2(1120, 0), "secondary")
 
 # ---------------------------------------------------------------------------------------------
 static func victory_rows(v: Dictionary, compact: bool = false) -> Control:
@@ -286,7 +287,7 @@ static func end_screen(app: App, preview: String = "") -> Control:
 	var em := Lcars.emblem(app.player() if won or winner == 0 else winner, 84)
 	em.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	root.add_child(em)
-	var kick := Lcars.caption("Turn %d · Stardate %.1f" % [int(v["meta"]["turn"]), 41000 + int(v["meta"]["turn"]) * 25.7])
+	var kick := Lcars.caption("%s · turn %d" % [TrekText.log_header(app.player(), int(v["meta"]["turn"])).trim_suffix("."), int(v["meta"]["turn"])])
 	kick.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	root.add_child(kick)
 	var title := Lcars.label("VICTORY" if won else "DEFEAT", "", 96, Lcars.GOOD if won else Lcars.ALERT)

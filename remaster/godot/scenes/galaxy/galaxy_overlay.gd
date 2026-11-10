@@ -79,6 +79,10 @@ func _draw() -> void:
 # ---------------------------------------------------------------------------------------------
 # Static layer
 # ---------------------------------------------------------------------------------------------
+## A size per zoom band: [whole galaxy, sector, system].
+static func _band(level: String, galaxy: float, sector: float, system: float) -> float:
+	return galaxy if level == "galaxy" else (sector if level == "sector" else system)
+
 func _draw_static(v: Dictionary) -> void:
 	pickables.clear()
 	player_rings.clear()
@@ -219,7 +223,7 @@ func _draw_static(v: Dictionary) -> void:
 			continue
 		var sp := map.world_to_screen(aw) + Vector2(-22, 18)
 		var sc2 := Lcars.owner_color(int(st2["owner"]))
-		var rad := 8.0 if st2["type"] == "Outpost" else 11.0
+		var rad := (8.0 if st2["type"] == "Outpost" else 11.0) * _band(lvl, 1.35, 1.2, 1.0)
 		ShipGlyph.draw_station(self, sp, rad, sc2, st2["type"] != "Outpost")
 		if st2.has("upgrade"):
 			draw_arc(sp, rad + 5, -PI / 2, -PI / 2 + TAU * float(st2["upgrade"]["work"]) / maxf(1.0, float(st2["upgrade"]["cost"])), 24, Lcars.GOOD, 2.0, true)
@@ -252,7 +256,7 @@ func _draw_static(v: Dictionary) -> void:
 			continue
 		by_cell[key] = by_cell.get(key, 0) + 1
 		var cp2 := map.world_to_screen(aw2) + Vector2(22, 16) + Vector2(-(by_cell[key] - 1) * 9, 0)
-		ShipGlyph.draw_contact(self, cp2, 8.0, Lcars.owner_color(int(c["owner"])), int(c["owner"]), ShipGlyph.class_of(c))
+		ShipGlyph.draw_contact(self, cp2, 8.0 * _band(lvl, 1.4, 1.25, 1.0), Lcars.owner_color(int(c["owner"])), int(c["owner"]), ShipGlyph.class_of(c))
 		pickables.append({"pos": cp2, "r": 0.0, "cell": key, "kind": "contact", "id": int(c["id"]), "war": c.get("atWar", false)})
 	# ---- Own fleets
 	var own := {}
@@ -282,12 +286,21 @@ func _draw_static(v: Dictionary) -> void:
 			ids.append(int(f["id"]))
 			if int(f.get("taskForceId", 0)) != 0:
 				tf = true
-		ShipGlyph.draw_hull(self, ShipGlyph.family_for(app.player(), ShipGlyph.class_of(f0)), base, 46.0, heading.angle(), oc2, true, true, 0.5)
+		# A hull that reads as a family at every zoom: never under ~54 px long, larger on the whole-galaxy view where nothing
+		# else is big, with the owner's insignia chip beside the stack count.
+		var hl: float = _band(lvl, 58.0, 62.0, 74.0)
+		ShipGlyph.draw_hull(self, ShipGlyph.family_for(app.player(), ShipGlyph.class_of(f0)), base, hl, heading.angle(), oc2, true, true, 0.5)
 		if tf:
-			draw_arc(base, 26.0, 0, TAU, 24, Color(oc2, 0.8), 1.5, true)
+			draw_arc(base, hl * 0.56, 0, TAU, 24, Color(oc2, 0.8), 1.5, true)
+		var chip := base + Vector2(hl * 0.40, hl * 0.34)
+		draw_circle(chip, 11.0, Color(Lcars.BG, 0.88))
+		draw_arc(chip, 11.0, 0, TAU, 24, Color(oc2, 0.9), 1.2, true)
+		Insignia.draw(self, app.player(), Rect2(chip - Vector2(8, 8), Vector2(16, 16)), oc2, "small", Lcars.BG)
 		if list.size() > 1:
-			draw_circle(base + Vector2(12, 10), 8, Lcars.BG)
-			_txt(mono, base + Vector2(8, 14), str(list.size()), 12, Color.WHITE)
+			var ct := "x%d" % list.size()
+			var cw := _tw(mono, ct, 13)
+			draw_style_box(Lcars.box(Color(Lcars.BG, 0.88), 6, Color(oc2, 0.9), 1, Vector4.ZERO), Rect2(chip + Vector2(12, -8), Vector2(cw + 8, 17)))
+			_txt(mono, chip + Vector2(16, 5), ct, 13, Color.WHITE)
 		if f0.get("routeBlocked", false):
 			draw_arc(base, 14, 0, TAU, 20, Lcars.WARN, 1.5, true)
 		pickables.append({"pos": base, "r": 0.0, "cell": key3, "kind": "fleet", "id": int(f0["id"]), "ids": ids})

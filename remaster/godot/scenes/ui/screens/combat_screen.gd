@@ -465,7 +465,7 @@ func _encounter_choice(e: Dictionary, mine: Array, foes: Array, foe_name: String
 	row.add_child(Lcars.pill("Auto-resolve", "secondary", func(): app.close_modal(); _auto(), "", "Your ships fight under automatic command"))
 	row.add_child(Lcars.pill("HAIL", "ghost", func(): app.close_modal(); _hail(), "", "Every ship hails and one round resolves"))
 	col.add_child(row)
-	app.open_modal.call_deferred(col, "Enemy contact", Vector2(720, 0), "alert")
+	app.open_modal.call_deferred(col, TrekText.term(0, "contact_title", "Enemy contact"), Vector2(720, 0), "alert")
 	choice = false
 
 # ---------------------------------------------------------------------------------------------

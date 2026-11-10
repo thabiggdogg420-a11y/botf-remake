@@ -7,7 +7,7 @@ extends ViewModel
 func heading() -> Array:
 	var m: Dictionary = view()["meta"]
 	var turn := int(m["turn"])
-	return [str(m["playerName"]).to_upper(), "%s era · %s rules · stardate %d.%d" % [m.get("eraName", ""), m.get("rules", {}).get("presetName", ""), 2360 + turn / 4, (turn % 4) * 25]]
+	return [str(m["playerName"]).to_upper(), "%s era · %s rules · stardate %s" % [m.get("eraName", ""), m.get("rules", {}).get("presetName", ""), TrekText.stardate_text(turn)]]
 
 ## Sums over the colonies for the explanations: food balance, starving colonies, idle shipyards.
 func _colony_sums() -> Dictionary:
@@ -46,7 +46,7 @@ func stats() -> Array:
 	return [
 		{"cap": "Turn", "icon": "turn", "value": str(int(v["meta"]["turn"])), "delta": "", "tone": "", "tip": "Current turn. Enter ends the turn.",
 			"explain": {"title": "Turn", "value": str(int(v["meta"]["turn"])), "effect": "Every drafted order resolves when the turn ends (Enter)."}},
-		{"cap": "Credits", "icon": "credits", "value": Fmt.fmt(credits), "delta": Fmt.signed(net), "tone": "alert" if net < 0 else "secondary",
+		{"cap": TrekText.term(player(), "credits", "Credits"), "icon": "credits", "value": Fmt.fmt(credits), "delta": Fmt.signed(net), "tone": "alert" if net < 0 else "secondary",
 			"tip": "Treasury ¢%s. Per turn: colonies %s, trade %s, ships -%s. Drafted spending ¢%s." % [Fmt.fmt(credits), inc.get("colonies", 0), inc.get("trade", 0), inc.get("ships", 0), e.get("draftCredits", 0)], "explain": credit_ex},
 		{"cap": "Research", "icon": "research", "value": "%d/t" % rr, "delta": "", "tone": "info", "tip": "Research points per turn across the empire. Reserve %s." % e.get("researchReserve", 0), "explain": research_ex},
 		{"cap": "Industry", "icon": "industry", "value": str(int(e.get("industry", 0))), "delta": "", "tone": "", "tip": "Total industry per turn of all colonies.",

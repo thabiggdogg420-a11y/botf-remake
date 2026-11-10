@@ -40,7 +40,7 @@ static func is_active(s: Dictionary) -> bool:
 static func short_name(s: Dictionary) -> String:
 	if s.is_empty():
 		return "nearest enemy"
-	return "Cloaked contact" if s.get("hidden", false) else str(s["name"]).split(" — ")[0]
+	return TrekText.term(0, "unknown_vessel", "Cloaked contact") if s.get("hidden", false) else str(s["name"]).split(" — ")[0]
 
 ## The rules 4 block of a ship ({facings, maxFacings, subsystems, crew, canWarp, ...}), or {} under rules 1-3.
 static func wego_of(s: Dictionary) -> Dictionary:

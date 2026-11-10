@@ -50,7 +50,7 @@ func refresh() -> void:
 		t.add_child(Lcars.label(str(s.get("name", "?")), "SubHeading", 22, Lcars.TEXT))
 		var tr := Lcars.hbox(8)
 		tr.add_child(UiIcon.make("turn", 16, Lcars.accent()))
-		tr.add_child(Lcars.label("Turn %d" % int(s.get("turn", 0)), "", 18, Lcars.accent()))
+		tr.add_child(Lcars.label("Stardate %s" % TrekText.stardate_text(int(s.get("turn", 0))), "", 18, Lcars.accent()))
 		t.add_child(tr)
 		t.add_child(Lcars.caption(SavesVM.describe(s)))
 		t.size_flags_horizontal = Control.SIZE_EXPAND_FILL

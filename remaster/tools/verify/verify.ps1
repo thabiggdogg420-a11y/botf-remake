@@ -204,6 +204,23 @@ if ($localAssets -and (Test-Path -LiteralPath (Join-Path $localAssets 'ships\god
 }
 Add-Result 'ship-packs' $(if ($shipsOk) { 'ok' } else { 'FAIL' }) $shipDetail
 
+# Baked ship pictures (M1 trektext): LocalAssets\ship_icons packed into ship_icons_desktop.pck, so the packaged game draws the real
+# pictures and not the vector fallback. Packs what is on disk; re-baking after a model change is
+# `python remaster\tools\build_ship_icons.py --bake` (bake and pack in one go).
+$iconsPck = Join-Path $userPacks 'ship_icons_desktop.pck'
+$iconsOk = $false
+$iconsDetail = 'no LocalAssets\ship_icons: icon pack missing (run build_ship_icons.py --bake)'
+if ($localAssets -and (Test-Path -LiteralPath (Join-Path $localAssets 'ship_icons'))) {
+    $ip = Start-Process -FilePath $python -ArgumentList "`"$(Join-Path $remaster 'tools\build_ship_icons.py')`" --localassets `"$localAssets`" --out `"$iconsPck`" --godot `"$godot`" --proj `"$proj`"" `
+        -PassThru -WindowStyle Hidden -RedirectStandardOutput (Join-Path $logs 'pack-ship-icons.log') -RedirectStandardError (Join-Path $logs 'pack-ship-icons.err')
+    $null = $ip.Handle
+    try { $ip.PriorityClass = [System.Diagnostics.ProcessPriorityClass]::BelowNormal } catch {}
+    if (-not $ip.WaitForExit(900 * 1000)) { try { Stop-Process -Id $ip.Id -Force } catch {} }
+    $iconsOk = $ip.ExitCode -eq 0 -and (Test-Path -LiteralPath $iconsPck)
+    $iconsDetail = (Get-Content -LiteralPath (Join-Path $logs 'pack-ship-icons.log') -ErrorAction SilentlyContinue | Select-Object -Last 1)
+}
+Add-Result 'ship-icon-pack' $(if ($iconsOk) { 'ok' } else { 'FAIL' }) $iconsDetail
+
 # Large packs go beside the exports as hard links where the volume allows (no second copy of 1 GB), else copies.
 function Link-Pack([string]$Src, [string]$DestDir) {
     $dest = Join-Path $DestDir (Split-Path -Leaf $Src)
@@ -244,6 +261,8 @@ try {
             @('core', 'res://tests/run_tests.gd'),
             @('trade-route', 'res://tests/test_trade_route.gd'),
             @('ui', 'res://scenes/ui/tests/test_campaign_ui.gd'),
+            @('trek-icons', 'res://scenes/ui/tests/test_trek_icons.gd'),
+            @('trek-text', 'res://scenes/ui/tests/test_trek_text.gd'),
             @('battle-timeline', 'res://scenes/battle/tests/test_battle_timeline.gd'),
             @('camera-rig', 'res://scenes/battle/tests/test_camera_rig.gd'),
             @('hero-models', 'res://scenes/battle/tests/test_hero_models.gd'),
@@ -379,7 +398,7 @@ if (-not $SkipExport) {
         $winPacks = Join-Path $proj 'build\packs'
         New-Item -ItemType Directory -Force -Path $winPacks | Out-Null
         Get-ChildItem -LiteralPath $winPacks -Filter '*.pck' -ErrorAction SilentlyContinue | Remove-Item -Force
-        foreach ($n in 'planets_desktop.pck', 'ships_desktop.pck') {
+        foreach ($n in 'planets_desktop.pck', 'ships_desktop.pck', 'ship_icons_desktop.pck') {
             $dp = Join-Path $userPacks $n
             if (Test-Path -LiteralPath $dp) { Link-Pack $dp $winPacks }
         }
@@ -399,7 +418,7 @@ if (-not $SkipExport) {
         $exeShots = Join-Path $run 'exe-clean'
         New-Item -ItemType Directory -Force -Path $exeShots | Out-Null
         $saved = @{}
-        foreach ($v in 'BOTF_HERO_MANIFEST', 'BOTF_RESOLVED_MANIFEST') { $saved[$v] = [Environment]::GetEnvironmentVariable($v); [Environment]::SetEnvironmentVariable($v, $null) }
+        foreach ($v in 'BOTF_HERO_MANIFEST', 'BOTF_RESOLVED_MANIFEST', 'BOTF_SHIP_ICONS') { $saved[$v] = [Environment]::GetEnvironmentVariable($v); [Environment]::SetEnvironmentVariable($v, $null) }
         $env:SHOT_HERO_CHECK = '1'; $env:SHOT_FULL = '1'
         # The exe shares user:// with the editor runs (user\packs\*_desktop.pck from this script): a private APPDATA keeps the run from mounting those.
         $savedAppData = $env:APPDATA; $env:APPDATA = Join-Path $clean 'appdata'; New-Item -ItemType Directory -Force -Path $env:APPDATA | Out-Null
@@ -414,6 +433,21 @@ if (-not $SkipExport) {
         $hl = @(Get-Content -LiteralPath (Join-Path $logs 'exe-hero-hulls.log') -ErrorAction SilentlyContinue | Where-Object { $_ -match '^HERO_CHECK' })
         $heroOk = $hc.ExitCode -eq 0 -and $hl.Count -ge 2 -and -not ($hl -match 'FAIL')
         Add-Result 'exe-hero-hulls' $(if ($heroOk) { 'ok' } else { 'FAIL' }) ((@($hl | ForEach-Object { $_ -replace '^HERO_CHECK\s+', '' -replace 'manifest \S+, ', '' }) -join ' | ') + " (clean folder $clean)")
+        # The baked ship pictures, in the same clean folder (no LocalAssets, no BOTF_* variables): icon_check.gd exits 1 unless
+        # ship_icons_desktop.pck mounted and every icon in it loads through ShipIcons. The vector line drawing counts as a failure.
+        $icLog = Join-Path $logs 'exe-ship-icons.log'
+        $env:APPDATA = Join-Path $clean 'appdata'
+        foreach ($v in 'BOTF_HERO_MANIFEST', 'BOTF_RESOLVED_MANIFEST', 'BOTF_SHIP_ICONS') { [Environment]::SetEnvironmentVariable($v, $null) }
+        $ic = Start-Process -FilePath (Join-Path $clean 'BOTFRemastered.exe') -WorkingDirectory $clean -PassThru `
+            -ArgumentList "--audio-driver Dummy --resolution 640x360 -s res://scenes/ui/tools/icon_check.gd" `
+            -RedirectStandardOutput $icLog -RedirectStandardError (Join-Path $logs 'exe-ship-icons.err')
+        $null = $ic.Handle
+        try { $ic.PriorityClass = [System.Diagnostics.ProcessPriorityClass]::BelowNormal } catch {}
+        if (-not $ic.WaitForExit(300 * 1000)) { try { Stop-Process -Id $ic.Id -Force } catch {} }
+        $env:APPDATA = $savedAppData
+        foreach ($v in $saved.Keys) { [Environment]::SetEnvironmentVariable($v, $saved[$v]) }
+        $il = @(Get-Content -LiteralPath $icLog -ErrorAction SilentlyContinue | Where-Object { $_ -match '^ICON_CHECK' })
+        Add-Result 'exe-ship-icons' $(if ($ic.ExitCode -eq 0 -and $il.Count -ge 1 -and -not ($il -match '^ICON_CHECK\s+FAIL')) { 'ok' } else { 'FAIL' }) ((@($il | ForEach-Object { $_ -replace '^ICON_CHECK\s+', '' }) -join ' | ') + " (clean folder $clean)")
     }
     if ($wantWeb) {
         $webPacks = Join-Path $proj 'build\web\packs'

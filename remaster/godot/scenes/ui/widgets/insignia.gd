@@ -13,14 +13,14 @@ extends RefCounted
 ## Every mark is one colour plus cut-outs, drawn in a 0..100 box. Each has a heavier small variant for 14 px use.
 
 const BY_ID := ["neutral", "federation", "klingon", "romulan", "cardassian", "ferengi"]
-const ALL := ["federation", "klingon", "romulan", "cardassian", "ferengi", "dominion", "borg", "species8472", "breen", "hirogen",
+const ALL := ["federation", "ufp", "klingon", "romulan", "cardassian", "ferengi", "dominion", "borg", "species8472", "breen", "hirogen",
 	"kazon", "xindi", "krenim", "tholian", "gorn", "orion", "maquis", "devore", "minor", "neutral"]
-const ALIASES := {"fed": "federation", "starfleet": "federation", "ufp": "federation", "klingons": "klingon", "romulans": "romulan",
+const ALIASES := {"fed": "federation", "starfleet": "federation", "klingons": "klingon", "romulans": "romulan",
 	"reman": "romulan", "cardassians": "cardassian", "ferengis": "ferengi", "jemhadar": "dominion", "8472": "species8472",
 	"species 8472": "species8472", "unknown": "neutral", "contact": "neutral"}
 const SMALL_PX := 36.0
 ## Marks whose full variant stays legible lower down switch to the small variant later.
-const SMALL_BELOW := {"federation": 26.0}
+const SMALL_BELOW := {"federation": 26.0, "ufp": 40.0}
 
 static var _cache := {}
 
@@ -36,6 +36,8 @@ static func key_of(empire: Variant) -> String:
 ## Draws the insignia into `ci` inside `rect` (kept square, centred).
 static func draw(ci: CanvasItem, empire: Variant, rect: Rect2, colour: Color, style: String = "auto", bg: Variant = null) -> void:
 	var key := key_of(empire)
+	if style == "seal" and key == "federation":
+		key = "ufp"
 	var px := minf(rect.size.x, rect.size.y)
 	if px < 1.0:
 		return
@@ -181,6 +183,16 @@ static func _blade(c: Vector2, ang: float, L: float, bw: float, curl: float) -> 
 	var right := _quad(tip, c + d * L * 0.5 + n * (curl * 0.2 - bw * 0.9), c - n * bw, 12)
 	return _join([left, right])
 
+## Borg glyph helpers: coordinates traced from a 540 x 780 px reference crop, mapped into the 0..100 box (height 100, x stretched a little so the gaps survive at menu size, centred on x 50).
+static func _bpt(p: Array) -> Vector2:
+	return Vector2(50.0 + (float(p[0]) - 247.0) * 0.19, (float(p[1]) - 35.0) * 0.147)
+
+static func _bp(a: Array, b: Array, c: Array, d: Array) -> PackedVector2Array:
+	return _bez(_bpt(a), _bpt(b), _bpt(c), _bpt(d), 12)
+
+static func _bp_ellipse(cx: float, cy: float, rx: float, ry: float) -> PackedVector2Array:
+	return _ellipse(_bpt([cx, cy]), rx * 0.19, ry * 0.147, 0.0, 36)
+
 # ---------------------------------------------------------------------------------------------
 # The marks
 # ---------------------------------------------------------------------------------------------
@@ -188,105 +200,137 @@ static func _build(key: String, small: bool) -> Array:
 	var o: Array = []
 	match key:
 		"federation":
-			# Starfleet delta: a fat swept arrowhead, concave trailing edge with a centre notch, a split line down it;
-			# the full mark sits in its orbit ring.
-			var t := Vector2(50, 0)
-			var r_ := Vector2(97, 98)
-			var l_ := Vector2(3, 98)
-			var n_ := Vector2(50, 70)
-			var delta := _join([_bez(t, Vector2(60, 34), Vector2(86, 62), r_), _bez(r_, Vector2(80, 88), Vector2(64, 80), n_),
-				_bez(n_, Vector2(36, 80), Vector2(20, 88), l_), _bez(l_, Vector2(14, 62), Vector2(40, 34), t)])
+			# TNG/DS9 combadge: the Starfleet delta, a tall straight-sided arrowhead with a notch cut up into its foot and a crease
+			# down one face, standing in front of a horizontal oval. The delta is the mark: a halo cuts it free of the oval.
+			var delta := _poly([[50, 0], [88, 100], [50, 66], [12, 100]])
 			if small:
+				o.append(["f", _ellipse(Vector2(50, 78), 50, 17, 0.0, 36)])
+				o.append(["h", delta, 12.0])
 				o.append(["f", delta])
-				o.append(["x", _bez(Vector2(50, 18), Vector2(42, 38), Vector2(44, 56), n_ + Vector2(0, -4)), 6.0])
 			else:
-				o.append(["S", _ellipse(Vector2(50, 72), 50, 14, -22.0, 48), 3.4])
-				o.append(["h", delta, 7.0])
+				o.append(["S", _ellipse(Vector2(50, 70), 49, 24, 0.0, 48), 5.0])
+				o.append(["h", delta, 10.0])
 				o.append(["f", delta])
-				o.append(["x", _bez(Vector2(50, 14), Vector2(43, 36), Vector2(45, 56), n_ + Vector2(0, -3)), 3.2])
+				o.append(["x", _poly([[50, 10], [56, 50]]), 2.4])
+				o.append(["c", _poly([[50, 82], [64, 100], [36, 100]])])
+		"ufp":
+			# United Federation of Planets seal: a starfield disc inside a ring, held in two laurel branches.
+			o.append(["S", _circle(Vector2(50, 50), 32.0, 40), 3.2])
+			o.append(["f", _circle(Vector2(50, 50), 27.0, 36)])
+			for s_ in [[40, 40, 4.4], [62, 44, 5.4], [50, 62, 4.6], [30, 56, 2.6], [70, 62, 2.4], [48, 30, 2.4]]:
+				var sp := Vector2(s_[0], s_[1])
+				var rr: float = s_[2]
+				o.append(["c", _poly([[sp.x, sp.y - rr], [sp.x + rr * 0.28, sp.y - rr * 0.28], [sp.x + rr, sp.y], [sp.x + rr * 0.28, sp.y + rr * 0.28],
+					[sp.x, sp.y + rr], [sp.x - rr * 0.28, sp.y + rr * 0.28], [sp.x - rr, sp.y], [sp.x - rr * 0.28, sp.y - rr * 0.28]])])
+			var leaves := 8 if not small else 6
+			for side in [-1.0, 1.0]:
+				for i in range(leaves):
+					var a_: float = deg_to_rad(lerpf(-50.0, 62.0, float(i) / float(leaves - 1)))
+					var cx_: float = 50.0 + side * cos(a_) * 43.0
+					var cy_: float = 50.0 + sin(a_) * 43.0
+					var tang: float = a_ + PI / 2.0
+					var rot_deg: float = rad_to_deg(tang) if side > 0 else rad_to_deg(PI - tang)
+					o.append(["f", _ellipse(Vector2(cx_, cy_), 8.0, 3.6, rot_deg + (-22.0 * side), 14)])
 		"klingon":
-			# Trefoil: a tall central blade and two horns sweeping out and up from the same base point.
-			var centre := _poly([[50, 0], [57, 30], [54, 62], [50, 100], [46, 62], [43, 30]])
-			var lb := _join([_bez(Vector2(47, 80), Vector2(14, 94), Vector2(-4, 54), Vector2(6, 4)),
-				_bez(Vector2(6, 4), Vector2(9, 42), Vector2(24, 62), Vector2(46, 66))])
+			# Imperial trefoil (traced from the Empire's emblem): a tall spear-blade whose foot is an inverted V, and two sickle
+			# blades sweeping out and down beneath it, each cut free of the spear by a thin gap.
+			var spear := _join([_bez(Vector2(50, 0), Vector2(52, 30), Vector2(58, 52), Vector2(63, 64)), _poly([[62, 70], [50, 88], [38, 70]]),
+				_bez(Vector2(37, 64), Vector2(42, 52), Vector2(48, 30), Vector2(50, 0))])
+			var lb := _join([_bez(Vector2(47, 90), Vector2(32, 93), Vector2(14, 97), Vector2(2, 100)), _bez(Vector2(2, 100), Vector2(10, 91), Vector2(24, 82), Vector2(37, 75)),
+				_poly([[48, 86]])])
 			if small:
-				centre = _poly([[50, 0], [60, 30], [57, 62], [50, 100], [43, 62], [40, 30]])
-				lb = _join([_bez(Vector2(48, 84), Vector2(10, 98), Vector2(-8, 52), Vector2(4, 0)),
-					_bez(Vector2(4, 0), Vector2(14, 40), Vector2(28, 60), Vector2(47, 62))])
-			o.append(["f", centre])
+				spear = _join([_bez(Vector2(50, 0), Vector2(54, 30), Vector2(63, 52), Vector2(67, 62)), _poly([[64, 72], [50, 90], [36, 72]]),
+					_bez(Vector2(33, 62), Vector2(37, 52), Vector2(46, 30), Vector2(50, 0))])
+				lb = _join([_bez(Vector2(46, 90), Vector2(30, 94), Vector2(10, 98), Vector2(0, 100)), _bez(Vector2(0, 100), Vector2(10, 90), Vector2(24, 80), Vector2(35, 73)),
+					_poly([[48, 86]])])
 			o.append(["f", lb])
 			o.append(["f", _mir(lb)])
+			o.append(["h", spear, 4.2 if not small else 5.0])
+			o.append(["f", spear])
 		"romulan":
-			# Raptor with wings spread, head in profile, a sphere in each talon (full mark).
-			var wing := _join([_bez(Vector2(46, 30), Vector2(30, 12), Vector2(14, 8), Vector2(2, 6)),
-				_poly([[11, 24], [8, 27], [19, 38], [16, 41], [29, 50], [46, 52]])])
+			# Imperial raptor: wings spread in layered feathers, hooked head, a long tail point and the twin worlds in its talons.
+			var wing := _join([_bez(Vector2(46, 34), Vector2(30, 14), Vector2(14, 8), Vector2(1, 8)),
+				_poly([[10, 22], [4, 24], [16, 34], [9, 38], [22, 46], [15, 52], [32, 58], [46, 56]])])
 			if small:
-				wing = _join([_bez(Vector2(46, 32), Vector2(30, 12), Vector2(14, 6), Vector2(0, 4)),
-					_poly([[12, 28], [8, 31], [22, 46], [46, 56]])])
+				wing = _join([_bez(Vector2(46, 34), Vector2(30, 12), Vector2(14, 6), Vector2(0, 6)),
+					_poly([[10, 26], [4, 30], [22, 46], [14, 54], [46, 60]])])
 			o.append(["f", wing])
 			o.append(["f", _rev(_mir(wing))])
-			o.append(["f", _poly([[44, 22], [50, 14], [57, 18], [58, 26], [54, 62], [50, 70], [46, 62]])])
-			o.append(["f", _poly([[44, 17], [34, 22], [43, 25]])]) # hooked beak
-			o.append(["x", _circle(Vector2(52, 21), 1.8, 10), 2.0])
+			o.append(["f", _poly([[44, 24], [50, 14], [57, 18], [58, 28], [55, 58], [50, 100], [45, 58]])])
+			o.append(["f", _poly([[44, 18], [33, 22], [43, 27]])]) # hooked beak
+			o.append(["x", _circle(Vector2(52, 22), 1.8, 10), 2.0])
 			if not small:
-				o.append(["f", _poly([[43, 60], [36, 80], [50, 88], [64, 80], [57, 60]])])
-				o.append(["x", _poly([[50, 66], [50, 84]]), 2.4])
-				o.append(["f", _circle(Vector2(26, 86), 7.5, 20)])
-				o.append(["f", _circle(Vector2(74, 86), 7.5, 20)])
-				o.append(["f", _poly([[30, 78], [33, 70], [37, 76]])])
-				o.append(["f", _poly([[70, 78], [67, 70], [63, 76]])])
+				o.append(["f", _circle(Vector2(31, 74), 8.0, 20)])
+				o.append(["f", _circle(Vector2(69, 74), 8.0, 20)])
+				o.append(["f", _poly([[34, 66], [38, 58], [43, 64]])])
+				o.append(["f", _poly([[66, 66], [62, 58], [57, 64]])])
 			else:
-				o.append(["f", _poly([[42, 56], [36, 84], [50, 92], [64, 84], [58, 56]])])
+				o.append(["f", _circle(Vector2(30, 76), 9.0, 16)])
+				o.append(["f", _circle(Vector2(70, 76), 9.0, 16)])
 		"cardassian":
-			# Union emblem: a heavy notched shield tapering to a point, split down the middle into mirrored regions, one dot off-centre.
-			o.append(["f", _poly([[4, 4], [36, 4], [50, 20], [64, 4], [96, 4], [96, 32], [62, 96], [50, 100], [38, 96], [4, 32]])])
-			o.append(["x", _poly([[50, 20], [50, 100]]), 3.5 if not small else 5.0])
-			if not small:
-				o.append(["x", _poly([[50, 56], [22, 34]]), 2.6])
-				o.append(["x", _poly([[50, 56], [78, 34]]), 2.6])
-				o.append(["x", _poly([[12, 16], [30, 16]]), 2.6])
-				o.append(["x", _poly([[88, 16], [70, 16]]), 2.6])
-				o.append(["c", _circle(Vector2(36, 44), 4.4, 12)])
-			else:
-				o.append(["c", _circle(Vector2(34, 36), 5.0, 10)])
-		"ferengi":
-			# Alliance emblem: a central disc held between two mirrored pincers, each cut into inner fields.
-			var cc := Vector2(50, 50)
-			var outer := _arc(cc, 47.0, deg_to_rad(108), deg_to_rad(252), 20)
-			var inner := _arc(cc, 31.0 if not small else 32.0, deg_to_rad(252), deg_to_rad(108), 20)
-			var pincer := _join([outer, inner])
-			o.append(["f", pincer])
-			o.append(["f", _mir(pincer)])
-			o.append(["f", _circle(cc, 22.0, 24)])
-			if not small:
-				for a_ in [150.0, 205.0]:
-					var d_ := Vector2(cos(deg_to_rad(a_)), sin(deg_to_rad(a_)))
-					o.append(["x", _poly([[cc.x + d_.x * 32.0, cc.y + d_.y * 32.0], [cc.x + d_.x * 47.0, cc.y + d_.y * 47.0]]), 2.2])
-					o.append(["x", _poly([[cc.x - d_.x * 32.0, cc.y + d_.y * 32.0], [cc.x - d_.x * 47.0, cc.y + d_.y * 47.0]]), 2.2])
-		"dominion":
-			# A rhomb holding a tall L (its long arm runs past the rhomb), a small cross and a short bar.
-			var rh := _poly([[52, 16], [98, 58], [52, 100], [6, 58]])
+			# Union emblem (traced from the Union's crest): a hooded crest with swept shoulders, a stem below them, an arrow notch
+			# in the hood and an elongated cartouche down the spine.
+			var half := _join([_bez(Vector2(50, 0), Vector2(60, 0), Vector2(66, 6), Vector2(68, 13)), _bez(Vector2(68, 13), Vector2(82, 14), Vector2(94, 26), Vector2(99, 42)),
+				_bez(Vector2(99, 42), Vector2(84, 44), Vector2(70, 48), Vector2(62, 58)), _poly([[61, 64], [63, 74], [68, 84], [62, 94], [56, 100]])])
+			var left := _mir(half)
+			left.remove_at(left.size() - 1)
+			var crest := _join([half, left])
+			o.append(["f", crest])
 			if small:
-				o.append(["f", rh])
-				o.append(["c", _poly([[50, 6], [60, 6], [60, 66], [78, 66], [78, 76], [50, 76]])])
-				o.append(["x", _poly([[24, 52], [38, 52]]), 6.0])
+				o.append(["c", _poly([[50, 18], [57, 36], [57, 68], [50, 88], [43, 68], [43, 36]])])
 			else:
-				o.append(["S", rh, 4.0])
-				o.append(["f", _poly([[52, 0], [62, 0], [62, 80], [84, 80], [84, 90], [52, 90]])])
-				o.append(["s", _poly([[20, 52], [36, 52]]), 5.0])
-				o.append(["s", _poly([[28, 44], [28, 60]]), 5.0])
-				o.append(["s", _poly([[16, 70], [38, 70]]), 4.0])
+				o.append(["c", _poly([[40, 6], [60, 6], [52, 15], [50, 24], [48, 15]])])
+				o.append(["X", _poly([[50, 28], [57, 40], [57, 68], [50, 90], [43, 68], [43, 40]]), 2.2])
+				o.append(["c", _poly([[50, 40], [53, 48], [52, 66], [50, 78], [48, 66], [47, 48]])])
+		"ferengi":
+			# Alliance seal: a bullet-shaped plate, rounded at the left and chamfered at the right, a bar across it and the
+			# eye ring set in the right half.
+			var plate := _join([_poly([[30, 6], [70, 6], [100, 34], [100, 66], [70, 94], [30, 94]]),
+				_bez(Vector2(30, 94), Vector2(8, 92), Vector2(0, 72), Vector2(0, 50)), _bez(Vector2(0, 50), Vector2(0, 28), Vector2(8, 8), Vector2(30, 6))])
+			o.append(["f", plate])
+			if small:
+				o.append(["x", _poly([[0, 50], [52, 50]]), 4.0])
+				o.append(["x", _poly([[56, 50], [72, 34], [90, 50], [72, 66]]), 4.5])
+				o.append(["c", _circle(Vector2(72, 50), 5.0, 12)])
+			else:
+				o.append(["x", _poly([[0, 50], [46, 50]]), 3.2])
+				o.append(["X", _poly([[50, 50], [72, 30], [94, 50], [72, 70]]), 3.0])
+				o.append(["X", _circle(Vector2(72, 50), 9.0, 18), 2.8])
+				o.append(["c", _circle(Vector2(72, 50), 3.6, 10)])
+		"dominion":
+			# A framed rhomb carrying the Founders' hook: a tall stem rising past the frame, curling to a hook at the foot,
+			# a four-point star and a short bar to the left of it.
+			var rh := _poly([[50, 14], [98, 58], [50, 100], [2, 58]])
+			var hook := _join([_poly([[58, 0], [64, 0], [64, 66]]), _bez(Vector2(64, 66), Vector2(64, 82), Vector2(52, 88), Vector2(40, 82)),
+				_bez(Vector2(40, 82), Vector2(52, 82), Vector2(58, 76), Vector2(58, 64))])
+			if small:
+				o.append(["S", rh, 8.0])
+				o.append(["f", _poly([[56, 0], [68, 0], [68, 64]])])
+				o.append(["f", hook])
+				o.append(["f", _poly([[34, 48], [40, 56], [34, 64], [28, 56]])])
+			else:
+				o.append(["S", rh, 3.4])
+				o.append(["f", hook])
+				o.append(["f", _poly([[34, 44], [37, 53], [46, 56], [37, 59], [34, 68], [31, 59], [22, 56], [31, 53]])])
+				o.append(["s", _poly([[12, 56], [20, 56]]), 2.6])
 		"borg":
-			var hexa := _poly([[50, 4], [92, 27], [92, 73], [50, 96], [8, 73], [8, 27]])
-			o.append(["f", hexa])
-			o.append(["x", _poly([[8, 27], [50, 50], [92, 27]]), 3.2 if not small else 5.0])
-			o.append(["x", _poly([[50, 50], [50, 96]]), 3.2 if not small else 5.0])
+			# Collective glyph (traced from the reference): a tall shell with a hollow on its left, three long claws sweeping down
+			# from its crown on the right, and a nested pair of arches at its foot.
+			var shell := _join([_bp([165, 145], [95, 260], [80, 430], [185, 692]), _bp([185, 692], [175, 600], [195, 500], [215, 435]),
+				_bp([215, 435], [160, 410], [130, 330], [135, 265]), _bp([135, 265], [135, 200], [150, 170], [165, 145])])
+			var claw_c := _join([_bp([250, 38], [390, 100], [415, 300], [405, 430]), _bp([405, 430], [390, 540], [350, 640], [312, 702]),
+				_bp([302, 702], [335, 650], [370, 540], [378, 400]), _bp([378, 400], [376, 260], [330, 110], [238, 40])])
+			var claw_b := _join([_bp([214, 72], [280, 150], [310, 300], [318, 470]), _bp([332, 470], [350, 300], [300, 140], [242, 66])])
+			var claw_a := _join([_bp([190, 100], [230, 170], [252, 300], [242, 430]), _bp([280, 425], [285, 300], [255, 170], [212, 98])])
+			var dome := _join([_bp([200, 706], [188, 560], [215, 470], [255, 468]), _bp([255, 468], [300, 470], [330, 560], [302, 706])])
+			o.append(["f", shell])
+			o.append(["f", claw_c])
+			o.append(["f", claw_b])
 			if not small:
-				o.append(["x", _poly([[18, 40], [30, 47], [30, 60]]), 2.0])
-				o.append(["x", _poly([[82, 40], [70, 47], [70, 60]]), 2.0])
-				o.append(["x", _poly([[36, 66], [36, 78], [46, 84]]), 2.0])
-				o.append(["x", _poly([[64, 66], [64, 78], [54, 84]]), 2.0])
-				o.append(["x", _poly([[50, 14], [50, 26]]), 2.0])
+				o.append(["f", claw_a])
+			o.append(["f", dome])
+			o.append(["c", _bp_ellipse(250, 645, 46, 80)])
+			o.append(["f", _bp_ellipse(250, 648, 32 if not small else 34, 66)])
 		"species8472":
 			var c2 := Vector2(50, 52)
 			o.append(["f", _blade(c2, deg_to_rad(-90), 48, 6.0, -8)])

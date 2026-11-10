@@ -142,7 +142,7 @@ func _pure_models() -> void:
 	check(t["hull"] == 8 and t["max_hull"] == 16 and t["range"] == 2 and t["upkeep"] == 3, "unit totals sum members and take the shortest range")
 	# combat
 	check(CombatVM.is_active({"alive": true, "active": true}) and not CombatVM.is_active({"alive": true, "active": true, "retreated": true}), "active ships")
-	check(CombatVM.short_name({"name": "Galaxy — USS X"}) == "Galaxy" and CombatVM.short_name({"hidden": true, "name": "x"}) == "Cloaked contact", "short names")
+	check(CombatVM.short_name({"name": "Galaxy — USS X"}) == "Galaxy" and CombatVM.short_name({"hidden": true, "name": "x"}) == "Unidentified vessel", "short names")
 	var e := {"ships": [{"id": 1, "name": "A"}, {"id": 2, "name": "B"}]}
 	var log := CombatVM.round_log(e, {"salvos": [{"from": 1, "to": 2, "beam": 3, "torpedo": 4}], "lost": [2], "ended": true})
 	check(log.size() == 3 and log[0][1] == "A → B: 7 damage" and log[1][0] == "alert", "round log lines")
@@ -209,6 +209,12 @@ func _session_models(backend: String) -> void:
 	var shell := ShellVM.new(s)
 	check(shell.stats().size() == 7 and shell.stats()[0]["cap"] == "Turn", "shell stats")
 	check(shell.end_turn_block() == "" and shell.rail_extras().size() == 3, "shell end turn and rail")
+	check(str(shell.heading()[1]).find("stardate " + TrekText.stardate_text(int(s.view["meta"]["turn"]))) >= 0, "the top bar prints the one stardate formula")
+	var log_entries := OverlaysVM.new(s).log_entries()
+	var log_ok := true
+	for le in log_entries:
+		log_ok = log_ok and str(le.get("voice", "")) != "" and str(le["voice"]).find("{") < 0
+	check(log_ok, "every briefing entry has a voiced log line")
 	# research
 	var r := ResearchVM.new(s)
 	r.fetch()
