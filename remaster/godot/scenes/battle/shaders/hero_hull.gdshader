@@ -8,7 +8,7 @@ uniform sampler2D bc_tex : source_color, hint_default_white, filter_linear_mipma
 uniform sampler2D normal_tex : hint_normal, filter_linear_mipmap_anisotropic, repeat_enable;
 uniform bool has_normal = false;
 uniform sampler2D orm_tex : hint_default_white, filter_linear_mipmap_anisotropic, repeat_enable;
-uniform sampler2D emissive_tex : source_color, hint_default_black, filter_linear_mipmap, repeat_enable;
+uniform sampler2D emissive_tex : source_color, hint_default_black, filter_linear_mipmap_anisotropic, repeat_enable;
 uniform vec3 tint = vec3(1.0);          // linear, as the Unreal Tint parameter
 uniform float metallic_scale = 0.35;
 uniform float roughness_scale = 1.0;
