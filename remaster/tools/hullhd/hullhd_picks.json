@@ -1,62 +1,231 @@
 {
  "_comment": "M1 hullhd: BOTF hero key -> Bridge Commander library Id (H:/StarhelmTools/bc-ships, read only). 'new' = class that drew the procedural fallback hull before; 'swap' = replaces an earlier model; 'rebuild' = same model, HD textures. tex = per-map pixel cap (default 2048). Only candidates whose own render looked like the class are used; classes with no candidate are not listed (see HULLHD-REPORT).",
  "new": {
-  "ship.rom.drenet": ["R_TNG_RAXAVIS", "scout"],
-  "ship.rom.dretex": ["RomulanFreighter", "colony ship"],
-  "ship.rom.dridren": ["R_TNG_HARRIER", "destroyer"],
-  "ship.rom.rderex": ["R_TNG_FALCON", "cruiser"],
-  "ship.rom.rdaran": ["R_TNG_POLLUX", "troop ship (stand-in: boxy heavy Romulan hull)"],
-  "ship.rom.rtan": ["R_TNG_HARPY", ""],
-  "ship.rom.ddredar": ["R_TNG_OSPREY", ""],
-  "ship.rom.mogai": ["R_TNG_TAVARA", ""],
-  "ship.rom.norexan": ["R_TNG_RAPTOR", ""],
-  "ship.rom.science": ["R_TNG_TALON", ""],
-  "ship.rom.scout": ["R_TNG_SHRIKE", "scout (stand-in: light Romulan TNG hull)"],
-  "ship.rom.bop_ent": ["RomBoP", "unused hero rom.bop wired to the class"],
-  "ship.rom.bop_tos": ["RomBoP", "unused hero rom.bop wired to the class"],
-  "ship.rom.narada": ["bcnarada", ""],
-  "ship.car.nerok": ["C_TNG_KIMAL", "scout"],
-  "ship.car.netel": ["C_TNG_BARKUS", "destroyer"],
-  "ship.car.neterok": ["Bakrus", "cruiser"],
-  "ship.car.ranol": ["CardFreighter", "colony ship"],
-  "ship.car.toran": ["CardFreighter__km", "troop ship"],
-  "ship.car.telok": ["DS9FXKeldon", ""],
-  "ship.car.kraxon": ["ObsidianKeldon", ""],
-  "ship.car.groumall": ["CardFreighter__km", ""],
-  "ship.car.nor": ["CardStation", "DS9 station"],
-  "ship.dom.attack_ship": ["DS9FXDominionFighter", ""],
-  "ship.dom.battlecruiser": ["DomBC", ""],
-  "ship.dom.battleship": ["DomBB", ""],
-  "ship.borg.diamond": ["JLSBorgDiamond", ""],
-  "ship.borg.sphere": ["JLSBorgSphere", ""],
-  "ship.borg.tactical_cube": ["JLSBorgTacticalCube", ""],
-  "ship.borg.probe": ["Pyramid", "stand-in: Borg pyramid"],
-  "ship.borg.scout": ["BorgFT", "stand-in: Borg fighter, 76 tris"],
-  "ship.breen.breen_warship": ["BreenBB", ""],
-  "ship.devore.warship": ["JLSDevoreWarship", ""],
-  "ship.hiro.hunter": ["JLSHirogenHunter", ""],
-  "ship.hiro.warship": ["HirogenVenatic", ""],
-  "ship.kazon.carrier": ["JLSKazonPredator", ""],
-  "ship.kazon.raider": ["JLSKazonRaider", ""],
-  "ship.krenim.timeship": ["JLSKrenimTimeship", ""],
-  "ship.krenim.warship": ["JLSKrenimWarship", ""],
-  "ship.malon.freighter": ["MalonFreighter", ""],
-  "ship.maquis.raider": ["JLSMaquisRaider", ""],
-  "ship.reman.scimitar": ["Scimitar", ""],
-  "ship.s8472.bioship": ["JLS8472", ""],
-  "ship.sona.battleship": ["SonaBattleship", ""],
-  "ship.vid.warship": ["JLSVidiian", ""],
-  "ship.orion.interceptor": ["OrionDD", "Orion pirate hull, 456 tris"]
+  "ship.rom.drenet": [
+   "R_TNG_RAXAVIS",
+   "scout"
+  ],
+  "ship.rom.dretex": [
+   "RomulanFreighter",
+   "colony ship"
+  ],
+  "ship.rom.dridren": [
+   "R_TNG_HARRIER",
+   "destroyer"
+  ],
+  "ship.rom.rderex": [
+   "R_TNG_FALCON",
+   "cruiser"
+  ],
+  "ship.rom.rdaran": [
+   "R_TNG_POLLUX",
+   "troop ship (stand-in: boxy heavy Romulan hull)"
+  ],
+  "ship.rom.rtan": [
+   "R_TNG_HARPY",
+   ""
+  ],
+  "ship.rom.ddredar": [
+   "R_TNG_OSPREY",
+   ""
+  ],
+  "ship.rom.mogai": [
+   "R_TNG_TAVARA",
+   ""
+  ],
+  "ship.rom.norexan": [
+   "R_TNG_RAPTOR",
+   ""
+  ],
+  "ship.rom.science": [
+   "R_TNG_TALON",
+   ""
+  ],
+  "ship.rom.scout": [
+   "R_TNG_SHRIKE",
+   "scout (stand-in: light Romulan TNG hull)"
+  ],
+  "ship.rom.bop_ent": [
+   "RomBoP",
+   "unused hero rom.bop wired to the class"
+  ],
+  "ship.rom.bop_tos": [
+   "RomBoP",
+   "unused hero rom.bop wired to the class"
+  ],
+  "ship.rom.narada": [
+   "bcnarada",
+   ""
+  ],
+  "ship.car.nerok": [
+   "C_TNG_KIMAL",
+   "scout"
+  ],
+  "ship.car.netel": [
+   "C_TNG_BARKUS",
+   "destroyer"
+  ],
+  "ship.car.neterok": [
+   "Bakrus",
+   "cruiser"
+  ],
+  "ship.car.ranol": [
+   "CardFreighter",
+   "colony ship"
+  ],
+  "ship.car.toran": [
+   "CardFreighter__km",
+   "troop ship"
+  ],
+  "ship.car.telok": [
+   "DS9FXKeldon",
+   ""
+  ],
+  "ship.car.kraxon": [
+   "ObsidianKeldon",
+   ""
+  ],
+  "ship.car.groumall": [
+   "CardFreighter__km",
+   ""
+  ],
+  "ship.car.nor": [
+   "CardStation",
+   "DS9 station"
+  ],
+  "ship.dom.attack_ship": [
+   "DS9FXDominionFighter",
+   ""
+  ],
+  "ship.dom.battlecruiser": [
+   "DomBC",
+   ""
+  ],
+  "ship.dom.battleship": [
+   "DomBB",
+   ""
+  ],
+  "ship.borg.diamond": [
+   "JLSBorgDiamond",
+   ""
+  ],
+  "ship.borg.sphere": [
+   "JLSBorgSphere",
+   ""
+  ],
+  "ship.borg.tactical_cube": [
+   "JLSBorgTacticalCube",
+   ""
+  ],
+  "ship.borg.probe": [
+   "Pyramid",
+   "stand-in: Borg pyramid"
+  ],
+  "ship.borg.scout": [
+   "BorgFT",
+   "stand-in: Borg fighter, 76 tris"
+  ],
+  "ship.breen.breen_warship": [
+   "BreenBB",
+   ""
+  ],
+  "ship.devore.warship": [
+   "JLSDevoreWarship",
+   ""
+  ],
+  "ship.hiro.hunter": [
+   "JLSHirogenHunter",
+   ""
+  ],
+  "ship.hiro.warship": [
+   "HirogenVenatic",
+   ""
+  ],
+  "ship.kazon.carrier": [
+   "JLSKazonPredator",
+   ""
+  ],
+  "ship.kazon.raider": [
+   "JLSKazonRaider",
+   ""
+  ],
+  "ship.krenim.timeship": [
+   "JLSKrenimTimeship",
+   ""
+  ],
+  "ship.krenim.warship": [
+   "JLSKrenimWarship",
+   ""
+  ],
+  "ship.malon.freighter": [
+   "MalonFreighter",
+   ""
+  ],
+  "ship.maquis.raider": [
+   "JLSMaquisRaider",
+   ""
+  ],
+  "ship.reman.scimitar": [
+   "Scimitar",
+   ""
+  ],
+  "ship.s8472.bioship": [
+   "JLS8472",
+   ""
+  ],
+  "ship.sona.battleship": [
+   "SonaBattleship",
+   ""
+  ],
+  "ship.vid.warship": [
+   "JLSVidiian",
+   ""
+  ],
+  "ship.orion.interceptor": [
+   "OrionDD",
+   "Orion pirate hull, 456 tris"
+  ]
  },
  "swap": {
-  "ship.fed.london": ["Constellation2", "Constellation-family hull, floating ball gone"],
-  "ship.kli.liwi": ["KlingonFreighter", "colony ship"],
-  "ship.kli.mayduj": ["K_TOS_D11", "destroyer"],
-  "ship.kli.charghwi": ["K_TOS_C8", "troop ship"],
-  "ship.kli.d12": ["KDN", ""],
-  "ship.kli.qang": ["KC7", ""],
-  "ship.kli.neghtev": ["DS9FXNeghvar", ""],
-  "ship.kli.starbase": ["KlingonImperialStarbase", "5.6k tris vs 1.4k"],
-  "ship.kli.bop_ent": ["D4_BOP", "was the B'rel mesh twice"]
+  "ship.fed.london": [
+   "Constellation2",
+   "Constellation-family hull, floating ball gone"
+  ],
+  "ship.kli.liwi": [
+   "KlingonFreighter",
+   "colony ship"
+  ],
+  "ship.kli.mayduj": [
+   "K_TOS_D11",
+   "destroyer"
+  ],
+  "ship.kli.charghwi": [
+   "K_TOS_C8",
+   "troop ship"
+  ],
+  "ship.kli.d12": [
+   "KDN",
+   ""
+  ],
+  "ship.kli.qang": [
+   "KC7",
+   ""
+  ],
+  "ship.kli.neghtev": [
+   "DS9FXNeghvar",
+   ""
+  ],
+  "ship.kli.starbase": [
+   "KlingonImperialStarbase",
+   "5.6k tris vs 1.4k"
+  ],
+  "ship.kli.bop_ent": [
+   "D4_BOP",
+   "was the B'rel mesh twice"
+  ],
+  "ship.fed.nx": [
+   "NXRefit",
+   "cleaner NX-01 refit skin, 2048 px native (chosen by side-by-side over the mottled NX)"
+  ]
  }
 }
