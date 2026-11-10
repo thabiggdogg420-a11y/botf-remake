@@ -447,7 +447,7 @@ if (-not $SkipExport) {
         $env:APPDATA = $savedAppData
         foreach ($v in $saved.Keys) { [Environment]::SetEnvironmentVariable($v, $saved[$v]) }
         $il = @(Get-Content -LiteralPath $icLog -ErrorAction SilentlyContinue | Where-Object { $_ -match '^ICON_CHECK' })
-        Add-Result 'exe-ship-icons' $(if ($ic.ExitCode -eq 0 -and $il.Count -ge 1 -and -not ($il -match 'FAIL')) { 'ok' } else { 'FAIL' }) ((@($il | ForEach-Object { $_ -replace '^ICON_CHECK\s+', '' }) -join ' | ') + " (clean folder $clean)")
+        Add-Result 'exe-ship-icons' $(if ($ic.ExitCode -eq 0 -and $il.Count -ge 1 -and -not ($il -match '^ICON_CHECK\s+FAIL')) { 'ok' } else { 'FAIL' }) ((@($il | ForEach-Object { $_ -replace '^ICON_CHECK\s+', '' }) -join ' | ') + " (clean folder $clean)")
     }
     if ($wantWeb) {
         $webPacks = Join-Path $proj 'build\web\packs'

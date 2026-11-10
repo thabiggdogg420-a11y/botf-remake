@@ -23,5 +23,5 @@ func _initialize() -> void:
 	# The pack's marker file states how many pictures it was built from (four per class: iso and top, 256 and 64 px).
 	var want := int(AppLoader.text(ShipIcons.PACK_DIR + "/_pack.txt").split(" ")[1]) / 4 if AppLoader.exists(ShipIcons.PACK_DIR + "/_pack.txt") else 0
 	var ok := mounted > 0 and src == "pack" and n > 0 and n == want and bad.is_empty()
-	print("ICON_CHECK ", "ok " if ok else "FAIL ", "source=", src, ", ", n, " of ", want, " iso icons loaded from the pack, ", bad.size(), " failed", (" (" + ", ".join(bad.slice(0, 5)) + ")") if not bad.is_empty() else "")
+	print("ICON_CHECK ", "ok " if ok else "FAIL ", "source=", src, ", ", n, " of ", want, " iso icons loaded from the pack, ", bad.size(), " bad", (" (" + ", ".join(bad.slice(0, 5)) + ")") if not bad.is_empty() else "")
 	quit(0 if ok else 1)
