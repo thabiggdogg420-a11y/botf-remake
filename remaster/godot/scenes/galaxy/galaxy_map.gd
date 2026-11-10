@@ -11,7 +11,7 @@ extends Control
 ## Zoom runs smoothly from the whole galaxy, to a sector, to a system close-up (zoom_level()).
 ## Input: left-drag or middle-drag pans, right-drag orbits, wheel zooms to the cursor, left-click selects,
 ## double-click flies to the target, right-click (no drag) opens the order menu. Keys: WASD / arrows pan, Q/E rotate,
-## Page Up/Down tilt, +/- zoom, F frame the known sectors, H home system.
+## Page Up/Down tilt, +/- zoom, F frame the whole galaxy, H home system.
 
 signal cell_clicked(cell: int, double: bool)
 signal cell_context(cell: int, screen_pos: Vector2)
@@ -19,7 +19,7 @@ signal hover_changed(cell: int, screen_pos: Vector2)
 
 const CELL := 84.0
 const FOV := 40.0
-const ZOOM_MIN := 0.2
+const ZOOM_MIN := 0.1
 const ZOOM_MAX := 40.0
 ## zoom_level() thresholds: below LEVEL_SECTOR the whole galaxy, from LEVEL_SYSTEM a system close-up.
 const LEVEL_SECTOR := 1.2
@@ -314,43 +314,56 @@ func is_focused_on(x: int, y: int) -> bool:
 	var a := cell_anchor(y * grid_size().x + x)
 	return Vector2(a.x, a.z).distance_to(cam / CELL) < 0.25
 
-## Frames every surveyed or sensed sector inside the part of the map the host's panels leave visible.
-## Early in a campaign only a few sectors are known (often one), so the framed span has a floor of half the galaxy
-## (at least 9 x 7 sectors): the chart opens on a neighbourhood with its nebulae and edges, not on one sector at 2.4x.
-## The view never runs past the galaxy's own edge. Resets the orbit to the default tilt, north up.
+## Frames the WHOLE galaxy (every star, charted or not) inside the part of the map the host's panels leave visible, at the
+## default tilt, north up: the opening view of a new or loaded game, F, and the benchmark's picture (Simon, 10 Nov 2026).
+## The tilted disc is fitted by projection: zoom and centre are refined until the bounds of the galaxy rectangle and every
+## star (plus room for its label) sit inside the free rectangle, so Small through Huge never clip behind the nav rail,
+## the top bar or the inspector. The kept name frame_known() is what older callers (captures, tests) use.
 func frame_known() -> void:
+	frame_galaxy()
+
+func frame_galaxy() -> void:
 	var v := view()
 	if v.is_empty():
 		return
 	var g := grid_size()
-	var fog: String = v["fog"]
-	var lo := Vector2(INF, INF)
-	var hi := Vector2(-INF, -INF)
-	for i in fog.length():
-		if fog[i] != "0":
-			var p := Vector2(i % g.x, i / g.x)
-			lo = lo.min(p)
-			hi = hi.max(p)
-	if lo.x == INF:
-		lo = Vector2.ZERO
-		hi = Vector2(g.x - 1, g.y - 1)
-	var floor_span := Vector2(maxf(9.0, g.x * 0.5), maxf(7.0, g.y * 0.5)).min(Vector2(g))
-	var span := (hi - lo + Vector2(1.6, 1.6)).max(floor_span) * CELL
-	var avail := Vector2(size.x - view_insets.x - view_insets.z, size.y - view_insets.y - view_insets.w)
-	avail = avail.max(Vector2(200, 160))
-	zoom = clamp(min(avail.x / span.x, avail.y / span.y), 0.35, 1.6)
-	var shift := Vector2(view_insets.x - view_insets.z, view_insets.y - view_insets.w) * 0.5
-	var centre := (lo + hi + Vector2.ONE) * 0.5 * CELL
-	var half := avail * 0.5 / zoom
-	var world := Vector2(g) * CELL
-	for axis in 2:
-		if half[axis] * 2.0 >= world[axis]:
-			centre[axis] = world[axis] * 0.5
-		else:
-			centre[axis] = clampf(centre[axis], half[axis], world[axis] - half[axis])
-	cam = centre - shift / zoom
+	var vp := size if size.x > 0.0 and size.y > 0.0 else Vector2(1920, 1080)
+	var free := Rect2(Vector2(view_insets.x, view_insets.y), vp - Vector2(view_insets.x + view_insets.z, view_insets.y + view_insets.w))
+	if free.size.x < 200.0 or free.size.y < 160.0:
+		free = Rect2(Vector2.ZERO, vp)
+	var pad := Vector2(48.0, 30.0)   # room for the outermost star's ring and label
+	var pts: Array[Vector3] = [Vector3(0, 0, 0), Vector3(g.x, 0, 0), Vector3(g.x, 0, g.y), Vector3(0, 0, g.y)]
+	for sid in systems3d:
+		pts.append(systems3d[sid]["pos"])
 	yaw = 0.0
 	pitch = PITCH_DEFAULT
+	_focus_h = 0.0
+	cam = Vector2(g) * 0.5 * CELL
+	zoom = clampf(free.size.x / (maxf(float(g.x), 1.0) * CELL), ZOOM_MIN, ZOOM_MAX)
+	for i in 10:
+		_apply_camera()
+		var lo := Vector2(INF, INF)
+		var hi := Vector2(-INF, -INF)
+		for w in pts:
+			var p := world_to_screen(w)
+			lo = lo.min(p)
+			hi = hi.max(p)
+		var box := hi - lo
+		var k := minf((free.size.x - pad.x * 2.0) / maxf(box.x, 1.0), (free.size.y - pad.y * 2.0) / maxf(box.y, 1.0))
+		zoom = clampf(zoom * clampf(k, 0.5, 2.0), ZOOM_MIN, 1.6)
+		_apply_camera()
+		# Re-measure after the zoom change, then slide the focus so the box is centred in the free rectangle.
+		lo = Vector2(INF, INF)
+		hi = Vector2(-INF, -INF)
+		for w in pts:
+			var p2 := world_to_screen(w)
+			lo = lo.min(p2)
+			hi = hi.max(p2)
+		var want := free.get_center()
+		var have := (lo + hi) * 0.5
+		cam += screen_to_map(have) - screen_to_map(want)
+		if absf(k - 1.0) < 0.004 and have.distance_to(want) < 1.0:
+			break
 	_target_cam = cam
 	_target_zoom = zoom
 	_target_yaw = yaw
@@ -688,7 +701,7 @@ func _update_lod() -> void:
 		var st: Dictionary = GalaxyLayout.STAR_TYPES[int(e["type"])]
 		(e["sphere"] as Node3D).visible = float(st["radius"]) * ppu > 2.5
 		var near := zoom >= LEVEL_SECTOR * 2.0 and Vector2(pos.x - focus.x, pos.z - focus.z).length() < 5.0
-		if near and e["planets"] == null and not built:
+		if near and e["planets"] == null and not built and AppSession.is_charted(e["system"]):
 			_build_planets(sid)
 			built = true
 		var pr: Node3D = e["planets"]
@@ -739,7 +752,8 @@ func _build_territory(v: Dictionary, g: Vector2i) -> void:
 					img.set_pixel(x, y, Color(col.r * strength, col.g * strength, col.b * strength, strength))
 	_set_field(_territory, img, g)
 	var m := _territory.material_override as ShaderMaterial
-	m.set_shader_parameter("fill", 0.035)
+	# The wash reads as the benchmark's soft coloured fill inside the bright border at whole-galaxy zoom.
+	m.set_shader_parameter("fill", 0.2)
 	m.set_shader_parameter("edge", 0.6)
 	_territory.visible = layers.get("territory", true)
 

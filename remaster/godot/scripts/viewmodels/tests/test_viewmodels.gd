@@ -122,7 +122,12 @@ func _pure_models() -> void:
 	nc.pick_faction(4)
 	check(nc.powers() == 4 and int(nc.options()["faction"]) == 4 and int(nc.options()["empires"]) == 4, "picking a power raises the powers in play")
 	nc.size_id = "huge"
-	check(int(nc.options()["width"]) == 30 and int(nc.options()["systems"]) == 80, "galaxy size feeds the options")
+	check(int(nc.options()["width"]) == 34 and int(nc.options()["height"]) == 24 and int(nc.options()["systems"]) == 120, "galaxy size feeds the options")
+	nc.size_id = "medium"
+	check(NewCampaignVM.new(null).size_id == "medium" and int(nc.options()["systems"]) == 50, "Medium is the default and holds 50 systems")
+	for sz in NewCampaignVM.SIZES:
+		var dens := float(sz["systems"]) / float(int(sz["width"]) * int(sz["height"]))
+		check(dens > 0.13 and dens < 0.16 and int(sz["width"]) * int(sz["height"]) >= int(sz["systems"]), "size %s keeps the star density near 0.145 (%.3f)" % [sz["id"], dens])
 	# diplomacy
 	check(DiplomacyVM.deadline(10, 10)[1] == "alert" and DiplomacyVM.deadline(10, 13)[1] == "dim", "deadline tones")
 	check(DiplomacyVM.proposal_title({"kind": "tribute", "creditDemand": 1500}) == "Tribute demand: ¢1,500", "tribute title formats credits")

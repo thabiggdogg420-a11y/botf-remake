@@ -1,5 +1,5 @@
 extends SceneTree
-## Captures the 3D galaxy zoom strip on a Huge galaxy (30x20 sectors, 80 systems) with the real core: the whole
+## Captures the 3D galaxy zoom strip on a Huge galaxy (34x24 sectors, 120 systems) with the real core: the whole
 ## galaxy, the flight in to a sector, then to the home system's close-up with its planets, plus a feature sweep
 ## (one of each anomaly) and a frame-rate measurement at each level. Needs a window (GPU).
 ##   Forward+:       godot --path remaster/godot --resolution 1920x1080 --audio-driver Dummy \
@@ -59,43 +59,9 @@ func fly(map: GalaxyMap, x: int, y: int, z: float, label: String, count: int) ->
 	while map._animating:
 		await process_frame
 
-func _fill_huge(app_: App, g: Vector2i) -> void:
-	var used := {}
-	for s in app_.view["systems"]:
-		used[int(s["y"]) * g.x + int(s["x"])] = true
-	var classes := ["M", "O", "P", "L", "H", "K", "Y", "GasGiant", "Asteroids"]
-	var homes := [Vector2i(3, 3), Vector2i(26, 4), Vector2i(5, 16), Vector2i(24, 15), Vector2i(15, 9)]
-	var id := 10000
-	var k := 0
-	while app_.view["systems"].size() < 80 and k < 5000:
-		k += 1
-		var x := int(GalaxyLayout.hash01(k, 1, 7, 99) * g.x)
-		var y := int(GalaxyLayout.hash01(k, 2, 7, 99) * g.y)
-		var c := y * g.x + x
-		if used.has(c):
-			continue
-		var near := false
-		for dy in range(-1, 2):
-			for dx in range(-1, 2):
-				near = near or used.has((y + dy) * g.x + x + dx)
-		if near and GalaxyLayout.hash01(k, 3, 7, 99) < 0.8:
-			continue
-		used[c] = true
-		var owner := 0
-		for e in homes.size():
-			if Vector2(homes[e]).distance_to(Vector2(x, y)) < 4.5:
-				owner = e + 1
-		var planets := []
-		for p in 2 + int(GalaxyLayout.hash01(k, 4, 7, 99) * 5):
-			var cls: String = classes[int(GalaxyLayout.hash01(k, 10 + p, 7, 99) * classes.size())]
-			planets.append({"index": p, "name": "P%d" % p, "class": cls, "capacity": 10, "maxCapacity": 40})
-		app_.view["systems"].append({"id": id, "x": x, "y": y, "name": "SYS-%d" % (id - 9999), "owner": owner, "planets": planets, "capacity": 0, "maxCapacity": 0})
-		id += 1
-	app_.view["fog"] = "2".repeat(g.x * g.y)
-
 func _run() -> void:
 	await wait(10)
-	app.start_campaign({"faction": 1, "seed": 424242, "era": 3, "ruleset": "reference", "width": 30, "height": 20, "systems": 80, "preset": "remastered", "events": true, "aiAggression": true})
+	app.start_campaign({"faction": 1, "seed": 424242, "era": 3, "ruleset": "reference", "width": 34, "height": 24, "systems": 120, "preset": "remastered", "events": true, "aiAggression": true})
 	for k in 10:
 		app.end_turn()
 		app.close_all_modals()
@@ -117,11 +83,11 @@ func _run() -> void:
 			if GalaxyOrders.plot_course(app, f, tx, ty):
 				break
 		await wait(4)
-	# Whole galaxy.
-	map.focus_cell(g.x / 2, g.y / 2, 0.42, false)
+	# Whole galaxy: the opening frame, exactly as the game frames it (every star is on the chart from turn 1).
+	map.frame_known()
 	await wait(12)
 	await shot("galaxy")
-	await measure("galaxy (whole Huge chart)", 4.0)
+	await measure("Huge 120 systems, whole galaxy", 5.0)
 	var home := {}
 	var cols: Array = app.view.get("colonies", [])
 	if cols.size() > 0:
@@ -146,23 +112,15 @@ func _run() -> void:
 	map._apply_camera()
 	await wait(10)
 	await shot("system-orbit")
-	# Full Huge chart for the 80-system frame rate and look: the core only reports systems the player knows (5 at
-	# turn 10, no reveal call in the bridge), so the rest are client-side stand-ins in empty sectors, with owners
-	# spread over the five majors. Display only; nothing is sent to the core.
-	_fill_huge(app, g)
-	map.rebuild()
-	map.focus_cell(g.x / 2, g.y / 2, 0.42, false)
-	await wait(12)
-	await shot("huge80-galaxy")
-	await measure("Huge 80 systems, whole chart", 4.0)
+	# The real galaxy again, a sector at the centre, for the frame rate and look (no stand-in systems: the core lists them all).
 	map.focus_cell(g.x / 2, g.y / 2, GalaxyMap.FLY_SECTOR, false)
 	await wait(12)
-	await shot("huge80-sector")
-	await measure("Huge 80 systems, sector", 3.0)
+	await shot("huge-sector")
+	await measure("Huge 120 systems, sector", 3.0)
 	map.orbit(0.7, -0.3)
 	map.focus_cell(g.x / 2, g.y / 2, 0.55, false)
 	await wait(12)
-	await shot("huge80-orbit")
+	await shot("huge-orbit")
 	# Feature sweep: one of each anomaly near the centre, revealed.
 	var types := ["Nebula", "IonStorm", "SubspaceRift", "Wormhole", "BlackHole", "NeutronStar"]
 	var feats := []

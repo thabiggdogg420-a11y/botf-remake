@@ -6,7 +6,7 @@ extends Control
 
 var shape := "spiral"
 var seed_value := 1
-var systems := 28
+var systems := 50
 var empires := 5
 var minors := 6
 var player := 1

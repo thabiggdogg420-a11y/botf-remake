@@ -18,7 +18,7 @@ func _initialize() -> void:
 	for t in [
 		"test_meta", "test_new_campaign", "test_invalid_order", "test_orders", "test_forecast_and_turns",
 		"test_save_load_determinism", "test_battle_drill", "test_rules3_events", "test_diplomacy_drill",
-		"test_fixture_determinism", "test_gameplay_queries",
+		"test_fixture_determinism", "test_gameplay_queries", "test_uncharted_view", "test_default_size_is_medium", "test_view_does_not_touch_the_sim",
 	]:
 		current = t
 		var failures_before := failed
@@ -231,3 +231,86 @@ func test_gameplay_queries() -> void:
 	var dt2 = api("describeTurn")
 	var parsed = JSON.parse_string(dt2) if dt2 is String and dt2 != "" else null
 	check(parsed is Dictionary and parsed.has("turn"), "describeTurn carries the resolved turn after endTurn")
+
+## Simon, 10 Nov 2026: the player view lists every star from turn 1. One the player has not explored is "uncharted" and
+## carries only id, x, y, a catalogue designation (name) and explored:false.
+func test_uncharted_view() -> void:
+	var view: Dictionary = api("newCampaign", {"faction": 1, "empires": 5, "seed": 424242, "era": 1, "ruleset": "reference", "width": 34, "height": 24, "systems": 120})
+	var w := int(view.meta.width)
+	check(view.systems.size() == 120, "every star is listed from turn 1 (%d)" % view.systems.size())
+	var charted := 0
+	var uncharted := 0
+	var seen := {}
+	for sy in view.systems:
+		var cell := int(sy.y) * w + int(sy.x)
+		check(not seen.has(sy.id), "system ids are unique")
+		seen[sy.id] = true
+		if sy.get("explored", true):
+			charted += 1
+			check(str(view.fog[cell]) != "0", "a charted system sits on explored fog (%s)" % sy.name)
+			check(sy.has("planets") and sy.has("owner") and sy.has("capacity"), "a charted system keeps its full entry")
+		else:
+			uncharted += 1
+			var keys: Array = sy.keys()
+			keys.sort()
+			check(keys == ["explored", "id", "name", "x", "y"], "an uncharted entry carries only id, x, y, name, explored: %s" % [keys])
+			var rx := RegEx.new()
+			rx.compile("^FGC-[0-9]{3}$")
+			check(rx.search(str(sy.name)) != null, "the uncharted name is a catalogue designation (%s)" % sy.name)
+			check(str(view.fog[cell]) == "0", "an uncharted star lies in unexplored fog")
+	var explored_cells := 0
+	for sy in view.systems:
+		if str(view.fog[int(sy.y) * w + int(sy.x)]) != "0":
+			explored_cells += 1
+	check(charted == explored_cells and charted > 0 and uncharted == 120 - charted, "the explored count is unchanged: %d charted, %d uncharted" % [charted, uncharted])
+	# Nothing about an uncharted star leaks through any other list of the view.
+	var uncharted_ids := {}
+	var uncharted_cells := {}
+	for sy in view.systems:
+		if not sy.get("explored", true):
+			uncharted_ids[int(sy.id)] = true
+			uncharted_cells[int(sy.y) * w + int(sy.x)] = true
+	for c in view.colonies:
+		check(not uncharted_ids.has(int(c.systemId)), "no colony entry points at an uncharted star")
+	for t in view.get("tradeRoutes", []):
+		check(not uncharted_ids.has(int(t["from"])) and not uncharted_ids.has(int(t["to"])), "no trade route ends at an uncharted star")
+	for c in view.contacts:
+		check(not uncharted_cells.has(int(c.y) * w + int(c.x)), "no foreign contact sits on an uncharted star")
+	# After exploring, the entry fills in: play a few turns, the charted count never drops.
+	for i in 5:
+		end_turn()
+	var later: Dictionary = api("view")
+	var charted2 := 0
+	for sy in later.systems:
+		if sy.get("explored", true):
+			charted2 += 1
+	check(later.systems.size() == 120 and charted2 >= charted, "turns keep all 120 stars listed and never un-chart one (%d -> %d)" % [charted, charted2])
+
+## The view is a read: a fixed-seed autoplay to turn 20 reaches the same state with or without the view being read every turn,
+## and the hash is the one the core produced before the view change (recorded from the unchanged simulation sources).
+const FINGERPRINT_T20 := "2539640182333731379"
+
+func _autoplay_fingerprint(read_view: bool) -> String:
+	api("newCampaign", CAMPAIGN)
+	for i in 20:
+		end_turn()
+		if read_view:
+			api("view")
+	return str(api("fingerprint"))
+
+func test_default_size_is_medium() -> void:
+	var o := AppSession.campaign_options({"faction": 1})
+	check(int(o["width"]) == 22 and int(o["height"]) == 16 and int(o["systems"]) == 50, "no size given: Medium 22x16, 50 systems (%s)" % [o])
+	var h := AppSession.campaign_options({"faction": 1, "size": "huge"})
+	check(int(h["width"]) == 34 and int(h["systems"]) == 120 and not h.has("size"), "size huge: 34x24, 120 systems")
+	var e := AppSession.campaign_options({"faction": 1, "width": 10, "height": 8, "systems": 14})
+	check(int(e["width"]) == 10 and int(e["systems"]) == 14, "explicit dimensions are kept")
+	var v: Dictionary = api("newCampaign", AppSession.campaign_options({"faction": 1, "seed": 7}))
+	check(int(v.meta.width) == 22 and int(v.meta.height) == 16 and v.systems.size() == 50, "a default new game is Medium: %dx%d, %d systems" % [v.meta.width, v.meta.height, v.systems.size()])
+
+func test_view_does_not_touch_the_sim() -> void:
+	var a := _autoplay_fingerprint(false)
+	var b := _autoplay_fingerprint(true)
+	check(a == b, "reading the view every turn does not change the state (%s vs %s)" % [a, b])
+	print("  fingerprint turn 20: ", a)
+	check(a == FINGERPRINT_T20, "the turn-20 fingerprint matches the pre-change core (%s)" % a)

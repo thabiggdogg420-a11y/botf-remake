@@ -92,11 +92,28 @@ func find_by_id(list_key: String, id: int, key: String = "id") -> Dictionary:
 			return item
 	return {}
 
+## The explored (charted) system at a sector, or {}. An uncharted star is not a system the player knows: it is
+## reached through uncharted_at(), so every screen that opens or counts systems skips it by default.
 func system_at(x: int, y: int) -> Dictionary:
 	for s in view.get("systems", []):
 		if int(s["x"]) == x and int(s["y"]) == y:
-			return s
+			return s if is_charted(s) else {}
 	return {}
+
+## The uncharted star at a sector ({"id", "x", "y", "name" (a catalogue designation), "explored": false}), or {}.
+func uncharted_at(x: int, y: int) -> Dictionary:
+	for s in view.get("systems", []):
+		if int(s["x"]) == x and int(s["y"]) == y:
+			return {} if is_charted(s) else s
+	return {}
+
+## A system entry the player has explored. Entries without the flag (older saves, fixtures) are explored.
+static func is_charted(s: Dictionary) -> bool:
+	return bool(s.get("explored", true))
+
+## Every explored system (the uncharted entries are left out).
+func charted_systems() -> Array:
+	return view.get("systems", []).filter(func(s): return is_charted(s))
 
 func empire_name(id: int) -> String:
 	if id == player():
@@ -139,7 +156,7 @@ func select_cell(cell: int) -> void:
 
 func select_system(system_id: int) -> void:
 	var s := find_by_id("systems", system_id)
-	if s.is_empty():
+	if s.is_empty() or not is_charted(s):
 		return
 	selection = {"cell": int(s["y"]) * width() + int(s["x"]), "systemId": system_id, "fleetId": 0, "taskForceId": 0}
 	selection_changed.emit()
@@ -213,6 +230,16 @@ static func campaign_options(options: Dictionary) -> Dictionary:
 		o.erase("empire")
 	if o.has("faction") and o.has("empires"):
 		o["empires"] = max(int(o["empires"]), int(o["faction"]))
+	# Galaxy size: a "size" id ("small".."huge") resolves through NewCampaignVM.SIZES, the one table; a call that names no
+	# dimensions gets the default (Medium, 22x16, 50 systems) so no player ever lands on the core's old 16x12/28 default.
+	var want: String = str(o.get("size", "medium"))
+	o.erase("size")
+	if not (o.has("width") and o.has("height") and o.has("systems")):
+		for sz in NewCampaignVM.SIZES:
+			if sz["id"] == want:
+				for key in ["width", "height", "systems"]:
+					if not o.has(key):
+						o[key] = sz[key]
 	return o
 
 ## Calls a core method that starts a game (newCampaign, a drill, load). Returns its view, or {} after failed.

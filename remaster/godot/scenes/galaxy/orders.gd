@@ -33,9 +33,10 @@ static func plot_course(app: App, fleet: Dictionary, x: int, y: int) -> bool:
 	var ok := app.issue(move_command(fleet, x, y), replace_ids(app, fleet))
 	if ok:
 		var s := app.system_at(x, y)
+		var u := app.session.uncharted_at(x, y)
 		var upd := app.find_by_id("fleets", int(fleet["id"]))
 		var eta := int(upd.get("eta", 0))
-		app.toast("%s: course set for %s%s." % [unit_name(app, fleet), s["name"] if not s.is_empty() else "sector %d.%d" % [x, y], (" - %d turn%s" % [eta, "" if eta == 1 else "s"]) if eta > 0 else ""], "good")
+		app.toast("%s: course set for %s%s." % [unit_name(app, fleet), s["name"] if not s.is_empty() else (u["name"] if not u.is_empty() else "sector %d.%d" % [x, y]), (" - %d turn%s" % [eta, "" if eta == 1 else "s"]) if eta > 0 else ""], "good")
 	return ok
 
 static func sector_label(app: App, cell: int) -> String:
@@ -45,6 +46,9 @@ static func sector_label(app: App, cell: int) -> String:
 	var s := app.system_at(x, y)
 	if not s.is_empty():
 		return str(s["name"])
+	var u := app.session.uncharted_at(x, y)
+	if not u.is_empty():
+		return "Uncharted star %s" % u["name"]
 	for st in app.view.get("stations", []):
 		if int(st["x"]) == x and int(st["y"]) == y:
 			return str(st["name"])
