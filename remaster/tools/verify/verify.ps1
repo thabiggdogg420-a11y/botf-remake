@@ -448,6 +448,44 @@ if (-not $SkipExport) {
         foreach ($v in $saved.Keys) { [Environment]::SetEnvironmentVariable($v, $saved[$v]) }
         $il = @(Get-Content -LiteralPath $icLog -ErrorAction SilentlyContinue | Where-Object { $_ -match '^ICON_CHECK' })
         Add-Result 'exe-ship-icons' $(if ($ic.ExitCode -eq 0 -and $il.Count -ge 1 -and -not ($il -match '^ICON_CHECK\s+FAIL')) { 'ok' } else { 'FAIL' }) ((@($il | ForEach-Object { $_ -replace '^ICON_CHECK\s+', '' }) -join ' | ') + " (clean folder $clean)")
+
+        # M1 hullhd: every hero model in the manifest, drawn by hull_gallery.gd inside the same clean exe folder (no LocalAssets, no
+        # BOTF_* variables, private APPDATA). A "HULL FAIL" line is a class whose hero model did not load from the packs and fell
+        # back to the procedural hull: the step fails on any, and on a manifest with fewer heroes than the classes this lane wired.
+        $heroKeys = @()
+        if ($localAssets) {
+            $hm = Join-Path $localAssets 'ships\godot-hero-manifest.json'
+            if (Test-Path -LiteralPath $hm) { $heroKeys = @((Get-Content -Raw -LiteralPath $hm | ConvertFrom-Json).heroes.PSObject.Properties.Name) }
+        }
+        if ($heroKeys.Count -gt 0) {
+            $galShots = Join-Path $run 'exe-gallery'
+            New-Item -ItemType Directory -Force -Path $galShots | Out-Null
+            foreach ($v in 'BOTF_HERO_MANIFEST', 'BOTF_RESOLVED_MANIFEST') { [Environment]::SetEnvironmentVariable($v, $null) }
+            $env:APPDATA = Join-Path $clean 'appdata'
+            $galLog = Join-Path $logs 'exe-hero-classes.log'
+            Remove-Item -LiteralPath $galLog -Force -ErrorAction SilentlyContinue
+            # Chunks of 16 hulls per launch: the HD hulls stay resident in one process (textures are not freed between ships)
+            # and a single launch over every hero ran the GPU out of memory (Vulkan device lost after ~75 hulls).
+            $gExit = 0
+            for ($gi = 0; $gi -lt $heroKeys.Count; $gi += 16) {
+                $chunk = $heroKeys[$gi..([Math]::Min($gi + 16, $heroKeys.Count) - 1)]
+                $gk = ($chunk | ForEach-Object { "`"$_`"" }) -join ' '
+                $gp = Start-Process -FilePath (Join-Path $clean 'BOTFRemastered.exe') -WorkingDirectory $clean -PassThru `
+                    -ArgumentList "--audio-driver Dummy --resolution 960x540 -s res://scenes/battle/tools/hull_gallery.gd -- `"$galShots`" $gk" `
+                    -RedirectStandardOutput "$galLog.part" -RedirectStandardError (Join-Path $logs 'exe-hero-classes.err')
+                $null = $gp.Handle
+                try { $gp.PriorityClass = [System.Diagnostics.ProcessPriorityClass]::BelowNormal } catch {}
+                if (-not $gp.WaitForExit(900 * 1000)) { try { Stop-Process -Id $gp.Id -Force } catch {}; $gExit = 1 }
+                if ($gp.ExitCode -ne 0) { $gExit = $gp.ExitCode }
+                Get-Content -LiteralPath "$galLog.part" -ErrorAction SilentlyContinue | Add-Content -LiteralPath $galLog
+            }
+            $env:APPDATA = $savedAppData
+            foreach ($v in $saved.Keys) { [Environment]::SetEnvironmentVariable($v, $saved[$v]) }
+            $gl = @(Get-Content -LiteralPath $galLog -ErrorAction SilentlyContinue | Where-Object { $_ -match '^HULL ' })
+            $gOk = @($gl | Where-Object { $_ -match '^HULL ok' }).Count
+            $gBad = @($gl | Where-Object { $_ -match '^HULL FAIL' })
+            Add-Result 'exe-hero-classes' $(if ($gExit -eq 0 -and $gBad.Count -eq 0 -and $gOk -eq $heroKeys.Count) { 'ok' } else { 'FAIL' }) ("$gOk of $($heroKeys.Count) hero keys drew their hero hull from the packs, $($gBad.Count) fell back" + $(if ($gBad.Count) { ': ' + (($gBad | Select-Object -First 8) -join ' | ') } else { '' }))
+        }
     }
     if ($wantWeb) {
         $webPacks = Join-Path $proj 'build\web\packs'

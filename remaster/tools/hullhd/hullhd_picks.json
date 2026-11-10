@@ -1,0 +1,459 @@
+{
+ "_comment": "M1 hullhd: BOTF hero key -> Bridge Commander library Id (H:/StarhelmTools/bc-ships, read only). 'new' = class that drew the procedural fallback hull before; 'swap' = replaces an earlier model; 'rebuild' = same model, HD textures. tex = per-map pixel cap (default 2048). Only candidates whose own render looked like the class are used; classes with no candidate are not listed (see HULLHD-REPORT).",
+ "new": {
+  "ship.rom.drenet": [
+   "R_TNG_RAXAVIS",
+   "scout"
+  ],
+  "ship.rom.dretex": [
+   "RomulanFreighter",
+   "colony ship"
+  ],
+  "ship.rom.dridren": [
+   "R_TNG_HARRIER",
+   "destroyer"
+  ],
+  "ship.rom.rderex": [
+   "R_TNG_FALCON",
+   "cruiser"
+  ],
+  "ship.rom.rdaran": [
+   "R_TNG_POLLUX",
+   "troop ship (stand-in: boxy heavy Romulan hull)"
+  ],
+  "ship.rom.rtan": [
+   "R_TNG_HARPY",
+   ""
+  ],
+  "ship.rom.ddredar": [
+   "R_TNG_OSPREY",
+   ""
+  ],
+  "ship.rom.mogai": [
+   "R_TNG_TAVARA",
+   ""
+  ],
+  "ship.rom.norexan": [
+   "R_TNG_RAPTOR",
+   ""
+  ],
+  "ship.rom.science": [
+   "R_TNG_TALON",
+   ""
+  ],
+  "ship.rom.scout": [
+   "R_TNG_SHRIKE",
+   "scout (stand-in: light Romulan TNG hull)"
+  ],
+  "ship.rom.bop_ent": [
+   "RomBoP",
+   "unused hero rom.bop wired to the class"
+  ],
+  "ship.rom.bop_tos": [
+   "RomBoP",
+   "unused hero rom.bop wired to the class"
+  ],
+  "ship.rom.narada": [
+   "bcnarada",
+   ""
+  ],
+  "ship.car.nerok": [
+   "C_TNG_KIMAL",
+   "scout"
+  ],
+  "ship.car.netel": [
+   "C_TNG_BARKUS",
+   "destroyer"
+  ],
+  "ship.car.neterok": [
+   "Bakrus",
+   "cruiser"
+  ],
+  "ship.car.ranol": [
+   "CardFreighter",
+   "colony ship"
+  ],
+  "ship.car.toran": [
+   "CardFreighter__km",
+   "troop ship"
+  ],
+  "ship.car.telok": [
+   "DS9FXKeldon",
+   ""
+  ],
+  "ship.car.kraxon": [
+   "ObsidianKeldon",
+   ""
+  ],
+  "ship.car.groumall": [
+   "CardFreighter__km",
+   ""
+  ],
+  "ship.car.nor": [
+   "CardStation",
+   "DS9 station"
+  ],
+  "ship.dom.attack_ship": [
+   "DS9FXDominionFighter",
+   ""
+  ],
+  "ship.dom.battlecruiser": [
+   "DomBC",
+   ""
+  ],
+  "ship.dom.battleship": [
+   "DomBB",
+   ""
+  ],
+  "ship.borg.diamond": [
+   "JLSBorgDiamond",
+   ""
+  ],
+  "ship.borg.sphere": [
+   "JLSBorgSphere",
+   ""
+  ],
+  "ship.borg.tactical_cube": [
+   "JLSBorgTacticalCube",
+   ""
+  ],
+  "ship.borg.probe": [
+   "Pyramid",
+   "stand-in: Borg pyramid"
+  ],
+  "ship.borg.scout": [
+   "BorgFT",
+   "stand-in: Borg fighter, 76 tris"
+  ],
+  "ship.breen.breen_warship": [
+   "BreenBB",
+   ""
+  ],
+  "ship.devore.warship": [
+   "JLSDevoreWarship",
+   ""
+  ],
+  "ship.hiro.hunter": [
+   "JLSHirogenHunter",
+   ""
+  ],
+  "ship.hiro.warship": [
+   "HirogenVenatic",
+   ""
+  ],
+  "ship.kazon.carrier": [
+   "JLSKazonPredator",
+   ""
+  ],
+  "ship.kazon.raider": [
+   "JLSKazonRaider",
+   ""
+  ],
+  "ship.krenim.timeship": [
+   "JLSKrenimTimeship",
+   ""
+  ],
+  "ship.krenim.warship": [
+   "JLSKrenimWarship",
+   ""
+  ],
+  "ship.malon.freighter": [
+   "MalonFreighter",
+   ""
+  ],
+  "ship.maquis.raider": [
+   "JLSMaquisRaider",
+   ""
+  ],
+  "ship.reman.scimitar": [
+   "Scimitar",
+   ""
+  ],
+  "ship.s8472.bioship": [
+   "JLS8472",
+   ""
+  ],
+  "ship.sona.battleship": [
+   "SonaBattleship",
+   ""
+  ],
+  "ship.vid.warship": [
+   "JLSVidiian",
+   ""
+  ],
+  "ship.orion.interceptor": [
+   "OrionDD",
+   "Orion pirate hull, 456 tris"
+  ],
+  "ship.fer.bronta": [
+   "Marauder",
+   "scout. stand-in: only Ferengi hull on disk"
+  ],
+  "ship.fer.ngort": [
+   "Marauder",
+   "destroyer. stand-in: only Ferengi hull on disk"
+  ],
+  "ship.fer.goront": [
+   "Marauder",
+   "cruiser. stand-in: only Ferengi hull on disk"
+  ],
+  "ship.fer.ooron": [
+   "Marauder",
+   "stand-in: only Ferengi hull on disk"
+  ],
+  "ship.fer.tokorn": [
+   "Marauder",
+   "stand-in: only Ferengi hull on disk"
+  ],
+  "ship.fer.tomax": [
+   "Merchantman",
+   "colony ship; brown cargo hull, stand-in"
+  ],
+  "ship.fer.glantor": [
+   "Merchantman",
+   "troop ship; stand-in"
+  ]
+ },
+ "swap": {
+  "ship.fed.london": [
+   "Constellation2",
+   "Constellation-family hull, floating ball gone"
+  ],
+  "ship.kli.liwi": [
+   "KlingonFreighter",
+   "colony ship"
+  ],
+  "ship.kli.mayduj": [
+   "K_TOS_D11",
+   "destroyer"
+  ],
+  "ship.kli.charghwi": [
+   "K_TOS_C8",
+   "troop ship"
+  ],
+  "ship.kli.d12": [
+   "KDN",
+   ""
+  ],
+  "ship.kli.qang": [
+   "KC7",
+   ""
+  ],
+  "ship.kli.neghtev": [
+   "DS9FXNeghvar",
+   ""
+  ],
+  "ship.kli.starbase": [
+   "KlingonImperialStarbase",
+   "5.6k tris vs 1.4k"
+  ],
+  "ship.kli.bop_ent": [
+   "D4_BOP",
+   "was the B'rel mesh twice"
+  ],
+  "ship.fed.nx": [
+   "NXRefit",
+   "cleaner NX-01 refit skin, 2048 px native (chosen by side-by-side over the mottled NX)"
+  ],
+  "ship.fed.edward": [
+   "Freighter",
+   "colony ship; replaces Nebula kitbash"
+  ],
+  "ship.fed.sydney": [
+   "Transport",
+   "transport; replaces Oberth kitbash"
+  ],
+  "ship.fed.yclass": [
+   "Freighter__base",
+   "utility transport"
+  ],
+  "ship.fed.soyuz": [
+   "F_TNG_SITAK",
+   "frigate stand-in"
+  ],
+  "ship.fed.wells": [
+   "VentureScout",
+   "stand-in (no ring ship on disk)"
+  ],
+  "ship.fed.vengeance": [
+   "Yamato",
+   "dreadnought stand-in"
+  ],
+  "ship.fed.k7": [
+   "F_TNG_COMMAND_POST",
+   "station stand-in (no K-7 on disk)"
+  ],
+  "ship.fed.peregrine": [
+   "DS9FXPeragrine",
+   "real Peregrine fighter, 866 tris"
+  ],
+  "ship.fed.nebula": [
+   "DS9FXNebula",
+   "2048 px native, 10.1k tris, cleaner saucer than stock Nebula (1024, 23.8k)"
+  ],
+  "ship.fed.defiant": [
+   "DS9FXDefiant",
+   "2048 native vs 1024; cleaner light hull than stock (dark, 54.6k)"
+  ],
+  "ship.fed.intrepid": [
+   "CGIVoyager",
+   "same Intrepid mesh at 2048 native vs 1024"
+  ],
+  "ship.fed.centaur": [
+   "WCcentaur",
+   "same mesh as Centaur at 2048 native vs 1024"
+  ],
+  "ship.rom.dderidex": [
+   "DS9FXWarbird",
+   "12.6k tris vs 10.0k, same 1024 native, cleaner teal skin"
+  ],
+  "ship.fed.excelsior": [
+   "ExcelsiorII",
+   "in-engine retest: 4096 px native, 40.1k tris, detailed modern hull, lit correctly (the dark review render was an unlit-render artefact)"
+  ]
+ },
+ "selection_note": "10 Nov 2026, Simon: pick the best-looking library variant per class; stats alone do not decide. Reviewed by the library review/iso renders (families: Fed, Klingon, Romulan, Cardassian, Ferengi, Dominion, Borg, Breen, Hirogen, Kazon). 'stock kept' = nothing better on disk. Rejected despite stats: ExcelsiorII (4096, dark grey, off-model colour), NeoConstitution (2048, dark, not TOS/refit look), JLSYOHVoyager (broken white texture), Peregrine__km and Peregrine (re-skinned Nebula), MirandaCVL/KTinga/KD7CVL/Galor/Keldon review renders dark so unverified in review (stock builds render fine in-engine), DJRaptor (Fed reskin), DS9FXBirdOfPrey (Fed mesh).",
+ "selection": [
+  [
+   "ship.fed.nebula",
+   "Nebula (23.8k / 1024)",
+   "DS9FXNebula (10.1k / 2048)",
+   "native 2048, cleaner saucer; fixes Simon's wonky Nebula texture complaint at the source"
+  ],
+  [
+   "ship.fed.defiant",
+   "Defiant (54.6k / 1024)",
+   "DS9FXDefiant (10.6k / 2048)",
+   "2048 native, lighter, cleaner hull"
+  ],
+  [
+   "ship.fed.intrepid",
+   "Intrepid (9.5k / 1024)",
+   "CGIVoyager (9.5k / 2048)",
+   "same mesh, native 2048"
+  ],
+  [
+   "ship.fed.centaur",
+   "Centaur (21k / 1024)",
+   "WCcentaur (21k / 2048)",
+   "same mesh, native 2048"
+  ],
+  [
+   "ship.fed.nx",
+   "NX (30.9k / 1024, mottled)",
+   "NXRefit (11.7k / 2048)",
+   "clean skin, native 2048"
+  ],
+  [
+   "ship.rom.dderidex",
+   "Warbird (10.0k / 1024)",
+   "DS9FXWarbird (12.6k / 1024)",
+   "more detail, cleaner skin"
+  ],
+  [
+   "ship.fed.constitution",
+   "Constitution (28.6k / 1024)",
+   "stock kept",
+   "only TOS-era hull; Enterprise/NeoConstitution are other classes or dark"
+  ],
+  [
+   "ship.fed.miranda",
+   "Miranda (10.0k / 1024)",
+   "stock kept",
+   "DS9FXMiranda same mesh and tex; MirandaCVL review unverifiable"
+  ],
+  [
+   "ship.fed.ambassador",
+   "Ambassador__km (32.9k / 2048)",
+   "stock kept",
+   "already the best variant"
+  ],
+  [
+   "ship.fed.sovereign",
+   "DS9FXSovereign (19.1k / 2048)",
+   "stock kept",
+   "already best variant"
+  ],
+  [
+   "ship.fed.galaxy",
+   "Galaxy (18.5k / 1024, 4x)",
+   "stock kept",
+   "DS9FXGalaxy 7.5k tris is lower detail; Galaxy already 4096 HD"
+  ],
+  [
+   "ship.fed.peregrine",
+   "kitbash",
+   "DS9FXPeragrine (0.9k / 256)",
+   "real Peregrine fighter; Peregrine__km is a Nebula reskin"
+  ],
+  [
+   "ship.kli.*",
+   "B'rel, D7, K'T'Inga, K'Vort, Vor'cha, Negh'Var, Raptor, D4, D5",
+   "stock kept",
+   "review of BirdOfPrey, K_TNG_*, KD7CVL, DS9FXBirdOfPrey, DJRaptor, LCRaptor, D7TOS: alternatives are lower-poly, same texture size, or other-faction meshes"
+  ],
+  [
+   "ship.rom.* (R_TNG family)",
+   "R_TNG hulls",
+   "stock kept",
+   "all 1024 native; no higher-res Romulan hulls on disk"
+  ],
+  [
+   "ship.car.*",
+   "Galor, Keldon, Bakrus, C_TNG_*, CardFreighter, CardStation",
+   "stock kept",
+   "Cardassian hulls top out at 1024 native"
+  ],
+  [
+   "ship.dom.* borg breen hiro kazon",
+   "DomBC, DomBB, JLSBorg*, BreenBB, Hirogen, Kazon",
+   "stock kept",
+   "DS9FX copies identical or lower; D_TNG_BATTLESHIP 2048 but 1.3k tris"
+  ],
+  [
+   "ship.fer.*",
+   "Marauder, Merchantman",
+   "stock kept (stand-ins)",
+   "only Ferengi-looking hulls on disk"
+  ],
+  [
+   "ship.fed.excelsior",
+   "Excelsior (23.8k / 1024)",
+   "ExcelsiorII (40.1k / 4096)",
+   "in-engine retest 10 Nov: lit hull is detailed grey-blue, good; earlier rejection came from an unlit review render"
+  ],
+  [
+   "ship.fed.nebula (material)",
+   "metallic 0.55",
+   "metallic 0.08",
+   "retest: port-rim glare is specular from the uniform 0.55 metallic on a near-white hull. In-engine starboard frames: 0.55 strong glare, 0.25 about half, 0.05 nearly none. 0.08 shipped"
+  ],
+  [
+   "ship.fed.constitution",
+   "Constitution",
+   "stock kept (retest)",
+   "NeoConstitution renders fine in-engine but is a different stylised hull, not the TOS Constitution"
+  ],
+  [
+   "ship.fed.miranda",
+   "Miranda",
+   "stock kept (retest)",
+   "MirandaCVL renders fine in-engine but is a redesigned carrier variant, not a recognisable Miranda"
+  ],
+  [
+   "ship.kli.ktinga / ship.kli.d7",
+   "KTinga, K_TOS_D7",
+   "stock kept (retest)",
+   "KTingaCVL is the same mesh and tex as KTinga; KD7CVL is a K'Tinga hull (wrong class for D7); D7TOS equal tex, no gain"
+  ],
+  [
+   "ship.car.galor / ship.car.keldon",
+   "Galor, Keldon",
+   "stock kept (retest)",
+   "GalorCVL identical to Galor; DS9FXGalor/DS9FXKeldon and the BC-Aftermath Keldon are 0.8k-1.2k tris at 512 px: richer colour but far less geometry. Colour of the stock pair is washed out cream: open question"
+  ]
+ ],
+ "metallic": {
+  "ship.fed.nebula": 0.08
+ }
+}
