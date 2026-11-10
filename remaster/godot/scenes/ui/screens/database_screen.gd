@@ -204,6 +204,7 @@ func _ship_entry(id: int) -> Control:
 	silhouette.seed_id = id
 	silhouette.owner_id = RACE_TO_EMPIRE.get(int(s["race"]), 0)
 	silhouette.klass = str(s["designClass"])
+	silhouette.asset_key = str(r.get("assetKey", "")) if r is Dictionary else ""
 	silhouette.view = "iso"
 	silhouette.color = Lcars.owner_color(RACE_TO_EMPIRE.get(int(s["race"]), 0))
 	silhouette.custom_minimum_size = Vector2(0, 190)

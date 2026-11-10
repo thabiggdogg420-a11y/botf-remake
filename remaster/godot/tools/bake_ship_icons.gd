@@ -1,11 +1,13 @@
 extends SceneTree
 ## Bakes the menu ship icons from the hero models (LocalAssets, third-party-derived: never committed).
-##   godot --path remaster/godot --resolution 640x640 --audio-driver Dummy -s res://tools/bake_ship_icons.gd -- [out_dir] [filter] [--skip-existing]
+##   godot --path remaster/godot --resolution 640x640 --audio-driver Dummy -s res://tools/bake_ship_icons.gd -- [out_dir] [filter] [--skip-existing] [--start=N --count=M]
 ## For every key in godot-hero-manifest.json the hull is loaded through BattleShip / BattleAssets (the game's own hero loader and
 ## HeroLook materials), lit on a transparent background and rendered twice: "iso" (three-quarter top view) and "top" (clean
 ## top-down, bow to the right). Output: <out_dir>/<fac>_<class>_<view>.png (256 px) and ..._<view>_64.png (64 px).
 ## out_dir defaults to $BOTF_SHIP_ICONS, else ship_icons beside the resolved manifest (LocalAssets/ship_icons).
 ## filter: only keys containing this text (e.g. "fed.galaxy"). ShipIcons finds the files again at run time.
+## --start/--count: only that slice of the (filtered, sorted) keys. One process that renders hundreds of hulls loses the GPU device
+## (Vulkan device lost in hero_look.gd), so tools/build_ship_icons.py --bake launches this tool once per slice.
 
 const SIZE := 512
 const FOV := 28.0
@@ -13,6 +15,8 @@ const FOV := 28.0
 var out_dir := ""
 var filter := ""
 var skip_existing := false
+var start := 0
+var count := -1
 var vp: SubViewport
 var cam: Camera3D
 var assets: BattleAssets
@@ -22,6 +26,10 @@ func _initialize() -> void:
 	for s in a:
 		if s == "--skip-existing":
 			skip_existing = true
+		elif s.begins_with("--start="):
+			start = int(s.get_slice("=", 1))
+		elif s.begins_with("--count="):
+			count = int(s.get_slice("=", 1))
 		elif out_dir == "":
 			out_dir = s
 		else:
@@ -81,9 +89,10 @@ func _run() -> void:
 	keys.sort()
 	var done := 0
 	var failed: Array = []
+	if filter != "":
+		keys = keys.filter(func(k): return str(k).find(filter) >= 0)
+	keys = keys.slice(start, keys.size() if count < 0 else start + count)
 	for key in keys:
-		if filter != "" and str(key).find(filter) < 0:
-			continue
 		var stem := str(key).trim_prefix("ship.").replace(".", "_")
 		if skip_existing and FileAccess.file_exists(out_dir.path_join(stem + "_top.png")):
 			continue

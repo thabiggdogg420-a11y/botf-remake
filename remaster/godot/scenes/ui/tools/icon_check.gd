@@ -15,10 +15,16 @@ func _initialize() -> void:
 			continue
 		var stem := f.trim_suffix("_iso.png")
 		var fac := stem.get_slice("_", 0)
-		var o := ShipIcons.FAC.find(fac)
 		var klass := stem.substr(fac.length() + 1)
+		# The roster's asset key ("ship.dom.attack_ship") names the picture of every faction, the five empires and Borg, Dominion,
+		# Breen, Hirogen and Devore alike; the empires also load by owner and class name.
+		var key := "ship.%s.%s" % [fac, klass]
 		n += 1
-		if o < 1 or ShipIcons.texture(o, klass, "iso", 256) == null or ShipIcons.texture(o, klass, "top", 64) == null:
+		var o := ShipIcons.FAC.find(fac)
+		var good := ShipIcons.texture(0, "", "iso", 256, key) != null and ShipIcons.texture(0, "", "top", 64, key) != null
+		if o >= 1:
+			good = good and ShipIcons.texture(o, klass, "iso", 256) != null
+		if not good:
 			bad.append(stem)
 	# The pack's marker file states how many pictures it was built from (four per class: iso and top, 256 and 64 px).
 	var want := int(AppLoader.text(ShipIcons.PACK_DIR + "/_pack.txt").split(" ")[1]) / 4 if AppLoader.exists(ShipIcons.PACK_DIR + "/_pack.txt") else 0

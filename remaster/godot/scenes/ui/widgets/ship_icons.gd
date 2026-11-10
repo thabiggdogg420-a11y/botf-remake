@@ -83,11 +83,22 @@ static func file_key(owner: Variant, klass: String, asset_key: String = "") -> S
 		return ""
 	return "%s_%s" % [FAC[o], slug(klass)]
 
-## The baked icon for a class, or null when none was baked / LocalAssets is absent. px picks the 64 or 256 file.
+## The baked icon for a class, or null when none was baked / LocalAssets is absent. px picks the 64 or 256 file. An asset key
+## ("ship.dom.attack_ship", the roster's) names the file for any faction, including those that are not one of the five empires
+## (Borg, Dominion, Breen, Hirogen, Devore); when its file is missing the owner and class name are tried.
 static func texture(owner: Variant, klass: String, view: String = "iso", px: int = 256, asset_key: String = "") -> Texture2D:
-	var fk := file_key(owner, klass, asset_key)
 	var base := folder()
-	if fk == "" or base == "":
+	if base == "":
+		return null
+	var t: Texture2D = null
+	if asset_key.begins_with("ship."):
+		t = _load(base, file_key(owner, klass, asset_key), view, px)
+	if t == null:
+		t = _load(base, file_key(owner, klass, ""), view, px)
+	return t
+
+static func _load(base: String, fk: String, view: String, px: int) -> Texture2D:
+	if fk == "":
 		return null
 	var path := base.path_join("%s_%s%s.png" % [fk, view, "_64" if px <= 72 else ""])
 	if _tex.has(path):
