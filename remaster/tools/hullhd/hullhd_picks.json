@@ -286,6 +286,137 @@
   "ship.fed.peregrine": [
    "DS9FXPeragrine",
    "real Peregrine fighter, 866 tris"
+  ],
+  "ship.fed.nebula": [
+   "DS9FXNebula",
+   "2048 px native, 10.1k tris, cleaner saucer than stock Nebula (1024, 23.8k)"
+  ],
+  "ship.fed.defiant": [
+   "DS9FXDefiant",
+   "2048 native vs 1024; cleaner light hull than stock (dark, 54.6k)"
+  ],
+  "ship.fed.intrepid": [
+   "CGIVoyager",
+   "same Intrepid mesh at 2048 native vs 1024"
+  ],
+  "ship.fed.centaur": [
+   "WCcentaur",
+   "same mesh as Centaur at 2048 native vs 1024"
+  ],
+  "ship.rom.dderidex": [
+   "DS9FXWarbird",
+   "12.6k tris vs 10.0k, same 1024 native, cleaner teal skin"
   ]
- }
+ },
+ "selection_note": "10 Nov 2026, Simon: pick the best-looking library variant per class; stats alone do not decide. Reviewed by the library review/iso renders (families: Fed, Klingon, Romulan, Cardassian, Ferengi, Dominion, Borg, Breen, Hirogen, Kazon). 'stock kept' = nothing better on disk. Rejected despite stats: ExcelsiorII (4096, dark grey, off-model colour), NeoConstitution (2048, dark, not TOS/refit look), JLSYOHVoyager (broken white texture), Peregrine__km and Peregrine (re-skinned Nebula), MirandaCVL/KTinga/KD7CVL/Galor/Keldon review renders dark so unverified in review (stock builds render fine in-engine), DJRaptor (Fed reskin), DS9FXBirdOfPrey (Fed mesh).",
+ "selection": [
+  [
+   "ship.fed.nebula",
+   "Nebula (23.8k / 1024)",
+   "DS9FXNebula (10.1k / 2048)",
+   "native 2048, cleaner saucer; fixes Simon's wonky Nebula texture complaint at the source"
+  ],
+  [
+   "ship.fed.defiant",
+   "Defiant (54.6k / 1024)",
+   "DS9FXDefiant (10.6k / 2048)",
+   "2048 native, lighter, cleaner hull"
+  ],
+  [
+   "ship.fed.intrepid",
+   "Intrepid (9.5k / 1024)",
+   "CGIVoyager (9.5k / 2048)",
+   "same mesh, native 2048"
+  ],
+  [
+   "ship.fed.centaur",
+   "Centaur (21k / 1024)",
+   "WCcentaur (21k / 2048)",
+   "same mesh, native 2048"
+  ],
+  [
+   "ship.fed.nx",
+   "NX (30.9k / 1024, mottled)",
+   "NXRefit (11.7k / 2048)",
+   "clean skin, native 2048"
+  ],
+  [
+   "ship.rom.dderidex",
+   "Warbird (10.0k / 1024)",
+   "DS9FXWarbird (12.6k / 1024)",
+   "more detail, cleaner skin"
+  ],
+  [
+   "ship.fed.excelsior",
+   "Excelsior (23.8k / 1024)",
+   "stock kept",
+   "ExcelsiorII 4096 renders dark grey, wrong palette"
+  ],
+  [
+   "ship.fed.constitution",
+   "Constitution (28.6k / 1024)",
+   "stock kept",
+   "only TOS-era hull; Enterprise/NeoConstitution are other classes or dark"
+  ],
+  [
+   "ship.fed.miranda",
+   "Miranda (10.0k / 1024)",
+   "stock kept",
+   "DS9FXMiranda same mesh and tex; MirandaCVL review unverifiable"
+  ],
+  [
+   "ship.fed.ambassador",
+   "Ambassador__km (32.9k / 2048)",
+   "stock kept",
+   "already the best variant"
+  ],
+  [
+   "ship.fed.sovereign",
+   "DS9FXSovereign (19.1k / 2048)",
+   "stock kept",
+   "already best variant"
+  ],
+  [
+   "ship.fed.galaxy",
+   "Galaxy (18.5k / 1024, 4x)",
+   "stock kept",
+   "DS9FXGalaxy 7.5k tris is lower detail; Galaxy already 4096 HD"
+  ],
+  [
+   "ship.fed.peregrine",
+   "kitbash",
+   "DS9FXPeragrine (0.9k / 256)",
+   "real Peregrine fighter; Peregrine__km is a Nebula reskin"
+  ],
+  [
+   "ship.kli.*",
+   "B'rel, D7, K'T'Inga, K'Vort, Vor'cha, Negh'Var, Raptor, D4, D5",
+   "stock kept",
+   "review of BirdOfPrey, K_TNG_*, KD7CVL, DS9FXBirdOfPrey, DJRaptor, LCRaptor, D7TOS: alternatives are lower-poly, same texture size, or other-faction meshes"
+  ],
+  [
+   "ship.rom.* (R_TNG family)",
+   "R_TNG hulls",
+   "stock kept",
+   "all 1024 native; no higher-res Romulan hulls on disk"
+  ],
+  [
+   "ship.car.*",
+   "Galor, Keldon, Bakrus, C_TNG_*, CardFreighter, CardStation",
+   "stock kept",
+   "Cardassian hulls top out at 1024 native"
+  ],
+  [
+   "ship.dom.* borg breen hiro kazon",
+   "DomBC, DomBB, JLSBorg*, BreenBB, Hirogen, Kazon",
+   "stock kept",
+   "DS9FX copies identical or lower; D_TNG_BATTLESHIP 2048 but 1.3k tris"
+  ],
+  [
+   "ship.fer.*",
+   "Marauder, Merchantman",
+   "stock kept (stand-ins)",
+   "only Ferengi-looking hulls on disk"
+  ]
+ ]
 }
