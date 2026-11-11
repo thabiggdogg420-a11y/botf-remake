@@ -193,7 +193,7 @@ func _update_preview() -> void:
 ## fills the options below it (era, size, shape, minor races, difficulty, events, rivals) from the preset's defaults.
 func _preset_picker() -> Control:
 	var box := Lcars.vbox(6)
-	var items := vm.presets().map(func(p): return [str(p["id"]), str(p["name"]), vm.preset_text(str(p["id"])), "Preset" + "".join(str(p["id"]).split("-").map(func(w): return w.capitalize()))])
+	var items := vm.presets().map(func(p): return [str(p["id"]), str(p["name"]), vm.preset_text(str(p["id"])), "Preset" + "".join(Array(str(p["id"]).split("-")).map(func(w): return str(w).capitalize()))])
 	box.add_child(_choice_row("Preset", items, vm.preset, func(id): vm.pick_preset(id); refresh(), "preset"))
 	var note := Lcars.para(vm.preset_text(vm.preset), Lcars.TEXT2, 13)
 	note.name = "PresetNote"
