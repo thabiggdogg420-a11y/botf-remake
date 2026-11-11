@@ -1097,6 +1097,14 @@ void applyDraft(GameState& state) {
                 require(f->shipClass == Building::Transport && f->x == f->targetX && f->y == f->targetY,
                     "Idle transport must be at invasion target");
                 const auto c = colonyAt(state, command.systemId);
+                if (!c && empire_rules::independentMinorAt(state, command.systemId)) { // Schema 15: independent minors
+                    const auto* world = empire_rules::systemOf(state, command.systemId);
+                    require(world && world->x == f->x && world->y == f->y, "Transport must be at the minor race's world");
+                    if (const auto problem = empire_rules::minorInvasionBlocker(state, f->ownerId, command.systemId); !problem.empty())
+                        throw std::runtime_error(problem);
+                    f->invadeSystemId = command.systemId;
+                    continue;
+                }
                 require(c && c->ownerId != f->ownerId, "Target is not an enemy colony");
                 const auto system = std::find_if(state.systems.begin(), state.systems.end(), [&](const System& x) { return x.id == c->systemId; });
                 require(system->x == f->x && system->y == f->y && mutableRelation(state, f->ownerId, c->ownerId).atWar,
@@ -1393,6 +1401,8 @@ void planRivals(GameState& s) {
             else if (c.shipyards == 0) c.queue.push_back(Building::Shipyard);
             else if (empire_rules::aiWantsRefinery(s, owner.id, c)) c.queue.push_back(Building::DilithiumRefinery);
             else if (atWar && s.advancedRulesEnabled && c.defenseBatteries < 1) c.queue.push_back(Building::DefenseBattery);
+            else if (empire_rules::aiMinorCampaign(s, owner.id, atWar) && destroyers < 2 && queueMilitaryShip(s, c, Building::Destroyer)) ++destroyers;
+            else if (empire_rules::aiMinorCampaign(s, owner.id, atWar) && transports < 2 && queueMilitaryShip(s, c, Building::Transport)) ++transports;
             else if (atWar && destroyers < 3 && queueMilitaryShip(s, c, Building::Destroyer)) ++destroyers;
             else if (atWar && transports < 1 && queueMilitaryShip(s, c, Building::Transport)) ++transports;
             else if (colonyShips < desiredColonyShips && s.fleets.size() < 256 && s.nextFleetId <= 1000000 &&
@@ -1746,6 +1756,7 @@ void planRivals(GameState& s) {
                 }
             }
         }
+        empire_rules::planMinorConquest(s, owner.id, atWar); // Schema 15: AI conquest of independent minors
     }
 }
 
@@ -2933,6 +2944,8 @@ void resolveBattles(GameState& s, TurnReport& report) {
 }
 
 void resolveInvasions(GameState& s, TurnReport& report) {
+    std::map<std::pair<int, int>, bool> guardCache; // Schema 15: one fight per empire and guarded system each turn
+    if (s.rules.empireRules) empire_rules::resolveMinorAssaults(s, report, guardCache);
     for (auto& fleet : s.fleets) {
         if (!fleet.invadeSystemId) continue;
         auto target = std::find_if(s.colonies.begin(), s.colonies.end(), [&](const Colony& c) { return c.systemId == fleet.invadeSystemId; });

@@ -20,6 +20,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <istream>
+#include <map>
 #include <ostream>
 #include <set>
 #include <stdexcept>
@@ -381,6 +382,160 @@ inline void lapseAftermaths(GameState& s, std::vector<std::string>& events) {
         }
         return false;
     });
+}
+
+
+// ---------------------------------------------------------------------------
+// (d) Independent minors can be invaded
+// ---------------------------------------------------------------------------
+inline const Minor* independentMinorAt(const GameState& s, int systemId) {
+    const auto* m = minorAt(s, systemId);
+    return m && m->memberOf == 0 && !colonyAt(s, systemId) ? m : nullptr;
+}
+inline int minorPopulation(const Minor& m) { return minors::managed(m) ? m.population : 30; }
+// Ground defense of an independent minor's homeworld: militia, a morale of 50, and the home guard of a developed race.
+inline int minorDefense(const Minor& m) {
+    int d = 8 + minorPopulation(m) / 3 + 5;
+    if (minors::managed(m)) d += 5 + 2 * m.techLevel;
+    return d;
+}
+inline int troopStrength(const GameState& s, const Fleet& f) { return 8 + f.hull + 2 * empire(s, f.ownerId).technologies[5].level; }
+inline const System* systemOf(const GameState& s, int systemId) {
+    for (const auto& sys : s.systems) if (sys.id == systemId) return &sys;
+    return nullptr;
+}
+inline std::string systemName(const GameState& s, int systemId) {
+    const auto* sys = systemOf(s, systemId);
+    return sys ? sys->name : std::string("the world");
+}
+
+// Empty when `owner` may order an invasion of the independent minor at `systemId`.
+inline std::string minorInvasionBlocker(const GameState& s, int owner, int systemId) {
+    if (!enabled(s)) return "Independent minors can be invaded only in campaigns with empire rules";
+    const auto* m = independentMinorAt(s, systemId);
+    if (!m) return "No independent minor race holds this world";
+    if (owner >= 1 && owner <= 5 && m->friendshipTurn[static_cast<std::size_t>(owner)] >= 0)
+        return "A friendship with the " + m->name + " forbids invasion";
+    if (s.diplomacyEngineState.highestTreatyRank(diplomacy::ParticipantId::major(owner), diplomacy::ParticipantId::minor(systemId)) > 0)
+        return "A treaty with the " + m->name + " forbids invasion";
+    return {};
+}
+
+// (e) fills this in; in (d) alone no guard ever holds a system.
+inline bool guardHolds(GameState&, int, int, TurnReport&, std::map<std::pair<int, int>, bool>&) { return false; }
+
+// Resolves every pending assault on an independent minor's world: a guard must fall first, the troops of one empire
+// pool their strength, and a win founds a colony for the invader (the aftermath choice follows). Transports are spent.
+inline void resolveMinorAssaults(GameState& s, TurnReport& report, std::map<std::pair<int, int>, bool>& guardCache) {
+    std::set<std::pair<int, int>> groups;
+    for (const auto& f : s.fleets)
+        if (f.invadeSystemId && f.hull > 0 && independentMinorAt(s, f.invadeSystemId)) groups.insert({f.invadeSystemId, f.ownerId});
+    for (const auto& [sid, owner] : groups) {
+        const auto* sys = systemOf(s, sid);
+        std::vector<Fleet*> troops;
+        for (auto& f : s.fleets) {
+            if (f.invadeSystemId != sid || f.ownerId != owner || f.hull <= 0) continue;
+            if (!sys || f.x != sys->x || f.y != sys->y) { f.invadeSystemId = 0; continue; }
+            troops.push_back(&f);
+        }
+        const auto clear = [&] { for (auto* f : troops) f->invadeSystemId = 0; };
+        const auto* m = independentMinorAt(s, sid);
+        if (troops.empty()) continue;
+        if (!m || !minorInvasionBlocker(s, owner, sid).empty()) { clear(); continue; }
+        const bool mine = owner == s.playerEmpire;
+        const bool seen = mine || m->contact[static_cast<std::size_t>(s.playerEmpire)];
+        if (guardHolds(s, owner, sid, report, guardCache)) {
+            if (mine) report.events.push_back("Invasion of " + m->name + " blocked by its defending ship.");
+            report.invasions.push_back({s.turn, sid, owner, 0, troops.front()->id, 0, 0, 0, false});
+            clear();
+            continue;
+        }
+        int attacker = 0;
+        for (const auto* f : troops) attacker += troopStrength(s, *f);
+        const int defender = minorDefense(*m);
+        const std::uint64_t a2 = static_cast<std::uint64_t>(attacker) * attacker;
+        const std::uint64_t d2 = static_cast<std::uint64_t>(defender) * defender;
+        const bool won = internal::bounded(s.rngState, a2 + d2) < a2;
+        const int firstId = troops.front()->id;
+        const int pop0 = std::clamp(minorPopulation(*m), 10, minors::MaxMinorPopulation);
+        int casualties = pop0;
+        auto* minor = minorOf(s, sid);
+        if (won) {
+            Colony c;
+            c.systemId = sid; c.ownerId = owner; c.morale = 35;
+            c.population = std::max(1, pop0 * 8 / 10);
+            c.foodWorkers = std::min(c.farms * 10, c.population / 2);
+            c.industryWorkers = std::min(c.factories * 10, c.population / 3);
+            c.researchWorkers = std::min(c.laboratories * 10, c.population - c.foodWorkers - c.industryWorkers);
+            casualties = pop0 - c.population;
+            s.colonies.push_back(c);
+            std::sort(s.colonies.begin(), s.colonies.end(), [](const Colony& a, const Colony& b) { return a.systemId < b.systemId; });
+            minor->memberOf = owner;
+            minor->contact[static_cast<std::size_t>(owner)] = true;
+            minor->friendshipTurn[static_cast<std::size_t>(owner)] = -1;
+            internal::reveal(s, sys->x, sys->y, owner);
+            for (auto& other : s.minors)
+                if (other.systemId != sid && other.contact[static_cast<std::size_t>(owner)]) adjustAttitude(other, owner, -5);
+            if (seen) report.events.push_back(std::string(empireName(owner)) + " conquered the " + m->name + " at " + systemName(s, sid) + ".");
+        } else {
+            adjustAttitude(*minor, owner, -20);
+            for (auto& other : s.minors)
+                if (other.systemId != sid && other.contact[static_cast<std::size_t>(owner)]) adjustAttitude(other, owner, -5);
+            if (mine) report.events.push_back("Invasion of the " + m->name + " failed.");
+        }
+        report.invasions.push_back({s.turn, sid, owner, 0, firstId, attacker, defender, casualties, won});
+        for (auto* f : troops) { f->invadeSystemId = 0; f->hull = 0; } // A transport makes one ground assault.
+    }
+}
+
+// AI: Klingons, Romulans and Cardassians at peace turn on a nearby independent minor that will not join them.
+inline const Minor* aiMinorTarget(const GameState& s, int ownerId) {
+    const System* home = nullptr;
+    for (const auto& c : s.colonies) if (c.ownerId == ownerId) { home = systemOf(s, c.systemId); break; }
+    if (!home) return nullptr;
+    const Minor* best = nullptr;
+    int bestDistance = 1 << 30;
+    for (const auto& m : s.minors) {
+        const auto* sys = systemOf(s, m.systemId);
+        if (!sys || !independentMinorAt(s, m.systemId) || !minorInvasionBlocker(s, ownerId, m.systemId).empty()) continue;
+        if (!internal::known(s, ownerId, sys->x, sys->y) || m.attitude[static_cast<std::size_t>(ownerId)] >= 70) continue;
+        const int dist = std::max(std::abs(sys->x - home->x), std::abs(sys->y - home->y));
+        if (dist < bestDistance || (dist == bestDistance && m.systemId < best->systemId)) { best = &m; bestDistance = dist; }
+    }
+    return best;
+}
+inline bool aiMinorCampaign(const GameState& s, int ownerId, bool atWar) {
+    if (!enabled(s) || atWar || ownerId < 2 || ownerId > 4 || s.turn < 15) return false;
+    return aiMinorTarget(s, ownerId) != nullptr;
+}
+// Idle transports and warships gather at the target; once the troops outweigh the defense (and a guard is faced by
+// at least one warship) the transports there are ordered in.
+inline void planMinorConquest(GameState& s, int ownerId, bool atWar) {
+    if (!aiMinorCampaign(s, ownerId, atWar)) return;
+    const Minor* target = aiMinorTarget(s, ownerId);
+    const int sid = target->systemId;
+    const auto* sys = systemOf(s, sid);
+    std::vector<Fleet*> here;
+    bool escortHere = false;
+    for (auto& f : s.fleets) {
+        if (f.ownerId != ownerId || f.hull <= 0 || f.colonyShip || f.colonize || f.taskForceId > 0 || f.retreat || f.attackTarget ||
+            f.invadeSystemId || f.terraforming || f.buildingOutpost) continue;
+        const bool idle = f.x == f.targetX && f.y == f.targetY;
+        if (!idle && !(f.targetX == sys->x && f.targetY == sys->y)) continue;
+        const bool transport = f.shipClass == Building::Transport;
+        if (!transport && fleetAttack(f) <= 0) continue;
+        if (f.x == sys->x && f.y == sys->y) {
+            if (transport) here.push_back(&f); else escortHere = true;
+        } else if (!route(s, f, sys->x, sys->y).empty()) {
+            f.targetX = sys->x; f.targetY = sys->y;
+        }
+    }
+    if (here.empty()) return;
+    const bool guarded = std::any_of(s.minorGuards.begin(), s.minorGuards.end(), [&](const MinorGuard& g) { return g.systemId == sid; });
+    if (guarded && !escortHere) return; // wait for the escorts
+    int attack = 0;
+    for (const auto* f : here) attack += troopStrength(s, *f);
+    if (attack * 10 >= minorDefense(*target) * 7) for (auto* f : here) f->invadeSystemId = sid;
 }
 
 // ---------------------------------------------------------------------------
