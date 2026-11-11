@@ -27,7 +27,10 @@ func refresh() -> void:
 	root.add_child(_banner(v))
 	var kr := Lcars.hbox(10)
 	kr.name = "EmpireKpis"
-	for k in vm.kpis():
+	var kp := vm.kpis()
+	if not vm.dilithium_kpi().is_empty():
+		kp.append(vm.dilithium_kpi())
+	for k in kp:
 		var t := Lcars.kpi(k["icon"], k["cap"], k["value"], k["delta"], k["tone"], k["explain"])
 		t.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		t.custom_minimum_size.x = 0

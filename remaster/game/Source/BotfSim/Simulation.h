@@ -16,10 +16,12 @@ namespace botf {
 // model and fusion-plant accounting; schema 13 adds the gameplay layer (ruleset
 // presets, stations, galaxy features, curated events, alternative victories and
 // build templates, see docs/GAMEPLAY-REMASTER.md); schema 14 adds per-ship orders and
-// flags to recorded battle rounds (COMBAT_ORDERS) and the RefuseCallToArms order.
-// Schemas 4-13 still load and continue.
-inline constexpr const char* ContentVersion = "remaster-14";
-inline constexpr int SaveVersion = 14;
+// flags to recorded battle rounds (COMBAT_ORDERS) and the RefuseCallToArms order;
+// schema 15 adds the empire rules (EmpireRules.h, docs/design/EMPIRE-RULES.md): dilithium
+// refineries, emergency programs, invasion aftermath, minor conquest and minor guard ships
+// (optional EMPIRE_RULES section). Schemas 4-14 still load and continue.
+inline constexpr const char* ContentVersion = "remaster-15";
+inline constexpr int SaveVersion = 15;
 // Largest campaign save deserialize() accepts (and the CLI reads). A 300-turn
 // five-empire Remastered soak peaks far below this; see GAMEPLAY-REMASTER.md.
 inline constexpr std::size_t MaxSaveBytes = 8u * 1024u * 1024u;
@@ -30,7 +32,8 @@ enum class TacticalStance : int { Balanced, Aggressive, Defensive, Withdraw };
 enum class GovernorPriority : int { Manual = 0, Balanced = 1, Growth = 2, Research = 3, Manufacturing = 4 };
 const char* governorPriorityName(GovernorPriority priority);
 // Queue products include ships; existing Building name retained for source compatibility.
-enum class Building : int { Farm, Factory, Laboratory, Shipyard, Scout, ColonyShip, PowerPlant, FusionPlant, ResearchInstitute, Destroyer, Transport, DefenseBattery };
+enum class Building : int { Farm, Factory, Laboratory, Shipyard, Scout, ColonyShip, PowerPlant, FusionPlant, ResearchInstitute, Destroyer, Transport, DefenseBattery,
+    DilithiumRefinery /* schema 15 */ };
 enum class CommandType : int {
     AssignWorkers, EnqueueBuilding, MoveFleet, Colonize, ToggleShipyard,
     CancelFirstConstruction, PrioritizeLastConstruction, MoveConstruction,
@@ -52,7 +55,9 @@ enum class CommandType : int {
     DefineBuildTemplate, DeleteBuildTemplate, ApplyBuildTemplate, SetDefaultBuildTemplate,
     StartMegaproject, CancelMegaproject,
     // Appended for schema 14 (treaty integration, DIPLOMACY.md 4.1):
-    RefuseCallToArms
+    RefuseCallToArms,
+    // Appended for schema 15 (EMPIRE-RULES.md). Both use systemId and eventOption.
+    SetEmergencyProgram, ResolveAftermath
 };
 enum class CampaignOutcome : int { Ongoing, Victory, Defeat };
 inline constexpr int ResearchFields = 6, MaxTechLevel = 10;
@@ -130,6 +135,11 @@ struct Colony {
     int fusionPlants = 0;  // Schema 12: each contributes 40 energy and 2 credit upkeep.
     int morale = 70;
     int defenseBatteries = 0;
+    // Schema 15 (EmpireRules.h): dilithium refinery (0 or 1), emergency program (EmergencyProgram, 0 = none)
+    // and the turns it has left. Saved in the optional EMPIRE_RULES section.
+    int refineries = 0;
+    int program = 0;
+    int programTurns = 0;
     // Colony automation:
     GovernorPriority workforcePriority = GovernorPriority::Manual;
     GovernorPriority queuePriority = GovernorPriority::Manual;
@@ -314,6 +324,19 @@ struct Minor {
     int raceId = 0;
     int techLevel = 0, population = 0, progress = 0;
 };
+// Schema 15: a captured world waiting for the player's Liberate / Subjugate / Exterminate choice.
+// An undecided choice lapses to Subjugate (the pre-15 behaviour) after AftermathLapseTurns.
+struct AftermathChoice {
+    int systemId = 0, conqueror = 0, formerOwner = 0; // formerOwner 0 = an independent minor
+    int turn = 0;                                     // Turn of the capture
+    int populationBefore = 0;                         // Population before the capture's casualties
+    bool operator==(const AftermathChoice&) const = default;
+};
+// Schema 15: a minor race's signature ship, a map object at its homeworld (not a fleet).
+struct MinorGuard {
+    int systemId = 0, shipId = 0, hull = 0, shields = 0;
+    bool operator==(const MinorGuard&) const = default;
+};
 struct DiplomaticOffer {
     std::uint64_t id = 0;
     int empireId = 1, systemId = 0, dueTurn = 0;
@@ -343,6 +366,9 @@ struct GameplayRules {
     // Tactical rules 4 (WEGO, facings, subsystems; COMBAT-RULES.md). Needs flightModel. Saved as the optional
     // TACTICAL_WEGO section, so older saves load with it off and keep rules 3.
     bool wegoCombat = false;
+    // Schema 15: dilithium ship slots, emergency programs, invasion aftermath, minor conquest and guard ships
+    // (EMPIRE-RULES.md). Saved as the optional EMPIRE_RULES section, so older saves keep it off.
+    bool empireRules = false;
     bool operator==(const GameplayRules&) const = default;
 };
 
@@ -484,6 +510,9 @@ struct GameState : EmpireState {
     std::vector<BuildTemplate> buildTemplates;
     int nextBuildTemplateId = 1;
     std::vector<Megaproject> megaprojects;
+    // Schema 15 (all empty for older saves and when rules.empireRules is off):
+    std::vector<AftermathChoice> aftermaths;
+    std::vector<MinorGuard> minorGuards;
 };
 struct Economy {
     int food = 0, foodDeficit = 0, industry = 0, research = 0;
@@ -492,6 +521,7 @@ struct Economy {
     bool shipyardPowered = false;
     int poweredBatteries = 0, inactiveBatteries = 0;
     int energyAvailable = 0;
+    bool refineryPowered = false; // Schema 15: the colony's dilithium refinery has its 5 energy.
 };
 struct ColonyReport {
     int systemId = 0;

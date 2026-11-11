@@ -144,6 +144,32 @@ func auto_balance(industry_first: bool) -> bool:
 	return apply_workers()
 
 # ---------------------------------------------------------------------------------------------
+# Empire rules (schema 15, docs/design/EMPIRE-RULES.md): dilithium
+# ---------------------------------------------------------------------------------------------
+## The dilithium block of this colony's `empireRules` ({} when the rules are off).
+func dilithium() -> Dictionary:
+	var er: Variant = colony().get("empireRules", {})
+	return er["dilithium"] if er is Dictionary and er.get("enabled", false) and er.has("dilithium") else {}
+
+## Panel lines for the dilithium block: [{text, tone}] (tone "" / "good" / "warn" / "alert").
+static func dilithium_lines(d: Dictionary, queue_blocker: String = "") -> Array:
+	var out := []
+	if d.is_empty():
+		return out
+	if bool(d["refinery"]):
+		out.append({"text": "Refinery online - one ship slot for the empire." if bool(d["refineryPowered"]) else "Refinery has no power: it gives no ship slot. Build power plants.", "tone": "good" if bool(d["refineryPowered"]) else "alert"})
+	elif bool(d["deposit"]):
+		out.append({"text": "Dilithium deposit here. A refinery (build list) adds one ship slot for the empire.", "tone": "info"})
+	else:
+		out.append({"text": "No dilithium deposit in this system.", "tone": ""})
+	out.append({"text": "Empire ship slots: %d of %d in use (%d refineries, %d powered)." % [int(d["slotsUsed"]), int(d["slots"]), int(d["empireRefineries"]), int(d["empirePowered"])], "tone": "warn" if int(d["slotsUsed"]) >= int(d["slots"]) else ""})
+	if int(d.get("klingonBonusPercent", 0)) > 0:
+		out.append({"text": "Klingon yard bonus: ships here build %d%% faster." % int(d["klingonBonusPercent"]), "tone": "good"})
+	if queue_blocker.find("slots") >= 0 or queue_blocker.find("refinery") >= 0:
+		out.append({"text": queue_blocker, "tone": "warn"})
+	return out
+
+# ---------------------------------------------------------------------------------------------
 # Governor and shipyard
 # ---------------------------------------------------------------------------------------------
 func set_governor(which: String, key: String) -> bool:

@@ -1,6 +1,7 @@
 #include "Simulation.h"
 #include "GameplayInternal.h"
 #include "MinorRaces.h"
+#include "EmpireRules.h"
 #include "ReferenceCatalogue.h"
 #include "ReferencePlanets.h"
 #include "ShipRoster.h"
@@ -55,7 +56,7 @@ int constructionCost(const Construction& project) {
     return project.referenceId < 0 ? definition(project.product).industryCost : sourceShip(project.referenceId).industryCost;
 }
 std::string constructionTechBlocker(const GameState& state, const Construction& project, int owner);
-constexpr std::array<BuildingDefinition, 12> Definitions{{
+constexpr std::array<BuildingDefinition, 13> Definitions{{
     {Building::Farm, "Farm", 60, 0, 1},
     {Building::Factory, "Factory", 100, 5, 1},
     {Building::Laboratory, "Laboratory", 80, 5, 1},
@@ -67,7 +68,8 @@ constexpr std::array<BuildingDefinition, 12> Definitions{{
     {Building::ResearchInstitute, "Research institute", 160, 10, 2},
     {Building::Destroyer, "Destroyer", 160, 0, 0},
     {Building::Transport, "Transport", 120, 0, 0},
-    {Building::DefenseBattery, "Defense battery", 140, 5, 2}
+    {Building::DefenseBattery, "Defense battery", 140, 5, 2},
+    {Building::DilithiumRefinery, "Dilithium refinery", 120, 5, 2}
 }};
 void require(bool condition, const char* message) {
     if (!condition) throw std::runtime_error(message);
@@ -233,7 +235,8 @@ void validateColony(const Colony& c) {
     require(c.morale >= 0 && c.morale <= 100, "Morale out of bounds");
     require(c.overflow >= 0 && c.overflow <= 100000000, "Overflow out of bounds");
     require(c.queue.size() <= MaxQueue, "Construction queue full");
-    int yards = c.shipyards, batteries = c.defenseBatteries;
+    require(c.refineries >= 0 && c.refineries <= 1, "Only one dilithium refinery per colony");
+    int yards = c.shipyards, batteries = c.defenseBatteries, refineries = c.refineries;
     for (auto b : c.queue) {
         require(buildingValid(b), "Unknown queued building");
         require(b.referenceId >= -1 && b.work >= 0 && b.work <= constructionCost(b), "Project work out of bounds");
@@ -242,6 +245,7 @@ void validateColony(const Colony& c) {
                 "Invalid reference construction role");
         if (b == Building::Shipyard) require(++yards <= 1, "Shipyard already built or queued");
         if (b == Building::DefenseBattery) require(++batteries <= 10, "Defense batteries already built or queued");
+        if (b == Building::DilithiumRefinery) require(++refineries <= 1, "Dilithium refinery already built or queued");
         if (isShip(b)) require(yards == 1, "Build or queue a shipyard before ships");
     }
 }
@@ -353,7 +357,8 @@ void checkCommand(const Command& c) {
             require(c.building == Building::Farm || c.building == Building::Factory ||
                 c.building == Building::Laboratory || c.building == Building::PowerPlant ||
                 c.building == Building::FusionPlant ||
-                c.building == Building::Shipyard || c.building == Building::DefenseBattery,
+                c.building == Building::Shipyard || c.building == Building::DefenseBattery ||
+                c.building == Building::DilithiumRefinery,
                 "Unsupported structure for scrapping");
         }
         return;
@@ -1178,6 +1183,9 @@ void applyDraft(GameState& state) {
             } else if (command.building == Building::DefenseBattery) {
                 require(it->defenseBatteries > 0, "No defense battery to scrap");
                 --it->defenseBatteries;
+            } else if (command.building == Building::DilithiumRefinery) {
+                require(it->refineries > 0, "No dilithium refinery to scrap");
+                it->refineries = 0;
             } else {
                 throw std::runtime_error("Unsupported structure for scrapping");
             }
@@ -1261,6 +1269,10 @@ void applyDraft(GameState& state) {
                 "Choose a named reference ship class");
             require(command.building != Building::DefenseBattery || state.advancedRulesEnabled,
                 "Defense batteries are only available in advanced reference campaigns");
+            if (command.building == Building::DilithiumRefinery) {
+                const auto problem = empire_rules::refineryBlocker(state, *it);
+                if (!problem.empty()) throw std::runtime_error(problem);
+            }
             const auto blocked = constructionTechBlocker(state, project, state.playerEmpire);
             if (!blocked.empty()) throw std::runtime_error(blocked);
             it->queue.push_back(project);
@@ -1373,11 +1385,12 @@ void planRivals(GameState& s) {
             c.industryWorkers = std::min(c.factories * 10, remaining - c.researchWorkers);
             if (!c.queue.empty()) continue;
             if (economy(s, c).foodDeficit > 0 && c.farms < MaxBuildings) c.queue.push_back(Building::Farm);
-            else if (c.energy < c.factories * 5 + c.laboratories * 5 + 5 && c.powerPlants < MaxBuildings)
+            else if (c.energy < c.factories * 5 + c.laboratories * 5 + 5 + 5 * c.refineries && c.powerPlants < MaxBuildings)
                 c.queue.push_back(Building::PowerPlant);
             else if (s.campaignExpansionEnabled && c.factories < 2 && c.factories < MaxBuildings)
                 c.queue.push_back(Building::Factory);
             else if (c.shipyards == 0) c.queue.push_back(Building::Shipyard);
+            else if (empire_rules::aiWantsRefinery(s, owner.id, c)) c.queue.push_back(Building::DilithiumRefinery);
             else if (atWar && s.advancedRulesEnabled && c.defenseBatteries < 1) c.queue.push_back(Building::DefenseBattery);
             else if (atWar && destroyers < 3 && queueMilitaryShip(s, c, Building::Destroyer)) ++destroyers;
             else if (atWar && transports < 1 && queueMilitaryShip(s, c, Building::Transport)) ++transports;
@@ -3178,6 +3191,7 @@ std::string payload(const GameState& s) {
     if (s.rules.flightModel) out << "TACTICAL_FLIGHT 1\n";
     // Tactical rules 4 (WEGO): optional; saves without it keep rules 3.
     if (s.rules.wegoCombat) out << "TACTICAL_WEGO 1\n";
+    empire_rules::writeSection(out, s); // Schema 15: optional EMPIRE_RULES section.
     // Schema 14: per-ship orders of recorded battle rounds. Written only when some
     // round carries orders, so campaigns without them keep the schema-13 layout.
     const bool anyOrders = std::any_of(s.latestBattles.begin(), s.latestBattles.end(), [](const CombatReport& b) {
@@ -3677,8 +3691,11 @@ std::vector<ConstructionChoice> constructionChoices(const GameState& state, int 
     const bool queueFull = colony->queue.size() >= MaxQueue;
     std::vector<ConstructionChoice> choices;
     for (Building b : {Building::Farm, Building::Factory, Building::Laboratory, Building::PowerPlant,
-        Building::FusionPlant, Building::ResearchInstitute, Building::Shipyard, Building::DefenseBattery}) {
+        Building::FusionPlant, Building::ResearchInstitute, Building::Shipyard, Building::DefenseBattery,
+        Building::DilithiumRefinery}) {
+        if (b == Building::DilithiumRefinery && !state.rules.empireRules) continue;
         std::string blocker = technologyBlocker(state, b, colony->ownerId);
+        if (b == Building::DilithiumRefinery) blocker = empire_rules::refineryBlocker(state, *colony);
         if (b == Building::DefenseBattery && !state.advancedRulesEnabled) blocker = "Available in new reference campaigns";
         if (b == Building::DefenseBattery && colony->defenseBatteries >= 10) blocker = "Defense batteries are at capacity";
         if (b == Building::Shipyard && yardAvailable) blocker = "Shipyard already built or queued";
@@ -3849,7 +3866,9 @@ std::string constructionBlocker(const GameState& s, const Colony& c) {
     if (isShip(c.queue.front())) {
         if (!economy(s, c).shipyardPowered) return "Shipyard is unpowered";
         if (s.fleets.size() >= 256 || s.nextFleetId > 1000000) return "Prototype fleet limit reached";
-        for (const auto& other : s.colonies) {
+        if (s.rules.empireRules) {
+            if (const auto slot = empire_rules::slotBlocker(s, c); !slot.empty()) return slot; // Dilithium slots (schema 15).
+        } else for (const auto& other : s.colonies) {
             if (other.ownerId != c.ownerId) continue;
             if (other.systemId >= c.systemId) break;
             if (!other.queue.empty() && isShip(other.queue.front()) && economy(s, other).shipyardPowered && economy(s, other).industry > 0)
@@ -4610,6 +4629,7 @@ void validate(const GameState& s) {
         }
     }
     gameplay::validate(s); // Schema-13 gameplay layer.
+    empire_rules::validate(s); // Schema-15 empire rules.
     auto draft = s;
     applyDraft(draft);
 }
@@ -4650,7 +4670,10 @@ Economy economy(const Colony& c) {
     e.shipyardPowered = c.shipyards == 1 && c.shipyardEnabled && c.energy - e.energyUsed >= 5;
     if (e.shipyardPowered) e.energyUsed += 5;
     const int remaining2 = c.energy - e.energyUsed;
-    e.poweredBatteries = std::min(c.defenseBatteries, remaining2 / definition(Building::DefenseBattery).energyCost);
+    e.refineryPowered = c.refineries > 0 && remaining2 >= definition(Building::DilithiumRefinery).energyCost; // Schema 15
+    if (e.refineryPowered) e.energyUsed += definition(Building::DilithiumRefinery).energyCost;
+    const int remaining3 = c.energy - e.energyUsed;
+    e.poweredBatteries = std::min(c.defenseBatteries, remaining3 / definition(Building::DefenseBattery).energyCost);
     e.energyUsed += e.poweredBatteries * definition(Building::DefenseBattery).energyCost;
     e.inactiveFactories = c.factories - factories;
     e.inactiveLabs = c.laboratories - labs;
@@ -4662,7 +4685,8 @@ Economy economy(const Colony& c) {
         c.factories * definition(Building::Factory).creditUpkeep +
         c.laboratories * definition(Building::Laboratory).creditUpkeep + c.shipyards * 2 + c.powerPlants +
         c.fusionPlants * definition(Building::FusionPlant).creditUpkeep +
-        c.defenseBatteries * definition(Building::DefenseBattery).creditUpkeep;
+        c.defenseBatteries * definition(Building::DefenseBattery).creditUpkeep +
+        c.refineries * definition(Building::DilithiumRefinery).creditUpkeep;
     return e;
 }
 Economy economy(const GameState& s, const Colony& c) {
@@ -4793,7 +4817,9 @@ TurnReport advanceWithCombat(GameState& state, const std::function<void(GameStat
             report.events.push_back("System " + std::to_string(c.systemId) + ": construction paused. " + blocker + ".");
         if (!c.queue.empty() && blocker.empty()) {
             const auto project = c.queue.front();
-            const int available = project.work + c.overflow + cr.economy.industry;
+            int projectIndustry = cr.economy.industry;
+            if (isShip(project)) projectIndustry = projectIndustry * (100 + empire_rules::shipIndustryBonusPercent(productionSnapshot, c)) / 100;
+            const int available = project.work + c.overflow + projectIndustry;
             c.overflow = 0;
             const auto b = project.product;
             if (available >= constructionCost(project)) {
@@ -4807,6 +4833,7 @@ TurnReport advanceWithCombat(GameState& state, const std::function<void(GameStat
                 else if (b == Building::FusionPlant) { ++c.fusionPlants; c.energy += 40; }
                 else if (b == Building::ResearchInstitute) c.laboratories += 2;
                 else if (b == Building::DefenseBattery) ++c.defenseBatteries;
+                else if (b == Building::DilithiumRefinery) ++c.refineries;
                 else {
                     const auto location = std::find_if(next.systems.begin(), next.systems.end(),
                         [&](const System& system) { return system.id == c.systemId; });
@@ -5080,15 +5107,18 @@ GameState deserialize(const std::string& text) {
     // Schema 13 differs from 14 only by the header, the optional COMBAT_ORDERS section
     // (never present in 13) and the RefuseCallToArms order (never pending in 13).
     const bool legacy13 = version == 13 && content == "remaster-13";
-    const bool current = version == SaveVersion && content == ContentVersion;
+    // Schema 14 differs from 15 only by the header and the optional EMPIRE_RULES section (never present in 14).
+    const bool legacy14 = version == 14 && content == "remaster-14";
+    const bool current15 = version == SaveVersion && content == ContentVersion;
+    const bool current = current15 || legacy14; // Schema-14 text is a valid schema-15 layout without empire rules.
     require(current || legacy7 || legacy8 || legacy9 || legacy10 || legacy11 || legacy12 || legacy13, "Unsupported save version");
-    require(content == ContentVersion || legacy7 || legacy8 || legacy9 || legacy10 || legacy11 || legacy12 || legacy13,
+    require(current15 || legacy14 || legacy7 || legacy8 || legacy9 || legacy10 || legacy11 || legacy12 || legacy13,
         "Incompatible prototype content");
     const auto checksumStart = text.rfind("CHECKSUM ");
     require(checksumStart != std::string::npos, "Missing save checksum");
     const auto rawBody = text.substr(0, checksumStart);
     require(text.substr(checksumStart) == "CHECKSUM " + std::to_string(hashText(rawBody)) + "\n",
-        (legacy7 || legacy8 || legacy9 || legacy10 || legacy11 || legacy12 || legacy13) ? "Legacy save checksum mismatch" : "Save checksum mismatch");
+        (legacy7 || legacy8 || legacy9 || legacy10 || legacy11 || legacy12 || legacy13 || legacy14) ? "Legacy save checksum mismatch" : "Save checksum mismatch");
     GameState s;
     tag(in, "STATE");
     in >> s.seed >> s.rngState >> s.lastAcceptedCommand >> s.width >> s.height >> s.turn >> s.credits >> s.research;
@@ -5486,6 +5516,11 @@ GameState deserialize(const std::string& text) {
         s.rules.wegoCombat = true;
         nextTag = readTag("Malformed save section after TACTICAL_WEGO");
     }
+    if (nextTag == "EMPIRE_RULES") {
+        require(current15, "Schema 15 section in an older save");
+        empire_rules::readSection(in, s);
+        nextTag = readTag("Malformed save section after EMPIRE_RULES");
+    }
     if (nextTag == "COMBAT_ORDERS") {
         require(current, "Schema 14 section in an older save");
         parseCombatOrders(in, s);
@@ -5526,6 +5561,10 @@ GameState deserialize(const std::string& text) {
             const std::string header = std::string("BOTF_SIM ") + std::to_string(SaveVersion) + ' ' + ContentVersion + '\n';
             require(expected.starts_with(header), "Malformed canonical payload header");
             expected.replace(0, header.size(), "BOTF_SIM 13 remaster-13\n");
+        } else if (legacy14) {
+            const std::string header = std::string("BOTF_SIM ") + std::to_string(SaveVersion) + ' ' + ContentVersion + '\n';
+            require(expected.starts_with(header), "Malformed canonical payload header");
+            expected.replace(0, header.size(), "BOTF_SIM 14 remaster-14\n");
         }
         require(rawBody == expected, "Save is not in canonical format");
     } else if (legacy12) {

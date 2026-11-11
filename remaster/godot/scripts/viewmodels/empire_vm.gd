@@ -293,6 +293,20 @@ func kpis() -> Array:
 			"explain": {"title": "Contacts", "value": "%d powers met" % contacts.size(), "parts": contacts.map(func(r): return [str(r["name"]), "war" if r.get("atWar", false) else "trust %d" % int(r.get("trust", 0)), "alert" if r.get("atWar", false) else ""]), "effect": "Meet powers by exploring. Treaties and trade need contact."}},
 	]
 
+## The empire's dilithium status ({} when the rules are off): {enforced, refineries, powered, slots, used}.
+func dilithium() -> Dictionary:
+	var d: Variant = view()["empire"].get("dilithium", {})
+	return d if d is Dictionary and d.get("enforced", false) else {}
+
+## The dilithium key-figure tile, or {} when the rules are off.
+func dilithium_kpi() -> Dictionary:
+	var d := dilithium()
+	if d.is_empty():
+		return {}
+	return {"icon": "energy", "cap": "Dilithium", "value": "%d/%d" % [int(d["used"]), int(d["slots"])], "delta": "", "tone": "warn" if int(d["used"]) >= int(d["slots"]) else "",
+		"explain": {"title": "Dilithium", "value": "%d of %d ship slots in use" % [int(d["used"]), int(d["slots"])], "parts": [["Refineries", str(int(d["refineries"])), ""], ["Powered refineries", str(int(d["powered"])), "good" if int(d["powered"]) > 0 else "alert"], ["Ships in construction", str(int(d["used"])), ""]],
+			"effect": "Each powered dilithium refinery lets one colony build a ship at a time. Build more refineries on dilithium systems to build ships in parallel."}}
+
 ## Income as segment-bar parts: [[label, value, Color]] (colours set by the presentation from `tone`).
 func income_parts() -> Array:
 	var inc: Dictionary = view()["empire"]["income"]

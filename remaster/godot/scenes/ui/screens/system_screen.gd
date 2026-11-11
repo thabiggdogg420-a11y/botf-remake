@@ -66,6 +66,9 @@ func refresh() -> void:
 	left.add_child(_workforce(c))
 	left.add_child(_governor(c))
 	left.add_child(_energy(c))
+	var dil := _dilithium(c)
+	if dil:
+		left.add_child(dil)
 	cols.add_child(Lcars.scroll(left))
 	var mid := _construction()
 	mid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -360,6 +363,24 @@ func _energy(c: Dictionary) -> Control:
 	if int(s["shipyards"]) > 0:
 		sy.add_child(Lcars.pill("Switch %s" % ("off" if c.get("shipyardEnabled", false) else "on"), "ghost", func(): vm.toggle_shipyard(), vm.shipyard_block()))
 	b.add_child(sy)
+	return f
+
+## Dilithium refinery and the empire's ship construction slots (schema 15). Null when the rules are off.
+func _dilithium(c: Dictionary) -> Control:
+	var lines := SystemVM.dilithium_lines(vm.dilithium(), str(detail.get("queueBlocker", "")))
+	if lines.is_empty():
+		return null
+	var f := Lcars.frame("Dilithium", "ship slots", "secondary", "energy")
+	f.name = "DilithiumPanel"
+	var b := Lcars.body(f)
+	var d := vm.dilithium()
+	var r := Lcars.hbox(8)
+	r.add_child(Lcars.label("Slots", "Muted", 13))
+	r.add_child(Lcars.meter(int(d["slotsUsed"]), max(1, int(d["slots"])), Lcars.WARN if int(d["slotsUsed"]) >= int(d["slots"]) else Lcars.accent2(), 8))
+	r.add_child(Lcars.label("%d/%d" % [int(d["slotsUsed"]), int(d["slots"])], "Mono", 13))
+	b.add_child(r)
+	for ln in lines:
+		b.add_child(Lcars.para(str(ln["text"]), Lcars.tone_color(str(ln["tone"])) if str(ln["tone"]) != "" else Lcars.TEXT2, 13))
 	return f
 
 func _construction() -> Control:

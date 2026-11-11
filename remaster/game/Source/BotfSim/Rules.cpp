@@ -1,6 +1,7 @@
 // Schema-13 gameplay layer: ruleset presets, gameplay command plumbing, the
 // GAMEPLAY_LAYER save section and the per-turn orchestration hooks that
 // Simulation.cpp calls. See docs/GAMEPLAY-REMASTER.md.
+#include "EmpireRules.h"
 #include "GameplayInternal.h"
 
 #include <algorithm>
@@ -367,6 +368,7 @@ GameplayRules rulesForPreset(RulesetPreset preset) {
     r.expandedRoster = remastered;
     r.flightModel = remastered;
     r.wegoCombat = remastered;
+    r.empireRules = true; // Schema 15: dilithium slots, programs, aftermath, minor conquest, guards (both presets).
     return r;
 }
 
@@ -396,6 +398,7 @@ void applyRulesetPreset(GameState& state, RulesetPreset preset) {
     next.eventDeck.clear(); next.eventDeckPosition = 0; next.lastCuratedEventTurn = 0;
     if (next.rules.galaxyFeatures) gameplay::generateGalaxyFeatures(next);
     if (next.rules.curatedEvents) gameplay::initializeEventDeck(next);
+    if (next.rules.empireRules) empire_rules::initialize(next);
     validate(next);
     state = std::move(next);
 }
