@@ -15,6 +15,7 @@
 #include "GameplayInternal.h"
 #include "MinorRaces.h"
 #include "ReferenceCatalogue.h"
+#include "ShipRoster.h"
 #include "Simulation.h"
 
 #include <algorithm>
@@ -421,12 +422,89 @@ inline std::string minorInvasionBlocker(const GameState& s, int owner, int syste
     return {};
 }
 
-// (e) fills this in; in (d) alone no guard ever holds a system.
-inline bool guardHolds(GameState&, int, int, TurnReport&, std::map<std::pair<int, int>, bool>&) { return false; }
+
+// ---------------------------------------------------------------------------
+// (e) Signature ships: a minor's own design guards its homeworld
+// ---------------------------------------------------------------------------
+inline const MinorGuard* guardAt(const GameState& s, int systemId) {
+    for (const auto& g : s.minorGuards) if (g.systemId == systemId) return &g;
+    return nullptr;
+}
+inline int guardAttack(const MinorGuard& g) {
+    const int strength = internal::sourceShip(g.shipId).attack;
+    return strength <= 0 ? 0 : std::max(1, (strength + 9) / 20);
+}
+inline int guardMaxHull(const MinorGuard& g) { return internal::sourceShip(g.shipId).hull; }
+inline int guardMaxShields(const MinorGuard& g) { return std::max(0, internal::sourceShip(g.shipId).shields); }
+inline std::string guardName(const MinorGuard& g) {
+    const auto& ship = internal::sourceShip(g.shipId);
+    return std::string(ship.shipClass) + " " + ship.name;
+}
+
+// One guard for every minor whose roster race has a signature ship, at its homeworld, at full strength.
+inline void spawnGuards(GameState& s) {
+    s.minorGuards.clear();
+    for (const auto& m : s.minors) {
+        const auto* race = minors::raceFor(m);
+        if (!race || race->signatureShipId < 0) continue;
+        const auto& ship = internal::sourceShip(race->signatureShipId);
+        s.minorGuards.push_back({m.systemId, ship.id, ship.hull, std::max(0, ship.shields)});
+    }
+}
+// Guards mend 10% of their maximum each turn, before the turn's fighting.
+inline void regenGuards(GameState& s) {
+    for (auto& g : s.minorGuards) {
+        g.hull = std::min(guardMaxHull(g), g.hull + std::max(1, guardMaxHull(g) / 10));
+        g.shields = std::min(guardMaxShields(g), g.shields + std::max(1, guardMaxShields(g) / 10));
+    }
+}
+
+// True when the guard at `systemId` still stands after facing `owner`'s warships there this turn (and so blocks the
+// invasion). The guard trades fire once per turn per empire: the warships' summed attack against its shields then hull,
+// its own attack against the first warship. Without warships present it simply holds. A fallen guard is removed.
+inline bool guardHolds(GameState& s, int owner, int systemId, TurnReport& report, std::map<std::pair<int, int>, bool>& cache) {
+    const auto key = std::make_pair(owner, systemId);
+    if (const auto found = cache.find(key); found != cache.end()) return found->second;
+    const auto it = std::find_if(s.minorGuards.begin(), s.minorGuards.end(), [&](const MinorGuard& g) { return g.systemId == systemId; });
+    if (it == s.minorGuards.end()) return cache[key] = false;
+    const auto* sys = systemOf(s, systemId);
+    std::vector<Fleet*> escorts;
+    for (auto& f : s.fleets)
+        if (f.ownerId == owner && f.hull > 0 && sys && f.x == sys->x && f.y == sys->y && f.shipClass != Building::Transport && fleetAttack(f) > 0)
+            escorts.push_back(&f);
+    if (escorts.empty()) return cache[key] = true;
+    int attack = 0;
+    for (const auto* f : escorts) attack += fleetAttack(*f);
+    auto& g = *it;
+    const std::string name = guardName(g);
+    const auto* minor = minorAt(s, systemId);
+    const bool tell = owner == s.playerEmpire || (minor && minor->contact[static_cast<std::size_t>(s.playerEmpire)]);
+    const int absorbed = std::min(g.shields, attack);
+    g.shields -= absorbed;
+    g.hull -= attack - absorbed;
+    if (g.hull <= 0) {
+        if (tell) report.events.push_back("The " + name + " guarding " + systemName(s, systemId) + " was destroyed by " + empireName(owner) + ".");
+        if (auto* m = minorOf(s, systemId)) {
+            adjustAttitude(*m, owner, -10);
+        }
+        for (auto& other : s.minors)
+            if (other.systemId != systemId && other.contact[static_cast<std::size_t>(owner)]) adjustAttitude(other, owner, -3);
+        s.minorGuards.erase(it);
+        return cache[key] = false;
+    }
+    int hit = guardAttack(g);
+    Fleet& first = *escorts.front();
+    const int soak = std::min(first.shields, hit);
+    first.shields -= soak; hit -= soak; first.hull -= hit;
+    if (tell) report.events.push_back("The " + name + " at " + systemName(s, systemId) + " fights on: hull " + std::to_string(g.hull) +
+        ", shields " + std::to_string(g.shields) + ".");
+    return cache[key] = true;
+}
 
 // Resolves every pending assault on an independent minor's world: a guard must fall first, the troops of one empire
 // pool their strength, and a win founds a colony for the invader (the aftermath choice follows). Transports are spent.
 inline void resolveMinorAssaults(GameState& s, TurnReport& report, std::map<std::pair<int, int>, bool>& guardCache) {
+    regenGuards(s);
     std::set<std::pair<int, int>> groups;
     for (const auto& f : s.fleets)
         if (f.invadeSystemId && f.hull > 0 && independentMinorAt(s, f.invadeSystemId)) groups.insert({f.invadeSystemId, f.ownerId});
@@ -561,6 +639,7 @@ inline void initialize(GameState& s) {
         else if (c.population > (*it)->population) *it = &c;
     }
     for (auto* c : best) if (c->refineries == 0) { c->refineries = 1; c->energy += 5; }
+    spawnGuards(s);
 }
 
 inline void validate(const GameState& s) {
@@ -569,6 +648,12 @@ inline void validate(const GameState& s) {
             detail::require(c.refineries == 0 && c.program == 0 && c.programTurns == 0, "Empire-rule colony state without empire rules");
         detail::require(s.aftermaths.empty() && s.minorGuards.empty(), "Empire-rule state without empire rules");
         return;
+    }
+    std::set<int> guarded;
+    for (const auto& g : s.minorGuards) {
+        const auto* ship = roster::findShip(g.shipId);
+        detail::require(ship && minorAt(s, g.systemId) && guarded.insert(g.systemId).second, "Invalid minor guard");
+        detail::require(g.hull > 0 && g.hull <= ship->hull && g.shields >= 0 && g.shields <= std::max(0, ship->shields), "Minor guard strength out of bounds");
     }
     std::set<int> waiting;
     for (const auto& a : s.aftermaths) {

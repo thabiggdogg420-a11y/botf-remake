@@ -2955,7 +2955,8 @@ void resolveInvasions(GameState& s, TurnReport& report) {
         if (loc->x != fleet.x || loc->y != fleet.y) { fleet.invadeSystemId = 0; continue; }
         const bool defended = std::any_of(s.fleets.begin(), s.fleets.end(), [&](const Fleet& f) {
             return f.ownerId == target->ownerId && f.x == fleet.x && f.y == fleet.y && fleetAttack(f) > 0;
-        }) || gameplay::stationDefends(s, target->ownerId, fleet.x, fleet.y); // Schema 13: stations guard the system.
+        }) || gameplay::stationDefends(s, target->ownerId, fleet.x, fleet.y) // Schema 13: stations guard the system.
+            || (s.rules.empireRules && empire_rules::guardHolds(s, fleet.ownerId, target->systemId, report, guardCache)); // Schema 15
         if (defended) {
             if (fleet.ownerId == s.playerEmpire) report.events.push_back("Invasion of " + loc->name + " blocked by defending ships.");
             report.invasions.push_back({s.turn, target->systemId, fleet.ownerId, target->ownerId, fleet.id,
@@ -4961,6 +4962,7 @@ TurnReport advanceWithCombat(GameState& state, const std::function<void(GameStat
     for (auto& e : next.rivals) e.explored = std::move(mutableEmpire(moving, e.id).explored);
     // Invasions may change minor membership; carry it over with the colonies.
     next.minors = std::move(moving.minors);
+    next.minorGuards = std::move(moving.minorGuards); // Schema 15: guards mend and fall during invasions
     for (const auto& c : moving.colonies) {
         auto existing = std::find_if(next.colonies.begin(), next.colonies.end(), [&](const Colony& item) { return item.systemId == c.systemId; });
         if (existing == next.colonies.end()) next.colonies.push_back(c);

@@ -86,9 +86,8 @@ Marked *vanilla* means it comes from the data files. Simon can overturn any *des
 - *Target:* each such minor spawns a `MinorGuard` at its homeworld at game start (hull and shields from the catalogue). Guards are not
   fleets (fleets must be a major's playable class), they are map objects like stations. A guard fights the invader's armed ships
   in the sector when a transport there holds an invade order: each turn it loses the escorts' summed attack and deals its own
-  attack (`(attack+9)/20`) to the first escort. While alive it blocks invasions of its system, and it adds its attack to the ground
-  defense. Destroying one costs -10 attitude with its minor and -3 with all others. Damaged guards regain 10% a turn when unengaged.
+  attack (`(attack+9)/20`) to the first escort. While alive it blocks invasions of its system (it does not add to the ground defense). Destroying one costs -10 attitude with its minor and -3 with all others. Guards regain 10% of their maximum hull and shields every turn, before that turn's fighting.
   The guard stays with the minor after it joins an empire, and defends it.
 - *UI:* the galaxy map marks guarded minor systems; the system panel lists the guard and its health.
-- *AI:* escorts accompany an AI transport to a guarded minor before invading (AI picks the nearest armed ship at war posture).
+- *AI:* the AI's idle warships and transports gather at the target minor; with a guard present the transports wait until at least one armed ship of theirs is in the sector, then go in (see (d)).
 - *Tests:* ten guards spawn on a full roster; guard blocks, is destroyed, then invasion proceeds; regen; save round trip.

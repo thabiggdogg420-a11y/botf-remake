@@ -404,6 +404,7 @@ int main() {
         for (std::uint64_t attempt = 0; attempt < 30 && !conquered; ++attempt) {
             CampaignSetup setup; setup.seed = 77; setup.empires = 5; setup.playerEmpire = 1;
             auto s = newCampaign(setup);
+            s.minorGuards.clear();
             const int sid = independentSystem(s);
             sendTroops(s, 1, sid, 4, 14);
             s.rngState += attempt * 104729;
@@ -426,6 +427,7 @@ int main() {
         for (std::uint64_t attempt = 0; attempt < 60 && !lost; ++attempt) {
             CampaignSetup setup; setup.seed = 78; setup.empires = 5; setup.playerEmpire = 1;
             auto s = newCampaign(setup);
+            s.minorGuards.clear();
             const int sid = independentSystem(s);
             const int before = minorAt(s, sid)->attitude[1];
             sendTroops(s, 1, sid, 1, 1);
@@ -492,6 +494,65 @@ int main() {
         advance(a); advance(b);
         check(serialize(a) == serialize(b), "same state, same outcome");
         check(deserialize(serialize(a)).colonies.size() == a.colonies.size(), "the result round-trips");
+    }, passed);
+
+
+    // ---------------------------------------------------------------- (e) signature ships guard their minors
+    run("guards: every minor with a signature ship starts with it at full strength", [&] {
+        CampaignSetup setup; setup.seed = 90; setup.empires = 5; setup.playerEmpire = 1;
+        const auto s = newCampaign(setup);
+        check(!s.minorGuards.empty() && s.minorGuards.size() <= 10, "between one and ten guards spawn");
+        for (const auto& g : s.minorGuards) {
+            check(minorAt(s, g.systemId) != nullptr, "a guard sits at a minor homeworld");
+            check(g.hull == empire_rules::guardMaxHull(g) && g.shields == empire_rules::guardMaxShields(g), "full strength");
+            check(!empire_rules::guardName(g).empty() && empire_rules::guardAttack(g) >= 1, "it has a name and an attack");
+        }
+        check(deserialize(serialize(s)).minorGuards.size() == s.minorGuards.size(), "guards survive a save");
+    }, passed);
+
+    run("guards: an unescorted assault is blocked; warships bring the guard down", [&] {
+        CampaignSetup setup; setup.seed = 91; setup.empires = 5; setup.playerEmpire = 1;
+        auto s = newCampaign(setup);
+        int sid = 0;
+        for (const auto& g : s.minorGuards) if (empire_rules::independentMinorAt(s, g.systemId)) { sid = g.systemId; break; }
+        check(sid != 0, "an independent minor has a guard");
+        if (sid == 0) return;
+        auto blocked = s;
+        sendTroops(blocked, 1, sid, 4, 14);
+        advance(blocked);
+        check(empire_rules::guardAt(blocked, sid) != nullptr && !colonyAt(blocked, sid) && minorAt(blocked, sid)->memberOf == 0, "transports alone cannot take a guarded world");
+        const System* sys = nullptr;
+        for (const auto& x : s.systems) if (x.id == sid) sys = &x;
+        for (int i = 0; i < 220; ++i) {
+            Fleet e{}; e.id = s.nextFleetId++; e.ownerId = 1; e.x = sys->x; e.y = sys->y; e.targetX = e.x; e.targetY = e.y; e.shipClass = Building::Destroyer;
+            e.hull = fleetMaxHull(e); e.shields = fleetMaxShields(e);
+            s.fleets.push_back(e);
+        }
+        markExplored(s, sys->y * s.width + sys->x);
+        sendTroops(s, 1, sid, 4, 14);
+        for (int turn = 0; turn < 4 && empire_rules::guardAt(s, sid); ++turn) {
+            advance(s);
+            if (!empire_rules::guardAt(s, sid) || (colonyAt(s, sid) && colonyAt(s, sid)->ownerId == 1)) break;
+            sendTroops(s, 1, sid, 4, 14);
+        }
+        { const auto* gg = empire_rules::guardAt(s, sid); check(gg == nullptr, "the guard was destroyed by the escort: " + (gg ? std::to_string(gg->hull) + "/" + std::to_string(empire_rules::guardMaxHull(*gg)) + " sh " + std::to_string(gg->shields) + " atk " + std::to_string(empire_rules::guardAttack(*gg)) + " fleetAtk " + std::to_string(fleetAttack(s.fleets.back())) : std::string("-"))); }
+    }, passed);
+
+    run("guards: they mend each turn", [&] {
+        CampaignSetup setup; setup.seed = 92; setup.empires = 5; setup.playerEmpire = 1;
+        auto s = newCampaign(setup);
+        int sid = 0;
+        for (const auto& g : s.minorGuards) if (empire_rules::independentMinorAt(s, g.systemId)) { sid = g.systemId; break; }
+        if (sid == 0) { check(false, "an independent guarded minor exists"); return; }
+        for (auto& g : s.minorGuards) if (g.systemId == sid) { g.hull = 1; g.shields = 0; }
+        const int turn0 = s.turn;
+        sendTroops(s, 1, sid, 1, 14);
+        advance(s);
+        const auto* g = empire_rules::guardAt(s, sid);
+        check(s.turn == turn0 + 1, "the turn advanced");
+        check(g && g->hull > 1, "hull mended (invasions " + std::to_string(s.minorGuards.size()) + ", fleets " + std::to_string(s.fleets.size()) + "): " + (g ? std::to_string(g->hull) + "/" + std::to_string(empire_rules::guardMaxHull(*g)) : std::string("no guard")));
+        const auto text = serialize(s);
+        check(serialize(deserialize(text)) == text, "a damaged guard round-trips");
     }, passed);
 
     run("empire rules: save round trip, schema 14 migration and canonical form", [] {
