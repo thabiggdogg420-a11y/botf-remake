@@ -68,7 +68,7 @@ export function ResearchScreen() {
               <button type="button" class="field-top" onClick={() => setFocus(i)} {...tip(RESEARCH_BLURBS[i], f.name)}>
                 <span class={`field-icon fi-${i}`} aria-hidden="true" />
                 <span class="field-name">{f.name}</span>
-                <span class="field-level">L{f.level}<small>/10</small></span>
+                <span class="field-level">L{f.level}<small>/{research.techCap ?? 10}</small></span>
               </button>
               <div class="field-tech">
                 <span class="ft-now">{f.current}</span>
@@ -95,8 +95,8 @@ export function ResearchScreen() {
           );
         })}
       </div>
-      <Frame title={`${field.name} — technology ladder`} sub={`level ${field.level} of 10`} tone="secondary" class="research-detail">
-        <div class="ladder" role="list">
+      <Frame title={`${field.name} — technology ladder`} sub={`level ${field.level} of ${research.techCap ?? 10}`} tone="secondary" class="research-detail">
+        <div class="ladder" role="list" style={{ gridTemplateColumns: `repeat(${field.levels.length}, minmax(0, 1fr))` }}>
           {field.levels.map((l) => (
             <div role="listitem" key={l.level} class={`rung${l.level <= field.level ? ' done' : ''}${l.level === field.level + 1 ? ' next' : ''}`}
               {...tip(`${l.description ?? l.name}\nCost ${fmt(l.cost)} points.`, `${l.level}. ${l.name}`)}>

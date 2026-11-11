@@ -95,6 +95,21 @@ struct Balance {
     bool operator==(const Balance&) const = default;
 };
 
+// Schema 22 (docs/design/ERAS.md): the optional "eras" object. A pack that carries it defines the campaign timeline, the tech
+// level each start era begins at, the highest tech level (10..14) and the research data for levels 11 to 14, and gives roster
+// classes their years in service. Absent in the base pack, so base bytes and checksum are unchanged.
+struct EraWindow { int id = 0, from = 0, until = 0; };   // Years in service for one roster class; 0 = no bound.
+struct Eras {
+    bool present = false;
+    int turnsPerYear = 4;                                  // Campaign turns per timeline year.
+    std::array<int, 5> years{2240, 2280, 2320, 2350, 2380};    // Start year of each StartingEra (Early..Supreme).
+    std::array<int, 5> startTech{1, 3, 5, 7, 10};          // Tech level every field starts at, per StartingEra.
+    int techCap = 10;                                      // Highest research level (10..14).
+    std::array<int, 8> tagYears{2150, 2245, 2270, 2350, 2370, 2379, 2380, 2400}; // First year of service per roster era tag (EraNames order).
+    std::vector<EraWindow> windows;                        // Per-class overrides of the tag year, with an optional retirement year.
+    std::vector<referenceData::TechnologyRecord> highTech; // Levels 11..14 of the six fields: index = field * 4 + (level - 11).
+};
+
 struct Pack {
     PackInfo info;
     std::deque<std::string> strings; // Owns every const char* in the records (deque: stable addresses).
@@ -108,6 +123,7 @@ struct Pack {
     std::vector<minors::MinorRaceRecord> minors;
     std::vector<EventDefinition> events;
     Balance balance;
+    Eras eras;
     const char* keep(std::string s) { strings.push_back(std::move(s)); return strings.back().c_str(); }
 };
 
@@ -648,6 +664,65 @@ inline std::unique_ptr<Pack> parsePackValue(const json::Value& doc) {
         if (b.has("shipCostPercent")) p.balance.shipCostPercent = b.i32("shipCostPercent", 10, 1000);
         b.done();
     }
+    if (root.has("eras")) {
+        Object e(root.get("eras"), "pack.eras");
+        Eras& er = p.eras;
+        er.present = true;
+        const auto ints = [&](const char* key, std::size_t n, int lo, int hi, auto& out) {
+            const auto& v = e.get(key);
+            if (v.kind != json::Value::Kind::Array || v.items.size() != n) bad(e.at(key), "expected an array of " + std::to_string(n) + " integers");
+            for (std::size_t i = 0; i < n; ++i) out[i] = static_cast<int>(integer(v.items[i], e.at(key) + "[" + std::to_string(i) + "]", lo, hi));
+        };
+        if (e.has("turnsPerYear")) er.turnsPerYear = e.i32("turnsPerYear", 1, 52);
+        if (e.has("years")) ints("years", 5, 1900, 3000, er.years);
+        if (e.has("startTech")) ints("startTech", 5, 0, 14, er.startTech);
+        if (e.has("techCap")) er.techCap = e.i32("techCap", 10, 14);
+        if (e.has("tagYears")) ints("tagYears", 8, 1900, 3000, er.tagYears);
+        for (std::size_t i = 1; i < 5; ++i) {
+            if (er.years[i] <= er.years[i - 1]) bad(e.at("years"), "start years must ascend");
+            if (er.startTech[i] < er.startTech[i - 1]) bad(e.at("startTech"), "start tech levels must not fall");
+        }
+        for (int t : er.startTech) if (t > er.techCap) bad(e.at("startTech"), "a start level above techCap");
+        if (e.has("classes")) {
+            const auto& a = e.array("classes");
+            for (std::size_t i = 0; i < a.items.size(); ++i) {
+                Object o(a.items[i], "pack.eras.classes[" + std::to_string(i) + "]");
+                EraWindow w;
+                w.id = o.i32("id", ExpandedIdBase, ExpandedIdLimit - 1);
+                w.from = o.i32("from", 0, 3000);
+                w.until = o.i32("until", 0, 3000);
+                o.done();
+                if (w.until != 0 && w.until <= w.from) bad(o.at("until"), "retirement year must follow the first year");
+                bool known = false;
+                for (const auto& c : p.roster) known = known || c.id == w.id;
+                if (!known) bad(o.at("id"), "no such roster class");
+                for (const auto& other : er.windows) if (other.id == w.id) bad(o.at("id"), "class listed twice");
+                er.windows.push_back(w);
+            }
+        }
+        if (e.has("highTechnologies")) {
+            const auto& a = e.array("highTechnologies");
+            if (a.items.size() != 24) bad(e.at("highTechnologies"), "expected 24 records (six fields, levels 11 to 14)");
+            for (std::size_t i = 0; i < a.items.size(); ++i) {
+                Object o(a.items[i], "pack.eras.highTechnologies[" + std::to_string(i) + "]");
+                referenceData::TechnologyRecord r{};
+                r.field = o.i32("field", 0, 5);
+                r.level = o.i32("level", 11, 14);
+                r.name = p.keep(o.str("name", 80));
+                r.cost = o.i64("cost", 1, INT64_MAX / 4);
+                r.description = p.keep(o.str("description"));
+                o.done();
+                r.id = static_cast<int>(77 + i);
+                if (static_cast<std::size_t>(r.field * 4 + (r.level - 11)) != i) bad(o.at("level"), "records run field by field, level 11 to 14");
+                if (i % 4 == 0 && r.cost <= p.technologies[static_cast<std::size_t>(r.field * 11 + 10)].cost)
+                    bad(o.at("cost"), "level 11 must cost more than level 10");
+                if (i % 4 != 0 && r.cost <= er.highTech.back().cost) bad(o.at("cost"), "costs must rise with the level");
+                er.highTech.push_back(r);
+            }
+        }
+        if (er.techCap > 10 && er.highTech.size() != 24) bad(e.at("techCap"), "a cap above 10 needs highTechnologies");
+        e.done();
+    }
     root.done();
     return pack;
 }
@@ -727,13 +802,13 @@ inline void mergeOverlay(json::Value& doc, const Overlay& ov) {
     for (const auto& m : ov.doc.members) {
         const std::string& key = m.first;
         if (key == "format" || key == "kind" || key == "id" || key == "name" || key == "revision" || key == "requires") continue;
-        if (key == "balance") {
-            if (m.second.kind != json::Value::Kind::Object) bad(where + ".balance", "expected an object");
-            json::Value* target = member(doc, "balance");
+        if (key == "balance" || key == "eras") {   // "eras" (schema 22) merges the same way: each listed key replaces the pack's.
+            if (m.second.kind != json::Value::Kind::Object) bad(where + "." + key, "expected an object");
+            json::Value* target = member(doc, key);
             if (!target) {
                 json::Value fresh;
                 fresh.kind = json::Value::Kind::Object;
-                doc.members.emplace_back("balance", std::move(fresh));
+                doc.members.emplace_back(key, std::move(fresh));
                 target = &doc.members.back().second;
             }
             for (const auto& b : m.second.members) {
@@ -881,6 +956,7 @@ inline const PackInfo& installStack(const std::vector<std::string_view>& overlay
     return detail::activateStack(std::move(pack)).info;
 }
 inline const Balance& balance() { return detail::pack().balance; }
+inline const Eras& eras() { return detail::pack().eras; }
 inline std::uint64_t baseChecksum() { return detail::baseChecksumValue(); }
 
 // Event text for GalacticEventKind index 0..6.

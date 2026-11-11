@@ -90,3 +90,6 @@ set_tests_properties(BotfEmpireRulesTests PROPERTIES TIMEOUT 900)
 # Empire slots (docs/design/EMPIRE-SLOTS.md, schema 17): lineups of two to eight majors, Dominion and Borg as majors, migration.
 botf_suite(BotfEmpireSlotsTests EmpireSlotsTests.cpp)
 set_tests_properties(BotfEmpireSlotsTests PROPERTIES TIMEOUT 900)
+# Campaign eras (docs/design/ERAS.md, schema 22): era gate, timeline year, research levels 11-14, ERAS section, per-era soaks.
+botf_suite(BotfEraTests EraTests.cpp)
+set_tests_properties(BotfEraTests PROPERTIES TIMEOUT 1800)

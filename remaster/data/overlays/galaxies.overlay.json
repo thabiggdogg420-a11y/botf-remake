@@ -1,1 +1,349 @@
-{"format":1,"kind":"overlay","id":"galaxies","name":"Galaxies overlay (GALM timeline, Borg and Dominion Alliance content arrives with lanes MOD-3 to MOD-5)","revision":1,"requires":["botf-base"]}
+{
+ "format": 1,
+ "kind": "overlay",
+ "id": "galaxies",
+ "name": "Galaxies: GALM timeline (2240 to 2380, tech 1/4/7/10/14), Dominion Alliance and Borg era lines",
+ "revision": 2,
+ "requires": [
+  "botf-base"
+ ],
+ "eras": {
+  "turnsPerYear": 4,
+  "years": [
+   2240,
+   2280,
+   2320,
+   2350,
+   2380
+  ],
+  "startTech": [
+   1,
+   4,
+   7,
+   10,
+   14
+  ],
+  "techCap": 14,
+  "tagYears": [
+   2150,
+   2245,
+   2270,
+   2340,
+   2368,
+   2379,
+   2380,
+   2400
+  ],
+  "classes": [
+   {
+    "id": 1000,
+    "from": 2150,
+    "until": 2255
+   },
+   {
+    "id": 1001,
+    "from": 2150,
+    "until": 2265
+   },
+   {
+    "id": 1002,
+    "from": 2150,
+    "until": 2300
+   },
+   {
+    "id": 1003,
+    "from": 2245,
+    "until": 2310
+   },
+   {
+    "id": 1004,
+    "from": 2270,
+    "until": 2340
+   },
+   {
+    "id": 1005,
+    "from": 2270,
+    "until": 2350
+   },
+   {
+    "id": 1007,
+    "from": 2285,
+    "until": 0
+   },
+   {
+    "id": 1100,
+    "from": 2150,
+    "until": 2290
+   },
+   {
+    "id": 1101,
+    "from": 2150,
+    "until": 2250
+   },
+   {
+    "id": 1102,
+    "from": 2150,
+    "until": 2250
+   },
+   {
+    "id": 1103,
+    "from": 2245,
+    "until": 2320
+   },
+   {
+    "id": 1200,
+    "from": 2150,
+    "until": 2250
+   },
+   {
+    "id": 1201,
+    "from": 2150,
+    "until": 2290
+   },
+   {
+    "id": 1202,
+    "from": 2245,
+    "until": 2350
+   },
+   {
+    "id": 1400,
+    "from": 2150,
+    "until": 2360
+   },
+   {
+    "id": 1500,
+    "from": 2240,
+    "until": 0
+   },
+   {
+    "id": 1501,
+    "from": 2290,
+    "until": 0
+   },
+   {
+    "id": 1502,
+    "from": 2340,
+    "until": 0
+   },
+   {
+    "id": 1503,
+    "from": 2240,
+    "until": 0
+   },
+   {
+    "id": 1600,
+    "from": 2280,
+    "until": 0
+   },
+   {
+    "id": 1601,
+    "from": 2240,
+    "until": 0
+   },
+   {
+    "id": 1602,
+    "from": 2340,
+    "until": 0
+   },
+   {
+    "id": 1604,
+    "from": 2240,
+    "until": 0
+   }
+  ],
+  "highTechnologies": [
+   {
+    "field": 0,
+    "level": 11,
+    "name": "Genomic Synthesis",
+    "cost": 109000,
+    "description": "Designing living tissue from first principles. Colonies feed more people from less land and medicine outruns most plagues."
+   },
+   {
+    "field": 0,
+    "level": 12,
+    "name": "Symbiotic Ecology",
+    "cost": 140300,
+    "description": "Whole ecosystems built to cooperate with the people living inside them. Hostile worlds become gentle slowly."
+   },
+   {
+    "field": 0,
+    "level": 13,
+    "name": "Biosphere Engineering",
+    "cost": 175600,
+    "description": "Entire planetary biospheres planned, seeded and tuned from orbit. A dead rock can be a garden within a generation."
+   },
+   {
+    "field": 0,
+    "level": 14,
+    "name": "Transcendent Biology",
+    "cost": 214900,
+    "description": "Life redesigned past its natural limits. Few limits on food and growth remain."
+   },
+   {
+    "field": 1,
+    "level": 11,
+    "name": "Bio-Neural Circuitry",
+    "cost": 124400,
+    "description": "Ship and colony computers that grow, heal and learn like living tissue. Research and intelligence work both speed up."
+   },
+   {
+    "field": 1,
+    "level": 12,
+    "name": "Isomorphic Cognition",
+    "cost": 159800,
+    "description": "Reasoning that holds contradictory models at once and picks the better. Analysts reach conclusions in hours, not months."
+   },
+   {
+    "field": 1,
+    "level": 13,
+    "name": "Holographic Cores",
+    "cost": 199600,
+    "description": "Whole laboratories simulated in light, then built once they work. Dead ends cost almost nothing to explore."
+   },
+   {
+    "field": 1,
+    "level": 14,
+    "name": "Distributed Sentience",
+    "cost": 243800,
+    "description": "Machine minds that share one thought across a fleet. Little of the original information gap is left to close."
+   },
+   {
+    "field": 2,
+    "level": 11,
+    "name": "Molecular Lattices",
+    "cost": 155700,
+    "description": "Hull and structure materials ordered atom by atom. Ships carry more armour for the same mass."
+   },
+   {
+    "field": 2,
+    "level": 12,
+    "name": "Self-Repairing Hulls",
+    "cost": 200200,
+    "description": "Structures that mend their own damage under way. Repair crews work less and fleets stay in the field longer."
+   },
+   {
+    "field": 2,
+    "level": 13,
+    "name": "Nanostructure Fabrication",
+    "cost": 250300,
+    "description": "Nano-scale assembly builds components in place. Shipyards turn out hulls that earlier ones could not hold together."
+   },
+   {
+    "field": 2,
+    "level": 14,
+    "name": "Programmable Matter",
+    "cost": 306000,
+    "description": "Matter shaped on command to any form a design calls for. Construction is limited by imagination, not materials."
+   },
+   {
+    "field": 3,
+    "level": 11,
+    "name": "Zero-Point Taps",
+    "cost": 93200,
+    "description": "Power drawn directly from the structure of space. Colonies run hot on almost nothing."
+   },
+   {
+    "field": 3,
+    "level": 12,
+    "name": "Quantum Reactors",
+    "cost": 119700,
+    "description": "Compact reactors with enormous output. The power grid stops being the limit on a colony."
+   },
+   {
+    "field": 3,
+    "level": 13,
+    "name": "Subspace Capacitance",
+    "cost": 149500,
+    "description": "Energy stored and moved through subspace itself. Power can be shared across a whole empire."
+   },
+   {
+    "field": 3,
+    "level": 14,
+    "name": "Singularity Cores",
+    "cost": 182600,
+    "description": "Controlled singularities as fuel. The last great leap in energy that engineers can name."
+   },
+   {
+    "field": 4,
+    "level": 11,
+    "name": "Slipstream Theory",
+    "cost": 140200,
+    "description": "A new theory of travel through folded subspace. Ships are far faster than warp, though the lanes are narrow."
+   },
+   {
+    "field": 4,
+    "level": 12,
+    "name": "Transwarp Conduits",
+    "cost": 180400,
+    "description": "Permanent conduits make a network of fast lanes. Supply lines stretch much farther than before."
+   },
+   {
+    "field": 4,
+    "level": 13,
+    "name": "Quantum Slipstream",
+    "cost": 225700,
+    "description": "Individual ships carve their own lanes at will. Distance stops mattering for those who master it."
+   },
+   {
+    "field": 4,
+    "level": 14,
+    "name": "Spatial Folding",
+    "cost": 276100,
+    "description": "Space itself folded so two places touch. Ships arrive almost the moment they leave."
+   },
+   {
+    "field": 5,
+    "level": 11,
+    "name": "Resonant Beams",
+    "cost": 171500,
+    "description": "Beams tuned to resonate with a target's own structure. Armour stops mattering as much as it did."
+   },
+   {
+    "field": 5,
+    "level": 12,
+    "name": "Multi-Spectral Arrays",
+    "cost": 220800,
+    "description": "Weapons that fire across the whole spectrum at once. No shield frequency holds for long against them."
+   },
+   {
+    "field": 5,
+    "level": 13,
+    "name": "Variable-Yield Warheads",
+    "cost": 276400,
+    "description": "Warheads that choose their yield after launch. A single volley is right for any target."
+   },
+   {
+    "field": 5,
+    "level": 14,
+    "name": "Temporal Lock Targeting",
+    "cost": 338300,
+    "description": "Weapons that fire at where a target will be and not where it is. Few ships escape a lock once it is made."
+   }
+  ]
+ },
+ "roster": {
+  "patch": [
+   {
+    "id": 1105,
+    "buildable": true
+   },
+   {
+    "id": 1106,
+    "buildable": true
+   },
+   {
+    "id": 1206,
+    "buildable": true
+   },
+   {
+    "id": 1207,
+    "buildable": true
+   },
+   {
+    "id": 1304,
+    "buildable": true
+   }
+  ]
+ }
+}

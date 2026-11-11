@@ -9,6 +9,7 @@ export type Severity = 'info' | 'good' | 'warn' | 'alert';
 export interface PresetInfo {
   id: string; name: string; blurb: string; rulesBase: 'classic' | 'remastered';
   overlays: string[]; flags: Record<string, boolean>; lineup: string[]; lineupPlayable: boolean; lineupNote: string; needs: string[];
+  eras?: { techCap: number; years: number[]; startTech: number[] };
   options: {
     empires?: number; era?: number; size?: 'small' | 'medium' | 'large' | 'huge'; shape?: string; minorDensity?: string; difficulty?: string;
     events?: boolean; aiAggression?: boolean;
@@ -19,7 +20,7 @@ export interface Meta {
   saveVersion: number;
   presets?: PresetInfo[];
   empires: { id: number; name: string; home: string; race: number }[];
-  eras: { id: number; name: string; techLevel: number; prototypeTechLevel: number }[];
+  eras: { id: number; name: string; year?: number; techLevel: number; prototypeTechLevel: number }[];
   researchFields: string[];
   maxTechLevel: number;
   maneuvers: { key: string; name: string }[];
@@ -252,7 +253,7 @@ export interface ResearchField {
   current: string; levels: ResearchLevel[];
 }
 export interface ResearchView {
-  fields: ResearchField[]; output: number; reserve: number;
+  techCap?: number; fields: ResearchField[]; output: number; reserve: number;
   blockers: { product: string; name: string; blocker: string }[];
 }
 

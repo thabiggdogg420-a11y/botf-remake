@@ -49,6 +49,10 @@ static func focus_alloc(field: int) -> Array:
 		a.append(50 if k == field else 10)
 	return a
 
+## The highest research level of this campaign: 10, or up to 14 under the eras rule (schema 22).
+func cap() -> int:
+	return int(research.get("techCap", 10))
+
 ## Reloads research, forecast and the allocation in force.
 func fetch() -> void:
 	research = query_dict("research")
