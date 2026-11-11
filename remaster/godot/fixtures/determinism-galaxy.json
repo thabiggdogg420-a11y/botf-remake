@@ -1,0 +1,80 @@
+{
+ "method": "fingerprint",
+ "args": {
+  "runs": 4
+ },
+ "result": [
+  {
+   "campaign": {
+    "faction": 1,
+    "empires": 5,
+    "seed": 424242,
+    "era": 1,
+    "ruleset": "reference",
+    "width": 22,
+    "height": 16,
+    "systems": 50,
+    "shape": "spiral",
+    "minorDensity": "some",
+    "difficulty": "normal"
+   },
+   "turns": 10,
+   "result": "5800776485791001202",
+   "preview": 50
+  },
+  {
+   "campaign": {
+    "faction": 1,
+    "empires": 5,
+    "seed": 424242,
+    "era": 1,
+    "ruleset": "reference",
+    "width": 22,
+    "height": 16,
+    "systems": 50,
+    "shape": "ring",
+    "minorDensity": "many",
+    "difficulty": "hard"
+   },
+   "turns": 10,
+   "result": "13774155817991530110",
+   "preview": 50
+  },
+  {
+   "campaign": {
+    "faction": 1,
+    "empires": 5,
+    "seed": 424242,
+    "era": 1,
+    "ruleset": "reference",
+    "width": 22,
+    "height": 16,
+    "systems": 50,
+    "shape": "irregular",
+    "minorDensity": "few",
+    "difficulty": "impossible"
+   },
+   "turns": 10,
+   "result": "5453595671913985167",
+   "preview": 50
+  },
+  {
+   "campaign": {
+    "faction": 1,
+    "empires": 5,
+    "seed": 424242,
+    "era": 1,
+    "ruleset": "reference",
+    "width": 22,
+    "height": 16,
+    "systems": 50,
+    "shape": "elliptical",
+    "minorDensity": "none",
+    "difficulty": "simple"
+   },
+   "turns": 10,
+   "result": "10354791149487203805",
+   "preview": 50
+  }
+ ]
+}

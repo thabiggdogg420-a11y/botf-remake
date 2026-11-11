@@ -89,16 +89,12 @@ func refresh() -> void:
 
 var _era_read := false
 
-## A row of ghost toggles under a caption; marks the option when the core does not read it yet.
-func _choice_row(cap: String, items: Array, current: String, on_pick: Callable, core_key: String = "", min_w: int = 0) -> Control:
+## A row of ghost toggles under a caption. `core_key` is kept for callers; every option on this screen is now read by the
+## core (shape, minor races and difficulty joined with the schema-15 generator), so none carries a "generator pending" mark.
+func _choice_row(cap: String, items: Array, current: String, on_pick: Callable, _core_key: String = "", min_w: int = 0) -> Control:
 	var box := Lcars.vbox(5)
 	var ch := Lcars.hbox(8)
 	ch.add_child(Lcars.caption(cap))
-	if core_key != "" and not NewCampaignVM.core_reads(core_key):
-		var bd := Lcars.badge("generator pending", "warn")
-		bd.tooltip_text = "The rules core does not read this option yet (WS02 generator work). It is saved with the campaign options and drawn in the preview."
-		bd.mouse_filter = Control.MOUSE_FILTER_PASS
-		ch.add_child(bd)
 	box.add_child(ch)
 	var row := HFlowContainer.new()
 	row.add_theme_constant_override("h_separation", 6)
@@ -121,7 +117,7 @@ func _galaxy_panel() -> Control:
 	gb.add_theme_constant_override("separation", 14)
 	gb.add_child(_choice_row("Shape", NewCampaignVM.SHAPES.map(func(s): return [s["id"], s["label"], s["blurb"]]), vm.shape, func(id): vm.shape = id; refresh(), "shape"))
 	gb.add_child(_choice_row("Size", SIZES.map(func(s): return [s["id"], s["label"], "%dx%d sectors, %d star systems. %s" % [s["width"], s["height"], s["systems"], s["blurb"]]]), size_id, func(id): size_id = id; refresh(), "systems"))
-	gb.add_child(_choice_row("Minor races", NewCampaignVM.DENSITIES.map(func(d): return [d["id"], d["label"], "About %d%% of systems hold a minor race (at most 29)." % int(float(d["share"]) * 100)]), vm.minor_density, func(id): vm.minor_density = id; refresh(), "minorDensity"))
+	gb.add_child(_choice_row("Minor races", NewCampaignVM.DENSITIES.map(func(d): return [d["id"], d["label"], "%s minor races on this size (at most 29)." % _minors_for(d["id"])]), vm.minor_density, func(id): vm.minor_density = id; refresh(), "minorDensity"))
 	var pw_items := []
 	for n in [2, 3, 4, 5]:
 		pw_items.append([str(n), str(n), "%d major powers compete." % n])
@@ -177,9 +173,21 @@ func _preview_panel() -> Control:
 	b.add_child(leg)
 	return f
 
+## Minor races a density would give on the chosen size (for the button tooltips).
+func _minors_for(density: String) -> int:
+	var keep := vm.minor_density
+	vm.minor_density = density
+	var n := vm.minors_count()
+	vm.minor_density = keep
+	return n
+
 func _update_preview() -> void:
 	if _preview:
-		_preview.configure(vm.shape, seed_value, int(vm.size_def()["systems"]), vm.powers(), vm.minors_count(), faction)
+		var pv := vm.preview_galaxy()
+		if pv.is_empty():
+			_preview.configure(vm.shape, seed_value, int(vm.size_def()["systems"]), vm.powers(), vm.minors_count(), faction)
+		else:
+			_preview.configure_core(pv, faction)
 
 func _rules_column() -> Control:
 	var colr := Lcars.vbox(14)

@@ -6,14 +6,17 @@
    "turn": 1,
    "width": 16,
    "height": 12,
+   "galaxyShape": "scatter",
+   "minorDensity": "standard",
+   "difficulty": "normal",
    "seed": 2024,
    "player": 1,
    "playerName": "Federation",
    "ruleset": "reference",
    "era": 1,
    "eraName": "Early",
-   "contentVersion": "remaster-14",
-   "saveVersion": 14,
+   "contentVersion": "remaster-15",
+   "saveVersion": 15,
    "outcome": "ongoing",
    "winner": 0,
    "advancedRules": true,
@@ -137,6 +140,7 @@
     "x": 5,
     "y": 5,
     "name": "Sol",
+    "explored": true,
     "visible": true,
     "owner": 1,
     "capacity": 130,
@@ -205,10 +209,116 @@
     ]
    },
    {
+    "id": 2,
+    "x": 9,
+    "y": 5,
+    "name": "FGC-002",
+    "explored": false
+   },
+   {
+    "id": 3,
+    "x": 5,
+    "y": 8,
+    "name": "FGC-003",
+    "explored": false
+   },
+   {
+    "id": 4,
+    "x": 0,
+    "y": 4,
+    "name": "FGC-004",
+    "explored": false
+   },
+   {
+    "id": 5,
+    "x": 14,
+    "y": 4,
+    "name": "FGC-005",
+    "explored": false
+   },
+   {
+    "id": 6,
+    "x": 0,
+    "y": 2,
+    "name": "FGC-006",
+    "explored": false
+   },
+   {
+    "id": 7,
+    "x": 15,
+    "y": 2,
+    "name": "FGC-007",
+    "explored": false
+   },
+   {
+    "id": 8,
+    "x": 8,
+    "y": 8,
+    "name": "FGC-008",
+    "explored": false
+   },
+   {
+    "id": 9,
+    "x": 0,
+    "y": 11,
+    "name": "FGC-009",
+    "explored": false
+   },
+   {
+    "id": 10,
+    "x": 9,
+    "y": 10,
+    "name": "FGC-010",
+    "explored": false
+   },
+   {
+    "id": 11,
+    "x": 3,
+    "y": 3,
+    "name": "FGC-011",
+    "explored": false
+   },
+   {
+    "id": 12,
+    "x": 11,
+    "y": 3,
+    "name": "FGC-012",
+    "explored": false
+   },
+   {
+    "id": 13,
+    "x": 15,
+    "y": 9,
+    "name": "FGC-013",
+    "explored": false
+   },
+   {
+    "id": 14,
+    "x": 5,
+    "y": 11,
+    "name": "FGC-014",
+    "explored": false
+   },
+   {
+    "id": 15,
+    "x": 7,
+    "y": 7,
+    "name": "FGC-015",
+    "explored": false
+   },
+   {
+    "id": 16,
+    "x": 12,
+    "y": 8,
+    "name": "FGC-016",
+    "explored": false
+   },
+   {
     "id": 17,
     "x": 5,
     "y": 4,
     "name": "Bellatrix",
+    "explored": true,
     "visible": true,
     "owner": 0,
     "capacity": 80,
@@ -275,6 +385,83 @@
       "capacity": 30
      }
     ]
+   },
+   {
+    "id": 18,
+    "x": 15,
+    "y": 1,
+    "name": "FGC-018",
+    "explored": false
+   },
+   {
+    "id": 19,
+    "x": 7,
+    "y": 10,
+    "name": "FGC-019",
+    "explored": false
+   },
+   {
+    "id": 20,
+    "x": 12,
+    "y": 6,
+    "name": "FGC-020",
+    "explored": false
+   },
+   {
+    "id": 21,
+    "x": 8,
+    "y": 7,
+    "name": "FGC-021",
+    "explored": false
+   },
+   {
+    "id": 22,
+    "x": 6,
+    "y": 7,
+    "name": "FGC-022",
+    "explored": false
+   },
+   {
+    "id": 23,
+    "x": 10,
+    "y": 11,
+    "name": "FGC-023",
+    "explored": false
+   },
+   {
+    "id": 24,
+    "x": 2,
+    "y": 7,
+    "name": "FGC-024",
+    "explored": false
+   },
+   {
+    "id": 25,
+    "x": 7,
+    "y": 8,
+    "name": "FGC-025",
+    "explored": false
+   },
+   {
+    "id": 26,
+    "x": 8,
+    "y": 6,
+    "name": "FGC-026",
+    "explored": false
+   },
+   {
+    "id": 27,
+    "x": 1,
+    "y": 9,
+    "name": "FGC-027",
+    "explored": false
+   },
+   {
+    "id": 28,
+    "x": 5,
+    "y": 10,
+    "name": "FGC-028",
+    "explored": false
    }
   ],
   "colonies": [

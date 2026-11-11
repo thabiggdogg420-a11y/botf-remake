@@ -2,7 +2,8 @@ class_name GalaxyPreview
 extends Control
 ## The New campaign galaxy preview (docs/UI-DESIGN-SYSTEM.md §5, WS02 §2): a star field in the chosen shape
 ## (spiral, ring, irregular, elliptical) and density, seeded, with homeworld markers in empire colours and minor-race
-## markers. It shows the option set; the core's generator places the real systems.
+## markers. With the core present the stars are the generated galaxy itself (`galaxyPreview`: the exact systems a campaign
+## with these options starts with); without it (the fixture backend) the preview is an approximation of the option set.
 
 var shape := "spiral"
 var seed_value := 1
@@ -13,7 +14,34 @@ var player := 1
 var _rot := 0.0
 var _stars: Array = []   ## [Vector2 unit-disc position, brightness, kind (0 star, 1 home, 2 minor), empire]
 
+var real_systems := 0   ## stars drawn from the core's galaxy (0 when the preview is the approximation)
+
+## The core's galaxy: stars [[x, y, kind]] on a width x height grid (kind 0 star, 1-5 a capital, 6 a minor race).
+func configure_core(preview: Dictionary, player_: int) -> void:
+	var w := float(preview["width"])
+	var h := float(preview["height"])
+	shape = str(preview.get("shape", shape))
+	player = player_
+	_stars.clear()
+	var dust := RandomNumberGenerator.new()
+	dust.seed = 77
+	for n in 300:   # a faint backdrop, so the disc reads as a galaxy; the real stars sit on top
+		_stars.append([Vector2(dust.randf_range(-1, 1), dust.randf_range(-1, 1)), dust.randf_range(0.05, 0.2), -1, 0])
+	real_systems = 0
+	for st in preview["stars"]:
+		var p := Vector2((float(st[0]) + 0.5) / w * 2.0 - 1.0, (float(st[1]) + 0.5) / h * 2.0 - 1.0)
+		var kind := int(st[2])
+		real_systems += 1
+		if kind == 0:
+			_stars.append([p, 0.8, 0, 0])
+		elif kind == 6:
+			_stars.append([p, 0.9, 2, 0])
+		else:
+			_stars.append([p, 1.0, 1, kind])
+	queue_redraw()
+
 func configure(shape_: String, seed_: int, systems_: int, empires_: int, minors_: int, player_: int) -> void:
+	real_systems = 0
 	shape = shape_
 	seed_value = seed_
 	systems = systems_
