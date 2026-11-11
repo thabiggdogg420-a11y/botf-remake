@@ -46,29 +46,52 @@ const SHAPES := [
 	{"id": "elliptical", "label": "Elliptical", "blurb": "An even oval; open borders, early contact."},
 ]
 const DENSITIES := [
-	{"id": "none", "label": "None", "share": 0.0}, {"id": "few", "label": "Few", "share": 0.12},
-	{"id": "some", "label": "Some", "share": 0.2}, {"id": "many", "label": "Many", "share": 0.3},
+	{"id": "none", "label": "None"}, {"id": "few", "label": "Few"}, {"id": "some", "label": "Some"}, {"id": "many", "label": "Many"},
 ]
+## Minor races per density for Small / Medium / Large / Huge: a mirror of the core's `minorRaceTarget` (Rules.cpp), used when
+## no core can be asked (the fixture backend). The vanilla counts are Small 0/4/4/6, Medium 0/7/12/17, Large 0/10/16/24, maximum 29;
+## Small "some" is 5 so the steps stay distinct, and Huge is ours.
+const MINOR_TABLE := {"none": [0, 0, 0, 0], "few": [4, 7, 10, 14], "some": [5, 12, 16, 22], "many": [6, 17, 24, 29]}
+## What each level changes (the core's `difficultyProfile`, Rules.cpp): rival income, industry and research; rival starting
+## credits; how strong rivals judge themselves when they weigh a war; how ready their spies are. The player's economy never moves.
 const DIFFICULTIES := [
-	{"id": "simple", "label": "Simple", "blurb": "Rivals expand slowly and forgive."},
-	{"id": "easy", "label": "Easy", "blurb": "Rivals are cautious."},
+	{"id": "simple", "label": "Simple", "blurb": "Rivals produce 75% of normal, start poorer, hesitate to go to war and spy slowly."},
+	{"id": "easy", "label": "Easy", "blurb": "Rivals produce 90% of normal and are cautious."},
 	{"id": "normal", "label": "Normal", "blurb": "The reference balance."},
-	{"id": "hard", "label": "Hard", "blurb": "Rivals build their best ships and press their advantage."},
-	{"id": "impossible", "label": "Impossible", "blurb": "Rivals start ahead and never let up."},
+	{"id": "hard", "label": "Hard", "blurb": "Rivals produce 115% of normal, judge themselves stronger and spy harder."},
+	{"id": "impossible", "label": "Impossible", "blurb": "Rivals produce 135% of normal, start 40% richer and never let up. They cheat; you do not."},
 ]
-## Option keys the core reads today; the others show a "generator pending" mark.
-const CORE_READS := ["faction", "empires", "seed", "era", "ruleset", "width", "height", "systems", "events", "aiAggression", "preset"]
+## Option keys the core reads. Shape, minor-race density and difficulty joined them with the schema-15 generator.
+const CORE_READS := ["faction", "empires", "seed", "era", "ruleset", "width", "height", "systems", "events", "aiAggression", "preset",
+	"shape", "minorDensity", "difficulty"]
 
 static func core_reads(key: String) -> bool:
 	return key in CORE_READS
 
-## Minor races the density gives on this size (capped at 29, the original's limit; WS02 §1).
+## Minor races the density gives on this size (capped at 29, the original's limit). With a core, its own count for this
+## exact galaxy; else the mirrored table.
 func minors_count() -> int:
-	var share := 0.2
-	for d in DENSITIES:
-		if d["id"] == minor_density:
-			share = float(d["share"])
-	return mini(29, int(round(int(size_def()["systems"]) * share)))
+	var pv := preview_galaxy()
+	if not pv.is_empty():
+		return pv["stars"].filter(func(s): return int(s[2]) == 6).size()
+	var n := int(size_def()["systems"])
+	var row := 0 if n <= 36 else (1 if n <= 64 else (2 if n <= 100 else 3))
+	return mini(mini(29, maxi(0, n / 2 - 3)), int(MINOR_TABLE[minor_density][row]))
+
+## The generated galaxy for the current options, from the core ({width, height, shape, stars [[x, y, kind]]}), or {} when
+## the backend is not the core. Cached on the options, so redrawing costs nothing.
+var _pv_key := ""
+var _pv: Dictionary = {}
+func preview_galaxy() -> Dictionary:
+	if session == null or session.core == null or not session.core.is_native():
+		return {}
+	var o := AppSession.campaign_options(options())
+	var key := JSON.stringify(o)
+	if key != _pv_key:
+		_pv_key = key
+		var r := session.core.invoke("galaxyPreview", o)
+		_pv = r["result"] if r.get("ok", false) and r["result"] is Dictionary else {}
+	return _pv
 
 func roll_seed() -> void:
 	seed_value = randi_range(100000, 999999)

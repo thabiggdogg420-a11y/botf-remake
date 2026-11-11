@@ -905,6 +905,7 @@ void writeView(Writer& w) {
     // --- meta
     w.key("meta").beginObject();
     w.field("turn", s.turn); w.field("width", s.width); w.field("height", s.height);
+    w.field("galaxyShape", botf::galaxyShapeName(s.galaxy.shape)); w.field("minorDensity", botf::minorDensityName(s.galaxy.density)); w.field("difficulty", botf::difficultyName(s.galaxy.difficulty));
     w.field("seed", s.seed);
     w.field("player", me); w.field("playerName", empireLabel(me));
     w.field("ruleset", s.ruleset == botf::Ruleset::Reference ? "reference" : "prototype");
@@ -2604,7 +2605,9 @@ void startGame(botf::GameState&& s, const std::string& scenario) {
     touch();
 }
 
-void newCampaign(const Value& a) {
+// New-campaign options as the core reads them (the setup screen's whole option set). Shape, density and difficulty are the
+// schema-15 galaxy setup (docs/design/GALAXY-GENERATOR.md); a call that names none of them gets the pre-15 galaxy.
+botf::CampaignSetup campaignSetup(const Value& a) {
     const int empires = a.getInt("empires", 5);
     const int faction = a.getInt("faction", 1);
     const std::uint64_t seed = a["seed"].asUInt(1999);
@@ -2619,6 +2622,30 @@ void newCampaign(const Value& a) {
     setup.playerEmpire = faction; setup.era = static_cast<botf::StartingEra>(era); setup.reference = ruleset != "prototype";
     setup.preset = botf::RulesetPreset::Remastered;
     if (a.has("preset") && !botf::parseRulesetPreset(a.getString("preset"), setup.preset)) fail("Unknown ruleset preset");
+    if (a.has("shape") && !botf::parseGalaxyShape(a.getString("shape"), setup.galaxy.shape)) fail("Unknown galaxy shape");
+    if (a.has("minorDensity") && !botf::parseMinorDensity(a.getString("minorDensity"), setup.galaxy.density)) fail("Unknown minor-race density");
+    if (a.has("difficulty") && !botf::parseDifficulty(a.getString("difficulty"), setup.galaxy.difficulty)) fail("Unknown difficulty");
+    return setup;
+}
+
+// The galaxy a campaign with these options would start with, without starting one: every star with what sits on it
+// (0 star, 1-5 a major power's capital, 6 a minor race), so the setup preview is the generated galaxy itself.
+void galaxyPreview(Writer& w, const Value& a) {
+    const auto s = botf::newCampaign(campaignSetup(a));
+    w.beginObject().field("width", s.width).field("height", s.height).field("shape", botf::galaxyShapeName(s.galaxy.shape))
+        .field("minorDensity", botf::minorDensityName(s.galaxy.density)).field("difficulty", botf::difficultyName(s.galaxy.difficulty));
+    w.key("stars").beginArray();
+    for (const auto& sys : s.systems) {
+        int kind = 0;
+        if (const auto* c = botf::colonyAt(s, sys.id)) kind = c->ownerId;
+        else if (botf::minorAt(s, sys.id)) kind = 6;
+        w.beginArray().value(sys.x).value(sys.y).value(kind).endArray();
+    }
+    w.endArray().endObject();
+}
+
+void newCampaign(const Value& a) {
+    const auto setup = campaignSetup(a);
     auto s = botf::newCampaign(setup);
     // "wego": false keeps tactical rules 3 in a Remastered game (the WASM-recorded determinism fixture predates rules 4).
     if (a.has("wego") && !a.getBool("wego")) s.rules.wegoCombat = false;
@@ -3028,6 +3055,7 @@ std::string dispatch(const std::string& method, const Value& a) {
     else if (method == "contentInfo") writeContentInfo(w, botf::content::active());
     else if (method == "encyclopedia") writeEncyclopedia(w);
     else if (method == "newCampaign") { newCampaign(a); writeView(w); }
+    else if (method == "galaxyPreview") galaxyPreview(w, a);
     else if (method == "newBattleDrill") { newBattleDrill(a.getBool("station"), a.getInt("ships", 3), a.getBool("foeStation")); writeView(w); }
     else if (method == "newFrontierDrill") { newFrontierDrill(); writeView(w); }
     else if (method == "station") writeStationDetail(w, a.getInt("stationId"));

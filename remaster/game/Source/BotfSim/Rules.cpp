@@ -3,6 +3,7 @@
 // Simulation.cpp calls. See docs/GAMEPLAY-REMASTER.md.
 #include "EmpireRules.h"
 #include "GameplayInternal.h"
+#include "MinorRaces.h"
 
 #include <algorithm>
 #include <iomanip>
@@ -412,12 +413,97 @@ void applyRulesetPreset(GameState& state, RulesetPreset preset) {
     state = std::move(next);
 }
 
+namespace {
+std::string lowered(const std::string& text) {
+    std::string lower;
+    for (char c : text) lower.push_back(static_cast<char>(c >= 'A' && c <= 'Z' ? c - 'A' + 'a' : c));
+    return lower;
+}
+} // namespace
+
+const DifficultyProfile& difficultyProfile(Difficulty d) {
+    //                                       income industry research startCr warConf intel
+    static constexpr DifficultyProfile Table[] = {
+        /* Simple     */ {75, 75, 75, 75, 70, 60},
+        /* Easy       */ {90, 90, 90, 90, 85, 30},
+        /* Normal     */ {100, 100, 100, 100, 100, 0},
+        /* Hard       */ {115, 115, 115, 115, 115, -30},
+        /* Impossible */ {135, 135, 135, 140, 130, -60},
+    };
+    const int i = static_cast<int>(d);
+    return Table[i >= 0 && i <= 4 ? i : 2];
+}
+const char* galaxyShapeName(GalaxyShape s) {
+    switch (s) {
+    case GalaxyShape::Irregular: return "irregular";
+    case GalaxyShape::Spiral: return "spiral";
+    case GalaxyShape::Ring: return "ring";
+    case GalaxyShape::Elliptical: return "elliptical";
+    case GalaxyShape::Legacy: break;
+    }
+    return "scatter";
+}
+const char* minorDensityName(MinorDensity d) {
+    switch (d) {
+    case MinorDensity::None: return "none";
+    case MinorDensity::Few: return "few";
+    case MinorDensity::Some: return "some";
+    case MinorDensity::Many: return "many";
+    case MinorDensity::Legacy: break;
+    }
+    return "standard";
+}
+const char* difficultyName(Difficulty d) {
+    switch (d) {
+    case Difficulty::Simple: return "simple";
+    case Difficulty::Easy: return "easy";
+    case Difficulty::Normal: return "normal";
+    case Difficulty::Hard: return "hard";
+    case Difficulty::Impossible: return "impossible";
+    }
+    return "normal";
+}
+bool parseGalaxyShape(const std::string& text, GalaxyShape& out) {
+    const auto v = lowered(text);
+    for (auto s : {GalaxyShape::Irregular, GalaxyShape::Spiral, GalaxyShape::Ring, GalaxyShape::Elliptical})
+        if (v == galaxyShapeName(s)) { out = s; return true; }
+    return false;
+}
+bool parseMinorDensity(const std::string& text, MinorDensity& out) {
+    const auto v = lowered(text);
+    for (auto d : {MinorDensity::None, MinorDensity::Few, MinorDensity::Some, MinorDensity::Many})
+        if (v == minorDensityName(d)) { out = d; return true; }
+    return false;
+}
+bool parseDifficulty(const std::string& text, Difficulty& out) {
+    const auto v = lowered(text);
+    for (auto d : {Difficulty::Simple, Difficulty::Easy, Difficulty::Normal, Difficulty::Hard, Difficulty::Impossible})
+        if (v == difficultyName(d)) { out = d; return true; }
+    return false;
+}
+
+int minorRaceTarget(MinorDensity density, int systemCount) {
+    if (density == MinorDensity::Legacy) return std::clamp(systemCount / 5, 1, std::max(1, minors::minorRaceCount()));
+    // Vanilla per-size counts (None / Few / Some / Many), docs/research/BOTF-FEATURE-REFERENCE.md 1.1: Small 0/4/4/6,
+    // Medium 0/7/12/17, Large 0/10/16/24, hard maximum 29. The source gives Small Few and Some the same 4; Some is 5 here
+    // so the steps stay distinct. Huge is ours (the original had no such size). Sizes are picked by system count.
+    static constexpr int Table[4][4] = {{0, 4, 5, 6}, {0, 7, 12, 17}, {0, 10, 16, 24}, {0, 14, 22, 29}};
+    const int row = systemCount <= 36 ? 0 : systemCount <= 64 ? 1 : systemCount <= 100 ? 2 : 3;
+    const int count = Table[row][static_cast<int>(density) - 1];
+    return std::min({count, 29, std::max(0, systemCount / 2 - 3), minors::minorRaceCount()});
+}
+
 GameState newCampaign(const CampaignSetup& setup) {
     auto state = setup.reference
-        ? generateReferenceCampaign(setup.seed, setup.empires, setup.width, setup.height, setup.systems, setup.playerEmpire, setup.era)
-        : generateCampaign(setup.seed, setup.empires, setup.width, setup.height, setup.systems, setup.playerEmpire, setup.era);
-    placeMinorRaceRoster(state); // Lane G: minor-race roster (MinorRaces.h)
+        ? generateReferenceCampaign(setup.seed, setup.empires, setup.width, setup.height, setup.systems, setup.playerEmpire, setup.era, setup.galaxy.shape)
+        : generateCampaign(setup.seed, setup.empires, setup.width, setup.height, setup.systems, setup.playerEmpire, setup.era, setup.galaxy.shape);
+    state.galaxy = setup.galaxy;
+    placeMinorRaceRoster(state); // Lane G: minor-race roster (MinorRaces.h); the density chooses how many.
     applyRulesetPreset(state, setup.preset);
+    // Difficulty: rival treasuries start scaled; their per-turn output scales in advance() (Simulation.cpp).
+    const auto& dp = difficultyProfile(state.galaxy.difficulty);
+    for (auto& rival : state.rivals) rival.credits = rival.credits * dp.aiStartCreditsPct / 100;
+    validate(state);
     return state;
 }
 } // namespace botf

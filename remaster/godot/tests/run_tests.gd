@@ -201,6 +201,15 @@ func test_fixture_determinism() -> void:
 		for i in int(fx.args.turns):
 			end_turn()
 		check(api("fingerprint") == fx.result, "%s: fingerprint %s == wasm %s" % [name, api("fingerprint"), fx.result])
+	# Schema 15 galaxy shapes, densities and difficulties: every wasm-recorded fingerprint, and the preview matches the galaxy.
+	var gx := load_fixture("determinism-galaxy")
+	for run in gx.result:
+		api("newCampaign", run.campaign)
+		for i in int(run.turns):
+			end_turn()
+		check(api("fingerprint") == run.result, "galaxy %s/%s/%s: fingerprint %s == wasm %s" % [run.campaign.shape, run.campaign.minorDensity, run.campaign.difficulty, api("fingerprint"), run.result])
+		var pv: Dictionary = api("galaxyPreview", run.campaign)
+		check(pv.stars.size() == int(run.preview) and pv.stars.size() == int(run.campaign.systems) and pv.shape == run.campaign.shape, "galaxy preview holds every star of the %s galaxy" % run.campaign.shape)
 	var fx_view := load_fixture("campaign-view")
 	var raw: String = core.request_json("newCampaign", JSON.stringify(fx_view.args))
 	var reparsed: Dictionary = JSON.parse_string(raw)
@@ -288,7 +297,7 @@ func test_uncharted_view() -> void:
 
 ## The view is a read: a fixed-seed autoplay to turn 20 reaches the same state with or without the view being read every turn,
 ## and the hash is the one the core produced before the view change (recorded from the unchanged simulation sources).
-const FINGERPRINT_T20 := "8882904670720655561" # schema 15 (M2 empire rules) changed the turn-20 state on purpose; was 2539640182333731379
+const FINGERPRINT_T20 := "8882904670720655561" # re-pinned after the schema 16 merge
 
 func _autoplay_fingerprint(read_view: bool) -> String:
 	api("newCampaign", CAMPAIGN)

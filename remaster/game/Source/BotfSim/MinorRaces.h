@@ -146,12 +146,12 @@ inline void adopt(Minor& m, const MinorRaceRecord& r, StartingEra era) {
 // exist. Deterministic in (seed, map); never consumes the campaign RNG. `renameSystem` is called for
 // each newly claimed system after its name changes, so the caller can regenerate its planets.
 inline void placeRosterMinors(GameState& s, std::uint64_t seed, StartingEra era,
-                              const std::function<void(System&)>& renameSystem = {}) {
+                              const std::function<void(System&)>& renameSystem = {}, int targetOverride = -1) {
     std::set<int> usedRaces;
     for (auto& m : s.minors) {
         if (const auto* r = raceByName(m.name); r && !usedRaces.count(r->id)) { adopt(m, *r, era); usedRaces.insert(r->id); }
     }
-    const int target = rosterTarget(static_cast<int>(s.systems.size()));
+    const int target = targetOverride >= 0 ? targetOverride : rosterTarget(static_cast<int>(s.systems.size()));
     if (static_cast<int>(s.minors.size()) >= target) return;
 
     std::vector<const MinorRaceRecord*> races;
@@ -168,19 +168,21 @@ inline void placeRosterMinors(GameState& s, std::uint64_t seed, StartingEra era,
         const auto hb = detail::mix(seed ^ 0x686f6d65776f726cULL ^ static_cast<std::uint64_t>(b->id));
         return ha != hb ? ha < hb : a->id < b->id;
     });
-    auto eligible = [&](const System& sys, int homeSpacing) {
+    auto eligible = [&](const System& sys, int homeSpacing, int minorSpacing = 2) {
         if (colonyAt(s, sys.id) || minorAt(s, sys.id)) return false;
         for (const auto& c : s.colonies)
             if (const auto* home = detail::systemById(s, c.systemId); home && detail::chebyshev(*home, sys) < homeSpacing) return false;
         for (const auto& m : s.minors)
-            if (const auto* other = detail::systemById(s, m.systemId); other && detail::chebyshev(*other, sys) < 2) return false;
+            if (const auto* other = detail::systemById(s, m.systemId); other && detail::chebyshev(*other, sys) < minorSpacing) return false;
         return true;
     };
     std::size_t nextRace = 0;
-    for (int homeSpacing : {3, 2}) {
+    // A chosen density (targetOverride) may need a crowded galaxy to give way: a last pass lets minors sit next to each other.
+    for (int pass = 0; pass < (targetOverride >= 0 ? 3 : 2); ++pass) {
+        const int homeSpacing = pass == 0 ? 3 : pass == 1 ? 2 : 1, minorSpacing = pass == 2 ? 1 : 2;
         for (auto* sys : candidates) {
             if (static_cast<int>(s.minors.size()) >= target || nextRace >= races.size()) break;
-            if (!eligible(*sys, homeSpacing)) continue;
+            if (!eligible(*sys, homeSpacing, minorSpacing)) continue;
             const auto& race = *races[nextRace++];
             sys->name = race.homeworld;
             if (renameSystem) renameSystem(*sys);

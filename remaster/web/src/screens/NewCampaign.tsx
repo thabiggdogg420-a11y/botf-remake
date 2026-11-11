@@ -23,6 +23,12 @@ const ERA_BLURBS: Record<number, string> = {
 
 function randomSeed(): number { return Math.floor(Math.random() * 900000) + 100000; }
 
+// Galaxy setup, read by the core since schema 15 (docs/design/GALAXY-GENERATOR.md).
+const SHAPES = ['spiral', 'ring', 'irregular', 'elliptical'] as const;
+const DENSITIES = ['none', 'few', 'some', 'many'] as const;
+const DIFFICULTIES = ['simple', 'easy', 'normal', 'hard', 'impossible'] as const;
+const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+
 export function NewCampaignScreen() {
   const m = meta.value!;
   const [faction, setFaction] = useState(1);
@@ -34,6 +40,9 @@ export function NewCampaignScreen() {
   const [events, setEvents] = useState(true);
   const [aggression, setAggression] = useState(true);
   const [preset, setPreset] = useState<'remastered' | 'classic'>('remastered');
+  const [shape, setShape] = useState<(typeof SHAPES)[number]>('spiral');
+  const [minorDensity, setMinorDensity] = useState<(typeof DENSITIES)[number]>('some');
+  const [difficulty, setDifficulty] = useState<(typeof DIFFICULTIES)[number]>('normal');
   const chosen = FACTIONS.find((f) => f.id === faction)!;
   const p = palette(faction);
   const sz = SIZES.find((s) => s.id === size)!;
@@ -41,7 +50,7 @@ export function NewCampaignScreen() {
   const eraInfo = m.eras.find((e) => e.id === era);
   const start = () => {
     startCampaign({
-      faction, empires: effectiveEmpires, seed, era, ruleset, width: sz.width, height: sz.height, systems: sz.systems, events, aiAggression: aggression, preset,
+      faction, empires: effectiveEmpires, seed, era, ruleset, width: sz.width, height: sz.height, systems: sz.systems, events, aiAggression: aggression, preset, shape, minorDensity, difficulty,
     });
     if (view.value) maybeStartTutorial();
   };
@@ -90,6 +99,18 @@ export function NewCampaignScreen() {
               {SIZES.map((s) => (
                 <Pill key={s.id} tone="ghost" active={size === s.id} onClick={() => setSize(s.id)} hint={`${s.width}×${s.height} sectors, ${s.systems} star systems. ${s.blurb}`}>{s.label}</Pill>
               ))}
+            </div>
+            <div class="option-label">Shape</div>
+            <div class="option-row" role="radiogroup" aria-label="Galaxy shape">
+              {SHAPES.map((s) => <Pill key={s} tone="ghost" active={shape === s} onClick={() => setShape(s)} testid={`shape-${s}`}>{cap(s)}</Pill>)}
+            </div>
+            <div class="option-label">Minor races</div>
+            <div class="option-row" role="radiogroup" aria-label="Minor-race density">
+              {DENSITIES.map((d) => <Pill key={d} tone="ghost" active={minorDensity === d} onClick={() => setMinorDensity(d)} testid={`density-${d}`}>{cap(d)}</Pill>)}
+            </div>
+            <div class="option-label">Difficulty</div>
+            <div class="option-row" role="radiogroup" aria-label="Difficulty">
+              {DIFFICULTIES.map((d) => <Pill key={d} tone="ghost" active={difficulty === d} onClick={() => setDifficulty(d)} testid={`difficulty-${d}`}>{cap(d)}</Pill>)}
             </div>
             <div class="option-label">Powers in play</div>
             <div class="option-row" role="radiogroup" aria-label="Empire count">

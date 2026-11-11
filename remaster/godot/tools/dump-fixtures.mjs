@@ -55,3 +55,16 @@ const campaign3 = { ...campaign, wego: false };
 call('newCampaign', campaign3);
 for (let i = 0; i < 10; i++) endTurn();
 dump('determinism-rules3', 'fingerprint', { campaign: campaign3, turns: 10 }, call('fingerprint'));
+// Galaxy generator (schema 15, docs/design/GALAXY-GENERATOR.md): one wasm-recorded fingerprint per shape, with a density and
+// a difficulty each, after a scripted 10-turn run. The native core must reproduce every one.
+{
+  const galaxy = [];
+  const combos = [['spiral', 'some', 'normal'], ['ring', 'many', 'hard'], ['irregular', 'few', 'impossible'], ['elliptical', 'none', 'simple']];
+  for (const [shape, minorDensity, difficulty] of combos) {
+    const c = { faction: 1, empires: 5, seed: 424242, era: 1, ruleset: 'reference', width: 22, height: 16, systems: 50, shape, minorDensity, difficulty };
+    call('newCampaign', c);
+    for (let i = 0; i < 10; i++) endTurn();
+    galaxy.push({ campaign: c, turns: 10, result: call('fingerprint'), preview: call('galaxyPreview', c).stars.length });
+  }
+  dump('determinism-galaxy', 'fingerprint', { runs: galaxy.length }, galaxy);
+}

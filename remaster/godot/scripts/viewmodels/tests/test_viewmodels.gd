@@ -339,7 +339,11 @@ func _m1_ui_models(s: AppSession) -> void:
 	check(nc.minors_count() > 0 and nc.minors_count() <= 29, "minor count follows the density, capped at 29")
 	nc.minor_density = "none"
 	check(nc.minors_count() == 0, "no minor races at density none")
-	check(NewCampaignVM.core_reads("seed") and not NewCampaignVM.core_reads("shape"), "options the core does not read yet are marked")
+	check(NewCampaignVM.core_reads("seed") and NewCampaignVM.core_reads("shape") and NewCampaignVM.core_reads("minorDensity") and NewCampaignVM.core_reads("difficulty"), "the core reads shape, minor density and difficulty now: no option is marked pending")
+	nc.size_id = "medium"
+	for d in [["none", 0], ["few", 7], ["some", 12], ["many", 17]]:
+		nc.minor_density = d[0]
+		check(nc.minors_count() == d[1], "medium %s gives the vanilla count %d" % [d[0], d[1]])
 
 # ---------------------------------------------------------------------------------------------
 # App.start_campaign honours the empire option (M0 bug: it was ignored and the player got the Federation)

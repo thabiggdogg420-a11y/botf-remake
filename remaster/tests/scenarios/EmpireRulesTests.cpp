@@ -555,14 +555,14 @@ int main() {
         check(serialize(deserialize(text)) == text, "a damaged guard round-trips");
     }, passed);
 
-    run("empire rules: save round trip, schema 14 migration and canonical form", [] {
+    run("empire rules: save round trip, schema 14 and 15 migration and canonical form", [] {
         auto s = fresh(9);
         for (int t = 0; t < 5; ++t) advance(s);
         const auto text = serialize(s);
-        check(text.starts_with("BOTF_SIM 15 remaster-15\n") && contains(text, "\nEMPIRE_RULES 1\n"), "section written");
+        check(text.starts_with("BOTF_SIM 16 remaster-16\n") && contains(text, "\nEMPIRE_RULES 1\n"), "section written");
         const auto loaded = deserialize(text);
         check(serialize(loaded) == text && fingerprint(loaded) == fingerprint(s), "round trip");
-        // A schema-14 save (header 14, no section) of a rules-off campaign loads and re-saves as schema 15.
+        // A schema-14 save (header 14, no section) of a rules-off campaign loads and re-saves as schema 16.
         auto legacy = generateReferenceCampaign(5, 3);
         auto old = serialize(legacy);
         old.replace(0, old.find('\n') + 1, "BOTF_SIM 14 remaster-14\n");
@@ -572,6 +572,31 @@ int main() {
         auto smuggled = text;
         smuggled.replace(0, smuggled.find('\n') + 1, "BOTF_SIM 14 remaster-14\n");
         rejects([&] { deserialize(withChecksum(smuggled)); }, "section in schema 14 accepted");
+        // Schema 15 (the GALAXY_SETUP release): its text, with and without a galaxy setup, loads and re-saves as schema 16.
+        auto setup = generateReferenceCampaign(6, 3);
+        setup.galaxy.shape = GalaxyShape::Spiral;
+        setup.galaxy.difficulty = Difficulty::Hard;
+        const auto setupText = serialize(setup);
+        check(contains(setupText, "GALAXY_SETUP"), "the setup is written");
+        auto fifteen = setupText;
+        fifteen.replace(0, fifteen.find('\n') + 1, "BOTF_SIM 15 remaster-15\n");
+        const auto fromFifteen = deserialize(withChecksum(fifteen));
+        check(serialize(fromFifteen) == setupText && fromFifteen.galaxy == setup.galaxy && !fromFifteen.rules.empireRules, "schema 15 migrated with its galaxy setup");
+        auto plain15 = serialize(legacy);
+        plain15.replace(0, plain15.find('\n') + 1, "BOTF_SIM 15 remaster-15\n");
+        check(serialize(deserialize(withChecksum(plain15))) == serialize(legacy), "schema 15 without a setup migrated");
+        // Schema 15 saves may not carry the EMPIRE_RULES section, and may keep playing after the migration.
+        auto smuggled15 = text;
+        smuggled15.replace(0, smuggled15.find('\n') + 1, "BOTF_SIM 15 remaster-15\n");
+        rejects([&] { deserialize(withChecksum(smuggled15)); }, "section in schema 15 accepted");
+        auto playing = fromFifteen;
+        advance(playing);
+        check(playing.turn == fromFifteen.turn + 1 && playing.galaxy == setup.galaxy, "a migrated schema-15 campaign plays on");
+        // Both sections together (GALAXY_SETUP then EMPIRE_RULES) round-trip.
+        auto both = fresh(11);
+        both.galaxy.shape = GalaxyShape::Ring;
+        const auto bothText = serialize(both);
+        check(contains(bothText, "GALAXY_SETUP") && contains(bothText, "EMPIRE_RULES 1") && serialize(deserialize(bothText)) == bothText, "both new sections round-trip");
     }, passed);
 
     if (failed) {

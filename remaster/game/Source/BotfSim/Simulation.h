@@ -17,11 +17,12 @@ namespace botf {
 // presets, stations, galaxy features, curated events, alternative victories and
 // build templates, see docs/GAMEPLAY-REMASTER.md); schema 14 adds per-ship orders and
 // flags to recorded battle rounds (COMBAT_ORDERS) and the RefuseCallToArms order;
-// schema 15 adds the empire rules (EmpireRules.h, docs/design/EMPIRE-RULES.md): dilithium
-// refineries, emergency programs, invasion aftermath, minor conquest and minor guard ships
-// (optional EMPIRE_RULES section). Schemas 4-14 still load and continue.
-inline constexpr const char* ContentVersion = "remaster-15";
-inline constexpr int SaveVersion = 15;
+// schema 15 adds the optional GALAXY_SETUP section (galaxy shape, minor-race density, difficulty;
+// docs/design/GALAXY-GENERATOR.md); schema 16 adds the empire rules (EmpireRules.h, docs/design/EMPIRE-RULES.md):
+// dilithium refineries, emergency programs, invasion aftermath, minor conquest and minor guard ships
+// (optional EMPIRE_RULES section). Schemas 4-15 still load and continue.
+inline constexpr const char* ContentVersion = "remaster-16";
+inline constexpr int SaveVersion = 16;
 // Largest campaign save deserialize() accepts (and the CLI reads). A 300-turn
 // five-empire Remastered soak peaks far below this; see GAMEPLAY-REMASTER.md.
 inline constexpr std::size_t MaxSaveBytes = 8u * 1024u * 1024u;
@@ -455,6 +456,17 @@ struct ChronicleEntry {
     int eventIndex = -1;      // Index of the matching line in TurnReport::events.
 };
 
+// Galaxy setup (docs/design/GALAXY-GENERATOR.md). The first value of each enum is the pre-schema-15 behaviour
+// (uniform scatter; minors = systems / 5; Normal difficulty), so a setup that names none of them plays as before.
+enum class GalaxyShape : int { Legacy = 0, Irregular = 1, Spiral = 2, Ring = 3, Elliptical = 4 };
+enum class MinorDensity : int { Legacy = 0, None = 1, Few = 2, Some = 3, Many = 4 };
+enum class Difficulty : int { Simple = 0, Easy = 1, Normal = 2, Hard = 3, Impossible = 4 };
+struct GalaxySetup {
+    GalaxyShape shape = GalaxyShape::Legacy;
+    MinorDensity density = MinorDensity::Legacy;
+    Difficulty difficulty = Difficulty::Normal;
+    constexpr bool operator==(const GalaxySetup&) const = default;
+};
 struct GameState : EmpireState {
     std::uint64_t seed = 0, rngState = 0;
     std::uint64_t lastAcceptedCommand = 0;
@@ -510,7 +522,8 @@ struct GameState : EmpireState {
     std::vector<BuildTemplate> buildTemplates;
     int nextBuildTemplateId = 1;
     std::vector<Megaproject> megaprojects;
-    // Schema 15 (all empty for older saves and when rules.empireRules is off):
+    GalaxySetup galaxy; // Schema 15: how this galaxy was generated and how hard the rivals play.
+    // Schema 16 (all empty for older saves and when rules.empireRules is off):
     std::vector<AftermathChoice> aftermaths;
     std::vector<MinorGuard> minorGuards;
 };
@@ -581,12 +594,30 @@ int eraBaseTechLevel(StartingEra era, Ruleset ruleset = Ruleset::Reference);
 std::vector<StartingEra> availableStartingEras();
 StartingEra campaignStartingEra(const GameState& state);
 
-GameState generate(std::uint64_t seed, int width = 12, int height = 8, int count = 12);
+// What a difficulty changes (percent; 100 = unchanged). The player's own economy is never touched.
+struct DifficultyProfile {
+    int aiIncomePct, aiIndustryPct, aiResearchPct; // Rival colonies' credit income, industry and research output.
+    int aiStartCreditsPct;                         // Rival treasury at turn 0.
+    int aiWarConfidencePct;                        // Scales the military power a rival sees in itself when it weighs a war.
+    int intelThreshold;                            // Added to the attack-readiness threshold of rival spy ops against the
+                                                   // player (more is safer); subtracted from the player's against rivals.
+};
+const DifficultyProfile& difficultyProfile(Difficulty d);
+const char* galaxyShapeName(GalaxyShape s);
+const char* minorDensityName(MinorDensity d);
+const char* difficultyName(Difficulty d);
+bool parseGalaxyShape(const std::string& text, GalaxyShape& out);   // "irregular"/"spiral"/"ring"/"elliptical" (case-insensitive)
+bool parseMinorDensity(const std::string& text, MinorDensity& out); // "none"/"few"/"some"/"many"
+bool parseDifficulty(const std::string& text, Difficulty& out);     // "simple".."impossible"
+// Minor races a density gives for a galaxy of this many systems (vanilla per-size tables, capped at 29).
+// Legacy density gives the pre-15 count (systems / 5).
+int minorRaceTarget(MinorDensity density, int systemCount);
+GameState generate(std::uint64_t seed, int width = 12, int height = 8, int count = 12, GalaxyShape shape = GalaxyShape::Legacy);
 // Campaigns generated before the star-name table named their systems System-<id>; this gives each such system (and its
 // planets) the name generate() now gives that id, unless another system already has it. Returns the systems renamed.
 int adoptStarNames(GameState& s);
-GameState generateCampaign(std::uint64_t seed, int empires = 2, int width = 16, int height = 12, int systems = 28, int playerEmpire = 1, StartingEra era = StartingEra::Early);
-GameState generateReferenceCampaign(std::uint64_t seed, int empires = 2, int width = 16, int height = 12, int systems = 28, int playerEmpire = 1, StartingEra era = StartingEra::Early);
+GameState generateCampaign(std::uint64_t seed, int empires = 2, int width = 16, int height = 12, int systems = 28, int playerEmpire = 1, StartingEra era = StartingEra::Early, GalaxyShape shape = GalaxyShape::Legacy);
+GameState generateReferenceCampaign(std::uint64_t seed, int empires = 2, int width = 16, int height = 12, int systems = 28, int playerEmpire = 1, StartingEra era = StartingEra::Early, GalaxyShape shape = GalaxyShape::Legacy);
 GameState generateCampaignWithEra(std::uint64_t seed, StartingEra era, int empires = 2, int width = 16, int height = 12, int systems = 28, int playerEmpire = 1);
 GameState generateReferenceCampaignWithEra(std::uint64_t seed, StartingEra era, int empires = 2, int width = 16, int height = 12, int systems = 28, int playerEmpire = 1);
 const EmpireState& empire(const GameState& state, int id);
@@ -756,7 +787,11 @@ struct CampaignSetup {
     StartingEra era = StartingEra::Early;
     bool reference = true;
     RulesetPreset preset = RulesetPreset::Remastered;
+    GalaxySetup galaxy;
 };
+// Star positions only (no names, planets or empires): the layout generate() would give this shape, so a setup
+// screen can preview the exact galaxy. Index 0 is Sol. Deterministic on every platform (integer arithmetic).
+std::vector<std::pair<int, int>> galaxyLayout(std::uint64_t seed, int width, int height, int systems, GalaxyShape shape);
 GameState newCampaign(const CampaignSetup& setup);
 // Lane G: places a deterministic, galaxy-size-scaled subset of the minor-race roster (MinorRaces.h)
 // on a turn-0 campaign and adopts roster-named starter minors. newCampaign() calls it for every preset;
