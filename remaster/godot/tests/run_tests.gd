@@ -288,7 +288,7 @@ func test_uncharted_view() -> void:
 
 ## The view is a read: a fixed-seed autoplay to turn 20 reaches the same state with or without the view being read every turn,
 ## and the hash is the one the core produced before the view change (recorded from the unchanged simulation sources).
-const FINGERPRINT_T20 := "2539640182333731379"
+const FINGERPRINT_T20 := "8882904670720655561" # schema 15 (M2 empire rules) changed the turn-20 state on purpose; was 2539640182333731379
 
 func _autoplay_fingerprint(read_view: bool) -> String:
 	api("newCampaign", CAMPAIGN)
