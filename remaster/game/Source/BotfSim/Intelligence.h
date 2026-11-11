@@ -591,6 +591,9 @@ struct TurnContext {
     int attackerComputerTechLevel = 0;
     int64_t totalEmpireBaseIntelOutput = 0;
     int buildingBonusPercent = 0; // e.g. 50 for +50%
+    // MOD-3 (structures): extra percent on the internal-security area (Vorta directorate) and on the sabotage area (Shapeshifter Network) only.
+    int securityBonusPercent = 0;
+    int sabotageBonusPercent = 0;
     std::vector<RivalContext> knownRivals;
 };
 
@@ -869,7 +872,7 @@ inline std::vector<OperationRecord> advanceTurn(
 
     // 1. Internal Security Output & Stockpile (VERIFIED S16 overflow-safe weighted average)
     int secPct = attackerState.budget.internalSecurity.percentage;
-    int64_t secOutput = calculateAreaOutput(totalOutput, secPct, bonusPct, rules.bonusModel);
+    int64_t secOutput = calculateAreaOutput(totalOutput, secPct, bonusPct + context.securityBonusPercent, rules.bonusModel);
     attackerState.recordSecurityOutput(secOutput, rules.maxHistoryTurns);
 
     if (attackerState.securityTurnCounter <= 0) {
@@ -936,7 +939,7 @@ inline std::vector<OperationRecord> advanceTurn(
 
         int sabPct = rivalAlloc.sabotage.percentage;
         if (sabPct > 0) {
-            int64_t sabOut = calculateAreaOutput(totalOutput, sabPct, bonusPct, rules.bonusModel);
+            int64_t sabOut = calculateAreaOutput(totalOutput, sabPct, bonusPct + context.sabotageBonusPercent, rules.bonusModel);
             rState.sabotageStockpile = std::min(MaxIntelBalance, rState.sabotageStockpile + sabOut);
             rState.recordSabotageOutput(sabOut, rules.maxHistoryTurns);
         } else {

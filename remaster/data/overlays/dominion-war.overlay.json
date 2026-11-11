@@ -1,1 +1,25 @@
-{"format":1,"kind":"overlay","id":"dominion-war","name":"Dominion War overlay (UDM III content arrives with lanes MOD-3 and MOD-8)","revision":1,"requires":["botf-base"]}
+{"format":1,"kind":"overlay","id":"dominion-war","name":"Dominion War content: Bajor for the Edo, new minors (UDM III, MOD-3)","revision":2,"requires":["botf-base","dominion"],
+"races":{"append":[
+{"id":38,"name":"Son'a","icon":"sona.tga"},
+{"id":39,"name":"Maquis","icon":"maquis.tga"},
+{"id":40,"name":"Miradorn","icon":"miradorn.tga"},
+{"id":41,"name":"Karemma","icon":"karemma.tga"},
+{"id":42,"name":"Kazon","icon":"kazon.tga"},
+{"id":43,"name":"Orion Syndicate","icon":"orion.tga"}
+]},
+"minors":{"patch":[{"id":6,"bonusValue":8,"techLevel":5,"population":80,"signatureShipId":106,"featured":true,"affinity":[0,2,0,0,-2,0,-2,-1,0],"description":"A deeply spiritual people who endured a brutal occupation with their faith intact, and who guard the Celestial Temple. They despise Cardassian rule and fear the Dominion, and in this war their devotion lifts morale across the empire they join."},
+{"id":14,"available":false}],"append":[
+{"id":31,"name":"Breen","homeworld":"Breen","referenceRaceId":37,"temperament":"Xenophobic","techLevel":7,"population":60,"bonus":"Industry","bonusValue":10,"signatureShipId":1503,"affinity":[0,-1,-1,0,-1,0,1,-2,0],"description":"A cold, masked confederacy that keeps its own counsel and its energy-dampening weapons. Their foundries add industry to any empire that earns their trust. Appears only while the Breen are not a major power.","majorRaceId":37},
+{"id":32,"name":"Ferengi","homeworld":"Ferenginar","referenceRaceId":2,"temperament":"Mercantile","techLevel":6,"population":50,"bonus":"Credits","bonusValue":15,"signatureShipId":1400,"affinity":[0,0,-1,0,0,0,1,-1,0],"description":"The Alliance as an independent trading power, once the Dominion has taken its place at the table. Their profit margins feed the credit income of a patron. Appears only while the Ferengi are not a major power.","majorRaceId":2},
+{"id":33,"name":"Son'a","homeworld":"Son'a Prime","referenceRaceId":38,"temperament":"Xenophobic","techLevel":7,"population":40,"bonus":"Research","bonusValue":10,"signatureShipId":1718,"affinity":[0,-1,0,0,0,0,0,0,0],"description":"Exiles from the Ba'ku who treat their own bodies as raw material. Brilliant, brittle and dangerous, they sharpen the research of any empire that tolerates them."},
+{"id":34,"name":"Maquis","homeworld":"Dorvan","referenceRaceId":39,"temperament":"Warlike","techLevel":4,"population":35,"bonus":"GroundDefense","bonusValue":20,"signatureShipId":1719,"affinity":[0,-1,0,0,-2,0,-1,0,0],"description":"Settlers who refused to leave their colonies when a treaty handed them to Cardassia. Armed, bitter and expert in guerrilla war, they stiffen every garrison of their patron."},
+{"id":35,"name":"Miradorn","homeworld":"Miradorn","referenceRaceId":40,"temperament":"Warlike","techLevel":5,"population":45,"bonus":"Industry","bonusValue":10,"signatureShipId":-1,"affinity":[0,0,1,0,0,0,0,0,0],"description":"Twinned raiders and hard bargainers who fight, trade and sulk in pairs. Their workshops add industry to an empire that can keep both halves happy."},
+{"id":36,"name":"Karemma","homeworld":"Karemma","referenceRaceId":41,"temperament":"Mercantile","techLevel":6,"population":55,"bonus":"Credits","bonusValue":15,"signatureShipId":-1,"affinity":[0,1,0,0,1,1,1,0,0],"description":"Patient, courteous traders whose Gamma Quadrant routes the Dominion has long used. A membership brings their cargo networks and a steady flow of credits."},
+{"id":37,"name":"Kazon","homeworld":"Ogla","referenceRaceId":42,"temperament":"Warlike","techLevel":3,"population":45,"bonus":"GroundDefense","bonusValue":10,"signatureShipId":1705,"affinity":[0,-1,0,0,0,0,0,0,0],"description":"Sect-ridden raiders who take what they cannot build. Their warriors swell the garrison of any empire strong enough to keep the sects in line."},
+{"id":38,"name":"Orion Syndicate","homeworld":"Orion","referenceRaceId":43,"temperament":"Mercantile","techLevel":5,"population":50,"bonus":"Credits","bonusValue":10,"signatureShipId":1702,"affinity":[0,-2,0,0,1,1,0,0,0],"description":"A web of pirates, smugglers and brokers who sell to everyone and answer to no one. The Syndicate's cut keeps a patron's treasury full if it looks the other way."}
+]},
+"roster":{"patch":[{"id":1718,"minorRaceId":33},
+{"id":1719,"minorRaceId":34},
+{"id":1705,"minorRaceId":37},
+{"id":1702,"minorRaceId":38}]}
+}

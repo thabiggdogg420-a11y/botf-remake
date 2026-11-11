@@ -23,9 +23,10 @@ namespace botf {
 // (optional EMPIRE_RULES section); schema 17 adds the new-game preset and its overlay packs (Presets.h,
 // docs/design/PACKS-AND-PRESETS.md; optional PACKS section); schema 18 generalises the empire slots (docs/design/EMPIRE-SLOTS.md):
 // two to eight majors with stable ids 1..8 (optional EMPIRE_SLOTS section, written only when an id above five is in play).
-// Schemas 4-17 still load and continue.
-inline constexpr const char* ContentVersion = "remaster-18";
-inline constexpr int SaveVersion = 18;
+// schema 19 adds the race structures (Structures.h, docs/design/DOMINION.md; optional STRUCTURES section, written only while a colony holds one).
+// Schemas 4-18 still load and continue.
+inline constexpr const char* ContentVersion = "remaster-19";
+inline constexpr int SaveVersion = 19;
 // Campaign empire ids are race slots: 1 Federation, 2 Klingon, 3 Romulan, 4 Cardassian, 5 Ferengi, 6 Dominion, 7 Borg,
 // 8 Breen. A campaign seats two to eight of them (any subset); per-empire arrays are indexed by id, so they hold nine entries.
 inline constexpr int MaxMajors = 8;
@@ -42,7 +43,8 @@ enum class GovernorPriority : int { Manual = 0, Balanced = 1, Growth = 2, Resear
 const char* governorPriorityName(GovernorPriority priority);
 // Queue products include ships; existing Building name retained for source compatibility.
 enum class Building : int { Farm, Factory, Laboratory, Shipyard, Scout, ColonyShip, PowerPlant, FusionPlant, ResearchInstitute, Destroyer, Transport, DefenseBattery,
-    DilithiumRefinery /* schema 15 */ };
+    DilithiumRefinery /* schema 15 */,
+    Structure /* schema 19: a race structure from the pack; Construction::referenceId = structures::RefBase + record id */ };
 enum class CommandType : int {
     AssignWorkers, EnqueueBuilding, MoveFleet, Colonize, ToggleShipyard,
     CancelFirstConstruction, PrioritizeLastConstruction, MoveConstruction,
@@ -147,6 +149,8 @@ struct Colony {
     // Schema 15 (EmpireRules.h): dilithium refinery (0 or 1), emergency program (EmergencyProgram, 0 = none)
     // and the turns it has left. Saved in the optional EMPIRE_RULES section.
     int refineries = 0;
+    // Schema 19 (Structures.h): built race structures, ascending buildings.json record ids. Saved in the optional STRUCTURES section.
+    std::vector<int> structures;
     int program = 0;
     int programTurns = 0;
     // Colony automation:

@@ -29,6 +29,12 @@ inline int catalogueRace(int empireId) { const auto* r = raceForEmpire(empireId)
 inline int shipDonor(int empireId) { const auto* r = raceForEmpire(empireId); return r ? r->shipDonor : -1; }
 inline const char* key(int empireId) { const auto* r = raceForEmpire(empireId); return r ? r->key : ""; }
 inline const char* name(int empireId) { const auto* r = raceForEmpire(empireId); return r ? r->empireName : ""; }
+// MOD-3 trait effects of the slot's race (the `major.traitEffects` data; all zero unless a pack sets them).
+struct TraitEffects { int morale = 0, creditsPct = 0, groundDefensePct = 0, securityPct = 0; };
+inline TraitEffects traitEffects(int empireId) {
+    const auto* r = raceForEmpire(empireId);
+    return r ? TraitEffects{r->traitMorale, r->traitCreditsPct, r->traitGroundPct, r->traitSecurityPct} : TraitEffects{};
+}
 inline const char* capital(int empireId) { const auto* r = raceForEmpire(empireId); return r ? r->capital : ""; }
 
 // Race keys in slot order ("federation", ... "breen").

@@ -573,6 +573,7 @@ GameState newCampaign(const CampaignSetup& setup) {
         applyRulesetPreset(state, setup.preset);
     }
     addStartingFleets(state);
+    structures::seedStart(state); // Schema 19: the pack's start structures in each eligible capital.
     // Difficulty: rival treasuries start scaled; their per-turn output scales in advance() (Simulation.cpp).
     const auto& dp = difficultyProfile(state.galaxy.difficulty);
     for (auto& rival : state.rivals) rival.credits = rival.credits * dp.aiStartCreditsPct / 100;
