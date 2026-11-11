@@ -381,6 +381,119 @@ int main() {
         rejects([&] { validate(bad); }, "aftermath for a world we do not hold accepted");
     }, passed);
 
+
+    // ---------------------------------------------------------------- (d) independent minors can be invaded
+    auto independentSystem = [](const GameState& s) {
+        for (const auto& m : s.minors) if (empire_rules::independentMinorAt(s, m.systemId)) return m.systemId;
+        throw std::runtime_error("no independent minor in this galaxy");
+    };
+    auto sendTroops = [&](GameState& s, int owner, int sid, int count, int hull) {
+        const System* sys = nullptr;
+        for (const auto& x : s.systems) if (x.id == sid) sys = &x;
+        std::vector<int> ids;
+        for (int i = 0; i < count; ++i) {
+            const int fid = addTransport(s, owner, sys->x, sys->y, hull);
+            for (auto& f : s.fleets) if (f.id == fid) f.invadeSystemId = sid;
+            ids.push_back(fid);
+        }
+        return ids;
+    };
+
+    run("independent minors: pooled transports conquer a minor, which then waits for the aftermath choice", [&] {
+        bool conquered = false;
+        for (std::uint64_t attempt = 0; attempt < 30 && !conquered; ++attempt) {
+            CampaignSetup setup; setup.seed = 77; setup.empires = 5; setup.playerEmpire = 1;
+            auto s = newCampaign(setup);
+            const int sid = independentSystem(s);
+            sendTroops(s, 1, sid, 4, 14);
+            s.rngState += attempt * 104729;
+            advance(s);
+            if (colonyAt(s, sid) && colonyAt(s, sid)->ownerId == 1) {
+                conquered = true;
+                check(minorAt(s, sid)->memberOf == 1, "the minor is now ours");
+                check(s.aftermaths.size() == 1 && s.aftermaths[0].systemId == sid, "an aftermath choice is waiting");
+                check(std::none_of(s.fleets.begin(), s.fleets.end(), [](const Fleet& f) { return f.invadeSystemId != 0 && f.hull > 0; }), "the transports are spent");
+                submit(s, Command{.id = nextId(s), .type = CommandType::ResolveAftermath, .systemId = sid, .eventOption = 0});
+                advance(s);
+                check(!colonyAt(s, sid) && minorAt(s, sid)->memberOf == 0, "liberating frees the minor again");
+            }
+        }
+        check(conquered, "a four-transport assault won within 30 seeds");
+    }, passed);
+
+    run("independent minors: a failed assault costs the invader the minor's regard", [&] {
+        bool lost = false;
+        for (std::uint64_t attempt = 0; attempt < 60 && !lost; ++attempt) {
+            CampaignSetup setup; setup.seed = 78; setup.empires = 5; setup.playerEmpire = 1;
+            auto s = newCampaign(setup);
+            const int sid = independentSystem(s);
+            const int before = minorAt(s, sid)->attitude[1];
+            sendTroops(s, 1, sid, 1, 1);
+            s.rngState += attempt * 7717;
+            advance(s);
+            if (!colonyAt(s, sid)) {
+                lost = true;
+                check(minorAt(s, sid)->attitude[1] < before || before == 0, "attitude fell after the failed assault");
+                check(s.aftermaths.empty() && minorAt(s, sid)->memberOf == 0, "the minor stays independent");
+            }
+        }
+        check(lost, "a single frail transport lost within 60 seeds");
+    }, passed);
+
+    run("independent minors: a friendship or treaty forbids invasion, and members are not independent", [&] {
+        CampaignSetup setup; setup.seed = 79; setup.empires = 5; setup.playerEmpire = 1;
+        auto s = newCampaign(setup);
+        const int sid = independentSystem(s);
+        check(empire_rules::minorInvasionBlocker(s, 1, sid).empty(), "an independent minor may be invaded");
+        const auto ids = sendTroops(s, 1, sid, 1, 14);
+        for (auto& f : s.fleets) if (f.id == ids[0]) f.invadeSystemId = 0;
+        auto friend_ = s;
+        for (auto& m : friend_.minors) if (m.systemId == sid) { m.contact[1] = true; m.attitude[1] = 80; m.friendshipTurn[1] = s.turn; }
+        check(empire_rules::minorInvasionBlocker(friend_, 1, sid).find("friendship") != std::string::npos, "a friendship blocks the invasion");
+        rejects([&] { auto t = friend_; submit(t, Command{.id = nextId(t), .type = CommandType::Invade, .systemId = sid, .fleetId = ids[0]}); preview(t); },
+            "invading a friend accepted", "friendship");
+        auto member = s;
+        for (auto& m : member.minors) if (m.systemId == sid) m.memberOf = 2;
+        check(empire_rules::independentMinorAt(member, sid) == nullptr, "a member world is not an independent minor");
+    }, passed);
+
+    run("independent minors: the AI gathers transports at a minor and orders them in", [&] {
+        CampaignSetup setup; setup.seed = 80; setup.empires = 5; setup.playerEmpire = 1;
+        auto s = newCampaign(setup);
+        const int sid = independentSystem(s);
+        const System* sys = nullptr;
+        for (const auto& x : s.systems) if (x.id == sid) sys = &x;
+        s.turn = 20;
+        markExplored(s, sys->y * s.width + sys->x);
+        for (auto& m : s.minors) if (m.systemId == sid) m.attitude[2] = 0;
+        for (int i = 0; i < 4; ++i) addTransport(s, 2, sys->x, sys->y, 14);
+        for (auto& f : s.fleets) if (f.ownerId == 2) { f.targetX = f.x; f.targetY = f.y; }
+        const bool guarded = std::any_of(s.minorGuards.begin(), s.minorGuards.end(), [&](const MinorGuard& g) { return g.systemId == sid; });
+        if (guarded) { // an escort must come along
+            Fleet e{}; e.id = s.nextFleetId++; e.ownerId = 2; e.x = sys->x; e.y = sys->y; e.targetX = e.x; e.targetY = e.y; e.shipClass = Building::Destroyer; e.hull = 1; e.hull = fleetMaxHull(e);
+            s.fleets.push_back(e);
+        }
+        const auto target = empire_rules::aiMinorTarget(s, 2);
+        check(target != nullptr && target->systemId == sid, "a Klingon AI picks the known independent minor");
+        empire_rules::planMinorConquest(s, 2, false);
+        int ordered = 0;
+        for (const auto& f : s.fleets) if (f.ownerId == 2 && f.invadeSystemId == sid) ++ordered;
+        check(ordered == 4, "all four transports are ordered to invade");
+        check(!empire_rules::aiMinorCampaign(s, 1, false) && !empire_rules::aiMinorCampaign(s, 5, false), "Federation and Ferengi never start a conquest");
+    }, passed);
+
+    run("independent minors: an assault turn is deterministic", [&] {
+        CampaignSetup setup; setup.seed = 81; setup.empires = 5; setup.playerEmpire = 1;
+        auto a = newCampaign(setup);
+        auto b = a;
+        const int sid = independentSystem(a);
+        sendTroops(a, 1, sid, 3, 14);
+        sendTroops(b, 1, sid, 3, 14);
+        advance(a); advance(b);
+        check(serialize(a) == serialize(b), "same state, same outcome");
+        check(deserialize(serialize(a)).colonies.size() == a.colonies.size(), "the result round-trips");
+    }, passed);
+
     run("empire rules: save round trip, schema 14 migration and canonical form", [] {
         auto s = fresh(9);
         for (int t = 0; t < 5; ++t) advance(s);
