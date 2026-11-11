@@ -203,7 +203,7 @@ func _prepare(s: String) -> void:
 				var ruin: Dictionary = app.view["assimilated"][0]
 				tgm.focus_cell(int(ruin["x"]), int(ruin["y"]), 3.0, false)
 			else:
-				tgm.focus_cell(int(tf0["x"]), int(tf0["y"]), 1.7, false)
+				tgm.focus_cell(int(tf0["x"]), int(tf0["y"]), 3.2, false)
 			await _wait(8)
 		"threats-battle":
 			# A player battle against a Borg cube (threat drill, battle mode), a few rounds in.

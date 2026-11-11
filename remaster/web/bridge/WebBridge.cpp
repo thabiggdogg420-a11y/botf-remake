@@ -2915,12 +2915,12 @@ void newThreatDrill(bool battle, int ships) {
         place(botf::ThreatKind::BorgCube, 0, 0);
         addDrillShips(s, s.playerEmpire, sol.x, sol.y, ships);
     } else {
-        place(botf::ThreatKind::BorgCube, 2, 1);
-        place(botf::ThreatKind::Species8472, -2, 1);
-        place(botf::ThreatKind::Husnock, 1, -2);
-        place(botf::ThreatKind::Calamarain, -1, -2);
-        place(botf::ThreatKind::Gomtuu, 3, -1);
-        place(botf::ThreatKind::EchoPapa, -3, -1);
+        place(botf::ThreatKind::BorgCube, 1, 1);
+        place(botf::ThreatKind::Species8472, -1, 1);
+        place(botf::ThreatKind::Husnock, 1, -1);
+        place(botf::ThreatKind::Calamarain, -1, -1);
+        place(botf::ThreatKind::Gomtuu, 1, 0);
+        place(botf::ThreatKind::EchoPapa, -1, 0);
         for (const auto& sys : s.systems) {   // The nearest unclaimed system to Sol is a Borg-held ruin.
             if (botf::colonyAt(s, sys.id) || botf::minorAt(s, sys.id) || (sys.x == sol.x && sys.y == sol.y)) continue;
             if (std::max(std::abs(sys.x - sol.x), std::abs(sys.y - sol.y)) <= 3) { s.assimilated.push_back({sys.id, 0, 0}); break; }
