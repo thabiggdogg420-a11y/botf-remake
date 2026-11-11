@@ -638,6 +638,10 @@ void combatRecordScenarios(int& passed) {
         botf::CampaignSetup setup;
         setup.seed = 8086; setup.empires = 5; setup.playerEmpire = 1;
         auto s = botf::newCampaign(setup);
+        // The schema-13 forgeries below need a campaign without schema-15 content: switch the empire rules off.
+        s.rules.empireRules = false;
+        s.minorGuards.clear();
+        for (auto& c : s.colonies) { c.energy -= 5 * c.refineries; c.refineries = 0; }
         bool withOrders = false;
         for (int t = 0; t < 300 && !withOrders && s.outcome == botf::CampaignOutcome::Ongoing; ++t) {
             botf::advance(s);
