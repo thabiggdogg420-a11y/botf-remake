@@ -2021,6 +2021,7 @@ void planAiWarDeclarations(GameState& s, int ownerId) {
         in.turnsSinceTransition = s.turn - lastTransition;
         in.activeWars = activeWars;
         in.aggressorPower = ctx.militaryPower(diplomacy::ParticipantId::major(ownerId));
+        if (ownerId != s.playerEmpire) in.aggressorPower = in.aggressorPower * difficultyProfile(s.galaxy.difficulty).aiWarConfidencePct / 100;
         in.targetPower = blocMilitaryPower(s, ctx, other, ownerId);
         in.trust = rel->trust;
         in.tradePact = rel->tradeTreaty;
@@ -2549,7 +2550,11 @@ void resolveModernIntelligence(GameState& next, TurnReport& report) {
             rctx.currentCredits = std::clamp<std::int64_t>(rivEmp.credits, 0, MaxBalance);
             rctx.currentResearchReserve = stealableResearch(rivEmp);
             rctx.computerTechLevel = rivEmp.technologies[static_cast<int>(ResearchField::Computers)].level;
-            rctx.difficultyModifier = 0;
+            // Schema 15: spy ops against the player are readier on Hard and Impossible and slower on Simple and Easy;
+            // the player's own ops against rivals move the other way.
+            const int intelShift = difficultyProfile(next.galaxy.difficulty).intelThreshold;
+            rctx.difficultyModifier = rivalId == next.playerEmpire && empId != next.playerEmpire ? intelShift
+                : empId == next.playerEmpire && rivalId != next.playerEmpire ? -intelShift : 0;
             tctx.knownRivals.push_back(rctx);
         }
 
@@ -3178,6 +3183,11 @@ std::string payload(const GameState& s) {
     if (s.rules.flightModel) out << "TACTICAL_FLIGHT 1\n";
     // Tactical rules 4 (WEGO): optional; saves without it keep rules 3.
     if (s.rules.wegoCombat) out << "TACTICAL_WEGO 1\n";
+    // Schema 15: how the galaxy was generated and how hard the rivals play. Written only when not the default, so a
+    // campaign made without it keeps its exact schema-14 text (after the header).
+    if (!(s.galaxy == GalaxySetup{}))
+        out << "GALAXY_SETUP " << static_cast<int>(s.galaxy.shape) << ' ' << static_cast<int>(s.galaxy.density) << ' '
+            << static_cast<int>(s.galaxy.difficulty) << '\n';
     // Schema 14: per-ship orders of recorded battle rounds. Written only when some
     // round carries orders, so campaigns without them keep the schema-13 layout.
     const bool anyOrders = std::any_of(s.latestBattles.begin(), s.latestBattles.end(), [](const CombatReport& b) {
@@ -3905,21 +3915,119 @@ int adoptStarNames(GameState& s) {
     return renamed;
 }
 
-GameState generate(std::uint64_t seed, int width, int height, int total) {
+// ---- Galaxy shapes (docs/design/GALAXY-GENERATOR.md) --------------------------------------------------------------
+// Integer arithmetic only (no libm), so native, MSVC and wasm builds place every star identically.
+namespace {
+// sin(degrees) x 1024 by Bhaskara I's rational approximation (worst error about 1.6%): exact enough for a star chart.
+int sin1024(int degrees) {
+    degrees %= 360; if (degrees < 0) degrees += 360;
+    const bool negative = degrees >= 180;
+    const int d = negative ? degrees - 180 : degrees;
+    const int n = d * (180 - d);
+    const int value = 4 * n * 1024 / (40500 - n);
+    return negative ? -value : value;
+}
+int cos1024(int degrees) { return sin1024(degrees + 90); }
+// A point of the galaxy disc in units of 1/1000 of the half-width: (u, v) in [-1000, 1000].
+struct DiscPoint { int u, v; };
+int roll(std::uint64_t& st, int n) { return static_cast<int>(bounded(st, static_cast<std::uint64_t>(n))); }
+int triangular(std::uint64_t& st, int spread) { return roll(st, spread + 1) + roll(st, spread + 1) - spread; } // -spread..spread
+int clampDisc(int v) { return std::clamp(v, -1000, 1000); }
+DiscPoint polar(int radius, int degrees) { return {radius * cos1024(degrees) / 1024, radius * sin1024(degrees) / 1024}; }
+}
+
+std::vector<std::pair<int, int>> galaxyLayout(std::uint64_t seed, int width, int height, int systems, GalaxyShape shape) {
+    require(width >= 2 && width <= 64 && height >= 2 && height <= 64, "Invalid map dimensions");
+    require(systems >= 1 && systems <= MaxSystems && systems <= width * height, "Invalid system count");
+    std::uint64_t st = seed ^ 0x67616c6178797368ULL;
+    std::vector<std::pair<int, int>> out;
+    std::vector<bool> taken(static_cast<std::size_t>(width * height), false);
+    auto cellOf = [&](DiscPoint p) {
+        const int x = std::clamp(((width - 1) * (1000 + clampDisc(p.u)) + 1000) / 2000, 0, width - 1);
+        const int y = std::clamp(((height - 1) * (1000 + clampDisc(p.v)) + 1000) / 2000, 0, height - 1);
+        return y * width + x;
+    };
+    // Irregular: clumps of stars around seeded centres, a few lone stars between them.
+    std::vector<DiscPoint> centres; std::vector<int> spreads;
+    if (shape == GalaxyShape::Irregular) {
+        const int k = 3 + systems / 12;
+        for (int i = 0; i < k; ++i) {
+            DiscPoint c;
+            do { c = {roll(st, 1701) - 850, roll(st, 1701) - 850}; } while (c.u * c.u + c.v * c.v > 850 * 850);
+            centres.push_back(c); spreads.push_back(130 + roll(st, 130));
+        }
+    }
+    auto sample = [&]() -> DiscPoint {
+        switch (shape) {
+        case GalaxyShape::Irregular: {
+            if (roll(st, 100) < 12) { // A lone star.
+                DiscPoint p; do { p = {roll(st, 2001) - 1000, roll(st, 2001) - 1000}; } while (p.u * p.u + p.v * p.v > 1000 * 1000);
+                return p;
+            }
+            const auto c = static_cast<std::size_t>(roll(st, static_cast<int>(centres.size())));
+            return {centres[c].u + triangular(st, spreads[c]), centres[c].v + triangular(st, spreads[c])};
+        }
+        case GalaxyShape::Spiral: {
+            if (roll(st, 100) < 18) return polar(roll(st, 260), roll(st, 360)); // The bright core.
+            const int t = 80 + roll(st, 921);
+            const int r = std::max(60, t * t / 1000);                 // Denser towards the core.
+            const int arm = roll(st, 3) * 120;
+            const int noise = std::max(15, 40 - r / 40);
+            return polar(r, arm + r * 300 / 1000 + roll(st, 2 * noise + 1) - noise);
+        }
+        case GalaxyShape::Ring:
+            return polar(std::clamp(640 + roll(st, 261) + roll(st, 81) - 40, 560, 1000), roll(st, 360));
+        case GalaxyShape::Elliptical: {
+            int u = 0, v = 0;
+            for (int i = 0; i < 4; ++i) { u += roll(st, 2001) - 1000; v += roll(st, 2001) - 1000; }
+            return {u / 4 * 13 / 10, v / 4 * 13 / 10};
+        }
+        case GalaxyShape::Legacy: break;
+        }
+        return {roll(st, 2001) - 1000, roll(st, 2001) - 1000};
+    };
+    for (int i = 0; i < systems; ++i) {
+        int cell = -1;
+        for (int attempt = 0; attempt < 48 && cell < 0; ++attempt) {
+            const int c = cellOf(sample());
+            if (!taken[static_cast<std::size_t>(c)]) cell = c;
+        }
+        if (cell < 0) { // Crowded: a seeded free cell keeps the count exact.
+            std::vector<int> free;
+            for (int c = 0; c < width * height; ++c) if (!taken[static_cast<std::size_t>(c)]) free.push_back(c);
+            cell = free[static_cast<std::size_t>(roll(st, static_cast<int>(free.size())))];
+        }
+        taken[static_cast<std::size_t>(cell)] = true;
+        out.emplace_back(cell % width, cell / width);
+    }
+    return out;
+}
+
+GameState generate(std::uint64_t seed, int width, int height, int total, GalaxyShape shape) {
     require(width >= 2 && width <= 64 && height >= 2 && height <= 64, "Invalid map dimensions");
     require(total >= 1 && total <= MaxSystems && total <= width * height, "Invalid system count");
     GameState s;
     s.seed = seed; s.rngState = seed; s.width = width; s.height = height;
     s.unifiedCombat = true; // New (schema 12) campaigns resolve every battle tactically.
-    std::vector<int> cells;
-    for (int i = 0; i < width * height; ++i) cells.push_back(i);
-    for (int i = 0; i < total; ++i) {
-        const auto j = static_cast<std::size_t>(i) + bounded(s.rngState, cells.size() - i);
-        std::swap(cells[static_cast<std::size_t>(i)], cells[j]);
-        const auto cell = cells[static_cast<std::size_t>(i)];
-        const std::string name = i == 0 ? "Sol" : generatedSystemName(i);
-        s.systems.push_back({i + 1, cell % width, cell / width, name});
-        s.systems.back().planets = generateSystemPlanets(seed, i + 1, name, i == 0);
+    if (shape != GalaxyShape::Legacy) {
+        const auto layout = galaxyLayout(seed, width, height, total, shape);
+        for (int i = 0; i < total; ++i) {
+            const std::string name = i == 0 ? "Sol" : generatedSystemName(i);
+            s.systems.push_back({i + 1, layout[static_cast<std::size_t>(i)].first, layout[static_cast<std::size_t>(i)].second, name});
+            s.systems.back().planets = generateSystemPlanets(seed, i + 1, name, i == 0);
+        }
+        s.galaxy.shape = shape;
+    } else {
+        std::vector<int> cells;
+        for (int i = 0; i < width * height; ++i) cells.push_back(i);
+        for (int i = 0; i < total; ++i) {
+            const auto j = static_cast<std::size_t>(i) + bounded(s.rngState, cells.size() - i);
+            std::swap(cells[static_cast<std::size_t>(i)], cells[j]);
+            const auto cell = cells[static_cast<std::size_t>(i)];
+            const std::string name = i == 0 ? "Sol" : generatedSystemName(i);
+            s.systems.push_back({i + 1, cell % width, cell / width, name});
+            s.systems.back().planets = generateSystemPlanets(seed, i + 1, name, i == 0);
+        }
     }
     Colony home;
     home.systemId = 1;
@@ -4115,11 +4223,11 @@ void applyCampaignEra(GameState& s, StartingEra era) {
     }
 }
 
-GameState generateCampaign(std::uint64_t seed, int empires, int width, int height, int systems, int playerEmpire, StartingEra era) {
+GameState generateCampaign(std::uint64_t seed, int empires, int width, int height, int systems, int playerEmpire, StartingEra era, GalaxyShape shape) {
     require(startingEraValid(era), "Invalid starting era");
     require(empires >= 2 && empires <= 5 && systems >= empires && playerEmpire >= 1 && playerEmpire <= empires,
         "Campaign needs two to five empires, a playable faction and sufficient systems");
-    auto s = generate(seed, width, height, systems);
+    auto s = generate(seed, width, height, systems, shape);
     s.startingEra = era;
     s.populationEnabled = true;
     static constexpr const char* Homes[] = {"", "Sol", "Qo'noS", "Romulus", "Cardassia", "Ferenginar"};
@@ -4172,8 +4280,8 @@ GameState generateCampaign(std::uint64_t seed, int empires, int width, int heigh
     validate(s); return s;
 }
 
-GameState generateReferenceCampaign(std::uint64_t seed, int empires, int width, int height, int systems, int playerEmpire, StartingEra era) {
-    auto s = generateCampaign(seed, empires, width, height, systems, playerEmpire, era);
+GameState generateReferenceCampaign(std::uint64_t seed, int empires, int width, int height, int systems, int playerEmpire, StartingEra era, GalaxyShape shape) {
+    auto s = generateCampaign(seed, empires, width, height, systems, playerEmpire, era, shape);
     s.ruleset = Ruleset::Reference;
     s.advancedRulesEnabled = true;
     s.campaignExpansionEnabled = true;
@@ -4186,8 +4294,24 @@ GameState generateReferenceCampaign(std::uint64_t seed, int empires, int width, 
 // Lane G: seeded minor-race roster for a new campaign, scaled to galaxy size (MinorRaces.h).
 void placeMinorRaceRoster(GameState& s) {
     require(s.turn == 0 && s.pending.empty(), "Minor races are placed in a new campaign");
+    // Schema 15: a chosen density replaces the old systems / 5 count. None removes the starter minor too, and its system
+    // goes back to an ordinary star.
+    int target = -1;
+    if (s.galaxy.density != MinorDensity::Legacy) {
+        target = minorRaceTarget(s.galaxy.density, static_cast<int>(s.systems.size()));
+        if (target == 0) {
+            for (const auto& m : s.minors)
+                for (auto& sys : s.systems)
+                    if (sys.id == m.systemId) {
+                        sys.name = generatedSystemName(sys.id - 1);
+                        sys.planets = generateSystemPlanets(s.seed, sys.id, sys.name, false);
+                    }
+            s.minors.clear();
+            s.diplomacyEngineState.minorStates.clear(); // The diplomacy engine saw the starter minor at generation.
+        }
+    }
     minors::placeRosterMinors(s, s.seed, s.startingEra,
-        [&](System& sys) { sys.planets = generateSystemPlanets(s.seed, sys.id, sys.name, false); });
+        [&](System& sys) { sys.planets = generateSystemPlanets(s.seed, sys.id, sys.name, false); }, target);
     syncDiplomacyStateInternal(s);
     validate(s);
 }
@@ -4778,6 +4902,12 @@ TurnReport advanceWithCombat(GameState& state, const std::function<void(GameStat
         cr.systemId = c.systemId; cr.economy = economy(productionSnapshot, c);
         // Schema 13: a colony funding a starbase upgrade or megaproject diverts its industry.
         cr.economy.industry -= gameplay::divertIndustry(next, c, cr.economy.industry, report);
+        if (c.ownerId != next.playerEmpire && next.galaxy.difficulty != Difficulty::Normal) { // Schema 15: rival output scales with difficulty.
+            const auto& dp = difficultyProfile(next.galaxy.difficulty);
+            cr.economy.income = static_cast<int>(static_cast<std::int64_t>(cr.economy.income) * dp.aiIncomePct / 100);
+            cr.economy.industry = static_cast<int>(static_cast<std::int64_t>(cr.economy.industry) * dp.aiIndustryPct / 100);
+            cr.economy.research = static_cast<int>(static_cast<std::int64_t>(cr.economy.research) * dp.aiResearchPct / 100);
+        }
         auto& owner = mutableEmpire(next, c.ownerId);
         owner.credits += cr.economy.income - cr.economy.upkeep;
         if (c.ownerId == next.playerEmpire) {
@@ -5080,9 +5210,11 @@ GameState deserialize(const std::string& text) {
     // Schema 13 differs from 14 only by the header, the optional COMBAT_ORDERS section
     // (never present in 13) and the RefuseCallToArms order (never pending in 13).
     const bool legacy13 = version == 13 && content == "remaster-13";
-    const bool current = version == SaveVersion && content == ContentVersion;
+    // Schema 14 differs from 15 only by the header and the optional GALAXY_SETUP section (never present in 14).
+    const bool legacy14 = version == 14 && content == "remaster-14";
+    const bool current = (version == SaveVersion && content == ContentVersion) || legacy14;
     require(current || legacy7 || legacy8 || legacy9 || legacy10 || legacy11 || legacy12 || legacy13, "Unsupported save version");
-    require(content == ContentVersion || legacy7 || legacy8 || legacy9 || legacy10 || legacy11 || legacy12 || legacy13,
+    require(content == ContentVersion || legacy14 || legacy7 || legacy8 || legacy9 || legacy10 || legacy11 || legacy12 || legacy13,
         "Incompatible prototype content");
     const auto checksumStart = text.rfind("CHECKSUM ");
     require(checksumStart != std::string::npos, "Missing save checksum");
@@ -5486,6 +5618,17 @@ GameState deserialize(const std::string& text) {
         s.rules.wegoCombat = true;
         nextTag = readTag("Malformed save section after TACTICAL_WEGO");
     }
+    if (nextTag == "GALAXY_SETUP") {
+        require(version == SaveVersion, "Schema 15 section in an older save");
+        int shape = -1, density = -1, difficulty = -1;
+        require(static_cast<bool>(in >> shape >> density >> difficulty) && shape >= 0 && shape <= 4 && density >= 0 && density <= 4 &&
+            difficulty >= 0 && difficulty <= 4, "Malformed GALAXY_SETUP section");
+        s.galaxy.shape = static_cast<GalaxyShape>(shape);
+        s.galaxy.density = static_cast<MinorDensity>(density);
+        s.galaxy.difficulty = static_cast<Difficulty>(difficulty);
+        require(!(s.galaxy == GalaxySetup{}), "GALAXY_SETUP holds only the default setup");
+        nextTag = readTag("Malformed save section after GALAXY_SETUP");
+    }
     if (nextTag == "COMBAT_ORDERS") {
         require(current, "Schema 14 section in an older save");
         parseCombatOrders(in, s);
@@ -5521,11 +5664,12 @@ GameState deserialize(const std::string& text) {
             (!s.modernEnginesActive || hasIntelOperations),
             current ? "Schema 14 save is missing a required section" : "Schema 13 save is missing a required section");
         std::string expected = payload(s);
-        if (legacy13) {
-            // Schema 13 text is the schema-14 payload of a campaign without recorded round orders.
+        if (legacy13 || legacy14) {
+            // Schema 13 text is the schema-14 payload of a campaign without recorded round orders; schema 14 text is the
+            // schema-15 payload of a campaign with the default galaxy setup.
             const std::string header = std::string("BOTF_SIM ") + std::to_string(SaveVersion) + ' ' + ContentVersion + '\n';
             require(expected.starts_with(header), "Malformed canonical payload header");
-            expected.replace(0, header.size(), "BOTF_SIM 13 remaster-13\n");
+            expected.replace(0, header.size(), legacy14 ? "BOTF_SIM 14 remaster-14\n" : "BOTF_SIM 13 remaster-13\n");
         }
         require(rawBody == expected, "Save is not in canonical format");
     } else if (legacy12) {

@@ -201,6 +201,15 @@ func test_fixture_determinism() -> void:
 		for i in int(fx.args.turns):
 			end_turn()
 		check(api("fingerprint") == fx.result, "%s: fingerprint %s == wasm %s" % [name, api("fingerprint"), fx.result])
+	# Schema 15 galaxy shapes, densities and difficulties: every wasm-recorded fingerprint, and the preview matches the galaxy.
+	var gx := load_fixture("determinism-galaxy")
+	for run in gx.result:
+		api("newCampaign", run.campaign)
+		for i in int(run.turns):
+			end_turn()
+		check(api("fingerprint") == run.result, "galaxy %s/%s/%s: fingerprint %s == wasm %s" % [run.campaign.shape, run.campaign.minorDensity, run.campaign.difficulty, api("fingerprint"), run.result])
+		var pv: Dictionary = api("galaxyPreview", run.campaign)
+		check(pv.stars.size() == int(run.preview) and pv.stars.size() == int(run.campaign.systems) and pv.shape == run.campaign.shape, "galaxy preview holds every star of the %s galaxy" % run.campaign.shape)
 	var fx_view := load_fixture("campaign-view")
 	var raw: String = core.request_json("newCampaign", JSON.stringify(fx_view.args))
 	var reparsed: Dictionary = JSON.parse_string(raw)

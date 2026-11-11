@@ -146,12 +146,12 @@ inline void adopt(Minor& m, const MinorRaceRecord& r, StartingEra era) {
 // exist. Deterministic in (seed, map); never consumes the campaign RNG. `renameSystem` is called for
 // each newly claimed system after its name changes, so the caller can regenerate its planets.
 inline void placeRosterMinors(GameState& s, std::uint64_t seed, StartingEra era,
-                              const std::function<void(System&)>& renameSystem = {}) {
+                              const std::function<void(System&)>& renameSystem = {}, int targetOverride = -1) {
     std::set<int> usedRaces;
     for (auto& m : s.minors) {
         if (const auto* r = raceByName(m.name); r && !usedRaces.count(r->id)) { adopt(m, *r, era); usedRaces.insert(r->id); }
     }
-    const int target = rosterTarget(static_cast<int>(s.systems.size()));
+    const int target = targetOverride >= 0 ? targetOverride : rosterTarget(static_cast<int>(s.systems.size()));
     if (static_cast<int>(s.minors.size()) >= target) return;
 
     std::vector<const MinorRaceRecord*> races;
