@@ -83,7 +83,14 @@ func refresh() -> void:
 	opts.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	col.add_child(opts)
 	opts.add_child(_galaxy_panel())
-	opts.add_child(_preview_panel())
+	# The middle column holds the preview and, under it, the preset picker (the Rules column keeps the height the launch card needs).
+	var mid := Lcars.vbox(14)
+	mid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var pv := _preview_panel()
+	pv.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	mid.add_child(pv)
+	mid.add_child(_preset_panel())
+	opts.add_child(mid)
 	opts.add_child(_rules_column())
 	Motion.stagger(opts)
 
@@ -149,7 +156,7 @@ func _preview_panel() -> Control:
 	_preview.name = "GalaxyPreview"
 	_preview.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_preview.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_preview.custom_minimum_size = Vector2(420, 300)
+	_preview.custom_minimum_size = Vector2(420, 150)
 	b.add_child(_preview)
 	_update_preview()
 	var stats := Lcars.hbox(10)
@@ -190,15 +197,18 @@ func _update_preview() -> void:
 			_preview.configure_core(pv, faction)
 
 ## The preset picker (docs/design/PACKS-AND-PRESETS.md): one toggle per preset, then the chosen preset's description. Picking one
-## fills the options below it (era, size, shape, minor races, difficulty, events, rivals) from the preset's defaults.
-func _preset_picker() -> Control:
-	var box := Lcars.vbox(6)
+## fills the other options (era, size, shape, minor races, difficulty, events, rivals) from the preset's defaults.
+func _preset_panel() -> Control:
+	var frame := Lcars.frame("Preset", "rules, content, powers", "secondary", "settings")
+	frame.name = "PresetPanel"
+	var box := Lcars.body(frame)
+	box.add_theme_constant_override("separation", 8)
 	var items := vm.presets().map(func(p): return [str(p["id"]), str(p["name"]), vm.preset_text(str(p["id"])), "Preset" + "".join(Array(str(p["id"]).split("-")).map(func(w): return str(w).capitalize()))])
-	box.add_child(_choice_row("Preset", items, vm.preset, func(id): vm.pick_preset(id); refresh(), "preset"))
+	box.add_child(_choice_row("Pick a starting point", items, vm.preset, func(id): vm.pick_preset(id); refresh(), "preset"))
 	var note := Lcars.para(vm.preset_text(vm.preset), Lcars.TEXT2, 13)
 	note.name = "PresetNote"
 	box.add_child(note)
-	return box
+	return frame
 
 func _rules_column() -> Control:
 	var colr := Lcars.vbox(14)
@@ -210,7 +220,6 @@ func _rules_column() -> Control:
 	rb.add_child(_choice_row("Difficulty", NewCampaignVM.DIFFICULTIES.map(func(d): return [d["id"], d["label"], d["blurb"]]), vm.difficulty, func(id): vm.difficulty = id; refresh(), "difficulty"))
 	rb.add_child(_choice_row("Starting era", vm.eras().map(func(e): return [str(e["id"]), "%s T%d" % [e["name"], int(e["level"])], "%s\nStarting technology level %d in every field." % [e["blurb"], int(e["level"])]]), str(era), func(id): era = int(id); refresh(), "era"))
 	rb.add_child(_choice_row("Ruleset", [["reference", "Reference", "Reference catalogue ships and technologies, planets & terraforming, task forces, modern diplomacy and intelligence."], ["prototype", "Prototype", "The original compact prototype ruleset with generic hulls."]], ruleset, func(id): ruleset = id; refresh(), "ruleset"))
-	rb.add_child(_preset_picker())
 	var tg := Lcars.hbox(18)
 	var ev := CheckBox.new()
 	ev.text = "Galactic events" if vm.rules_base() == "remastered" else "Random events"
