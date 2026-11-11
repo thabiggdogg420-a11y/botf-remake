@@ -26,6 +26,8 @@ var empires := 5
 var size_id := "medium"
 var era := 1
 var ruleset := "reference"
+## The preset id (docs/design/PACKS-AND-PRESETS.md): "classic", "remastered", or a mod preset such as "dominion-war". The core
+## resolves it to overlay packs, rule flags and a lineup; the picker fills the other options from its defaults (pick_preset).
 var preset := "remastered"
 var seed_value := 0
 var events := true
@@ -36,6 +38,19 @@ var aggression := true
 var shape := "spiral"
 var minor_density := "some"
 var difficulty := "normal"
+## What a client with no core's preset list offers: the two built-ins. Every field the core's `meta.presets` carries is here, so the
+## picker needs no second code path.
+const PRESET_FALLBACK := [
+	{"id": "classic", "name": "Classic", "rulesBase": "classic", "overlays": [], "lineup": ["Federation", "Klingon", "Romulan", "Cardassian", "Ferengi"],
+		"lineupPlayable": true, "lineupNote": "", "needs": [], "flags": {},
+		"blurb": "The original BOTF rules: outposts and starbases, the original random events, conquest and domination only. Even, uniform galaxy.",
+		"options": {"empires": 5, "era": 1, "size": "medium", "shape": "elliptical", "minorDensity": "some", "difficulty": "normal", "events": true, "aiAggression": true}},
+	{"id": "remastered", "name": "Remastered", "rulesBase": "remastered", "overlays": [], "lineup": ["Federation", "Klingon", "Romulan", "Cardassian", "Ferengi"],
+		"lineupPlayable": true, "lineupNote": "", "needs": [], "flags": {},
+		"blurb": "The default: every BOTF feature plus our layers. Galaxy features, curated events, WEGO combat, the expanded ship roster and the extra victories.",
+		"options": {"empires": 5, "era": 1, "size": "medium", "shape": "spiral", "minorDensity": "some", "difficulty": "normal", "events": true, "aiAggression": true}},
+]
+
 ## The UI era look (docs/UI-DESIGN-SYSTEM.md §2.3), stored in settings.uiEra at launch.
 var ui_era := "tng"
 
@@ -67,6 +82,68 @@ const CORE_READS := ["faction", "empires", "seed", "era", "ruleset", "width", "h
 
 static func core_reads(key: String) -> bool:
 	return key in CORE_READS
+
+## Presets in screen order: the core's registry (meta.presets), else the two built-ins.
+func presets() -> Array:
+	var m: Dictionary = session.meta if session != null else {}
+	var p: Variant = m.get("presets", null)
+	return p if p is Array and not (p as Array).is_empty() else PRESET_FALLBACK
+
+## The chosen preset's record, or {} when the id is not offered.
+func preset_def(id: String = "") -> Dictionary:
+	var want := preset if id == "" else id
+	for p in presets():
+		if str(p["id"]) == want:
+			return p
+	return {}
+
+func preset_name() -> String:
+	var d := preset_def()
+	return str(d["name"]) if not d.is_empty() else preset.capitalize()
+
+## "classic" or "remastered": the rule set under the preset (the event checkbox label follows it).
+func rules_base() -> String:
+	var d := preset_def()
+	return str(d["rulesBase"]) if not d.is_empty() else preset
+
+## Chooses a preset and fills the options it sets (era, size, shape, minor races, difficulty, events, rivals, powers in play).
+## Options it does not set keep the player's choice. The faction stays valid: powers in play never drop below its place.
+func pick_preset(id: String) -> bool:
+	var d := preset_def(id)
+	if d.is_empty():
+		return false
+	preset = id
+	var o: Dictionary = d.get("options", {})
+	if o.has("era"):
+		era = int(o["era"])
+	if o.has("size") and SIZES.any(func(s): return s["id"] == o["size"]):
+		size_id = str(o["size"])
+	if o.has("shape") and SHAPES.any(func(s): return s["id"] == o["shape"]):
+		shape = str(o["shape"])
+	if o.has("minorDensity") and DENSITIES.any(func(s): return s["id"] == o["minorDensity"]):
+		minor_density = str(o["minorDensity"])
+	if o.has("difficulty"):
+		difficulty = str(o["difficulty"])
+	if o.has("events"):
+		events = bool(o["events"])
+	if o.has("aiAggression"):
+		aggression = bool(o["aiAggression"])
+	if o.has("empires"):
+		empires = maxi(int(o["empires"]), faction)
+	return true
+
+## The picker's text for a preset: what it is, who plays, and what it is still waiting for.
+func preset_text(id: String) -> String:
+	var d := preset_def(id)
+	if d.is_empty():
+		return ""
+	var lines := [str(d["blurb"]), "Powers: " + " · ".join(d.get("lineup", []))]
+	if not bool(d.get("lineupPlayable", true)):
+		lines.append("Not seated yet: " + str(d.get("lineupNote", "")) + " This game plays the stock powers.")
+	var needs: Array = d.get("needs", [])
+	if not needs.is_empty():
+		lines.append("Content still to come: " + ", ".join(needs) + ".")
+	return "\n".join(lines)
 
 ## Minor races the density gives on this size (capped at 29, the original's limit). With a core, its own count for this
 ## exact galaxy; else the mirrored table.
@@ -134,6 +211,6 @@ func faction_name(id: int, fallback: String) -> String:
 func summary() -> Array:
 	var o := options()
 	return ["%d major powers · %d systems · %dx%d sectors" % [o["empires"], o["systems"], o["width"], o["height"]],
-		"%s era · %s rules · %s gameplay" % [era_name(), ruleset, preset.capitalize()],
+		"%s era · %s rules · %s preset" % [era_name(), ruleset, preset_name()],
 		"%s galaxy · %s minor races (%d) · %s difficulty" % [shape.capitalize(), minor_density, minors_count(), difficulty.capitalize()],
 		"Seed %d%s%s" % [seed_value, " · events" if events else "", " · aggressive AI" if aggression else ""]]

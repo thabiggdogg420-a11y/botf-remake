@@ -2611,6 +2611,11 @@ void startGame(botf::GameState&& s, const std::string& scenario) {
 
 // New-campaign options as the core reads them (the setup screen's whole option set). Shape, density and difficulty are the
 // schema-15 galaxy setup (docs/design/GALAXY-GENERATOR.md); a call that names none of them gets the pre-15 galaxy.
+// Drills and new games play on the plain pack: a preset's overlay stack from the previous game must not leak into them.
+void usePlainContent() {
+    if (const auto* p = botf::presets::find("remastered")) botf::presets::activate(*p);
+}
+
 botf::CampaignSetup campaignSetup(const Value& a) {
     const int empires = a.getInt("empires", 5);
     const int faction = a.getInt("faction", 1);
@@ -2622,9 +2627,11 @@ botf::CampaignSetup campaignSetup(const Value& a) {
     // New games go through botf::newCampaign: the ruleset preset (Remastered by default,
     // docs/GAMEPLAY-REMASTER.md 1) and the minor-race roster (docs/MINOR-RACES.md) are placed there.
     botf::CampaignSetup setup;
+    setup.presetId = "remastered";
     setup.seed = seed; setup.empires = empires; setup.width = width; setup.height = height; setup.systems = systems;
     setup.playerEmpire = faction; setup.era = static_cast<botf::StartingEra>(era); setup.reference = ruleset != "prototype";
     setup.preset = botf::RulesetPreset::Remastered;
+    setup.presetId = "remastered";
     // "preset" names a registered preset (classic, remastered, dominion-war, ...): its overlays become the active content and
     // its rule flags apply over its base ruleset. A call that names none keeps Remastered and the content that is active.
     if (a.has("preset")) {
@@ -2708,6 +2715,7 @@ botf::Station makeStation(const botf::GameState& s, int owner, int x, int y, bot
 
 void newBattleDrill(bool withStation, int shipsPerSide = 3, bool stationForFoe = false) {
     shipsPerSide = std::clamp(shipsPerSide, 1, 24);
+    usePlainContent();
     auto s = botf::generateReferenceCampaign(1999);
     // The station variant plays under the Remastered preset, where outposts and starbases fight.
     if (withStation) botf::applyRulesetPreset(s, botf::RulesetPreset::Remastered);
@@ -2753,6 +2761,7 @@ void newBattleDrill(bool withStation, int shipsPerSide = 3, bool stationForFoe =
 // standalone tactical rules 4 encounter. The player commands the Federation side.
 void newCombatSandbox(int shipsPerSide, std::uint64_t seed) {
     shipsPerSide = std::clamp(shipsPerSide, 1, 24);
+    usePlainContent();
     auto s = botf::generateReferenceCampaign(1999);
     botf::applyRulesetPreset(s, botf::RulesetPreset::Remastered);
     s.eventsEnabled = false; s.aiAggressionEnabled = false;
@@ -2781,6 +2790,7 @@ void newCombatSandbox(int shipsPerSide, std::uint64_t seed) {
 // stands nearby and can be upgraded to a starbase; and two galactic events await a decision.
 void newFrontierDrill() {
     botf::CampaignSetup setup;
+    setup.presetId = "remastered";
     setup.seed = 7707; setup.era = botf::StartingEra::Developed; setup.preset = botf::RulesetPreset::Remastered;
     auto s = botf::newCampaign(setup);
     s.aiAggressionEnabled = false;
@@ -2892,6 +2902,7 @@ void applyEngineDelta(botf::GameState& s, const dip::TurnResolutionDelta& delta)
 }
 
 void newDiplomacyDrill() {
+    usePlainContent();
     auto s = botf::generateReferenceCampaign(2024, 5);
     s.eventsEnabled = false;
     s.aiAggressionEnabled = false;

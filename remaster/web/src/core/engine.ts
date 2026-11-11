@@ -43,7 +43,7 @@ export const core = {
   encyclopedia: () => call<Encyclopedia>('encyclopedia'),
   newCampaign: (options: {
     faction: number; empires: number; seed: number; era: number; ruleset: 'reference' | 'prototype';
-    width: number; height: number; systems: number; events: boolean; aiAggression: boolean; preset?: 'classic' | 'remastered';
+    width: number; height: number; systems: number; events: boolean; aiAggression: boolean; preset?: string;
     shape?: 'irregular' | 'spiral' | 'ring' | 'elliptical'; minorDensity?: 'none' | 'few' | 'some' | 'many'; difficulty?: 'simple' | 'easy' | 'normal' | 'hard' | 'impossible';
   }) => charted(call<GameView>('newCampaign', options)),
   newBattleDrill: (station = false) => charted(call<GameView>('newBattleDrill', { station })),

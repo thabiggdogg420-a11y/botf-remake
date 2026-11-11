@@ -18,7 +18,7 @@ func _initialize() -> void:
 	for t in [
 		"test_meta", "test_new_campaign", "test_invalid_order", "test_orders", "test_forecast_and_turns",
 		"test_save_load_determinism", "test_battle_drill", "test_rules3_events", "test_diplomacy_drill",
-		"test_fixture_determinism", "test_gameplay_queries", "test_uncharted_view", "test_default_size_is_medium", "test_view_does_not_touch_the_sim",
+		"test_fixture_determinism", "test_presets", "test_gameplay_queries", "test_uncharted_view", "test_default_size_is_medium", "test_view_does_not_touch_the_sim",
 	]:
 		current = t
 		var failures_before := failed
@@ -143,6 +143,38 @@ func test_save_load_determinism() -> void:
 	end_turn()
 	check(api("fingerprint") == a, "same save + end turn = same result")
 
+## Presets through the bridge: the registry, a stacked game, and a save that carries its packs and restores them.
+func test_presets() -> void:
+	var list: Array = api("listPresets")
+	var ids: Array = list.map(func(p): return p.id)
+	check(ids == ["classic", "remastered", "dominion-war", "ages", "galaxies", "balance-of-power", "ultimate"], "seven presets in screen order: %s" % str(ids))
+	check(api("meta").presets.size() == list.size(), "meta carries the presets")
+	check(list.all(func(p): return p.blurb != "" and p.has("options") and p.has("lineupPlayable")), "every preset has text, options and a lineup verdict")
+	check(not attempt("newCampaign", {"preset": "no-such-preset", "faction": 1, "empires": 2, "seed": 1}).ok, "an unknown preset is refused")
+	var c := CAMPAIGN.duplicate()
+	c["preset"] = "ultimate"
+	var view: Dictionary = api("newCampaign", c)
+	check(view.meta.rules.preset == "ultimate" and view.meta.rules.presetName == "Ultimate", "the view names the preset")
+	var info: Dictionary = api("contentInfo")
+	check(not info.base and info.id == "botf-base+ultimate" and info.stack.size() == 1, "its overlay stack is the active content")
+	for i in 3:
+		end_turn()
+	var fp = api("fingerprint")
+	var save: Dictionary = api("save")
+	check(str(save.data).contains("PACKS ultimate 1 ultimate "), "the save records the preset and its packs")
+	api("loadBaseContent")
+	check(api("contentInfo").base, "base content is back")
+	var loaded: Dictionary = api("load", {"data": save.data})
+	check(loaded.meta.rules.preset == "ultimate" and api("contentInfo").id == "botf-base+ultimate", "loading rebuilds the stack")
+	check(api("fingerprint") == fp, "the loaded game has the saved fingerprint")
+	end_turn()
+	var a = api("fingerprint")
+	api("load", {"data": save.data})
+	end_turn()
+	check(api("fingerprint") == a, "same save + end turn = same result under a stack")
+	api("newCampaign", CAMPAIGN)
+	check(api("contentInfo").base and api("view").meta.rules.preset == "remastered", "a Remastered game restores the base pack")
+
 func test_battle_drill() -> void:
 	api("newBattleDrill")
 	var status: Dictionary = api("endTurn")
@@ -210,6 +242,17 @@ func test_fixture_determinism() -> void:
 		check(api("fingerprint") == run.result, "galaxy %s/%s/%s: fingerprint %s == wasm %s" % [run.campaign.shape, run.campaign.minorDensity, run.campaign.difficulty, api("fingerprint"), run.result])
 		var pv: Dictionary = api("galaxyPreview", run.campaign)
 		check(pv.stars.size() == int(run.preview) and pv.stars.size() == int(run.campaign.systems) and pv.shape == run.campaign.shape, "galaxy preview holds every star of the %s galaxy" % run.campaign.shape)
+	# Packs and presets (schema 17): every preset's fingerprint, stack checksum and recorded preset id, native against wasm.
+	var px := load_fixture("determinism-presets")
+	for run in px.result:
+		api("newCampaign", run.campaign)
+		for i in int(run.turns):
+			end_turn()
+		var info: Dictionary = api("contentInfo")
+		check(api("fingerprint") == run.result, "preset %s: fingerprint %s == wasm %s" % [run.campaign.preset, api("fingerprint"), run.result])
+		check(info.id == run.content.id and info.checksum == run.content.checksum and info.stack.size() == int(run.content.stack), "preset %s: stack %s %s == wasm %s %s" % [run.campaign.preset, info.id, info.checksum, run.content.id, run.content.checksum])
+		check(api("view").meta.rules.preset == run.preset, "preset %s: the view names its preset" % run.campaign.preset)
+	api("loadBaseContent")
 	var fx_view := load_fixture("campaign-view")
 	var raw: String = core.request_json("newCampaign", JSON.stringify(fx_view.args))
 	var reparsed: Dictionary = JSON.parse_string(raw)

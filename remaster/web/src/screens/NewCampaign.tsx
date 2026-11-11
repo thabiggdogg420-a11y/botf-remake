@@ -4,6 +4,7 @@ import { maybeStartTutorial } from '../state/tutorial';
 import { Emblem, Frame, Pill, tip } from '../ui/components';
 import { Starfield } from '../ui/Starfield';
 import { FACTIONS, palette } from '../ui/theme';
+import type { PresetInfo } from '../core/types';
 
 const SIZES = [
   // The one place the web client's galaxy sizes live (twin: godot/scripts/viewmodels/new_campaign_vm.gd SIZES).
@@ -29,6 +30,23 @@ const DENSITIES = ['none', 'few', 'some', 'many'] as const;
 const DIFFICULTIES = ['simple', 'easy', 'normal', 'hard', 'impossible'] as const;
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
+// What a core without a preset list offers: the two built-ins (twin: new_campaign_vm.gd PRESET_FALLBACK).
+const STOCK = ['Federation', 'Klingon', 'Romulan', 'Cardassian', 'Ferengi'];
+const FALLBACK_PRESETS: PresetInfo[] = [
+  { id: 'classic', name: 'Classic', rulesBase: 'classic', overlays: [], flags: {}, lineup: STOCK, lineupPlayable: true, lineupNote: '', needs: [],
+    blurb: 'The original BOTF rules: outposts and starbases, the original random events, conquest and domination only. Even, uniform galaxy.',
+    options: { empires: 5, era: 1, size: 'medium', shape: 'elliptical', minorDensity: 'some', difficulty: 'normal', events: true, aiAggression: true } },
+  { id: 'remastered', name: 'Remastered', rulesBase: 'remastered', overlays: [], flags: {}, lineup: STOCK, lineupPlayable: true, lineupNote: '', needs: [],
+    blurb: 'The default: every BOTF feature plus our layers. Galaxy features, curated events, WEGO combat, the expanded ship roster and the extra victories.',
+    options: { empires: 5, era: 1, size: 'medium', shape: 'spiral', minorDensity: 'some', difficulty: 'normal', events: true, aiAggression: true } },
+];
+function presetText(p: PresetInfo): string {
+  const lines = [p.blurb, `Powers: ${p.lineup.join(' · ')}`];
+  if (!p.lineupPlayable) lines.push(`Not seated yet: ${p.lineupNote} This game plays the stock powers.`);
+  if (p.needs.length) lines.push(`Content still to come: ${p.needs.join(', ')}.`);
+  return lines.join('\n');
+}
+
 export function NewCampaignScreen() {
   const m = meta.value!;
   const [faction, setFaction] = useState(1);
@@ -39,7 +57,9 @@ export function NewCampaignScreen() {
   const [seed, setSeed] = useState<number>(randomSeed());
   const [events, setEvents] = useState(true);
   const [aggression, setAggression] = useState(true);
-  const [preset, setPreset] = useState<'remastered' | 'classic'>('remastered');
+  const presets = m.presets && m.presets.length ? m.presets : FALLBACK_PRESETS;
+  const [preset, setPreset] = useState<string>('remastered');
+  const presetDef = presets.find((q) => q.id === preset) ?? presets[0];
   const [shape, setShape] = useState<(typeof SHAPES)[number]>('spiral');
   const [minorDensity, setMinorDensity] = useState<(typeof DENSITIES)[number]>('some');
   const [difficulty, setDifficulty] = useState<(typeof DIFFICULTIES)[number]>('normal');
@@ -48,6 +68,19 @@ export function NewCampaignScreen() {
   const sz = SIZES.find((s) => s.id === size)!;
   const effectiveEmpires = Math.max(empires, faction);
   const eraInfo = m.eras.find((e) => e.id === era);
+  // Picking a preset fills the options it sets; the rest keep the player's choice. Powers in play never drop below the faction.
+  const pickPreset = (q: PresetInfo) => {
+    setPreset(q.id);
+    const o = q.options;
+    if (o.era !== undefined) setEra(o.era);
+    if (o.size && SIZES.some((s) => s.id === o.size)) setSize(o.size);
+    if (o.shape && (SHAPES as readonly string[]).includes(o.shape)) setShape(o.shape as (typeof SHAPES)[number]);
+    if (o.minorDensity && (DENSITIES as readonly string[]).includes(o.minorDensity)) setMinorDensity(o.minorDensity as (typeof DENSITIES)[number]);
+    if (o.difficulty && (DIFFICULTIES as readonly string[]).includes(o.difficulty)) setDifficulty(o.difficulty as (typeof DIFFICULTIES)[number]);
+    if (o.events !== undefined) setEvents(o.events);
+    if (o.aiAggression !== undefined) setAggression(o.aiAggression);
+    if (o.empires !== undefined) setEmpires(Math.max(o.empires, faction));
+  };
   const start = () => {
     startCampaign({
       faction, empires: effectiveEmpires, seed, era, ruleset, width: sz.width, height: sz.height, systems: sz.systems, events, aiAggression: aggression, preset, shape, minorDensity, difficulty,
@@ -142,18 +175,15 @@ export function NewCampaignScreen() {
               <Pill tone="ghost" active={ruleset === 'prototype'} onClick={() => setRuleset('prototype')}
                 hint="The original compact prototype ruleset with generic hulls.">Prototype rules</Pill>
             </div>
-            <div class="option-label">Gameplay</div>
-            <div class="option-row" role="radiogroup" aria-label="Ruleset preset">
-              <Pill tone="ghost" active={preset === 'remastered'} onClick={() => setPreset('remastered')} testid="preset-remastered"
-                hint="Every modern layer: outposts and starbases, nebulae, wormholes, black holes, neutron stars and drifting ion storms, curated galactic events with decisions, and scientific and diplomatic victories alongside conquest.">Remastered</Pill>
-              <Pill tone="ghost" active={preset === 'classic'} onClick={() => setPreset('classic')} testid="preset-classic"
-                hint="Original-like: outposts and starbases, the original random events, and conquest or domination victories only. No anomalies.">Classic</Pill>
+            <div class="option-label">Preset</div>
+            <div class="option-row" role="radiogroup" aria-label="Preset">
+              {presets.map((q) => (
+                <Pill key={q.id} tone="ghost" active={preset === q.id} onClick={() => pickPreset(q)} testid={`preset-${q.id}`} hint={presetText(q)}>{q.name}</Pill>
+              ))}
             </div>
-            <p class="option-note">{preset === 'remastered'
-              ? 'Anomalies, galactic events with choices, stations and four paths to victory.'
-              : 'Close to the 1999 original: stations, simple random events, conquest or domination.'}</p>
+            <p class="option-note" data-testid="preset-note" style={{ whiteSpace: 'pre-line' }}>{presetText(presetDef)}</p>
             <div class="option-row toggles">
-              <label class="check"><input type="checkbox" checked={events} onChange={(e) => setEvents((e.target as HTMLInputElement).checked)} /> {preset === 'remastered' ? 'Galactic events' : 'Random events'}</label>
+              <label class="check"><input type="checkbox" checked={events} onChange={(e) => setEvents((e.target as HTMLInputElement).checked)} /> {presetDef.rulesBase === 'remastered' ? 'Galactic events' : 'Random events'}</label>
               <label class="check"><input type="checkbox" checked={aggression} onChange={(e) => setAggression((e.target as HTMLInputElement).checked)} /> Aggressive rivals</label>
             </div>
           </Frame>
@@ -161,7 +191,7 @@ export function NewCampaignScreen() {
             <div class="ss-head"><Emblem empire={faction} size={40} /><div><div class="ss-name">{m.empires.find((e) => e.id === faction)?.name}</div><div class="ss-sub">from {chosen.capital}</div></div></div>
             <ul>
               <li>{effectiveEmpires} major powers · {sz.systems} systems · {sz.width}×{sz.height} sectors</li>
-              <li>{eraInfo?.name ?? ''} era · {ruleset === 'reference' ? 'reference' : 'prototype'} rules · {preset === 'remastered' ? 'Remastered' : 'Classic'} gameplay</li>
+              <li>{eraInfo?.name ?? ''} era · {ruleset === 'reference' ? 'reference' : 'prototype'} rules · {presetDef.name} preset</li>
               <li>Seed {seed}{events ? ' · events' : ''}{aggression ? ' · aggressive AI' : ''}</li>
             </ul>
             <button type="button" class="launch" data-testid="start-campaign" onClick={start}>
