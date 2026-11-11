@@ -30,7 +30,7 @@ $taskCommon = @('/nologo', '/std:c++20', '/EHsc', '/W4', '/WX', '/permissive-', 
 # Core translation units: Simulation.cpp plus the schema-13 gameplay layer (keep in
 # sync with BOTF_CORE_SOURCES in remaster/CMakeLists.txt and SimulationBridge.cpp).
 $taskCoreSources = @('Simulation.cpp', 'Rules.cpp', 'Stations.cpp', 'GalaxyFeatures.cpp', 'GalacticEvents.cpp',
-    'BuildTemplates.cpp', 'Victory.cpp', 'Chronicle.cpp') | ForEach-Object { Join-Path $taskCore $_ }
+    'BuildTemplates.cpp', 'Victory.cpp', 'Chronicle.cpp', 'Threats.cpp') | ForEach-Object { Join-Path $taskCore $_ }
 Push-Location $taskBuild
 try {
     & $taskCompiler @taskCommon @taskCoreSources (Join-Path $taskCore 'Main.cpp') '/Fe:BotfSim.exe'

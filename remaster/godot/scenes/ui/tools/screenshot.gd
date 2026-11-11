@@ -182,6 +182,43 @@ func _prepare(s: String) -> void:
 			var picker = app.current_screen()
 			picker.vm.pick_preset(s.trim_prefix("new-"))
 			picker.refresh()
+		"new-threats":
+			# The Threats panel with the Dominion War defaults filled in (monsters, Borg sphere, 8472, DS9).
+			app.view = {}
+			app.goto("new")
+			await _wait(2)
+			var tpicker = app.current_screen()
+			tpicker.vm.pick_preset(_env("SHOT_PRESET") if _env("SHOT_PRESET") != "" else "dominion-war")
+			tpicker.refresh()
+			await _wait(4)
+			var tscroll := tpicker.find_child("OptionsScroll", true, false) as ScrollContainer
+			if tscroll:
+				tscroll.scroll_vertical = 100000   # down to the Threats panel under the preset picker
+				await _wait(3)
+		"threats-galaxy", "threats-assimilated":
+			# Threat drill (schema 20): actors around the capital and one Borg-held ruin; -assimilated frames the ruin.
+			app.start_drill("newThreatDrill", "Threat drill")
+			app.close_all_modals()
+			app.goto("galaxy")
+			await _wait(4)
+			var tgm: GalaxyMap = app.current_screen().map
+			var tf0: Dictionary = app.view["fleets"][0]
+			if s == "threats-assimilated" and (app.view.get("assimilated", []) as Array).size() > 0:
+				var ruin: Dictionary = app.view["assimilated"][0]
+				tgm.focus_cell(int(ruin["x"]), int(ruin["y"]), 3.0, false)
+			else:
+				tgm.focus_cell(int(tf0["x"]), int(tf0["y"]), 3.2, false)
+			await _wait(8)
+		"threats-battle":
+			# A player battle against a Borg cube (threat drill, battle mode), a few rounds in.
+			app.start_drill("newThreatDrill", "Threat drill", {"battle": true, "ships": int(_env("SHOT_DRILL_SHIPS")) if _env("SHOT_DRILL_SHIPS") != "" else 6})
+			app.end_turn()
+			await _wait(4)
+			app.close_all_modals()
+			for n in 2:
+				app._current._round()
+				await _wait(4)
+			await _wait(int(_env("SHOT_BATTLE_FRAMES")) if _env("SHOT_BATTLE_FRAMES") != "" else 150)
 		"saves":
 			app.goto("saves")
 		"galaxy":

@@ -74,6 +74,10 @@ if(EMSCRIPTEN)
     set(BOTF_EM_PIC ${EMSCRIPTEN_SYSROOT}/lib/wasm32-emscripten/pic)
     target_link_options(botf_core PRIVATE -sSIDE_MODULE=1 -sWASM_BIGINT -Wl,-Bsymbolic
         ${BOTF_EM_PIC}/libc++abi-except.a ${BOTF_EM_PIC}/libunwind-except.a)
+    # wasm-ld's string tail-merging (-O1 and up) mis-resolves string literal pointers in this side module once the core grows
+    # (schema 20: godot-cpp's get_proc_address names read as the tail of another literal and the extension fails to load).
+    # -O0 turns the merge off; the module grows by about 14 KB.
+    target_link_options(botf_core PRIVATE -Wl,-O0)
     set_target_properties(botf_core PROPERTIES SUFFIX ".wasm")
     # The one symbol still imported is the __cpp_exception tag, which the main module does not define: make it local.
     find_package(Python3 REQUIRED COMPONENTS Interpreter)

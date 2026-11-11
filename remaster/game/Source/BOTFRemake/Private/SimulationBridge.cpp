@@ -9,3 +9,4 @@
 #include "../../BotfSim/BuildTemplates.cpp"
 #include "../../BotfSim/Victory.cpp"
 #include "../../BotfSim/Chronicle.cpp"
+#include "../../BotfSim/Threats.cpp"

@@ -5,6 +5,7 @@
 #include <array>
 #include <functional>
 #include <map>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -22,10 +23,12 @@ namespace botf {
 // dilithium refineries, emergency programs, invasion aftermath, minor conquest and minor guard ships
 // (optional EMPIRE_RULES section); schema 17 adds the new-game preset and its overlay packs (Presets.h,
 // docs/design/PACKS-AND-PRESETS.md; optional PACKS section); schema 18 generalises the empire slots (docs/design/EMPIRE-SLOTS.md):
-// two to eight majors with stable ids 1..8 (optional EMPIRE_SLOTS section, written only when an id above five is in play).
-// Schemas 4-17 still load and continue.
-inline constexpr const char* ContentVersion = "remaster-18";
-inline constexpr int SaveVersion = 18;
+// two to eight majors with stable ids 1..8 (optional EMPIRE_SLOTS section, written only when an id above five is in play);
+// schema 20 adds the threat actors (Borg, Species 8472, the vanilla monsters; Threats.h, docs/design/THREAT-ACTORS.md; optional
+// THREATS section, written only when a threat switch is on or an actor or assimilated system exists).
+// Schemas 4-19 still load and continue (19 is reserved for lane MOD-3 and does not exist on this branch).
+inline constexpr const char* ContentVersion = "remaster-20";
+inline constexpr int SaveVersion = 20;
 // Campaign empire ids are race slots: 1 Federation, 2 Klingon, 3 Romulan, 4 Cardassian, 5 Ferengi, 6 Dominion, 7 Borg,
 // 8 Breen. A campaign seats two to eight of them (any subset); per-empire arrays are indexed by id, so they hold nine entries.
 inline constexpr int MaxMajors = 8;
@@ -346,6 +349,42 @@ struct MinorGuard {
     int systemId = 0, shipId = 0, hull = 0, shields = 0;
     bool operator==(const MinorGuard&) const = default;
 };
+// Schema 20: threat actors (Threats.h). A threat is a map object with its own hull and shields, not a Fleet and not an empire:
+// it fights through the tactical engine as a proxy combatant on the side ThreatOwner, under the fleet id ThreatCombatantBase + id.
+inline constexpr int ThreatOwner = 9;
+inline constexpr int ThreatCombatantBase = 3000000;
+inline constexpr int ThreatKinds = 12;
+enum class ThreatKind : int {
+    BorgCube = 0, BorgSphere = 1, Species8472 = 2, Husnock = 3, Calamarain = 4, Chodak = 5, CrystallineEntity = 6,
+    EchoPapa = 7, EdoGuardian = 8, Gomtuu = 9, Tarellian = 10, DeepSpaceNine = 11
+};
+// New-game switches. All off by default, so a game that never mentions threats plays and saves exactly as before.
+struct ThreatSetup {
+    bool monsters = false;       // The vanilla monsters (everything except the Borg).
+    bool borg = false;           // The Borg threat (a separate switch: the Borg-only off switch).
+    int frequency = 2;           // 0 none, 1 rare, 2 normal, 3 frequent.
+    int disabledMask = 0;        // Bit (1 << ThreatKind): that actor never spawns.
+    bool borgSphere = false;     // A Borg sphere replaces the cube.
+    bool species8472 = false;    // Species 8472 replaces the Husnock.
+    bool edoStation = false;     // A peaceful Deep Space Nine replaces the Edo Guardian.
+    bool sparesAi = false;       // Actors ignore every empire but the player.
+    constexpr bool operator==(const ThreatSetup&) const = default;
+};
+struct ThreatActor {
+    int id = 0, kind = 0;
+    int x = 0, y = 0, targetX = 0, targetY = 0;
+    int hull = 0, shields = 0;
+    int spawnTurn = 0;
+    int adapt = 0;   // Borg adaptation: percent added to its shields (and attack) after surviving battles.
+    int siege = 0;   // Turns spent besieging the colony at its sector.
+    int kills = 0;   // Systems assimilated or colonies destroyed (Borg despawn counter).
+    bool operator==(const ThreatActor&) const = default;
+};
+// A system the Borg threat holds (no colony: the population was assimilated) or a colony a Borg empire assimilated (ownerId 7).
+struct AssimilatedSystem {
+    int systemId = 0, turn = 0, ownerId = 0;
+    bool operator==(const AssimilatedSystem&) const = default;
+};
 struct DiplomaticOffer {
     std::uint64_t id = 0;
     int empireId = 1, systemId = 0, dueTurn = 0;
@@ -537,6 +576,12 @@ struct GameState : EmpireState {
     // Schema 17: the preset whose overlay packs this campaign plays on. Empty for a campaign on a plain pack, which
     // includes the Classic and Remastered presets (they have no overlays). Saved in the optional PACKS section.
     std::string presetId;
+    // Schema 20 (all empty and default for older saves and for games with the threat switches off; Threats.h):
+    ThreatSetup threats;
+    std::vector<ThreatActor> threatActors;
+    int nextThreatId = 1;
+    std::array<int, ThreatKinds> threatLastSpawn{}; // Turn each kind last spawned (0 = never); spacing between spawns.
+    std::vector<AssimilatedSystem> assimilated;
 };
 struct Economy {
     int food = 0, foodDeficit = 0, industry = 0, research = 0;
@@ -809,6 +854,9 @@ struct CampaignSetup {
     // Schema 17: a registered preset (Presets.h). When set, newCampaign installs its overlay stack as the active content,
     // applies its rule flags over `preset`, and records it in the state. Empty keeps the content that is active.
     std::string presetId;
+    // Schema 20: the threat switches (monsters, Borg, frequency, per-actor toggles). Unset takes the preset's defaults (none for
+    // Classic and Remastered: threats off); the new-game screen fills it from the preset and the player may change any switch.
+    std::optional<ThreatSetup> threats;
 };
 // Star positions only (no names, planets or empires): the layout generate() would give this shape, so a setup
 // screen can preview the exact galaxy. Index 0 is Sol. Deterministic on every platform (integer arithmetic).

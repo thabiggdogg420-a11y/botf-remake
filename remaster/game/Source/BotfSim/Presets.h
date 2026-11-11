@@ -6,9 +6,11 @@
 // bytes. The core never opens a file.
 #pragma once
 #include "Content.h"
+#include "Threats.h"
 
 #include <algorithm>
 #include <map>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -43,6 +45,7 @@ struct Preset {
     int empires = 0, era = 0;
     std::string size, shape, minorDensity, difficulty;
     int events = -1, aiAggression = -1;
+    std::optional<ThreatSetup> threats;                // Schema 20: threat-switch defaults (absent = threats off).
     std::vector<std::string> needs;                   // Later lanes whose content this preset is waiting for.
 };
 
@@ -160,6 +163,33 @@ inline Preset parsePreset(std::string_view bytes) {
         pick("difficulty", p.difficulty, DifficultyIds, "difficulty");
         if (o.has("events")) p.events = o.flag("events") ? 1 : 0;
         if (o.has("aiAggression")) p.aiAggression = o.flag("aiAggression") ? 1 : 0;
+        if (o.has("threats")) {   // Schema 20 (docs/design/THREAT-ACTORS.md section 4).
+            content::detail::Object t(o.get("threats"), o.at("threats"));
+            ThreatSetup ts;
+            if (t.has("monsters")) ts.monsters = t.flag("monsters");
+            if (t.has("borg")) ts.borg = t.flag("borg");
+            if (t.has("borgSphere")) ts.borgSphere = t.flag("borgSphere");
+            if (t.has("species8472")) ts.species8472 = t.flag("species8472");
+            if (t.has("edoStation")) ts.edoStation = t.flag("edoStation");
+            if (t.has("sparesAi")) ts.sparesAi = t.flag("sparesAi");
+            if (t.has("frequency")) {
+                const std::string f = t.str("frequency", 16);
+                int idx = -1;
+                for (int i = 0; i < 4; ++i) if (f == threats::frequencyName(i)) idx = i;
+                if (idx < 0) bad(t.at("frequency"), "expected none, rare, normal or frequent");
+                ts.frequency = idx;
+            }
+            if (t.has("disabled")) {
+                for (const auto& key : detail::stringList(t.get("disabled"), t.at("disabled"))) {
+                    int idx = -1;
+                    for (int i = 0; i < ThreatKinds; ++i) if (key == threats::Defs[i].key) idx = i;
+                    if (idx < 0) bad(t.at("disabled"), "unknown threat actor \"" + key + "\"");
+                    ts.disabledMask |= 1 << idx;
+                }
+            }
+            t.done();
+            p.threats = ts;
+        }
         o.done();
     }
     p.needs = detail::stringList(root.get("needs"), "preset.needs");

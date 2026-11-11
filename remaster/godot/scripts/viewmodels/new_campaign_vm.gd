@@ -38,6 +38,26 @@ var aggression := true
 var shape := "spiral"
 var minor_density := "some"
 var difficulty := "normal"
+## Threat actors (docs/design/THREAT-ACTORS.md, schema 20): the switches the screen sends as `threats`. All off for Classic and
+## Remastered; a mod preset fills them from its `options.threats` (pick_preset). `disabled` holds actor keys switched off one by one.
+var threats := {"monsters": false, "borg": false, "frequency": "normal", "borgSphere": false, "species8472": false, "edoStation": false,
+	"sparesAi": false, "disabled": []}
+const THREAT_FREQUENCIES := [
+	{"id": "none", "label": "None", "blurb": "No threat actor ever spawns."},
+	{"id": "rare", "label": "Rare", "blurb": "Half the normal spawn chance."},
+	{"id": "normal", "label": "Normal", "blurb": "The reference rate."},
+	{"id": "frequent", "label": "Frequent", "blurb": "Twice the spawn chance, and two of a kind may roam at once."},
+]
+## What a client with no core's list offers (the core's meta.threatKinds has the same fields).
+const THREAT_KIND_FALLBACK := [
+	{"key": "borg_cube", "name": "Borg cube", "group": "borg"}, {"key": "borg_sphere", "name": "Borg sphere", "group": "borg"},
+	{"key": "species_8472", "name": "Species 8472 bioship", "group": "8472"}, {"key": "husnock", "name": "Husnock warship", "group": "monster"},
+	{"key": "calamarain", "name": "Calamarain", "group": "monster"}, {"key": "chodak", "name": "Chodak dreadnought", "group": "monster"},
+	{"key": "crystalline", "name": "Crystalline Entity", "group": "monster"}, {"key": "echo_papa", "name": "Echo Papa 607 drone", "group": "monster"},
+	{"key": "edo_guardian", "name": "Edo Guardian", "group": "monster"}, {"key": "gomtuu", "name": "Gomtuu", "group": "monster"},
+	{"key": "tarellian", "name": "Tarellian plague ship", "group": "monster"}, {"key": "deep_space_9", "name": "Deep Space Nine", "group": "monster"},
+]
+
 ## What a client with no core's preset list offers: the two built-ins. Every field the core's `meta.presets` carries is here, so the
 ## picker needs no second code path.
 const PRESET_FALLBACK := [
@@ -78,7 +98,7 @@ const DIFFICULTIES := [
 ]
 ## Option keys the core reads. Shape, minor-race density and difficulty joined them with the schema-15 generator.
 const CORE_READS := ["faction", "empires", "lineup", "seed", "era", "ruleset", "width", "height", "systems", "events", "aiAggression", "preset",
-	"shape", "minorDensity", "difficulty"]
+	"shape", "minorDensity", "difficulty", "threats"]
 
 static func core_reads(key: String) -> bool:
 	return key in CORE_READS
@@ -130,6 +150,11 @@ func pick_preset(id: String) -> bool:
 		aggression = bool(o["aiAggression"])
 	if o.has("empires"):
 		empires = maxi(int(o["empires"]), faction)
+	# Threat switches: the preset's defaults, or everything off when it names none (Classic, Remastered).
+	var t: Dictionary = o.get("threats", {}) if o.get("threats", {}) is Dictionary else {}
+	threats = {"monsters": bool(t.get("monsters", false)), "borg": bool(t.get("borg", false)), "frequency": str(t.get("frequency", "normal")),
+		"borgSphere": bool(t.get("borgSphere", false)), "species8472": bool(t.get("species8472", false)),
+		"edoStation": bool(t.get("edoStation", false)), "sparesAi": bool(t.get("sparesAi", false)), "disabled": (t.get("disabled", []) as Array).duplicate()}
 	# A preset that names powers beyond the first five in canonical order (Dominion War, Galaxies) picks that lineup.
 	lineup = []
 	if bool(d.get("lineupPlayable", true)):
@@ -244,6 +269,37 @@ func power_key(id: int) -> String:
 			return str(e["key"])
 	return POWER_KEYS[id - 1] if id >= 1 and id <= POWER_KEYS.size() else ""
 
+## The actors the screen can toggle: the core's meta.threatKinds, else the built-in list.
+func threat_kinds() -> Array:
+	var k: Variant = meta().get("threatKinds", null)
+	return k if k is Array and not (k as Array).is_empty() else THREAT_KIND_FALLBACK
+
+func threat_kind_on(key: String) -> bool:
+	return not (threats["disabled"] as Array).has(key)
+
+func toggle_threat_kind(key: String) -> void:
+	var d: Array = threats["disabled"]
+	if d.has(key):
+		d.erase(key)
+	else:
+		d.append(key)
+
+## Whether any threat switch is on (what the summary and the Threats panel title report).
+func threats_active() -> bool:
+	return bool(threats["monsters"]) or bool(threats["borg"])
+
+## "Borg + monsters, normal" style text for the summary line.
+func threats_text() -> String:
+	if not threats_active() or str(threats["frequency"]) == "none":
+		return "Threats off"
+	var parts := []
+	if bool(threats["borg"]):
+		parts.append("Borg sphere" if bool(threats["borgSphere"]) else "Borg")
+	if bool(threats["monsters"]):
+		parts.append("monsters")
+	var off := (threats["disabled"] as Array).size()
+	return "Threats: %s, %s%s" % [" + ".join(parts), str(threats["frequency"]), (", %d actor(s) off" % off) if off > 0 else ""]
+
 func options() -> Dictionary:
 	var sz := size_def()
 	var o := {"faction": faction, "empires": powers(), "seed": seed_value, "era": era, "ruleset": ruleset,
@@ -251,6 +307,7 @@ func options() -> Dictionary:
 		"shape": shape, "minorDensity": minor_density, "difficulty": difficulty}
 	if not lineup.is_empty():
 		o["lineup"] = lineup_keys()
+	o["threats"] = threats.duplicate(true)
 	return o
 
 ## Era buttons: [{id, name, level, blurb}].
@@ -276,4 +333,5 @@ func summary() -> Array:
 	return ["%d major powers · %d systems · %dx%d sectors" % [o["empires"], o["systems"], o["width"], o["height"]],
 		"%s era · %s rules · %s preset" % [era_name(), ruleset, preset_name()],
 		"%s galaxy · %s minor races (%d) · %s difficulty" % [shape.capitalize(), minor_density, minors_count(), difficulty.capitalize()],
-		"Seed %d%s%s" % [seed_value, " · events" if events else "", " · aggressive AI" if aggression else ""]]
+		"Seed %d%s%s" % [seed_value, " · events" if events else "", " · aggressive AI" if aggression else ""],
+		threats_text()]

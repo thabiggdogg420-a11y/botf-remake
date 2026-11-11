@@ -1,0 +1,107 @@
+{
+ "method": "fingerprint",
+ "args": {
+  "runs": 3
+ },
+ "result": [
+  {
+   "campaign": {
+    "seed": 424242,
+    "era": 1,
+    "ruleset": "reference",
+    "width": 22,
+    "height": 16,
+    "systems": 50,
+    "faction": 1,
+    "empires": 5,
+    "threats": {
+     "monsters": true,
+     "borg": true,
+     "frequency": "frequent"
+    }
+   },
+   "turns": 72,
+   "result": "6470686310866610982",
+   "threats": {
+    "monsters": true,
+    "borg": true,
+    "frequency": "frequent",
+    "borgSphere": false,
+    "species8472": false,
+    "edoStation": false,
+    "sparesAi": false,
+    "disabled": []
+   },
+   "spawned": 10
+  },
+  {
+   "campaign": {
+    "seed": 424242,
+    "era": 1,
+    "ruleset": "reference",
+    "width": 22,
+    "height": 16,
+    "systems": 50,
+    "faction": 1,
+    "empires": 5,
+    "threats": {
+     "monsters": true,
+     "borg": true,
+     "frequency": "frequent",
+     "borgSphere": true,
+     "species8472": true,
+     "edoStation": true
+    }
+   },
+   "turns": 70,
+   "result": "8471804691498130717",
+   "threats": {
+    "monsters": true,
+    "borg": true,
+    "frequency": "frequent",
+    "borgSphere": true,
+    "species8472": true,
+    "edoStation": true,
+    "sparesAi": false,
+    "disabled": []
+   },
+   "spawned": 8
+  },
+  {
+   "campaign": {
+    "seed": 424242,
+    "era": 1,
+    "ruleset": "reference",
+    "width": 22,
+    "height": 16,
+    "systems": 50,
+    "faction": 1,
+    "lineup": [
+     "federation",
+     "klingon",
+     "romulan",
+     "dominion",
+     "borg"
+    ],
+    "threats": {
+     "monsters": true,
+     "borg": true,
+     "frequency": "normal"
+    }
+   },
+   "turns": 37,
+   "result": "13443398883792598419",
+   "threats": {
+    "monsters": true,
+    "borg": true,
+    "frequency": "normal",
+    "borgSphere": false,
+    "species8472": false,
+    "edoStation": false,
+    "sparesAi": false,
+    "disabled": []
+   },
+   "spawned": 5
+  }
+ ]
+}
