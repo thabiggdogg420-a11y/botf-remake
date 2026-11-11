@@ -1909,6 +1909,11 @@ void writeIntel(Writer& w) {
     w.field("reserve", s.intelligence);
     w.field("output", botf::empireIntelOutput(s, me));
     w.field("securityStockpile", botf::empireSecurityStockpile(s, me));
+    {   // MOD-3: what the empire's race structures and traits add to its intelligence (all zero without a Dominion-style pack).
+        const auto bonus = botf::structures::empireIntel(s, me);
+        w.key("structureBonus").beginObject().field("networks", bonus.networks).field("sabotagePercent", bonus.sabotagePct)
+            .field("sabotageDamage", bonus.sabotageDamage).field("securityPercent", bonus.securityPct).endObject();
+    }
     const auto* draftIntel = botf::empireIntelState(d, me);
     const auto* committedIntel = botf::empireIntelState(s, me);
     const auto writeBudget = [&](const intel::EmpireIntelState* st) {

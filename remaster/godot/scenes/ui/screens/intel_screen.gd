@@ -81,6 +81,14 @@ func _security_card() -> Control:
 	_sec_label.add_theme_font_override("font", Lcars.font("display", 600))
 	v.add_child(_sec_label)
 	v.add_child(Lcars.para("Security receives whatever is not assigned to operations.", Lcars.TEXT3, 13))
+	# MOD-3: the race structures that feed intelligence (the Dominion's Vorta Directorate and Changeling Shapeshifter Network).
+	var sb: Dictionary = vm.intel.get("structureBonus", {})
+	if int(sb.get("securityPercent", 0)) > 0:
+		v.add_child(Lcars.para("Security structures and traits add %d%% to internal security output." % int(sb["securityPercent"]), Lcars.GOOD, 13))
+	if int(sb.get("networks", 0)) > 0:
+		var n := Lcars.para("Changeling Shapeshifter Network x%d: +%d%% sabotage output, +%d sabotage damage." % [int(sb["networks"]), int(sb["sabotagePercent"]), int(sb["sabotageDamage"])], Lcars.WARN, 13)
+		n.name = "ShapeshifterNetwork"
+		v.add_child(n)
 	return c
 
 func _rival_card(r: Dictionary) -> Control:
