@@ -348,7 +348,7 @@ func test_uncharted_view() -> void:
 
 ## The view is a read: a fixed-seed autoplay to turn 20 reaches the same state with or without the view being read every turn,
 ## and the hash is the one the core produced before the view change (recorded from the unchanged simulation sources).
-const FINGERPRINT_T20 := "18394220184603420277" # placeholder until the schema-18 rebuild re-pins it; native and wasm agree
+const FINGERPRINT_T20 := "15697014712878501185" # re-pinned for schema 18 (the header line is in the payload; body unchanged vs schema 17, see EMPIRE-SLOTS.md); native and wasm agree
 
 func _autoplay_fingerprint(read_view: bool) -> String:
 	api("newCampaign", CAMPAIGN)

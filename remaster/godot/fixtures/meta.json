@@ -2,8 +2,8 @@
  "method": "meta",
  "args": {},
  "result": {
-  "contentVersion": "remaster-17",
-  "saveVersion": 17,
+  "contentVersion": "remaster-18",
+  "saveVersion": 18,
   "empires": [
    {
     "id": 1,
@@ -224,8 +224,8 @@
      "Cardassian",
      "Dominion"
     ],
-    "lineupPlayable": false,
-    "lineupNote": "Dominion is not an empire the core can seat yet (lanes MOD-2, MOD-3, MOD-5).",
+    "lineupPlayable": true,
+    "lineupNote": "",
     "options": {
      "empires": 5,
      "era": 3,
@@ -292,8 +292,8 @@
      "Dominion",
      "Borg"
     ],
-    "lineupPlayable": false,
-    "lineupNote": "Dominion is not an empire the core can seat yet (lanes MOD-2, MOD-3, MOD-5).",
+    "lineupPlayable": true,
+    "lineupNote": "",
     "options": {
      "empires": 5,
      "era": 1,
