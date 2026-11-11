@@ -68,6 +68,20 @@ dump('determinism-rules3', 'fingerprint', { campaign: campaign3, turns: 10 }, ca
   }
   dump('determinism-galaxy', 'fingerprint', { runs: galaxy.length }, galaxy);
 }
+// Empire slots (schema 17, docs/design/EMPIRE-SLOTS.md): lineups of two, six and eight majors, with Dominion and Borg, after a
+// scripted 20-turn run. `faction` is the empire id (race slot). The native core must reproduce every fingerprint.
+{
+  const slots = [];
+  const lineups = [[7, ['dominion', 'borg']], [6, ['federation', 'klingon', 'romulan', 'cardassian', 'ferengi', 'dominion']],
+    [1, ['federation', 'klingon', 'romulan', 'cardassian', 'ferengi', 'dominion', 'borg', 'breen']]];
+  for (const [faction, lineup] of lineups) {
+    const c = { faction, lineup, seed: 424242, era: 1, ruleset: 'reference', width: 22, height: 16, systems: 50 };
+    call('newCampaign', c);
+    for (let i = 0; i < 20; i++) endTurn();
+    slots.push({ campaign: c, turns: 20, result: call('fingerprint'), preview: call('galaxyPreview', c).stars.length });
+  }
+  dump('determinism-slots', 'fingerprint', { runs: slots.length }, slots);
+}
 // Packs and presets (schema 17, docs/design/PACKS-AND-PRESETS.md): one wasm-recorded fingerprint and stack checksum per preset
 // after a scripted 8-turn run. The native core must reproduce every one, so the overlay merge, the stack checksum and the
 // preset flags are proven identical native against wasm. The preset list itself (meta.presets) rides in the meta fixture.

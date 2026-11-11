@@ -141,7 +141,14 @@ func _find_ship(klass: String) -> BattleShip:
 
 func _campaign() -> void:
 	if app.view.is_empty() or app.view.get("session", {}).get("active", false):
-		app.start_campaign({"faction": 1, "seed": 424242, "era": 3, "ruleset": "reference", "width": 22, "height": 16, "systems": 48, "preset": "remastered", "events": true, "aiAggression": true})
+		var opts := {"faction": 1, "seed": 424242, "era": 3, "ruleset": "reference", "width": 22, "height": 16, "systems": 48, "preset": "remastered", "events": true, "aiAggression": true}
+		if _env("SHOT_LINEUP") != "":
+			var keys := []
+			for k in _env("SHOT_LINEUP").split(","):
+				keys.append(["federation", "klingon", "romulan", "cardassian", "ferengi", "dominion", "borg", "breen"][int(k) - 1])
+			opts["lineup"] = keys
+			opts["faction"] = int(_env("SHOT_PLAYER")) if _env("SHOT_PLAYER") != "" else int(_env("SHOT_LINEUP").split(",")[0])
+		app.start_campaign(opts)
 		# With the real core, play a few turns so the map has something on it.
 		if app.core.is_native():
 			for n in 12:
@@ -157,6 +164,16 @@ func _prepare(s: String) -> void:
 		"new":
 			app.view = {}
 			app.goto("new")
+			if _env("SHOT_LINEUP") != "":
+				# SHOT_LINEUP=1,2,3,4,5,6,7 shows that lineup picked (MOD-2 captures); SHOT_PLAYER is the power played.
+				var picked: Array = []
+				for k in _env("SHOT_LINEUP").split(","):
+					picked.append(int(k))
+				await _wait(4)
+				app._current.vm.lineup = picked
+				app._current.vm.faction = int(_env("SHOT_PLAYER")) if _env("SHOT_PLAYER") != "" else int(picked[0])
+				app._current.refresh()
+				await _wait(6)
 		"new-dominion-war", "new-galaxies", "new-ultimate":
 			# The preset picker with one mod preset chosen (the options it sets are filled in).
 			app.view = {}
@@ -529,7 +546,7 @@ func _force_contact() -> void:
 		var id := int(e.get("empire", e.get("id", 0)))
 		if e.get("atWar", false) or not e.get("contact", false):
 			continue
-		if id != 0 and id != me and id <= 5:
+		if id != 0 and id != me and id <= 8:
 			app.core.invoke("submit", {"command": {"type": "DeclareWar", "targetEmpire": id}, "cancelIds": []})
 	var fleets: Array = app.view.get("fleets", [])
 	var targets := []

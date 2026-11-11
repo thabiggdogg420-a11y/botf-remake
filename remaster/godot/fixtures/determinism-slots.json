@@ -1,0 +1,72 @@
+{
+ "method": "fingerprint",
+ "args": {
+  "runs": 3
+ },
+ "result": [
+  {
+   "campaign": {
+    "faction": 7,
+    "lineup": [
+     "dominion",
+     "borg"
+    ],
+    "seed": 424242,
+    "era": 1,
+    "ruleset": "reference",
+    "width": 22,
+    "height": 16,
+    "systems": 50
+   },
+   "turns": 20,
+   "result": "9485057203695523160",
+   "preview": 50
+  },
+  {
+   "campaign": {
+    "faction": 6,
+    "lineup": [
+     "federation",
+     "klingon",
+     "romulan",
+     "cardassian",
+     "ferengi",
+     "dominion"
+    ],
+    "seed": 424242,
+    "era": 1,
+    "ruleset": "reference",
+    "width": 22,
+    "height": 16,
+    "systems": 50
+   },
+   "turns": 20,
+   "result": "252733618087176961",
+   "preview": 50
+  },
+  {
+   "campaign": {
+    "faction": 1,
+    "lineup": [
+     "federation",
+     "klingon",
+     "romulan",
+     "cardassian",
+     "ferengi",
+     "dominion",
+     "borg",
+     "breen"
+    ],
+    "seed": 424242,
+    "era": 1,
+    "ruleset": "reference",
+    "width": 22,
+    "height": 16,
+    "systems": 50
+   },
+   "turns": 20,
+   "result": "13572109827103628916",
+   "preview": 50
+  }
+ ]
+}

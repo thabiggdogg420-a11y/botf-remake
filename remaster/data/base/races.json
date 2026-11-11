@@ -1,9 +1,9 @@
 {"races":[
-{"id":0,"name":"Cardassians","icon":"cardn_02.tga"},
-{"id":1,"name":"Federation","icon":"human_02.tga"},
-{"id":2,"name":"Ferengi","icon":"feren_02.tga"},
-{"id":3,"name":"Klingons","icon":"king_02.tga"},
-{"id":4,"name":"Romulans","icon":"romul_02.tga"},
+{"id":0,"name":"Cardassians","icon":"cardn_02.tga","major":{"empireId":4,"key":"cardassian","empireName":"Cardassian Union","capital":"Cardassia","shipDonor":-1,"traits":["Industrial might","Security services","Disciplined"],"startingFleet":[]}},
+{"id":1,"name":"Federation","icon":"human_02.tga","major":{"empireId":1,"key":"federation","empireName":"Federation","capital":"Sol","shipDonor":-1,"traits":["Balanced economy","Diplomatic reach","Science vessels"],"startingFleet":[]}},
+{"id":2,"name":"Ferengi","icon":"feren_02.tga","major":{"empireId":5,"key":"ferengi","empireName":"Ferengi Alliance","capital":"Ferenginar","shipDonor":-1,"traits":["Trade & credits","Opportunists","Fast traders"],"startingFleet":[]}},
+{"id":3,"name":"Klingons","icon":"king_02.tga","major":{"empireId":2,"key":"klingon","empireName":"Klingon Empire","capital":"Qo'noS","shipDonor":-1,"traits":["Aggressive fleets","Cloaking raiders","Warrior culture"],"startingFleet":[]}},
+{"id":4,"name":"Romulans","icon":"romul_02.tga","major":{"empireId":3,"key":"romulan","empireName":"Romulan Star Empire","capital":"Romulus","shipDonor":-1,"traits":["Cloaked warbirds","Espionage","Secretive state"],"startingFleet":[]}},
 {"id":5,"name":"Acamarians","icon":"acamaria.tga"},
 {"id":6,"name":"Andorians","icon":"andorian.tga"},
 {"id":7,"name":"Angosians","icon":"angosian.tga"},
@@ -33,5 +33,8 @@
 {"id":31,"name":"Ullians","icon":"ullian.tga"},
 {"id":32,"name":"Vulcans","icon":"vulcans.tga"},
 {"id":33,"name":"Yridians","icon":"yridians.tga"},
-{"id":34,"name":"Zakdorn","icon":"zakdorn.tga"}
+{"id":34,"name":"Zakdorn","icon":"zakdorn.tga"},
+{"id":35,"name":"Dominion","icon":"dominion.tga","major":{"empireId":6,"key":"dominion","empireName":"Dominion","capital":"Omarion Nebula","shipDonor":0,"traits":["Founders and Vorta","Jem'Hadar shock troops","Absolute order"],"startingFleet":[1500]}},
+{"id":36,"name":"Borg","icon":"borg.tga","major":{"empireId":7,"key":"borg","empireName":"Borg Collective","capital":"Unimatrix 001","shipDonor":1,"traits":["Collective will","Adaptive weapons","Assimilation"],"startingFleet":[1604,1601]}},
+{"id":37,"name":"Breen","icon":"breen.tga","major":{"empireId":8,"key":"breen","empireName":"Breen Confederacy","capital":"Breen","shipDonor":4,"traits":["Energy dampeners","Secretive confederacy","Cold-world raiders"],"startingFleet":[1503]}}
 ]}

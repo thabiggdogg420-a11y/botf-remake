@@ -16,12 +16,12 @@
 
 namespace botf::presets {
 
-// The five-empire cap and the empires the core can seat. Lane MOD-2 lifts MajorCap and extends StockEmpires; nothing
-// else in the preset code changes, because every lineup is checked against these two.
-inline constexpr int MajorCap = 5;
+// The cap on majors and the empires the core can seat. Lane MOD-2 (empire slots, EmpireSlots.h) lifted MajorCap to eight and
+// named the Dominion, Borg and Breen; a lineup is any distinct subset of them, in any order (the seating order of the preset).
+inline constexpr int MajorCap = 8;
 inline constexpr int LineupMax = 8;  // Structural sanity bound for a lineup field, independent of the cap.
-inline constexpr const char* StockEmpires[] = {"Federation", "Klingon", "Romulan", "Cardassian", "Ferengi"};
-inline constexpr int StockEmpireCount = 5;
+inline constexpr const char* StockEmpires[] = {"Federation", "Klingon", "Romulan", "Cardassian", "Ferengi", "Dominion", "Borg", "Breen"};
+inline constexpr int StockEmpireCount = 8;
 
 inline constexpr const char* FlagNames[] = {"stations", "galaxyFeatures", "curatedEvents", "alternativeVictories",
     "expandedRoster", "flightModel", "wegoCombat", "empireRules"};
@@ -64,13 +64,11 @@ inline LineupCheck checkLineup(const std::vector<std::string>& lineup, const std
         return out;
     }
     for (std::size_t i = 0; i < lineup.size(); ++i) {
-        const bool stock = i < static_cast<std::size_t>(StockEmpireCount) && lineup[i] == StockEmpires[i];
-        if (!stock) {
-            bool known = false;
-            for (const char* e : StockEmpires) known = known || lineup[i] == e;
+        bool known = false;
+        for (const char* e : StockEmpires) known = known || lineup[i] == e;
+        if (!known) {
             out.playable = false;
-            out.note = known ? lineup[i] + " is not in slot " + std::to_string(i + 1) + " (lane MOD-2 makes slots data-driven)."
-                             : lineup[i] + " is not an empire the core can seat yet (lanes MOD-2, MOD-3, MOD-5).";
+            out.note = lineup[i] + " is not an empire the core can seat (lane MOD-2 seats " + std::to_string(StockEmpireCount) + ").";
             return out;
         }
     }

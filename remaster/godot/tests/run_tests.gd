@@ -72,7 +72,7 @@ const CAMPAIGN := {"faction": 1, "empires": 5, "seed": 424242, "era": 1, "rulese
 
 func test_meta() -> void:
 	var meta: Dictionary = api("meta")
-	check(meta.empires.size() == 5, "five majors")
+	check(meta.empires.size() == 8, "eight playable powers (five original majors, Dominion, Borg, Breen)")
 	check(meta.researchFields.size() == 6, "six research fields")
 	check(meta.maneuvers.any(func(m): return m.key == "Engage"), "Engage maneuver")
 
@@ -242,6 +242,14 @@ func test_fixture_determinism() -> void:
 		check(api("fingerprint") == run.result, "galaxy %s/%s/%s: fingerprint %s == wasm %s" % [run.campaign.shape, run.campaign.minorDensity, run.campaign.difficulty, api("fingerprint"), run.result])
 		var pv: Dictionary = api("galaxyPreview", run.campaign)
 		check(pv.stars.size() == int(run.preview) and pv.stars.size() == int(run.campaign.systems) and pv.shape == run.campaign.shape, "galaxy preview holds every star of the %s galaxy" % run.campaign.shape)
+	var sl := load_fixture("determinism-slots")
+	for run in sl.result:
+		api("newCampaign", run.campaign)
+		for i in int(run.turns):
+			end_turn()
+		check(api("fingerprint") == run.result, "lineup %s: fingerprint %s == wasm %s" % [str(run.campaign.lineup), api("fingerprint"), run.result])
+		var spv: Dictionary = api("galaxyPreview", run.campaign)
+		check(spv.stars.size() == int(run.preview) and spv.stars.size() == int(run.campaign.systems), "lineup preview holds every star")
 	# Packs and presets (schema 17): every preset's fingerprint, stack checksum and recorded preset id, native against wasm.
 	var px := load_fixture("determinism-presets")
 	for run in px.result:
@@ -340,7 +348,7 @@ func test_uncharted_view() -> void:
 
 ## The view is a read: a fixed-seed autoplay to turn 20 reaches the same state with or without the view being read every turn,
 ## and the hash is the one the core produced before the view change (recorded from the unchanged simulation sources).
-const FINGERPRINT_T20 := "18394220184603420277" # re-pinned for schema 17 (the header is in the payload; MOD-1 packs and presets); native and wasm agree
+const FINGERPRINT_T20 := "15697014712878501185" # re-pinned for schema 18 (the header line is in the payload; body unchanged vs schema 17, see EMPIRE-SLOTS.md); native and wasm agree
 
 func _autoplay_fingerprint(read_view: bool) -> String:
 	api("newCampaign", CAMPAIGN)

@@ -17,10 +17,10 @@
     "preset": "classic"
    },
    "turns": 8,
-   "result": "7892330688132960826",
+   "result": "5950630019912432886",
    "content": {
     "id": "botf-base",
-    "checksum": "08a82ca5c26e0dd5",
+    "checksum": "4f178d941a2a4de1",
     "stack": 0
    },
    "preset": "classic"
@@ -38,10 +38,10 @@
     "preset": "remastered"
    },
    "turns": 8,
-   "result": "3692155339068869258",
+   "result": "17799636875396292774",
    "content": {
     "id": "botf-base",
-    "checksum": "08a82ca5c26e0dd5",
+    "checksum": "4f178d941a2a4de1",
     "stack": 0
    },
    "preset": "remastered"
@@ -59,10 +59,10 @@
     "preset": "dominion-war"
    },
    "turns": 8,
-   "result": "17912335744697164019",
+   "result": "5099571833879307230",
    "content": {
     "id": "botf-base+dominion-war",
-    "checksum": "6512d5f4a31ec555",
+    "checksum": "9b4418e7bcb71d12",
     "stack": 1
    },
    "preset": "dominion-war"
@@ -80,10 +80,10 @@
     "preset": "ages"
    },
    "turns": 8,
-   "result": "14139529183068197942",
+   "result": "7548857552822879038",
    "content": {
     "id": "botf-base+ages",
-    "checksum": "3ea3f104684ba55a",
+    "checksum": "a13b2f0bb2515a0d",
     "stack": 1
    },
    "preset": "ages"
@@ -101,10 +101,10 @@
     "preset": "galaxies"
    },
    "turns": 8,
-   "result": "5847462104348768878",
+   "result": "9740794096854079072",
    "content": {
     "id": "botf-base+galaxies",
-    "checksum": "0afb676eafc8f224",
+    "checksum": "cf3311ce7c050c93",
     "stack": 1
    },
    "preset": "galaxies"
@@ -122,10 +122,10 @@
     "preset": "balance-of-power"
    },
    "turns": 8,
-   "result": "11779930322972515841",
+   "result": "17695777820543532101",
    "content": {
     "id": "botf-base+balance-of-power",
-    "checksum": "5997cf90e7c03e70",
+    "checksum": "9a19fb250a3482cf",
     "stack": 1
    },
    "preset": "balance-of-power"
@@ -143,10 +143,10 @@
     "preset": "ultimate"
    },
    "turns": 8,
-   "result": "961799544092602073",
+   "result": "1955466308110664703",
    "content": {
     "id": "botf-base+ultimate",
-    "checksum": "790f46c1d34fdb61",
+    "checksum": "837b99ed2634139a",
     "stack": 1
    },
    "preset": "ultimate"

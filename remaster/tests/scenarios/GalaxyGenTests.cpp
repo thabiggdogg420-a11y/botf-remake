@@ -173,7 +173,7 @@ int main(int argc, char** argv) {
     run("save: GALAXY_SETUP round trips, schema 14 loads, a bad section is refused", [] {
         const auto s = botf::newCampaign(setupFor(Sizes[1], 12, botf::GalaxyShape::Elliptical, botf::MinorDensity::Few, botf::Difficulty::Impossible));
         const auto text = botf::serialize(s);
-        check(text.starts_with("BOTF_SIM 17 remaster-17\n") && text.find("\nGALAXY_SETUP 4 2 4\n") != std::string::npos, "section written");
+        check(text.starts_with((std::string("BOTF_SIM ") + std::to_string(botf::SaveVersion) + " " + botf::ContentVersion + "\n")) && text.find("\nGALAXY_SETUP 4 2 4\n") != std::string::npos, "section written");
         const auto back = botf::deserialize(text);
         check(back.galaxy == s.galaxy && botf::fingerprint(back) == botf::fingerprint(s), "round trip keeps the setup and the fingerprint");
         auto later = back; botf::advance(later);
@@ -196,8 +196,8 @@ int main(int argc, char** argv) {
             try { botf::deserialize(withChecksum(t)); } catch (const std::exception&) { rejected = true; }
             return rejected;
         };
-        check(forge("GALAXY_SETUP 9 2 4", "BOTF_SIM 17 remaster-17\n"), "range checked");
-        check(forge("GALAXY_SETUP 0 0 2", "BOTF_SIM 17 remaster-17\n"), "default setup is never written");
+        check(forge("GALAXY_SETUP 9 2 4", (std::string("BOTF_SIM ") + std::to_string(botf::SaveVersion) + " " + botf::ContentVersion + "\n")), "range checked");
+        check(forge("GALAXY_SETUP 0 0 2", (std::string("BOTF_SIM ") + std::to_string(botf::SaveVersion) + " " + botf::ContentVersion + "\n")), "default setup is never written");
         check(forge("GALAXY_SETUP 4 2 4", "BOTF_SIM 14 remaster-14\n"), "not in a schema-14 file");
     }, passed);
 

@@ -14,9 +14,11 @@ var player := 1
 var _rot := 0.0
 var _stars: Array = []   ## [Vector2 unit-disc position, brightness, kind (0 star, 1 home, 2 minor), empire]
 
+## Empire ids (race slots) in play for the approximate preview; empty means 1..empires.
+var lineup_ids: Array = []
 var real_systems := 0   ## stars drawn from the core's galaxy (0 when the preview is the approximation)
 
-## The core's galaxy: stars [[x, y, kind]] on a width x height grid (kind 0 star, 1-5 a capital, 6 a minor race).
+## The core's galaxy: stars [[x, y, kind]] on a width x height grid (kind 0 star, 1-8 a capital by empire id, 9 a minor race).
 func configure_core(preview: Dictionary, player_: int) -> void:
 	var w := float(preview["width"])
 	var h := float(preview["height"])
@@ -34,14 +36,15 @@ func configure_core(preview: Dictionary, player_: int) -> void:
 		real_systems += 1
 		if kind == 0:
 			_stars.append([p, 0.8, 0, 0])
-		elif kind == 6:
+		elif kind == 9:
 			_stars.append([p, 0.9, 2, 0])
 		else:
 			_stars.append([p, 1.0, 1, kind])
 	queue_redraw()
 
-func configure(shape_: String, seed_: int, systems_: int, empires_: int, minors_: int, player_: int) -> void:
+func configure(shape_: String, seed_: int, systems_: int, empires_: int, minors_: int, player_: int, lineup_: Array = []) -> void:
 	real_systems = 0
+	lineup_ids = lineup_
 	shape = shape_
 	seed_value = seed_
 	systems = systems_
@@ -91,8 +94,10 @@ func _generate() -> void:
 		_stars.append([_point(rng), rng.randf_range(0.08, 0.35), -1, 0])
 	for n in systems:
 		_stars.append([_point(rng), rng.randf_range(0.6, 1.0), 0, 0])
-	for e in range(1, empires + 1):
-		var a := TAU * (e - 1) / float(empires) + 0.4
+	var ids: Array = lineup_ids if not lineup_ids.is_empty() else range(1, empires + 1)
+	for n in ids.size():
+		var e: int = ids[n]
+		var a := TAU * n / float(ids.size()) + 0.4
 		var r := 0.62 if shape != "ring" else 0.72
 		_stars.append([Vector2(cos(a), sin(a)) * r * (0.9 + rng.randf() * 0.1), 1.0, 1, e])
 	for n in minors:

@@ -85,3 +85,6 @@ set_tests_properties(BotfShipRosterTests PROPERTIES TIMEOUT 900)
 # Empire rules (docs/design/EMPIRE-RULES.md, schema 15): dilithium, programs, aftermath, minor conquest, guards.
 botf_suite(BotfEmpireRulesTests EmpireRulesTests.cpp)
 set_tests_properties(BotfEmpireRulesTests PROPERTIES TIMEOUT 900)
+# Empire slots (docs/design/EMPIRE-SLOTS.md, schema 17): lineups of two to eight majors, Dominion and Borg as majors, migration.
+botf_suite(BotfEmpireSlotsTests EmpireSlotsTests.cpp)
+set_tests_properties(BotfEmpireSlotsTests PROPERTIES TIMEOUT 900)

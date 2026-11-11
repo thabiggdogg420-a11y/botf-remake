@@ -243,15 +243,15 @@ The table below is generated.
 | 1304 | Cardassian Union | Kraxon | Light Cruiser | DominionWar | 6 | 5/6/6/6/6/7 | 6060 | 11 | 85 | 292 | 367 | 1116 | 6x Disruptor (ForwardWide); 2x PhotonTorpedo (Forward) | 2/1/3 | 90/2/1 Medium | - | data | mod-derived (see notes) | `ship.car.kraxon` |
 | 1400 | Ferengi Alliance | Pod Ship | Raider | Enterprise | 0 | 1/1/1/1/1/1 | 1190 | 2 | 54 | 72 | 228 | 25 | 2x PhaseCannon (Forward) | 3/1/2 | 135/3/2 Small | - | yes | ENT ('Acquisition') | `ship.fer.pod` |
 | 1401 | Ferengi Alliance | Nagus | Battleship | Nemesis | 9 | 8/9/9/9/9/10 | 20010 | 34 | 130 | 278 | 936 | 4332 | 10x PhaserArray (All); 4x PhotonTorpedo (ForwardWide) | 1/1/3 | 45/1/0 Huge | - | data | mod-derived (see notes) | `ship.fer.nagus` |
-| 1500 | Dominion | Jem'Hadar Attack Ship | Destroyer | DominionWar | 6 | 5/6/6/6/6/7 | 5600 | 10 | 59 | 175 | 408 | 1073 | 5x PolaronBeam (ForwardWide); 1x Torpedo (Forward) | 3/1/2 | 90/2/1 Medium | - | data | DS9 ('The Jem'Hadar') | `ship.dom.attack_ship` |
-| 1501 | Dominion | Jem'Hadar Battle Cruiser | Battlecruiser | DominionWar | 7 | 6/7/7/7/7/8 | 13150 | 22 | 115 | 328 | 766 | 3066 | 10x PolaronBeam (All); 3x Torpedo (Forward) | 2/1/3 | 45/2/0 Large | - | data | DS9 ('Call to Arms', 'Sacrifice of Angels') | `ship.dom.battlecruiser` |
-| 1502 | Dominion | Jem'Hadar Battleship | Dreadnought | DominionWar | 8 | 7/8/8/8/8/9 | 23140 | 39 | 140 | 478 | 1124 | 6030 | 16x PolaronBeam (All); 4x Torpedo (All) | 1/1/3 | 45/1/0 Huge | - | data | DS9 ('The Changing Face of Evil') | `ship.dom.battleship` |
-| 1503 | Breen Confederacy | Breen Warship | Cruiser | DominionWar | 7 | 6/7/7/7/7/8 | 8080 | 14 | 91 | 229 | 539 | 1441 | 1x EnergyDampener (Forward); 6x Disruptor (ForwardWide); 2x Torpedo (Forward) | 2/1/3 | 90/2/0 Large | - | data | DS9 ('The Changing Face of Evil') | `ship.breen.breen_warship` |
-| 1600 | Borg Collective | Sphere | Cruiser | NextGeneration | 7 | 6/7/7/7/7/8 | 8520 | 15 | 91 | 607 | 994 | 1660 | 3x CuttingBeam (All); 2x Torpedo (All) | 2/1/3 | 180/2/2 Large | - | data | Star Trek: First Contact; VOY | `ship.borg.sphere` |
-| 1601 | Borg Collective | Probe | Scout | NextGeneration | 6 | 5/6/5/5/6/5 | 1040 | 2 | 26 | 175 | 285 | 348 | 1x CuttingBeam (All) | 3/2/5 | 180/3/2 Small | - | data | VOY ('Drone', 'Infinite Regress') | `ship.borg.probe` |
-| 1602 | Borg Collective | Tactical Cube | Dreadnought | Nemesis | 10 | 9/10/10/10/10/10 | 39220 | 66 | 140 | 1282 | 2128 | 12772 | 14x CuttingBeam (All); 6x Torpedo (All) | 1/1/3 | 180/1/2 Huge | - | data | VOY ('Unimatrix Zero') | `ship.borg.tactical_cube` |
+| 1500 | Dominion | Jem'Hadar Attack Ship | Destroyer | DominionWar | 6 | 5/6/6/6/6/7 | 5600 | 10 | 59 | 175 | 408 | 1073 | 5x PolaronBeam (ForwardWide); 1x Torpedo (Forward) | 3/1/2 | 90/2/1 Medium | - | yes | DS9 ('The Jem'Hadar') | `ship.dom.attack_ship` |
+| 1501 | Dominion | Jem'Hadar Battle Cruiser | Battlecruiser | DominionWar | 7 | 6/7/7/7/7/8 | 13150 | 22 | 115 | 328 | 766 | 3066 | 10x PolaronBeam (All); 3x Torpedo (Forward) | 2/1/3 | 45/2/0 Large | - | yes | DS9 ('Call to Arms', 'Sacrifice of Angels') | `ship.dom.battlecruiser` |
+| 1502 | Dominion | Jem'Hadar Battleship | Dreadnought | DominionWar | 8 | 7/8/8/8/8/9 | 23140 | 39 | 140 | 478 | 1124 | 6030 | 16x PolaronBeam (All); 4x Torpedo (All) | 1/1/3 | 45/1/0 Huge | - | yes | DS9 ('The Changing Face of Evil') | `ship.dom.battleship` |
+| 1503 | Breen Confederacy | Breen Warship | Cruiser | DominionWar | 7 | 6/7/7/7/7/8 | 8080 | 14 | 91 | 229 | 539 | 1441 | 1x EnergyDampener (Forward); 6x Disruptor (ForwardWide); 2x Torpedo (Forward) | 2/1/3 | 90/2/0 Large | - | yes | DS9 ('The Changing Face of Evil') | `ship.breen.breen_warship` |
+| 1600 | Borg Collective | Sphere | Cruiser | NextGeneration | 7 | 6/7/7/7/7/8 | 8520 | 15 | 91 | 607 | 994 | 1660 | 3x CuttingBeam (All); 2x Torpedo (All) | 2/1/3 | 180/2/2 Large | - | yes | Star Trek: First Contact; VOY | `ship.borg.sphere` |
+| 1601 | Borg Collective | Probe | Scout | NextGeneration | 6 | 5/6/5/5/6/5 | 1040 | 2 | 26 | 175 | 285 | 348 | 1x CuttingBeam (All) | 3/2/5 | 180/3/2 Small | - | yes | VOY ('Drone', 'Infinite Regress') | `ship.borg.probe` |
+| 1602 | Borg Collective | Tactical Cube | Dreadnought | Nemesis | 10 | 9/10/10/10/10/10 | 39220 | 66 | 140 | 1282 | 2128 | 12772 | 14x CuttingBeam (All); 6x Torpedo (All) | 1/1/3 | 180/1/2 Huge | - | yes | VOY ('Unimatrix Zero') | `ship.borg.tactical_cube` |
 | 1603 | Borg Collective | Queen's Diamond | Special | Nemesis | 10 | 9/10/10/10/10/10 | 29350 | 49 | 150 | 1350 | 2240 | 7475 | 8x CuttingBeam (All); 4x Torpedo (All) | 2/2/4 | 180/2/2 Large | - | data | VOY ('Endgame') | `ship.borg.diamond` |
-| 1604 | Borg Collective | Scout Vessel | Scout | NextGeneration | 5 | 4/5/4/4/5/4 | 830 | 2 | 26 | 168 | 273 | 225 | 1x CuttingBeam (Forward) | 3/2/4 | 180/3/2 Small | - | data | TNG ('I, Borg') | `ship.borg.scout` |
+| 1604 | Borg Collective | Scout Vessel | Scout | NextGeneration | 5 | 4/5/4/4/5/4 | 830 | 2 | 26 | 168 | 273 | 225 | 1x CuttingBeam (Forward) | 3/2/4 | 180/3/2 Small | - | yes | TNG ('I, Borg') | `ship.borg.scout` |
 | 1700 | Tholian Assembly | Web Spinner | Destroyer | Original | 2 | 1/2/2/2/2/3 | 2200 | 4 | 59 | 106 | 302 | 126 | 2x TholianWeb (All); 2x PhaserBank (Forward) | 2/1/2 | 135/2/1 Medium | - | data | TOS ('The Tholian Web'); ENT | `ship.thol.web_spinner` |
 | 1701 | Gorn Hegemony | Gorn Cruiser | Cruiser | Original | 1 | 1/1/1/1/1/2 | 2550 | 5 | 91 | 210 | 318 | 185 | 5x Disruptor (ForwardWide); 1x Torpedo (Forward) | 2/1/3 | 90/2/0 Large | - | data | TOS ('Arena') | `ship.gorn.cruiser` |
 | 1702 | Orion Syndicate | Orion Interceptor | Raider | Enterprise | 0 | 1/1/1/1/1/1 | 1170 | 2 | 54 | 66 | 168 | 45 | 3x PlasmaCannon (Forward) | 3/1/2 | 135/3/2 Small | - | data | ENT ('Bound'); TOS ('Journey to Babel') | `ship.orion.interceptor` |
@@ -294,9 +294,9 @@ The table below is generated.
 | Romulan Star Empire | 9 | 6 |
 | Cardassian Union | 5 | 2 |
 | Ferengi Alliance | 2 | 1 |
-| Dominion | 3 | 0 |
-| Breen Confederacy | 1 | 0 |
-| Borg Collective | 5 | 0 |
+| Dominion | 3 | 3 |
+| Breen Confederacy | 1 | 1 |
+| Borg Collective | 5 | 4 |
 | Tholian Assembly | 1 | 0 |
 | Gorn Hegemony | 1 | 0 |
 | Orion Syndicate | 1 | 0 |
@@ -317,5 +317,5 @@ The table below is generated.
 | Bajorans | 2 | 0 |
 | Nausicaans | 1 | 0 |
 | Talarians | 1 | 0 |
-| **Total** | **98** | **43** |
+| **Total** | **98** | **51** |
 <!-- ROSTER-TABLE:END -->

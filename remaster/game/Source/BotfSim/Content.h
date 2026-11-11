@@ -25,7 +25,17 @@ namespace botf::referenceData {
 struct TechnologyRecord { int id; const char* name; int field; int level; std::int64_t cost; const char* description; };
 struct ShipRecord { int id; int raceId; const char* name; const char* shipClass; std::array<int, 6> technologyRequirements; int industryCost; int maintenance; int hull; int shields; int attack; double range; double speed; int role; int troopCapacity; const char* description; };
 struct BuildingRecord { int id; const char* name; int technologyField; int technologyLevel; int industryCost; int energyCost; int populationCost; int moraleBonus; int excludedEmpireMask; std::uint64_t residentRaceMask; int bonusType; std::array<int, 6> bonusValues; std::array<int, 6> unrestBonuses; const char* description; };
-struct RaceRecord { int id; const char* name; const char* icon; };
+// A race with empireId 1..8 is a playable major (docs/design/EMPIRE-SLOTS.md); every other record is portrait/icon data only.
+struct RaceRecord {
+    int id; const char* name; const char* icon;
+    int empireId = 0;                 // Campaign slot 1..8, 0 = not a major.
+    const char* key = "";             // Stable race key: "federation", "dominion", ...
+    const char* empireName = "";      // "Klingon Empire".
+    const char* capital = "";         // Home world name given to the empire's first colony.
+    const char* traits = "";          // '|' separated display traits.
+    int shipDonor = -1;               // Catalogue race whose utility and escort hulls this race may also build, -1 none.
+    std::array<int, 4> startingFleet{-1, -1, -1, -1}; // Expanded-roster class ids added to the home fleet (-1 unused).
+};
 } // namespace botf::referenceData
 
 namespace botf::minors {
@@ -45,7 +55,7 @@ struct MinorRaceRecord {
     JoinBonus bonus;
     int bonusValue;                // Percent, or morale points for JoinBonus::Morale.
     int signatureShipId;           // referenceData::ShipCatalogue id of its own design, -1 if none.
-    std::array<int, 6> affinity;   // By major slot 1..5 (1 Fed, 2 Klingon, 3 Romulan, 4 Cardassian, 5 Ferengi); -2..+2.
+    std::array<int, 9> affinity;   // By major slot 1..8 (1 Fed, 2 Klingon, 3 Romulan, 4 Cardassian, 5 Ferengi, 6 Dominion, 7 Borg, 8 Breen); -2..+2. Data gives slots 0..5; the rest load as 0.
     const char* description;       // Original remaster text.
 };
 } // namespace botf::minors
@@ -471,6 +481,31 @@ inline std::unique_ptr<Pack> parsePackValue(const json::Value& doc) {
             r.id = o.i32("id", 0, 63);
             r.name = p.keep(o.str("name"));
             r.icon = p.keep(o.str("icon"));
+            if (o.has("major")) {
+                Object m(o.get("major"), o.at("major"));
+                r.empireId = m.i32("empireId", 1, 8);
+                r.key = p.keep(m.str("key", 32));
+                r.empireName = p.keep(m.str("empireName", 64));
+                r.capital = p.keep(m.str("capital", 64));
+                r.shipDonor = m.i32("shipDonor", -1, 63);
+                std::string traits;
+                const auto& tv = m.array("traits");
+                for (std::size_t k = 0; k < tv.items.size(); ++k) {
+                    if (tv.items[k].kind != json::Value::Kind::String) bad(m.at("traits"), "expected strings");
+                    traits += (k ? "|" : "") + tv.items[k].text;
+                }
+                r.traits = p.keep(traits);
+                const auto& fv = m.array("startingFleet");
+                if (fv.items.size() > r.startingFleet.size()) bad(m.at("startingFleet"), "at most 4 starting ships");
+                for (std::size_t k = 0; k < fv.items.size(); ++k)
+                    r.startingFleet[k] = static_cast<int>(integer(fv.items[k], m.at("startingFleet") + "[" + std::to_string(k) + "]", 1000, 1999));
+                m.done();
+                if (r.key[0] == '\0') bad(m.at("key"), "empty race key");
+                for (const auto& other : p.races) {
+                    if (other.empireId == r.empireId) bad(m.at("empireId"), "duplicate empire slot");
+                    if (other.empireId != 0 && std::string_view(other.key) == r.key) bad(m.at("key"), "duplicate race key");
+                }
+            }
             o.done();
             if (r.id != static_cast<int>(i)) bad(o.at("id"), "race ids must equal their index");
             p.races.push_back(r);
@@ -550,7 +585,10 @@ inline std::unique_ptr<Pack> parsePackValue(const json::Value& doc) {
             r.bonus = static_cast<minors::JoinBonus>(o.enumeration("bonus", JoinBonusNames, "JoinBonus"));
             r.bonusValue = o.i32("bonusValue", 0, 100);
             r.signatureShipId = o.i32("signatureShipId", -1, LegacyShipLimit - 1);
-            r.affinity = o.six("affinity", -2, 2);
+            {   const auto six = o.six("affinity", -2, 2);
+                r.affinity = {};
+                for (std::size_t k = 0; k < six.size(); ++k) r.affinity[k] = six[k];
+            }
             r.description = p.keep(o.str("description"));
             o.done();
             if (r.id != static_cast<int>(i) + 1) bad(o.at("id"), "minor race ids must equal their index + 1");
@@ -588,6 +626,21 @@ inline std::unique_ptr<Pack> parsePackValue(const json::Value& doc) {
             }
             p.events.push_back(std::move(e));
         }
+    }
+    {   // Majors: the five original slots must exist; donors and starting ships must resolve (roster is parsed by now).
+        int found = 0;
+        for (const auto& r : p.races) {
+            if (r.empireId == 0) continue;
+            if (r.empireId <= 5) ++found;
+            if (r.shipDonor >= static_cast<int>(p.races.size())) bad("races[" + std::to_string(r.id) + "].major.shipDonor", "no such race");
+            for (int ship : r.startingFleet) {
+                if (ship < 0) continue;
+                const auto at = static_cast<std::size_t>(ship - ExpandedIdBase);
+                if (ship < ExpandedIdBase || ship >= ExpandedIdLimit || p.rosterIndex[at] < 0 || !p.roster[static_cast<std::size_t>(p.rosterIndex[at])].buildable)
+                    bad("races[" + std::to_string(r.id) + "].major.startingFleet", "must name a buildable roster class");
+            }
+        }
+        if (found != 5) bad("races", "the pack must define the five original majors (empireId 1..5)");
     }
     if (root.has("balance")) {
         Object b(root.get("balance"), "pack.balance");

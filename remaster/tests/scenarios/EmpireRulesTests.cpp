@@ -559,7 +559,7 @@ int main() {
         auto s = fresh(9);
         for (int t = 0; t < 5; ++t) advance(s);
         const auto text = serialize(s);
-        check(text.starts_with("BOTF_SIM 17 remaster-17\n") && contains(text, "\nEMPIRE_RULES 1\n"), "section written");
+        check(text.starts_with((std::string("BOTF_SIM ") + std::to_string(botf::SaveVersion) + " " + botf::ContentVersion + "\n")) && contains(text, "\nEMPIRE_RULES 1\n"), "section written");
         const auto loaded = deserialize(text);
         check(serialize(loaded) == text && fingerprint(loaded) == fingerprint(s), "round trip");
         // A schema-14 save (header 14, no section) of a rules-off campaign loads and re-saves as schema 16.

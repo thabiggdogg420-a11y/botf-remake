@@ -2,7 +2,9 @@
 // GAMEPLAY_LAYER save section and the per-turn orchestration hooks that
 // Simulation.cpp calls. See docs/GAMEPLAY-REMASTER.md.
 #include "EmpireRules.h"
+#include "EmpireSlots.h"
 #include "GameplayInternal.h"
+#include "ShipRoster.h"
 #include "MinorRaces.h"
 #include "Presets.h"
 
@@ -289,7 +291,7 @@ void parseSection(std::istream& in, GameState& s) {
         s.buildTemplates.push_back(std::move(t));
     }
     tag(in, "MEGAPROJECTS");
-    n = count(in, 5);
+    n = count(in, MaxMajors); // One per campaign empire.
     for (int i = 0; i < n; ++i) {
         Megaproject m;
         read(in, m.ownerId, m.systemId, m.work, m.startTurn);
@@ -397,6 +399,41 @@ bool parseRulesetPreset(const std::string& text, RulesetPreset& preset) {
     if (lower == "classic") { preset = RulesetPreset::Classic; return true; }
     if (lower == "remastered" || lower == "remaster") { preset = RulesetPreset::Remastered; return true; }
     return false;
+}
+
+// Schema 17: the extra home-system ships a race's `major.startingFleet` names (roster classes; Dominion, Borg and Breen carry
+// them). Needs the expanded roster; a classic ruleset keeps only the era fleet. The five original races list none.
+void addStartingFleets(GameState& state) {
+    if (!state.rules.expandedRoster || state.turn != 0 || state.ruleset != Ruleset::Reference) return;
+    std::vector<int> empireIds{state.playerEmpire};
+    for (const auto& r : state.rivals) empireIds.push_back(r.id);
+    std::sort(empireIds.begin(), empireIds.end());
+    for (int empireId : empireIds) {
+        const auto* race = slots::raceForEmpire(empireId);
+        if (!race) continue;
+        const Colony* colony = nullptr;
+        for (const auto& c : state.colonies) if (c.ownerId == empireId) { colony = &c; break; }
+        if (!colony) continue;
+        const auto system = std::find_if(state.systems.begin(), state.systems.end(), [&](const System& sys) { return sys.id == colony->systemId; });
+        if (system == state.systems.end()) continue;
+        for (int shipId : race->startingFleet) {
+            if (shipId < 0) continue;
+            const auto* shipPtr = roster::findShip(shipId);
+            if (!shipPtr) throw std::runtime_error("Unknown starting ship");
+            const auto& ship = *shipPtr;
+            Fleet f;
+            f.id = state.nextFleetId++;
+            f.ownerId = empireId;
+            f.x = system->x; f.y = system->y; f.targetX = system->x; f.targetY = system->y;
+            f.stance = TacticalStance::Balanced;
+            f.referenceShipId = ship.id;
+            f.shipClass = internal::roleProduct(ship.role);
+            f.colonyShip = (f.shipClass == Building::ColonyShip);
+            f.hull = ship.hull;
+            f.shields = fleetMaxShields(f);
+            state.fleets.push_back(f);
+        }
+    }
 }
 
 void applyRulesetPreset(GameState& state, RulesetPreset preset) {
@@ -507,9 +544,15 @@ GameState newCampaign(const CampaignSetup& setup) {
         gameplay::require(named != nullptr, "Unknown preset");
         presets::activate(*named);
     }
+    // Schema 18: the lineup (race keys) becomes empire ids (race slots); empty keeps slots 1..empires.
+    std::vector<int> ids;
+    if (!setup.lineup.empty()) {
+        try { ids = slots::idsFromKeys(setup.lineup); }
+        catch (const std::invalid_argument& e) { throw std::runtime_error(e.what()); }
+    }
     auto state = setup.reference
-        ? generateReferenceCampaign(setup.seed, setup.empires, setup.width, setup.height, setup.systems, setup.playerEmpire, setup.era, setup.galaxy.shape)
-        : generateCampaign(setup.seed, setup.empires, setup.width, setup.height, setup.systems, setup.playerEmpire, setup.era, setup.galaxy.shape);
+        ? generateReferenceCampaign(setup.seed, setup.empires, setup.width, setup.height, setup.systems, setup.playerEmpire, setup.era, setup.galaxy.shape, ids)
+        : generateCampaign(setup.seed, setup.empires, setup.width, setup.height, setup.systems, setup.playerEmpire, setup.era, setup.galaxy.shape, ids);
     state.galaxy = setup.galaxy;
     placeMinorRaceRoster(state); // Lane G: minor-race roster (MinorRaces.h); the density chooses how many.
     if (named) {
@@ -529,6 +572,7 @@ GameState newCampaign(const CampaignSetup& setup) {
     } else {
         applyRulesetPreset(state, setup.preset);
     }
+    addStartingFleets(state);
     // Difficulty: rival treasuries start scaled; their per-turn output scales in advance() (Simulation.cpp).
     const auto& dp = difficultyProfile(state.galaxy.difficulty);
     for (auto& rival : state.rivals) rival.credits = rival.credits * dp.aiStartCreditsPct / 100;

@@ -77,7 +77,7 @@ const DIFFICULTIES := [
 	{"id": "impossible", "label": "Impossible", "blurb": "Rivals produce 135% of normal, start 40% richer and never let up. They cheat; you do not."},
 ]
 ## Option keys the core reads. Shape, minor-race density and difficulty joined them with the schema-15 generator.
-const CORE_READS := ["faction", "empires", "seed", "era", "ruleset", "width", "height", "systems", "events", "aiAggression", "preset",
+const CORE_READS := ["faction", "empires", "lineup", "seed", "era", "ruleset", "width", "height", "systems", "events", "aiAggression", "preset",
 	"shape", "minorDensity", "difficulty"]
 
 static func core_reads(key: String) -> bool:
@@ -130,6 +130,19 @@ func pick_preset(id: String) -> bool:
 		aggression = bool(o["aiAggression"])
 	if o.has("empires"):
 		empires = maxi(int(o["empires"]), faction)
+	# A preset that names powers beyond the first five in canonical order (Dominion War, Galaxies) picks that lineup.
+	lineup = []
+	if bool(d.get("lineupPlayable", true)):
+		var ids := []
+		for n in d.get("lineup", []):
+			var at := POWER_KEYS.find(str(n).to_lower())
+			if at >= 0 and not ids.has(at + 1):
+				ids.append(at + 1)
+		ids.sort()
+		if ids.size() >= 2 and ids != range(1, ids.size() + 1):
+			lineup = ids
+			if not ids.has(faction):
+				faction = int(ids[0])
 	return true
 
 ## The picker's text for a preset: what it is, who plays, and what it is still waiting for.
@@ -150,7 +163,7 @@ func preset_text(id: String) -> String:
 func minors_count() -> int:
 	var pv := preview_galaxy()
 	if not pv.is_empty():
-		return pv["stars"].filter(func(s): return int(s[2]) == 6).size()
+		return pv["stars"].filter(func(s): return int(s[2]) == 9).size()
 	var n := int(size_def()["systems"])
 	var row := 0 if n <= 36 else (1 if n <= 64 else (2 if n <= 100 else 3))
 	return mini(mini(29, maxi(0, n / 2 - 3)), int(MINOR_TABLE[minor_density][row]))
@@ -176,19 +189,69 @@ func roll_seed() -> void:
 func size_def() -> Dictionary:
 	return SIZES.filter(func(s): return s["id"] == size_id)[0]
 
-## Powers in play: at least as many as the chosen power's place in canonical order.
+## Race keys of the eight playable powers, in empire-id order (schema 17, docs/design/EMPIRE-SLOTS.md). The core sends the same
+## keys in meta.empires; this list is the fallback for a backend that does not.
+const POWER_KEYS := ["federation", "klingon", "romulan", "cardassian", "ferengi", "dominion", "borg", "breen"]
+## The powers in play as empire ids, ascending. Empty means the canonical prefix 1..powers() (the pre-17 behaviour: two to
+## five powers in Federation, Klingon, Romulan, Cardassian, Ferengi order). The power picker fills it.
+var lineup: Array = []
+
+## Powers in play: the lineup, else at least as many as the chosen power's place in canonical order.
 func powers() -> int:
-	return max(empires, faction)
+	return lineup.size() if not lineup.is_empty() else max(empires, faction)
+
+## The empire ids in play, ascending.
+func lineup_ids() -> Array:
+	return lineup.duplicate() if not lineup.is_empty() else range(1, powers() + 1)
 
 func pick_faction(id: int) -> void:
 	faction = id
-	empires = max(empires, id)
+	if lineup.is_empty():
+		empires = max(empires, id)
+	elif not lineup.has(id):
+		lineup.append(id)
+		lineup.sort()
+
+## Why a power cannot be switched off (the player's own power, or the last two), "" when it can.
+func toggle_block(id: int) -> String:
+	if id == faction:
+		return "This is your power; pick another card to change it."
+	if lineup_ids().has(id) and powers() <= 2:
+		return "A campaign needs at least two powers."
+	return ""
+
+func toggle_power(id: int) -> void:
+	if toggle_block(id) != "":
+		return
+	var ids := lineup_ids()
+	if ids.has(id):
+		ids.erase(id)
+	else:
+		ids.append(id)
+	ids.sort()
+	lineup = ids
+
+## The lineup as race keys, in empire-id order (what the core's newCampaign "lineup" takes).
+func lineup_keys() -> Array:
+	var out := []
+	for id in lineup_ids():
+		out.append(power_key(int(id)))
+	return out
+
+func power_key(id: int) -> String:
+	for e in meta().get("empires", []):
+		if int(e.get("id", 0)) == id and e.has("key"):
+			return str(e["key"])
+	return POWER_KEYS[id - 1] if id >= 1 and id <= POWER_KEYS.size() else ""
 
 func options() -> Dictionary:
 	var sz := size_def()
-	return {"faction": faction, "empires": powers(), "seed": seed_value, "era": era, "ruleset": ruleset,
+	var o := {"faction": faction, "empires": powers(), "seed": seed_value, "era": era, "ruleset": ruleset,
 		"width": sz["width"], "height": sz["height"], "systems": sz["systems"], "events": events, "aiAggression": aggression, "preset": preset,
 		"shape": shape, "minorDensity": minor_density, "difficulty": difficulty}
+	if not lineup.is_empty():
+		o["lineup"] = lineup_keys()
+	return o
 
 ## Era buttons: [{id, name, level, blurb}].
 func eras() -> Array:

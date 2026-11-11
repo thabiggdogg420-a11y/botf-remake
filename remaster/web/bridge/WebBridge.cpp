@@ -20,6 +20,7 @@
 #include "../../game/Source/BotfSim/MinorRaces.h"
 #include "../../game/Source/BotfSim/EmpireRules.h"
 #include "../../game/Source/BotfSim/Content.h"
+#include "../../game/Source/BotfSim/EmpireSlots.h"
 #include "../../game/Source/BotfSim/Presets.h"
 #include "Json.h"
 
@@ -106,11 +107,10 @@ const char* enumName(int index, const std::array<const char*, N>& names) {
     return index >= 0 && static_cast<std::size_t>(index) < N ? names[static_cast<std::size_t>(index)] : "Unknown";
 }
 
-// Empire id (1..5) -> reference catalogue race id. The same identity mapping the core uses for
-// reference ship ownership (Simulation.cpp catalogueRace); kept here only for catalogue lookups.
+// Empire id (race slot 1..8) -> reference catalogue race id. The same mapping the core uses for reference ship
+// ownership (Simulation.cpp catalogueRace, from the races.json `major` blocks); kept here only for catalogue lookups.
 int catalogueRaceOf(int empire) {
-    static constexpr std::array<int, 6> map{-1, 1, 3, 4, 0, 2};
-    return empire >= 1 && empire <= 5 ? map[static_cast<std::size_t>(empire)] : -1;
+    return empire >= 1 && empire <= botf::MaxMajors ? botf::slots::catalogueRace(empire) : -1;
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -1006,7 +1006,7 @@ void writeView(Writer& w) {
         const auto* colony = botf::colonyAt(d, a.systemId);
         w.beginObject().field("systemId", a.systemId).field("name", systemLabel(d, a.systemId))
             .field("conqueror", a.conqueror).field("formerOwner", a.formerOwner)
-            .field("formerName", a.formerOwner >= 1 && a.formerOwner <= 5 ? empireLabel(a.formerOwner) : std::string(minor ? minor->name : "natives"))
+            .field("formerName", a.formerOwner >= 1 && a.formerOwner <= botf::MaxMajors ? empireLabel(a.formerOwner) : std::string(minor ? minor->name : "natives"))
             .field("minor", minor ? minor->name : std::string()).field("turn", a.turn)
             .field("turnsLeft", std::max(0, a.turn + botf::empire_rules::AftermathLapseTurns - d.turn))
             .field("populationBefore", a.populationBefore).field("population", colony ? colony->population : 0);
@@ -2629,7 +2629,16 @@ botf::CampaignSetup campaignSetup(const Value& a) {
     botf::CampaignSetup setup;
     setup.presetId = "remastered";
     setup.seed = seed; setup.empires = empires; setup.width = width; setup.height = height; setup.systems = systems;
-    setup.playerEmpire = faction; setup.era = static_cast<botf::StartingEra>(era); setup.reference = ruleset != "prototype";
+    setup.playerEmpire = faction;
+    // Schema 17: "lineup" is the seated races as keys in seating order (two to eight); it overrides "empires", and "faction"
+    // is the empire id (race slot 1..8) of one of them. Without it the first `empires` slots are seated, as before.
+    if (a.has("lineup")) {
+        if (!a["lineup"].isArray()) fail("lineup must be an array of race keys");
+        for (const auto& k : a["lineup"].items) {
+            if (!k.isString()) fail("lineup must be an array of race keys");
+            setup.lineup.push_back(k.asString());
+        }
+    } setup.era = static_cast<botf::StartingEra>(era); setup.reference = ruleset != "prototype";
     setup.preset = botf::RulesetPreset::Remastered;
     setup.presetId = "remastered";
     // "preset" names a registered preset (classic, remastered, dominion-war, ...): its overlays become the active content and
@@ -2648,7 +2657,7 @@ botf::CampaignSetup campaignSetup(const Value& a) {
 }
 
 // The galaxy a campaign with these options would start with, without starting one: every star with what sits on it
-// (0 star, 1-5 a major power's capital, 6 a minor race), so the setup preview is the generated galaxy itself.
+// (0 star, 1-8 a major power's capital by empire id, 9 a minor race), so the setup preview is the generated galaxy itself.
 void galaxyPreview(Writer& w, const Value& a) {
     const auto s = botf::newCampaign(campaignSetup(a));
     w.beginObject().field("width", s.width).field("height", s.height).field("shape", botf::galaxyShapeName(s.galaxy.shape))
@@ -2657,7 +2666,7 @@ void galaxyPreview(Writer& w, const Value& a) {
     for (const auto& sys : s.systems) {
         int kind = 0;
         if (const auto* c = botf::colonyAt(s, sys.id)) kind = c->ownerId;
-        else if (botf::minorAt(s, sys.id)) kind = 6;
+        else if (botf::minorAt(s, sys.id)) kind = 9;
         w.beginArray().value(sys.x).value(sys.y).value(kind).endArray();
     }
     w.endArray().endObject();
@@ -2968,9 +2977,21 @@ void writeMeta(Writer& w) {
     w.field("contentVersion", botf::ContentVersion);
     w.field("saveVersion", botf::SaveVersion);
     w.key("empires").beginArray();
-    static constexpr const char* Homes[] = {"", "Sol", "Qo'noS", "Romulus", "Cardassia", "Ferenginar"};
-    for (int id = 1; id <= 5; ++id)
-        w.beginObject().field("id", id).field("name", botf::empireName(id)).field("home", Homes[id]).field("race", catalogueRaceOf(id)).endObject();
+    // Schema 17: every playable race slot (1..8) with its stable key, capital, traits and stand-in ship donor, from races.json.
+    for (int id = 1; id <= botf::MaxMajors; ++id) {
+        const auto* race = botf::slots::raceForEmpire(id);
+        if (!race) continue;
+        w.beginObject().field("id", id).field("key", race->key).field("name", botf::empireName(id)).field("home", race->capital)
+            .field("race", catalogueRaceOf(id)).field("shipDonor", race->shipDonor);
+        w.key("traits").beginArray();
+        const std::string traits = race->traits;
+        for (std::size_t from = 0; from <= traits.size();) {
+            const auto bar = std::min(traits.find('|', from), traits.size());
+            if (bar > from) w.value(traits.substr(from, bar - from));
+            from = bar + 1;
+        }
+        w.endArray().endObject();
+    }
     w.endArray();
     w.key("eras").beginArray();
     for (auto era : botf::availableStartingEras())

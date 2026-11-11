@@ -82,16 +82,19 @@ int main() {
         check(!presets::find("ultimate")->overlays.empty(), "mod presets carry an overlay");
     }, passed);
 
-    run("lineup: validated against the five-empire cap and the empires the core can seat", [] {
+    run("lineup: validated against the eight-major cap and the empires the core can seat", [] {
         for (const char* id : {"classic", "remastered", "ages", "balance-of-power", "ultimate"})
             check(presets::find(id)->lineupPlayable, std::string(id) + " seats today");
-        const auto* dw = presets::find("dominion-war");
-        check(!dw->lineupPlayable && dw->lineupNote.find("Dominion") != std::string::npos && dw->lineup.size() == 5, "Dominion War waits for the Dominion");
-        check(!presets::find("galaxies")->lineupPlayable, "Galaxies waits for the Dominion and Borg");
+        // Lane MOD-2 seats eight majors in any order: the Dominion War and Galaxies lineups name the Dominion and the Borg.
+        for (const char* id : {"dominion-war", "galaxies"}) check(presets::find(id)->lineupPlayable, std::string(id) + " seats now");
+        check(presets::find("dominion-war")->lineup.size() == 5 && presets::find("galaxies")->lineup.size() == 5, "preset lineups keep their five names");
         const auto six = presets::checkLineup({"Federation", "Klingon", "Romulan", "Cardassian", "Ferengi", "Dominion"}, "lineup");
-        check(!six.playable && six.note.find("cap of 5") != std::string::npos, "six majors exceed the cap: " + six.note);
-        const auto reorder = presets::checkLineup({"Klingon", "Federation"}, "lineup");
-        check(!reorder.playable && reorder.note.find("slot 1") != std::string::npos, "slots are positional until MOD-2: " + reorder.note);
+        check(six.playable, "six majors seat: " + six.note);
+        const auto eight = presets::checkLineup({"Breen", "Borg", "Dominion", "Ferengi", "Cardassian", "Romulan", "Klingon", "Federation"}, "lineup");
+        check(eight.playable, "eight majors seat in any order: " + eight.note);
+        const auto unknown = presets::checkLineup({"Federation", "Gorn"}, "lineup");
+        check(!unknown.playable && unknown.note.find("Gorn") != std::string::npos, "an unknown empire is reported: " + unknown.note);
+        check(presets::checkLineup({"Klingon", "Federation"}, "lineup").playable, "slots are not positional any more");
         check(presets::checkLineup({"Federation", "Klingon", "Romulan"}, "lineup").playable, "a stock prefix seats");
         expectRefusal([] { presets::checkLineup({"Federation"}, "lineup"); }, "2..8", "one empire");
         expectRefusal([] { presets::checkLineup({"Federation", "Federation"}, "lineup"); }, "twice", "duplicate empire");
@@ -219,7 +222,7 @@ int main() {
         for (int t = 0; t < 6; ++t) advance(s);
         const auto text = serialize(s);
         const auto& stack = content::active();
-        check(text.starts_with("BOTF_SIM 17 remaster-17\n"), "schema 17 header");
+        check(text.starts_with(std::string("BOTF_SIM ") + std::to_string(SaveVersion) + " " + ContentVersion + "\n"), "current schema header");
         const std::string packs = "\nPACKS ultimate 1 ultimate " + content::checksumHex(stack.stack[0].checksum) + "\nCONTENT botf-base+ultimate " + content::checksumHex(stack.checksum) + "\nCHECKSUM ";
         check(contains(text, packs), "PACKS then CONTENT, last before CHECKSUM: " + text.substr(text.size() - 160));
         const auto fp = fingerprint(s);
@@ -265,7 +268,21 @@ int main() {
         check(activeSum != baseSum, "sanity");
     }, passed);
 
-    run("schema 16 saves load and re-save as schema 17", [] {
+    run("schema 17 saves with a PACKS section load and re-save as schema 18", [] {
+        content::installBase();
+        auto s = game("ultimate", 5);
+        for (int t = 0; t < 4; ++t) advance(s);
+        const auto text = serialize(s);
+        check(contains(text, "PACKS ultimate"), "stack game has PACKS");
+        auto body = text.substr(0, text.rfind("CHECKSUM "));
+        body.replace(0, body.find('\n') + 1, "BOTF_SIM 17 remaster-17\n");
+        content::installBase();
+        const auto loaded = deserialize(withChecksum(body));
+        check(fingerprint(loaded) == fingerprint(s) && serialize(loaded) == text, "schema 17 -> 18");
+        content::installBase();
+    }, passed);
+
+    run("schema 16 saves load and re-save as schema 18", [] {
         content::installBase();
         auto s = game("remastered", 5);
         for (int t = 0; t < 4; ++t) advance(s);
@@ -274,7 +291,7 @@ int main() {
         auto body = text.substr(0, text.rfind("CHECKSUM "));
         body.replace(0, body.find('\n') + 1, "BOTF_SIM 16 remaster-16\n");
         const auto loaded = deserialize(withChecksum(body));
-        check(fingerprint(loaded) == fingerprint(s) && serialize(loaded) == text, "schema 16 -> 17");
+        check(fingerprint(loaded) == fingerprint(s) && serialize(loaded) == text, "schema 16 -> 18");
     }, passed);
 
     run("registration: a host adds an overlay and a preset as bytes; bad files register nothing", [] {
@@ -294,7 +311,7 @@ int main() {
         expectRefusal([&] { presets::registerPreset(replaceFirst(replaceFirst(pre, "\"base\":\"remastered\"", "\"base\":\"classic\""), "\"expandedRoster\":false", "\"wegoCombat\":true")); }, "cannot be on", "a layer switched on under the classic base");
         expectRefusal([&] { presets::registerPreset(replaceFirst(pre, "\"expandedRoster\":false", "\"flightModel\":false")); }, "needs flightModel", "wego without the flight model");
         expectRefusal([&] { presets::registerPreset(replaceFirst(pre, "\"ring\"", "\"cube\"")); }, "unknown galaxy shape", "unknown shape");
-        expectRefusal([&] { presets::registerPreset(replaceFirst(pre, "\"empires\":2", "\"empires\":6")); }, "outside", "empires beyond the cap");
+        expectRefusal([&] { presets::registerPreset(replaceFirst(pre, "\"empires\":2", "\"empires\":9")); }, "outside", "empires beyond the cap");
         expectRefusal([&] { presets::registerPreset(replaceFirst(pre, "\"base\":\"remastered\"", "\"base\":\"epic\"")); }, "classic", "unknown base ruleset");
         check(presets::all().size() == before, "bad files registered nothing");
         check(presets::registerPreset(pre) == "user-preset", "preset registered");

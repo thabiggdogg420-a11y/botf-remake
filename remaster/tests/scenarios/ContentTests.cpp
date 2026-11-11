@@ -746,7 +746,7 @@ int main() {
         std::cout << "  base pack " << info.id << " r" << info.revision << " checksum " << botf::content::checksumHex(info.checksum)
                   << " (" << info.bytes << " bytes)" << std::endl;
         check(botf::referenceData::TechnologyCatalogue.size() == 77 && botf::referenceData::ShipCatalogue.size() == 125 &&
-              botf::referenceData::BuildingCatalogue.size() == 318 && botf::referenceData::RaceCatalogue.size() == 35 &&
+              botf::referenceData::BuildingCatalogue.size() == 318 && botf::referenceData::RaceCatalogue.size() == 38 &&
               botf::roster::ExpandedRoster.size() == 98 && botf::minors::Roster.size() == 30, "base pack record counts");
     }, passed);
 

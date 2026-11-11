@@ -164,7 +164,7 @@ void validateFeatures(const GameState& s) {
             require(f.expiresTurn >= s.turn && f.expiresTurn <= s.turn + 100, "Invalid subspace rift lifetime");
         else
             require(f.expiresTurn == 0, "Only subspace rifts expire");
-        require(f.surveyedMask >= 0 && f.surveyedMask < 64 && (f.surveyedMask & 1) == 0, "Invalid survey mask");
+        require(f.surveyedMask >= 0 && f.surveyedMask < 512 && (f.surveyedMask & 1) == 0, "Invalid survey mask");
         if (f.type != GalaxyFeatureType::IonStorm)
             require(cells.insert(f.y * s.width + f.x).second, "Two anomalies share a sector");
         if (f.type == GalaxyFeatureType::BlackHole || f.type == GalaxyFeatureType::SubspaceRift) {

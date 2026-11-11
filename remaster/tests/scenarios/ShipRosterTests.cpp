@@ -123,12 +123,12 @@ void dataScenarios(int& passed) {
     }, passed);
 
     run("data: buildability policy, factions and minor-race links", [] {
-        std::array<int, 5> buildable{};
+        std::array<int, 64> buildable{};
         for (const auto& c : ExpandedRoster) {
             const std::string name = c.className;
             if (c.buildable) {
                 check(c.sourceKind == SourceKind::Canon, "Only canon classes are buildable: " + name);
-                check(c.raceId >= 0 && c.raceId <= 4, "Buildable class outside the major empires: " + name);
+                check(c.raceId >= 0 && static_cast<std::size_t>(c.raceId) < botf::referenceData::RaceCatalogue.size() && botf::referenceData::RaceCatalogue[static_cast<std::size_t>(c.raceId)].empireId != 0, "Buildable class outside the major empires: " + name);
                 check(c.engineRole == 0 || c.engineRole == 5 || c.engineRole == 9 || (c.engineRole >= 1 && c.engineRole <= 4),
                     "Buildable class with a non-campaign role: " + name);
                 ++buildable[static_cast<std::size_t>(c.raceId)];
@@ -142,7 +142,7 @@ void dataScenarios(int& passed) {
                 check(race != nullptr && race->referenceRaceId == c.raceId, "Minor-race link for " + name);
             }
         }
-        for (int race = 0; race < 5; ++race) check(buildable[static_cast<std::size_t>(race)] >= 1, "Every major empire gains a class");
+        for (const int race : {0, 1, 2, 3, 4, 35, 36, 37}) check(buildable[static_cast<std::size_t>(race)] >= 1, "Every major empire gains a class");
         check(buildable[1] >= 20, "Federation canon roster is the deepest");
     }, passed);
 }

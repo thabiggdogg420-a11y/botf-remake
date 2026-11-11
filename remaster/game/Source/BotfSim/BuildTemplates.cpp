@@ -33,7 +33,7 @@ std::string templateItemProblem(const GameState& s, int owner, const Constructio
         if (!roster::validShipId(item.referenceId)) return "Unknown ship class";
         if (roster::isExpandedId(item.referenceId) && !s.rules.expandedRoster) return "Expanded ship roster is off in this ruleset";
         const auto& ship = internal::sourceShip(item.referenceId);
-        if (!internal::playableShip(ship) || ship.raceId != internal::catalogueRace(owner) ||
+        if (!internal::playableShip(ship) || !internal::shipUsable(ship, owner) ||
             internal::roleProduct(ship.role) != item.product) return "Ship class does not belong to this empire or role";
     } else if (isShip(item.product) && s.ruleset == Ruleset::Reference) {
         return "Choose a named reference ship class";

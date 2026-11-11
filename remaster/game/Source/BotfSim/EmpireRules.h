@@ -299,7 +299,7 @@ inline std::string aftermathBlocker(const GameState& s, const AftermathChoice& a
 }
 
 inline void adjustAttitude(Minor& m, int empireId, int delta) {
-    if (empireId >= 1 && empireId <= 5) m.attitude[static_cast<std::size_t>(empireId)] = std::clamp(m.attitude[static_cast<std::size_t>(empireId)] + delta, 0, 100);
+    if (empireId >= 1 && empireId <= MaxMajors) m.attitude[static_cast<std::size_t>(empireId)] = std::clamp(m.attitude[static_cast<std::size_t>(empireId)] + delta, 0, 100);
 }
 
 // Applies the choice to the captured world. `events` gets player-visible lines (may be null).
@@ -318,7 +318,7 @@ inline void applyAftermath(GameState& s, const AftermathChoice& a, Aftermath o, 
         std::erase_if(s.megaprojects, [sid](const Megaproject& p) { return p.systemId == sid; });
         m->memberOf = 0;
         adjustAttitude(*m, a.conqueror, 30);
-        for (int e = 1; e <= 5; ++e) if (e != a.conqueror && m->contact[static_cast<std::size_t>(e)]) adjustAttitude(*m, e, 5);
+        for (int e = 1; e <= MaxMajors; ++e) if (e != a.conqueror && m->contact[static_cast<std::size_t>(e)]) adjustAttitude(*m, e, 5);
         if (events && (a.conqueror == s.playerEmpire || a.formerOwner == s.playerEmpire || m->contact[static_cast<std::size_t>(s.playerEmpire)]))
             events->push_back(name + " was liberated by " + who + ": the " + m->name + " are independent again.");
     } else if (o == Aftermath::Exterminate) {
@@ -415,7 +415,7 @@ inline std::string minorInvasionBlocker(const GameState& s, int owner, int syste
     if (!enabled(s)) return "Independent minors can be invaded only in campaigns with empire rules";
     const auto* m = independentMinorAt(s, systemId);
     if (!m) return "No independent minor race holds this world";
-    if (owner >= 1 && owner <= 5 && m->friendshipTurn[static_cast<std::size_t>(owner)] >= 0)
+    if (owner >= 1 && owner <= MaxMajors && m->friendshipTurn[static_cast<std::size_t>(owner)] >= 0)
         return "A friendship with the " + m->name + " forbids invasion";
     if (s.diplomacyEngineState.highestTreatyRank(diplomacy::ParticipantId::major(owner), diplomacy::ParticipantId::minor(systemId)) > 0)
         return "A treaty with the " + m->name + " forbids invasion";

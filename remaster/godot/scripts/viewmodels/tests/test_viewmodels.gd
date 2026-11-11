@@ -208,7 +208,7 @@ func _session_models(backend: String) -> void:
 	var s := AppSession.create(backend)
 	var errors := []
 	s.failed.connect(func(m): errors.append(m))
-	check(s.meta.get("empires", []).size() == 5, "session reads meta")
+	check(s.meta.get("empires", []).size() == 8, "session reads meta")
 	var v := s.start("newCampaign", AppSession.campaign_options({"empire": 2, "seed": 424242, "era": 3, "preset": "remastered"}))
 	check(not v.is_empty(), "newCampaign starts")
 	if v.is_empty():

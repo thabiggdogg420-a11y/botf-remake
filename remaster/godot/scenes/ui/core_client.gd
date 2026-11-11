@@ -321,7 +321,7 @@ func _trade_routes() -> Dictionary:
 		var dst_owner := 0
 		for s in _view["systems"]:
 			if int(s["id"]) == int(t["to"]):
-				dst_owner = int(s["owner"])
+				dst_owner = int(s.get("owner", 0))
 		var b: String = blocker.call(dst_owner)
 		routes.append({"from": t["from"], "to": t["to"], "fromName": sys_name.call(int(t["from"])), "toName": sys_name.call(int(t["to"])), "partner": dst_owner, "partnerName": empire_label(dst_owner), "value": 5 + mini(pop_of.call(int(t["from"])), 60) / 10, "blocker": b, "active": b == ""})
 	var cands := []
@@ -329,7 +329,7 @@ func _trade_routes() -> Dictionary:
 		if used.has(int(c["systemId"])):
 			continue
 		for s in _view["systems"]:
-			var o := int(s["owner"])
+			var o := int(s.get("owner", 0))
 			if o == 0 or o == me or not s.get("visible", false) or rel.call(o).is_empty():
 				continue
 			cands.append({"from": c["systemId"], "to": s["id"], "fromName": c["name"], "toName": s["name"], "partner": o, "partnerName": empire_label(o), "value": 5 + mini(int(c["population"]), 60) / 10, "blocker": blocker.call(o)})

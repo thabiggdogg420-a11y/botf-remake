@@ -43,7 +43,7 @@ void chronicleSystemByName(const GameState& s, const std::string& text, const ch
 }
 
 void chronicleEmpireByName(const std::string& text, ChronicleEntry& e) {
-    for (int id = 1; id <= 5; ++id)
+    for (int id = 1; id <= MaxMajors; ++id)
         if (text.find(empireName(id)) != std::string::npos) { e.otherEmpireId = id; return; }
 }
 

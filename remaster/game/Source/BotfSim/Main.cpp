@@ -97,10 +97,11 @@ int main(int argc, char** argv) {
         botf::StartingEra era = botf::StartingEra::Early;
         botf::RulesetPreset preset = botf::RulesetPreset::Remastered;
         std::string loadPath, savePath, battleFixturePath;
+        std::vector<std::string> lineup;
         for (int i = 1; i < argc; ++i) {
             const std::string option = argv[i];
             if (option == "--help") {
-                std::cout << "BotfSim [--seed N | --load FILE] [--empires 2..5] [--player 1..5] [--reference]\n"
+                std::cout << "BotfSim [--seed N | --load FILE] [--empires 2..8 | --lineup KEY,KEY,..] [--player 1..8] [--reference]\n"
                     << "        [--era early|developed|expanded|advanced|supreme] [--ruleset classic|remastered]\n"
                     << "        [--turns N] [--save NEW_FILE] [--chronicle]\n"
                     << "--era selects the starting era for a new --empires campaign (default early; also 1..5).\n"
@@ -125,12 +126,17 @@ int main(int argc, char** argv) {
                 turns = static_cast<int>(n);
             } else if (option == "--empires") {
                 const auto n = number(value);
-                if (n < 2 || n > 5) throw std::runtime_error("Campaign requires two to five empires");
+                if (n < 2 || n > 8) throw std::runtime_error("Campaign requires two to eight empires");
                 empires = static_cast<int>(n);
             } else if (option == "--player") {
                 const auto n = number(value);
-                if (n < 1 || n > 5) throw std::runtime_error("Player empire must be one through five");
+                if (n < 1 || n > 8) throw std::runtime_error("Player empire must be one through eight");
                 playerEmpire = static_cast<int>(n);
+            } else if (option == "--lineup") {
+                // Race keys in seating order, e.g. federation,dominion,borg; --player is then an empire id (race slot 1..8).
+                std::string key;
+                for (char ch : value + ",") { if (ch == ',') { if (!key.empty()) lineup.push_back(key); key.clear(); } else key.push_back(ch); }
+                empires = static_cast<int>(lineup.size());
             } else if (option == "--era") { era = parseEra(value); eraSet = true; }
             else if (option == "--ruleset") {
                 if (!botf::parseRulesetPreset(value, preset)) throw std::runtime_error("Unknown ruleset: " + value + " (classic, remastered)");
@@ -169,9 +175,9 @@ int main(int argc, char** argv) {
         if (playerEmpire != 1 && !empires) throw std::runtime_error("Choose --empires with --player");
         if (eraSet && !empires) throw std::runtime_error("Choose --empires with --era");
         if (rulesetSet && !empires) throw std::runtime_error("Choose --empires with --ruleset");
-        if (empires && playerEmpire > empires) throw std::runtime_error("Player empire exceeds campaign empire count");
+        if (empires && lineup.empty() && playerEmpire > empires) throw std::runtime_error("Player empire exceeds campaign empire count");
         botf::CampaignSetup setup;
-        setup.seed = seed; setup.empires = empires; setup.playerEmpire = playerEmpire;
+        setup.seed = seed; setup.empires = empires; setup.playerEmpire = playerEmpire; setup.lineup = lineup;
         setup.era = era; setup.reference = reference; setup.preset = preset;
         auto state = loadPath.empty() ? (empires ? botf::newCampaign(setup) : botf::generate(seed)) : botf::deserialize(readSave(loadPath));
         if (loadPath.empty()) {
