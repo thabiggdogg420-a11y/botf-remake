@@ -59,6 +59,14 @@ void setUpShipbuilder(Colony& c) {
     c.factories = std::max(c.factories, 2); c.foodWorkers = 0; c.researchWorkers = 0; c.industryWorkers = std::min(c.population, 20);
     c.queue.clear(); c.queue.emplace_back(Building::Scout);
 }
+// Every empire has seen the cell (white-box helper: owned colonies and fleets must sit on explored ground).
+void markExplored(GameState& s, int cell) {
+    const auto add = [cell](EmpireState& e) {
+        if (!std::binary_search(e.explored.begin(), e.explored.end(), cell)) { e.explored.push_back(cell); std::sort(e.explored.begin(), e.explored.end()); }
+    };
+    add(s);
+    for (auto& r : s.rivals) add(r);
+}
 // A second colony for `owner`, cloned from its first onto a free system (white-box: no validate()).
 Colony& addColony(GameState& s, int owner, int wantDeposit = -1) {
     Colony copy = *ownedBy(s, owner).front();
@@ -68,8 +76,7 @@ Colony& addColony(GameState& s, int owner, int wantDeposit = -1) {
         copy.systemId = sys.id; copy.refineries = 0; copy.program = 0; copy.programTurns = 0; copy.queue.clear();
         s.colonies.push_back(copy);
         const int cell = sys.y * s.width + sys.x;
-        if (std::find(s.explored.begin(), s.explored.end(), cell) == s.explored.end()) s.explored.push_back(cell);
-        std::sort(s.explored.begin(), s.explored.end());
+        markExplored(s, cell);
         std::sort(s.colonies.begin(), s.colonies.end(), [](const Colony& a, const Colony& b) { return a.systemId < b.systemId; });
         return colonyOf(s, sys.id);
     }
@@ -296,16 +303,16 @@ int main() {
     };
     auto addTransport = [](GameState& s, int owner, int x, int y, int hull = 14) {
         Fleet f{}; f.id = s.nextFleetId++; f.ownerId = owner; f.x = x; f.y = y; f.targetX = x; f.targetY = y;
-        f.shipClass = Building::Transport; f.hull = hull;
+        f.shipClass = Building::Transport; f.hull = std::min(hull, fleetMaxHull(f));
         s.fleets.push_back(f);
         const int cell = y * s.width + x;
-        if (std::find(s.explored.begin(), s.explored.end(), cell) == s.explored.end()) { s.explored.push_back(cell); std::sort(s.explored.begin(), s.explored.end()); }
+        markExplored(s, cell);
         return f.id;
     };
     // Invades a frail enemy colony until a seed wins; returns the state at the start of the turn after the capture.
-    auto conquer = [&](int attacker, int defender, std::uint64_t seed) {
+    auto conquer = [&](int attacker, int defender, std::uint64_t seed, int player = 0) {
         for (std::uint64_t attempt = 0; attempt < 40; ++attempt) {
-            CampaignSetup setup; setup.seed = seed; setup.empires = 5; setup.playerEmpire = attacker;
+            CampaignSetup setup; setup.seed = seed; setup.empires = 5; setup.playerEmpire = player ? player : attacker;
             auto s = newCampaign(setup);
             makeWar(s, attacker, defender);
             auto& c = addColony(s, defender);
@@ -338,13 +345,14 @@ int main() {
         colonyOf(s, sid).population = 40; colonyOf(s, sid).foodWorkers = 20; colonyOf(s, sid).industryWorkers = 10; colonyOf(s, sid).researchWorkers = 10;
         int trustBefore = 0;
         for (const auto& r : s.majorRelations) if (r.first == 1 || r.second == 1) trustBefore += r.trust;
+        const GameState base = s;
         submit(s, Command{.id = nextId(s), .type = CommandType::ResolveAftermath, .systemId = sid, .eventOption = 2});
         const auto d = preview(s);
         check(colonyAt(d, sid)->population == 4 && colonyAt(d, sid)->morale == 50, "population cut to a tenth, morale 50");
         int trustAfter = 0;
         for (const auto& r : d.majorRelations) if (r.first == 1 || r.second == 1) trustAfter += r.trust;
         check(trustAfter < trustBefore, "other powers trust the conqueror less");
-        rejects([&] { botf::GameState t = s; submit(t, Command{.id = nextId(t), .type = CommandType::ResolveAftermath, .systemId = sid, .eventOption = 0}); preview(t); },
+        rejects([&] { botf::GameState t = base; submit(t, Command{.id = nextId(t), .type = CommandType::ResolveAftermath, .systemId = sid, .eventOption = 0}); preview(t); },
             "liberating a non-minor world accepted", "Only a minor race's homeworld");
     }, passed);
 
@@ -356,10 +364,10 @@ int main() {
     }, passed);
 
     run("aftermath: the AI decides at once, by race", [&] {
-        auto [s, sid] = conquer(3, 1, 126);          // Romulan conqueror of a 6-pop world: exterminates (12 or fewer)
+        auto [s, sid] = conquer(3, 1, 126, 5);          // Romulan conqueror of a 6-pop world: exterminates (12 or fewer)
         check(s.aftermaths.empty(), "an AI conquest queues no player choice");
         check(colonyAt(s, sid)->population <= 4 || colonyAt(s, sid)->ownerId == 3, "Romulan settled the cleansed world");
-        auto [k, ksid] = conquer(2, 1, 127);          // Klingons subjugate
+        auto [k, ksid] = conquer(2, 1, 127, 5);          // Klingons subjugate
         check(colonyAt(k, ksid)->ownerId == 2 && colonyAt(k, ksid)->population >= 3, "Klingon kept the world");
     }, passed);
 
