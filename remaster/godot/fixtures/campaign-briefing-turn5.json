@@ -6,13 +6,13 @@
   "turn": 5,
   "briefing": {
    "turn": 5,
-   "creditsBefore": 1190,
-   "creditsAfter": 1241,
+   "creditsBefore": 1182,
+   "creditsAfter": 1231,
    "researchGained": 10,
    "fleetUpkeep": 49,
    "tradeIncome": 0,
    "ordersApplied": 0,
-   "stateHash": "5456263776583034128",
+   "stateHash": "9250218755999887899",
    "outcome": "ongoing",
    "colonies": [
     {
@@ -24,16 +24,17 @@
       "foodDeficit": 1,
       "industry": 21,
       "research": 10,
-      "energyUsed": 20,
-      "energyAvailable": 21,
+      "energyUsed": 25,
+      "energyAvailable": 26,
       "inactiveFactories": 0,
       "inactiveLabs": 0,
       "income": 107,
-      "upkeep": 7,
-      "net": 100,
+      "upkeep": 9,
+      "net": 98,
       "shipyardPowered": true,
       "poweredBatteries": 0,
-      "inactiveBatteries": 0
+      "inactiveBatteries": 0,
+      "refineryPowered": true
      }
     }
    ],

@@ -1063,6 +1063,13 @@ void writeView(Writer& w) {
                 w.field("bonus", botf::minors::describeJoinBonus(*race));
             }
             if (botf::minors::managed(*minor)) { w.field("techLevel", minor->techLevel); w.field("population", minor->population); }
+            if (const auto* g = botf::empire_rules::guardAt(d, sys.id)) {
+                w.key("guard").beginObject().field("name", botf::empire_rules::guardName(*g)).field("shipId", g->shipId)
+                    .field("hull", g->hull).field("maxHull", botf::empire_rules::guardMaxHull(*g))
+                    .field("shields", g->shields).field("maxShields", botf::empire_rules::guardMaxShields(*g))
+                    .field("attack", botf::empire_rules::guardAttack(*g)).endObject();
+            }
+            w.field("independent", minor->memberOf == 0 && !col);
             w.endObject();
         } else if (minor && seen) {
             w.key("minor").beginObject().field("name", "Unknown natives").field("memberOf", 0).field("unknown", true).endObject();

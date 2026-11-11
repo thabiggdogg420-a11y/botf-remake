@@ -3195,6 +3195,11 @@
     "product": "DefenseBattery",
     "name": "Defense battery",
     "blocker": ""
+   },
+   {
+    "product": "DilithiumRefinery",
+    "name": "Dilithium refinery",
+    "blocker": ""
    }
   ]
  }

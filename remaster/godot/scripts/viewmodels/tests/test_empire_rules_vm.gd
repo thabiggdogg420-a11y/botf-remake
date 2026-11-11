@@ -96,10 +96,10 @@ func _conquest_live() -> void:
 	check(ov.aftermaths().is_empty(), "no aftermath is waiting at the start")
 	var guarded := 0
 	var independent := 0
-	for sys in s.view().get("systems", []):
+	for sys in s.view.get("systems", []):
 		var m: Variant = sys.get("minor", {})
 		if m is Dictionary and not m.is_empty() and not m.get("unknown", false):
 			independent += 1 if m.get("independent", false) else 0
 			guarded += 1 if m.has("guard") else 0
-	check(s.view().get("minors", s.view().get("systems", [])).size() > 0, "the galaxy has systems")
+	check(s.view.get("minors", s.view.get("systems", [])).size() > 0, "the galaxy has systems")
 	check(independent >= 0 and guarded >= 0, "guard and independent flags read without error (%d guarded, %d independent in view)" % [guarded, independent])

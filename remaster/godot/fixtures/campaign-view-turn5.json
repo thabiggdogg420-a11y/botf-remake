@@ -12,8 +12,8 @@
    "ruleset": "reference",
    "era": 1,
    "eraName": "Early",
-   "contentVersion": "remaster-14",
-   "saveVersion": 14,
+   "contentVersion": "remaster-15",
+   "saveVersion": 15,
    "outcome": "ongoing",
    "winner": 0,
    "advancedRules": true,
@@ -29,14 +29,22 @@
     "stations": true,
     "galaxyFeatures": true,
     "curatedEvents": true,
-    "alternativeVictories": true
+    "alternativeVictories": true,
+    "empireRules": true
    }
   },
   "empire": {
    "id": 1,
    "name": "Federation",
-   "credits": 1241,
-   "draftCredits": 1241,
+   "dilithium": {
+    "enforced": true,
+    "refineries": 1,
+    "powered": 0,
+    "slots": 0,
+    "used": 0
+   },
+   "credits": 1231,
+   "draftCredits": 1231,
    "research": 50,
    "researchReserve": 0,
    "intelligence": 25,
@@ -55,11 +63,11 @@
     "minors": []
    },
    "income": {
-    "colonies": 99,
+    "colonies": 97,
     "trade": 0,
     "ships": 49,
     "spend": 0,
-    "net": 50
+    "net": 48
    },
    "techs": [
     {
@@ -130,6 +138,7 @@
     }
    ]
   },
+  "aftermaths": [],
   "fog": "000000000000000000000000002220000000000000222000000000000022200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
   "systems": [
    {
@@ -137,6 +146,7 @@
     "x": 11,
     "y": 2,
     "name": "Sol",
+    "explored": true,
     "visible": true,
     "owner": 1,
     "capacity": 130,
@@ -205,10 +215,137 @@
     ]
    },
    {
+    "id": 2,
+    "x": 12,
+    "y": 10,
+    "name": "FGC-002",
+    "explored": false
+   },
+   {
+    "id": 3,
+    "x": 11,
+    "y": 7,
+    "name": "FGC-003",
+    "explored": false
+   },
+   {
+    "id": 4,
+    "x": 1,
+    "y": 4,
+    "name": "FGC-004",
+    "explored": false
+   },
+   {
+    "id": 5,
+    "x": 11,
+    "y": 9,
+    "name": "FGC-005",
+    "explored": false
+   },
+   {
+    "id": 6,
+    "x": 13,
+    "y": 0,
+    "name": "FGC-006",
+    "explored": false
+   },
+   {
+    "id": 7,
+    "x": 7,
+    "y": 6,
+    "name": "FGC-007",
+    "explored": false
+   },
+   {
+    "id": 8,
+    "x": 10,
+    "y": 11,
+    "name": "FGC-008",
+    "explored": false
+   },
+   {
+    "id": 9,
+    "x": 4,
+    "y": 11,
+    "name": "FGC-009",
+    "explored": false
+   },
+   {
+    "id": 10,
+    "x": 0,
+    "y": 9,
+    "name": "FGC-010",
+    "explored": false
+   },
+   {
+    "id": 11,
+    "x": 10,
+    "y": 8,
+    "name": "FGC-011",
+    "explored": false
+   },
+   {
+    "id": 12,
+    "x": 8,
+    "y": 1,
+    "name": "FGC-012",
+    "explored": false
+   },
+   {
+    "id": 13,
+    "x": 2,
+    "y": 0,
+    "name": "FGC-013",
+    "explored": false
+   },
+   {
+    "id": 14,
+    "x": 8,
+    "y": 2,
+    "name": "FGC-014",
+    "explored": false
+   },
+   {
+    "id": 15,
+    "x": 4,
+    "y": 7,
+    "name": "FGC-015",
+    "explored": false
+   },
+   {
+    "id": 16,
+    "x": 12,
+    "y": 9,
+    "name": "FGC-016",
+    "explored": false
+   },
+   {
+    "id": 17,
+    "x": 12,
+    "y": 5,
+    "name": "FGC-017",
+    "explored": false
+   },
+   {
+    "id": 18,
+    "x": 10,
+    "y": 5,
+    "name": "FGC-018",
+    "explored": false
+   },
+   {
+    "id": 19,
+    "x": 6,
+    "y": 2,
+    "name": "FGC-019",
+    "explored": false
+   },
+   {
     "id": 20,
     "x": 12,
     "y": 3,
     "name": "Algol",
+    "explored": true,
     "visible": true,
     "owner": 0,
     "capacity": 40,
@@ -239,6 +376,62 @@
       "capacity": 30
      }
     ]
+   },
+   {
+    "id": 21,
+    "x": 13,
+    "y": 7,
+    "name": "FGC-021",
+    "explored": false
+   },
+   {
+    "id": 22,
+    "x": 15,
+    "y": 7,
+    "name": "FGC-022",
+    "explored": false
+   },
+   {
+    "id": 23,
+    "x": 10,
+    "y": 7,
+    "name": "FGC-023",
+    "explored": false
+   },
+   {
+    "id": 24,
+    "x": 1,
+    "y": 3,
+    "name": "FGC-024",
+    "explored": false
+   },
+   {
+    "id": 25,
+    "x": 15,
+    "y": 2,
+    "name": "FGC-025",
+    "explored": false
+   },
+   {
+    "id": 26,
+    "x": 7,
+    "y": 3,
+    "name": "FGC-026",
+    "explored": false
+   },
+   {
+    "id": 27,
+    "x": 11,
+    "y": 4,
+    "name": "FGC-027",
+    "explored": false
+   },
+   {
+    "id": 28,
+    "x": 15,
+    "y": 8,
+    "name": "FGC-028",
+    "explored": false
    }
   ],
   "colonies": [
@@ -261,25 +454,27 @@
      "shipyards": 1,
      "powerPlants": 0,
      "fusionPlants": 0,
-     "defenseBatteries": 0
+     "defenseBatteries": 0,
+     "refineries": 1
     },
-    "energy": 20,
+    "energy": 25,
     "shipyardEnabled": true,
     "economy": {
      "food": 42,
      "foodDeficit": 1,
      "industry": 21,
      "research": 10,
-     "energyUsed": 20,
-     "energyAvailable": 21,
+     "energyUsed": 25,
+     "energyAvailable": 26,
      "inactiveFactories": 0,
      "inactiveLabs": 0,
      "income": 107,
-     "upkeep": 8,
-     "net": 99,
-     "shipyardPowered": false,
+     "upkeep": 10,
+     "net": 97,
+     "shipyardPowered": true,
      "poweredBatteries": 0,
-     "inactiveBatteries": 0
+     "inactiveBatteries": 0,
+     "refineryPowered": false
     },
     "growth": {
      "enabled": true,
@@ -295,6 +490,31 @@
      "eta": 3
     },
     "queueBlocker": "",
+    "empireRules": {
+     "enabled": true,
+     "dilithium": {
+      "deposit": true,
+      "refinery": true,
+      "refineryPowered": false,
+      "empireRefineries": 1,
+      "empirePowered": 0,
+      "slots": 0,
+      "slotsUsed": 0,
+      "klingonBonusPercent": 0,
+      "blocker": "Dilithium refinery already built"
+     },
+     "program": {
+      "id": 1,
+      "name": "Martial Law",
+      "effect": "Morale +10 now, held at 50 or more. Research -20%, ground defense +25%. 10 turns.",
+      "startCost": 0,
+      "upkeep": 4,
+      "activeId": 0,
+      "activeName": "",
+      "turnsLeft": 0,
+      "blocker": "Morale is 70: the colony is not in unrest"
+     }
+    },
     "governor": {
      "workforce": "Manual",
      "queue": "Manual",
@@ -520,12 +740,6 @@
     "severity": "alert",
     "systemId": 1,
     "text": "Sol: food shortage of 1"
-   },
-   {
-    "kind": "shipyard",
-    "severity": "warn",
-    "systemId": 1,
-    "text": "Sol: shipyard unpowered — no shipbuilding or supply range"
    },
    {
     "kind": "proposal",

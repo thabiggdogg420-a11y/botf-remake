@@ -12,8 +12,8 @@
    "ruleset": "reference",
    "era": 1,
    "eraName": "Early",
-   "contentVersion": "remaster-14",
-   "saveVersion": 14,
+   "contentVersion": "remaster-15",
+   "saveVersion": 15,
    "outcome": "ongoing",
    "winner": 0,
    "advancedRules": true,
@@ -29,12 +29,20 @@
     "stations": false,
     "galaxyFeatures": false,
     "curatedEvents": false,
-    "alternativeVictories": false
+    "alternativeVictories": false,
+    "empireRules": false
    }
   },
   "empire": {
    "id": 1,
    "name": "Federation",
+   "dilithium": {
+    "enforced": false,
+    "refineries": 0,
+    "powered": 0,
+    "slots": 1,
+    "used": 0
+   },
    "credits": 1044,
    "draftCredits": 1044,
    "research": 10,
@@ -130,6 +138,7 @@
     }
    ]
   },
+  "aftermaths": [],
   "fog": "000000000000000000000000000000000000000000000000000000000000000000002220000000000000222000000000000022200000000000000000000002220000000000000222000000000000022200000000000000220000000000000000",
   "systems": [
    {
@@ -137,6 +146,7 @@
     "x": 5,
     "y": 5,
     "name": "Sol",
+    "explored": true,
     "visible": true,
     "owner": 1,
     "capacity": 130,
@@ -205,10 +215,116 @@
     ]
    },
    {
+    "id": 2,
+    "x": 9,
+    "y": 5,
+    "name": "FGC-002",
+    "explored": false
+   },
+   {
+    "id": 3,
+    "x": 5,
+    "y": 8,
+    "name": "FGC-003",
+    "explored": false
+   },
+   {
+    "id": 4,
+    "x": 0,
+    "y": 4,
+    "name": "FGC-004",
+    "explored": false
+   },
+   {
+    "id": 5,
+    "x": 14,
+    "y": 4,
+    "name": "FGC-005",
+    "explored": false
+   },
+   {
+    "id": 6,
+    "x": 0,
+    "y": 2,
+    "name": "FGC-006",
+    "explored": false
+   },
+   {
+    "id": 7,
+    "x": 15,
+    "y": 2,
+    "name": "FGC-007",
+    "explored": false
+   },
+   {
+    "id": 8,
+    "x": 8,
+    "y": 8,
+    "name": "FGC-008",
+    "explored": false
+   },
+   {
+    "id": 9,
+    "x": 0,
+    "y": 11,
+    "name": "FGC-009",
+    "explored": false
+   },
+   {
+    "id": 10,
+    "x": 9,
+    "y": 10,
+    "name": "FGC-010",
+    "explored": false
+   },
+   {
+    "id": 11,
+    "x": 3,
+    "y": 3,
+    "name": "FGC-011",
+    "explored": false
+   },
+   {
+    "id": 12,
+    "x": 11,
+    "y": 3,
+    "name": "FGC-012",
+    "explored": false
+   },
+   {
+    "id": 13,
+    "x": 15,
+    "y": 9,
+    "name": "FGC-013",
+    "explored": false
+   },
+   {
+    "id": 14,
+    "x": 5,
+    "y": 11,
+    "name": "FGC-014",
+    "explored": false
+   },
+   {
+    "id": 15,
+    "x": 7,
+    "y": 7,
+    "name": "FGC-015",
+    "explored": false
+   },
+   {
+    "id": 16,
+    "x": 12,
+    "y": 8,
+    "name": "FGC-016",
+    "explored": false
+   },
+   {
     "id": 17,
     "x": 5,
     "y": 4,
     "name": "Bellatrix",
+    "explored": true,
     "visible": true,
     "owner": 0,
     "capacity": 80,
@@ -275,6 +391,83 @@
       "capacity": 30
      }
     ]
+   },
+   {
+    "id": 18,
+    "x": 15,
+    "y": 1,
+    "name": "FGC-018",
+    "explored": false
+   },
+   {
+    "id": 19,
+    "x": 7,
+    "y": 10,
+    "name": "FGC-019",
+    "explored": false
+   },
+   {
+    "id": 20,
+    "x": 12,
+    "y": 6,
+    "name": "FGC-020",
+    "explored": false
+   },
+   {
+    "id": 21,
+    "x": 8,
+    "y": 7,
+    "name": "FGC-021",
+    "explored": false
+   },
+   {
+    "id": 22,
+    "x": 6,
+    "y": 7,
+    "name": "FGC-022",
+    "explored": false
+   },
+   {
+    "id": 23,
+    "x": 10,
+    "y": 11,
+    "name": "FGC-023",
+    "explored": false
+   },
+   {
+    "id": 24,
+    "x": 2,
+    "y": 7,
+    "name": "FGC-024",
+    "explored": false
+   },
+   {
+    "id": 25,
+    "x": 7,
+    "y": 8,
+    "name": "FGC-025",
+    "explored": false
+   },
+   {
+    "id": 26,
+    "x": 8,
+    "y": 6,
+    "name": "FGC-026",
+    "explored": false
+   },
+   {
+    "id": 27,
+    "x": 1,
+    "y": 9,
+    "name": "FGC-027",
+    "explored": false
+   },
+   {
+    "id": 28,
+    "x": 5,
+    "y": 10,
+    "name": "FGC-028",
+    "explored": false
    }
   ],
   "colonies": [
@@ -297,7 +490,8 @@
      "shipyards": 1,
      "powerPlants": 0,
      "fusionPlants": 0,
-     "defenseBatteries": 0
+     "defenseBatteries": 0,
+     "refineries": 0
     },
     "energy": 20,
     "shipyardEnabled": true,
@@ -315,7 +509,8 @@
      "net": 95,
      "shipyardPowered": true,
      "poweredBatteries": 0,
-     "inactiveBatteries": 0
+     "inactiveBatteries": 0,
+     "refineryPowered": false
     },
     "growth": {
      "enabled": true,
@@ -331,6 +526,9 @@
      "eta": 5
     },
     "queueBlocker": "",
+    "empireRules": {
+     "enabled": false
+    },
     "governor": {
      "workforce": "Manual",
      "queue": "Manual",
