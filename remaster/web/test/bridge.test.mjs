@@ -505,6 +505,38 @@ test('presets: the registry, a stacked game, a save that carries its packs, and 
   assert.equal(attempt('registerOverlay', { bytes: '{"format":1,"kind":"overlay","id":"web-test","name":"t2","revision":1,"requires":["botf-base"]}' }).ok, false, 'same id, other bytes');
 });
 
+test('Dominion War (MOD-3): race structures in the build list and on the colony, minors, a save that carries them', () => {
+  const camp = { faction: 6, seed: 424242, era: 3, ruleset: 'reference', width: 22, height: 16, systems: 48, preset: 'dominion-war',
+    lineup: ['federation', 'klingon', 'romulan', 'cardassian', 'dominion'], minorDensity: 'many' };
+  const v = call('newCampaign', camp);
+  assert.equal(v.meta.playerName, 'Dominion');
+  assert.equal(call('contentInfo').id, 'botf-base+dominion+dominion-war');
+  const home = v.colonies[0].systemId;
+  const col = call('colony', { systemId: home });
+  assert.deepEqual(col.raceStructures.map((x) => x.name), ['Vorta Administrative Center', 'Ketracel-White Facility']);
+  const rung = col.choices.filter((x) => x.product === 'Structure');
+  assert.equal(rung.length, 10, 'ten Dominion structures are listed');
+  assert.ok(rung.every((x) => x.referenceId >= 100000 && x.isShip === false && x.effect !== undefined));
+  assert.equal(rung.find((x) => x.name === 'Vorta Administrative Center').blocker, 'Already built here');
+  assert.ok(rung.find((x) => x.name === 'Changeling Shapeshifter Network').blocker.length > 0, 'the network is far up the ladder');
+  assert.ok(v.minors.length > 0 && !v.minors.some((m) => m.name === 'Edo'), 'the Edo are replaced');
+  assert.ok(v.minors.some((m) => m.name === 'Bajorans'), 'Bajor is always on the map');
+  for (let i = 0; i < 3; i++) endTurn();
+  const fp = call('fingerprint');
+  const save = call('save');
+  assert.ok(String(save.data).includes('
+STRUCTURES 1
+'), 'the save carries the structures');
+  call('loadBaseContent');
+  call('load', { data: save.data });
+  assert.equal(call('fingerprint'), fp, 'the loaded game has the saved fingerprint');
+  const fed = call('newCampaign', { ...camp, faction: 1 });
+  const fedCol = call('colony', { systemId: fed.colonies[0].systemId });
+  assert.ok(!fedCol.choices.some((x) => x.product === 'Structure'), 'the Federation is offered no Dominion structure');
+  call('newCampaign', { faction: 1, seed: 1, preset: 'remastered' });
+  assert.equal(call('contentInfo').base, true, 'a built-in preset restores the base pack');
+});
+
 test('tactical rules 3: rounds carry the core combat event stream and ships their mounts', () => {
   call('newBattleDrill', { station: true });   // Remastered preset -> flight model (rules 3)
   assert.equal(call('endTurn').status, 'battle');

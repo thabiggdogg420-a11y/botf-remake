@@ -417,6 +417,17 @@ func _construction() -> Control:
 	b.add_child(tabs)
 	var list := Lcars.vbox(6)
 	if tab == "installed":
+		# MOD-3: race structures the pack adds (the Dominion ladder); they have no scrap order yet, so they show as a read-only row with what they do.
+		for rs in detail.get("raceStructures", []):
+			var rr := Lcars.hbox(10)
+			rr.name = "RaceStructure_%d" % int(rs["id"])
+			var rn := Lcars.label(str(rs["name"]), "", 15)
+			rn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			rn.tooltip_text = str(rs.get("description", ""))
+			rr.add_child(rn)
+			rr.add_child(Lcars.label(str(rs.get("effect", "")), "Muted"))
+			rr.add_child(Lcars.label("¢%d" % int(rs["upkeep"]), "Muted"))
+			list.add_child(rr)
 		for s in detail.get("scrap", []):
 			var r := Lcars.hbox(10)
 			var n := Lcars.label(str(s["name"]), "", 15)
