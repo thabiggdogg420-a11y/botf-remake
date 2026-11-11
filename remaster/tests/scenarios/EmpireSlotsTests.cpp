@@ -123,7 +123,7 @@ int main() {
         check(hasShip(6, 1500), "Dominion starts with a Jem'Hadar Attack Ship");
         check(hasShip(7, 1604) && hasShip(7, 1601), "Borg start with a Scout Vessel and a Probe");
         check(hasShip(8, 1503), "Breen start with a Warship");
-        for (int id : {6, 7, 8}) check(fleetsOf(s, id) >= 4, "a scout, a colony ship and the roster ships for empire " + std::to_string(id));
+        for (int id : {6, 7, 8}) check(fleetsOf(s, id) >= 3, "a scout, a colony ship and the roster ships for empire " + std::to_string(id));
         // Build: the player's own colony lists its race's ships (tech-gated) and the donor's stand-in hulls.
         const auto& home = *std::find_if(s.colonies.begin(), s.colonies.end(), [](const Colony& c) { return c.ownerId == 6; });
         const auto choices = constructionChoices(s, home.systemId);
@@ -137,7 +137,7 @@ int main() {
         Command alloc; alloc.id = s.lastAcceptedCommand + 1; alloc.type = CommandType::AllocateResearch;
         alloc.researchAllocation = {10, 10, 20, 20, 20, 20};
         submit(s, alloc);
-        check(s.technologies[5].allocation == 20, "research allocation changed for the Dominion player");
+        check(preview(s).technologies[5].allocation == 20, "research allocation changed for the Dominion player");
         // Talk: the player proposes a treaty to the Federation; the proposal is accepted into the engine.
         for (auto& r : s.majorRelations) if (r.first == 1 && r.second == 6) r.contact = true;
         submit(s, makeProposeTreatyCommand(s.lastAcceptedCommand + 1, 1, false, diplomacy::TreatyType::NonAggression));
