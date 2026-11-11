@@ -4,6 +4,7 @@
 #include "EmpireRules.h"
 #include "GameplayInternal.h"
 #include "MinorRaces.h"
+#include "Presets.h"
 
 #include <algorithm>
 #include <iomanip>
@@ -399,10 +400,14 @@ bool parseRulesetPreset(const std::string& text, RulesetPreset& preset) {
 }
 
 void applyRulesetPreset(GameState& state, RulesetPreset preset) {
-    gameplay::require(state.turn == 0 && state.pending.empty(), "Ruleset presets apply to a new campaign");
     gameplay::require(preset == RulesetPreset::Classic || preset == RulesetPreset::Remastered, "Unknown ruleset preset");
+    applyGameplayRules(state, rulesForPreset(preset));
+}
+
+void applyGameplayRules(GameState& state, const GameplayRules& rules) {
+    gameplay::require(state.turn == 0 && state.pending.empty(), "Ruleset presets apply to a new campaign");
     auto next = state;
-    next.rules = rulesForPreset(preset);
+    next.rules = rules;
     next.galaxyFeatures.clear(); next.nextFeatureId = 1;
     next.galacticEvents.clear(); next.nextEventId = 1;
     next.eventDeck.clear(); next.eventDeckPosition = 0; next.lastCuratedEventTurn = 0;
@@ -494,12 +499,36 @@ int minorRaceTarget(MinorDensity density, int systemCount) {
 }
 
 GameState newCampaign(const CampaignSetup& setup) {
+    // Schema 17: a registered preset makes its overlay stack the active content before anything is generated (research
+    // costs and the roster feed the generator), then sets its rule flags over the base ruleset.
+    const presets::Preset* named = nullptr;
+    if (!setup.presetId.empty()) {
+        named = presets::find(setup.presetId);
+        gameplay::require(named != nullptr, "Unknown preset");
+        presets::activate(*named);
+    }
     auto state = setup.reference
         ? generateReferenceCampaign(setup.seed, setup.empires, setup.width, setup.height, setup.systems, setup.playerEmpire, setup.era, setup.galaxy.shape)
         : generateCampaign(setup.seed, setup.empires, setup.width, setup.height, setup.systems, setup.playerEmpire, setup.era, setup.galaxy.shape);
     state.galaxy = setup.galaxy;
     placeMinorRaceRoster(state); // Lane G: minor-race roster (MinorRaces.h); the density chooses how many.
-    applyRulesetPreset(state, setup.preset);
+    if (named) {
+        GameplayRules rules = rulesForPreset(named->rulesBase == "classic" ? RulesetPreset::Classic : RulesetPreset::Remastered);
+        for (const auto& flag : named->flags) {
+            if (flag.first == "stations") rules.stations = flag.second;
+            else if (flag.first == "galaxyFeatures") rules.galaxyFeatures = flag.second;
+            else if (flag.first == "curatedEvents") rules.curatedEvents = flag.second;
+            else if (flag.first == "alternativeVictories") rules.alternativeVictories = flag.second;
+            else if (flag.first == "expandedRoster") rules.expandedRoster = flag.second;
+            else if (flag.first == "flightModel") rules.flightModel = flag.second;
+            else if (flag.first == "wegoCombat") rules.wegoCombat = flag.second;
+            else if (flag.first == "empireRules") rules.empireRules = flag.second;
+        }
+        applyGameplayRules(state, rules);
+        state.presetId = content::active().stack.empty() ? std::string() : named->id;
+    } else {
+        applyRulesetPreset(state, setup.preset);
+    }
     // Difficulty: rival treasuries start scaled; their per-turn output scales in advance() (Simulation.cpp).
     const auto& dp = difficultyProfile(state.galaxy.difficulty);
     for (auto& rival : state.rivals) rival.credits = rival.credits * dp.aiStartCreditsPct / 100;

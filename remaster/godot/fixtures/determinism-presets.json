@@ -1,0 +1,155 @@
+{
+ "method": "fingerprint",
+ "args": {
+  "runs": 7
+ },
+ "result": [
+  {
+   "campaign": {
+    "faction": 1,
+    "empires": 3,
+    "seed": 424242,
+    "era": 1,
+    "ruleset": "reference",
+    "width": 16,
+    "height": 13,
+    "systems": 30,
+    "preset": "classic"
+   },
+   "turns": 8,
+   "result": "7892330688132960826",
+   "content": {
+    "id": "botf-base",
+    "checksum": "08a82ca5c26e0dd5",
+    "stack": 0
+   },
+   "preset": "classic"
+  },
+  {
+   "campaign": {
+    "faction": 1,
+    "empires": 3,
+    "seed": 424242,
+    "era": 1,
+    "ruleset": "reference",
+    "width": 16,
+    "height": 13,
+    "systems": 30,
+    "preset": "remastered"
+   },
+   "turns": 8,
+   "result": "3692155339068869258",
+   "content": {
+    "id": "botf-base",
+    "checksum": "08a82ca5c26e0dd5",
+    "stack": 0
+   },
+   "preset": "remastered"
+  },
+  {
+   "campaign": {
+    "faction": 1,
+    "empires": 3,
+    "seed": 424242,
+    "era": 1,
+    "ruleset": "reference",
+    "width": 16,
+    "height": 13,
+    "systems": 30,
+    "preset": "dominion-war"
+   },
+   "turns": 8,
+   "result": "17912335744697164019",
+   "content": {
+    "id": "botf-base+dominion-war",
+    "checksum": "6512d5f4a31ec555",
+    "stack": 1
+   },
+   "preset": "dominion-war"
+  },
+  {
+   "campaign": {
+    "faction": 1,
+    "empires": 3,
+    "seed": 424242,
+    "era": 1,
+    "ruleset": "reference",
+    "width": 16,
+    "height": 13,
+    "systems": 30,
+    "preset": "ages"
+   },
+   "turns": 8,
+   "result": "14139529183068197942",
+   "content": {
+    "id": "botf-base+ages",
+    "checksum": "3ea3f104684ba55a",
+    "stack": 1
+   },
+   "preset": "ages"
+  },
+  {
+   "campaign": {
+    "faction": 1,
+    "empires": 3,
+    "seed": 424242,
+    "era": 1,
+    "ruleset": "reference",
+    "width": 16,
+    "height": 13,
+    "systems": 30,
+    "preset": "galaxies"
+   },
+   "turns": 8,
+   "result": "5847462104348768878",
+   "content": {
+    "id": "botf-base+galaxies",
+    "checksum": "0afb676eafc8f224",
+    "stack": 1
+   },
+   "preset": "galaxies"
+  },
+  {
+   "campaign": {
+    "faction": 1,
+    "empires": 3,
+    "seed": 424242,
+    "era": 1,
+    "ruleset": "reference",
+    "width": 16,
+    "height": 13,
+    "systems": 30,
+    "preset": "balance-of-power"
+   },
+   "turns": 8,
+   "result": "11779930322972515841",
+   "content": {
+    "id": "botf-base+balance-of-power",
+    "checksum": "5997cf90e7c03e70",
+    "stack": 1
+   },
+   "preset": "balance-of-power"
+  },
+  {
+   "campaign": {
+    "faction": 1,
+    "empires": 3,
+    "seed": 424242,
+    "era": 1,
+    "ruleset": "reference",
+    "width": 16,
+    "height": 13,
+    "systems": 30,
+    "preset": "ultimate"
+   },
+   "turns": 8,
+   "result": "961799544092602073",
+   "content": {
+    "id": "botf-base+ultimate",
+    "checksum": "790f46c1d34fdb61",
+    "stack": 1
+   },
+   "preset": "ultimate"
+  }
+ ]
+}
