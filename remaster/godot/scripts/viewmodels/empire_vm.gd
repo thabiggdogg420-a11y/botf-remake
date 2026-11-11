@@ -3,7 +3,7 @@ extends ViewModel
 ## Empire screen model: the overview totals, member-world bonuses, the tab state, and the data and orders of its
 ## managers: trade routes, governors, build templates, stations and minor worlds.
 
-const TABS := [["colonies", "Colonies"], ["fleets", "Fleets"], ["trade", "Trade"], ["governors", "Governors"], ["templates", "Templates"], ["stations", "Stations"], ["members", "Member worlds"]]
+const TABS := [["colonies", "Colonies"], ["fleets", "Fleets"], ["trade", "Trade"], ["governors", "Governors"], ["templates", "Templates"], ["stations", "Stations"], ["members", "Member worlds"], ["programs", "Programs"]]
 const SECESSION_LINE := 30
 const JOIN_LINE := 80
 const LOYALTY := {
@@ -292,6 +292,26 @@ func kpis() -> Array:
 		{"icon": "diplomacy", "cap": "Contacts", "value": str(contacts.size()), "delta": ("%d at war" % wars) if wars > 0 else "", "tone": "alert" if wars > 0 else "",
 			"explain": {"title": "Contacts", "value": "%d powers met" % contacts.size(), "parts": contacts.map(func(r): return [str(r["name"]), "war" if r.get("atWar", false) else "trust %d" % int(r.get("trust", 0)), "alert" if r.get("atWar", false) else ""]), "effect": "Meet powers by exploring. Treaties and trade need contact."}},
 	]
+
+## One row per colony for the Programs tab: [{systemId, name, morale, tone, status, program, active, blocker}].
+func program_rows() -> Array:
+	var out := []
+	for c in view()["colonies"]:
+		var er: Variant = c.get("empireRules", {})
+		var p: Dictionary = er["program"] if er is Dictionary and er.has("program") else {}
+		if p.is_empty():
+			continue
+		var morale := int(c["morale"])
+		var active := int(p["activeId"]) != 0
+		out.append({"systemId": int(c["systemId"]), "name": str(c["name"]), "morale": morale, "tone": "alert" if morale < 40 else ("warn" if morale < 60 else ""),
+			"status": SystemVM.program_status(p), "program": p, "active": active, "blocker": str(p.get("blocker", ""))})
+	return out
+
+func start_program(sid: int, p: Dictionary) -> bool:
+	return issue({"type": "SetEmergencyProgram", "systemId": sid, "eventOption": int(p["id"])}, [], "%s ordered." % p["name"])
+
+func cancel_program(sid: int, p: Dictionary) -> bool:
+	return issue({"type": "SetEmergencyProgram", "systemId": sid, "eventOption": 0}, [], "%s will be lifted." % p["activeName"])
 
 ## The empire's dilithium status ({} when the rules are off): {enforced, refineries, powered, slots, used}.
 func dilithium() -> Dictionary:

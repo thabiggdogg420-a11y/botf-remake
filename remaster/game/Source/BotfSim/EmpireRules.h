@@ -130,6 +130,140 @@ inline bool aiWantsRefinery(const GameState& s, int owner, const Colony& c) {
     return refineries < std::min(3, colonies / 2 + 1);
 }
 
+
+// ---------------------------------------------------------------------------
+// (a) Emergency programs
+// ---------------------------------------------------------------------------
+inline Program raceProgram(int empireId) {
+    switch (empireId) {
+    case 1: return Program::MartialLaw;
+    case 2: return Program::PoliceState;
+    case 3: return Program::Tribunal;
+    case 4: return Program::Inquisition;
+    case 5: return Program::FestivalOfFun;
+    default: return Program::None;
+    }
+}
+inline const char* programName(int program) {
+    switch (program) {
+    case 1: return "Martial Law";
+    case 2: return "Klingon Police";
+    case 3: return "Romulan Tribunal";
+    case 4: return "Cardassian Inquisition";
+    case 5: return "Ferengi Festival";
+    default: return "";
+    }
+}
+inline const char* programEffect(int program) {
+    switch (program) {
+    case 1: return "Morale +10 now, held at 50 or more. Research -20%, ground defense +25%. 10 turns.";
+    case 2: return "Morale held at 50 or more. Industry +15%, but 2% of the population is purged each turn. 10 turns.";
+    case 3: return "Morale held at 50 or more. Ground defense +40%. Running cost doubled. 10 turns.";
+    case 4: return "Morale held at 50 or more. Intelligence from the colony +50%, no population growth. 10 turns.";
+    case 5: return "Pays 2 credits per citizen for a feast: morale +20 at once. One turn.";
+    default: return "";
+    }
+}
+inline bool sustained(int program) { return program != static_cast<int>(Program::None) && program != static_cast<int>(Program::FestivalOfFun); }
+// Credits a colony pays each turn while a sustained program runs.
+inline int programUpkeep(const Colony& c) {
+    if (!sustained(c.program)) return 0;
+    return std::max(1, c.population / 10) * (c.program == static_cast<int>(Program::Tribunal) ? 2 : 1);
+}
+inline std::int64_t programStartCost(const Colony& c, Program p) {
+    return p == Program::FestivalOfFun ? 2LL * c.population : 0;
+}
+inline int programIndustryPercent(const Colony& c) { return c.program == static_cast<int>(Program::PoliceState) ? 115 : 100; }
+inline int programResearchPercent(const Colony& c) { return c.program == static_cast<int>(Program::MartialLaw) ? 80 : 100; }
+inline int programIntelPercent(const Colony& c) { return c.program == static_cast<int>(Program::Inquisition) ? 150 : 100; }
+inline int programDefensePercent(const Colony& c) {
+    return c.program == static_cast<int>(Program::MartialLaw) ? 25 : c.program == static_cast<int>(Program::Tribunal) ? 40 : 0;
+}
+inline bool programBlocksGrowth(const Colony& c) { return c.program == static_cast<int>(Program::Inquisition); }
+
+inline std::string programBlocker(const GameState& s, const Colony& c, Program p) {
+    if (!enabled(s)) return "Emergency programs need a campaign with empire rules";
+    if (p == Program::None) return "No program chosen";
+    if (p != raceProgram(c.ownerId)) return std::string(programName(static_cast<int>(p))) + " belongs to another empire";
+    if (c.program != 0) return "A program is already in force here";
+    if (c.morale >= ProgramMoraleLimit) return "Morale is " + std::to_string(c.morale) + ": the colony is not in unrest";
+    const auto& owner = empire(s, c.ownerId);
+    const std::int64_t need = programStartCost(c, p) + std::max(1, c.population / 10) * 2;
+    if (owner.credits < need) return "Needs " + std::to_string(need) + " credits in the treasury";
+    return {};
+}
+
+inline void trimWorkers(Colony& c) {
+    int excess = std::max(0, c.foodWorkers + c.industryWorkers + c.researchWorkers - c.population);
+    auto trim = [&excess](int& workers) { const int n = std::min(workers, excess); workers -= n; excess -= n; };
+    trim(c.industryWorkers); trim(c.researchWorkers); trim(c.foodWorkers);
+}
+
+inline void startProgram(GameState& s, Colony& c, Program p) {
+    internal::mutableEmpire(s, c.ownerId).credits -= programStartCost(c, p);
+    c.program = static_cast<int>(p);
+    c.programTurns = p == Program::FestivalOfFun ? 1 : MaxProgramTurns;
+    if (p == Program::MartialLaw) c.morale = std::min(100, c.morale + 10);
+    if (p == Program::FestivalOfFun) c.morale = std::min(100, c.morale + 20);
+}
+inline void cancelProgram(Colony& c) { c.program = 0; c.programTurns = 0; }
+
+// The player's SetEmergencyProgram order: eventOption = program id to declare, 0 = lift the running one.
+inline void applyProgramCommand(GameState& s, const Command& cmd) {
+    auto* c = detail::colonyOf(s, cmd.systemId);
+    detail::require(c && c->ownerId == s.playerEmpire, "Not one of your colonies");
+    if (cmd.eventOption == 0) {
+        detail::require(c->program != 0, "No emergency program is in force here");
+        cancelProgram(*c);
+        return;
+    }
+    const auto p = static_cast<Program>(cmd.eventOption);
+    if (const auto problem = programBlocker(s, *c, p); !problem.empty()) throw std::runtime_error(problem);
+    startProgram(s, *c, p);
+}
+
+// Turn end: morale floor, the Police purge, then the clock. Runs after morale has drifted toward its target.
+inline void endOfTurn(GameState& s, TurnReport& report) {
+    for (auto& c : s.colonies) {
+        if (c.program == 0) continue;
+        if (c.morale < 50) c.morale = 50;
+        if (c.program == static_cast<int>(Program::PoliceState) && c.population > 10) {
+            c.population = std::max(10, c.population - std::max(1, c.population * 2 / 100));
+            trimWorkers(c);
+        }
+        if (--c.programTurns <= 0) {
+            if (c.ownerId == s.playerEmpire)
+                report.events.push_back("System " + std::to_string(c.systemId) + ": " + programName(c.program) + " has run its course.");
+            cancelProgram(c);
+        }
+    }
+}
+
+// AI: declare the race's program in a colony in unrest when the treasury can carry it; lift it once calm.
+inline void planPrograms(GameState& s, int ownerId) {
+    const Program p = raceProgram(ownerId);
+    for (auto& c : s.colonies) {
+        if (c.ownerId != ownerId) continue;
+        if (c.program != 0) {
+            if (sustained(c.program) && c.morale >= 65) cancelProgram(c);
+            continue;
+        }
+        if (c.morale >= 40) continue;
+        const std::int64_t margin = p == Program::FestivalOfFun ? 6 : 3;
+        const std::int64_t price = std::max<std::int64_t>(1, programStartCost(c, p) + std::max(1, c.population / 10));
+        if (empire(s, ownerId).credits >= price * margin && programBlocker(s, c, p).empty()) startProgram(s, c, p);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Commands
+// ---------------------------------------------------------------------------
+inline void applyCommand(GameState& s, const Command& cmd) {
+    detail::require(enabled(s), "Empire rules are off in this campaign");
+    if (cmd.type == CommandType::SetEmergencyProgram) { applyProgramCommand(s, cmd); return; }
+    throw std::runtime_error("Unknown empire-rule command");
+}
+
 // ---------------------------------------------------------------------------
 // New game, validation, save
 // ---------------------------------------------------------------------------

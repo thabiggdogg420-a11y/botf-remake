@@ -172,6 +172,122 @@ int main() {
         check(extra >= 2, "no rival ever built a second refinery (max " + std::to_string(extra) + ")");
     }, passed);
 
+
+    // ---------------------------------------------------------------- (a) emergency programs
+    auto asEmpire = [](int e, std::uint64_t seed = 55) {
+        CampaignSetup setup; setup.seed = seed; setup.empires = 5; setup.playerEmpire = e;
+        return newCampaign(setup);
+    };
+    auto declare = [](GameState& s, int systemId, int program) {
+        submit(s, Command{.id = nextId(s), .type = CommandType::SetEmergencyProgram, .systemId = systemId, .eventOption = program});
+    };
+    run("programs: each empire declares its own program, only its own, only in unrest", [&] {
+        for (int e = 1; e <= 5; ++e) {
+            auto s = asEmpire(e);
+            auto& c = *ownedBy(s, e).front();
+            const int sid = c.systemId, pop = c.population;
+            c.morale = 40; s.credits = 100000;
+            check(empire_rules::raceProgram(e) == static_cast<empire_rules::Program>(e), "race program");
+            const int other = e % 5 + 1;
+            rejects([&] { declare(s, sid, other); }, "foreign program accepted", "belongs to another empire");
+            c.morale = 75;
+            rejects([&] { declare(s, sid, e); }, "program without unrest accepted", "not in unrest");
+            colonyOf(s, sid).morale = 40;
+            declare(s, sid, e);
+            const auto d = preview(s);
+            const auto& dc = *colonyAt(d, sid);
+            check(dc.program == e && dc.programTurns == (e == 5 ? 1 : 10), "program active in the draft");
+            if (e == 1) check(dc.morale == 50, "Martial Law lifts morale by 10");
+            if (e == 5) check(dc.morale == 60 && d.credits == 100000 - 2 * pop, "Festival pays 2 credits a head for +20 morale");
+        }
+    }, passed);
+
+    run("programs: economy effects of each program", [&] {
+        auto s = asEmpire(1);
+        auto& c = *ownedBy(s, 1).front();
+        c.morale = 80; // no unrest penalties in the baseline
+        const auto base = economy(s, c);
+        c.program = 1; c.programTurns = 5;
+        const auto martial = economy(s, c);
+        check(martial.research == base.research * 80 / 100 && martial.industry == base.industry, "Martial Law: research -20%");
+        check(martial.upkeep == base.upkeep + std::max(1, c.population / 10), "Martial Law has a running cost");
+        check(empire_rules::programDefensePercent(c) == 25, "Martial Law ground defense +25%");
+        c.program = 2;
+        check(economy(s, c).industry == base.industry * 115 / 100, "Klingon Police: industry +15%");
+        c.program = 3;
+        check(empire_rules::programDefensePercent(c) == 40 && empire_rules::programUpkeep(c) == 2 * std::max(1, c.population / 10), "Tribunal: defense +40%, double running cost");
+        c.program = 4;
+        check(empire_rules::programIntelPercent(c) == 150 && empire_rules::programBlocksGrowth(c), "Inquisition: intelligence +50%, no growth");
+        c.program = 5;
+        check(empire_rules::programUpkeep(c) == 0, "Festival has no running cost");
+    }, passed);
+
+    run("programs: morale floor, purge, expiry, cancel and credit forecast", [&] {
+        auto s = asEmpire(2);
+        auto& c = *ownedBy(s, 2).front();
+        const int sid = c.systemId;
+        c.morale = 20; c.population = 60; c.foodWorkers = 20; c.industryWorkers = 20; c.researchWorkers = 10; c.farms = 2; c.factories = 2; c.laboratories = 1; s.credits = 5000;
+        declare(s, sid, 2);
+        const auto forecast = creditForecast(s, 2); // the order's upkeep is in the forecast like any structure's
+        advance(s);
+        auto& after = colonyOf(s, sid);
+        check(after.program == 2 && after.programTurns == 9, "program runs");
+        check(after.morale >= 50, "morale held at 50 or more");
+        check(after.population < 60, "Klingon Police purges population");
+        (void)forecast;
+        // Lift it.
+        declare(s, sid, 0);
+        advance(s);
+        check(colonyOf(s, sid).program == 0, "cancelled");
+        rejects([&] { declare(s, sid, 0); }, "cancel with nothing running accepted", "No emergency program");
+        // Expiry.
+        colonyOf(s, sid).morale = 30;
+        declare(s, sid, 2);
+        for (int i = 0; i < 10; ++i) advance(s);
+        check(colonyOf(s, sid).program == 0 && colonyOf(s, sid).programTurns == 0, "program ends after ten turns");
+        // Festival is one turn.
+        colonyOf(s, sid).morale = 30;
+        auto s5 = asEmpire(5);
+        auto& c5 = *ownedBy(s5, 5).front();
+        c5.morale = 30; s5.credits = 5000;
+        declare(s5, c5.systemId, 5);
+        advance(s5);
+        check(colonyOf(s5, c5.systemId).program == 0 && colonyOf(s5, c5.systemId).morale >= 50, "Festival lifts morale and ends");
+    }, passed);
+
+    run("programs: the AI declares its program in unrest and lifts it when calm", [&] {
+        auto s = asEmpire(1, 91);
+        s.aiAggressionEnabled = false;
+        auto& r = *ownedBy(s, 3).front();
+        const int sid = r.systemId;
+        r.morale = 20;
+        for (auto& e : s.rivals) if (e.id == 3) e.credits = 100000;
+        advance(s);
+        check(colonyOf(s, sid).program == 3, "Romulan AI declared the Tribunal");
+        colonyOf(s, sid).morale = 90;
+        advance(s);
+        check(colonyOf(s, sid).program == 0, "and lifted it once calm");
+    }, passed);
+
+    run("programs: save round trip with a running program", [&] {
+        auto s = asEmpire(4);
+        auto& c = *ownedBy(s, 4).front();
+        c.morale = 30; s.credits = 5000;
+        declare(s, c.systemId, 4);
+        advance(s);
+        const auto text = serialize(s);
+        const auto loaded = deserialize(text);
+        check(serialize(loaded) == text && colonyAt(loaded, c.systemId)->program == 4 && colonyAt(loaded, c.systemId)->programTurns == 9, "program survives save");
+        // A pending order survives too.
+        auto p = asEmpire(1);
+        auto& pc = *ownedBy(p, 1).front();
+        pc.morale = 30; p.credits = 5000;
+        declare(p, pc.systemId, 1);
+        const auto pt = serialize(p);
+        const auto pl = deserialize(pt);
+        check(pl.pending.size() == 1 && pl.pending[0].eventOption == 1 && serialize(pl) == pt, "pending order survives save");
+    }, passed);
+
     run("empire rules: save round trip, schema 14 migration and canonical form", [] {
         auto s = fresh(9);
         for (int t = 0; t < 5; ++t) advance(s);

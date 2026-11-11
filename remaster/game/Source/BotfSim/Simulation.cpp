@@ -1337,6 +1337,7 @@ void planRivals(GameState& s) {
         // Personality- and situation-driven war decisions (treaties, cool-downs,
         // relative strength, trust and grievances); see planAiWarDeclarations.
         planAiWarDeclarations(s, owner.id);
+        if (s.rules.empireRules) empire_rules::planPrograms(s, owner.id); // Schema 15: AI emergency programs
         const bool atWar = std::any_of(s.majorRelations.begin(), s.majorRelations.end(), [&](const MajorRelation& r) {
             return r.atWar && (r.first == owner.id || r.second == owner.id);
         });
@@ -2950,7 +2951,8 @@ void resolveInvasions(GameState& s, TurnReport& report) {
         }
         const int attacker = 8 + fleet.hull + 2 * empire(s, fleet.ownerId).technologies[5].level;
         const int defenderBatteries = s.advancedRulesEnabled ? economy(s, *target).poweredBatteries : 0;
-        const int defender = minors::invasionDefense(s, *target, 8 + target->population / 3 + target->morale / 10 + defenderBatteries * 12);
+        const int defender = minors::invasionDefense(s, *target, 8 + target->population / 3 + target->morale / 10 + defenderBatteries * 12)
+            * (100 + empire_rules::programDefensePercent(*target)) / 100; // Schema 15: Martial Law, Tribunal
         const std::uint64_t a2 = static_cast<std::uint64_t>(attacker) * attacker;
         const std::uint64_t d2 = static_cast<std::uint64_t>(defender) * defender;
         const bool won = bounded(s.rngState, a2 + d2) < a2;
@@ -4699,8 +4701,11 @@ Economy economy(const GameState& s, const Colony& c) {
     e.foodDeficit = std::max(0, c.population - e.food);
     e.industry = e.industry * (100 + 5 * owner.technologies[2].level + minorBonus.industryPct) / 100;
     if (c.morale < 50) e.industry = e.industry * 75 / 100;
+    e.industry = e.industry * empire_rules::programIndustryPercent(c) / 100; // Schema 15 emergency programs
     e.research = e.research * (100 + 5 * owner.technologies[1].level + minorBonus.researchPct) / 100;
     if (c.morale < 50) e.research = e.research * 75 / 100;
+    e.research = e.research * empire_rules::programResearchPercent(c) / 100;
+    e.upkeep += empire_rules::programUpkeep(c);
     if (s.ruleset == Ruleset::Reference) e.income += c.population * 2;
     e.income = e.income * (100 + minorBonus.creditsPct) / 100;
     return e;
@@ -4809,7 +4814,7 @@ TurnReport advanceWithCombat(GameState& state, const std::function<void(GameStat
             report.ledger.buildingUpkeep += cr.economy.upkeep;
         }
         owner.research += cr.economy.research;
-        owner.intelligence = std::min(MaxBalance, owner.intelligence + cr.economy.research / 2);
+        owner.intelligence = std::min(MaxBalance, owner.intelligence + cr.economy.research / 2 * empire_rules::programIntelPercent(c) / 100);
         researchGained[c.ownerId] += cr.economy.research;
         if (c.ownerId == next.playerEmpire) report.researchGained += cr.economy.research;
         const auto blocker = constructionBlocker(productionSnapshot, c);
@@ -4987,7 +4992,8 @@ TurnReport advanceWithCombat(GameState& state, const std::function<void(GameStat
         const int cap = systemCapacity(productionSnapshot, c.systemId);
         const auto change = populationForecast(inputs.population, food, cap,
             10 * (inputs.farms + inputs.factories + inputs.laboratories), PrototypeGrowthBasisPoints);
-        const int delta = change.minimum + (change.upwardChances > 0 && bounded(next.rngState, 20000) < static_cast<std::uint64_t>(change.upwardChances) ? 1 : 0);
+        int delta = change.minimum + (change.upwardChances > 0 && bounded(next.rngState, 20000) < static_cast<std::uint64_t>(change.upwardChances) ? 1 : 0);
+        if (delta > 0 && empire_rules::programBlocksGrowth(c)) delta = 0; // Cardassian Inquisition: no growth
         c.population += delta;
         if (c.workforcePriority != GovernorPriority::Manual && !c.workforceManualOverride) {
             evaluateWorkforceGovernor(next, c);
@@ -5012,6 +5018,7 @@ TurnReport advanceWithCombat(GameState& state, const std::function<void(GameStat
         if (c.morale < moraleTarget) ++c.morale;
         else if (c.morale > moraleTarget) --c.morale;
     }
+    empire_rules::endOfTurn(next, report); // Schema 15: emergency programs hold morale, purge, expire
     if (next.rules.curatedEvents) {
         gameplay::resolveGalacticEvents(next, report); // Schema-13 event deck (eventsEnabled gates new draws).
     } else if (next.eventsEnabled && !next.rivals.empty() && next.turn - next.lastRandomEventTurn >= 10 && !next.colonies.empty()) {

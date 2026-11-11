@@ -513,6 +513,14 @@ void writeEmpireRulesColony(Writer& w, const botf::GameState& s, const botf::Col
             .field("slots", d.slots).field("slotsUsed", d.used)
             .field("klingonBonusPercent", er::shipIndustryBonusPercent(s, c))
             .field("blocker", er::refineryBlocker(s, c)).endObject();
+        const auto mine = er::raceProgram(c.ownerId);
+        const int id = static_cast<int>(mine);
+        w.key("program").beginObject()
+            .field("id", id).field("name", er::programName(id)).field("effect", er::programEffect(id))
+            .field("startCost", er::programStartCost(c, mine))
+            .field("upkeep", std::max(1, c.population / 10) * (mine == er::Program::Tribunal ? 2 : 1) * (er::sustained(id) ? 1 : 0))
+            .field("activeId", c.program).field("activeName", er::programName(c.program))
+            .field("turnsLeft", c.programTurns).field("blocker", er::programBlocker(s, c, mine)).endObject();
     }
     w.endObject();
 }

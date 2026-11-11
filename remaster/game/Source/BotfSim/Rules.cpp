@@ -25,7 +25,8 @@ bool isGameplayCommand(CommandType type) {
         type == CommandType::ResolveEventChoice || type == CommandType::DefineBuildTemplate ||
         type == CommandType::DeleteBuildTemplate || type == CommandType::ApplyBuildTemplate ||
         type == CommandType::SetDefaultBuildTemplate || type == CommandType::StartMegaproject ||
-        type == CommandType::CancelMegaproject;
+        type == CommandType::CancelMegaproject || type == CommandType::SetEmergencyProgram ||
+        type == CommandType::ResolveAftermath;
 }
 
 namespace rules_detail {
@@ -52,7 +53,8 @@ void checkCommand(const Command& c) {
     for (int amount : c.researchAllocation) require(amount == 0, "Gameplay command contains research fields");
     const bool usesFleet = c.type == CommandType::BuildOutpost;
     const bool usesSystem = c.type == CommandType::UpgradeStation || c.type == CommandType::ApplyBuildTemplate ||
-        c.type == CommandType::StartMegaproject;
+        c.type == CommandType::StartMegaproject || c.type == CommandType::SetEmergencyProgram ||
+        c.type == CommandType::ResolveAftermath;
     const bool usesTemplateId = c.type == CommandType::DefineBuildTemplate || c.type == CommandType::DeleteBuildTemplate ||
         c.type == CommandType::ApplyBuildTemplate || c.type == CommandType::SetDefaultBuildTemplate;
     require(usesFleet ? c.fleetId > 0 : c.fleetId == 0, "Invalid gameplay command fleet field");
@@ -60,6 +62,10 @@ void checkCommand(const Command& c) {
     require(c.type == CommandType::UpgradeStation ? c.stationId > 0 : c.stationId == 0, "Invalid station field");
     if (c.type == CommandType::ResolveEventChoice)
         require(c.eventId > 0 && c.eventOption >= 0 && c.eventOption <= 2, "Invalid event choice fields");
+    else if (c.type == CommandType::SetEmergencyProgram)
+        require(c.eventId == 0 && c.eventOption >= 0 && c.eventOption <= 5, "Invalid emergency program fields");
+    else if (c.type == CommandType::ResolveAftermath)
+        require(c.eventId == 0 && c.eventOption >= 0 && c.eventOption <= 2, "Invalid aftermath fields");
     else
         require(c.eventId == 0 && c.eventOption == 0, "Invalid event fields");
     if (usesTemplateId) {
@@ -92,6 +98,9 @@ void applyCommand(GameState& state, const Command& command, std::set<int>& order
     case CommandType::StartMegaproject:
     case CommandType::CancelMegaproject:
         applyMegaprojectCommand(state, command); break;
+    case CommandType::SetEmergencyProgram:
+    case CommandType::ResolveAftermath:
+        empire_rules::applyCommand(state, command); break;
     default:
         throw std::runtime_error("Not a gameplay-layer command");
     }

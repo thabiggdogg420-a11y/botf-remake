@@ -169,6 +169,34 @@ static func dilithium_lines(d: Dictionary, queue_blocker: String = "") -> Array:
 		out.append({"text": queue_blocker, "tone": "warn"})
 	return out
 
+## The emergency-program block of this colony's `empireRules` ({} when the rules are off):
+## {id, name, effect, startCost, upkeep, activeId, activeName, turnsLeft, blocker}.
+func program() -> Dictionary:
+	var er: Variant = colony().get("empireRules", {})
+	return er["program"] if er is Dictionary and er.get("enabled", false) and er.has("program") else {}
+
+## "" when the program may be started, else why not (the order lock comes first).
+func program_block() -> String:
+	var p := program()
+	var lock := lock_reason()
+	return lock if lock != "" else str(p.get("blocker", ""))
+
+## The status line of the program panel.
+static func program_status(p: Dictionary) -> String:
+	if p.is_empty():
+		return ""
+	if int(p["activeId"]) != 0:
+		return "%s is in force: %d turn%s left, %s." % [p["activeName"], int(p["turnsLeft"]), "" if int(p["turnsLeft"]) == 1 else "s", ("costs %d credits a turn" % int(p["upkeep"])) if int(p["upkeep"]) > 0 else "no running cost"]
+	return "%s: %s" % [p["name"], ("one-off cost %d credits" % int(p["startCost"])) if int(p["startCost"]) > 0 else ("costs %d credits a turn" % int(p["upkeep"]))]
+
+func start_program() -> bool:
+	var p := program()
+	return issue({"type": "SetEmergencyProgram", "systemId": sid(), "eventOption": int(p["id"])}, [], "%s ordered." % p["name"])
+
+func cancel_program() -> bool:
+	var p := program()
+	return issue({"type": "SetEmergencyProgram", "systemId": sid(), "eventOption": 0}, [], "%s will be lifted." % p["activeName"])
+
 # ---------------------------------------------------------------------------------------------
 # Governor and shipyard
 # ---------------------------------------------------------------------------------------------

@@ -263,3 +263,44 @@ static func _member_card(app: App, m: Dictionary, is_member: bool) -> Control:
 	var sid := int(m["systemId"])
 	cv.add_child(Lcars.pill("Open in Diplomacy", "ghost", func(): app.set_meta("diplomacy_focus", {"minor": true, "id": sid}); app.goto("diplomacy")))
 	return card
+
+# ---------------------------------------------------------------------------------------------
+# Emergency programs and dilithium (schema 15, docs/design/EMPIRE-RULES.md)
+# ---------------------------------------------------------------------------------------------
+static func programs(app: App, vm: EmpireVM = null) -> Control:
+	if vm == null:
+		vm = EmpireVM.new(app.session)
+	var col := Lcars.vbox(8)
+	col.name = "ProgramManager"
+	var lock := _lock(app)
+	var rows := vm.program_rows()
+	if rows.is_empty():
+		col.add_child(Lcars.empty_note("Emergency programs are not part of this campaign."))
+		return col
+	var dil := vm.dilithium()
+	if not dil.is_empty():
+		col.add_child(Lcars.para("Dilithium: %d refineries (%d powered) give %d ship slots; %d in use." % [int(dil["refineries"]), int(dil["powered"]), int(dil["slots"]), int(dil["used"])], Lcars.WARN if int(dil["used"]) >= int(dil["slots"]) else Lcars.TEXT2, 13))
+	col.add_child(Lcars.para("An emergency program quells unrest in one colony. It starts only while morale is under 70; the sustained programs run 10 turns and can be lifted at any time.", Lcars.TEXT3, 13))
+	var list := Lcars.vbox(4)
+	for r in rows:
+		var sid: int = r["systemId"]
+		var p: Dictionary = r["program"]
+		var row := Lcars.hbox(8)
+		row.name = "ProgramRow_%d" % sid
+		var nm := Lcars.label("%s  morale %d" % [r["name"], int(r["morale"])], "", 15, Lcars.tone_color(str(r["tone"])) if str(r["tone"]) != "" else Lcars.TEXT)
+		nm.custom_minimum_size.x = 250
+		row.add_child(nm)
+		var st := Lcars.para(str(r["status"]), Lcars.TEXT2, 13)
+		st.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.add_child(st)
+		if bool(r["active"]):
+			var b := Lcars.pill("Lift", "ghost", func(): vm.cancel_program(sid, p), lock, "Ends the program at turn end")
+			b.name = "Lift_%d" % sid
+			row.add_child(b)
+		else:
+			var b2 := Lcars.pill("Declare", "primary", func(): vm.start_program(sid, p), lock if lock != "" else str(r["blocker"]), str(p["effect"]))
+			b2.name = "Declare_%d" % sid
+			row.add_child(b2)
+		list.add_child(row)
+	col.add_child(Lcars.scroll(list))
+	return col

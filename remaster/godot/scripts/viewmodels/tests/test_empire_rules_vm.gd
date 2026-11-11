@@ -1,6 +1,5 @@
 extends SceneTree
 ## View-model tests for the schema-15 empire rules (lane M2-EMPIRE, docs/design/EMPIRE-RULES.md): dilithium status,
-## emergency programs, the invasion aftermath modal, invading independent minors and signature-ship guards.
 ## Needs the native core (BotfCore); without it the suite reports SKIP and passes.
 ##   godot --headless --audio-driver Dummy --path remaster/godot -s res://scripts/viewmodels/tests/test_empire_rules_vm.gd
 
@@ -24,6 +23,7 @@ func _run() -> void:
 		print("SKIP: BotfCore is not loaded; the live checks need the native core")
 	else:
 		_dilithium_live()
+		_programs_live()
 	print("%d checks, %d failures" % [checks, failures])
 	quit(1 if failures > 0 else 0)
 
@@ -36,6 +36,7 @@ func _pure() -> void:
 	check(lines[0]["tone"] == "alert", "an unpowered refinery is an alert")
 	lines = SystemVM.dilithium_lines({"deposit": true, "refinery": true, "refineryPowered": true, "empireRefineries": 2, "empirePowered": 2, "slots": 2, "slotsUsed": 0, "klingonBonusPercent": 25})
 	check(lines.size() == 3 and str(lines[2]["text"]).contains("25%"), "the Klingon yard bonus is shown")
+	check(SystemVM.program_status({}) == "", "no program status when the rules are off")
 
 func _dilithium_live() -> void:
 	print("== dilithium on the native core")
@@ -54,7 +55,27 @@ func _dilithium_live() -> void:
 	check(sys.fetch(sys.system_id()), "the system detail loads")
 	var dd := sys.dilithium()
 	check(bool(dd.get("refinery", false)) and bool(dd.get("refineryPowered", false)), "the home colony has a powered refinery")
-	var listed := sys.detail["choices"].filter(func(c): return c["product"] == "DilithiumRefinery")
+	var listed: Array = sys.detail["choices"].filter(func(c): return c["product"] == "DilithiumRefinery")
 	check(listed.size() == 1 and str(listed[0]["blocker"]).contains("already built"), "the build list shows the refinery blocked once built")
-	var scrap := sys.detail["scrap"].filter(func(c): return c["building"] == "DilithiumRefinery")
+	var scrap: Array = sys.detail["scrap"].filter(func(c): return c["building"] == "DilithiumRefinery")
 	check(scrap.size() == 1 and int(scrap[0]["count"]) == 1, "the scrap list carries the refinery")
+
+func _programs_live() -> void:
+	print("== emergency programs on the native core")
+	var s := AppSession.create("auto")
+	var v := s.start("newCampaign", AppSession.campaign_options({"empire": 2, "seed": 424242, "era": 3, "preset": "remastered"}))
+	if v.is_empty():
+		check(false, "newCampaign starts")
+		return
+	s.enter(v)
+	var emp := EmpireVM.new(s)
+	var rows := emp.program_rows()
+	check(rows.size() >= 1 and rows[0]["program"]["name"] == "Klingon Police", "a Klingon empire offers Klingon Police: %s" % [rows[0]["program"] if rows.size() > 0 else {}])
+	check(SystemVM.program_status(rows[0]["program"]).contains("Klingon Police"), "the status line names the program")
+	var sid := int(rows[0]["systemId"])
+	check(str(rows[0]["blocker"]).contains("not in unrest") and not emp.start_program(sid, rows[0]["program"]), "a content colony may not start a program (unrest only)")
+	var after := emp.program_rows()
+	check(not after.is_empty() and not bool(after[0]["active"]), "the refused order leaves no program running")
+	var sys := SystemVM.new(s)
+	check(sys.fetch(sid), "the system detail loads")
+	check(not sys.program().is_empty(), "the system screen has a program block")
