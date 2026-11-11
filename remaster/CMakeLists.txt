@@ -74,6 +74,7 @@ botf_suite(BotfSoakTests SoakTests.cpp)
 set_tests_properties(BotfSoakTests PROPERTIES TIMEOUT 1800)
 botf_suite(BotfCampaignDiplomacyTests CampaignDiplomacyTests.cpp)
 botf_suite(BotfContentTests ContentTests.cpp) # Lane G: original text + minor-race roster
+botf_suite(BotfPresetTests PresetTests.cpp) # M3-PRESETS (MOD-1): overlay packs, presets, lineup validation, schema-17 PACKS section
 botf_suite(BotfGalaxyGenTests GalaxyGenTests.cpp) # M2-GEN: galaxy shapes, minor-race density, difficulty, GALAXY_SETUP save section
 # Schema-14 treaty integration, client queries and battle records (Lane H).
 botf_suite(BotfIntegrationTests IntegrationTests.cpp)

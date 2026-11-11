@@ -20,6 +20,7 @@
 #include "../../game/Source/BotfSim/MinorRaces.h"
 #include "../../game/Source/BotfSim/EmpireRules.h"
 #include "../../game/Source/BotfSim/Content.h"
+#include "../../game/Source/BotfSim/Presets.h"
 #include "Json.h"
 
 #include <algorithm>
@@ -921,8 +922,11 @@ void writeView(Writer& w) {
     w.field("version", B.version);
     w.field("empireCount", static_cast<int>(s.rivals.size()) + 1);
     w.key("rules").beginObject()
-        .field("preset", s.rules.preset == botf::RulesetPreset::Remastered ? "remastered" : "classic")
-        .field("presetName", botf::rulesetPresetName(s.rules.preset))
+        .field("preset", !s.presetId.empty() ? s.presetId : s.rules.preset == botf::RulesetPreset::Remastered ? "remastered" : "classic")
+        .field("presetName", [&]() -> std::string {
+            if (const auto* p = s.presetId.empty() ? nullptr : botf::presets::find(s.presetId)) return p->name;
+            return botf::rulesetPresetName(s.rules.preset);
+        }())
         .field("stations", s.rules.stations).field("galaxyFeatures", s.rules.galaxyFeatures)
         .field("curatedEvents", s.rules.curatedEvents).field("alternativeVictories", s.rules.alternativeVictories)
         .field("empireRules", s.rules.empireRules).endObject();
@@ -2621,7 +2625,15 @@ botf::CampaignSetup campaignSetup(const Value& a) {
     setup.seed = seed; setup.empires = empires; setup.width = width; setup.height = height; setup.systems = systems;
     setup.playerEmpire = faction; setup.era = static_cast<botf::StartingEra>(era); setup.reference = ruleset != "prototype";
     setup.preset = botf::RulesetPreset::Remastered;
-    if (a.has("preset") && !botf::parseRulesetPreset(a.getString("preset"), setup.preset)) fail("Unknown ruleset preset");
+    // "preset" names a registered preset (classic, remastered, dominion-war, ...): its overlays become the active content and
+    // its rule flags apply over its base ruleset. A call that names none keeps Remastered and the content that is active.
+    if (a.has("preset")) {
+        const std::string id = a.getString("preset");
+        if (const auto* p = botf::presets::find(id)) {
+            setup.presetId = p->id;
+            setup.preset = p->rulesBase == "classic" ? botf::RulesetPreset::Classic : botf::RulesetPreset::Remastered;
+        } else if (!botf::parseRulesetPreset(id, setup.preset)) fail("Unknown ruleset preset");
+    }
     if (a.has("shape") && !botf::parseGalaxyShape(a.getString("shape"), setup.galaxy.shape)) fail("Unknown galaxy shape");
     if (a.has("minorDensity") && !botf::parseMinorDensity(a.getString("minorDensity"), setup.galaxy.density)) fail("Unknown minor-race density");
     if (a.has("difficulty") && !botf::parseDifficulty(a.getString("difficulty"), setup.galaxy.difficulty)) fail("Unknown difficulty");
@@ -2939,6 +2951,7 @@ void newDiplomacyDrill() {
 // ------------------------------------------------------------------------------------------------
 // Static reference data
 // ------------------------------------------------------------------------------------------------
+void writePresets(Writer& w);
 void writeMeta(Writer& w) {
     w.beginObject();
     w.field("contentVersion", botf::ContentVersion);
@@ -2958,6 +2971,7 @@ void writeMeta(Writer& w) {
     for (int i = 0; i < botf::ResearchFields; ++i) w.value(botf::researchName(i));
     w.endArray();
     w.field("maxTechLevel", botf::MaxTechLevel);
+    w.key("presets"); writePresets(w);
     w.key("maneuvers"); writeManeuvers(w);
     w.key("stances").beginArray(); for (auto n : StanceNames) w.value(n); w.endArray();
     w.key("governors").beginArray();
@@ -3042,7 +3056,36 @@ void writeEncyclopedia(Writer& w) {
 void writeContentInfo(Writer& w, const botf::content::PackInfo& info) {
     w.beginObject().field("id", info.id).field("name", info.name).field("format", info.format).field("revision", info.revision)
         .field("checksum", botf::content::checksumHex(info.checksum)).field("bytes", static_cast<std::int64_t>(info.bytes))
-        .field("base", info.base).endObject();
+        .field("base", info.base);
+    w.key("stack").beginArray();
+    for (const auto& part : info.stack) w.beginObject().field("id", part.id).field("checksum", botf::content::checksumHex(part.checksum)).endObject();
+    w.endArray().endObject();
+}
+
+// The preset registry for the new-game screen (docs/design/PACKS-AND-PRESETS.md). Options are the defaults the picker fills;
+// lineupPlayable false means the core cannot seat the lineup yet and the game plays the stock empires (lineupNote says why).
+void writePresets(Writer& w) {
+    w.beginArray();
+    for (const auto* p : botf::presets::all()) {
+        w.beginObject().field("id", p->id).field("name", p->name).field("blurb", p->blurb).field("rulesBase", p->rulesBase);
+        w.key("overlays").beginArray(); for (const auto& o : p->overlays) w.value(o); w.endArray();
+        w.key("flags").beginObject(); for (const auto& f : p->flags) w.field(f.first, f.second); w.endObject();
+        w.key("lineup").beginArray(); for (const auto& e : p->lineup) w.value(e); w.endArray();
+        w.field("lineupPlayable", p->lineupPlayable).field("lineupNote", p->lineupNote);
+        w.key("options").beginObject();
+        if (p->empires > 0) w.field("empires", p->empires);
+        if (p->era > 0) w.field("era", p->era);
+        if (!p->size.empty()) w.field("size", p->size);
+        if (!p->shape.empty()) w.field("shape", p->shape);
+        if (!p->minorDensity.empty()) w.field("minorDensity", p->minorDensity);
+        if (!p->difficulty.empty()) w.field("difficulty", p->difficulty);
+        if (p->events >= 0) w.field("events", p->events == 1);
+        if (p->aiAggression >= 0) w.field("aiAggression", p->aiAggression == 1);
+        w.endObject();
+        w.key("needs").beginArray(); for (const auto& n : p->needs) w.value(n); w.endArray();
+        w.endObject();
+    }
+    w.endArray();
 }
 
 std::string dispatch(const std::string& method, const Value& a) {
@@ -3053,6 +3096,11 @@ std::string dispatch(const std::string& method, const Value& a) {
     else if (method == "loadContent") writeContentInfo(w, botf::content::install(a.getString("bundle")));
     else if (method == "loadBaseContent") writeContentInfo(w, botf::content::installBase());
     else if (method == "contentInfo") writeContentInfo(w, botf::content::active());
+    // listPresets: the registry. registerOverlay / registerPreset {"bytes": "<file text>"}: a user overlay or preset the host read
+    // (overlay first, then the preset that lists it). Atomic: a bad file registers nothing.
+    else if (method == "listPresets") writePresets(w);
+    else if (method == "registerOverlay") w.beginObject().field("id", botf::presets::registerOverlay(a.getString("bytes"))).endObject();
+    else if (method == "registerPreset") w.beginObject().field("id", botf::presets::registerPreset(a.getString("bytes"))).endObject();
     else if (method == "encyclopedia") writeEncyclopedia(w);
     else if (method == "newCampaign") { newCampaign(a); writeView(w); }
     else if (method == "galaxyPreview") galaxyPreview(w, a);
