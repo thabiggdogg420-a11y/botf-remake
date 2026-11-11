@@ -1,698 +1,701 @@
 {
- "args": {
-  "empires": 5.0,
-  "era": 1.0,
-  "faction": 1.0,
-  "ruleset": "reference",
-  "seed": 424242.0
- },
  "method": "newCampaign",
+ "args": {
+  "faction": 1,
+  "empires": 5,
+  "seed": 424242,
+  "era": 1,
+  "ruleset": "reference"
+ },
  "result": {
-  "alerts": [],
-  "battles": [],
-  "colonies": [
-   {
-    "building": {
-     "cost": 100.0,
-     "eta": 5.0,
-     "name": "Factory",
-     "work": 0.0
-    },
-    "capacity": 130.0,
-    "economy": {
-     "energyAvailable": 21.0,
-     "energyUsed": 20.0,
-     "food": 42.0,
-     "foodDeficit": 0.0,
-     "inactiveBatteries": 0.0,
-     "inactiveFactories": 0.0,
-     "inactiveLabs": 0.0,
-     "income": 100.0,
-     "industry": 21.0,
-     "net": 93.0,
-     "poweredBatteries": 0.0,
-     "research": 10.0,
-     "shipyardPowered": true,
-     "upkeep": 7.0
-    },
-    "energy": 20.0,
-    "governor": {
-     "override": false,
-     "queue": "Manual",
-     "queueExplanation": "",
-     "warning": "",
-     "workforce": "Manual",
-     "workforceExplanation": ""
-    },
-    "growth": {
-     "enabled": true,
-     "max": 1.0,
-     "min": 1.0,
-     "upChance": 0.0
-    },
-    "morale": 70.0,
-    "name": "Sol",
-    "population": 40.0,
-    "queueBlocker": "",
-    "queueLength": 3.0,
-    "shipyardEnabled": true,
-    "structures": {
-     "defenseBatteries": 0.0,
-     "factories": 2.0,
-     "farms": 2.0,
-     "fusionPlants": 0.0,
-     "laboratories": 1.0,
-     "powerPlants": 0.0,
-     "shipyards": 1.0
-    },
-    "systemId": 1.0,
-    "workers": {
-     "food": 20.0,
-     "industry": 10.0,
-     "research": 10.0,
-     "unassigned": 0.0
-    }
+  "meta": {
+   "turn": 0,
+   "width": 16,
+   "height": 12,
+   "galaxyShape": "scatter",
+   "minorDensity": "standard",
+   "difficulty": "normal",
+   "seed": 424242,
+   "player": 1,
+   "playerName": "Federation",
+   "ruleset": "reference",
+   "era": 1,
+   "eraName": "Early",
+   "contentVersion": "remaster-15",
+   "saveVersion": 15,
+   "outcome": "ongoing",
+   "winner": 0,
+   "advancedRules": true,
+   "campaignExpansion": true,
+   "modernEngines": true,
+   "populationEnabled": true,
+   "scenario": "campaign",
+   "version": 2,
+   "empireCount": 5,
+   "rules": {
+    "preset": "remastered",
+    "presetName": "Remastered",
+    "stations": true,
+    "galaxyFeatures": true,
+    "curatedEvents": true,
+    "alternativeVictories": true
    }
-  ],
-  "contacts": [],
+  },
   "empire": {
-   "credits": 1000.0,
-   "draftCredits": 1000.0,
-   "food": 42.0,
-   "id": 1.0,
-   "income": {
-    "colonies": 93.0,
-    "net": 44.0,
-    "ships": 49.0,
-    "spend": 0.0,
-    "trade": 0.0
-   },
-   "industry": 21.0,
-   "intelligence": 0.0,
-   "memberBonuses": {
-    "credits": 0.0,
-    "food": 0.0,
-    "groundDefense": 0.0,
-    "industry": 0.0,
-    "members": 0.0,
-    "minors": [],
-    "morale": 0.0,
-    "research": 0.0
-   },
+   "id": 1,
    "name": "Federation",
-   "population": 40.0,
-   "research": 0.0,
-   "researchOutput": 10.0,
-   "researchReserve": 0.0,
+   "credits": 1000,
+   "draftCredits": 1000,
+   "research": 0,
+   "researchReserve": 0,
+   "intelligence": 0,
+   "researchOutput": 10,
+   "industry": 21,
+   "food": 42,
+   "population": 40,
+   "memberBonuses": {
+    "members": 0,
+    "research": 0,
+    "industry": 0,
+    "food": 0,
+    "credits": 0,
+    "morale": 0,
+    "groundDefense": 0,
+    "minors": []
+   },
+   "income": {
+    "colonies": 93,
+    "trade": 0,
+    "ships": 49,
+    "spend": 0,
+    "net": 44
+   },
    "techs": [
     {
-     "allocation": 17.0,
-     "committedAllocation": 17.0,
-     "cost": 200.0,
-     "current": "Hydroponics",
-     "field": 0.0,
-     "level": 1.0,
+     "field": 0,
      "name": "Biotech",
+     "level": 1,
+     "progress": 0,
+     "allocation": 17,
+     "committedAllocation": 17,
+     "current": "Hydroponics",
      "next": "Bionics",
-     "progress": 0.0
+     "cost": 200
     },
     {
-     "allocation": 17.0,
-     "committedAllocation": 17.0,
-     "cost": 200.0,
-     "current": "Microtape Storage",
-     "field": 1.0,
-     "level": 1.0,
+     "field": 1,
      "name": "Computers",
+     "level": 1,
+     "progress": 0,
+     "allocation": 17,
+     "committedAllocation": 17,
+     "current": "Microtape Storage",
      "next": "Linguistics",
-     "progress": 0.0
+     "cost": 200
     },
     {
-     "allocation": 17.0,
-     "committedAllocation": 17.0,
-     "cost": 300.0,
-     "current": "Gamma Welding",
-     "field": 2.0,
-     "level": 1.0,
+     "field": 2,
      "name": "Construction",
+     "level": 1,
+     "progress": 0,
+     "allocation": 17,
+     "committedAllocation": 17,
+     "current": "Gamma Welding",
      "next": "Integrity Fields",
-     "progress": 0.0
+     "cost": 300
     },
     {
-     "allocation": 17.0,
-     "committedAllocation": 17.0,
-     "cost": 100.0,
-     "current": "Force Fields",
-     "field": 3.0,
-     "level": 1.0,
+     "field": 3,
      "name": "Energy",
+     "level": 1,
+     "progress": 0,
+     "allocation": 17,
+     "committedAllocation": 17,
+     "current": "Force Fields",
      "next": "Subspace Physics",
-     "progress": 0.0
+     "cost": 100
     },
     {
-     "allocation": 16.0,
-     "committedAllocation": 16.0,
-     "cost": 200.0,
-     "current": "Warp Drive",
-     "field": 4.0,
-     "level": 1.0,
+     "field": 4,
      "name": "Propulsion",
+     "level": 1,
+     "progress": 0,
+     "allocation": 16,
+     "committedAllocation": 16,
+     "current": "Warp Drive",
      "next": "Distortion",
-     "progress": 0.0
+     "cost": 200
     },
     {
-     "allocation": 16.0,
-     "committedAllocation": 16.0,
-     "cost": 300.0,
-     "current": "Beam Emitters",
-     "field": 5.0,
-     "level": 1.0,
+     "field": 5,
      "name": "Weapons",
+     "level": 1,
+     "progress": 0,
+     "allocation": 16,
+     "committedAllocation": 16,
+     "current": "Beam Emitters",
      "next": "Torpedo Hardening",
-     "progress": 0.0
+     "cost": 300
     }
    ]
   },
-  "empires": [
-   {
-    "contact": false,
-    "eliminated": false,
-    "empire": 2.0,
-    "name": "Klingon Empire"
-   },
-   {
-    "contact": false,
-    "eliminated": false,
-    "empire": 3.0,
-    "name": "Romulan Star Empire"
-   },
-   {
-    "contact": false,
-    "eliminated": false,
-    "empire": 4.0,
-    "name": "Cardassian Union"
-   },
-   {
-    "contact": false,
-    "eliminated": false,
-    "empire": 5.0,
-    "name": "Ferengi Alliance"
-   }
-  ],
-  "events": [],
-  "features": [],
-  "fleets": [
-   {
-    "attack": 2.0,
-    "attackTarget": 0.0,
-    "buildingOutpost": false,
-    "className": "Scout",
-    "colonize": false,
-    "colonyShip": false,
-    "committedTargetX": 11.0,
-    "committedTargetY": 2.0,
-    "designClass": "Oberth",
-    "designName": "Science Vessel",
-    "eta": 0.0,
-    "hasOrders": false,
-    "hull": 19.0,
-    "id": 1.0,
-    "invadeSystemId": 0.0,
-    "maintenance": 26.0,
-    "maxHull": 19.0,
-    "maxShields": 110.0,
-    "name": "Oberth — Science Vessel",
-    "outpostProgress": 0.0,
-    "owner": 1.0,
-    "range": 6.0,
-    "referenceShipId": 35.0,
-    "retreat": false,
-    "roster": null,
-    "route": [],
-    "routeBlocked": false,
-    "shields": 110.0,
-    "shipClass": "Scout",
-    "speed": 1.0,
-    "stance": "Balanced",
-    "targetX": 11.0,
-    "targetY": 2.0,
-    "taskForceId": 0.0,
-    "terraformPlanetIndex": 0.0,
-    "terraformSystemId": 0.0,
-    "terraforming": false,
-    "x": 11.0,
-    "y": 2.0
-   },
-   {
-    "attack": 0.0,
-    "attackTarget": 0.0,
-    "buildingOutpost": false,
-    "className": "Colony ship",
-    "colonize": false,
-    "colonyShip": true,
-    "committedTargetX": 11.0,
-    "committedTargetY": 2.0,
-    "designClass": "Edward",
-    "designName": "Colony Ship",
-    "eta": 0.0,
-    "hasOrders": false,
-    "hull": 55.0,
-    "id": 2.0,
-    "invadeSystemId": 0.0,
-    "maintenance": 23.0,
-    "maxHull": 55.0,
-    "maxShields": 70.0,
-    "name": "Edward — Colony Ship",
-    "outpostProgress": 0.0,
-    "owner": 1.0,
-    "range": 5.0,
-    "referenceShipId": 22.0,
-    "retreat": false,
-    "roster": null,
-    "route": [],
-    "routeBlocked": false,
-    "shields": 70.0,
-    "shipClass": "ColonyShip",
-    "speed": 1.0,
-    "stance": "Balanced",
-    "targetX": 11.0,
-    "targetY": 2.0,
-    "taskForceId": 0.0,
-    "terraformPlanetIndex": 0.0,
-    "terraformSystemId": 0.0,
-    "terraforming": false,
-    "x": 11.0,
-    "y": 2.0
-   }
-  ],
   "fog": "000000000000000000000000002220000000000000222000000000000022200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
-  "meta": {
-   "advancedRules": true,
-   "campaignExpansion": true,
-   "contentVersion": "remaster-14",
-   "empireCount": 5.0,
-   "era": 1.0,
-   "eraName": "Early",
-   "height": 12.0,
-   "modernEngines": true,
-   "outcome": "ongoing",
-   "player": 1.0,
-   "playerName": "Federation",
-   "populationEnabled": true,
-   "rules": {
-    "alternativeVictories": true,
-    "curatedEvents": true,
-    "galaxyFeatures": true,
-    "preset": "remastered",
-    "presetName": "Remastered",
-    "stations": true
-   },
-   "ruleset": "reference",
-   "saveVersion": 14.0,
-   "scenario": "campaign",
-   "seed": 424242.0,
-   "turn": 0.0,
-   "version": 2.0,
-   "width": 16.0,
-   "winner": 0.0
-  },
-  "outpostTurns": 3.0,
-  "pending": [
-   {
-    "building": "Factory",
-    "id": 1.0,
-    "referenceId": -1.0,
-    "summary": "Sol: build Factory",
-    "systemId": 1.0,
-    "type": "EnqueueBuilding"
-   },
-   {
-    "building": "Farm",
-    "id": 2.0,
-    "referenceId": -1.0,
-    "summary": "Sol: build Farm",
-    "systemId": 1.0,
-    "type": "EnqueueBuilding"
-   },
-   {
-    "building": "Laboratory",
-    "id": 3.0,
-    "referenceId": -1.0,
-    "summary": "Sol: build Laboratory",
-    "systemId": 1.0,
-    "type": "EnqueueBuilding"
-   }
-  ],
-  "session": {
-   "active": false,
-   "battleFinished": false,
-   "battlePending": false,
-   "replays": 0.0
-  },
-  "stationUpgradeCost": {
-   "credits": 1500.0,
-   "industry": 400.0
-  },
-  "stations": [],
   "systems": [
    {
-    "capacity": 130.0,
-    "explored": true,
-    "id": 1.0,
-    "maxCapacity": 220.0,
+    "id": 1,
+    "x": 11,
+    "y": 2,
     "name": "Sol",
-    "owner": 1.0,
+    "explored": true,
+    "visible": true,
+    "owner": 1,
+    "capacity": 130,
+    "maxCapacity": 220,
     "planets": [
      {
-      "baseCapacity": 10.0,
-      "capacity": 10.0,
+      "index": 0,
+      "name": "Sol I",
       "class": "K",
       "className": "Class K (Barren)",
-      "index": 0.0,
-      "maxCapacity": 40.0,
-      "name": "Sol I",
-      "terraformNeeded": 440.0,
       "terraformState": "Untouched",
-      "terraformWork": 0.0
+      "terraformWork": 0,
+      "terraformNeeded": 440,
+      "baseCapacity": 10,
+      "maxCapacity": 40,
+      "capacity": 10
      },
      {
-      "baseCapacity": 0.0,
-      "capacity": 0.0,
+      "index": 1,
+      "name": "Sol II",
       "class": "Y",
       "className": "Class Y (Demon)",
-      "index": 1.0,
-      "maxCapacity": 30.0,
-      "name": "Sol II",
-      "terraformNeeded": 390.0,
       "terraformState": "Untouched",
-      "terraformWork": 0.0
+      "terraformWork": 0,
+      "terraformNeeded": 390,
+      "baseCapacity": 0,
+      "maxCapacity": 30,
+      "capacity": 0
      },
      {
-      "baseCapacity": 80.0,
-      "capacity": 100.0,
+      "index": 2,
+      "name": "Sol III",
       "class": "M",
       "className": "Class M (Terran)",
-      "index": 2.0,
-      "maxCapacity": 100.0,
-      "name": "Sol III",
-      "terraformNeeded": 0.0,
       "terraformState": "Terraformed",
-      "terraformWork": 0.0
+      "terraformWork": 0,
+      "terraformNeeded": 0,
+      "baseCapacity": 80,
+      "maxCapacity": 100,
+      "capacity": 100
      },
      {
-      "baseCapacity": 20.0,
-      "capacity": 20.0,
+      "index": 3,
+      "name": "Sol IV",
       "class": "H",
       "className": "Class H (Desert)",
-      "index": 3.0,
-      "maxCapacity": 50.0,
-      "name": "Sol IV",
-      "terraformNeeded": 400.0,
       "terraformState": "Untouched",
-      "terraformWork": 0.0
+      "terraformWork": 0,
+      "terraformNeeded": 400,
+      "baseCapacity": 20,
+      "maxCapacity": 50,
+      "capacity": 20
      },
      {
-      "baseCapacity": 0.0,
-      "capacity": 0.0,
+      "index": 4,
+      "name": "Sol V",
       "class": "GasGiant",
       "className": "Gas Giant",
-      "index": 4.0,
-      "maxCapacity": 0.0,
-      "name": "Sol V",
-      "terraformNeeded": 0.0,
       "terraformState": "Uninhabitable",
-      "terraformWork": 0.0
+      "terraformWork": 0,
+      "terraformNeeded": 0,
+      "baseCapacity": 0,
+      "maxCapacity": 0,
+      "capacity": 0
      }
-    ],
-    "visible": true,
-    "x": 11.0,
-    "y": 2.0
+    ]
    },
    {
-    "explored": false,
-    "id": 2.0,
+    "id": 2,
+    "x": 12,
+    "y": 10,
     "name": "FGC-002",
-    "x": 12.0,
-    "y": 10.0
+    "explored": false
    },
    {
-    "explored": false,
-    "id": 3.0,
+    "id": 3,
+    "x": 11,
+    "y": 7,
     "name": "FGC-003",
-    "x": 11.0,
-    "y": 7.0
+    "explored": false
    },
    {
-    "explored": false,
-    "id": 4.0,
+    "id": 4,
+    "x": 1,
+    "y": 4,
     "name": "FGC-004",
-    "x": 1.0,
-    "y": 4.0
+    "explored": false
    },
    {
-    "explored": false,
-    "id": 5.0,
+    "id": 5,
+    "x": 11,
+    "y": 9,
     "name": "FGC-005",
-    "x": 11.0,
-    "y": 9.0
+    "explored": false
    },
    {
-    "explored": false,
-    "id": 6.0,
+    "id": 6,
+    "x": 13,
+    "y": 0,
     "name": "FGC-006",
-    "x": 13.0,
-    "y": 0.0
+    "explored": false
    },
    {
-    "explored": false,
-    "id": 7.0,
+    "id": 7,
+    "x": 7,
+    "y": 6,
     "name": "FGC-007",
-    "x": 7.0,
-    "y": 6.0
+    "explored": false
    },
    {
-    "explored": false,
-    "id": 8.0,
+    "id": 8,
+    "x": 10,
+    "y": 11,
     "name": "FGC-008",
-    "x": 10.0,
-    "y": 11.0
+    "explored": false
    },
    {
-    "explored": false,
-    "id": 9.0,
+    "id": 9,
+    "x": 4,
+    "y": 11,
     "name": "FGC-009",
-    "x": 4.0,
-    "y": 11.0
+    "explored": false
    },
    {
-    "explored": false,
-    "id": 10.0,
+    "id": 10,
+    "x": 0,
+    "y": 9,
     "name": "FGC-010",
-    "x": 0.0,
-    "y": 9.0
+    "explored": false
    },
    {
-    "explored": false,
-    "id": 11.0,
+    "id": 11,
+    "x": 10,
+    "y": 8,
     "name": "FGC-011",
-    "x": 10.0,
-    "y": 8.0
+    "explored": false
    },
    {
-    "explored": false,
-    "id": 12.0,
+    "id": 12,
+    "x": 8,
+    "y": 1,
     "name": "FGC-012",
-    "x": 8.0,
-    "y": 1.0
+    "explored": false
    },
    {
-    "explored": false,
-    "id": 13.0,
+    "id": 13,
+    "x": 2,
+    "y": 0,
     "name": "FGC-013",
-    "x": 2.0,
-    "y": 0.0
+    "explored": false
    },
    {
-    "explored": false,
-    "id": 14.0,
+    "id": 14,
+    "x": 8,
+    "y": 2,
     "name": "FGC-014",
-    "x": 8.0,
-    "y": 2.0
+    "explored": false
    },
    {
-    "explored": false,
-    "id": 15.0,
+    "id": 15,
+    "x": 4,
+    "y": 7,
     "name": "FGC-015",
-    "x": 4.0,
-    "y": 7.0
+    "explored": false
    },
    {
-    "explored": false,
-    "id": 16.0,
+    "id": 16,
+    "x": 12,
+    "y": 9,
     "name": "FGC-016",
-    "x": 12.0,
-    "y": 9.0
+    "explored": false
    },
    {
-    "explored": false,
-    "id": 17.0,
+    "id": 17,
+    "x": 12,
+    "y": 5,
     "name": "FGC-017",
-    "x": 12.0,
-    "y": 5.0
+    "explored": false
    },
    {
-    "explored": false,
-    "id": 18.0,
+    "id": 18,
+    "x": 10,
+    "y": 5,
     "name": "FGC-018",
-    "x": 10.0,
-    "y": 5.0
+    "explored": false
    },
    {
-    "explored": false,
-    "id": 19.0,
+    "id": 19,
+    "x": 6,
+    "y": 2,
     "name": "FGC-019",
-    "x": 6.0,
-    "y": 2.0
+    "explored": false
    },
    {
-    "capacity": 40.0,
-    "explored": true,
-    "id": 20.0,
-    "maxCapacity": 110.0,
+    "id": 20,
+    "x": 12,
+    "y": 3,
     "name": "Algol",
-    "owner": 0.0,
+    "explored": true,
+    "visible": true,
+    "owner": 0,
+    "capacity": 40,
+    "maxCapacity": 110,
     "planets": [
      {
-      "baseCapacity": 10.0,
-      "capacity": 10.0,
+      "index": 0,
+      "name": "Algol I",
       "class": "K",
       "className": "Class K (Barren)",
-      "index": 0.0,
-      "maxCapacity": 40.0,
-      "name": "Algol I",
-      "terraformNeeded": 440.0,
       "terraformState": "Untouched",
-      "terraformWork": 0.0
+      "terraformWork": 0,
+      "terraformNeeded": 440,
+      "baseCapacity": 10,
+      "maxCapacity": 40,
+      "capacity": 10
      },
      {
-      "baseCapacity": 30.0,
-      "capacity": 30.0,
+      "index": 1,
+      "name": "Algol II",
       "class": "L",
       "className": "Class L (Jungle)",
-      "index": 1.0,
-      "maxCapacity": 70.0,
-      "name": "Algol II",
-      "terraformNeeded": 490.0,
       "terraformState": "Untouched",
-      "terraformWork": 0.0
+      "terraformWork": 0,
+      "terraformNeeded": 490,
+      "baseCapacity": 30,
+      "maxCapacity": 70,
+      "capacity": 30
      }
-    ],
-    "visible": true,
-    "x": 12.0,
-    "y": 3.0
+    ]
    },
    {
-    "explored": false,
-    "id": 21.0,
+    "id": 21,
+    "x": 13,
+    "y": 7,
     "name": "FGC-021",
-    "x": 13.0,
-    "y": 7.0
+    "explored": false
    },
    {
-    "explored": false,
-    "id": 22.0,
+    "id": 22,
+    "x": 15,
+    "y": 7,
     "name": "FGC-022",
-    "x": 15.0,
-    "y": 7.0
+    "explored": false
    },
    {
-    "explored": false,
-    "id": 23.0,
+    "id": 23,
+    "x": 10,
+    "y": 7,
     "name": "FGC-023",
-    "x": 10.0,
-    "y": 7.0
+    "explored": false
    },
    {
-    "explored": false,
-    "id": 24.0,
+    "id": 24,
+    "x": 1,
+    "y": 3,
     "name": "FGC-024",
-    "x": 1.0,
-    "y": 3.0
+    "explored": false
    },
    {
-    "explored": false,
-    "id": 25.0,
+    "id": 25,
+    "x": 15,
+    "y": 2,
     "name": "FGC-025",
-    "x": 15.0,
-    "y": 2.0
+    "explored": false
    },
    {
-    "explored": false,
-    "id": 26.0,
+    "id": 26,
+    "x": 7,
+    "y": 3,
     "name": "FGC-026",
-    "x": 7.0,
-    "y": 3.0
+    "explored": false
    },
    {
-    "explored": false,
-    "id": 27.0,
+    "id": 27,
+    "x": 11,
+    "y": 4,
     "name": "FGC-027",
-    "x": 11.0,
-    "y": 4.0
+    "explored": false
    },
    {
-    "explored": false,
-    "id": 28.0,
+    "id": 28,
+    "x": 15,
+    "y": 8,
     "name": "FGC-028",
-    "x": 15.0,
-    "y": 8.0
+    "explored": false
    }
   ],
+  "colonies": [
+   {
+    "systemId": 1,
+    "name": "Sol",
+    "population": 40,
+    "capacity": 130,
+    "morale": 70,
+    "workers": {
+     "food": 20,
+     "industry": 10,
+     "research": 10,
+     "unassigned": 0
+    },
+    "structures": {
+     "farms": 2,
+     "factories": 2,
+     "laboratories": 1,
+     "shipyards": 1,
+     "powerPlants": 0,
+     "fusionPlants": 0,
+     "defenseBatteries": 0
+    },
+    "energy": 20,
+    "shipyardEnabled": true,
+    "economy": {
+     "food": 42,
+     "foodDeficit": 0,
+     "industry": 21,
+     "research": 10,
+     "energyUsed": 20,
+     "energyAvailable": 21,
+     "inactiveFactories": 0,
+     "inactiveLabs": 0,
+     "income": 100,
+     "upkeep": 7,
+     "net": 93,
+     "shipyardPowered": true,
+     "poweredBatteries": 0,
+     "inactiveBatteries": 0
+    },
+    "growth": {
+     "enabled": true,
+     "min": 1,
+     "max": 1,
+     "upChance": 0
+    },
+    "queueLength": 3,
+    "building": {
+     "name": "Factory",
+     "work": 0,
+     "cost": 100,
+     "eta": 5
+    },
+    "queueBlocker": "",
+    "governor": {
+     "workforce": "Manual",
+     "queue": "Manual",
+     "override": false,
+     "workforceExplanation": "",
+     "queueExplanation": "",
+     "warning": ""
+    }
+   }
+  ],
+  "fleets": [
+   {
+    "id": 1,
+    "owner": 1,
+    "name": "Oberth — Science Vessel",
+    "shipClass": "Scout",
+    "className": "Scout",
+    "referenceShipId": 35,
+    "designClass": "Oberth",
+    "designName": "Science Vessel",
+    "roster": null,
+    "x": 11,
+    "y": 2,
+    "targetX": 11,
+    "targetY": 2,
+    "committedTargetX": 11,
+    "committedTargetY": 2,
+    "hull": 19,
+    "maxHull": 19,
+    "shields": 110,
+    "maxShields": 110,
+    "attack": 2,
+    "range": 6,
+    "speed": 1,
+    "maintenance": 26,
+    "colonyShip": false,
+    "colonize": false,
+    "taskForceId": 0,
+    "stance": "Balanced",
+    "attackTarget": 0,
+    "retreat": false,
+    "invadeSystemId": 0,
+    "terraforming": false,
+    "terraformSystemId": 0,
+    "terraformPlanetIndex": 0,
+    "buildingOutpost": false,
+    "outpostProgress": 0,
+    "route": [],
+    "eta": 0,
+    "routeBlocked": false,
+    "hasOrders": false
+   },
+   {
+    "id": 2,
+    "owner": 1,
+    "name": "Edward — Colony Ship",
+    "shipClass": "ColonyShip",
+    "className": "Colony ship",
+    "referenceShipId": 22,
+    "designClass": "Edward",
+    "designName": "Colony Ship",
+    "roster": null,
+    "x": 11,
+    "y": 2,
+    "targetX": 11,
+    "targetY": 2,
+    "committedTargetX": 11,
+    "committedTargetY": 2,
+    "hull": 55,
+    "maxHull": 55,
+    "shields": 70,
+    "maxShields": 70,
+    "attack": 0,
+    "range": 5,
+    "speed": 1,
+    "maintenance": 23,
+    "colonyShip": true,
+    "colonize": false,
+    "taskForceId": 0,
+    "stance": "Balanced",
+    "attackTarget": 0,
+    "retreat": false,
+    "invadeSystemId": 0,
+    "terraforming": false,
+    "terraformSystemId": 0,
+    "terraformPlanetIndex": 0,
+    "buildingOutpost": false,
+    "outpostProgress": 0,
+    "route": [],
+    "eta": 0,
+    "routeBlocked": false,
+    "hasOrders": false
+   }
+  ],
+  "contacts": [],
   "taskForces": [],
-  "templates": [],
+  "empires": [
+   {
+    "empire": 2,
+    "name": "Klingon Empire",
+    "contact": false,
+    "eliminated": false
+   },
+   {
+    "empire": 3,
+    "name": "Romulan Star Empire",
+    "contact": false,
+    "eliminated": false
+   },
+   {
+    "empire": 4,
+    "name": "Cardassian Union",
+    "contact": false,
+    "eliminated": false
+   },
+   {
+    "empire": 5,
+    "name": "Ferengi Alliance",
+    "contact": false,
+    "eliminated": false
+   }
+  ],
   "tradeRoutes": [],
+  "pending": [
+   {
+    "id": 1,
+    "type": "EnqueueBuilding",
+    "summary": "Sol: build Factory",
+    "systemId": 1,
+    "building": "Factory",
+    "referenceId": -1
+   },
+   {
+    "id": 2,
+    "type": "EnqueueBuilding",
+    "summary": "Sol: build Farm",
+    "systemId": 1,
+    "building": "Farm",
+    "referenceId": -1
+   },
+   {
+    "id": 3,
+    "type": "EnqueueBuilding",
+    "summary": "Sol: build Laboratory",
+    "systemId": 1,
+    "building": "Laboratory",
+    "referenceId": -1
+   }
+  ],
+  "battles": [],
+  "session": {
+   "active": false,
+   "battlePending": false,
+   "battleFinished": false,
+   "replays": 0
+  },
+  "stations": [],
+  "outpostTurns": 3,
+  "stationUpgradeCost": {
+   "credits": 1500,
+   "industry": 400
+  },
+  "features": [],
+  "events": [],
+  "templates": [],
   "victory": {
-   "alternative": true,
    "conditions": [
     {
-     "achieved": false,
      "condition": "Conquest",
-     "enabled": true,
-     "explanation": "Holds 1 of 5 colonies; conquest requires holding every colony in the galaxy.",
      "name": "Conquest",
-     "percent": 20.0
+     "enabled": true,
+     "achieved": false,
+     "percent": 20,
+     "explanation": "Holds 1 of 5 colonies; conquest requires holding every colony in the galaxy."
     },
     {
-     "achieved": false,
      "condition": "Domination",
-     "enabled": true,
-     "explanation": "Controls 1 of 28 systems; domination needs 17 (60%) after turn 20.",
      "name": "Domination",
-     "percent": 5.0
+     "enabled": true,
+     "achieved": false,
+     "percent": 5,
+     "explanation": "Controls 1 of 28 systems; domination needs 17 (60%) after turn 20."
     },
     {
-     "achieved": false,
      "condition": "Scientific",
-     "enabled": true,
-     "explanation": "0 of 6 research fields at level 4; Genesis Initiative: not started.",
      "name": "Scientific",
-     "percent": 17.0
+     "enabled": true,
+     "achieved": false,
+     "percent": 17,
+     "explanation": "0 of 6 research fields at level 4; Genesis Initiative: not started."
     },
     {
-     "achieved": false,
      "condition": "Diplomatic",
-     "enabled": true,
-     "explanation": "Alliance bloc holds 40 of 350 galactic population with 0 partner(s). Victory needs two-thirds of the population, at least 2 allied empires or member races, the largest population among the allies, and turn 150 or later.",
      "name": "Diplomatic",
-     "percent": 17.0
+     "enabled": true,
+     "achieved": false,
+     "percent": 17,
+     "explanation": "Alliance bloc holds 40 of 350 galactic population with 0 partner(s). Victory needs two-thirds of the population, at least 2 allied empires or member races, the largest population among the allies, and turn 150 or later."
     }
    ],
-   "megaprojectCost": 4000.0,
-   "megaprojectCredits": 500.0,
+   "alternative": true,
+   "threshold": 4,
    "megaprojectName": "Genesis Initiative",
-   "megaprojectWorkPerTurn": 35.0,
-   "rivalProjects": [],
-   "threshold": 4.0
-  }
+   "megaprojectCost": 4000,
+   "megaprojectCredits": 500,
+   "megaprojectWorkPerTurn": 35,
+   "rivalProjects": []
+  },
+  "alerts": []
  }
 }
