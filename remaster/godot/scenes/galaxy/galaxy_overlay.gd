@@ -7,6 +7,15 @@ extends Control
 ## what moves (selection pulses, flowing route dashes, the neutron star beam, planet orbits and their labels).
 ## Text is shaped once and cached (TextLine): shaping 80 labels every frame cost about 10 ms.
 
+## Threat actors (docs/design/THREAT-ACTORS.md): marker colours (Borg green, Species 8472 violet, monsters alert red, peaceful ones
+## green-white) and the existing insignia each actor wears. Husnock, Chodak, the Crystalline Entity, the Edo Guardian and the rest
+## borrow another faction's mark where the roster has none of their own (stand-ins listed in the design doc).
+const THREAT_BORG := Color("#5cff7a")
+const THREAT_8472 := Color("#c58bff")
+const THREAT_INSIGNIA := {"borg_cube": "borg", "borg_sphere": "borg", "species_8472": "species8472", "husnock": "krenim", "calamarain": "neutral",
+	"chodak": "kazon", "crystalline": "xindi", "echo_papa": "borg", "edo_guardian": "krenim", "gomtuu": "neutral", "tarellian": "minor",
+	"deep_space_9": "federation"}
+
 var map: GalaxyMap
 var anim := false
 ## Static layer: what the last draw put on screen that can be picked: {"pos", "r", "cell", "kind", "id"}.
@@ -260,6 +269,37 @@ func _draw_static(v: Dictionary) -> void:
 		var cp2 := map.world_to_screen(aw2) + Vector2(22, 16) + Vector2(-(by_cell[key] - 1) * 9, 0)
 		ShipGlyph.draw_contact(self, cp2, 8.0 * _band(lvl, 1.4, 1.25, 1.0), Lcars.owner_color(int(c["owner"])), int(c["owner"]), ShipGlyph.class_of(c))
 		pickables.append({"pos": cp2, "r": 0.0, "cell": key, "kind": "contact", "id": int(c["id"]), "war": c.get("atWar", false)})
+	# ---- Systems the Borg hold (assimilated), then threat actors (docs/design/THREAT-ACTORS.md)
+	for m in v.get("assimilated", []):
+		var mkey := int(m["y"]) * g.x + int(m["x"])
+		var maw := map.cell_anchor(mkey)
+		if not front(maw):
+			continue
+		var mp := map.world_to_screen(maw)
+		draw_arc(mp, 20.0, 0, TAU, 28, Color(THREAT_BORG, 0.8), 2.0, true)
+		draw_arc(mp, 24.0, 0, TAU, 28, Color(THREAT_BORG, 0.35), 1.0, true)
+		Insignia.draw(self, "borg", Rect2(mp + Vector2(-8, 18), Vector2(16, 16)), Color(THREAT_BORG, 0.95), "small", Lcars.BG)
+	var threat_by_cell := {}
+	for a in v.get("threats", []):
+		var tkey := int(a["y"]) * g.x + int(a["x"])
+		var taw := map.cell_anchor(tkey)
+		if not front(taw):
+			continue
+		threat_by_cell[tkey] = threat_by_cell.get(tkey, 0) + 1
+		var tp := map.world_to_screen(taw) + Vector2(-24 - (threat_by_cell[tkey] - 1) * 26, -22)
+		var tc := THREAT_BORG if str(a.get("group", "")) == "borg" else (THREAT_8472 if str(a.get("group", "")) == "8472" else Lcars.ALERT)
+		if not bool(a.get("hostile", true)):
+			tc = Lcars.GOOD
+		var tr := _band(lvl, 15.0, 16.0, 18.0)
+		draw_circle(tp, tr + 3.0, Color(Lcars.BG, 0.9))
+		draw_arc(tp, tr + 3.0, 0, TAU, 32, tc, 2.4, true)
+		draw_arc(tp, tr + 7.0, -PI / 2.0, -PI / 2.0 + TAU * clampf(float(a["hull"]) / maxf(1.0, float(a["maxHull"])), 0.0, 1.0), 32, Color(tc, 0.55), 2.0, true)
+		Insignia.draw(self, THREAT_INSIGNIA.get(str(a["key"]), "neutral"), Rect2(tp - Vector2(tr, tr) * 0.8, Vector2(tr, tr) * 1.6), tc, "small", Lcars.BG)
+		if lvl != "galaxy":
+			var tn := str(a["name"]).to_upper()
+			_txt(mono, tp + Vector2(-_tw(mono, tn, 11) / 2.0, tr + 20.0), tn, 11, Color(0, 0, 0, 0.8), 3)
+			_txt(mono, tp + Vector2(-_tw(mono, tn, 11) / 2.0, tr + 20.0), tn, 11, tc)
+		pickables.append({"pos": tp, "r": tr, "cell": tkey, "kind": "space", "id": 0})
 	# ---- Own fleets
 	var own := {}
 	for f in v.get("fleets", []):

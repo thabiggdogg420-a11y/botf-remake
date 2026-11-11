@@ -90,6 +90,7 @@ func refresh() -> void:
 	pv.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	mid.add_child(pv)
 	mid.add_child(_preset_panel())
+	mid.add_child(_threat_panel())
 	opts.add_child(mid)
 	opts.add_child(_rules_column())
 	Motion.stagger(opts)
@@ -227,6 +228,51 @@ func _preset_panel() -> Control:
 	var note := Lcars.para(vm.preset_text(vm.preset), Lcars.TEXT2, 13)
 	note.name = "PresetNote"
 	box.add_child(note)
+	return frame
+
+## One checkbox that writes a threat switch.
+func _threat_check(text: String, key: String, tip: String) -> CheckBox:
+	var c := CheckBox.new()
+	c.text = text
+	c.name = "Threat_" + key
+	c.button_pressed = bool(vm.threats[key])
+	c.tooltip_text = tip
+	c.toggled.connect(func(on): vm.threats[key] = on; refresh())
+	return c
+
+## Threat actors (docs/design/THREAT-ACTORS.md): the Borg, Species 8472 and the vanilla monsters. Monsters and the Borg have
+## their own switches (the Borg-only off switch), then a frequency, the replacements (sphere, 8472, DS9) and one toggle per actor.
+func _threat_panel() -> Control:
+	var frame := Lcars.frame("Threats", vm.threats_text(), "tertiary", "alert")
+	frame.name = "ThreatPanel"
+	var box := Lcars.body(frame)
+	box.add_theme_constant_override("separation", 8)
+	var sw := HFlowContainer.new()
+	sw.add_theme_constant_override("h_separation", 16)
+	sw.add_theme_constant_override("v_separation", 4)
+	sw.add_child(_threat_check("Monsters", "monsters", "Husnock, Calamarain, Chodak, the Crystalline Entity, Echo Papa, the Edo Guardian, the Gomtuu and the Tarellians roam the galaxy."))
+	sw.add_child(_threat_check("Borg invasion", "borg", "A Borg cube hunts your colonies and assimilates them. This switch turns the Borg off without touching the monsters. A seated Borg empire replaces it."))
+	sw.add_child(_threat_check("Spare the AI", "sparesAi", "Threat actors hunt and fight only you; rival empires are left alone."))
+	box.add_child(sw)
+	box.add_child(_choice_row("Frequency", NewCampaignVM.THREAT_FREQUENCIES.map(func(f): return [f["id"], f["label"], f["blurb"]]), str(vm.threats["frequency"]), func(id): vm.threats["frequency"] = id; refresh()))
+	var rp := HFlowContainer.new()
+	rp.add_theme_constant_override("h_separation", 16)
+	rp.add_theme_constant_override("v_separation", 4)
+	rp.add_child(_threat_check("Sphere for cube", "borgSphere", "A Borg sphere (faster, weaker) replaces the cube."))
+	rp.add_child(_threat_check("8472 for Husnock", "species8472", "Species 8472 replaces the Husnock."))
+	rp.add_child(_threat_check("DS9 for Edo Guardian", "edoStation", "A peaceful Deep Space Nine replaces the Edo Guardian."))
+	box.add_child(rp)
+	box.add_child(Lcars.caption("Actors that may appear"))
+	var row := HFlowContainer.new()
+	row.add_theme_constant_override("h_separation", 6)
+	row.add_theme_constant_override("v_separation", 6)
+	for k in vm.threat_kinds():
+		var key := str(k["key"])
+		var t := Lcars.toggle(str(k["name"]), vm.threat_kind_on(key), func(_on): vm.toggle_threat_kind(key); refresh(), "Switch %s on or off for this game." % str(k["name"]))
+		t.name = "Actor_" + key
+		t.add_theme_font_size_override("font_size", 13)
+		row.add_child(t)
+	box.add_child(row)
 	return frame
 
 func _rules_column() -> Control:

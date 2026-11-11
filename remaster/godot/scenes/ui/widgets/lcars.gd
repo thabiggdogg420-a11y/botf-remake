@@ -32,6 +32,7 @@ const PALETTES := {
 	6: {"key": "dominion", "primary": "#8f6ad8", "secondary": "#c7b3f0", "tertiary": "#6f55a8", "map": "#8a5fd6", "ink": "#0a0614"},
 	7: {"key": "borg", "primary": "#5cd45a", "secondary": "#a8e8a4", "tertiary": "#3f9a3e", "map": "#4fcf4c", "ink": "#040e04"},
 	8: {"key": "breen", "primary": "#7fd3e0", "secondary": "#c2edf3", "tertiary": "#559fab", "map": "#6ccadb", "ink": "#041013"},
+	9: {"key": "threat", "primary": "#ff5a4a", "secondary": "#ffb09a", "tertiary": "#b8483c", "map": "#ff5a4a", "ink": "#140504"}, # threat actors (schema 20): never a campaign power
 }
 ## Okabe-Ito owner colours for the colour-blind setting.
 const COLORBLIND := {

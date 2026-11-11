@@ -22,6 +22,7 @@
 #include "../../game/Source/BotfSim/Content.h"
 #include "../../game/Source/BotfSim/EmpireSlots.h"
 #include "../../game/Source/BotfSim/Presets.h"
+#include "../../game/Source/BotfSim/Threats.h"
 #include "Json.h"
 
 #include <algorithm>
@@ -173,7 +174,35 @@ std::string uncharted_designation(int id) {
     return buf;
 }
 std::string empireLabel(int id) {
+    if (id == botf::ThreatOwner) return "Hostile entity";   // Schema 20: the side of a threat actor in a battle record.
     try { return botf::empireName(id); } catch (...) { return "Empire " + std::to_string(id); }
+}
+
+// Schema 20: the threat switches as the new-game screen shows and sends them: {monsters, borg, frequency, borgSphere, species8472,
+// edoStation, sparesAi, disabled: [actor keys]}.
+void writeThreatSetup(Writer& w, const botf::ThreatSetup& t) {
+    w.beginObject().field("monsters", t.monsters).field("borg", t.borg).field("frequency", botf::threats::frequencyName(t.frequency))
+        .field("borgSphere", t.borgSphere).field("species8472", t.species8472).field("edoStation", t.edoStation).field("sparesAi", t.sparesAi);
+    w.key("disabled").beginArray();
+    for (int k = 0; k < botf::ThreatKinds; ++k) if ((t.disabledMask >> k) & 1) w.value(botf::threats::Defs[k].key);
+    w.endArray().endObject();
+}
+// The actors a new-game screen can toggle: key, name, family, what it does, the asset used for its map marker and battle model.
+void writeThreatKinds(Writer& w) {
+    static const char* const EffectNames[] = {"none", "assimilate", "bombard", "strip", "raid"};
+    static const char* const BehaviourNames[] = {"hunt", "roam", "drift", "guard"};
+    static const char* const HostilityNames[] = {"peaceful", "cornered", "aggressive"};
+    w.beginArray();
+    for (int k = 0; k < botf::ThreatKinds; ++k) {
+        const auto& d = botf::threats::Defs[k];
+        const std::string group = d.borg ? "borg" : k == static_cast<int>(botf::ThreatKind::Species8472) ? "8472" : "monster";
+        const auto& ship = botf::roster::findShip(d.shipId) ? *botf::roster::findShip(d.shipId) : botf::referenceData::ShipCatalogue.front();
+        w.beginObject().field("id", k).field("key", d.key).field("name", d.name).field("group", group).field("assetKey", d.assetKey)
+            .field("effect", EffectNames[static_cast<int>(d.effect)]).field("behaviour", BehaviourNames[static_cast<int>(d.behaviour)])
+            .field("hostility", HostilityNames[static_cast<int>(d.hostility)]).field("minTurn", d.minTurn).field("static", d.speed == 0)
+            .field("hull", ship.hull).field("shields", ship.shields).field("attack", ship.attack).endObject();
+    }
+    w.endArray();
 }
 
 // Mirrors the per-ship movement speed the core applies in resolveFleets (reference catalogue speed,
@@ -1110,6 +1139,28 @@ void writeView(Writer& w) {
         w.endObject();
     }
     w.endArray();
+
+    // --- schema 20: threat actors in sensor range, systems the Borg hold, and the game's threat switches
+    w.key("threats").beginArray();
+    for (const auto& a : s.threatActors) {
+        if (!botf::threats::canSee(s, me, a)) continue;
+        const auto& td = botf::threats::def(a.kind);
+        w.beginObject().field("id", a.id).field("kind", a.kind).field("key", td.key).field("name", td.name).field("assetKey", td.assetKey)
+            .field("group", td.borg ? "borg" : a.kind == static_cast<int>(botf::ThreatKind::Species8472) ? "8472" : "monster")
+            .field("x", a.x).field("y", a.y).field("hull", a.hull).field("maxHull", botf::threats::actorMaxHull(a))
+            .field("shields", a.shields).field("maxShields", botf::threats::actorMaxShields(a))
+            .field("hostile", botf::threats::hostile(a)).field("static", td.speed == 0).field("adapt", a.adapt).field("siege", a.siege)
+            .endObject();
+    }
+    w.endArray();
+    w.key("assimilated").beginArray();
+    for (const auto& m : s.assimilated) {
+        const auto* sys = systemById(s, m.systemId);
+        if (!sys || !botf::explored(s, sys->x, sys->y)) continue;
+        w.beginObject().field("systemId", m.systemId).field("x", sys->x).field("y", sys->y).field("turn", m.turn).field("owner", m.ownerId).endObject();
+    }
+    w.endArray();
+    writeThreatSetup(w.key("threatSetup"), s.threats);
 
     w.key("taskForces").beginArray();
     for (const auto& tf : botf::empireTaskForces(d, me)) {
@@ -2069,6 +2120,11 @@ void writeEncounter(Writer& w, const tac::Encounter& e, int me, const botf::Game
         w.field("beam", ship.beamAttack); w.field("torpedo", ship.torpedoAttack); w.field("speed", ship.speed);
         w.key("position"); writeCoord(w, ship.position);
         if (const auto* rc = botf::roster::findRosterClass(ship.referenceShipId)) w.field("assetKey", rc->assetKey);
+        if (botf::threats::isThreatCombatant(ship.fleetId)) {   // Schema 20: a threat actor; the model is an existing roster asset (stand-ins in THREAT-ACTORS.md).
+            const int k = botf::threats::kindForShip(ship.referenceShipId);
+            w.field("threat", true);
+            if (k >= 0) { w.field("threatKind", botf::threats::def(k).key); w.field("assetKey", botf::threats::def(k).assetKey); }
+        }
         if (!ship.mounts.empty()) {
             // Rules 3: the encounter's own mounts (legacy hulls included); Fire events index into this list.
             w.key("weapons").beginArray();
@@ -2370,13 +2426,19 @@ std::string writeBriefing(const botf::GameState& before, const botf::GameState& 
         BriefEvent e; e.category = "combat"; e.x = b.x; e.y = b.y;
         e.battle = static_cast<int>(after.latestBattles.size() - r.battles.size() + i);
         const int foe = b.firstOwner == me ? b.secondOwner : b.firstOwner;
+        std::string foeName = empireLabel(foe);
+        for (const auto& p : b.participants)
+            if (foe == botf::ThreatOwner && botf::threats::isThreatCombatant(p.fleetId)) {
+                const int k = botf::threats::kindForShip(p.referenceShipId);
+                if (k >= 0) foeName = std::string("the ") + botf::threats::def(k).name;
+            }
         int ownLost = 0;
         for (int id : b.lostFleetIds) for (const auto& p : b.participants) if (p.fleetId == id && p.ownerId == me) ++ownLost;
         e.severity = !involved ? "info" : b.winnerOwner == me ? "good" : "alert";
         const auto* sys = systemAtCell(after, b.x, b.y);
         const std::string where = sys && knownSystem(after, *sys) ? sys->name : "sector " + std::to_string(b.x) + "," + std::to_string(b.y);
         if (involved)
-            e.text = "Battle at " + where + " against " + empireLabel(foe) + ": " +
+            e.text = "Battle at " + where + " against " + foeName + ": " +
                 (b.winnerOwner == me ? "victory" : b.winnerOwner ? "defeat" : "no victor") + ", " + std::to_string(b.rounds.size()) +
                 " rounds, " + std::to_string(ownLost) + " of our ships lost.";
         else
@@ -2649,6 +2711,32 @@ botf::CampaignSetup campaignSetup(const Value& a) {
             setup.presetId = p->id;
             setup.preset = p->rulesBase == "classic" ? botf::RulesetPreset::Classic : botf::RulesetPreset::Remastered;
         } else if (!botf::parseRulesetPreset(id, setup.preset)) fail("Unknown ruleset preset");
+    }
+    // Schema 20: "threats" {monsters, borg, frequency none|rare|normal|frequent, borgSphere, species8472, edoStation, sparesAi,
+    // disabled: [actor keys]}. Absent: the preset's defaults (off for Classic and Remastered).
+    if (a.has("threats")) {
+        const Value& t = a["threats"];
+        if (!t.isObject()) fail("threats must be an object");
+        botf::ThreatSetup ts;
+        ts.monsters = t.getBool("monsters", false); ts.borg = t.getBool("borg", false);
+        ts.borgSphere = t.getBool("borgSphere", false); ts.species8472 = t.getBool("species8472", false);
+        ts.edoStation = t.getBool("edoStation", false); ts.sparesAi = t.getBool("sparesAi", false);
+        if (t.has("frequency")) {
+            int idx = -1;
+            for (int i = 0; i < 4; ++i) if (t.getString("frequency") == botf::threats::frequencyName(i)) idx = i;
+            if (idx < 0) fail("Unknown threat frequency (none, rare, normal, frequent)");
+            ts.frequency = idx;
+        }
+        if (t.has("disabled")) {
+            if (!t["disabled"].isArray()) fail("threats.disabled must be an array of actor keys");
+            for (const auto& k : t["disabled"].items) {
+                int idx = -1;
+                for (int i = 0; i < botf::ThreatKinds; ++i) if (k.isString() && k.asString() == botf::threats::Defs[i].key) idx = i;
+                if (idx < 0) fail("Unknown threat actor key");
+                ts.disabledMask |= 1 << idx;
+            }
+        }
+        setup.threats = ts;
     }
     if (a.has("shape") && !botf::parseGalaxyShape(a.getString("shape"), setup.galaxy.shape)) fail("Unknown galaxy shape");
     if (a.has("minorDensity") && !botf::parseMinorDensity(a.getString("minorDensity"), setup.galaxy.density)) fail("Unknown minor-race density");
@@ -3004,6 +3092,8 @@ void writeMeta(Writer& w) {
     w.endArray();
     w.field("maxTechLevel", botf::MaxTechLevel);
     w.key("presets"); writePresets(w);
+    w.key("threatKinds"); writeThreatKinds(w);
+    w.key("threatFrequencies").beginArray(); for (int i = 0; i < 4; ++i) w.value(botf::threats::frequencyName(i)); w.endArray();
     w.key("maneuvers"); writeManeuvers(w);
     w.key("stances").beginArray(); for (auto n : StanceNames) w.value(n); w.endArray();
     w.key("governors").beginArray();
@@ -3113,6 +3203,7 @@ void writePresets(Writer& w) {
         if (!p->difficulty.empty()) w.field("difficulty", p->difficulty);
         if (p->events >= 0) w.field("events", p->events == 1);
         if (p->aiAggression >= 0) w.field("aiAggression", p->aiAggression == 1);
+        if (p->threats) { w.key("threats"); writeThreatSetup(w, *p->threats); }
         w.endObject();
         w.key("needs").beginArray(); for (const auto& n : p->needs) w.value(n); w.endArray();
         w.endObject();
@@ -3351,6 +3442,10 @@ std::string dispatch(const std::string& method, const Value& a) {
             std::string name = botf::shipName(p.shipClass);
             if (const auto* ship = botf::roster::findShip(p.referenceShipId))
                 name = std::string(ship->shipClass) + " " + ship->name;
+            if (botf::threats::isThreatCombatant(p.fleetId)) {
+                const int k = botf::threats::kindForShip(p.referenceShipId);
+                if (k >= 0) name = botf::threats::def(k).name;
+            }
             w.beginObject().field("id", p.fleetId).field("owner", p.ownerId).field("name", name).field("hull", p.initialHull).field("shields", p.initialShields).endObject();
         }
         w.endArray();

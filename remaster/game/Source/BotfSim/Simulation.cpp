@@ -11,6 +11,7 @@
 #include "ContentBase.generated.h"
 #include "ContentPresets.generated.h"
 #include "Presets.h"
+#include "Threats.h"
 
 #include <algorithm>
 #include <array>
@@ -3262,6 +3263,7 @@ std::string payload(const GameState& s) {
         out << "GALAXY_SETUP " << static_cast<int>(s.galaxy.shape) << ' ' << static_cast<int>(s.galaxy.density) << ' '
             << static_cast<int>(s.galaxy.difficulty) << '\n';
     empire_rules::writeSection(out, s); // Schema 16: optional EMPIRE_RULES section.
+    threats::writeSection(out, s);      // Schema 20: optional THREATS section.
     // Schema 14: per-ship orders of recorded battle rounds. Written only when some
     // round carries orders, so campaigns without them keep the schema-13 layout.
     const bool anyOrders = std::any_of(s.latestBattles.begin(), s.latestBattles.end(), [](const CombatReport& b) {
@@ -3372,6 +3374,8 @@ void resolveTacticalBattles(GameState& state, TurnReport& report,
                             const std::function<void(tactical::Encounter&)>& playerEncounter) {
     std::set<int> withdrawn; // Ships that left a battle this turn fight no further duels.
     std::vector<CombatReport> battles;
+    std::vector<Fleet> assimilatedDrones; // Schema 20: ships a Borg empire assimilated; they join after the duels.
+    threats::battles(state, report, withdrawn, battles, playerEncounter); // Schema 20: threat actors fight first.
     for (int y = 0; y < state.height; ++y) for (int x = 0; x < state.width; ++x) {
         for (std::size_t index = 0; index < state.majorRelations.size(); ++index) {
             const MajorRelation relation = state.majorRelations[index];
@@ -3412,9 +3416,11 @@ void resolveTacticalBattles(GameState& state, TurnReport& report,
                     ": " + std::to_string(battle.lostFleetIds.size()) + " ships lost, " +
                     std::to_string(battle.retreatedFleetIds.size()) + " withdrew" +
                     (encounter.rounds.empty() || !encounter.rounds.back().hailedTruce ? "." : " under a hailed truce."));
+            if (state.rules.expandedRoster) threats::assimilateShips(state, battle, report, assimilatedDrones);
             battles.push_back(std::move(battle));
         }
     }
+    state.fleets.insert(state.fleets.end(), assimilatedDrones.begin(), assimilatedDrones.end());
     // Strategic retreats end on arrival, exactly as in the legacy resolver.
     for (auto& fleet : state.fleets)
         if (fleet.x == fleet.targetX && fleet.y == fleet.targetY) fleet.retreat = false;
@@ -4584,15 +4590,17 @@ void validate(const GameState& s) {
     }
     for (const auto& b : s.latestBattles) {
         require(b.turn >= 0 && b.turn <= s.turn && b.x >= 0 && b.x < s.width && b.y >= 0 && b.y < s.height &&
-            b.firstOwner != b.secondOwner && b.winnerOwner >= 0 && b.winnerOwner <= MaxMajors,
+            b.firstOwner != b.secondOwner && b.winnerOwner >= 0 && b.winnerOwner <= ThreatOwner,
             "Invalid battle record");
-        empire(s, b.firstOwner); empire(s, b.secondOwner);
+        if (b.firstOwner != ThreatOwner) empire(s, b.firstOwner);   // Schema 20: a threat actor fights as ThreatOwner.
+        if (b.secondOwner != ThreatOwner) empire(s, b.secondOwner);
         require(b.participants.size() <= 256 && b.rounds.size() <= 65, "Battle timeline out of bounds");
         std::map<int, int> sides;
         // Schema 13: stations fight under StationCombatantBase + station ID.
         const auto combatantId = [&](int id) {
             return (id > 0 && id < s.nextFleetId) ||
-                (isStationCombatant(id) && stationIdForCombatant(id) < s.nextStationId);
+                (isStationCombatant(id) && stationIdForCombatant(id) < s.nextStationId) ||
+                (threats::isThreatCombatant(id) && threats::threatIdForCombatant(id) < s.nextThreatId);
         };
         for (int id : b.firstFleetIds) require(combatantId(id) &&
             sides.emplace(id, b.firstOwner).second, "Invalid first battle side");
@@ -4605,7 +4613,8 @@ void validate(const GameState& s) {
         // participant's maximum; hull never rises within a battle.
         std::map<int, int> shieldCeiling;
         for (const auto& participant : b.participants)
-            shieldCeiling[participant.fleetId] = isStationCombatant(participant.fleetId) ? participant.initialShields :
+            shieldCeiling[participant.fleetId] = threats::isThreatCombatant(participant.fleetId) ? std::max(participant.initialShields, std::max(0, sourceShip(participant.referenceShipId).shields) * 3 / 2) :
+                isStationCombatant(participant.fleetId) ? participant.initialShields :
                 participant.referenceShipId < 0 ? 0 : std::max(0, sourceShip(participant.referenceShipId).shields);
         const auto ceiling = [&](const FleetDamage& d) {
             const auto found = shieldCeiling.find(d.fleetId);
@@ -4629,7 +4638,7 @@ void validate(const GameState& s) {
         std::set<int> participantIds;
         std::map<int, int> remaining, remainingShields;
         for (const auto& participant : b.participants) {
-            const bool stationSide = isStationCombatant(participant.fleetId); // Bounded by station maxima, not ship classes.
+            const bool stationSide = isStationCombatant(participant.fleetId) || threats::isThreatCombatant(participant.fleetId); // Bounded by station or threat maxima, not ship classes.
             require(sides.count(participant.fleetId) && participant.ownerId == sides.at(participant.fleetId) &&
                 isShip(participant.shipClass) && participant.initialHull > 0 &&
                 participant.initialHull <= (stationSide ? 100000 : participant.referenceShipId < 0 ? shipMaxHull(participant.shipClass) :
@@ -4860,6 +4869,7 @@ void validate(const GameState& s) {
         }
     }
     gameplay::validate(s); // Schema-13 gameplay layer.
+    threats::validate(s);  // Schema 20: threat actors and assimilated systems.
     empire_rules::validate(s); // Schema-15 empire rules.
     auto draft = s;
     applyDraft(draft);
@@ -5122,8 +5132,10 @@ TurnReport advanceWithCombat(GameState& state, const std::function<void(GameStat
     };
     settleResearch(next); for (auto& owner : next.rivals) settleResearch(owner);
     auto moving = productionSnapshot;
+    moving.nextFleetId = next.nextFleetId; // Schema 20: ships made during combat (assimilated drones) must not reuse a launched ship's id.
     resolveFleets(moving, report);
     establishMajorContact(moving, report);
+    threats::step(moving, report); // Schema 20: threat actors spawn, retarget and move (no draw unless a switch is on).
     if (moving.advancedRulesEnabled) for (auto& fleet : moving.fleets) {
         const int maximum = fleetMaxShields(fleet);
         fleet.shields = std::min(maximum, fleet.shields + std::max(1, maximum / 5));
@@ -5184,6 +5196,10 @@ TurnReport advanceWithCombat(GameState& state, const std::function<void(GameStat
     // Invasions may change minor membership; carry it over with the colonies.
     next.minors = std::move(moving.minors);
     next.minorGuards = std::move(moving.minorGuards); // Schema 15: guards mend and fall during invasions
+    next.threatActors = std::move(moving.threatActors); // Schema 20: actors moved and fought in the moving copy
+    next.nextThreatId = moving.nextThreatId;
+    next.threatLastSpawn = moving.threatLastSpawn;
+    next.assimilated = std::move(moving.assimilated);
     for (const auto& c : moving.colonies) {
         auto existing = std::find_if(next.colonies.begin(), next.colonies.end(), [&](const Colony& item) { return item.systemId == c.systemId; });
         if (existing == next.colonies.end()) next.colonies.push_back(c);
@@ -5205,11 +5221,15 @@ TurnReport advanceWithCombat(GameState& state, const std::function<void(GameStat
             existing->workforceExplanation.clear();
             existing->queueExplanation.clear();
             existing->governorWarning.clear();
+            if (existing->ownerId == threats::BorgEmpire) threats::onColonyCaptured(next, *existing, report); // Schema 20: assimilation
         }
     }
     std::sort(next.colonies.begin(), next.colonies.end(), [](const Colony& a, const Colony& b) { return a.systemId < b.systemId; });
+    threats::afterCombat(next, report); // Schema 20: sieges, assimilation, bombardment, regeneration
     if (next.rules.empireRules) empire_rules::afterInvasions(next, report, report.events); // Schema 15: aftermath choices
     next.fleets.insert(next.fleets.end(), launched.begin(), launched.end());
+    next.nextFleetId = std::max(next.nextFleetId, moving.nextFleetId);
+    std::stable_sort(next.fleets.begin(), next.fleets.end(), [](const Fleet& a, const Fleet& b) { return a.id < b.id; }); // Drones assimilated in combat take ids above the launches.
     reconcileTaskForces(next);
     gameplay::carryOver(next, moving, layerEffects, report);
     minors::reviewMinorRaces(next, report.events); // Lane G: minor growth, tech and temperament
@@ -5251,7 +5271,7 @@ TurnReport advanceWithCombat(GameState& state, const std::function<void(GameStat
         }
     }
     for (auto& c : next.colonies) {
-        const int moraleTarget = minors::moraleTarget(next, c.ownerId); // Lane G: 70 plus member-minor morale
+        const int moraleTarget = threats::moraleTarget(next, c, minors::moraleTarget(next, c.ownerId)); // Lane G: 70 plus member-minor morale (Borg colonies hold their own value)
         if (c.morale < moraleTarget) ++c.morale;
         else if (c.morale > moraleTarget) --c.morale;
     }
@@ -5359,7 +5379,9 @@ GameState deserialize(const std::string& text) {
     // from 18 only by the header and the optional EMPIRE_SLOTS section (never present in 17).
     const bool legacy16 = version == 16 && content == "remaster-16";
     const bool legacy17 = version == 17 && content == "remaster-17";
-    const bool current18 = version == SaveVersion && content == ContentVersion;
+    const bool legacy18 = version == 18 && content == "remaster-18";   // Differs from 20 only by the header and the optional THREATS section.
+    const bool current20 = version == SaveVersion && content == ContentVersion;
+    const bool current18 = current20 || legacy18;   // The EMPIRE_SLOTS section is legal from schema 18 on.
     const bool current17 = current18 || legacy17;   // The PACKS section is legal from schema 17 on.
     const bool current16 = current17 || legacy16;   // Has the schema-15 and 16 sections.
     const bool current = current16 || legacy14 || legacy15; // Older text is a valid schema-18 layout without the newer sections.
@@ -5370,7 +5392,7 @@ GameState deserialize(const std::string& text) {
     require(checksumStart != std::string::npos, "Missing save checksum");
     const auto rawBody = text.substr(0, checksumStart);
     require(text.substr(checksumStart) == "CHECKSUM " + std::to_string(hashText(rawBody)) + "\n",
-        (legacy7 || legacy8 || legacy9 || legacy10 || legacy11 || legacy12 || legacy13 || legacy14 || legacy15 || legacy16 || legacy17) ? "Legacy save checksum mismatch" : "Save checksum mismatch");
+        (legacy7 || legacy8 || legacy9 || legacy10 || legacy11 || legacy12 || legacy13 || legacy14 || legacy15 || legacy16 || legacy17 || legacy18) ? "Legacy save checksum mismatch" : "Save checksum mismatch");
     GameState s;
     tag(in, "STATE");
     in >> s.seed >> s.rngState >> s.lastAcceptedCommand >> s.width >> s.height >> s.turn >> s.credits >> s.research;
@@ -5804,6 +5826,11 @@ GameState deserialize(const std::string& text) {
         empire_rules::readSection(in, s);
         nextTag = readTag("Malformed save section after EMPIRE_RULES");
     }
+    if (nextTag == "THREATS") {
+        require(current20, "Schema 20 section in an older save");
+        threats::readSection(in, s);
+        nextTag = readTag("Malformed save section after THREATS");
+    }
     if (nextTag == "COMBAT_ORDERS") {
         require(current, "Schema 14 section in an older save");
         parseCombatOrders(in, s);
@@ -5866,12 +5893,12 @@ GameState deserialize(const std::string& text) {
             (!s.modernEnginesActive || hasIntelOperations),
             current ? "Schema 14 save is missing a required section" : "Schema 13 save is missing a required section");
         std::string expected = payload(s);
-        if (legacy13 || legacy14 || legacy15 || legacy16 || legacy17) {
+        if (legacy13 || legacy14 || legacy15 || legacy16 || legacy17 || legacy18) {
             // Schema 13 text is the schema-14 payload of a campaign without recorded round orders; schema 14 to 17 text are
             // the schema-18 payload of a campaign without a galaxy setup / empire rules / preset packs / lineup above slot five.
             const std::string header = std::string("BOTF_SIM ") + std::to_string(SaveVersion) + ' ' + ContentVersion + '\n';
             require(expected.starts_with(header), "Malformed canonical payload header");
-            expected.replace(0, header.size(), legacy17 ? "BOTF_SIM 17 remaster-17\n" : legacy16 ? "BOTF_SIM 16 remaster-16\n" : legacy15 ? "BOTF_SIM 15 remaster-15\n" : legacy14 ? "BOTF_SIM 14 remaster-14\n" : "BOTF_SIM 13 remaster-13\n");
+            expected.replace(0, header.size(), legacy18 ? "BOTF_SIM 18 remaster-18\n" : legacy17 ? "BOTF_SIM 17 remaster-17\n" : legacy16 ? "BOTF_SIM 16 remaster-16\n" : legacy15 ? "BOTF_SIM 15 remaster-15\n" : legacy14 ? "BOTF_SIM 14 remaster-14\n" : "BOTF_SIM 13 remaster-13\n");
         }
         require(rawBody == expected, "Save is not in canonical format");
     } else if (legacy12) {
