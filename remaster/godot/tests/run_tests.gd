@@ -250,6 +250,16 @@ func test_fixture_determinism() -> void:
 		check(api("fingerprint") == run.result, "lineup %s: fingerprint %s == wasm %s" % [str(run.campaign.lineup), api("fingerprint"), run.result])
 		var spv: Dictionary = api("galaxyPreview", run.campaign)
 		check(spv.stars.size() == int(run.preview) and spv.stars.size() == int(run.campaign.systems), "lineup preview holds every star")
+	# Threat actors (schema 20): monsters, Borg, replacements and a seated Borg empire, native against wasm, with the spawn count.
+	var tx := load_fixture("determinism-threats")
+	for run in tx.result:
+		api("newCampaign", run.campaign)
+		for i in int(run.turns):
+			end_turn()
+		var tv: Dictionary = api("view")
+		check(api("fingerprint") == run.result, "threats %s: fingerprint %s == wasm %s" % [JSON.stringify(run.campaign.threats), api("fingerprint"), run.result])
+		check(int(tv.threatsSpawned) == int(run.spawned) and int(run.spawned) > 2, "threats: the native core spawned %d actors, wasm %d" % [int(tv.threatsSpawned), int(run.spawned)])
+		check(JSON.stringify(tv.threatSetup) == JSON.stringify(run.threats), "threats: the view reports the switches the game was started with")
 	# Packs and presets (schema 17): every preset's fingerprint, stack checksum and recorded preset id, native against wasm.
 	var px := load_fixture("determinism-presets")
 	for run in px.result:

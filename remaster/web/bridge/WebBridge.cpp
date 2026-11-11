@@ -1161,6 +1161,7 @@ void writeView(Writer& w) {
     }
     w.endArray();
     writeThreatSetup(w.key("threatSetup"), s.threats);
+    w.field("threatsSpawned", s.nextThreatId - 1);
 
     w.key("taskForces").beginArray();
     for (const auto& tf : botf::empireTaskForces(d, me)) {
@@ -2885,6 +2886,50 @@ void newCombatSandbox(int shipsPerSide, std::uint64_t seed) {
 // Developed era where long-range sensors have charted the region around the capital and every
 // anomaly. A troop transport waits at the capital, ready to assemble an outpost; an outpost already
 // stands nearby and can be upgraded to a starbase; and two galactic events await a decision.
+// Threat drill (schema 20, docs/design/THREAT-ACTORS.md): a medium Remastered galaxy with the whole map charted and the chosen actors placed
+// around the player's capital, one assimilated system marked, and nothing else spawning. `battle` puts a Borg cube on Sol with a drill
+// squadron beside the capital, so ending the turn opens a player-commanded battle against it. Used by the capture tools and the tests.
+void newThreatDrill(bool battle, int ships) {
+    ships = std::clamp(ships, 1, 24);
+    usePlainContent();
+    botf::CampaignSetup setup;
+    setup.presetId = "remastered"; setup.preset = botf::RulesetPreset::Remastered;
+    setup.seed = 4242; setup.width = 22; setup.height = 16; setup.systems = 50;
+    botf::ThreatSetup t;
+    t.monsters = true; t.borg = true;
+    t.disabledMask = (1 << botf::ThreatKinds) - 1;   // nothing spawns on its own: only the actors placed below
+    setup.threats = t;
+    auto s = botf::newCampaign(setup);
+    s.aiAggressionEnabled = false; s.eventsEnabled = false;
+    const auto& sol = s.systems.front();
+    for (int y = 0; y < s.height; ++y) for (int x = 0; x < s.width; ++x) markExplored(s.explored, y * s.width + x);
+    normaliseExplored(s.explored);
+    auto place = [&](botf::ThreatKind kind, int dx, int dy) {
+        botf::ThreatActor a;
+        a.id = s.nextThreatId++; a.kind = static_cast<int>(kind);
+        a.x = a.targetX = std::clamp(sol.x + dx, 0, s.width - 1); a.y = a.targetY = std::clamp(sol.y + dy, 0, s.height - 1);
+        a.hull = botf::threats::actorMaxHull(a); a.shields = botf::threats::actorMaxShields(a);
+        s.threatActors.push_back(a);
+    };
+    if (battle) {
+        place(botf::ThreatKind::BorgCube, 0, 0);
+        addDrillShips(s, s.playerEmpire, sol.x, sol.y, ships);
+    } else {
+        place(botf::ThreatKind::BorgCube, 2, 1);
+        place(botf::ThreatKind::Species8472, -2, 1);
+        place(botf::ThreatKind::Husnock, 1, -2);
+        place(botf::ThreatKind::Calamarain, -1, -2);
+        place(botf::ThreatKind::Gomtuu, 3, -1);
+        place(botf::ThreatKind::EchoPapa, -3, -1);
+        for (const auto& sys : s.systems) {   // The nearest unclaimed system to Sol is a Borg-held ruin.
+            if (botf::colonyAt(s, sys.id) || botf::minorAt(s, sys.id) || (sys.x == sol.x && sys.y == sol.y)) continue;
+            if (std::max(std::abs(sys.x - sol.x), std::abs(sys.y - sol.y)) <= 3) { s.assimilated.push_back({sys.id, 0, 0}); break; }
+        }
+    }
+    botf::validate(s);
+    startGame(std::move(s), battle ? "drill-threat-battle" : "drill-threats");
+}
+
 void newFrontierDrill() {
     botf::CampaignSetup setup;
     setup.presetId = "remastered";
@@ -3229,6 +3274,7 @@ std::string dispatch(const std::string& method, const Value& a) {
     else if (method == "galaxyPreview") galaxyPreview(w, a);
     else if (method == "newBattleDrill") { newBattleDrill(a.getBool("station"), a.getInt("ships", 3), a.getBool("foeStation")); writeView(w); }
     else if (method == "newFrontierDrill") { newFrontierDrill(); writeView(w); }
+    else if (method == "newThreatDrill") { newThreatDrill(a.getBool("battle"), a.getInt("ships", 3)); writeView(w); }
     else if (method == "station") writeStationDetail(w, a.getInt("stationId"));
     else if (method == "newDiplomacyDrill") { newDiplomacyDrill(); writeView(w); }
     else if (method == "headlessFingerprint") {

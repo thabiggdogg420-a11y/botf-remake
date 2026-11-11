@@ -598,7 +598,7 @@ void assimilateShips(GameState& s, const CombatReport& battle, TurnReport& repor
     if (drones <= 0) return;
     const auto& probe = internal::sourceShip(1601);
     for (int i = 0; i < drones; ++i) {
-        Fleet f{s.nextFleetId++, BorgEmpire, battle.x, battle.y, battle.x, battle.y, false, false, Building::Destroyer, std::max(1, probe.hull / 2)};
+        Fleet f{s.nextFleetId++, BorgEmpire, battle.x, battle.y, battle.x, battle.y, false, false, Building::Scout, std::max(1, probe.hull / 2)};   // The Probe is a role-0 hull, so its fleet class is Scout.
         f.referenceShipId = 1601;
         f.shields = s.advancedRulesEnabled ? std::max(0, probe.shields) / 2 : 0;
         fresh.push_back(f);

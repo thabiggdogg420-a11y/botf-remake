@@ -82,6 +82,25 @@ dump('determinism-rules3', 'fingerprint', { campaign: campaign3, turns: 10 }, ca
   }
   dump('determinism-slots', 'fingerprint', { runs: slots.length }, slots);
 }
+// Threat actors (schema 20, docs/design/THREAT-ACTORS.md): monsters and Borg on at frequent, the sphere/8472/DS9 replacements, and a seated
+// Borg empire beside the monsters, each after a scripted run long enough for roaming actors to spawn and fight. The recording keeps
+// how many actors the wasm core saw spawn (nextThreatId) so a native core that silently stops spawning cannot pass.
+{
+  const runs = [];
+  const base = { seed: 424242, era: 1, ruleset: 'reference', width: 22, height: 16, systems: 50 };
+  const setups = [
+    [{ ...base, faction: 1, empires: 5, threats: { monsters: true, borg: true, frequency: 'frequent' } }, 80],
+    [{ ...base, faction: 1, empires: 5, threats: { monsters: true, borg: true, frequency: 'frequent', borgSphere: true, species8472: true, edoStation: true } }, 70],
+    [{ ...base, faction: 1, lineup: ['federation', 'klingon', 'romulan', 'dominion', 'borg'], threats: { monsters: true, borg: true, frequency: 'normal' } }, 70],
+  ];
+  for (const [c, turns] of setups) {
+    call('newCampaign', c);
+    for (let i = 0; i < turns; i++) endTurn();
+    const v = call('view');
+    runs.push({ campaign: c, turns, result: call('fingerprint'), threats: v.threatSetup, spawned: v.threatsSpawned });
+  }
+  dump('determinism-threats', 'fingerprint', { runs: runs.length }, runs);
+}
 // Packs and presets (schema 17, docs/design/PACKS-AND-PRESETS.md): one wasm-recorded fingerprint and stack checksum per preset
 // after a scripted 8-turn run. The native core must reproduce every one, so the overlay merge, the stack checksum and the
 // preset flags are proven identical native against wasm. The preset list itself (meta.presets) rides in the meta fixture.

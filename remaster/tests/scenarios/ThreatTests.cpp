@@ -69,8 +69,9 @@ ThreatActor& inject(GameState& s, ThreatKind kind, int x, int y) {
     s.threatActors.push_back(a);
     return s.threatActors.back();
 }
-const System& home(const GameState& s) { return s.systems.front(); }
-const System& systemOf(const GameState& s, int id) {
+// By value: advance() replaces the state, so a reference into `systems` would dangle across a turn.
+System home(const GameState& s) { return s.systems.front(); }
+System systemOf(const GameState& s, int id) {
     for (const auto& x : s.systems) if (x.id == id) return x;
     throw std::runtime_error("no such system");
 }
@@ -443,7 +444,7 @@ int main() {
         threats::assimilateShips(s, b, report, fresh);
         check(fresh.empty(), "only a Borg victory assimilates");
         Fleet f; f.id = s.nextFleetId++; f.ownerId = threats::BorgEmpire; f.x = f.targetX = 0; f.y = f.targetY = 0;
-        f.shipClass = Building::Destroyer; f.referenceShipId = 1601; f.hull = 20;
+        f.shipClass = Building::Scout; f.referenceShipId = 1601; f.hull = 20;
         s.fleets.push_back(f);
         TurnReport idle;
         threats::afterCombat(s, idle);
