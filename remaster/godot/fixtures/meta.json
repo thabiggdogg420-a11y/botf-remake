@@ -2,8 +2,8 @@
  "method": "meta",
  "args": {},
  "result": {
-  "contentVersion": "remaster-18",
-  "saveVersion": 18,
+  "contentVersion": "remaster-20",
+  "saveVersion": 20,
   "empires": [
    {
     "id": 1,
@@ -234,7 +234,17 @@
      "minorDensity": "many",
      "difficulty": "hard",
      "events": true,
-     "aiAggression": true
+     "aiAggression": true,
+     "threats": {
+      "monsters": true,
+      "borg": true,
+      "frequency": "normal",
+      "borgSphere": true,
+      "species8472": true,
+      "edoStation": true,
+      "sparesAi": false,
+      "disabled": []
+     }
     },
     "needs": [
      "MOD-2",
@@ -270,7 +280,17 @@
      "minorDensity": "some",
      "difficulty": "normal",
      "events": true,
-     "aiAggression": true
+     "aiAggression": true,
+     "threats": {
+      "monsters": true,
+      "borg": true,
+      "frequency": "rare",
+      "borgSphere": false,
+      "species8472": false,
+      "edoStation": false,
+      "sparesAi": false,
+      "disabled": []
+     }
     },
     "needs": [
      "MOD-4"
@@ -302,13 +322,22 @@
      "minorDensity": "many",
      "difficulty": "normal",
      "events": true,
-     "aiAggression": true
+     "aiAggression": true,
+     "threats": {
+      "monsters": true,
+      "borg": true,
+      "frequency": "normal",
+      "borgSphere": false,
+      "species8472": false,
+      "edoStation": false,
+      "sparesAi": false,
+      "disabled": []
+     }
     },
     "needs": [
      "MOD-2",
      "MOD-3",
-     "MOD-4",
-     "MOD-5"
+     "MOD-4"
     ]
    },
    {
@@ -370,12 +399,210 @@
      "minorDensity": "many",
      "difficulty": "hard",
      "events": true,
-     "aiAggression": true
+     "aiAggression": true,
+     "threats": {
+      "monsters": true,
+      "borg": true,
+      "frequency": "normal",
+      "borgSphere": false,
+      "species8472": false,
+      "edoStation": false,
+      "sparesAi": false,
+      "disabled": []
+     }
     },
     "needs": [
      "MOD-7"
     ]
    }
+  ],
+  "threatKinds": [
+   {
+    "id": 0,
+    "key": "borg_cube",
+    "name": "Borg cube",
+    "group": "borg",
+    "assetKey": "ship.borg.tactical_cube",
+    "effect": "assimilate",
+    "behaviour": "hunt",
+    "hostility": "aggressive",
+    "minTurn": 50,
+    "static": false,
+    "hull": 785,
+    "shields": 6100,
+    "attack": 86699
+   },
+   {
+    "id": 1,
+    "key": "borg_sphere",
+    "name": "Borg sphere",
+    "group": "borg",
+    "assetKey": "ship.borg.sphere",
+    "effect": "assimilate",
+    "behaviour": "hunt",
+    "hostility": "aggressive",
+    "minTurn": 35,
+    "static": false,
+    "hull": 607,
+    "shields": 994,
+    "attack": 1660
+   },
+   {
+    "id": 2,
+    "key": "species_8472",
+    "name": "Species 8472 bioship",
+    "group": "8472",
+    "assetKey": "ship.s8472.bioship",
+    "effect": "bombard",
+    "behaviour": "hunt",
+    "hostility": "aggressive",
+    "minTurn": 45,
+    "static": false,
+    "hull": 551,
+    "shields": 924,
+    "attack": 1635
+   },
+   {
+    "id": 3,
+    "key": "husnock",
+    "name": "Husnock warship",
+    "group": "monster",
+    "assetKey": "ship.krenim.warship",
+    "effect": "raid",
+    "behaviour": "hunt",
+    "hostility": "aggressive",
+    "minTurn": 30,
+    "static": false,
+    "hull": 140,
+    "shields": 650,
+    "attack": 3389
+   },
+   {
+    "id": 4,
+    "key": "calamarain",
+    "name": "Calamarain",
+    "group": "monster",
+    "assetKey": "ship.s8472.bioship",
+    "effect": "none",
+    "behaviour": "drift",
+    "hostility": "aggressive",
+    "minTurn": 10,
+    "static": false,
+    "hull": 185,
+    "shields": 1100,
+    "attack": 8839
+   },
+   {
+    "id": 5,
+    "key": "chodak",
+    "name": "Chodak dreadnought",
+    "group": "monster",
+    "assetKey": "ship.kli.neghtev",
+    "effect": "raid",
+    "behaviour": "roam",
+    "hostility": "aggressive",
+    "minTurn": 20,
+    "static": false,
+    "hull": 195,
+    "shields": 1000,
+    "attack": 4826
+   },
+   {
+    "id": 6,
+    "key": "crystalline",
+    "name": "Crystalline Entity",
+    "group": "monster",
+    "assetKey": "ship.xindi.weapon",
+    "effect": "strip",
+    "behaviour": "hunt",
+    "hostility": "aggressive",
+    "minTurn": 25,
+    "static": false,
+    "hull": 1030,
+    "shields": 300,
+    "attack": 4545
+   },
+   {
+    "id": 7,
+    "key": "echo_papa",
+    "name": "Echo Papa 607 drone",
+    "group": "monster",
+    "assetKey": "ship.borg.probe",
+    "effect": "none",
+    "behaviour": "guard",
+    "hostility": "aggressive",
+    "minTurn": 1,
+    "static": true,
+    "hull": 80,
+    "shields": 550,
+    "attack": 6268
+   },
+   {
+    "id": 8,
+    "key": "edo_guardian",
+    "name": "Edo Guardian",
+    "group": "monster",
+    "assetKey": "ship.krenim.timeship",
+    "effect": "none",
+    "behaviour": "guard",
+    "hostility": "cornered",
+    "minTurn": 1,
+    "static": true,
+    "hull": 1035,
+    "shields": 6350,
+    "attack": 77448
+   },
+   {
+    "id": 9,
+    "key": "gomtuu",
+    "name": "Gomtuu",
+    "group": "monster",
+    "assetKey": "ship.xindi.aquatic",
+    "effect": "none",
+    "behaviour": "drift",
+    "hostility": "peaceful",
+    "minTurn": 15,
+    "static": false,
+    "hull": 1530,
+    "shields": 300,
+    "attack": 0
+   },
+   {
+    "id": 10,
+    "key": "tarellian",
+    "name": "Tarellian plague ship",
+    "group": "monster",
+    "assetKey": "ship.malon.freighter",
+    "effect": "none",
+    "behaviour": "drift",
+    "hostility": "cornered",
+    "minTurn": 5,
+    "static": false,
+    "hull": 130,
+    "shields": 600,
+    "attack": 741
+   },
+   {
+    "id": 11,
+    "key": "deep_space_9",
+    "name": "Deep Space Nine",
+    "group": "monster",
+    "assetKey": "ship.car.nor",
+    "effect": "none",
+    "behaviour": "guard",
+    "hostility": "peaceful",
+    "minTurn": 1,
+    "static": true,
+    "hull": 660,
+    "shields": 818,
+    "attack": 1283
+   }
+  ],
+  "threatFrequencies": [
+   "none",
+   "rare",
+   "normal",
+   "frequent"
   ],
   "maneuvers": [
    {

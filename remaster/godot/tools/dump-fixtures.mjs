@@ -95,9 +95,10 @@ dump('determinism-rules3', 'fingerprint', { campaign: campaign3, turns: 10 }, ca
   ];
   for (const [c, turns] of setups) {
     call('newCampaign', c);
-    for (let i = 0; i < turns; i++) endTurn();
+    let ran = 0;
+    for (let i = 0; i < turns; i++) { try { endTurn(); ran++; } catch (e) { if (String(e).includes('Campaign has ended')) break; throw e; } }
     const v = call('view');
-    runs.push({ campaign: c, turns, result: call('fingerprint'), threats: v.threatSetup, spawned: v.threatsSpawned });
+    runs.push({ campaign: c, turns: ran, result: call('fingerprint'), threats: v.threatSetup, spawned: v.threatsSpawned });
   }
   dump('determinism-threats', 'fingerprint', { runs: runs.length }, runs);
 }
