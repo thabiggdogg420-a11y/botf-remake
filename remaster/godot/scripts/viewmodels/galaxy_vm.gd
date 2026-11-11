@@ -83,7 +83,7 @@ func cancel_order(id: int) -> void:
 ## Map legend: [{label, color}] where color is a token the presentation maps: owner | alert | secondary | anomaly | dim.
 func legend() -> Array:
 	return [{"label": "Your ships", "color": "owner"}, {"label": "Contacts", "color": "alert"}, {"label": "Station", "color": "secondary"},
-		{"label": "Anomaly", "color": "anomaly"}, {"label": "Unexplored", "color": "dim"}]
+		{"label": "Anomaly", "color": "anomaly"}, {"label": "Threat", "color": "alert"}, {"label": "Unexplored", "color": "dim"}]
 
 ## The status strip: [{cap, icon, value, tone, tip}] over the chart (sectors charted, colonies, ships, contacts in range).
 func status() -> Array:

@@ -13,7 +13,7 @@ Lane MOD-3 (Barclay, 12 Nov 2026). Outranked by `AI_stuff\standing\simon\botf-ru
 * Effects by `bonusType`, the vanilla meanings: 14 industry %, 30 research %, 42 food %, 5 credit income %, 20 morale, 37 ground defence %, 11 internal-security output %. New: **90** Shapeshifter Network (sabotage output % = values[0], sabotage damage bonus = values[1]) and **91** Ketracel-White (the roster classes named in `bonusValues` need one such structure in the empire; enforced in `constructionTechBlocker`, so the player list and the AI both obey it).
 * A structure draws no colony energy (design choice; the data keeps `energyCost` 0) and costs credit upkeep of `industryCost / 400`, minimum 1. A captured colony keeps its structures and they work for the new owner (the queue is cleared on invasion, as before).
 * AI: after the shipyard and refinery rules a colony with a yard and credits >= 150 queues the lowest-id rung it may start whose cost is at most 100 x its industry (`aiNext`).
-* Save: schema 19, optional `STRUCTURES 1 / <n> / <systemId> <count> <ids>` rows after `EMPIRE_RULES`, written only while a colony holds one.
+* Save: schema 21, optional `STRUCTURES 1 / <n> / <systemId> <count> <ids>` rows after `EMPIRE_RULES`, written only while a colony holds one.
 
 ## 3. The Dominion overlay (`dominion`, data)
 
@@ -51,4 +51,4 @@ Optional minor fields: `available` (false = never placed), `featured` (placed be
 
 * No scrap order for race structures (the Installed tab lists them read-only); no energy use; no AI tuning beyond the rule above (a Dominion AI built about two rungs in 50 turns).
 * The Founders themselves (a Founder leader or hero) and the Dominion-specific diplomacy (Vorta ambassadors, the Alliance with Cardassia and Breen) belong to MOD-7 and MOD-8.
-* Merge: schema 19 here; MOD-5 uses 20, so the renumber touches `SaveVersion`, `ContentVersion` and the `legacy`/`current` flags only. The overlay-patch whitelist (`optionalField`) names the new optional keys so a patch can add them to a base record.
+* Merge: schema 21 here; MOD-5 uses 20, so the renumber touches `SaveVersion`, `ContentVersion` and the `legacy`/`current` flags only. The overlay-patch whitelist (`optionalField`) names the new optional keys so a patch can add them to a base record.

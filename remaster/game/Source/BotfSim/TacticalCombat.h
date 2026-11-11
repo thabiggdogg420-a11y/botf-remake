@@ -2292,9 +2292,10 @@ inline Encounter constructEncounter(const GameState& state,
     const int ownerA = *ownerIt++;
     const int ownerB = *ownerIt;
 
-    // Requirement 2: Must be at war. Peaceful combat is rejected.
-    const auto* relation = majorRelation(state, ownerA, ownerB);
-    if (!relation || !relation->atWar) {
+    // Requirement 2: Must be at war. Peaceful combat is rejected. A threat actor (schema 20, side ThreatOwner) is at war with everyone.
+    const bool threatSide = ownerA == ThreatOwner || ownerB == ThreatOwner;
+    const auto* relation = threatSide ? nullptr : majorRelation(state, ownerA, ownerB);
+    if (!threatSide && (!relation || !relation->atWar)) {
         throw std::invalid_argument("Empires " + std::to_string(ownerA) + " and " + std::to_string(ownerB) +
             " are not at war; peaceful tactical combat is rejected.");
     }
@@ -2325,8 +2326,8 @@ inline Encounter constructEncounter(const GameState& state,
     enc.controllingOwnerId = state.playerEmpire;
     enc.resultsApplied = false;
     enc.rulesVersion = state.rules.flightModel ? FlightTacticalRules : RemasterTacticalRules;
-    enc.relationAtWar = relation->atWar;
-    enc.relationTrust = std::clamp(relation->trust, 0, 100);
+    enc.relationAtWar = threatSide ? true : relation->atWar;
+    enc.relationTrust = threatSide ? 0 : std::clamp(relation->trust, 0, 100);
 
     // Helper to evaluate if a safe supplied retreat sector exists
     auto hasSafeEscape = [&](const Fleet& f) {
@@ -2359,12 +2360,11 @@ inline Encounter constructEncounter(const GameState& state,
         s.maxShields = fleetMaxShields(*f);
         s.shields = std::min(f->shields, s.maxShields);
         s.initialShields = s.shields; // Capture actual initial starting shields
-        s.canRetreat = hasSafeEscape(*f);
+        s.canRetreat = f->ownerId != ThreatOwner && hasSafeEscape(*f); // A threat actor never withdraws (and owns no supply).
 
         // Attack derivation & beam/torpedo split
         int totalAtk = fleetAttack(*f);
-        const auto& emp = empire(state, f->ownerId);
-        totalAtk += emp.technologies[5].level;
+        if (f->ownerId != ThreatOwner) totalAtk += empire(state, f->ownerId).technologies[5].level;
         totalAtk = std::max(0, totalAtk);
 
         const auto* extendedClass = roster::findRosterClass(f->referenceShipId);
@@ -3059,7 +3059,7 @@ inline Encounter deserializeEncounter(const std::string& text) {
             if (enc.currentRound < 0 || enc.maxRounds <= 0 || enc.maxRounds > 500 || enc.currentRound > enc.maxRounds) {
                 fail("ROUNDS counts out of valid bounds.");
             }
-            if (enc.winnerOwnerId < 0 || enc.winnerOwnerId > 8) fail("ROUNDS winner out of bounds.");
+            if (enc.winnerOwnerId < 0 || enc.winnerOwnerId > ThreatOwner) fail("ROUNDS winner out of bounds.");
             enc.isFinished = (fin == 1);
             hasRounds = true;
         } else if (tag == "SECTOR") {
@@ -3130,7 +3130,7 @@ inline Encounter deserializeEncounter(const std::string& text) {
                 if (s.fleetId <= 0 || !seenFleetIds.insert(s.fleetId).second) {
                     fail("Invalid or duplicate fleet ID in SHIPS section: " + std::to_string(s.fleetId));
                 }
-                if (s.ownerId < 1 || s.ownerId > 8) fail("Ship owner out of bounds [1, 8].");
+                if (s.ownerId < 1 || s.ownerId > ThreatOwner) fail("Ship owner out of bounds [1, 9].");
                 owners.insert(s.ownerId);
 
                 // Bounds & consistency validation
@@ -3385,7 +3385,7 @@ inline Encounter deserializeEncounter(const std::string& text) {
                     fail("Failed to parse GROUPS header record.");
                 }
                 if (g.groupId <= 0 || !groupIds.insert(g.groupId).second) fail("Invalid or duplicate group ID.");
-                if (g.ownerId < 1 || g.ownerId > 8) fail("Group owner out of bounds.");
+                if (g.ownerId < 1 || g.ownerId > ThreatOwner) fail("Group owner out of bounds.");
                 if (gc < 0 || gc > 3) fail("Invalid tactical group class.");
                 if (!maneuverValid(man)) fail("Invalid group standing maneuver.");
                 if (fCount < 0 || fCount > 256) fail("Group member count out of bounds.");

@@ -40,7 +40,8 @@ set(BOTF_CORE_SOURCES
     ${BOTF_CORE_DIR}/GalacticEvents.cpp
     ${BOTF_CORE_DIR}/BuildTemplates.cpp
     ${BOTF_CORE_DIR}/Victory.cpp
-    ${BOTF_CORE_DIR}/Chronicle.cpp)
+    ${BOTF_CORE_DIR}/Chronicle.cpp
+    ${BOTF_CORE_DIR}/Threats.cpp)
 add_library(botf_core STATIC ${BOTF_CORE_SOURCES})
 target_include_directories(botf_core PUBLIC ${BOTF_CORE_DIR})
 target_compile_options(botf_core PRIVATE ${BOTF_WARN})
@@ -75,6 +76,7 @@ set_tests_properties(BotfSoakTests PROPERTIES TIMEOUT 1800)
 botf_suite(BotfCampaignDiplomacyTests CampaignDiplomacyTests.cpp)
 botf_suite(BotfContentTests ContentTests.cpp) # Lane G: original text + minor-race roster
 botf_suite(BotfPresetTests PresetTests.cpp) # M3-PRESETS (MOD-1): overlay packs, presets, lineup validation, schema-17 PACKS section
+botf_suite(BotfThreatTests ThreatTests.cpp) # M3-THREATS (MOD-5): threat actors, assimilation, schema-20 THREATS section
 botf_suite(BotfGalaxyGenTests GalaxyGenTests.cpp) # M2-GEN: galaxy shapes, minor-race density, difficulty, GALAXY_SETUP save section
 # Schema-14 treaty integration, client queries and battle records (Lane H).
 botf_suite(BotfIntegrationTests IntegrationTests.cpp)
@@ -88,5 +90,5 @@ set_tests_properties(BotfEmpireRulesTests PROPERTIES TIMEOUT 900)
 # Empire slots (docs/design/EMPIRE-SLOTS.md, schema 17): lineups of two to eight majors, Dominion and Borg as majors, migration.
 botf_suite(BotfEmpireSlotsTests EmpireSlotsTests.cpp)
 set_tests_properties(BotfEmpireSlotsTests PROPERTIES TIMEOUT 900)
-botf_suite(BotfDominionTests DominionTests.cpp) # MOD-3: Dominion overlay, race structures, new minors, schema-19 STRUCTURES section
+botf_suite(BotfDominionTests DominionTests.cpp) # MOD-3: Dominion overlay, race structures, new minors, schema-21 STRUCTURES section
 set_tests_properties(BotfDominionTests PROPERTIES TIMEOUT 900)

@@ -82,6 +82,26 @@ dump('determinism-rules3', 'fingerprint', { campaign: campaign3, turns: 10 }, ca
   }
   dump('determinism-slots', 'fingerprint', { runs: slots.length }, slots);
 }
+// Threat actors (schema 20, docs/design/THREAT-ACTORS.md): monsters and Borg on at frequent, the sphere/8472/DS9 replacements, and a seated
+// Borg empire beside the monsters, each after a scripted run long enough for roaming actors to spawn and fight. The recording keeps
+// how many actors the wasm core saw spawn (nextThreatId) so a native core that silently stops spawning cannot pass.
+{
+  const runs = [];
+  const base = { seed: 424242, era: 1, ruleset: 'reference', width: 22, height: 16, systems: 50 };
+  const setups = [
+    [{ ...base, faction: 1, empires: 5, threats: { monsters: true, borg: true, frequency: 'frequent' } }, 80],
+    [{ ...base, faction: 1, empires: 5, threats: { monsters: true, borg: true, frequency: 'frequent', borgSphere: true, species8472: true, edoStation: true } }, 70],
+    [{ ...base, faction: 1, lineup: ['federation', 'klingon', 'romulan', 'dominion', 'borg'], threats: { monsters: true, borg: true, frequency: 'normal' } }, 70],
+  ];
+  for (const [c, turns] of setups) {
+    call('newCampaign', c);
+    let ran = 0;
+    for (let i = 0; i < turns; i++) { try { endTurn(); ran++; } catch (e) { if (String(e).includes('Campaign has ended')) break; throw e; } }
+    const v = call('view');
+    runs.push({ campaign: c, turns: ran, result: call('fingerprint'), threats: v.threatSetup, spawned: v.threatsSpawned });
+  }
+  dump('determinism-threats', 'fingerprint', { runs: runs.length }, runs);
+}
 // Packs and presets (schema 17, docs/design/PACKS-AND-PRESETS.md): one wasm-recorded fingerprint and stack checksum per preset
 // after a scripted 8-turn run. The native core must reproduce every one, so the overlay merge, the stack checksum and the
 // preset flags are proven identical native against wasm. The preset list itself (meta.presets) rides in the meta fixture.
@@ -97,7 +117,7 @@ dump('determinism-rules3', 'fingerprint', { campaign: campaign3, turns: 10 }, ca
   call('loadBaseContent');
   dump('determinism-presets', 'fingerprint', { runs: presets.length }, presets);
 }
-// Dominion content (schema 19, docs/design/DOMINION.md): the Dominion War preset (race structures, traits, the new minors, Bajor for the
+// Dominion content (schema 21, docs/design/DOMINION.md): the Dominion War preset (race structures, traits, the new minors, Bajor for the
 // Edo) as the Federation and as the Dominion, 30 turns. The native core must reproduce each fingerprint and the overlay stack checksum.
 {
   const dom = [];

@@ -113,6 +113,7 @@ func _preset_picker_model(nc: NewCampaignVM, label: String) -> void:
 	nc.era = 4
 	check(nc.pick_preset("classic") and nc.rules_base() == "classic" and nc.size_id == "medium" and nc.era == 1 and nc.shape == "elliptical", "%s: Classic fills size, era and shape" % label)
 	check(nc.options()["preset"] == "classic" and nc.options()["shape"] == "elliptical" and int(nc.options()["systems"]) == 50, "%s: the options carry the preset id and the filled values" % label)
+	check(not nc.threats_active() and nc.threats_text() == "Threats off" and nc.options()["threats"]["monsters"] == false and nc.options()["threats"]["borg"] == false, "%s: Classic leaves the threat switches off" % label)
 	nc.pick_faction(3)
 	check(nc.pick_preset("remastered") and nc.shape == "spiral" and nc.powers() >= 3, "%s: a pick never drops the powers in play below the faction" % label)
 	if ids.size() < 7:
@@ -131,6 +132,17 @@ func _preset_picker_model(nc: NewCampaignVM, label: String) -> void:
 	check(SystemVM.choice_meta(rung).begins_with("+6 morale here") and SystemVM.choice_tip(rung).contains("Vorta governors."), "%s: a race structure shows its effect and description" % label)
 	check(nc.summary()[1].contains("Galaxies preset"), "%s: the summary names the preset" % label)
 	check(nc.pick_preset("balance-of-power") and nc.rules_base() == "classic" and nc.size_id == "large", "%s: Balance of Power sits on the classic rules" % label)
+	# Threat switches (docs/design/THREAT-ACTORS.md): the preset fills them, the panel edits them, the core call carries them.
+	check(nc.pick_preset("dominion-war") and nc.threats_active() and bool(nc.threats["borgSphere"]) and bool(nc.threats["species8472"]) and bool(nc.threats["edoStation"]), "%s: Dominion War turns on the sphere, 8472 and DS9" % label)
+	var ot: Dictionary = nc.options()["threats"]
+	check(bool(ot["monsters"]) and bool(ot["borg"]) and ot["frequency"] == "normal" and (ot["disabled"] as Array).is_empty(), "%s: the options carry the threat switches" % label)
+	check(nc.threats_text().contains("Borg sphere") and nc.threats_text().contains("monsters"), "%s: the summary line reports the threats" % label)
+	nc.threats["borg"] = false
+	nc.toggle_threat_kind("calamarain")
+	check(not nc.threat_kind_on("calamarain") and nc.threat_kind_on("chodak") and (nc.options()["threats"]["disabled"] as Array).has("calamarain") and not bool(nc.options()["threats"]["borg"]), "%s: the Borg-only off switch and a per-actor toggle reach the options" % label)
+	check(nc.threat_kinds().size() == 12 and nc.threat_kinds().all(func(k): return str(k["key"]) != "" and str(k["name"]) != ""), "%s: twelve toggleable actors" % label)
+	check(nc.pick_preset("remastered") and not nc.threats_active() and (nc.threats["disabled"] as Array).is_empty(), "%s: picking Remastered clears the threat switches" % label)
+	check(nc.pick_preset("galaxies") and bool(nc.threats["monsters"]) and bool(nc.threats["borg"]) and not bool(nc.threats["borgSphere"]), "%s: Galaxies runs the vanilla actors" % label)
 
 func _pure_models() -> void:
 	print("== pure models")
@@ -233,7 +245,7 @@ func _session_models(backend: String) -> void:
 	var ga := gal.alerts()
 	check(ga["count"] == s.view.get("alerts", []).size() and ["good", "warn", "alert"].has(ga["tone"]), "galaxy alerts: %d, tone %s" % [ga["count"], ga["tone"]])
 	check(gal.layers({"fog": false}).size() == 7 and not gal.layers({"fog": false}).filter(func(l): return l["key"] == "fog")[0]["on"], "galaxy layers carry their state")
-	check(gal.orders()["count"] == s.view.get("pending", []).size() and gal.legend().size() == 5 and gal.status().size() == 4, "galaxy orders, legend and status")
+	check(gal.orders()["count"] == s.view.get("pending", []).size() and gal.legend().size() == 6 and gal.status().size() == 4, "galaxy orders, legend and status")
 	check(gal.alert_target({"kind": "proposal"})["id"] == "diplomacy" and gal.alert_target({"kind": "event"})["do"] == "overlay" and gal.alert_target({"kind": "x"}).is_empty(), "alert targets")
 	var sys0: Dictionary = s.view["systems"][0]
 	check(gal.alert_target({"systemId": sys0["id"]})["x"] == int(sys0["x"]), "an alert on a system points at its sector")

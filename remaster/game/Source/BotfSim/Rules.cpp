@@ -554,6 +554,9 @@ GameState newCampaign(const CampaignSetup& setup) {
         ? generateReferenceCampaign(setup.seed, setup.empires, setup.width, setup.height, setup.systems, setup.playerEmpire, setup.era, setup.galaxy.shape, ids)
         : generateCampaign(setup.seed, setup.empires, setup.width, setup.height, setup.systems, setup.playerEmpire, setup.era, setup.galaxy.shape, ids);
     state.galaxy = setup.galaxy;
+    // Schema 20: the threat switches; a preset's defaults apply when the setup leaves them unset. Off for everything else.
+    if (setup.threats) state.threats = *setup.threats;
+    else if (named && named->threats) state.threats = *named->threats;
     placeMinorRaceRoster(state); // Lane G: minor-race roster (MinorRaces.h); the density chooses how many.
     if (named) {
         GameplayRules rules = rulesForPreset(named->rulesBase == "classic" ? RulesetPreset::Classic : RulesetPreset::Remastered);
@@ -573,7 +576,7 @@ GameState newCampaign(const CampaignSetup& setup) {
         applyRulesetPreset(state, setup.preset);
     }
     addStartingFleets(state);
-    structures::seedStart(state); // Schema 19: the pack's start structures in each eligible capital.
+    structures::seedStart(state); // Schema 21: the pack's start structures in each eligible capital.
     // Difficulty: rival treasuries start scaled; their per-turn output scales in advance() (Simulation.cpp).
     const auto& dp = difficultyProfile(state.galaxy.difficulty);
     for (auto& rival : state.rivals) rival.credits = rival.credits * dp.aiStartCreditsPct / 100;

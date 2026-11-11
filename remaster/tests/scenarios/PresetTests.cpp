@@ -50,6 +50,7 @@ GameState game(const std::string& presetId, std::uint64_t seed = 31, int empires
     CampaignSetup setup;
     setup.seed = seed; setup.empires = empires; setup.width = 16; setup.height = 12; setup.systems = 28;
     setup.presetId = presetId;
+    setup.threats = ThreatSetup{};   // Pack and save-format scenarios: the presets' threat defaults are tested in ThreatTests.cpp.
     return newCampaign(setup);
 }
 bool contains(const std::string& text, const std::string& part) { return text.find(part) != std::string::npos; }

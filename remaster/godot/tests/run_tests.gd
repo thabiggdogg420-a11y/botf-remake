@@ -250,6 +250,16 @@ func test_fixture_determinism() -> void:
 		check(api("fingerprint") == run.result, "lineup %s: fingerprint %s == wasm %s" % [str(run.campaign.lineup), api("fingerprint"), run.result])
 		var spv: Dictionary = api("galaxyPreview", run.campaign)
 		check(spv.stars.size() == int(run.preview) and spv.stars.size() == int(run.campaign.systems), "lineup preview holds every star")
+	# Threat actors (schema 20): monsters, Borg, replacements and a seated Borg empire, native against wasm, with the spawn count.
+	var tx := load_fixture("determinism-threats")
+	for run in tx.result:
+		api("newCampaign", run.campaign)
+		for i in int(run.turns):
+			end_turn()
+		var tv: Dictionary = api("view")
+		check(api("fingerprint") == run.result, "threats %s: fingerprint %s == wasm %s" % [JSON.stringify(run.campaign.threats), api("fingerprint"), run.result])
+		check(int(tv.threatsSpawned) == int(run.spawned) and int(run.spawned) > 2, "threats: the native core spawned %d actors, wasm %d" % [int(tv.threatsSpawned), int(run.spawned)])
+		check(JSON.stringify(tv.threatSetup) == JSON.stringify(run.threats), "threats: the view reports the switches the game was started with")
 	# Packs and presets (schema 17): every preset's fingerprint, stack checksum and recorded preset id, native against wasm.
 	var px := load_fixture("determinism-presets")
 	for run in px.result:
@@ -357,7 +367,7 @@ func test_uncharted_view() -> void:
 
 ## The view is a read: a fixed-seed autoplay to turn 20 reaches the same state with or without the view being read every turn,
 ## and the hash is the one the core produced before the view change (recorded from the unchanged simulation sources).
-const FINGERPRINT_T20 := "226606094241778945" # re-pinned for schema 19 (the header line is in the payload; body unchanged vs schema 18, see DOMINION.md); native and wasm agree
+const FINGERPRINT_T20 := "14246520332045042113" # re-pinned for schema 20 (the header line is in the payload; body unchanged vs schema 18, see THREAT-ACTORS.md and the 7-seed body comparison); native and wasm agree
 
 func _autoplay_fingerprint(read_view: bool) -> String:
 	api("newCampaign", CAMPAIGN)

@@ -1,6 +1,6 @@
-// Dominion content scenarios (lane MOD-3, schema 19; docs/design/DOMINION.md): the Dominion overlay (structure ladder, Founders and
+// Dominion content scenarios (lane MOD-3, schema 21; docs/design/DOMINION.md): the Dominion overlay (structure ladder, Founders and
 // Vorta traits, Jem'Hadar line), race structures in the core (ladder, Ketracel-White gate, effects, Shapeshifter Network feeding the
-// intel sabotage output), the new minors and the Bajor-for-Edo swap, the schema-19 STRUCTURES section and migration from 18, and a
+// intel sabotage output), the new minors and the Bajor-for-Edo swap, the schema-21 STRUCTURES section and migration from 18, and a
 // 50-turn AI soak of a Dominion War game. The default Classic game must stay identical (no section, no new rule).
 #include "EmpireSlots.h"
 #include "Intelligence.h"
@@ -331,13 +331,13 @@ int main() {
         check(minors::memberBonuses(s, 6).members == 1, "a member minor counts for the Dominion");
     }, passed);
 
-    run("save: STRUCTURES round trip, schema 18 loads, the section is refused below 19, forged rows fail", [] {
+    run("save: STRUCTURES round trip, schemas 18 and 20 load, the section is refused below 21, forged rows fail", [] {
         auto s = warGame(15, 6);
         for (int i = 0; i < 4; ++i) advance(s);
         const auto text = serialize(s);
-        check(contains(text, "\nSTRUCTURES 1\n") && text.starts_with("BOTF_SIM 19 remaster-19\n"), "schema 19 with a section");
+        check(contains(text, "\nSTRUCTURES 1\n") && text.starts_with("BOTF_SIM 21 remaster-21\n"), "schema 21 with a section");
         check(serialize(deserialize(text)) == text && fingerprint(deserialize(text)) == fingerprint(s), "round trip");
-        for (int version : {14, 15, 16, 17, 18})
+        for (int version : {14, 15, 16, 17, 18, 20})
             rejects([&] { deserialize(withHeader(text, version)); }, "STRUCTURES under a schema-" + std::to_string(version) + " header", "older save");
         auto forged = text;
         forged.replace(forged.find("STRUCTURES 1\n1\n") , 15, "STRUCTURES 1\n2\n");
@@ -354,7 +354,7 @@ int main() {
         presets::activate(*presets::find("remastered"));
         const auto reloaded = deserialize(text);
         check(content::active().id == "botf-base+dominion+dominion-war" && serialize(reloaded) == text, "the loader rebuilds the stack the save names");
-        // Default game: no section, a schema-18 header over the same text loads and re-saves as 19.
+        // Default game: no section, a schema-18 or schema-20 header over the same text loads and re-saves as 21.
         presets::activate(*presets::find("remastered"));
         CampaignSetup plain; plain.seed = 1999;
         auto d = newCampaign(plain);
@@ -362,7 +362,8 @@ int main() {
         const auto dt = serialize(d);
         check(!contains(dt, "STRUCTURES") && !contains(dt, "EMPIRE_SLOTS") && !contains(dt, "PACKS"), "the default five-empire game has no new section");
         const auto old = deserialize(withHeader(dt, 18));
-        check(serialize(old) == dt, "a schema-18 default save loads and re-saves as 19");
+        check(serialize(old) == dt, "a schema-18 default save loads and re-saves as 21");
+        check(serialize(deserialize(withHeader(dt, 20))) == dt, "a schema-20 default save loads and re-saves as 21");
         auto playing = old; advance(playing);
         check(playing.turn == old.turn + 1, "and plays on");
         presets::activate(*presets::find("dominion-war"));

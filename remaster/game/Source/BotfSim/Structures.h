@@ -11,7 +11,7 @@
 // A structure draws no colony energy; it costs credit upkeep of one per 400 industry of its cost. A captured colony keeps the
 // structures it holds and they work for the new owner (they cannot be rebuilt by a race that may not use them).
 //
-// Save (schema 19): the optional section, written only while some colony holds a structure, after EMPIRE_RULES:
+// Save (schema 21): the optional section, written only while some colony holds a structure, after EMPIRE_RULES:
 //     STRUCTURES 1
 //     <n>                         then n rows: <systemId> <count> <record id> ...   (ascending ids)
 // Integer arithmetic only; header-only like EmpireRules.h.
