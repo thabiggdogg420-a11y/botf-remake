@@ -145,6 +145,7 @@ int main() {
         check(!report.events.empty(), "the turn resolves with the proposal on the table");
         // Fight: a Federation armed fleet at the Dominion capital, at war, ends in a battle.
         const int domSystem = home.systemId;
+        s = lineupGame(21, All8, 6);   // a fresh world: the proposal above may have bound the two empires by treaty
         const auto sys = *std::find_if(s.systems.begin(), s.systems.end(), [&](const System& x) { return x.id == domSystem; });
         for (auto& f : s.fleets) if (f.ownerId == 1) { f.x = f.targetX = sys.x; f.y = f.targetY = sys.y; }
         const int cell = sys.y * s.width + sys.x;
@@ -154,8 +155,15 @@ int main() {
         Command war; war.id = s.lastAcceptedCommand + 1; war.type = CommandType::DeclareWar; war.targetEmpire = 1;
         submit(s, war);
         int battles = 0;
-        for (int t = 0; t < 3; ++t) battles += static_cast<int>(advance(s).battles.size());
-        check(battles > 0, "a Dominion fleet and a Federation fleet at war fight");
+        std::string diag;
+        for (int t = 0; t < 3; ++t) {
+            const auto rep = advance(s);
+            battles += static_cast<int>(rep.battles.size());
+            int at = 0; for (const auto& f : s.fleets) if (f.ownerId == 1 && f.x == sys.x && f.y == sys.y) ++at;
+            bool atWar = false; for (const auto& r : s.majorRelations) if (r.first == 1 && r.second == 6) atWar = r.atWar;
+            diag += " [t" + std::to_string(t) + " fedHere=" + std::to_string(at) + " war=" + std::to_string(atWar) + " ev=" + std::to_string(rep.events.size()) + "]";
+        }
+        check(battles > 0, "a Dominion fleet and a Federation fleet at war fight" + diag);
     }, passed);
 
     for (const auto& config : std::vector<std::pair<std::string, std::vector<std::string>>>{
@@ -192,7 +200,7 @@ int main() {
         CampaignSetup setup; setup.seed = 1999;
         const auto s = newCampaign(setup);
         const auto text = serialize(s);
-        check(text.starts_with("BOTF_SIM 17 remaster-17\n") && !contains(text, "EMPIRE_SLOTS"), "default five-empire save has no slot section");
+        check(text.starts_with(std::string("BOTF_SIM ") + std::to_string(SaveVersion) + " " + ContentVersion + "\n") && !contains(text, "EMPIRE_SLOTS"), "default five-empire save has no slot section");
         check(empireIds(s) == std::vector<int>({1, 2, 3, 4, 5}), "slots one to five");
         // The minor lines carry six (contact, attitude, friendship) triples, exactly as in schema 16.
         const auto at = text.find("\nMINORS ");
@@ -205,7 +213,7 @@ int main() {
         check(count == 18, "six relation slots (three numbers each)");
     }, passed);
 
-    run("migration: schemas 14, 15 and 16 load as schema 17; the new section is refused in older headers", [] {
+    run("migration: schemas 14, 15, 16 and 17 load as schema 18; the new section is refused in older headers", [] {
         CampaignSetup setup; setup.seed = 31; setup.empires = 4;
         auto s = newCampaign(setup);
         for (int i = 0; i < 6; ++i) advance(s);
@@ -215,19 +223,21 @@ int main() {
         auto legacy = generateReferenceCampaign(5, 3);
         for (int i = 0; i < 4; ++i) advance(legacy);
         const auto legacyText = serialize(legacy);
-        for (int version : {14, 15, 16}) {
+        for (int version : {14, 15, 16, 17}) {
             const auto old = withHeader(legacyText, version);
             const auto loaded = deserialize(old);
-            check(serialize(loaded) == legacyText, "schema " + std::to_string(version) + " text migrates to the schema-17 text");
+            check(serialize(loaded) == legacyText, "schema " + std::to_string(version) + " text migrates to the schema-18 text");
             auto playing = loaded; advance(playing);
             check(playing.turn == loaded.turn + 1, "a migrated schema-" + std::to_string(version) + " campaign plays on");
         }
-        const auto sixteen = deserialize(withHeader(text, 16));
-        check(serialize(sixteen) == text && fingerprint(sixteen) == fingerprint(s), "a schema-16 header over a four-empire Remastered text migrates");
+        for (int version : {16, 17}) {
+            const auto older = deserialize(withHeader(text, version));
+            check(serialize(older) == text && fingerprint(older) == fingerprint(s), "a schema-" + std::to_string(version) + " header over a four-empire Remastered text migrates");
+        }
         // A wide lineup cannot hide in an older header.
         const auto wide = serialize(lineupGame(3, {"federation", "borg"}, 1));
         check(contains(wide, "EMPIRE_SLOTS"), "wide lineup writes the section");
-        for (int version : {14, 15, 16}) rejects([&] { deserialize(withHeader(wide, version)); }, "EMPIRE_SLOTS in schema " + std::to_string(version));
+        for (int version : {14, 15, 16, 17}) rejects([&] { deserialize(withHeader(wide, version)); }, "EMPIRE_SLOTS in schema " + std::to_string(version));
         // The section must list a lineup above slot five and match the empires.
         auto forged = wide;
         forged.replace(forged.find("EMPIRE_SLOTS 1 2 1 7"), 20, "EMPIRE_SLOTS 1 2 1 5");

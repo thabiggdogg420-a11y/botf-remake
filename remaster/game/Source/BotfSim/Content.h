@@ -76,12 +76,23 @@ struct EventDefinition {
     std::string description;  // Template: {where}, {magnitude}, {endTurn}.
 };
 
+// One overlay in a stack: its id and the FNV-1a 64 checksum of its exact bytes (docs/design/PACKS-AND-PRESETS.md).
+struct PartRef { std::string id; std::uint64_t checksum = 0; };
+
 struct PackInfo {
     std::string id, name;
     int format = 0, revision = 0;
     std::uint64_t checksum = 0;
     std::size_t bytes = 0;
     bool base = false;        // Byte-identical to the embedded base pack.
+    std::vector<PartRef> stack; // Overlays applied over the base pack, in order; empty for a plain pack.
+};
+
+// Pack-wide balance values (the optional "balance" object). Percentages of the base figure; 100 changes nothing.
+struct Balance {
+    int researchCostPercent = 100;  // Every research cost (Reference ruleset): cost * percent / 100.
+    int shipCostPercent = 100;      // Every ship's industry cost in a build queue.
+    bool operator==(const Balance&) const = default;
 };
 
 struct Pack {
@@ -96,6 +107,7 @@ struct Pack {
     std::vector<int> rosterIndex;                         // id - ExpandedIdBase -> roster index, -1 unused.
     std::vector<minors::MinorRaceRecord> minors;
     std::vector<EventDefinition> events;
+    Balance balance;
     const char* keep(std::string s) { strings.push_back(std::move(s)); return strings.back().c_str(); }
 };
 
@@ -307,11 +319,11 @@ public:
             if (v_.members[i].first == key) { used_[i] = true; return v_.members[i].second; }
         bad(path_, std::string("missing key \"") + key + "\"");
     }
-    std::string at(const char* key) const { return path_ + "." + key; }
     bool has(const char* key) const {
         for (const auto& m : v_.members) if (m.first == key) return true;
         return false;
     }
+    std::string at(const char* key) const { return path_ + "." + key; }
     int i32(const char* key, int lo, int hi) { return static_cast<int>(integer(get(key), at(key), lo, hi)); }
     std::int64_t i64(const char* key, std::int64_t lo, std::int64_t hi) { return integer(get(key), at(key), lo, hi); }
     std::uint64_t u64(const char* key) { return unsignedInteger(get(key), at(key)); }
@@ -384,9 +396,9 @@ inline const json::Value& section(Object& root, const char* key, std::size_t min
     return a;
 }
 
-inline std::unique_ptr<Pack> parsePack(std::string_view bytes) {
-    if (bytes.size() > 64u * 1024u * 1024u) bad("pack", "bundle larger than 64 MB");
-    const json::Value doc = json::Parser(bytes).document();
+// Validates a parsed bundle document (a base bundle, or a base merged with overlays) into typed tables. The caller sets
+// info.checksum and info.bytes.
+inline std::unique_ptr<Pack> parsePackValue(const json::Value& doc) {
     auto pack = std::make_unique<Pack>();
     Pack& p = *pack;
     Object root(doc, "pack");
@@ -630,9 +642,194 @@ inline std::unique_ptr<Pack> parsePack(std::string_view bytes) {
         }
         if (found != 5) bad("races", "the pack must define the five original majors (empireId 1..5)");
     }
+    if (root.has("balance")) {
+        Object b(root.get("balance"), "pack.balance");
+        if (b.has("researchCostPercent")) p.balance.researchCostPercent = b.i32("researchCostPercent", 10, 1000);
+        if (b.has("shipCostPercent")) p.balance.shipCostPercent = b.i32("shipCostPercent", 10, 1000);
+        b.done();
+    }
     root.done();
-    p.info.checksum = fnv1a64(bytes);
-    p.info.bytes = bytes.size();
+    return pack;
+}
+
+inline std::unique_ptr<Pack> parsePack(std::string_view bytes) {
+    if (bytes.size() > 64u * 1024u * 1024u) bad("pack", "bundle larger than 64 MB");
+    auto pack = parsePackValue(json::Parser(bytes).document());
+    pack->info.checksum = fnv1a64(bytes);
+    pack->info.bytes = bytes.size();
+    return pack;
+}
+
+// ---- Overlay packs: a base pack plus N overlays (docs/design/PACKS-AND-PRESETS.md section 1) ----
+// {"format":1,"kind":"overlay","id":"..","name":"..","revision":1,"requires":["botf-base"],
+//  "balance":{..}, "<section>":{"patch":[{"id":N,<changed fields>}],"append":[<whole records>]}}
+// Merging happens on the parsed document, before the strict typed parse above, so every merged record is validated by
+// exactly the rules a base record is (unknown keys, ranges, id == index, ...). Nothing is ever removed: an overlay
+// switches a roster class off with {"id":N,"buildable":false}.
+struct Overlay {
+    std::string id, name;
+    int revision = 0;
+    std::vector<std::string> requires_;
+    std::uint64_t checksum = 0;
+    std::size_t bytes = 0;
+    json::Value doc;
+};
+
+inline bool validPackId(const std::string& id) {
+    if (id.empty() || id.size() > 40) return false;
+    for (char c : id) if (!((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-')) return false;
+    return true;
+}
+
+inline Overlay parseOverlay(std::string_view bytes) {
+    if (bytes.size() > 16u * 1024u * 1024u) bad("overlay", "overlay larger than 16 MB");
+    Overlay ov;
+    ov.doc = json::Parser(bytes).document();
+    ov.checksum = fnv1a64(bytes);
+    ov.bytes = bytes.size();
+    Object root(ov.doc, "overlay");
+    if (root.i32("format", 0, Big) != FormatVersion) bad("overlay.format", "format is not supported (expected " + std::to_string(FormatVersion) + ")");
+    if (root.str("kind", 16) != "overlay") bad("overlay.kind", "expected \"overlay\"");
+    ov.id = root.str("id", 40);
+    if (!validPackId(ov.id) || ov.id == "botf-base") bad("overlay.id", "id must be [a-z0-9-] and not botf-base");
+    ov.name = root.str("name", 200);
+    ov.revision = root.i32("revision", 0, Big);
+    const auto& req = root.array("requires");
+    for (std::size_t i = 0; i < req.items.size(); ++i) {
+        if (req.items[i].kind != json::Value::Kind::String) bad("overlay.requires[" + std::to_string(i) + "]", "expected a pack id");
+        ov.requires_.push_back(req.items[i].text);
+    }
+    return ov; // Section and balance keys are checked while merging; unknown keys fail there.
+}
+
+inline constexpr const char* OverlaySections[] = {"technologies", "ships", "buildings", "races", "roster", "minors", "events"};
+
+inline json::Value* member(json::Value& obj, const std::string& key) {
+    for (auto& m : obj.members) if (m.first == key) return &m.second;
+    return nullptr;
+}
+inline bool sameKey(const json::Value& a, const json::Value& b) {
+    if (a.kind != b.kind) return false;
+    if (a.kind == json::Value::Kind::String) return a.text == b.text;
+    return a.kind == json::Value::Kind::Number && a.mantissa == b.mantissa && a.negative == b.negative && a.scale == b.scale;
+}
+
+// Applies one overlay to the merged document. Rules, per section (the record key is "id", or "kind" for events):
+//  - patch: each entry names an existing record (earlier overlays' appended records count) and replaces only the fields
+//    it lists. A nested object ("flight") merges field by field; arrays and scalars are replaced whole. An entry that
+//    names no record, or names one twice in the same overlay, is an error.
+//  - append: whole records added after the existing ones. Ids must continue the section's rule (id == index, or
+//    ascending in the roster's range); the strict parse checks that. technologies and events have a fixed record count
+//    and take patch only.
+//  - balance: each listed value replaces the pack's (the last overlay wins).
+inline void mergeOverlay(json::Value& doc, const Overlay& ov) {
+    const std::string where = "overlay " + ov.id;
+    for (const auto& m : ov.doc.members) {
+        const std::string& key = m.first;
+        if (key == "format" || key == "kind" || key == "id" || key == "name" || key == "revision" || key == "requires") continue;
+        if (key == "balance") {
+            if (m.second.kind != json::Value::Kind::Object) bad(where + ".balance", "expected an object");
+            json::Value* target = member(doc, "balance");
+            if (!target) {
+                json::Value fresh;
+                fresh.kind = json::Value::Kind::Object;
+                doc.members.emplace_back("balance", std::move(fresh));
+                target = &doc.members.back().second;
+            }
+            for (const auto& b : m.second.members) {
+                if (json::Value* t = member(*target, b.first)) *t = b.second; else target->members.push_back(b);
+            }
+            continue;
+        }
+        bool known = false;
+        for (const char* name : OverlaySections) known = known || key == name;
+        if (!known) bad(where, "unknown key \"" + key + "\"");
+        if (m.second.kind != json::Value::Kind::Object) bad(where + "." + key, "expected an object with patch and/or append");
+        json::Value* section = member(doc, key);
+        if (!section || section->kind != json::Value::Kind::Array) bad(where + "." + key, "the base pack has no such section");
+        const char* idKey = key == "events" ? "kind" : "id";
+        const bool fixedCount = key == "technologies" || key == "events";
+        for (const auto& part : m.second.members) {
+            const std::string path = where + "." + key + "." + part.first;
+            if (part.second.kind != json::Value::Kind::Array) bad(path, "expected an array");
+            if (part.first == "append") {
+                if (fixedCount) bad(path, "this section has a fixed record count; use patch");
+                for (const auto& rec : part.second.items) section->items.push_back(rec);
+            } else if (part.first == "patch") {
+                std::vector<const json::Value*> seen;
+                for (std::size_t i = 0; i < part.second.items.size(); ++i) {
+                    const auto& entry = part.second.items[i];
+                    const std::string epath = path + "[" + std::to_string(i) + "]";
+                    if (entry.kind != json::Value::Kind::Object) bad(epath, "expected an object");
+                    const json::Value* want = nullptr;
+                    for (const auto& f : entry.members) if (f.first == idKey) want = &f.second;
+                    if (!want) bad(epath, std::string("missing key \"") + idKey + "\"");
+                    for (const auto* prior : seen) if (sameKey(*prior, *want)) bad(epath, "record patched twice in one overlay");
+                    seen.push_back(want);
+                    json::Value* target = nullptr;
+                    for (auto& rec : section->items) {
+                        const json::Value* k = member(rec, idKey);
+                        if (k && sameKey(*k, *want)) { target = &rec; break; }
+                    }
+                    if (!target) bad(epath, "no such record to patch");
+                    for (const auto& f : entry.members) {
+                        if (f.first == idKey) continue;
+                        json::Value* t = member(*target, f.first);
+                        if (!t) bad(epath, "unknown field \"" + f.first + "\"");
+                        if (t->kind == json::Value::Kind::Object && f.second.kind == json::Value::Kind::Object) {
+                            for (const auto& nf : f.second.members) {
+                                json::Value* nt = member(*t, nf.first);
+                                if (!nt) bad(epath + "." + f.first, "unknown field \"" + nf.first + "\"");
+                                *nt = nf.second;
+                            }
+                        } else {
+                            *t = f.second;
+                        }
+                    }
+                }
+            } else {
+                bad(path, "expected patch or append");
+            }
+        }
+    }
+}
+
+// The stack's checksum covers the base and every overlay's exact bytes in order, so two peers with the same stack agree
+// and any changed byte shows. A pure function of the bytes: nothing reads a clock or the campaign RNG.
+inline std::uint64_t stackChecksum(std::uint64_t baseSum, const std::vector<PartRef>& parts) {
+    std::string text = "botf-base:" + checksumHex(baseSum) + "\n";
+    for (const auto& p : parts) text += p.id + ":" + checksumHex(p.checksum) + "\n";
+    return fnv1a64(text);
+}
+inline std::string stackId(const std::vector<PartRef>& parts) {
+    std::string id = "botf-base";
+    for (const auto& p : parts) id += "+" + p.id;
+    return id;
+}
+// The base bundle with each overlay merged in order, validated as one pack.
+inline std::unique_ptr<Pack> buildStack(std::string_view baseBytes, std::uint64_t baseSum, const std::vector<std::string_view>& overlays) {
+    json::Value doc = json::Parser(baseBytes).document();
+    std::vector<PartRef> parts;
+    std::size_t total = baseBytes.size();
+    for (const auto& bytes : overlays) {
+        const Overlay ov = parseOverlay(bytes);
+        for (const auto& p : parts) if (p.id == ov.id) bad("overlay " + ov.id, "listed twice in the stack");
+        for (const auto& need : ov.requires_) {
+            bool met = need == "botf-base";
+            for (const auto& p : parts) met = met || p.id == need;
+            if (!met) bad("overlay " + ov.id, "requires " + need + ", which must come earlier in the stack");
+        }
+        mergeOverlay(doc, ov);
+        parts.push_back({ov.id, ov.checksum});
+        total += ov.bytes;
+    }
+    auto pack = parsePackValue(doc);
+    pack->info.id = stackId(parts);
+    pack->info.name = "BOTF Remastered base content with " + std::to_string(parts.size()) + " overlay(s)";
+    pack->info.stack = parts;
+    pack->info.checksum = stackChecksum(baseSum, parts);
+    pack->info.bytes = total;
+    pack->info.base = false;
     return pack;
 }
 
@@ -657,6 +854,12 @@ inline const Pack& activate(std::unique_ptr<Pack> pack) {
     s.active = s.packs.back().get();
     return *s.active;
 }
+inline const Pack& activateStack(std::unique_ptr<Pack> pack) {
+    auto& s = state();
+    s.packs.push_back(std::move(pack));
+    s.active = s.packs.back().get();
+    return *s.active;
+}
 inline const Pack& pack() {
     auto& s = state();
     if (!s.active) activate(parsePack(embeddedBaseBundle()));
@@ -668,6 +871,16 @@ inline const Pack& pack() {
 inline const PackInfo& install(std::string_view bundleBytes) { return detail::activate(detail::parsePack(bundleBytes)).info; }
 inline const PackInfo& installBase() { return install(embeddedBaseBundle()); }
 inline const PackInfo& active() { return detail::pack().info; }
+// Installs the embedded base pack with these overlays merged over it, in order (no overlays = the base pack). Atomic: on
+// any error the active pack is unchanged. Idempotent: the stack that is already active is left in place.
+inline const PackInfo& installStack(const std::vector<std::string_view>& overlays) {
+    if (overlays.empty()) return installBase();
+    auto pack = detail::buildStack(embeddedBaseBundle(), detail::baseChecksumValue(), overlays);
+    const auto& now = active();
+    if (now.id == pack->info.id && now.checksum == pack->info.checksum) return now;
+    return detail::activateStack(std::move(pack)).info;
+}
+inline const Balance& balance() { return detail::pack().balance; }
 inline std::uint64_t baseChecksum() { return detail::baseChecksumValue(); }
 
 // Event text for GalacticEventKind index 0..6.

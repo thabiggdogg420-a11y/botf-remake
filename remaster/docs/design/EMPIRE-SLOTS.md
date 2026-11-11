@@ -20,7 +20,7 @@ fixed-width arrays. Code: `game/Source/BotfSim/EmpireSlots.h` (new), `Content.h`
 | AI | planners iterate `s.rivals` (already count-free); personality and doctrine come from the id | no change beyond the tables above |
 | Trade, victory | routes and victory read `s.rivals` and ownership sets | no change (checked) |
 | Tactical combat | cloak for legacy ships by `ownerId == 2 or 3`; encounter owner bounds `1..5` in the save validators | bounds 1..8; cloak rule unchanged (roster classes carry their own flag) |
-| Save | `RIVALS` count <= 4, `MINORS` six relation triples per minor, no lineup | `EMPIRE_SLOTS` section and nine triples, only when a slot above five is in play |
+| Save | `RIVALS` count <= 4, `MINORS` six relation triples per minor, no lineup | `EMPIRE_SLOTS` section and nine triples, only when a slot above five is in play (schema 18) |
 | Bridge / wasm API | `catalogueRaceOf` literal map, `meta.empires` loop 1..5 with a `Homes` array, `galaxyPreview` kind 6 = minor, `formerOwner <= 5`, `newCampaign` took only `empires` | `meta.empires` lists the 8 slots (key, capital, traits, donor); preview kind 9 = minor; `newCampaign` takes `lineup` (race keys) |
 | Godot client | `Lcars.PALETTES`/`COLORBLIND`/`FACTIONS` ids 1..5, the new-game power picker ("Powers in play" 2..5, canonical order), `title_vm` and `app.gd` token maps, `database_vm` race maps, `galaxy_preview` kinds, screenshot loop `id <= 5` | tables extended to 8, lineup picker, stand-ins (section 5) |
 | Fixtures | `godot/fixtures/*.json` carry `saveVersion 16`/`contentVersion` and five-empire meta | regenerated |
@@ -45,21 +45,32 @@ fixed-width arrays. Code: `game/Source/BotfSim/EmpireSlots.h` (new), `Content.h`
 * **Generic rules only.** The new races use the generic economy, research, combat, diplomacy and intelligence. Personality, doctrine and affinity entries for
   them are first-pass numbers (*design*, Simon can overturn). Dominion structures, Shapeshifter Network, Borg assimilation belong to MOD-3 and MOD-5.
 
-## 3. Save migration (schema 17)
+## 3. Save migration (schema 18)
 
-* Header `BOTF_SIM 17 remaster-17`. Schemas 14, 15 and 16 load: they are schema-17 text without the new section, and the loader rebuilds the exact
-  canonical text for the old header before accepting (the same trick as 14 to 16). Schemas 4 to 13 keep their older chain.
-* A campaign whose empires are all `<= 5` writes **exactly the schema-16 layout** (six relation triples per minor, no section): a default five-empire save
-  differs from the main-branch save only in the header line. That is also what keeps old saves loadable without a conversion step.
+MOD-2 was written as schema 17. MOD-1 (packs and presets) merged first and took 17 for its `PACKS` section, so this lane is **schema 18**
+(`BOTF_SIM 18 remaster-18`).
+
+* Schemas 14, 15, 16 and 17 load: each is schema-18 text without the new section, and the loader rebuilds the exact canonical text for the old
+  header before accepting (the same trick as 14 to 17). Flags: `legacy14..17`, `current18` (the `EMPIRE_SLOTS` section is legal), `current17`
+  (`current18` or `legacy17`: `PACKS` is legal), `current16` (`current17` or `legacy16`). Schemas 4 to 13 keep their older chain.
+* A campaign whose empires are all `<= 5` writes **exactly the schema-17 layout** (six relation triples per minor, no section): a default five-empire
+  save differs from the main-branch (schema 17) save only in the header line. That is also what keeps old saves loadable without a conversion step.
 * A campaign with any empire above 5 writes `EMPIRE_SLOTS 1 <n> <ids ascending>` directly before `MINORS` and nine triples per minor. The loader reads the
-  section if present, refuses it under a 14, 15 or 16 header, refuses a lineup that holds only ids `<= 5`, and checks the ids against the empires.
-* Self-contained: renumbering at merge means `SaveVersion`, `ContentVersion`, the `legacy16`/`current17` flags and the header strings in three tests.
+  section if present, refuses it under a 14, 15, 16 or 17 header, refuses a lineup that holds only ids `<= 5`, and checks the ids against the empires.
+* Self-contained: renumbering at a merge means `SaveVersion`, `ContentVersion`, the `legacy`/`current` flags and the header strings.
+
+## 3b. Presets (MOD-1 interface)
+
+`presets::MajorCap` is 8 and `presets::StockEmpires` names all eight races (Federation, Klingon, Romulan, Cardassian, Ferengi, Dominion, Borg, Breen).
+A preset lineup is any distinct subset in any order (it was positional), so Dominion War (Federation, Klingon, Romulan, Cardassian, Dominion) and
+Galaxies (Federation, Klingon, Romulan, Dominion, Borg) are `lineupPlayable: true`. The core's `newCampaign` still takes the lineup as race keys; the Godot
+picker (`pick_preset`) turns a preset's names into that lineup, and keeps a stock five-power preset on `empires`.
 
 ## 4. Tests and proof
 
 New suite `BotfEmpireSlotsTests` (`tests/scenarios/EmpireSlotsTests.cpp`): race table and lineup parsing; seating, capitals and relations; Dominion, Borg and Breen
 start, build, research, talk and fight; 50-turn AI soaks with 2, 5, 6 and 8 majors (determinism between two runs, save round trip every 10 turns, reload at turn 25);
-default-save layout; migration from 14, 15 and 16; forged sections refused. Default-game proof: `BotfSim` output (per-turn state hashes and `FINAL_HASH`) of this branch
+default-save layout; migration from 14, 15, 16 and 17; forged sections refused. Default-game proof: `BotfSim` output (per-turn state hashes and `FINAL_HASH`) of this branch
 against main `6e8d24a` for the same seeds, header excluded.
 
 ## 5. Client stand-ins (present systems do not cover them)
@@ -76,6 +87,5 @@ from the existing roster asset keys. The browser (TypeScript) client keeps its f
   empire would break the round-trip equality. The loops that fill them are guarded by "slot in the campaign" (`mirrorsSlot`, `campaignEmpire`).
 * **Stand-in hulls.** A donor hull is a visible oddity (a Borg player may queue Federation escorts). It is a temporary rule; MOD-3 and MOD-5 supply own utility ships.
 * **Balance.** Eight majors on a 50-system map crowd the galaxy; nothing here tunes economy or AI for it.
-* **Merge.** MOD-1 also bumps the schema and edits `CampaignSetup`; both edit `Content.h`/`races.json`. The migration block is self-contained and the
-  `lineup` field is plain data.
+* **Merge.** Done: MOD-1 (schema 17) is merged in and this lane renumbered to 18; `CampaignSetup` holds both `presetId` and `lineup`.
 * **Content hash.** `base.pack.json` and the embedded header changed (races, roster); non-base packs made on the old base need the five `major` blocks.

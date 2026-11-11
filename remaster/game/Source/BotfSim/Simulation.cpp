@@ -9,6 +9,8 @@
 #include "Content.h"
 #include "EmpireSlots.h"
 #include "ContentBase.generated.h"
+#include "ContentPresets.generated.h"
+#include "Presets.h"
 
 #include <algorithm>
 #include <array>
@@ -67,7 +69,10 @@ bool playableShip(const referenceData::ShipRecord& ship) {
         (ship.role >= 1 && ship.role <= 4));
 }
 int constructionCost(const Construction& project) {
-    return project.referenceId < 0 ? definition(project.product).industryCost : sourceShip(project.referenceId).industryCost;
+    if (project.referenceId < 0) return definition(project.product).industryCost;
+    const int percent = content::balance().shipCostPercent; // Pack balance; 100 is the identity.
+    const int cost = sourceShip(project.referenceId).industryCost;
+    return percent == 100 ? cost : std::max(1, static_cast<int>(static_cast<std::int64_t>(cost) * percent / 100));
 }
 std::string constructionTechBlocker(const GameState& state, const Construction& project, int owner);
 constexpr std::array<BuildingDefinition, 13> Definitions{{
@@ -3295,6 +3300,12 @@ std::string payload(const GameState& s) {
     // Content pack identity (docs/DATA-FORMAT.md section 7): written only when the active pack is not the base
     // pack, so base-content saves and fingerprints keep their exact pre-M0 text. It is inside the fingerprint.
     const auto& pack = content::active();
+    // Schema 17: the preset and the overlay stack (id and exact-bytes checksum of each), so a load can rebuild the stack.
+    if (!pack.stack.empty()) {
+        out << "PACKS " << (s.presetId.empty() ? "-" : s.presetId) << ' ' << pack.stack.size();
+        for (const auto& part : pack.stack) out << ' ' << part.id << ' ' << content::checksumHex(part.checksum);
+        out << '\n';
+    }
     if (!pack.base) out << "CONTENT " << pack.id << ' ' << content::checksumHex(pack.checksum) << '\n';
     return out.str();
 }
@@ -3725,7 +3736,10 @@ int researchCost(const GameState& state, int field, int nextLevel) {
     const auto& entry = referenceData::TechnologyCatalogue[static_cast<std::size_t>(field * 11 + nextLevel)];
     require(entry.field == field && entry.level == nextLevel && entry.cost >= 0 &&
         entry.cost <= std::numeric_limits<int>::max(), "Invalid sourced research cost");
-    return static_cast<int>(entry.cost);
+    // Pack balance (docs/design/PACKS-AND-PRESETS.md): the active pack's research-cost percentage; 100 is the identity.
+    const std::int64_t scaled = entry.cost * content::balance().researchCostPercent / 100;
+    require(scaled <= std::numeric_limits<int>::max(), "Invalid sourced research cost");
+    return static_cast<int>(scaled);
 }
 std::string technologyName(const GameState& state, int field, int level) {
     require(field >= 0 && field < ResearchFields && level >= 0 && level <= MaxTechLevel,
@@ -5341,11 +5355,14 @@ GameState deserialize(const std::string& text) {
     // differs from 16 only by the header and the optional EMPIRE_RULES section (never present in 14 or 15).
     const bool legacy14 = version == 14 && content == "remaster-14";
     const bool legacy15 = version == 15 && content == "remaster-15";
-    // Schema 16 differs from 17 only by the header and the optional EMPIRE_SLOTS section (never present in 16).
+    // Schema 16 differs from 17 only by the header and the optional PACKS section (never present in 16); schema 17 differs
+    // from 18 only by the header and the optional EMPIRE_SLOTS section (never present in 17).
     const bool legacy16 = version == 16 && content == "remaster-16";
-    const bool current17 = version == SaveVersion && content == ContentVersion;
-    const bool current16 = current17 || legacy16; // Sections added in schema 16 are legal from schema 16 on.
-    const bool current = current16 || legacy14 || legacy15; // Older text is a valid schema-17 layout without the newer sections.
+    const bool legacy17 = version == 17 && content == "remaster-17";
+    const bool current18 = version == SaveVersion && content == ContentVersion;
+    const bool current17 = current18 || legacy17;   // The PACKS section is legal from schema 17 on.
+    const bool current16 = current17 || legacy16;   // Has the schema-15 and 16 sections.
+    const bool current = current16 || legacy14 || legacy15; // Older text is a valid schema-18 layout without the newer sections.
     require(current || legacy7 || legacy8 || legacy9 || legacy10 || legacy11 || legacy12 || legacy13, "Unsupported save version");
     require(current || legacy7 || legacy8 || legacy9 || legacy10 || legacy11 || legacy12 || legacy13,
         "Incompatible prototype content");
@@ -5353,7 +5370,7 @@ GameState deserialize(const std::string& text) {
     require(checksumStart != std::string::npos, "Missing save checksum");
     const auto rawBody = text.substr(0, checksumStart);
     require(text.substr(checksumStart) == "CHECKSUM " + std::to_string(hashText(rawBody)) + "\n",
-        (legacy7 || legacy8 || legacy9 || legacy10 || legacy11 || legacy12 || legacy13 || legacy14 || legacy15 || legacy16) ? "Legacy save checksum mismatch" : "Save checksum mismatch");
+        (legacy7 || legacy8 || legacy9 || legacy10 || legacy11 || legacy12 || legacy13 || legacy14 || legacy15 || legacy16 || legacy17) ? "Legacy save checksum mismatch" : "Save checksum mismatch");
     GameState s;
     tag(in, "STATE");
     in >> s.seed >> s.rngState >> s.lastAcceptedCommand >> s.width >> s.height >> s.turn >> s.credits >> s.research;
@@ -5376,7 +5393,7 @@ GameState deserialize(const std::string& text) {
         std::string slotTag; const auto here = in.tellg();
         in >> slotTag;
         if (slotTag == "EMPIRE_SLOTS") {
-            require(current17, "Schema 17 section in an older save");
+            require(current18, "Schema 18 section in an older save");
             int slotVersion = 0, slotCount = 0; in >> slotVersion >> slotCount;
             require(slotVersion == 1 && slotCount >= 2 && slotCount <= MaxMajors, "Malformed EMPIRE_SLOTS section");
             int prior = 0;
@@ -5797,7 +5814,34 @@ GameState deserialize(const std::string& text) {
         parseCombatEvents(in, s);
         nextTag = readTag("Malformed save section after COMBAT_EVENTS");
     }
+    std::vector<content::PartRef> packRefs;
+    bool hasPacks = false;
+    if (nextTag == "PACKS") {   // Schema 17: preset and overlay stack. The stack is made active just before the content check.
+        require(current17, "Schema 17 section in an older save");
+        std::string preset;
+        std::size_t parts = 0;
+        require(static_cast<bool>(in >> preset >> parts) && !preset.empty() && parts >= 1 && parts <= 16, "Malformed PACKS section");
+        for (std::size_t i = 0; i < parts; ++i) {
+            std::string id, sum;
+            require(static_cast<bool>(in >> id >> sum) && content::detail::validPackId(id) && sum.size() == 16, "Malformed PACKS section");
+            std::uint64_t value = 0;
+            for (char ch : sum) {
+                const int digit = ch >= '0' && ch <= '9' ? ch - '0' : (ch >= 'a' && ch <= 'f' ? ch - 'a' + 10 : -1);
+                require(digit >= 0, "Malformed PACKS section");
+                value = (value << 4) | static_cast<std::uint64_t>(digit);
+            }
+            packRefs.push_back({id, value});
+        }
+        require(preset == "-" || content::detail::validPackId(preset), "Malformed PACKS section");
+        s.presetId = preset == "-" ? std::string() : preset;
+        hasPacks = true;
+        nextTag = readTag("Malformed save section after PACKS");
+    }
     {   // Content pack identity (docs/DATA-FORMAT.md section 7). A save replays only on the pack it was made with.
+        if (hasPacks) {
+            try { presets::ensureStack(packRefs); }
+            catch (const std::exception& e) { require(false, e.what()); }
+        }
         const auto& pack = content::active();
         const std::string activeText = pack.id + " (" + content::checksumHex(pack.checksum) + ")";
         if (nextTag == "CONTENT") {
@@ -5822,12 +5866,12 @@ GameState deserialize(const std::string& text) {
             (!s.modernEnginesActive || hasIntelOperations),
             current ? "Schema 14 save is missing a required section" : "Schema 13 save is missing a required section");
         std::string expected = payload(s);
-        if (legacy13 || legacy14 || legacy15 || legacy16) {
-            // Schema 13 text is the schema-14 payload of a campaign without recorded round orders; schema 14, 15 and 16 text are
-            // the schema-17 payload of a campaign without a galaxy setup / empire rules / lineup above slot five.
+        if (legacy13 || legacy14 || legacy15 || legacy16 || legacy17) {
+            // Schema 13 text is the schema-14 payload of a campaign without recorded round orders; schema 14 to 17 text are
+            // the schema-18 payload of a campaign without a galaxy setup / empire rules / preset packs / lineup above slot five.
             const std::string header = std::string("BOTF_SIM ") + std::to_string(SaveVersion) + ' ' + ContentVersion + '\n';
             require(expected.starts_with(header), "Malformed canonical payload header");
-            expected.replace(0, header.size(), legacy16 ? "BOTF_SIM 16 remaster-16\n" : legacy15 ? "BOTF_SIM 15 remaster-15\n" : legacy14 ? "BOTF_SIM 14 remaster-14\n" : "BOTF_SIM 13 remaster-13\n");
+            expected.replace(0, header.size(), legacy17 ? "BOTF_SIM 17 remaster-17\n" : legacy16 ? "BOTF_SIM 16 remaster-16\n" : legacy15 ? "BOTF_SIM 15 remaster-15\n" : legacy14 ? "BOTF_SIM 14 remaster-14\n" : "BOTF_SIM 13 remaster-13\n");
         }
         require(rawBody == expected, "Save is not in canonical format");
     } else if (legacy12) {
@@ -6585,6 +6629,29 @@ std::vector<int> activeEmpires(const GameState& state) {
 }
 } // namespace internal
 } // namespace botf
+
+namespace botf::presets {
+namespace {
+std::vector<std::string> assemble(const embedded::File* files, std::size_t count) {
+    std::vector<std::string> out;
+    for (std::size_t i = 0; i < count; ++i) {
+        std::string text;
+        for (std::size_t k = 0; k < files[i].count; ++k) text += files[i].lines[k];
+        out.push_back(std::move(text));
+    }
+    return out;
+}
+} // namespace
+// The shipped overlay and preset files (ContentPresets.generated.h), assembled once.
+const std::vector<std::string>& embeddedOverlayFiles() {
+    static const std::vector<std::string> files = assemble(embedded::OverlayFiles, sizeof(embedded::OverlayFiles) / sizeof(embedded::OverlayFiles[0]));
+    return files;
+}
+const std::vector<std::string>& embeddedPresetFiles() {
+    static const std::vector<std::string> files = assemble(embedded::PresetFiles, sizeof(embedded::PresetFiles) / sizeof(embedded::PresetFiles[0]));
+    return files;
+}
+} // namespace botf::presets
 
 namespace botf::content {
 // The base pack, assembled once from the generated header (docs/DATA-FORMAT.md section 6).

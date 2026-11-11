@@ -5,9 +5,19 @@ export type { RosterDetail, RosterWeapon } from './roster';
 
 export type Severity = 'info' | 'good' | 'warn' | 'alert';
 
+/** A new-game preset from the core's registry (docs/design/PACKS-AND-PRESETS.md). `options` are the screen defaults it fills. */
+export interface PresetInfo {
+  id: string; name: string; blurb: string; rulesBase: 'classic' | 'remastered';
+  overlays: string[]; flags: Record<string, boolean>; lineup: string[]; lineupPlayable: boolean; lineupNote: string; needs: string[];
+  options: {
+    empires?: number; era?: number; size?: 'small' | 'medium' | 'large' | 'huge'; shape?: string; minorDensity?: string; difficulty?: string;
+    events?: boolean; aiAggression?: boolean;
+  };
+}
 export interface Meta {
   contentVersion: string;
   saveVersion: number;
+  presets?: PresetInfo[];
   empires: { id: number; name: string; home: string; race: number }[];
   eras: { id: number; name: string; techLevel: number; prototypeTechLevel: number }[];
   researchFields: string[];
@@ -115,7 +125,7 @@ export interface Alert { kind: string; severity: Severity; text: string; systemI
 
 // ---- Schema-13 gameplay layer ----------------------------------------------------------------
 export interface RulesView {
-  preset: 'classic' | 'remastered'; presetName: string;
+  preset: string; presetName: string;
   stations: boolean; galaxyFeatures: boolean; curatedEvents: boolean; alternativeVictories: boolean;
 }
 export interface StationStatsView {

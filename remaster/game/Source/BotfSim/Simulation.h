@@ -20,11 +20,12 @@ namespace botf {
 // schema 15 adds the optional GALAXY_SETUP section (galaxy shape, minor-race density, difficulty;
 // docs/design/GALAXY-GENERATOR.md); schema 16 adds the empire rules (EmpireRules.h, docs/design/EMPIRE-RULES.md):
 // dilithium refineries, emergency programs, invasion aftermath, minor conquest and minor guard ships
-// (optional EMPIRE_RULES section); schema 17 generalises the empire slots (docs/design/EMPIRE-SLOTS.md): two to eight majors
-// with stable ids 1..8 (optional EMPIRE_SLOTS section, written only when an id above five is in play). Schemas 4-16 still
-// load and continue.
-inline constexpr const char* ContentVersion = "remaster-17";
-inline constexpr int SaveVersion = 17;
+// (optional EMPIRE_RULES section); schema 17 adds the new-game preset and its overlay packs (Presets.h,
+// docs/design/PACKS-AND-PRESETS.md; optional PACKS section); schema 18 generalises the empire slots (docs/design/EMPIRE-SLOTS.md):
+// two to eight majors with stable ids 1..8 (optional EMPIRE_SLOTS section, written only when an id above five is in play).
+// Schemas 4-17 still load and continue.
+inline constexpr const char* ContentVersion = "remaster-18";
+inline constexpr int SaveVersion = 18;
 // Campaign empire ids are race slots: 1 Federation, 2 Klingon, 3 Romulan, 4 Cardassian, 5 Ferengi, 6 Dominion, 7 Borg,
 // 8 Breen. A campaign seats two to eight of them (any subset); per-empire arrays are indexed by id, so they hold nine entries.
 inline constexpr int MaxMajors = 8;
@@ -533,6 +534,9 @@ struct GameState : EmpireState {
     // Schema 16 (all empty for older saves and when rules.empireRules is off):
     std::vector<AftermathChoice> aftermaths;
     std::vector<MinorGuard> minorGuards;
+    // Schema 17: the preset whose overlay packs this campaign plays on. Empty for a campaign on a plain pack, which
+    // includes the Classic and Remastered presets (they have no overlays). Saved in the optional PACKS section.
+    std::string presetId;
 };
 struct Economy {
     int food = 0, foodDeficit = 0, industry = 0, research = 0;
@@ -802,6 +806,9 @@ struct CampaignSetup {
     // "breen"), two to eight, in seating order. Empty keeps `empires` (slots 1..empires). When set it overrides `empires`, and
     // `playerEmpire` is the empire id (race slot) of a seated race.
     std::vector<std::string> lineup;
+    // Schema 17: a registered preset (Presets.h). When set, newCampaign installs its overlay stack as the active content,
+    // applies its rule flags over `preset`, and records it in the state. Empty keeps the content that is active.
+    std::string presetId;
 };
 // Star positions only (no names, planets or empires): the layout generate() would give this shape, so a setup
 // screen can preview the exact galaxy. Index 0 is Sol. Deterministic on every platform (integer arithmetic).
@@ -819,6 +826,8 @@ bool parseRulesetPreset(const std::string& text, RulesetPreset& preset); // "cla
 // Switches a freshly generated (turn 0) campaign to a preset, generating galaxy
 // features and the event deck when the preset enables them.
 void applyRulesetPreset(GameState& state, RulesetPreset preset);
+// The same for an explicit flag set (a preset's rules); applyRulesetPreset(state, p) is applyGameplayRules(state, rulesForPreset(p)).
+void applyGameplayRules(GameState& state, const GameplayRules& rules);
 
 // Stations (outposts and starbases).
 const Station* stationById(const GameState& state, int stationId);

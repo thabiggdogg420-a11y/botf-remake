@@ -1,0 +1,1 @@
+{"format":1,"kind":"overlay","id":"ultimate","name":"Ultimate overlay (UM5 Redux: research costs scaled back so the AI keeps pace; the rest arrives with lane MOD-7)","revision":1,"requires":["botf-base"],"balance":{"researchCostPercent":85}}

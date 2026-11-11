@@ -101,6 +101,34 @@ func _sum(a: Array) -> int:
 		t += int(x)
 	return t
 
+## The preset picker's model: the list, what a pick fills, the text, the options handed to the core. `nc` may have a core's
+## `meta.presets` (the full seven) or none (the two built-ins).
+func _preset_picker_model(nc: NewCampaignVM, label: String) -> void:
+	var ids: Array = nc.presets().map(func(p): return str(p["id"]))
+	check(ids.size() >= 2 and ids[0] == "classic" and ids[1] == "remastered", "%s: the picker leads with Classic and Remastered" % label)
+	check(nc.preset == "remastered" and nc.preset_def()["name"] == "Remastered" and nc.rules_base() == "remastered", "%s: Remastered is the default preset" % label)
+	check(nc.presets().all(func(p): return str(p["blurb"]) != "" and p.has("options") and p.has("lineup") and p.has("lineupPlayable")), "%s: every preset has a description, options and a lineup" % label)
+	check(not nc.pick_preset("no-such-preset") and nc.preset == "remastered", "%s: an unknown preset changes nothing" % label)
+	nc.size_id = "huge"
+	nc.era = 4
+	check(nc.pick_preset("classic") and nc.rules_base() == "classic" and nc.size_id == "medium" and nc.era == 1 and nc.shape == "elliptical", "%s: Classic fills size, era and shape" % label)
+	check(nc.options()["preset"] == "classic" and nc.options()["shape"] == "elliptical" and int(nc.options()["systems"]) == 50, "%s: the options carry the preset id and the filled values" % label)
+	nc.pick_faction(3)
+	check(nc.pick_preset("remastered") and nc.shape == "spiral" and nc.powers() >= 3, "%s: a pick never drops the powers in play below the faction" % label)
+	if ids.size() < 7:
+		check(nc.preset_text("remastered").contains("Powers:") and not nc.preset_text("remastered").contains("Not seated"), "%s: built-in text lists the powers and no pending note" % label)
+		return
+	check(ids == ["classic", "remastered", "dominion-war", "ages", "galaxies", "balance-of-power", "ultimate"], "%s: seven presets in screen order" % label)
+	check(nc.pick_preset("ultimate") and nc.size_id == "large" and nc.shape == "irregular" and nc.difficulty == "hard" and nc.minor_density == "many", "%s: Ultimate fills a hard, large, irregular galaxy" % label)
+	check(nc.options()["preset"] == "ultimate" and nc.options()["difficulty"] == "hard" and int(nc.options()["systems"]) == 80, "%s: Ultimate's options reach the core call" % label)
+	check(nc.pick_preset("galaxies") and nc.size_id == "huge" and int(nc.options()["systems"]) == 120 and nc.options()["preset"] == "galaxies", "%s: Galaxies is a huge galaxy" % label)
+	var gx := nc.preset_text("galaxies")
+	check(gx.contains("Borg") and gx.contains("Not seated yet") and gx.contains("MOD-2") and gx.contains("stock powers"), "%s: a lineup the core cannot seat says so, and what it waits for" % label)
+	check(nc.preset_text("dominion-war").contains("Dominion") and nc.preset_text("ultimate").contains("Content still to come: MOD-7"), "%s: preset text names its lineup and pending lanes" % label)
+	check(not nc.preset_text("ages").contains("Not seated") and nc.preset_text("ages").contains("MOD-4"), "%s: Ages seats the stock powers and waits for MOD-4" % label)
+	check(nc.summary()[1].contains("Galaxies preset"), "%s: the summary names the preset" % label)
+	check(nc.pick_preset("balance-of-power") and nc.rules_base() == "classic" and nc.size_id == "large", "%s: Balance of Power sits on the classic rules" % label)
+
 func _pure_models() -> void:
 	print("== pure models")
 	# campaign options: the empire alias (M0 bug)
@@ -128,6 +156,7 @@ func _pure_models() -> void:
 	for sz in NewCampaignVM.SIZES:
 		var dens := float(sz["systems"]) / float(int(sz["width"]) * int(sz["height"]))
 		check(dens > 0.13 and dens < 0.16 and int(sz["width"]) * int(sz["height"]) >= int(sz["systems"]), "size %s keeps the star density near 0.145 (%.3f)" % [sz["id"], dens])
+	_preset_picker_model(NewCampaignVM.new(null), "no core")
 	# diplomacy
 	check(DiplomacyVM.deadline(10, 10)[1] == "alert" and DiplomacyVM.deadline(10, 13)[1] == "dim", "deadline tones")
 	check(DiplomacyVM.proposal_title({"kind": "tribute", "creditDemand": 1500}) == "Tribute demand: ¢1,500", "tribute title formats credits")
@@ -340,6 +369,7 @@ func _m1_ui_models(s: AppSession) -> void:
 	nc.minor_density = "none"
 	check(nc.minors_count() == 0, "no minor races at density none")
 	check(NewCampaignVM.core_reads("seed") and NewCampaignVM.core_reads("shape") and NewCampaignVM.core_reads("minorDensity") and NewCampaignVM.core_reads("difficulty"), "the core reads shape, minor density and difficulty now: no option is marked pending")
+	_preset_picker_model(NewCampaignVM.new(s), "core")
 	nc.size_id = "medium"
 	for d in [["none", 0], ["few", 7], ["some", 12], ["many", 17]]:
 		nc.minor_density = d[0]
