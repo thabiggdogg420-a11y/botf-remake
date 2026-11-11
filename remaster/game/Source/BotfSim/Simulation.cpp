@@ -4972,6 +4972,7 @@ TurnReport advanceWithCombat(GameState& state, const std::function<void(GameStat
         }
     }
     std::sort(next.colonies.begin(), next.colonies.end(), [](const Colony& a, const Colony& b) { return a.systemId < b.systemId; });
+    if (next.rules.empireRules) empire_rules::afterInvasions(next, report, report.events); // Schema 15: aftermath choices
     next.fleets.insert(next.fleets.end(), launched.begin(), launched.end());
     reconcileTaskForces(next);
     gameplay::carryOver(next, moving, layerEffects, report);

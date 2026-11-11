@@ -172,6 +172,8 @@ func _draw_static(v: Dictionary) -> void:
 			var mc := Lcars.owner_color(int(minor.get("memberOf", 0))) if int(minor.get("memberOf", 0)) != 0 else Color("#d8c3ff")
 			var mk := Vector2(ring_r * 0.72, -ring_r * 0.72) + Vector2(7, -7)
 			Insignia.draw(self, "minor", Rect2(p + mk - Vector2(8, 8), Vector2(16, 16)), Color(mc, 0.95), "small", Lcars.BG)
+			if minor.has("guard"):
+				draw_arc(p + mk, 11.0, 0, TAU, 24, Color(Lcars.ALERT, 0.9), 1.6, true) # a signature ship stands guard
 		if labels_on:
 			var col: Color = owner_cols[owner] if owner != 0 else (Color(Lcars.TEXT2, 0.9) if charted else Color(Lcars.TEXT3, 0.85))
 			var name_ := str(s["name"]).to_upper()

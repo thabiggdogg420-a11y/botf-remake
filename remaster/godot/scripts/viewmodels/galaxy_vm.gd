@@ -48,6 +48,8 @@ func alert_target(a: Dictionary) -> Dictionary:
 		return {"do": "screen", "id": "diplomacy"}
 	if kind == "event":
 		return {"do": "overlay", "id": "events"}
+	if kind == "aftermath":
+		return {"do": "overlay", "id": "aftermath"}
 	return {}
 
 ## The galactic-events pill: {} when no event is active, else {text, tone, open, icon}.

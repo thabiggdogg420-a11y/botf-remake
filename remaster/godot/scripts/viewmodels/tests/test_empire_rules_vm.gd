@@ -1,5 +1,6 @@
 extends SceneTree
 ## View-model tests for the schema-15 empire rules (lane M2-EMPIRE, docs/design/EMPIRE-RULES.md): dilithium status,
+## emergency programs, the invasion aftermath modal, invading independent minors and signature-ship guards.
 ## Needs the native core (BotfCore); without it the suite reports SKIP and passes.
 ##   godot --headless --audio-driver Dummy --path remaster/godot -s res://scripts/viewmodels/tests/test_empire_rules_vm.gd
 
@@ -37,6 +38,8 @@ func _pure() -> void:
 	lines = SystemVM.dilithium_lines({"deposit": true, "refinery": true, "refineryPowered": true, "empireRefineries": 2, "empirePowered": 2, "slots": 2, "slotsUsed": 0, "klingonBonusPercent": 25})
 	check(lines.size() == 3 and str(lines[2]["text"]).contains("25%"), "the Klingon yard bonus is shown")
 	check(SystemVM.program_status({}) == "", "no program status when the rules are off")
+	var a := {"systemId": 7, "name": "Mars", "minor": "Bolian", "formerName": "Federation", "population": 9, "populationBefore": 12, "turnsLeft": 1}
+	check(OverlaysVM.aftermath_line(a).contains("Bolian") and OverlaysVM.aftermath_line(a).contains("1 turn,"), "the aftermath headline names the race and the deadline")
 
 func _dilithium_live() -> void:
 	print("== dilithium on the native core")

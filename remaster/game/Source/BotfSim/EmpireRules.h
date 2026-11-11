@@ -223,7 +223,9 @@ inline void applyProgramCommand(GameState& s, const Command& cmd) {
 }
 
 // Turn end: morale floor, the Police purge, then the clock. Runs after morale has drifted toward its target.
+inline void lapseAftermaths(GameState& s, std::vector<std::string>& events);
 inline void endOfTurn(GameState& s, TurnReport& report) {
+    lapseAftermaths(s, report.events);
     for (auto& c : s.colonies) {
         if (c.program == 0) continue;
         if (c.morale < 50) c.morale = 50;
@@ -255,12 +257,139 @@ inline void planPrograms(GameState& s, int ownerId) {
     }
 }
 
+
+// ---------------------------------------------------------------------------
+// (c) Invasion aftermath
+// ---------------------------------------------------------------------------
+inline const char* aftermathName(int option) {
+    switch (option) {
+    case 0: return "Liberate";
+    case 1: return "Subjugate";
+    case 2: return "Exterminate and recolonise";
+    default: return "";
+    }
+}
+inline const char* aftermathEffect(int option) {
+    switch (option) {
+    case 0: return "The world is freed and its race is independent again. Its attitude toward you rises by 30; every other race it knows warms by 5.";
+    case 1: return "Keep the world as taken: 80% of its people, morale 35, no other consequence.";
+    case 2: return "The population is cut to a tenth and settlers move in (morale 50, structures kept). Every contacted minor race resents you by 15 and every other power trusts you 10 less.";
+    default: return "";
+    }
+}
+
+inline const AftermathChoice* pendingAftermath(const GameState& s, int systemId) {
+    for (const auto& a : s.aftermaths) if (a.systemId == systemId) return &a;
+    return nullptr;
+}
+inline Minor* minorOf(GameState& s, int systemId) {
+    for (auto& m : s.minors) if (m.systemId == systemId) return &m;
+    return nullptr;
+}
+
+inline std::string aftermathBlocker(const GameState& s, const AftermathChoice& a, Aftermath o) {
+    const auto* colony = colonyAt(s, a.systemId);
+    if (!colony || colony->ownerId != a.conqueror) return "The world is no longer ours to decide";
+    const auto* m = minorAt(s, a.systemId);
+    if (o == Aftermath::Liberate && !m) return "Only a minor race's homeworld can be liberated";
+    if (o == Aftermath::Exterminate && m) return "The " + m->name + " would be wiped out; liberate or subjugate their world";
+    return {};
+}
+
+inline void adjustAttitude(Minor& m, int empireId, int delta) {
+    if (empireId >= 1 && empireId <= 5) m.attitude[static_cast<std::size_t>(empireId)] = std::clamp(m.attitude[static_cast<std::size_t>(empireId)] + delta, 0, 100);
+}
+
+// Applies the choice to the captured world. `events` gets player-visible lines (may be null).
+inline void applyAftermath(GameState& s, const AftermathChoice& a, Aftermath o, std::vector<std::string>* events) {
+    auto* colony = detail::colonyOf(s, a.systemId);
+    detail::require(colony != nullptr, "The world is gone");
+    const std::string name = [&] { for (const auto& sys : s.systems) if (sys.id == a.systemId) return sys.name; return std::string("the world"); }();
+    const std::string who = empireName(a.conqueror);
+    if (o == Aftermath::Liberate) {
+        auto* m = minorOf(s, a.systemId);
+        detail::require(m != nullptr, "No minor race lives here");
+        const int sid = a.systemId;
+        std::erase_if(s.colonies, [sid](const Colony& c) { return c.systemId == sid; });
+        std::erase_if(s.tradeRoutes, [sid](const TradeRoute& r) { return r.fromSystemId == sid || r.toSystemId == sid; });
+        std::erase_if(s.stationUpgrades, [sid](const StationUpgrade& u) { return u.fundingSystemId == sid; });
+        std::erase_if(s.megaprojects, [sid](const Megaproject& p) { return p.systemId == sid; });
+        m->memberOf = 0;
+        adjustAttitude(*m, a.conqueror, 30);
+        for (int e = 1; e <= 5; ++e) if (e != a.conqueror && m->contact[static_cast<std::size_t>(e)]) adjustAttitude(*m, e, 5);
+        if (events && (a.conqueror == s.playerEmpire || a.formerOwner == s.playerEmpire || m->contact[static_cast<std::size_t>(s.playerEmpire)]))
+            events->push_back(name + " was liberated by " + who + ": the " + m->name + " are independent again.");
+    } else if (o == Aftermath::Exterminate) {
+        colony->population = std::max(2, colony->population / 10);
+        colony->morale = 50;
+        trimWorkers(*colony);
+        for (auto& m : s.minors) if (m.contact[static_cast<std::size_t>(a.conqueror)]) adjustAttitude(m, a.conqueror, -15);
+        for (auto& r : s.majorRelations)
+            if (r.first == a.conqueror || r.second == a.conqueror) r.trust = std::max(0, r.trust - 10);
+        if (events && (a.conqueror == s.playerEmpire || a.formerOwner == s.playerEmpire))
+            events->push_back(name + " was cleansed by " + who + " and resettled.");
+    }
+    std::erase_if(s.aftermaths, [&](const AftermathChoice& p) { return p.systemId == a.systemId; });
+}
+
+inline Aftermath aiAftermath(const GameState& s, const AftermathChoice& a) {
+    if (a.conqueror == 1 && aftermathBlocker(s, a, Aftermath::Liberate).empty()) return Aftermath::Liberate;
+    if ((a.conqueror == 3 || a.conqueror == 4) && aftermathBlocker(s, a, Aftermath::Exterminate).empty()) {
+        const auto* colony = colonyAt(s, a.systemId);
+        if (colony && colony->population <= 12) return Aftermath::Exterminate;
+    }
+    return Aftermath::Subjugate;
+}
+
+// The player's ResolveAftermath order: eventOption 0 Liberate, 1 Subjugate, 2 Exterminate.
+inline void applyAftermathCommand(GameState& s, const Command& cmd) {
+    const auto* pending = pendingAftermath(s, cmd.systemId);
+    detail::require(pending != nullptr && pending->conqueror == s.playerEmpire, "No conquered world is waiting for a decision there");
+    const AftermathChoice a = *pending;
+    const auto o = static_cast<Aftermath>(cmd.eventOption);
+    if (const auto problem = aftermathBlocker(s, a, o); !problem.empty()) throw std::runtime_error(problem);
+    applyAftermath(s, a, o, nullptr);
+}
+
+// After a turn's invasions: the player's conquests wait for a choice (Subjugate if ignored); the AI decides at once.
+inline void afterInvasions(GameState& s, const TurnReport& report, std::vector<std::string>& events) {
+    for (const auto& inv : report.invasions) {
+        if (!inv.conquered || inv.turn != s.turn) continue;
+        const auto* colony = colonyAt(s, inv.systemId);
+        if (!colony || colony->ownerId != inv.attackerOwner) continue;
+        AftermathChoice a;
+        a.systemId = inv.systemId; a.conqueror = inv.attackerOwner; a.formerOwner = inv.defenderOwner;
+        a.turn = s.turn; a.populationBefore = colony->population + inv.casualties;
+        if (a.conqueror == s.playerEmpire) {
+            std::erase_if(s.aftermaths, [&](const AftermathChoice& p) { return p.systemId == a.systemId; });
+            s.aftermaths.push_back(a);
+            events.push_back("Decide the fate of the conquered world: " + [&] { for (const auto& sys : s.systems) if (sys.id == a.systemId) return sys.name; return std::string("a world"); }() + ".");
+        } else {
+            applyAftermath(s, a, aiAftermath(s, a), &events);
+        }
+    }
+}
+
+// Turn end: a choice nobody made lapses to Subjugate; one whose world changed hands is dropped.
+inline void lapseAftermaths(GameState& s, std::vector<std::string>& events) {
+    std::erase_if(s.aftermaths, [&](const AftermathChoice& a) {
+        const auto* colony = colonyAt(s, a.systemId);
+        if (!colony || colony->ownerId != a.conqueror) return true;
+        if (s.turn >= a.turn + AftermathLapseTurns) {
+            events.push_back("No decision was made about " + std::string([&] { for (const auto& sys : s.systems) if (sys.id == a.systemId) return sys.name; return std::string("the conquered world"); }()) + ": it stays subjugated.");
+            return true;
+        }
+        return false;
+    });
+}
+
 // ---------------------------------------------------------------------------
 // Commands
 // ---------------------------------------------------------------------------
 inline void applyCommand(GameState& s, const Command& cmd) {
     detail::require(enabled(s), "Empire rules are off in this campaign");
     if (cmd.type == CommandType::SetEmergencyProgram) { applyProgramCommand(s, cmd); return; }
+    if (cmd.type == CommandType::ResolveAftermath) { applyAftermathCommand(s, cmd); return; }
     throw std::runtime_error("Unknown empire-rule command");
 }
 
@@ -285,6 +414,12 @@ inline void validate(const GameState& s) {
             detail::require(c.refineries == 0 && c.program == 0 && c.programTurns == 0, "Empire-rule colony state without empire rules");
         detail::require(s.aftermaths.empty() && s.minorGuards.empty(), "Empire-rule state without empire rules");
         return;
+    }
+    std::set<int> waiting;
+    for (const auto& a : s.aftermaths) {
+        const auto* colony = colonyAt(s, a.systemId);
+        detail::require(colony && colony->ownerId == a.conqueror && a.conqueror == s.playerEmpire && a.turn >= 0 && a.turn <= s.turn &&
+            a.populationBefore >= 0 && waiting.insert(a.systemId).second, "Invalid pending aftermath choice");
     }
     for (const auto& c : s.colonies) {
         detail::require(c.refineries >= 0 && c.refineries <= 1, "Refinery count out of bounds");

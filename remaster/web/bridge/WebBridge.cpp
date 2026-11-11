@@ -286,6 +286,10 @@ std::string describeCommand(const botf::GameState& s, const botf::Command& c) {
     case botf::CommandType::AssignWorkers:
         return systemLabel(s, c.systemId) + ": staff " + std::to_string(c.foodWorkers) + " food / " + std::to_string(c.industryWorkers) +
             " industry / " + std::to_string(c.researchWorkers) + " research";
+    case botf::CommandType::SetEmergencyProgram:
+        return systemLabel(s, c.systemId) + (c.eventOption == 0 ? ": lift the emergency program" : ": " + std::string(botf::empire_rules::programName(c.eventOption)));
+    case botf::CommandType::ResolveAftermath:
+        return systemLabel(s, c.systemId) + ": " + botf::empire_rules::aftermathName(c.eventOption);
     case botf::CommandType::EnqueueBuilding:
         return systemLabel(s, c.systemId) + ": build " + constructionLabel(s, botf::Construction(c.building, 0, c.referenceId));
     case botf::CommandType::MoveFleet: return fleet(c.fleetId) + ": set course for " + place(c.targetX, c.targetY);
@@ -990,6 +994,27 @@ void writeView(Writer& w) {
     w.endArray();
     w.endObject();
 
+    // --- schema 15: conquered worlds waiting for the player's aftermath decision
+    w.key("aftermaths").beginArray();
+    for (const auto& a : d.aftermaths) {
+        const auto* minor = botf::minorAt(d, a.systemId);
+        const auto* colony = botf::colonyAt(d, a.systemId);
+        w.beginObject().field("systemId", a.systemId).field("name", systemLabel(d, a.systemId))
+            .field("conqueror", a.conqueror).field("formerOwner", a.formerOwner)
+            .field("formerName", a.formerOwner >= 1 && a.formerOwner <= 5 ? empireLabel(a.formerOwner) : std::string(minor ? minor->name : "natives"))
+            .field("minor", minor ? minor->name : std::string()).field("turn", a.turn)
+            .field("turnsLeft", std::max(0, a.turn + botf::empire_rules::AftermathLapseTurns - d.turn))
+            .field("populationBefore", a.populationBefore).field("population", colony ? colony->population : 0);
+        w.key("options").beginArray();
+        for (int o = 0; o < 3; ++o)
+            w.beginObject().field("id", o).field("name", botf::empire_rules::aftermathName(o))
+                .field("effect", botf::empire_rules::aftermathEffect(o))
+                .field("blocker", botf::empire_rules::aftermathBlocker(d, a, static_cast<botf::empire_rules::Aftermath>(o))).endObject();
+        w.endArray();
+        w.endObject();
+    }
+    w.endArray();
+
     // --- fog grid: 0 unknown, 1 explored, 2 in sensor range
     std::string fog(static_cast<std::size_t>(s.width * s.height), '0');
     for (int y = 0; y < s.height; ++y) for (int x = 0; x < s.width; ++x) {
@@ -1206,6 +1231,9 @@ void writeView(Writer& w) {
         w.beginObject().field("kind", "event").field("severity", "warn").field("eventId", e.id)
             .field("text", std::string(botf::galacticEventName(e.kind)) + ": decision needed by turn " + std::to_string(e.choiceDeadline)).endObject();
     }
+    for (const auto& a : d.aftermaths)
+        w.beginObject().field("kind", "aftermath").field("severity", "warn")
+            .field("text", "Decide the fate of the conquered world " + systemLabel(d, a.systemId)).endObject();
     for (const auto& f : d.fleets)
         if (f.ownerId == me && (f.x != f.targetX || f.y != f.targetY) && botf::route(d, f, f.targetX, f.targetY).empty())
             w.beginObject().field("kind", "route").field("severity", "warn").field("fleetId", f.id)

@@ -288,6 +288,91 @@ int main() {
         check(pl.pending.size() == 1 && pl.pending[0].eventOption == 1 && serialize(pl) == pt, "pending order survives save");
     }, passed);
 
+
+    // ---------------------------------------------------------------- (c) invasion aftermath
+    auto makeWar = [](GameState& s, int a, int b) {
+        for (auto& r : s.majorRelations)
+            if ((r.first == a && r.second == b) || (r.first == b && r.second == a)) { r.atWar = true; r.contact = true; }
+    };
+    auto addTransport = [](GameState& s, int owner, int x, int y, int hull = 14) {
+        Fleet f{}; f.id = s.nextFleetId++; f.ownerId = owner; f.x = x; f.y = y; f.targetX = x; f.targetY = y;
+        f.shipClass = Building::Transport; f.hull = hull;
+        s.fleets.push_back(f);
+        const int cell = y * s.width + x;
+        if (std::find(s.explored.begin(), s.explored.end(), cell) == s.explored.end()) { s.explored.push_back(cell); std::sort(s.explored.begin(), s.explored.end()); }
+        return f.id;
+    };
+    // Invades a frail enemy colony until a seed wins; returns the state at the start of the turn after the capture.
+    auto conquer = [&](int attacker, int defender, std::uint64_t seed) {
+        for (std::uint64_t attempt = 0; attempt < 40; ++attempt) {
+            CampaignSetup setup; setup.seed = seed; setup.empires = 5; setup.playerEmpire = attacker;
+            auto s = newCampaign(setup);
+            makeWar(s, attacker, defender);
+            auto& c = addColony(s, defender);
+            c.population = 6; c.morale = 0; c.foodWorkers = 3; c.industryWorkers = 0; c.researchWorkers = 0;
+            const int sid = c.systemId;
+            const System* sys = nullptr;
+            for (const auto& x : s.systems) if (x.id == sid) sys = &x;
+            const int fid = addTransport(s, attacker, sys->x, sys->y, 60);
+            for (auto& f : s.fleets) if (f.id == fid) f.invadeSystemId = sid;
+            s.rngState += attempt * 7919;
+            advance(s);
+            if (colonyAt(s, sid) && colonyAt(s, sid)->ownerId == attacker) return std::pair<GameState, int>(std::move(s), sid);
+        }
+        throw std::runtime_error("no invasion succeeded in 40 tries");
+    };
+
+    run("aftermath: a player conquest waits for a choice and Subjugate keeps it", [&] {
+        auto [s, sid] = conquer(1, 2, 123);
+        check(s.aftermaths.size() == 1 && s.aftermaths[0].systemId == sid && s.aftermaths[0].conqueror == 1, "choice queued");
+        const int pop = colonyAt(s, sid)->population;
+        submit(s, Command{.id = nextId(s), .type = CommandType::ResolveAftermath, .systemId = sid, .eventOption = 1});
+        advance(s);
+        check(s.aftermaths.empty() && colonyAt(s, sid)->ownerId == 1 && colonyAt(s, sid)->population >= pop - 1, "subjugated colony kept");
+    }, passed);
+
+    run("aftermath: Exterminate cuts the population, resettles it and costs standing", [&] {
+        auto [s, sid] = conquer(1, 2, 124);
+        s.colonies.size();
+        // Give the world some population first so the cut is visible, then choose.
+        colonyOf(s, sid).population = 40; colonyOf(s, sid).foodWorkers = 20; colonyOf(s, sid).industryWorkers = 10; colonyOf(s, sid).researchWorkers = 10;
+        int trustBefore = 0;
+        for (const auto& r : s.majorRelations) if (r.first == 1 || r.second == 1) trustBefore += r.trust;
+        submit(s, Command{.id = nextId(s), .type = CommandType::ResolveAftermath, .systemId = sid, .eventOption = 2});
+        const auto d = preview(s);
+        check(colonyAt(d, sid)->population == 4 && colonyAt(d, sid)->morale == 50, "population cut to a tenth, morale 50");
+        int trustAfter = 0;
+        for (const auto& r : d.majorRelations) if (r.first == 1 || r.second == 1) trustAfter += r.trust;
+        check(trustAfter < trustBefore, "other powers trust the conqueror less");
+        rejects([&] { botf::GameState t = s; submit(t, Command{.id = nextId(t), .type = CommandType::ResolveAftermath, .systemId = sid, .eventOption = 0}); preview(t); },
+            "liberating a non-minor world accepted", "Only a minor race's homeworld");
+    }, passed);
+
+    run("aftermath: an undecided choice lapses to Subjugate after three turns", [&] {
+        auto [s, sid] = conquer(1, 2, 125);
+        check(s.aftermaths.size() == 1, "waiting");
+        for (int i = 0; i < 4 && !s.aftermaths.empty(); ++i) advance(s);
+        check(s.aftermaths.empty() && colonyAt(s, sid)->ownerId == 1, "lapsed with the world still ours");
+    }, passed);
+
+    run("aftermath: the AI decides at once, by race", [&] {
+        auto [s, sid] = conquer(3, 1, 126);          // Romulan conqueror of a 6-pop world: exterminates (12 or fewer)
+        check(s.aftermaths.empty(), "an AI conquest queues no player choice");
+        check(colonyAt(s, sid)->population <= 4 || colonyAt(s, sid)->ownerId == 3, "Romulan settled the cleansed world");
+        auto [k, ksid] = conquer(2, 1, 127);          // Klingons subjugate
+        check(colonyAt(k, ksid)->ownerId == 2 && colonyAt(k, ksid)->population >= 3, "Klingon kept the world");
+    }, passed);
+
+    run("aftermath: a pending choice survives save and load", [&] {
+        auto [s, sid] = conquer(1, 2, 128);
+        const auto text = serialize(s);
+        const auto loaded = deserialize(text);
+        check(loaded.aftermaths.size() == 1 && serialize(loaded) == text, "pending aftermath saved");
+        auto bad = s;
+        bad.aftermaths[0].conqueror = 2;
+        rejects([&] { validate(bad); }, "aftermath for a world we do not hold accepted");
+    }, passed);
+
     run("empire rules: save round trip, schema 14 migration and canonical form", [] {
         auto s = fresh(9);
         for (int t = 0; t < 5; ++t) advance(s);

@@ -63,6 +63,23 @@ func choice_block(o: Dictionary) -> String:
 func resolve_event_choice(e: Dictionary, o: Dictionary) -> bool:
 	return issue({"type": "ResolveEventChoice", "eventId": int(e["id"]), "eventOption": int(o["index"])}, e.get("draftIds", []), "%s: “%s” takes effect next turn." % [e["name"], o["label"]])
 
+## Conquered worlds waiting for the player's Liberate / Subjugate / Exterminate decision (schema 15).
+func aftermaths() -> Array:
+	return view().get("aftermaths", [])
+
+func aftermath_block(o: Dictionary) -> String:
+	return "Finish the battle in progress first" if session.battle_active() else str(o.get("blocker", ""))
+
+func resolve_aftermath(a: Dictionary, o: Dictionary) -> bool:
+	return issue({"type": "ResolveAftermath", "systemId": int(a["systemId"]), "eventOption": int(o["id"])}, [], "%s: %s." % [a["name"], str(o["name"]).to_lower()])
+
+## The headline of one aftermath card.
+static func aftermath_line(a: Dictionary) -> String:
+	var who := str(a.get("minor", ""))
+	if who == "":
+		who = str(a.get("formerName", "the defenders"))
+	return "Taken from %s: %d of %d people remain. Decide within %d turn%s, or the world stays subjugated." % [who, int(a.get("population", 0)), int(a.get("populationBefore", 0)), int(a.get("turnsLeft", 0)), "" if int(a.get("turnsLeft", 0)) == 1 else "s"]
+
 ## End of game: {won, winner, reason, stats: [[label, value]]}.
 func end_summary(outcome: String) -> Dictionary:
 	var v := view()
