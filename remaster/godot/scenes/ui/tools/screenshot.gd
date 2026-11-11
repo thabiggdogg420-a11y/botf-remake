@@ -2,7 +2,7 @@ extends SceneTree
 ## Renders UI screenshots (needs a display: run under xvfb-run with --rendering-driver opengl3).
 ##   godot --path remaster/godot --rendering-driver opengl3 --resolution 1920x1080 \
 ##     -s res://scenes/ui/tools/screenshot.gd -- <out_dir> [shot ...]
-## Shots: title new galaxy galaxy-menu system research fleets empire diplomacy intel database combat briefing events victory end settings saves
+## Shots: title new new-dominion-war new-galaxies new-ultimate (the preset picker with that preset chosen) galaxy galaxy-menu system research fleets empire diplomacy intel database combat briefing events victory end settings saves
 ## Battle: battle-plan (plan phase, no round yet) battle-r1 battle-r3, and the camera modes battle-overview battle-chase battle-ship battle-target battle-topdown
 ## battle-cinematic battle-free (BattleCamera), and the close-ups battle-closeup (the player's flagship fills the frame;
 ## SHOT_CLASS=<ship class name> frames the first ship of that class instead, e.g. Galaxy or "Negh'Var").
@@ -157,6 +157,14 @@ func _prepare(s: String) -> void:
 		"new":
 			app.view = {}
 			app.goto("new")
+		"new-dominion-war", "new-galaxies", "new-ultimate":
+			# The preset picker with one mod preset chosen (the options it sets are filled in).
+			app.view = {}
+			app.goto("new")
+			await _wait(2)
+			var picker = app.current_screen()
+			picker.vm.pick_preset(s.trim_prefix("new-"))
+			picker.refresh()
 		"saves":
 			app.goto("saves")
 		"galaxy":

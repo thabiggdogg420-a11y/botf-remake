@@ -474,6 +474,36 @@ test('expanded ship roster: database, build options and typed weapon mounts', ()
   assert.ok(!call('colony', { systemId: c.colonies[0].systemId }).choices.some((x) => x.referenceId >= 1000));
 });
 
+test('presets: the registry, a stacked game, a save that carries its packs, and the plain pack coming back', () => {
+  const list = call('listPresets');
+  assert.deepEqual(list.map((p) => p.id), ['classic', 'remastered', 'dominion-war', 'ages', 'galaxies', 'balance-of-power', 'ultimate']);
+  assert.equal(call('meta').presets.length, list.length, 'meta carries the presets');
+  assert.ok(list.every((p) => p.blurb && p.options && typeof p.lineupPlayable === 'boolean'));
+  assert.equal(list.find((p) => p.id === 'galaxies').lineupPlayable, false, 'a lineup the core cannot seat is reported');
+  assert.equal(list.find((p) => p.id === 'ultimate').lineupPlayable, true);
+  assert.equal(attempt('newCampaign', { preset: 'no-such-preset', faction: 1, empires: 2, seed: 1 }).ok, false);
+  const camp = { faction: 1, empires: 3, seed: 7, era: 1, ruleset: 'reference', width: 16, height: 13, systems: 30, preset: 'ultimate' };
+  const v = call('newCampaign', camp);
+  assert.equal(v.meta.rules.preset, 'ultimate');
+  const info = call('contentInfo');
+  assert.equal(info.id, 'botf-base+ultimate');
+  assert.equal(info.stack.length, 1);
+  for (let i = 0; i < 3; i++) endTurn();
+  const fp = call('fingerprint');
+  const save = call('save');
+  assert.ok(String(save.data).includes('PACKS ultimate 1 ultimate '), 'the save records its packs');
+  call('loadBaseContent');
+  assert.equal(call('contentInfo').base, true);
+  call('load', { data: save.data });
+  assert.equal(call('contentInfo').id, 'botf-base+ultimate', 'load rebuilds the stack');
+  assert.equal(call('fingerprint'), fp, 'the loaded game has the saved fingerprint');
+  call('newCampaign', { ...camp, preset: 'remastered' });
+  assert.equal(call('contentInfo').base, true, 'a built-in preset restores the base pack');
+  const reg = call('registerOverlay', { bytes: '{"format":1,"kind":"overlay","id":"web-test","name":"t","revision":1,"requires":["botf-base"]}' });
+  assert.equal(reg.id, 'web-test');
+  assert.equal(attempt('registerOverlay', { bytes: '{"format":1,"kind":"overlay","id":"web-test","name":"t2","revision":1,"requires":["botf-base"]}' }).ok, false, 'same id, other bytes');
+});
+
 test('tactical rules 3: rounds carry the core combat event stream and ships their mounts', () => {
   call('newBattleDrill', { station: true });   // Remastered preset -> flight model (rules 3)
   assert.equal(call('endTurn').status, 'battle');
@@ -507,36 +537,6 @@ test('tactical rules 3: rounds carry the core combat event stream and ships thei
   const r2 = call('tacticalRound');
   assert.equal(r2.rules, 2);
   assert.deepEqual(r2.rounds[0].events, []);
-});
-
-test('presets: the registry, a stacked game, a save that carries its packs, and the plain pack coming back', () => {
-  const list = call('listPresets');
-  assert.deepEqual(list.map((p) => p.id), ['classic', 'remastered', 'dominion-war', 'ages', 'galaxies', 'balance-of-power', 'ultimate']);
-  assert.equal(call('meta').presets.length, list.length, 'meta carries the presets');
-  assert.ok(list.every((p) => p.blurb && p.options && typeof p.lineupPlayable === 'boolean'));
-  assert.equal(list.find((p) => p.id === 'galaxies').lineupPlayable, false, 'a lineup the core cannot seat is reported');
-  assert.equal(list.find((p) => p.id === 'ultimate').lineupPlayable, true);
-  assert.equal(attempt('newCampaign', { preset: 'no-such-preset', faction: 1, empires: 2, seed: 1 }).ok, false);
-  const camp = { faction: 1, empires: 3, seed: 7, era: 1, ruleset: 'reference', width: 16, height: 13, systems: 30, preset: 'ultimate' };
-  const v = call('newCampaign', camp);
-  assert.equal(v.meta.rules.preset, 'ultimate');
-  const info = call('contentInfo');
-  assert.equal(info.id, 'botf-base+ultimate');
-  assert.equal(info.stack.length, 1);
-  for (let i = 0; i < 3; i++) endTurn();
-  const fp = call('fingerprint');
-  const save = call('save');
-  assert.ok(String(save.data).includes('PACKS ultimate 1 ultimate '), 'the save records its packs');
-  call('loadBaseContent');
-  assert.equal(call('contentInfo').base, true);
-  call('load', { data: save.data });
-  assert.equal(call('contentInfo').id, 'botf-base+ultimate', 'load rebuilds the stack');
-  assert.equal(call('fingerprint'), fp, 'the loaded game has the saved fingerprint');
-  call('newCampaign', { ...camp, preset: 'remastered' });
-  assert.equal(call('contentInfo').base, true, 'a built-in preset restores the base pack');
-  const reg = call('registerOverlay', { bytes: '{"format":1,"kind":"overlay","id":"web-test","name":"t","revision":1,"requires":["botf-base"]}' });
-  assert.equal(reg.id, 'web-test');
-  assert.equal(attempt('registerOverlay', { bytes: '{"format":1,"kind":"overlay","id":"web-test","name":"t2","revision":1,"requires":["botf-base"]}' }).ok, false, 'same id, other bytes');
 });
 
 console.log(`${passed} bridge tests passed`);
