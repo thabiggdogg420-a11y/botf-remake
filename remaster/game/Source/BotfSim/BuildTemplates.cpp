@@ -2,6 +2,7 @@
 // empire can apply to any colony, plus an optional default template applied to
 // newly acquired colonies whose queues are empty. Deterministic: items that are
 // illegal when applied are skipped with a reason, never reordered.
+#include "EmpireRules.h"
 #include "GameplayInternal.h"
 #include "ShipRoster.h"
 
@@ -17,7 +18,7 @@ constexpr int TemplateLimit = 80;
 void checkTemplateItems(const Command& c) {
     require(!c.templateItems.empty() && c.templateItems.size() <= TemplateItemLimit, "Templates hold 1-32 projects");
     for (const auto& item : c.templateItems) {
-        require(static_cast<int>(item.product) >= 0 && static_cast<int>(item.product) <= static_cast<int>(Building::DefenseBattery),
+        require(static_cast<int>(item.product) >= 0 && static_cast<int>(item.product) <= static_cast<int>(Building::DilithiumRefinery),
             "Unknown template project");
         require(item.work == 0 && !item.pinned && (item.referenceId == -1 || roster::validShipId(item.referenceId)),
             "Invalid template project fields");
@@ -25,7 +26,7 @@ void checkTemplateItems(const Command& c) {
 }
 
 std::string templateItemProblem(const GameState& s, int owner, const Construction& item) {
-    if (static_cast<int>(item.product) < 0 || static_cast<int>(item.product) > static_cast<int>(Building::DefenseBattery))
+    if (static_cast<int>(item.product) < 0 || static_cast<int>(item.product) > static_cast<int>(Building::DilithiumRefinery))
         return "Unknown project";
     if (item.referenceId >= 0) {
         if (s.ruleset != Ruleset::Reference) return "Named ship classes need a reference campaign";
@@ -82,6 +83,9 @@ int appendTemplate(const GameState& s, Colony& colony, const BuildTemplate& tmpl
         if (item.product == Building::Shipyard && colony.shipyards + queuedCount(Building::Shipyard) >= 1) { skip("shipyard already built or queued"); continue; }
         if (item.product == Building::DefenseBattery && colony.defenseBatteries + queuedCount(Building::DefenseBattery) >= 10) {
             skip("defense batteries at capacity"); continue;
+        }
+        if (item.product == Building::DilithiumRefinery) {
+            if (const auto problem = empire_rules::refineryBlocker(s, colony); !problem.empty()) { skip(problem); continue; }
         }
         if (isShip(item.product) && colony.shipyards + queuedCount(Building::Shipyard) < 1) { skip("needs a shipyard"); continue; }
         colony.queue.push_back(project);

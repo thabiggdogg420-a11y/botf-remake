@@ -173,14 +173,13 @@ int main(int argc, char** argv) {
     run("save: GALAXY_SETUP round trips, schema 14 loads, a bad section is refused", [] {
         const auto s = botf::newCampaign(setupFor(Sizes[1], 12, botf::GalaxyShape::Elliptical, botf::MinorDensity::Few, botf::Difficulty::Impossible));
         const auto text = botf::serialize(s);
-        check(text.starts_with("BOTF_SIM 15 remaster-15\n") && text.find("\nGALAXY_SETUP 4 2 4\n") != std::string::npos, "section written");
+        check(text.starts_with("BOTF_SIM 16 remaster-16\n") && text.find("\nGALAXY_SETUP 4 2 4\n") != std::string::npos, "section written");
         const auto back = botf::deserialize(text);
         check(back.galaxy == s.galaxy && botf::fingerprint(back) == botf::fingerprint(s), "round trip keeps the setup and the fingerprint");
         auto later = back; botf::advance(later);
         check(botf::deserialize(botf::serialize(later)).galaxy == s.galaxy, "still there after a turn");
         // A game with the default setup writes no section, and its schema-14 text loads.
-        botf::CampaignSetup plain; plain.seed = 5;
-        const auto p = botf::newCampaign(plain);
+        const auto p = botf::generateCampaign(5, 3); // no empire rules, so its text is a valid schema-14 layout
         auto old = botf::serialize(p);
         check(old.find("GALAXY_SETUP") == std::string::npos, "default setup writes no section");
         old.replace(0, old.find('\n') + 1, "BOTF_SIM 14 remaster-14\n");
@@ -197,8 +196,8 @@ int main(int argc, char** argv) {
             try { botf::deserialize(withChecksum(t)); } catch (const std::exception&) { rejected = true; }
             return rejected;
         };
-        check(forge("GALAXY_SETUP 9 2 4", "BOTF_SIM 15 remaster-15\n"), "range checked");
-        check(forge("GALAXY_SETUP 0 0 2", "BOTF_SIM 15 remaster-15\n"), "default setup is never written");
+        check(forge("GALAXY_SETUP 9 2 4", "BOTF_SIM 16 remaster-16\n"), "range checked");
+        check(forge("GALAXY_SETUP 0 0 2", "BOTF_SIM 16 remaster-16\n"), "default setup is never written");
         check(forge("GALAXY_SETUP 4 2 4", "BOTF_SIM 14 remaster-14\n"), "not in a schema-14 file");
     }, passed);
 

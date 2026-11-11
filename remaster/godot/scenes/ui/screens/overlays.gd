@@ -14,6 +14,7 @@ static func open(app: App, kind: String) -> Control:
 	match kind:
 		"briefing": return briefing(app)
 		"events": return events(app)
+		"aftermath": return aftermath(app)
 		"victory": return victory(app)
 		"end": return end_screen(app)
 		"menu": return menu(app)
@@ -144,6 +145,50 @@ static func _open_event(app: App, e: Dictionary) -> void:
 			s.focus_cell(int(e["x"]), int(e["y"]))
 
 # ---------------------------------------------------------------------------------------------
+## The invasion aftermath modal (schema 15): one card per conquered world, one button per option.
+static func aftermath(app: App) -> Control:
+	var vm := _vm(app)
+	var items := vm.aftermaths()
+	var root := Lcars.vbox(12)
+	root.name = "Aftermath"
+	if items.is_empty():
+		root.add_child(Lcars.empty_note("No conquered world is waiting for a decision."))
+		root.add_child(Lcars.pill("Close", "ghost", func(): app.close_modal(), "", "", "Esc"))
+		return app.open_modal(root, "Invasion aftermath", Vector2(560, 0), "alert")
+	for a in items:
+		var c := Lcars.card()
+		c.custom_minimum_size = Vector2(760, 0)
+		var col := Lcars.vbox(6)
+		c.add_child(col)
+		col.add_child(Lcars.label(str(a["name"]).to_upper(), "SubHeading", 22, Lcars.TEXT))
+		col.add_child(Lcars.para(OverlaysVM.aftermath_line(a), Lcars.TEXT2, 14))
+		for o in a["options"]:
+			var blocked := vm.aftermath_block(o)
+			var ob := Button.new()
+			ob.name = "Aftermath_%d_%d" % [int(a["systemId"]), int(o["id"])]
+			ob.theme_type_variation = "GhostButton"
+			ob.alignment = HORIZONTAL_ALIGNMENT_LEFT
+			ob.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			ob.text = "%s%s\n%s" % [o["name"], "  (default)" if int(o["id"]) == 1 else "", o["effect"]]
+			ob.add_theme_font_override("font", Lcars.font("ui", 460))
+			ob.add_theme_font_size_override("font_size", 14)
+			ob.disabled = blocked != ""
+			ob.tooltip_text = ("Unavailable: " + blocked) if blocked != "" else str(o["effect"])
+			var card: Dictionary = a
+			var opt: Dictionary = o
+			ob.pressed.connect(func():
+				if vm.resolve_aftermath(card, opt):
+					app.close_modal()
+					if not vm.aftermaths().is_empty():
+						aftermath(app))
+			col.add_child(ob)
+		root.add_child(c)
+	var acts := Lcars.hbox(8)
+	acts.add_child(Lcars.pill("Turn briefing", "ghost", func(): app.close_modal(); app.open_overlay("briefing")))
+	acts.add_child(Lcars.pill("Decide later", "ghost", func(): app.close_modal(), "", "", "Esc"))
+	root.add_child(acts)
+	return app.open_modal(root, "Invasion aftermath", Vector2(820, 0), "alert")
+
 static func events(app: App) -> Control:
 	var v := app.view
 	var vm := _vm(app)

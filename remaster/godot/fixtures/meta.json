@@ -2,8 +2,8 @@
  "method": "meta",
  "args": {},
  "result": {
-  "contentVersion": "remaster-15",
-  "saveVersion": 15,
+  "contentVersion": "remaster-16",
+  "saveVersion": 16,
   "empires": [
    {
     "id": 1,
@@ -332,6 +332,14 @@
     "key": "DefenseBattery",
     "name": "Defense battery",
     "industryCost": 140,
+    "energyCost": 5,
+    "upkeep": 2,
+    "isShip": false
+   },
+   {
+    "key": "DilithiumRefinery",
+    "name": "Dilithium refinery",
+    "industryCost": 120,
     "energyCost": 5,
     "upkeep": 2,
     "isShip": false

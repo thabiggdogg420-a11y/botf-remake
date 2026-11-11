@@ -27,7 +27,10 @@ func refresh() -> void:
 	root.add_child(_banner(v))
 	var kr := Lcars.hbox(10)
 	kr.name = "EmpireKpis"
-	for k in vm.kpis():
+	var kp := vm.kpis()
+	if not vm.dilithium_kpi().is_empty():
+		kp.append(vm.dilithium_kpi())
+	for k in kp:
 		var t := Lcars.kpi(k["icon"], k["cap"], k["value"], k["delta"], k["tone"], k["explain"])
 		t.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		t.custom_minimum_size.x = 0
@@ -59,6 +62,7 @@ func refresh() -> void:
 			"governors": pane = EmpireTabs.governors(app, vm)
 			"templates": pane = EmpireTabs.templates(app, vm)
 			"stations": pane = EmpireTabs.stations(app, vm)
+			"programs": pane = EmpireTabs.programs(app, vm)
 			_: pane = EmpireTabs.members(app, vm)
 		pane.size_flags_vertical = Control.SIZE_EXPAND_FILL
 		b.add_child(pane if pane is ScrollContainer or pane is TradePanel else Lcars.scroll(pane))

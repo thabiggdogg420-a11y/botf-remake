@@ -21,8 +21,8 @@
    "ruleset": "reference",
    "era": 1,
    "eraName": "Early",
-   "contentVersion": "remaster-15",
-   "saveVersion": 15,
+   "contentVersion": "remaster-16",
+   "saveVersion": 16,
    "outcome": "ongoing",
    "winner": 0,
    "advancedRules": true,
@@ -38,12 +38,20 @@
     "stations": true,
     "galaxyFeatures": true,
     "curatedEvents": true,
-    "alternativeVictories": true
+    "alternativeVictories": true,
+    "empireRules": true
    }
   },
   "empire": {
    "id": 1,
    "name": "Federation",
+   "dilithium": {
+    "enforced": true,
+    "refineries": 1,
+    "powered": 1,
+    "slots": 1,
+    "used": 0
+   },
    "credits": 1000,
    "draftCredits": 1000,
    "research": 0,
@@ -64,11 +72,11 @@
     "minors": []
    },
    "income": {
-    "colonies": 93,
+    "colonies": 91,
     "trade": 0,
     "ships": 49,
     "spend": 0,
-    "net": 44
+    "net": 42
    },
    "techs": [
     {
@@ -139,6 +147,7 @@
     }
    ]
   },
+  "aftermaths": [],
   "fog": "000000000000000000000000002220000000000000222000000000000022200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
   "systems": [
    {
@@ -454,25 +463,27 @@
      "shipyards": 1,
      "powerPlants": 0,
      "fusionPlants": 0,
-     "defenseBatteries": 0
+     "defenseBatteries": 0,
+     "refineries": 1
     },
-    "energy": 20,
+    "energy": 25,
     "shipyardEnabled": true,
     "economy": {
      "food": 42,
      "foodDeficit": 0,
      "industry": 21,
      "research": 10,
-     "energyUsed": 20,
-     "energyAvailable": 21,
+     "energyUsed": 25,
+     "energyAvailable": 26,
      "inactiveFactories": 0,
      "inactiveLabs": 0,
      "income": 100,
-     "upkeep": 7,
-     "net": 93,
+     "upkeep": 9,
+     "net": 91,
      "shipyardPowered": true,
      "poweredBatteries": 0,
-     "inactiveBatteries": 0
+     "inactiveBatteries": 0,
+     "refineryPowered": true
     },
     "growth": {
      "enabled": true,
@@ -488,6 +499,31 @@
      "eta": 5
     },
     "queueBlocker": "",
+    "empireRules": {
+     "enabled": true,
+     "dilithium": {
+      "deposit": true,
+      "refinery": true,
+      "refineryPowered": true,
+      "empireRefineries": 1,
+      "empirePowered": 1,
+      "slots": 1,
+      "slotsUsed": 0,
+      "klingonBonusPercent": 0,
+      "blocker": "Dilithium refinery already built"
+     },
+     "program": {
+      "id": 1,
+      "name": "Martial Law",
+      "effect": "Morale +10 now, held at 50 or more. Research -20%, ground defense +25%. 10 turns.",
+      "startCost": 0,
+      "upkeep": 4,
+      "activeId": 0,
+      "activeName": "",
+      "turnsLeft": 0,
+      "blocker": "Morale is 70: the colony is not in unrest"
+     }
+    },
     "governor": {
      "workforce": "Manual",
      "queue": "Manual",

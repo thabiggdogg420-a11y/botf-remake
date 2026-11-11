@@ -66,6 +66,12 @@ func refresh() -> void:
 	left.add_child(_workforce(c))
 	left.add_child(_governor(c))
 	left.add_child(_energy(c))
+	var dil := _dilithium(c)
+	if dil:
+		left.add_child(dil)
+	var prog := _program(c)
+	if prog:
+		left.add_child(prog)
 	cols.add_child(Lcars.scroll(left))
 	var mid := _construction()
 	mid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -360,6 +366,44 @@ func _energy(c: Dictionary) -> Control:
 	if int(s["shipyards"]) > 0:
 		sy.add_child(Lcars.pill("Switch %s" % ("off" if c.get("shipyardEnabled", false) else "on"), "ghost", func(): vm.toggle_shipyard(), vm.shipyard_block()))
 	b.add_child(sy)
+	return f
+
+## Dilithium refinery and the empire's ship construction slots (schema 15). Null when the rules are off.
+func _dilithium(c: Dictionary) -> Control:
+	var lines := SystemVM.dilithium_lines(vm.dilithium(), str(detail.get("queueBlocker", "")))
+	if lines.is_empty():
+		return null
+	var f := Lcars.frame("Dilithium", "ship slots", "secondary", "energy")
+	f.name = "DilithiumPanel"
+	var b := Lcars.body(f)
+	var d := vm.dilithium()
+	var r := Lcars.hbox(8)
+	r.add_child(Lcars.label("Slots", "Muted", 13))
+	r.add_child(Lcars.meter(int(d["slotsUsed"]), max(1, int(d["slots"])), Lcars.WARN if int(d["slotsUsed"]) >= int(d["slots"]) else Lcars.accent2(), 8))
+	r.add_child(Lcars.label("%d/%d" % [int(d["slotsUsed"]), int(d["slots"])], "Mono", 13))
+	b.add_child(r)
+	for ln in lines:
+		b.add_child(Lcars.para(str(ln["text"]), Lcars.tone_color(str(ln["tone"])) if str(ln["tone"]) != "" else Lcars.TEXT2, 13))
+	return f
+
+## The race's emergency program for this colony (schema 15). Null when the rules are off.
+func _program(c: Dictionary) -> Control:
+	var p := vm.program()
+	if p.is_empty():
+		return null
+	var f := Lcars.frame("Emergency program", str(p["name"]), "tertiary", "morale")
+	f.name = "ProgramPanel"
+	var b := Lcars.body(f)
+	var active := int(p["activeId"]) != 0
+	b.add_child(Lcars.para(SystemVM.program_status(p), Lcars.WARN if active else Lcars.TEXT2, 13))
+	b.add_child(Lcars.para(str(p["effect"]), Lcars.TEXT3, 13))
+	var row := Lcars.hbox(8)
+	row.add_child(Lcars.label("Morale %d" % int(c["morale"]), "Mono", 13))
+	if active:
+		row.add_child(Lcars.pill("Lift %s" % p["activeName"], "ghost", func(): vm.cancel_program(), _locked(), "Ends the program at turn end"))
+	else:
+		row.add_child(Lcars.pill("Declare %s" % p["name"], "primary", func(): vm.start_program(), vm.program_block(), "Quells unrest at the price shown"))
+	b.add_child(row)
 	return f
 
 func _construction() -> Control:

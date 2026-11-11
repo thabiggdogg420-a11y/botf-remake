@@ -15,8 +15,8 @@
    "ruleset": "reference",
    "era": 1,
    "eraName": "Early",
-   "contentVersion": "remaster-15",
-   "saveVersion": 15,
+   "contentVersion": "remaster-16",
+   "saveVersion": 16,
    "outcome": "ongoing",
    "winner": 0,
    "advancedRules": true,
@@ -32,12 +32,20 @@
     "stations": false,
     "galaxyFeatures": false,
     "curatedEvents": false,
-    "alternativeVictories": false
+    "alternativeVictories": false,
+    "empireRules": false
    }
   },
   "empire": {
    "id": 1,
    "name": "Federation",
+   "dilithium": {
+    "enforced": false,
+    "refineries": 0,
+    "powered": 0,
+    "slots": 1,
+    "used": 0
+   },
    "credits": 1044,
    "draftCredits": 1044,
    "research": 10,
@@ -133,6 +141,7 @@
     }
    ]
   },
+  "aftermaths": [],
   "fog": "000000000000000000000000000000000000000000000000000000000000000000002220000000000000222000000000000022200000000000000000000002220000000000000222000000000000022200000000000000220000000000000000",
   "systems": [
    {
@@ -484,7 +493,8 @@
      "shipyards": 1,
      "powerPlants": 0,
      "fusionPlants": 0,
-     "defenseBatteries": 0
+     "defenseBatteries": 0,
+     "refineries": 0
     },
     "energy": 20,
     "shipyardEnabled": true,
@@ -502,7 +512,8 @@
      "net": 95,
      "shipyardPowered": true,
      "poweredBatteries": 0,
-     "inactiveBatteries": 0
+     "inactiveBatteries": 0,
+     "refineryPowered": false
     },
     "growth": {
      "enabled": true,
@@ -518,6 +529,9 @@
      "eta": 5
     },
     "queueBlocker": "",
+    "empireRules": {
+     "enabled": false
+    },
     "governor": {
      "workforce": "Manual",
      "queue": "Manual",

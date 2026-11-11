@@ -576,6 +576,9 @@ func _sector_card(cell: int, primary: bool) -> Control:
 			if m.has("temperament"):
 				txt += "\n%s%s%s" % [m["temperament"], (" · tech %d" % int(m["techLevel"])) if m.has("techLevel") else "", (" · members give " + str(m["bonus"])) if m.has("bonus") else ""]
 			col.add_child(Lcars.para(txt, Color("#d8c3ff"), 13))
+			if m.has("guard"):
+				var g: Dictionary = m["guard"]
+				col.add_child(Lcars.para("Guard ship: %s · hull %d/%d · shields %d/%d · attack %d" % [g["name"], int(g["hull"]), int(g["maxHull"]), int(g["shields"]), int(g["maxShields"]), int(g["attack"])], Lcars.ALERT, 13))
 	var units := Lcars.vbox(3)
 	for f in v.get("fleets", []):
 		if int(f["x"]) == x and int(f["y"]) == y:

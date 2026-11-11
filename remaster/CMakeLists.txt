@@ -81,3 +81,6 @@ set_tests_properties(BotfIntegrationTests PROPERTIES TIMEOUT 900)
 # Expanded ship roster (docs/SHIP-ROSTER.md): data integrity, Classic isolation, SHIP_ROSTER section, AI adoption.
 botf_suite(BotfShipRosterTests ShipRosterTests.cpp)
 set_tests_properties(BotfShipRosterTests PROPERTIES TIMEOUT 900)
+# Empire rules (docs/design/EMPIRE-RULES.md, schema 15): dilithium, programs, aftermath, minor conquest, guards.
+botf_suite(BotfEmpireRulesTests EmpireRulesTests.cpp)
+set_tests_properties(BotfEmpireRulesTests PROPERTIES TIMEOUT 900)

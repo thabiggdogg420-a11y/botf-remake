@@ -297,8 +297,7 @@ func test_uncharted_view() -> void:
 
 ## The view is a read: a fixed-seed autoplay to turn 20 reaches the same state with or without the view being read every turn,
 ## and the hash is the one the core produced before the view change (recorded from the unchanged simulation sources).
-## Schema 15 changed only the save header (and so every fingerprint); the simulation itself is unchanged: the pin was 2539640182333731379 under schema 14.
-const FINGERPRINT_T20 := "11091876463326511459"
+const FINGERPRINT_T20 := "5810759090057247453" # re-pinned after the schema 16 merge (empire rules + galaxy setup); native and wasm agree
 
 func _autoplay_fingerprint(read_view: bool) -> String:
 	api("newCampaign", CAMPAIGN)

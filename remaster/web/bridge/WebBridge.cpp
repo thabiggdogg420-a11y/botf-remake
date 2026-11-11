@@ -18,6 +18,7 @@
 #include "../../game/Source/BotfSim/ReferenceCatalogue.h"
 #include "../../game/Source/BotfSim/ShipRoster.h"
 #include "../../game/Source/BotfSim/MinorRaces.h"
+#include "../../game/Source/BotfSim/EmpireRules.h"
 #include "../../game/Source/BotfSim/Content.h"
 #include "Json.h"
 
@@ -52,7 +53,7 @@ namespace intel = botf::intelligence;
 // ------------------------------------------------------------------------------------------------
 // Enum name tables. Numbers are always accepted as well, so enum growth in the core keeps working.
 // ------------------------------------------------------------------------------------------------
-constexpr std::array<const char*, 46> CommandTypeNames{
+constexpr std::array<const char*, 49> CommandTypeNames{
     "AssignWorkers", "EnqueueBuilding", "MoveFleet", "Colonize", "ToggleShipyard",
     "CancelFirstConstruction", "PrioritizeLastConstruction", "MoveConstruction",
     "RemoveConstruction", "AllocateResearch", "SendGift", "OfferFriendship",
@@ -66,7 +67,8 @@ constexpr std::array<const char*, 46> CommandTypeNames{
     "SetColonyGovernor", "SetQueuePin", "ClearGovernorOverride",
     "BuildOutpost", "UpgradeStation", "ResolveEventChoice",
     "DefineBuildTemplate", "DeleteBuildTemplate", "ApplyBuildTemplate", "SetDefaultBuildTemplate",
-    "StartMegaproject", "CancelMegaproject"};
+    "StartMegaproject", "CancelMegaproject", "RefuseCallToArms",
+    "SetEmergencyProgram", "ResolveAftermath"};
 constexpr std::array<const char*, 2> StationTypeNames{"Outpost", "Starbase"};
 constexpr std::array<const char*, 6> FeatureKeys{"Nebula", "Wormhole", "BlackHole", "NeutronStar", "IonStorm", "SubspaceRift"};
 constexpr std::array<const char*, 7> EventKeys{"Plague", "SupernovaWarning", "SubspaceRift", "TradeBoom", "DerelictVessel",
@@ -74,9 +76,9 @@ constexpr std::array<const char*, 7> EventKeys{"Plague", "SupernovaWarning", "Su
 constexpr std::array<const char*, 4> VictoryKeys{"Conquest", "Domination", "Scientific", "Diplomatic"};
 constexpr std::array<const char*, 10> ChronicleKeys{"construction", "research", "exploration", "colonization", "combat",
     "diplomacy", "intel", "events", "stations", "victory"};
-constexpr std::array<const char*, 12> BuildingNames{
+constexpr std::array<const char*, 13> BuildingNames{
     "Farm", "Factory", "Laboratory", "Shipyard", "Scout", "ColonyShip", "PowerPlant", "FusionPlant",
-    "ResearchInstitute", "Destroyer", "Transport", "DefenseBattery"};
+    "ResearchInstitute", "Destroyer", "Transport", "DefenseBattery", "DilithiumRefinery"};
 constexpr std::array<const char*, 4> StanceNames{"Balanced", "Aggressive", "Defensive", "Withdraw"};
 constexpr std::array<const char*, 5> GovernorNames{"Manual", "Balanced", "Growth", "Research", "Manufacturing"};
 constexpr std::array<const char*, 12> ManeuverKeys{"Engage", "Charge", "Circle", "Hold", "Retreat", "Assault",
@@ -284,6 +286,10 @@ std::string describeCommand(const botf::GameState& s, const botf::Command& c) {
     case botf::CommandType::AssignWorkers:
         return systemLabel(s, c.systemId) + ": staff " + std::to_string(c.foodWorkers) + " food / " + std::to_string(c.industryWorkers) +
             " industry / " + std::to_string(c.researchWorkers) + " research";
+    case botf::CommandType::SetEmergencyProgram:
+        return systemLabel(s, c.systemId) + (c.eventOption == 0 ? ": lift the emergency program" : ": " + std::string(botf::empire_rules::programName(c.eventOption)));
+    case botf::CommandType::ResolveAftermath:
+        return systemLabel(s, c.systemId) + ": " + botf::empire_rules::aftermathName(c.eventOption);
     case botf::CommandType::EnqueueBuilding:
         return systemLabel(s, c.systemId) + ": build " + constructionLabel(s, botf::Construction(c.building, 0, c.referenceId));
     case botf::CommandType::MoveFleet: return fleet(c.fleetId) + ": set course for " + place(c.targetX, c.targetY);
@@ -459,6 +465,7 @@ void writeEconomy(Writer& w, const botf::Economy& e) {
     w.field("income", e.income); w.field("upkeep", e.upkeep); w.field("net", e.income - e.upkeep);
     w.field("shipyardPowered", e.shipyardPowered);
     w.field("poweredBatteries", e.poweredBatteries); w.field("inactiveBatteries", e.inactiveBatteries);
+    w.field("refineryPowered", e.refineryPowered);
     w.endObject();
 }
 
@@ -496,6 +503,32 @@ int constructionCostOf(const botf::GameState& s, int systemId, const botf::Const
     return botf::definition(project.product).industryCost;
 }
 
+// Schema-15 empire rules at one colony: the dilithium refinery and the empire's ship slots.
+void writeEmpireRulesColony(Writer& w, const botf::GameState& s, const botf::Colony& c) {
+    namespace er = botf::empire_rules;
+    w.key("empireRules").beginObject();
+    w.field("enabled", er::enabled(s));
+    if (er::enabled(s)) {
+        const auto d = er::dilithiumStatus(s, c.ownerId);
+        w.key("dilithium").beginObject()
+            .field("deposit", er::hasDeposit(s, c.systemId)).field("refinery", c.refineries > 0)
+            .field("refineryPowered", botf::economy(s, c).refineryPowered)
+            .field("empireRefineries", d.refineries).field("empirePowered", d.powered)
+            .field("slots", d.slots).field("slotsUsed", d.used)
+            .field("klingonBonusPercent", er::shipIndustryBonusPercent(s, c))
+            .field("blocker", er::refineryBlocker(s, c)).endObject();
+        const auto mine = er::raceProgram(c.ownerId);
+        const int id = static_cast<int>(mine);
+        w.key("program").beginObject()
+            .field("id", id).field("name", er::programName(id)).field("effect", er::programEffect(id))
+            .field("startCost", er::programStartCost(c, mine))
+            .field("upkeep", std::max(1, c.population / 10) * (mine == er::Program::Tribunal ? 2 : 1) * (er::sustained(id) ? 1 : 0))
+            .field("activeId", c.program).field("activeName", er::programName(c.program))
+            .field("turnsLeft", c.programTurns).field("blocker", er::programBlocker(s, c, mine)).endObject();
+    }
+    w.endObject();
+}
+
 void writeColonyBrief(Writer& w, const botf::GameState& s, const botf::Colony& c) {
     const auto e = botf::economy(s, c);
     w.beginObject();
@@ -508,7 +541,7 @@ void writeColonyBrief(Writer& w, const botf::GameState& s, const botf::Colony& c
         .field("unassigned", c.population - c.foodWorkers - c.industryWorkers - c.researchWorkers).endObject();
     w.key("structures").beginObject().field("farms", c.farms).field("factories", c.factories).field("laboratories", c.laboratories)
         .field("shipyards", c.shipyards).field("powerPlants", c.powerPlants).field("fusionPlants", c.fusionPlants)
-        .field("defenseBatteries", c.defenseBatteries).endObject();
+        .field("defenseBatteries", c.defenseBatteries).field("refineries", c.refineries).endObject();
     w.field("energy", c.energy);
     w.field("shipyardEnabled", c.shipyardEnabled);
     w.key("economy"); writeEconomy(w, e);
@@ -521,6 +554,7 @@ void writeColonyBrief(Writer& w, const botf::GameState& s, const botf::Colony& c
             .field("eta", e.industry > 0 ? std::max(1, (std::max(0, cost - front.work) + e.industry - 1) / e.industry) : -1).endObject();
     }
     w.field("queueBlocker", botf::constructionBlocker(s, c));
+    writeEmpireRulesColony(w, s, c);
     w.key("governor").beginObject()
         .field("workforce", enumName(static_cast<int>(c.workforcePriority), GovernorNames))
         .field("queue", enumName(static_cast<int>(c.queuePriority), GovernorNames))
@@ -890,7 +924,8 @@ void writeView(Writer& w) {
         .field("preset", s.rules.preset == botf::RulesetPreset::Remastered ? "remastered" : "classic")
         .field("presetName", botf::rulesetPresetName(s.rules.preset))
         .field("stations", s.rules.stations).field("galaxyFeatures", s.rules.galaxyFeatures)
-        .field("curatedEvents", s.rules.curatedEvents).field("alternativeVictories", s.rules.alternativeVictories).endObject();
+        .field("curatedEvents", s.rules.curatedEvents).field("alternativeVictories", s.rules.alternativeVictories)
+        .field("empireRules", s.rules.empireRules).endObject();
     w.endObject();
 
     // --- empire summary (player only)
@@ -914,6 +949,11 @@ void writeView(Writer& w) {
     }
     w.key("empire").beginObject();
     w.field("id", me); w.field("name", empireLabel(me));
+    {
+        const auto dil = botf::empire_rules::dilithiumStatus(d, me);
+        w.key("dilithium").beginObject().field("enforced", dil.enforced).field("refineries", dil.refineries)
+            .field("powered", dil.powered).field("slots", dil.slots).field("used", dil.used).endObject();
+    }
     w.field("credits", s.credits); w.field("draftCredits", d.credits);
     w.field("research", s.research); w.field("researchReserve", s.researchReserve);
     w.field("intelligence", s.intelligence);
@@ -954,6 +994,27 @@ void writeView(Writer& w) {
     }
     w.endArray();
     w.endObject();
+
+    // --- schema 15: conquered worlds waiting for the player's aftermath decision
+    w.key("aftermaths").beginArray();
+    for (const auto& a : d.aftermaths) {
+        const auto* minor = botf::minorAt(d, a.systemId);
+        const auto* colony = botf::colonyAt(d, a.systemId);
+        w.beginObject().field("systemId", a.systemId).field("name", systemLabel(d, a.systemId))
+            .field("conqueror", a.conqueror).field("formerOwner", a.formerOwner)
+            .field("formerName", a.formerOwner >= 1 && a.formerOwner <= 5 ? empireLabel(a.formerOwner) : std::string(minor ? minor->name : "natives"))
+            .field("minor", minor ? minor->name : std::string()).field("turn", a.turn)
+            .field("turnsLeft", std::max(0, a.turn + botf::empire_rules::AftermathLapseTurns - d.turn))
+            .field("populationBefore", a.populationBefore).field("population", colony ? colony->population : 0);
+        w.key("options").beginArray();
+        for (int o = 0; o < 3; ++o)
+            w.beginObject().field("id", o).field("name", botf::empire_rules::aftermathName(o))
+                .field("effect", botf::empire_rules::aftermathEffect(o))
+                .field("blocker", botf::empire_rules::aftermathBlocker(d, a, static_cast<botf::empire_rules::Aftermath>(o))).endObject();
+        w.endArray();
+        w.endObject();
+    }
+    w.endArray();
 
     // --- fog grid: 0 unknown, 1 explored, 2 in sensor range
     std::string fog(static_cast<std::size_t>(s.width * s.height), '0');
@@ -1003,6 +1064,13 @@ void writeView(Writer& w) {
                 w.field("bonus", botf::minors::describeJoinBonus(*race));
             }
             if (botf::minors::managed(*minor)) { w.field("techLevel", minor->techLevel); w.field("population", minor->population); }
+            if (const auto* g = botf::empire_rules::guardAt(d, sys.id)) {
+                w.key("guard").beginObject().field("name", botf::empire_rules::guardName(*g)).field("shipId", g->shipId)
+                    .field("hull", g->hull).field("maxHull", botf::empire_rules::guardMaxHull(*g))
+                    .field("shields", g->shields).field("maxShields", botf::empire_rules::guardMaxShields(*g))
+                    .field("attack", botf::empire_rules::guardAttack(*g)).endObject();
+            }
+            w.field("independent", minor->memberOf == 0 && !col);
             w.endObject();
         } else if (minor && seen) {
             w.key("minor").beginObject().field("name", "Unknown natives").field("memberOf", 0).field("unknown", true).endObject();
@@ -1171,6 +1239,9 @@ void writeView(Writer& w) {
         w.beginObject().field("kind", "event").field("severity", "warn").field("eventId", e.id)
             .field("text", std::string(botf::galacticEventName(e.kind)) + ": decision needed by turn " + std::to_string(e.choiceDeadline)).endObject();
     }
+    for (const auto& a : d.aftermaths)
+        w.beginObject().field("kind", "aftermath").field("severity", "warn")
+            .field("text", "Decide the fate of the conquered world " + systemLabel(d, a.systemId)).endObject();
     for (const auto& f : d.fleets)
         if (f.ownerId == me && (f.x != f.targetX || f.y != f.targetY) && botf::route(d, f, f.targetX, f.targetY).empty())
             w.beginObject().field("kind", "route").field("severity", "warn").field("fleetId", f.id)
@@ -1274,11 +1345,13 @@ void writeColonyDetail(Writer& w, int systemId) {
         w.field("shipyardToggleBlocker", dryRunError(s, toggle));
     }
     w.key("scrap").beginArray();
-    const std::array<std::pair<botf::Building, int>, 7> kinds{{
+    const std::array<std::pair<botf::Building, int>, 8> kinds{{
         {botf::Building::Farm, c->farms}, {botf::Building::Factory, c->factories}, {botf::Building::Laboratory, c->laboratories},
         {botf::Building::PowerPlant, c->powerPlants}, {botf::Building::FusionPlant, c->fusionPlants},
-        {botf::Building::Shipyard, c->shipyards}, {botf::Building::DefenseBattery, c->defenseBatteries}}};
+        {botf::Building::Shipyard, c->shipyards}, {botf::Building::DefenseBattery, c->defenseBatteries},
+        {botf::Building::DilithiumRefinery, c->refineries}}};
     for (const auto& [kind, count] : kinds) {
+        if (kind == botf::Building::DilithiumRefinery && !botf::empire_rules::enabled(s)) continue;
         const auto& def = botf::definition(kind);
         w.beginObject();
         w.field("building", enumName(static_cast<int>(kind), BuildingNames));

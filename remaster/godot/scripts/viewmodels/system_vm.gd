@@ -144,6 +144,60 @@ func auto_balance(industry_first: bool) -> bool:
 	return apply_workers()
 
 # ---------------------------------------------------------------------------------------------
+# Empire rules (schema 15, docs/design/EMPIRE-RULES.md): dilithium
+# ---------------------------------------------------------------------------------------------
+## The dilithium block of this colony's `empireRules` ({} when the rules are off).
+func dilithium() -> Dictionary:
+	var er: Variant = colony().get("empireRules", {})
+	return er["dilithium"] if er is Dictionary and er.get("enabled", false) and er.has("dilithium") else {}
+
+## Panel lines for the dilithium block: [{text, tone}] (tone "" / "good" / "warn" / "alert").
+static func dilithium_lines(d: Dictionary, queue_blocker: String = "") -> Array:
+	var out := []
+	if d.is_empty():
+		return out
+	if bool(d["refinery"]):
+		out.append({"text": "Refinery online - one ship slot for the empire." if bool(d["refineryPowered"]) else "Refinery has no power: it gives no ship slot. Build power plants.", "tone": "good" if bool(d["refineryPowered"]) else "alert"})
+	elif bool(d["deposit"]):
+		out.append({"text": "Dilithium deposit here. A refinery (build list) adds one ship slot for the empire.", "tone": "info"})
+	else:
+		out.append({"text": "No dilithium deposit in this system.", "tone": ""})
+	out.append({"text": "Empire ship slots: %d of %d in use (%d refineries, %d powered)." % [int(d["slotsUsed"]), int(d["slots"]), int(d["empireRefineries"]), int(d["empirePowered"])], "tone": "warn" if int(d["slotsUsed"]) >= int(d["slots"]) else ""})
+	if int(d.get("klingonBonusPercent", 0)) > 0:
+		out.append({"text": "Klingon yard bonus: ships here build %d%% faster." % int(d["klingonBonusPercent"]), "tone": "good"})
+	if queue_blocker.find("slots") >= 0 or queue_blocker.find("refinery") >= 0:
+		out.append({"text": queue_blocker, "tone": "warn"})
+	return out
+
+## The emergency-program block of this colony's `empireRules` ({} when the rules are off):
+## {id, name, effect, startCost, upkeep, activeId, activeName, turnsLeft, blocker}.
+func program() -> Dictionary:
+	var er: Variant = colony().get("empireRules", {})
+	return er["program"] if er is Dictionary and er.get("enabled", false) and er.has("program") else {}
+
+## "" when the program may be started, else why not (the order lock comes first).
+func program_block() -> String:
+	var p := program()
+	var lock := lock_reason()
+	return lock if lock != "" else str(p.get("blocker", ""))
+
+## The status line of the program panel.
+static func program_status(p: Dictionary) -> String:
+	if p.is_empty():
+		return ""
+	if int(p["activeId"]) != 0:
+		return "%s is in force: %d turn%s left, %s." % [p["activeName"], int(p["turnsLeft"]), "" if int(p["turnsLeft"]) == 1 else "s", ("costs %d credits a turn" % int(p["upkeep"])) if int(p["upkeep"]) > 0 else "no running cost"]
+	return "%s: %s" % [p["name"], ("one-off cost %d credits" % int(p["startCost"])) if int(p["startCost"]) > 0 else ("costs %d credits a turn" % int(p["upkeep"]))]
+
+func start_program() -> bool:
+	var p := program()
+	return issue({"type": "SetEmergencyProgram", "systemId": sid(), "eventOption": int(p["id"])}, [], "%s ordered." % p["name"])
+
+func cancel_program() -> bool:
+	var p := program()
+	return issue({"type": "SetEmergencyProgram", "systemId": sid(), "eventOption": 0}, [], "%s will be lifted." % p["activeName"])
+
+# ---------------------------------------------------------------------------------------------
 # Governor and shipyard
 # ---------------------------------------------------------------------------------------------
 func set_governor(which: String, key: String) -> bool:

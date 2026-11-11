@@ -372,6 +372,40 @@ func _prepare(s: String) -> void:
 			else:
 				gm.frame_known()
 			await _wait(4)
+		"empire-programs":
+			_campaign()
+			app.goto("empire")
+			var es = app.current_screen()
+			es.tab = "programs"
+			es.refresh()
+		"aftermath":
+			_campaign()
+			app.goto("galaxy")
+			# A conquest waiting for its decision (drawn from a synthetic view entry; the live path is in EmpireRulesTests).
+			var home_sys: Dictionary = {}
+			for sy in app.view.get("systems", []):
+				if sy.get("owner", 0) == 1:
+					home_sys = sy
+					break
+			var opts := []
+			for o in 3:
+				opts.append({"id": o, "name": ["Liberate", "Subjugate", "Exterminate and recolonise"][o], "effect": ["The world is freed and its race is independent again. Its attitude toward you rises by 30; every other race it knows warms by 5.", "Keep the world as taken: 80% of its people, morale 35, no other consequence.", "The population is cut to a tenth and settlers move in (morale 50, structures kept)."][o], "blocker": "" if o != 2 else "The Bolian would be wiped out; liberate or subjugate their world"})
+			app.view["aftermaths"] = [{"systemId": int(home_sys.get("id", 1)), "name": str(home_sys.get("name", "Bolarus")), "conqueror": 1, "formerOwner": 0, "formerName": "natives", "minor": "Bolian", "turn": 12, "turnsLeft": 3, "populationBefore": 30, "population": 24, "options": opts}]
+			app.open_overlay("aftermath")
+		"galaxy-guard":
+			_campaign()
+			app.goto("galaxy")
+			await _wait(4)
+			var gm2: GalaxyMap = app.current_screen().map
+			for sy in app.view.get("systems", []):
+				var mm: Variant = sy.get("minor", {})
+				if mm is Dictionary and not mm.is_empty() and not mm.get("unknown", false):
+					mm["independent"] = true
+					mm["guard"] = {"name": "Defiant Valiant", "shipId": 105, "hull": 90, "maxHull": 135, "shields": 330, "maxShields": 330, "attack": 15}
+					gm2.rebuild()
+					gm2.focus_cell(int(sy["x"]), int(sy["y"]), 2.4, false)
+					break
+			await _wait(4)
 		"briefing", "events", "victory", "end", "settings":
 			_campaign()
 			app.goto("galaxy")

@@ -260,8 +260,14 @@ static func cell_actions(app: App, cell: int) -> Array:
 					"The transport is consumed and becomes an outpost: supply range 3, sensors 2.", reason3))
 			if fleet.get("shipClass", "") == "Transport" and not system.is_empty():
 				var ic := {"type": "Invade", "fleetId": int(fleet["id"]), "systemId": int(system["id"])}
-				actions.append(_act("invade", "Invade " + str(system["name"]), "orders", "alert", func(): app.issue(ic, cancel_ids, "Invasion of %s ordered." % system["name"]),
-					"Ground assault resolves at turn end", battle_lock if battle_lock != "" else app.dry_run(ic, cancel_ids)))
+				var minor_here: Dictionary = system.get("minor", {})
+				var natives: bool = not minor_here.is_empty() and not minor_here.get("unknown", false) and bool(minor_here.get("independent", false))
+				var label_: String = ("Invade the %s" % minor_here["name"]) if natives else "Invade " + str(system["name"])
+				var tip_: String = "Ground assault resolves at turn end"
+				if natives:
+					tip_ = "Conquer an independent world. Transports here pool their troops; a defending ship must be beaten first (send warships along). The race will resent it."
+				actions.append(_act("invade", label_, "orders", "alert", func(): app.issue(ic, cancel_ids, "Invasion of %s ordered." % system["name"]),
+					tip_, battle_lock if battle_lock != "" else app.dry_run(ic, cancel_ids)))
 			if int(fleet["targetX"]) != int(fleet["x"]) or int(fleet["targetY"]) != int(fleet["y"]) or cancel_ids.size() > 0:
 				actions.append(_act("hold", "Hold position", "orders", "tertiary", func():
 					if cancel_ids.size() > 0:

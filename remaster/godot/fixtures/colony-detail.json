@@ -23,25 +23,27 @@
     "shipyards": 1,
     "powerPlants": 0,
     "fusionPlants": 0,
-    "defenseBatteries": 0
+    "defenseBatteries": 0,
+    "refineries": 1
    },
-   "energy": 20,
+   "energy": 25,
    "shipyardEnabled": true,
    "economy": {
     "food": 42,
     "foodDeficit": 0,
     "industry": 21,
     "research": 10,
-    "energyUsed": 20,
-    "energyAvailable": 21,
+    "energyUsed": 25,
+    "energyAvailable": 26,
     "inactiveFactories": 0,
     "inactiveLabs": 0,
     "income": 100,
-    "upkeep": 7,
-    "net": 93,
+    "upkeep": 9,
+    "net": 91,
     "shipyardPowered": true,
     "poweredBatteries": 0,
-    "inactiveBatteries": 0
+    "inactiveBatteries": 0,
+    "refineryPowered": true
    },
    "growth": {
     "enabled": true,
@@ -57,6 +59,31 @@
     "eta": 5
    },
    "queueBlocker": "",
+   "empireRules": {
+    "enabled": true,
+    "dilithium": {
+     "deposit": true,
+     "refinery": true,
+     "refineryPowered": true,
+     "empireRefineries": 1,
+     "empirePowered": 1,
+     "slots": 1,
+     "slotsUsed": 0,
+     "klingonBonusPercent": 0,
+     "blocker": "Dilithium refinery already built"
+    },
+    "program": {
+     "id": 1,
+     "name": "Martial Law",
+     "effect": "Morale +10 now, held at 50 or more. Research -20%, ground defense +25%. 10 turns.",
+     "startCost": 0,
+     "upkeep": 4,
+     "activeId": 0,
+     "activeName": "",
+     "turnsLeft": 0,
+     "blocker": "Morale is 70: the colony is not in unrest"
+    }
+   },
    "governor": {
     "workforce": "Manual",
     "queue": "Manual",
@@ -71,16 +98,17 @@
    "foodDeficit": 0,
    "industry": 21,
    "research": 10,
-   "energyUsed": 20,
-   "energyAvailable": 21,
+   "energyUsed": 25,
+   "energyAvailable": 26,
    "inactiveFactories": 0,
    "inactiveLabs": 0,
    "income": 100,
-   "upkeep": 7,
-   "net": 93,
+   "upkeep": 9,
+   "net": 91,
    "shipyardPowered": true,
    "poweredBatteries": 0,
-   "inactiveBatteries": 0
+   "inactiveBatteries": 0,
+   "refineryPowered": true
   },
   "committedWorkers": {
    "food": 20,
@@ -243,6 +271,17 @@
     "blocker": "",
     "isShip": false,
     "turns": 7,
+    "energyCost": 5
+   },
+   {
+    "product": "DilithiumRefinery",
+    "referenceId": -1,
+    "name": "Dilithium refinery",
+    "cost": 120,
+    "upkeep": 2,
+    "blocker": "Dilithium refinery already built",
+    "isShip": false,
+    "turns": 6,
     "energyCost": 5
    },
    {
@@ -2319,6 +2358,14 @@
     "energyCost": 5,
     "upkeep": 2,
     "blocker": "No defense battery to scrap"
+   },
+   {
+    "building": "DilithiumRefinery",
+    "name": "Dilithium refinery",
+    "count": 1,
+    "energyCost": 5,
+    "upkeep": 2,
+    "blocker": ""
    }
   ],
   "megaproject": {

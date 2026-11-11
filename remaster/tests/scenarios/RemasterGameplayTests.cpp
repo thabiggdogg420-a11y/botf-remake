@@ -463,6 +463,11 @@ void stationScenarios(int& passed) {
         // Keep this long AI run on its pre-roster fixture: the idle player otherwise falls before a rival
         // starbase appears. Roster minors are covered by ContentTests (MINOR-RACES.md).
         std::erase_if(s.minors, [](const botf::Minor& m) { return m.name != "Bynars"; });
+        // Schema 15 empire rules speed the idle player's fall (AI conquest, dilithium); this stations fixture stays on the
+        // pre-schema-15 rules so a rival starbase can appear. The empire rules have their own suite (EmpireRulesTests).
+        s.rules.empireRules = false;
+        s.minorGuards.clear();
+        for (auto& c : s.colonies) { c.energy -= 5 * c.refineries; c.refineries = 0; c.program = 0; c.programTurns = 0; }
         std::erase_if(s.diplomacyEngineState.minorStates, [&](const auto& ms) { return !botf::minorAt(s, ms.minorId); });
         botf::validate(s);
         const auto stats = botf::stationStats(s, 1, botf::StationType::Outpost);
@@ -479,7 +484,7 @@ void stationScenarios(int& passed) {
                 rivalStarbase |= st.ownerId != 1 && st.type == botf::StationType::Starbase;
             }
         }
-        check(rivalStation && rivalStarbase, "Rival AI never built and upgraded an outpost");
+        check(rivalStation && rivalStarbase, "Rival AI never built and upgraded an outpost (turn " + std::to_string(s.turn) + ", outcome " + std::to_string(static_cast<int>(s.outcome)) + ", station " + std::to_string(rivalStation) + ")");
     }, passed);
 }
 
@@ -896,13 +901,15 @@ void persistenceScenarios(int& passed) {
     run("saves: the current schema round-trips a live Remastered campaign and reloads continue identically", [] {
         auto s = campaign(botf::RulesetPreset::Remastered, 26713, 5, true);
         s.eventsEnabled = true; s.aiAggressionEnabled = true;
-        for (int turn = 0; turn < 160; ++turn) botf::advance(s);
+        for (int turn = 0; turn < 160 && s.outcome == botf::CampaignOutcome::Ongoing; ++turn) botf::advance(s);
         check(!s.stations.empty() && !s.galaxyFeatures.empty(), "Campaign lacks gameplay-layer content");
         const auto text = roundTrip(s);
         check(text.starts_with("BOTF_SIM " + std::to_string(botf::SaveVersion) + " " + botf::ContentVersion + "\n") &&
             contains(text, "\nGAMEPLAY_LAYER 1 1 1 1 1\n"), "Current schema header or gameplay section");
         auto reloaded = botf::deserialize(text);
-        for (int turn = 0; turn < 10; ++turn) { botf::advance(s); botf::advance(reloaded); }
+        // Schema 15 empire rules change how fast a passive player falls; a campaign may be decided before turn 170.
+        check(reloaded.outcome == s.outcome && reloaded.turn == s.turn, "Reload lost the outcome or turn: turn " + std::to_string(s.turn) + " outcome " + std::to_string(static_cast<int>(s.outcome)) + " vs " + std::to_string(static_cast<int>(reloaded.outcome)));
+        for (int turn = 0; turn < 10 && s.outcome == botf::CampaignOutcome::Ongoing && reloaded.outcome == botf::CampaignOutcome::Ongoing; ++turn) { botf::advance(s); botf::advance(reloaded); }
         check(botf::fingerprint(s) == botf::fingerprint(reloaded), "Reloaded campaign diverged");
     }, passed);
 

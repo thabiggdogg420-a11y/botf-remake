@@ -553,6 +553,8 @@ func end_turn() -> String:
 	var outcome := str(view.get("meta", {}).get("outcome", "ongoing"))
 	if outcome != "ongoing":
 		open_overlay("end")
+	elif not view.get("aftermaths", []).is_empty():
+		open_overlay("aftermath") # A conquest awaits its decision; the modal links to the briefing.
 	elif briefing is Dictionary:
 		open_overlay("briefing")
 	return "complete"
