@@ -519,14 +519,13 @@ test('Dominion War (MOD-3): race structures in the build list and on the colony,
   assert.ok(rung.every((x) => x.referenceId >= 100000 && x.isShip === false && x.effect !== undefined));
   assert.equal(rung.find((x) => x.name === 'Vorta Administrative Center').blocker, 'Already built here');
   assert.ok(rung.find((x) => x.name === 'Changeling Shapeshifter Network').blocker.length > 0, 'the network is far up the ladder');
-  assert.ok(v.minors.length > 0 && !v.minors.some((m) => m.name === 'Edo'), 'the Edo are replaced');
-  assert.ok(v.minors.some((m) => m.name === 'Bajorans'), 'Bajor is always on the map');
+  const roster = call('encyclopedia').minorRaces.map((m) => m.raceName ?? m.name);
+  assert.equal(roster.length, 38, 'eight new minors join the thirty');
+  for (const name of ["Son'a", 'Maquis', 'Miradorn', 'Karemma', 'Kazon', 'Orion Syndicate', 'Breen', 'Ferengi']) assert.ok(roster.includes(name), name + ' is on the roster');
   for (let i = 0; i < 3; i++) endTurn();
   const fp = call('fingerprint');
   const save = call('save');
-  assert.ok(String(save.data).includes('
-STRUCTURES 1
-'), 'the save carries the structures');
+  assert.ok(String(save.data).includes('\nSTRUCTURES 1\n'), 'the save carries the structures');
   call('loadBaseContent');
   call('load', { data: save.data });
   assert.equal(call('fingerprint'), fp, 'the loaded game has the saved fingerprint');

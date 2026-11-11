@@ -97,3 +97,18 @@ dump('determinism-rules3', 'fingerprint', { campaign: campaign3, turns: 10 }, ca
   call('loadBaseContent');
   dump('determinism-presets', 'fingerprint', { runs: presets.length }, presets);
 }
+// Dominion content (schema 19, docs/design/DOMINION.md): the Dominion War preset (race structures, traits, the new minors, Bajor for the
+// Edo) as the Federation and as the Dominion, 30 turns. The native core must reproduce each fingerprint and the overlay stack checksum.
+{
+  const dom = [];
+  for (const faction of [1, 6]) {
+    const c = { faction, lineup: ['federation', 'klingon', 'romulan', 'cardassian', 'dominion'], seed: 424242, era: 3, ruleset: 'reference',
+      width: 22, height: 16, systems: 48, preset: 'dominion-war', minorDensity: 'many' };
+    call('newCampaign', c);
+    for (let i = 0; i < 30; i++) endTurn();
+    const info = call('contentInfo');
+    dom.push({ campaign: c, turns: 30, result: call('fingerprint'), content: { id: info.id, checksum: info.checksum, stack: info.stack.length } });
+  }
+  call('loadBaseContent');
+  dump('determinism-dominion', 'fingerprint', { runs: dom.length }, dom);
+}

@@ -126,6 +126,9 @@ func _preset_picker_model(nc: NewCampaignVM, label: String) -> void:
 	check(gx.contains("Borg") and gx.contains("Not seated yet") and gx.contains("MOD-2") and gx.contains("stock powers"), "%s: a lineup the core cannot seat says so, and what it waits for" % label)
 	check(nc.preset_text("dominion-war").contains("Dominion") and nc.preset_text("ultimate").contains("Content still to come: MOD-7"), "%s: preset text names its lineup and pending lanes" % label)
 	check(not nc.preset_text("ages").contains("Not seated") and nc.preset_text("ages").contains("MOD-4"), "%s: Ages seats the stock powers and waits for MOD-4" % label)
+	# MOD-3: a pack's race structure carries its effect into the build list text.
+	var rung := {"name": "Vorta Administrative Center", "isShip": false, "cost": 800, "upkeep": 2, "effect": "+6 morale here", "description": "Vorta governors."}
+	check(SystemVM.choice_meta(rung).begins_with("+6 morale here") and SystemVM.choice_tip(rung).contains("Vorta governors."), "%s: a race structure shows its effect and description" % label)
 	check(nc.summary()[1].contains("Galaxies preset"), "%s: the summary names the preset" % label)
 	check(nc.pick_preset("balance-of-power") and nc.rules_base() == "classic" and nc.size_id == "large", "%s: Balance of Power sits on the classic rules" % label)
 

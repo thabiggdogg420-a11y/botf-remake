@@ -532,6 +532,16 @@ void writeEmpireRulesColony(Writer& w, const botf::GameState& s, const botf::Col
     w.endObject();
 }
 
+// Schema 19: the race structures standing in a colony (the pack's records), for the system screen.
+void writeRaceStructures(Writer& w, const botf::Colony& c) {
+    w.key("raceStructures").beginArray();
+    for (int id : c.structures)
+        if (const auto* rec = botf::structures::record(id))
+            w.beginObject().field("id", id).field("name", rec->name).field("effect", botf::structures::effectText(*rec))
+                .field("description", rec->description).field("upkeep", botf::structures::upkeepOf(*rec)).endObject();
+    w.endArray();
+}
+
 void writeColonyBrief(Writer& w, const botf::GameState& s, const botf::Colony& c) {
     const auto e = botf::economy(s, c);
     w.beginObject();
@@ -558,13 +568,6 @@ void writeColonyBrief(Writer& w, const botf::GameState& s, const botf::Colony& c
     }
     w.field("queueBlocker", botf::constructionBlocker(s, c));
     writeEmpireRulesColony(w, s, c);
-    // Schema 19: the race structures standing here (the pack's records), for the system screen.
-    w.key("raceStructures").beginArray();
-    for (int id : c.structures)
-        if (const auto* rec = botf::structures::record(id))
-            w.beginObject().field("id", id).field("name", rec->name).field("effect", botf::structures::effectText(*rec))
-                .field("description", rec->description).field("upkeep", botf::structures::upkeepOf(*rec)).endObject();
-    w.endArray();
     w.key("governor").beginObject()
         .field("workforce", enumName(static_cast<int>(c.workforcePriority), GovernorNames))
         .field("queue", enumName(static_cast<int>(c.queuePriority), GovernorNames))
@@ -1296,6 +1299,7 @@ void writeColonyDetail(Writer& w, int systemId) {
         .field("research", c->laboratories * 10).endObject();
     w.field("baseCapacity", botf::systemBaseCapacity(d, systemId));
     w.field("maxCapacity", botf::systemMaxCapacity(d, systemId));
+    writeRaceStructures(w, *c);
     const auto* sys = systemById(d, systemId);
     w.key("planets").beginArray();
     if (sys) for (const auto& p : sys->planets) writePlanet(w, p);

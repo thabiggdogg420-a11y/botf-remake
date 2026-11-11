@@ -260,6 +260,15 @@ func test_fixture_determinism() -> void:
 		check(api("fingerprint") == run.result, "preset %s: fingerprint %s == wasm %s" % [run.campaign.preset, api("fingerprint"), run.result])
 		check(info.id == run.content.id and info.checksum == run.content.checksum and info.stack.size() == int(run.content.stack), "preset %s: stack %s %s == wasm %s %s" % [run.campaign.preset, info.id, info.checksum, run.content.id, run.content.checksum])
 		check(api("view").meta.rules.preset == run.preset, "preset %s: the view names its preset" % run.campaign.preset)
+	# Dominion content (schema 19): the Dominion War preset as the Federation and as the Dominion, 30 turns, native against wasm.
+	var dx := load_fixture("determinism-dominion")
+	for run in dx.result:
+		api("newCampaign", run.campaign)
+		for i in int(run.turns):
+			end_turn()
+		var dinfo: Dictionary = api("contentInfo")
+		check(api("fingerprint") == run.result, "Dominion War as empire %d: fingerprint %s == wasm %s" % [int(run.campaign.faction), api("fingerprint"), run.result])
+		check(dinfo.id == run.content.id and dinfo.checksum == run.content.checksum and dinfo.stack.size() == int(run.content.stack), "Dominion War stack %s %s == wasm %s %s" % [dinfo.id, dinfo.checksum, run.content.id, run.content.checksum])
 	api("loadBaseContent")
 	var fx_view := load_fixture("campaign-view")
 	var raw: String = core.request_json("newCampaign", JSON.stringify(fx_view.args))
@@ -348,7 +357,7 @@ func test_uncharted_view() -> void:
 
 ## The view is a read: a fixed-seed autoplay to turn 20 reaches the same state with or without the view being read every turn,
 ## and the hash is the one the core produced before the view change (recorded from the unchanged simulation sources).
-const FINGERPRINT_T20 := "15697014712878501185" # re-pinned for schema 18 (the header line is in the payload; body unchanged vs schema 17, see EMPIRE-SLOTS.md); native and wasm agree
+const FINGERPRINT_T20 := "226606094241778945" # re-pinned for schema 19 (the header line is in the payload; body unchanged vs schema 18, see DOMINION.md); native and wasm agree
 
 func _autoplay_fingerprint(read_view: bool) -> String:
 	api("newCampaign", CAMPAIGN)
