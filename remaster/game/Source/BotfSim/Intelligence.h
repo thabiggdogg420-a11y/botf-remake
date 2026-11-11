@@ -228,7 +228,7 @@ public:
 
     bool isValid(int ownEmpireId = 0) const {
         if (internalSecurity.percentage < 0 || internalSecurity.percentage > 100) return false;
-        if (rivalAllocations.size() > 4) return false; // Maximum 4 rivals
+        if (rivalAllocations.size() > 7) return false; // Maximum 7 rivals (eight majors)
         int sum = internalSecurity.percentage;
         std::vector<int> seenIds;
         for (const auto& r : rivalAllocations) {
@@ -254,7 +254,7 @@ public:
             if (id > 0 && (ownEmpireId == 0 || id != ownEmpireId) &&
                 std::find(validRivals.begin(), validRivals.end(), id) == validRivals.end()) {
                 validRivals.push_back(id);
-                if (validRivals.size() >= 4) break; // Maximum 4 rivals
+                if (validRivals.size() >= 7) break; // Maximum 7 rivals (eight majors)
             }
         }
         std::sort(validRivals.begin(), validRivals.end());
@@ -997,7 +997,10 @@ enum class IntelDoctrine : int {
     Klingon = 1,    // Sabotage-heavy against enemies; military intelligence
     Romulan = 2,    // Tal Shiar: the largest foreign service; science theft
     Cardassian = 3, // Obsidian Order: strong security and broad surveillance
-    Ferengi = 4     // Economic espionage for profit
+    Ferengi = 4,    // Economic espionage for profit
+    Dominion = 5,   // Internal Security and the Vorta: strong security, broad surveillance (schema 17)
+    Borg = 6,       // The Collective learns what it meets: security first, science focus (schema 17)
+    Breen = 7       // Generic doctrine until its own lane (schema 17)
 };
 
 struct IntelDoctrineProfile {
@@ -1018,6 +1021,8 @@ inline IntelDoctrineProfile doctrineProfile(IntelDoctrine doctrine) {
         case IntelDoctrine::Romulan:    return {55, 4, 6, 30, 50, true, IntelDepartment::Science, IntelDepartment::Military};
         case IntelDoctrine::Cardassian: return {70, 3, 6, 30, 60, false, IntelDepartment::General, IntelDepartment::Military};
         case IntelDoctrine::Ferengi:    return {70, 3, 4, 10, 30, false, IntelDepartment::Economic, IntelDepartment::Economic};
+        case IntelDoctrine::Dominion:   return {75, 3, 6, 25, 55, false, IntelDepartment::General, IntelDepartment::Military};
+        case IntelDoctrine::Borg:       return {90, 2, 6, 0, 40, false, IntelDepartment::Science, IntelDepartment::Military};
         default: return {80, 2, 6, 0, 40, false, IntelDepartment::General, IntelDepartment::Military};
     }
 }
@@ -1340,8 +1345,8 @@ inline bool deserializeIntelState(const std::string& data, EmpireIntelState& out
         if (errorMsg) *errorMsg = "Malformed rivalCount";
         return false;
     }
-    if (rivalCount > 4) {
-        if (errorMsg) *errorMsg = "rivalCount exceeds maximum of 4 rivals";
+    if (rivalCount > 7) {
+        if (errorMsg) *errorMsg = "rivalCount exceeds maximum of 7 rivals";
         return false;
     }
 
@@ -1394,7 +1399,7 @@ inline bool deserializeIntelState(const std::string& data, EmpireIntelState& out
     }
     if (token == "extraRivals") {
         size_t extraCount = 0;
-        if (!(ss >> extraCount) || extraCount == 0 || extraCount + rivalCount > 4) {
+        if (!(ss >> extraCount) || extraCount == 0 || extraCount + rivalCount > 7) {
             if (errorMsg) *errorMsg = "Malformed extraRivals count";
             return false;
         }

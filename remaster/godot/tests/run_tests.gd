@@ -72,7 +72,7 @@ const CAMPAIGN := {"faction": 1, "empires": 5, "seed": 424242, "era": 1, "rulese
 
 func test_meta() -> void:
 	var meta: Dictionary = api("meta")
-	check(meta.empires.size() == 5, "five majors")
+	check(meta.empires.size() == 8, "eight playable powers (five original majors, Dominion, Borg, Breen)")
 	check(meta.researchFields.size() == 6, "six research fields")
 	check(meta.maneuvers.any(func(m): return m.key == "Engage"), "Engage maneuver")
 
@@ -210,6 +210,14 @@ func test_fixture_determinism() -> void:
 		check(api("fingerprint") == run.result, "galaxy %s/%s/%s: fingerprint %s == wasm %s" % [run.campaign.shape, run.campaign.minorDensity, run.campaign.difficulty, api("fingerprint"), run.result])
 		var pv: Dictionary = api("galaxyPreview", run.campaign)
 		check(pv.stars.size() == int(run.preview) and pv.stars.size() == int(run.campaign.systems) and pv.shape == run.campaign.shape, "galaxy preview holds every star of the %s galaxy" % run.campaign.shape)
+	var sl := load_fixture("determinism-slots")
+	for run in sl.result:
+		api("newCampaign", run.campaign)
+		for i in int(run.turns):
+			end_turn()
+		check(api("fingerprint") == run.result, "lineup %s: fingerprint %s == wasm %s" % [str(run.campaign.lineup), api("fingerprint"), run.result])
+		var spv: Dictionary = api("galaxyPreview", run.campaign)
+		check(spv.stars.size() == int(run.preview) and spv.stars.size() == int(run.campaign.systems), "lineup preview holds every star")
 	var fx_view := load_fixture("campaign-view")
 	var raw: String = core.request_json("newCampaign", JSON.stringify(fx_view.args))
 	var reparsed: Dictionary = JSON.parse_string(raw)

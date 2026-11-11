@@ -7,6 +7,7 @@
 #include "ShipRoster.h"
 #include "TacticalCombat.h"
 #include "Content.h"
+#include "EmpireSlots.h"
 #include "ContentBase.generated.h"
 
 #include <algorithm>
@@ -29,9 +30,21 @@ constexpr int MaxTaskForces = 128, MaxPlanetsPerSystem = 10;
 constexpr std::int64_t MaxBalance = 1000000000000LL;
 void require(bool condition, const char* message);
 int catalogueRace(int owner) {
-    static constexpr std::array<int, 6> map{-1, 1, 3, 4, 0, 2};
-    require(owner >= 1 && owner <= 5, "Invalid major empire");
-    return map[owner];
+    require(owner >= 1 && owner <= MaxMajors && slots::validSlot(owner), "Invalid major empire");
+    return slots::catalogueRace(owner);
+}
+// The catalogue race whose utility and escort hulls this empire may also build while its own race has none, -1 none.
+int donorRace(int owner) { return slots::shipDonor(owner); }
+// True when the empire may build or field this ship record: its own race, or its donor's stand-in hulls.
+bool shipUsable(const referenceData::ShipRecord& ship, int owner) {
+    return ship.raceId == catalogueRace(owner) || (donorRace(owner) >= 0 && ship.raceId == donorRace(owner));
+}
+// Slots whose minor-race relations are mirrored into the diplomacy engine: the five original slots always (so a classic
+// game's engine text is unchanged), a higher slot only while that empire is in the campaign.
+bool mirrorsSlot(const GameState& s, int id) {
+    if (id >= 1 && id <= LegacyMajors) return true;
+    return id > LegacyMajors && id <= MaxMajors &&
+        (id == s.playerEmpire || std::any_of(s.rivals.begin(), s.rivals.end(), [id](const EmpireState& e) { return e.id == id; }));
 }
 const referenceData::ShipRecord& sourceShip(int id) {
     const referenceData::ShipRecord* ship = roster::findShip(id);
@@ -49,7 +62,8 @@ Building roleProduct(int role) {
 bool playableShip(const referenceData::ShipRecord& ship) {
     // Expanded-roster records are campaign ships only when flagged buildable (canon, major empire).
     if (const auto* extended = roster::findRosterClass(ship.id); extended && !extended->buildable) return false;
-    return ship.raceId >= 0 && ship.raceId <= 4 && (ship.role == 0 || ship.role == 5 || ship.role == 9 ||
+    const auto& races = referenceData::RaceCatalogue;
+    return ship.raceId >= 0 && static_cast<std::size_t>(ship.raceId) < races.size() && races[static_cast<std::size_t>(ship.raceId)].empireId != 0 && (ship.role == 0 || ship.role == 5 || ship.role == 9 ||
         (ship.role >= 1 && ship.role <= 4));
 }
 int constructionCost(const Construction& project) {
@@ -220,7 +234,7 @@ void validateColony(const Colony& c) {
     require(static_cast<std::int64_t>(c.energy) >= 10LL * c.powerPlants + 40LL * c.fusionPlants,
         "Energy is below the output of the colony's power structures");
     require(c.defenseBatteries >= 0 && c.defenseBatteries <= 10, "Defense battery count out of bounds");
-    require(c.ownerId >= 1 && c.ownerId <= 5, "Invalid colony owner");
+    require(c.ownerId >= 1 && c.ownerId <= MaxMajors, "Invalid colony owner");
     require(c.population > 0 && c.population <= MaxPopulation, "Population out of bounds");
     require(c.farms >= 0 && c.farms <= MaxBuildings && c.factories >= 0 &&
         c.factories <= MaxBuildings && c.laboratories >= 0 && c.laboratories <= MaxBuildings,
@@ -304,7 +318,7 @@ void checkCommand(const Command& c) {
     if (gameplay::isGameplayCommand(c.type)) { gameplay::checkCommand(c); return; }
     gameplay::checkUnrelatedFields(c);
     if (c.type == CommandType::RefuseCallToArms) {
-        require(c.targetEmpire >= 1 && c.targetEmpire <= 5 && c.callAggressor >= 1 && c.callAggressor <= 5 &&
+        require(c.targetEmpire >= 1 && c.targetEmpire <= MaxMajors && c.callAggressor >= 1 && c.callAggressor <= MaxMajors &&
             c.targetEmpire != c.callAggressor, "Refusing a call to arms names a defender and a different aggressor");
         require(c.systemId == 0 && c.foodWorkers == 0 && c.industryWorkers == 0 && c.researchWorkers == 0 &&
             c.building == Building::Farm && c.fleetId == 0 && c.targetX == 0 && c.targetY == 0 &&
@@ -393,7 +407,7 @@ void checkCommand(const Command& c) {
             if (c.proposalTargetIsMinor) {
                 require(c.targetSystemId > 0 || c.systemId > 0, "Minor proposal requires target system ID");
             } else {
-                require(c.targetEmpire >= 1 && c.targetEmpire <= 5, "Major proposal requires target empire");
+                require(c.targetEmpire >= 1 && c.targetEmpire <= MaxMajors, "Major proposal requires target empire");
             }
         } else {
             require(c.proposalId > 0, "Proposal response requires valid proposal ID");
@@ -411,7 +425,7 @@ void checkCommand(const Command& c) {
             require(c.intelRivalIds.size() == c.intelEspionagePcts.size() && c.intelRivalIds.size() == c.intelSabotagePcts.size(),
                 "Mismatched rival allocation arrays");
             for (int rid : c.intelRivalIds) {
-                require(rid >= 1 && rid <= 5, "Invalid rival ID for intel budget");
+                require(rid >= 1 && rid <= MaxMajors, "Invalid rival ID for intel budget");
             }
             for (int esp : c.intelEspionagePcts) {
                 require(esp >= 0 && esp <= 100, "Espionage percentage out of bounds");
@@ -420,7 +434,7 @@ void checkCommand(const Command& c) {
                 require(sab >= 0 && sab <= 100, "Sabotage percentage out of bounds");
             }
         } else {
-            require(c.targetEmpire >= 1 && c.targetEmpire <= 5, "Invalid target empire for intel focus");
+            require(c.targetEmpire >= 1 && c.targetEmpire <= MaxMajors, "Invalid target empire for intel focus");
             require(static_cast<int>(c.intelDepartmentFocus) >= 0 && static_cast<int>(c.intelDepartmentFocus) <= 3,
                 "Invalid intel department focus");
         }
@@ -443,7 +457,7 @@ void checkCommand(const Command& c) {
             c.targetFleetId == 0 && c.targetSystemId == 0 && c.targetEmpire == 0,
             "Invalid tactical stance order fields");
         else {
-            require(c.fleetId == 0 && c.targetFleetId == 0 && c.targetEmpire >= 0 && c.targetEmpire <= 5,
+            require(c.fleetId == 0 && c.targetFleetId == 0 && c.targetEmpire >= 0 && c.targetEmpire <= MaxMajors,
                 "Invalid empire order fields");
             if (c.type == CommandType::EstablishTradeRoute)
                 require(c.systemId > 0 && c.targetSystemId > 0, "Trade route requires two colonies");
@@ -634,11 +648,11 @@ public:
         }
         if (a.isMinor && !b.isMinor) {
             const auto* m = minorAt(state, a.id);
-            return m && b.id >= 1 && b.id <= 5 && m->contact[b.id];
+            return m && b.id >= 1 && b.id <= MaxMajors && m->contact[b.id];
         }
         if (!a.isMinor && b.isMinor) {
             const auto* m = minorAt(state, b.id);
-            return m && a.id >= 1 && a.id <= 5 && m->contact[a.id];
+            return m && a.id >= 1 && a.id <= MaxMajors && m->contact[a.id];
         }
         return false;
     }
@@ -686,11 +700,11 @@ public:
         }
         if (a.isMinor && !b.isMinor) {
             const auto* m = minorAt(state, a.id);
-            return (m && b.id >= 1 && b.id <= 5) ? m->attitude[b.id] : 50;
+            return (m && b.id >= 1 && b.id <= MaxMajors) ? m->attitude[b.id] : 50;
         }
         if (!a.isMinor && b.isMinor) {
             const auto* m = minorAt(state, b.id);
-            return (m && a.id >= 1 && a.id <= 5) ? m->attitude[a.id] : 50;
+            return (m && a.id >= 1 && a.id <= MaxMajors) ? m->attitude[a.id] : 50;
         }
         return 50;
     }
@@ -737,7 +751,8 @@ void syncDiplomacyStateInternal(GameState& s) {
             newMs.minorId = m.systemId;
             newMs.systemId = m.systemId;
             newMs.raceName = m.name;
-            for (int i = 1; i <= 5; ++i) {
+            for (int i = 1; i <= MaxMajors; ++i) {
+                if (!mirrorsSlot(s, i)) continue;
                 newMs.contacts[i] = m.contact[i];
                 newMs.attitudes[i] = m.attitude[i];
                 newMs.friendshipTurns[i] = m.friendshipTurn[i];
@@ -746,7 +761,8 @@ void syncDiplomacyStateInternal(GameState& s) {
             newMs.membershipTurn = (m.memberOf != 0) ? s.turn : -1;
             s.diplomacyEngineState.minorStates.push_back(newMs);
         } else {
-            for (int i = 1; i <= 5; ++i) {
+            for (int i = 1; i <= MaxMajors; ++i) {
+                if (!mirrorsSlot(s, i)) continue;
                 ms->contacts[i] = m.contact[i];
                 ms->attitudes[i] = m.attitude[i];
                 ms->friendshipTurns[i] = m.friendshipTurn[i];
@@ -982,7 +998,7 @@ void applyDraft(GameState& state) {
         }
         if (majorCommand(command.type)) {
             const int self = state.playerEmpire, other = command.targetEmpire;
-            require(other != self && other >= 1 && other <= 5, "Choose another active empire");
+            require(other != self && other >= 1 && other <= MaxMajors, "Choose another active empire");
             empire(state, other);
             auto& relation = mutableRelation(state, self, other);
             require(relation.contact, "Major diplomacy requires first contact");
@@ -1270,7 +1286,7 @@ void applyDraft(GameState& state) {
             const Construction project(command.building, 0, command.referenceId);
             require(command.referenceId < 0 || (state.ruleset == Ruleset::Reference &&
                 playableShip(sourceShip(command.referenceId)) &&
-                sourceShip(command.referenceId).raceId == catalogueRace(state.playerEmpire) &&
+                shipUsable(sourceShip(command.referenceId), state.playerEmpire) &&
                 roleProduct(sourceShip(command.referenceId).role) == command.building),
                 "Reference ship does not belong to this empire or role");
             require(command.referenceId >= 0 || state.ruleset == Ruleset::Prototype || !isShip(command.building),
@@ -1312,11 +1328,16 @@ void reveal(GameState& s, int x, int y, int owner = 1) {
 bool queueMilitaryShip(GameState& s, Colony& colony, Building role) {
     if (s.ruleset == Ruleset::Prototype) { colony.queue.push_back(role); return true; }
     const referenceData::ShipRecord* choice = nullptr;
-    for (const auto& ship : referenceData::ShipCatalogue) {
-        if (!playableShip(ship) || ship.raceId != catalogueRace(colony.ownerId) || roleProduct(ship.role) != role) continue;
-        const Construction project(role, 0, ship.id);
-        if (!constructionTechBlocker(s, project, colony.ownerId).empty()) continue;
-        if (!choice || ship.industryCost < choice->industryCost) choice = &ship;
+    // A donor race's stand-in hulls count only while the empire's own race has no eligible hull for the role.
+    const auto own = [&](const referenceData::ShipRecord& ship) { return ship.raceId == catalogueRace(colony.ownerId); };
+    for (int pass = 0; pass < 2 && !choice; ++pass) {
+        if (pass == 1 && donorRace(colony.ownerId) < 0) break;
+        for (const auto& ship : referenceData::ShipCatalogue) {
+            if (!playableShip(ship) || (pass == 0 ? !own(ship) : !shipUsable(ship, colony.ownerId)) || roleProduct(ship.role) != role) continue;
+            const Construction project(role, 0, ship.id);
+            if (!constructionTechBlocker(s, project, colony.ownerId).empty()) continue;
+            if (!choice || ship.industryCost < choice->industryCost) choice = &ship;
+        }
     }
     if (s.rules.expandedRoster) {
         // Expanded roster (Remastered): pick the best value across both catalogues instead of the
@@ -1325,15 +1346,18 @@ bool queueMilitaryShip(GameState& s, Colony& colony, Building role) {
             const std::int64_t worth = static_cast<std::int64_t>(ship.attack) / 20 + (ship.hull + ship.shields) / 10 + 10;
             return worth * 100000 / std::max(1, ship.industryCost);
         };
-        const auto consider = [&](const referenceData::ShipRecord& ship) {
-            if (!playableShip(ship) || ship.raceId != catalogueRace(colony.ownerId) || roleProduct(ship.role) != role) return;
+        const auto consider = [&](const referenceData::ShipRecord& ship, bool donors) {
+            if (!playableShip(ship) || (donors ? !shipUsable(ship, colony.ownerId) : !own(ship)) || roleProduct(ship.role) != role) return;
             const Construction project(role, 0, ship.id);
             if (!constructionTechBlocker(s, project, colony.ownerId).empty()) return;
             if (!choice || score(ship) > score(*choice)) choice = &ship;
         };
         choice = nullptr;
-        for (const auto& ship : referenceData::ShipCatalogue) consider(ship);
-        for (const auto& ship : roster::ExpandedShipRecords) consider(ship);
+        for (int pass = 0; pass < 2 && !choice; ++pass) {
+            if (pass == 1 && donorRace(colony.ownerId) < 0) break;
+            for (const auto& ship : referenceData::ShipCatalogue) consider(ship, pass == 1);
+            for (const auto& ship : roster::ExpandedShipRecords) consider(ship, pass == 1);
+        }
     }
     if (!choice) return false;
     colony.queue.emplace_back(role, 0, choice->id);
@@ -1763,7 +1787,7 @@ void planRivals(GameState& s) {
 void resolveDiplomacy(GameState& s, TurnReport& report) {
     for (auto& m : s.minors) {
         const auto system = std::find_if(s.systems.begin(), s.systems.end(), [&](const System& x) { return x.id == m.systemId; });
-        for (int owner = 1; owner <= 5; ++owner) {
+        for (int owner = 1; owner <= MaxMajors; ++owner) {
             if (owner != s.playerEmpire && std::none_of(s.rivals.begin(), s.rivals.end(), [owner](const EmpireState& e) { return e.id == owner; })) continue;
             if (!m.contact[owner] && visible(s, owner, system->x, system->y)) {
                 m.contact[owner] = true;
@@ -1884,7 +1908,7 @@ void applyDiplomacyOps(GameState& next, const diplomacy::TurnResolutionDelta& de
                 int majorId = op.partyA.isMinor ? op.partyB.id : op.partyA.id;
                 int minorId = op.partyA.isMinor ? op.partyA.id : op.partyB.id;
                 auto mIt = std::find_if(next.minors.begin(), next.minors.end(), [minorId](const Minor& m) { return m.systemId == minorId; });
-                if (mIt != next.minors.end() && majorId >= 1 && majorId <= 5 && mIt->contact[majorId]) {
+                if (mIt != next.minors.end() && majorId >= 1 && majorId <= MaxMajors && mIt->contact[majorId]) {
                     mIt->friendshipTurn[majorId] = next.turn;
                 }
             }
@@ -1926,7 +1950,7 @@ void applyDiplomacyOps(GameState& next, const diplomacy::TurnResolutionDelta& de
                 const bool stillFriends = next.diplomacyEngineState.hasActiveTreaty(majorP, minorP, diplomacy::TreatyType::Friendship) ||
                                           next.diplomacyEngineState.hasActiveTreaty(majorP, minorP, diplomacy::TreatyType::Affiliation);
                 auto mIt = std::find_if(next.minors.begin(), next.minors.end(), [minorId](const Minor& m) { return m.systemId == minorId; });
-                if (mIt != next.minors.end() && majorId >= 1 && majorId <= 5 && !stillFriends) {
+                if (mIt != next.minors.end() && majorId >= 1 && majorId <= MaxMajors && !stillFriends) {
                     mIt->friendshipTurn[majorId] = -1;
                 }
             }
@@ -1968,7 +1992,7 @@ void applyDiplomacyOps(GameState& next, const diplomacy::TurnResolutionDelta& de
             int minorId = op.partyA.id;
             int majorId = op.partyB.id;
             auto mIt = std::find_if(next.minors.begin(), next.minors.end(), [minorId](const Minor& m) { return m.systemId == minorId; });
-            if (mIt != next.minors.end() && majorId >= 1 && majorId <= 5) {
+            if (mIt != next.minors.end() && majorId >= 1 && majorId <= MaxMajors) {
                 mIt->attitude[majorId] = std::clamp(mIt->attitude[majorId] + op.attitudeDelta, 0, 100);
             }
         } else if (op.opType == diplomacy::DiplomaticOpType::AdjustTrust) {
@@ -2192,7 +2216,7 @@ constexpr int MinorSecessionAttitude = 30;
 int minorFriendshipRank(const GameState& s, const Minor& m, int empireId) {
     int rank = s.diplomacyEngineState.highestTreatyRank(diplomacy::ParticipantId::major(empireId),
         diplomacy::ParticipantId::minor(m.systemId));
-    if (empireId >= 1 && empireId <= 5 && m.friendshipTurn[empireId] >= 0) rank = std::max(rank, 2);
+    if (empireId >= 1 && empireId <= MaxMajors && m.friendshipTurn[empireId] >= 0) rank = std::max(rank, 2);
     return rank;
 }
 
@@ -2205,9 +2229,9 @@ void resolveMinorDynamics(GameState& next, TurnReport& report) {
         if (sys == next.systems.end()) continue;
         const auto minorP = diplomacy::ParticipantId::minor(m.systemId);
         int bestRank = 0;
-        for (int e : alive) if (e >= 1 && e <= 5 && m.contact[e]) bestRank = std::max(bestRank, minorFriendshipRank(next, m, e));
+        for (int e : alive) if (e >= 1 && e <= MaxMajors && m.contact[e]) bestRank = std::max(bestRank, minorFriendshipRank(next, m, e));
         for (int e : alive) {
-            if (e < 1 || e > 5 || !m.contact[e]) continue;
+            if (e < 1 || e > MaxMajors || !m.contact[e]) continue;
             int& att = m.attitude[e];
             if (m.memberOf == e) {
                 // Member loyalty: expectations erode it, a content colony restores it,
@@ -2243,7 +2267,7 @@ void resolveMinorDynamics(GameState& next, TurnReport& report) {
         }
         // Secession of unhappy members.
         const int owner = m.memberOf;
-        if (owner >= 1 && owner <= 5 && m.attitude[owner] < MinorSecessionAttitude) {
+        if (owner >= 1 && owner <= MaxMajors && m.attitude[owner] < MinorSecessionAttitude) {
             const auto colony = std::find_if(next.colonies.begin(), next.colonies.end(), [&](const Colony& c) { return c.systemId == m.systemId; });
             if (colony == next.colonies.end() || colony->ownerId != owner) continue;
             if (std::count_if(next.colonies.begin(), next.colonies.end(), [owner](const Colony& c) { return c.ownerId == owner; }) <= 1) continue;
@@ -2313,7 +2337,7 @@ std::string describeDiplomaticEvent(const GameState& s, const diplomacy::Diploma
     const std::string a = participantName(s, evt.partyA);
     const std::string b = participantName(s, evt.partyB);
     const int third = static_cast<int>(evt.numericValue);
-    const std::string thirdName = third >= 1 && third <= 5 ? std::string(empireName(third)) : std::string("its enemy");
+    const std::string thirdName = third >= 1 && third <= MaxMajors ? std::string(empireName(third)) : std::string("its enemy");
     switch (evt.type) {
         case T::WarDeclared: return a + " declared war on " + b + ".";
         case T::PeaceEstablished: return a + " and " + b + " made peace.";
@@ -2336,11 +2360,11 @@ void reportDiplomaticEvent(const GameState& next, TurnReport& report, const dipl
         if (!includePlayerWars && (evt.type == T::WarDeclared)) return; // Already reported by the relation diff
         if (evt.type == T::AllianceRefused && evt.partyA == player) {
             report.events.push_back("Diplomacy: We refused " + participantName(next, evt.partyB) + "'s call to arms against " +
-                (evt.numericValue >= 1 && evt.numericValue <= 5 ? std::string(empireName(static_cast<int>(evt.numericValue))) : std::string("its enemy")) +
+                (evt.numericValue >= 1 && evt.numericValue <= MaxMajors ? std::string(empireName(static_cast<int>(evt.numericValue))) : std::string("its enemy")) +
                 ". " + participantName(next, evt.partyB) + "'s trust in us fell by 20.");
         } else if (evt.type == T::AllianceCalledToArms && evt.partyB == player) {
             report.events.push_back("Diplomacy: " + participantName(next, evt.partyA) + " calls on us to honor our alliance against " +
-                (evt.numericValue >= 1 && evt.numericValue <= 5 ? std::string(empireName(static_cast<int>(evt.numericValue))) : std::string("its enemy")) +
+                (evt.numericValue >= 1 && evt.numericValue <= MaxMajors ? std::string(empireName(static_cast<int>(evt.numericValue))) : std::string("its enemy")) +
                 ". Declare war before the call falls due, or refuse it now; either way a refusal costs 20 trust. " + evt.description);
         } else {
             const std::string text = describeDiplomaticEvent(next, evt);
@@ -2370,11 +2394,11 @@ void reconcileMinorMembership(GameState& next, TurnReport& report) {
         if (m.memberOf == holder) continue;
         const int previous = m.memberOf;
         m.memberOf = holder;
-        if (holder >= 1 && holder <= 5) {
+        if (holder >= 1 && holder <= MaxMajors) {
             m.contact[holder] = true;
             m.attitude[holder] = std::min(m.attitude[holder], 40);
         }
-        if (previous >= 1 && previous <= 5) m.friendshipTurn[previous] = -1;
+        if (previous >= 1 && previous <= MaxMajors) m.friendshipTurn[previous] = -1;
         if (holder && m.contact[next.playerEmpire]) {
             report.events.push_back(m.name + " was conquered by " + std::string(empireName(holder)) +
                 (previous ? " and torn from " + std::string(empireName(previous)) : std::string()) + ".");
@@ -3012,7 +3036,7 @@ std::string constructionTechBlocker(const GameState& state, const Construction& 
     if (roster::isExpandedId(project.referenceId) && !state.rules.expandedRoster)
         return "Expanded ship roster is off in this ruleset";
     const auto& ship = sourceShip(project.referenceId);
-    if (!playableShip(ship) || ship.raceId != catalogueRace(owner)) return "Ship class is unavailable to this empire";
+    if (!playableShip(ship) || !shipUsable(ship, owner)) return "Ship class is unavailable to this empire";
     for (int field = 0; field < ResearchFields; ++field) {
         if (empire(state, owner).technologies[field].level < ship.technologyRequirements[field])
             return std::string("Requires ") + researchName(field) + " level " +
@@ -3029,6 +3053,11 @@ int combatOrderFlags(const CombatShipOrder& o) {
 }
 void parseCombatOrders(std::istream& in, GameState& s);
 void parseCombatEvents(std::istream& in, GameState& s);
+// True when any empire in play holds a slot above the original five (schema 17 layout).
+bool campaignUsesWideSlots(const GameState& s) {
+    if (s.playerEmpire > LegacyMajors) return true;
+    return std::any_of(s.rivals.begin(), s.rivals.end(), [](const EmpireState& e) { return e.id > LegacyMajors; });
+}
 std::string payload(const GameState& s) {
     std::ostringstream out;
     out.imbue(std::locale::classic());
@@ -3046,10 +3075,21 @@ std::string payload(const GameState& s) {
         for (const auto& tech : e.technologies) out << ' ' << tech.level << ' ' << tech.progress << ' ' << tech.allocation;
         out << ' ' << e.explored.size(); for (int cell : e.explored) out << ' ' << cell; out << ' ' << e.intelligence << '\n';
     }
+    // Schema 17: a campaign seating a major above slot five writes the EMPIRE_SLOTS line and nine relation slots per minor;
+    // every other campaign (all schemas 4-16, and a classic five-empire game today) keeps the six-slot layout byte for byte.
+    const bool wideSlots = campaignUsesWideSlots(s);
+    if (wideSlots) {
+        std::vector<int> ids{s.playerEmpire};
+        for (const auto& e : s.rivals) ids.push_back(e.id);
+        std::sort(ids.begin(), ids.end());
+        out << "EMPIRE_SLOTS 1 " << ids.size();
+        for (int id : ids) out << ' ' << id;
+        out << '\n';
+    }
     out << "MINORS " << s.nextDiplomacyId << ' ' << s.minors.size() << '\n';
     for (const auto& m : s.minors) {
         out << m.systemId << ' ' << std::quoted(m.name) << ' ' << m.memberOf;
-        for (int i = 0; i < 6; ++i) out << ' ' << m.contact[i] << ' ' << m.attitude[i] << ' ' << m.friendshipTurn[i];
+        for (int i = 0; i < (wideSlots ? MajorSlots : LegacyMajors + 1); ++i) out << ' ' << m.contact[i] << ' ' << m.attitude[i] << ' ' << m.friendshipTurn[i];
         out << '\n';
     }
     out << "DIPLOMACY " << s.diplomacy.size() << '\n';
@@ -3632,8 +3672,7 @@ const EmpireState& empire(const GameState& s, int id) {
     require(found != s.rivals.end(), "Empire does not exist"); return *found;
 }
 const char* empireName(int id) {
-    static constexpr const char* Names[] = {"", "Federation", "Klingon Empire", "Romulan Star Empire", "Cardassian Union", "Ferengi Alliance"};
-    require(id >= 1 && id <= 5, "Invalid empire ID"); return Names[id];
+    require(id >= 1 && id <= MaxMajors && slots::validSlot(id), "Invalid empire ID"); return slots::name(id);
 }
 const BuildingDefinition& definition(Building value) {
     require(buildingValid(value), "Unknown building definition");
@@ -3739,7 +3778,7 @@ std::vector<ConstructionChoice> constructionChoices(const GameState& state, int 
         }
     } else {
         for (const auto& ship : referenceData::ShipCatalogue) {
-            if (!playableShip(ship) || ship.raceId != catalogueRace(colony->ownerId)) continue;
+            if (!playableShip(ship) || !shipUsable(ship, colony->ownerId)) continue;
             const auto product = roleProduct(ship.role);
             Construction project(product, 0, ship.id);
             auto blocker = constructionTechBlocker(state, project, colony->ownerId);
@@ -3750,7 +3789,7 @@ std::vector<ConstructionChoice> constructionChoices(const GameState& state, int 
         }
         if (state.rules.expandedRoster) {
             for (const auto& ship : roster::ExpandedShipRecords) {
-                if (!playableShip(ship) || ship.raceId != catalogueRace(colony->ownerId)) continue;
+                if (!playableShip(ship) || !shipUsable(ship, colony->ownerId)) continue;
                 const auto product = roleProduct(ship.role);
                 Construction project(product, 0, ship.id);
                 auto blocker = constructionTechBlocker(state, project, colony->ownerId);
@@ -4228,24 +4267,23 @@ void applyCampaignEra(GameState& s, StartingEra era) {
             f.stance = TacticalStance::Balanced;
             if (isRef) {
                 const referenceData::ShipRecord* rec = nullptr;
-                for (const auto& ship : referenceData::ShipCatalogue) {
-                    if (!playableShip(ship) || ship.raceId != raceId || ship.role != r) continue;
-                    bool ok = true;
-                    for (int req : ship.technologyRequirements) if (req > baseTech) { ok = false; break; }
-                    if (!ok) continue;
-                    if (!rec || ship.industryCost > rec->industryCost) rec = &ship;
-                }
-                if (!rec) {
-                    for (int fallbackRole : {2, 1, 0}) {
-                        for (const auto& ship : referenceData::ShipCatalogue) {
-                            if (!playableShip(ship) || ship.raceId != raceId || ship.role != fallbackRole) continue;
-                            bool ok = true;
-                            for (int req : ship.technologyRequirements) if (req > baseTech) { ok = false; break; }
-                            if (!ok) continue;
-                            if (!rec || ship.industryCost > rec->industryCost) rec = &ship;
-                        }
-                        if (rec) break;
+                const auto pick = [&](int race, int role) {
+                    const referenceData::ShipRecord* best = nullptr;
+                    for (const auto& ship : referenceData::ShipCatalogue) {
+                        if (!playableShip(ship) || ship.raceId != race || ship.role != role) continue;
+                        bool ok = true;
+                        for (int req : ship.technologyRequirements) if (req > baseTech) { ok = false; break; }
+                        if (!ok) continue;
+                        if (!best || ship.industryCost > best->industryCost) best = &ship;
                     }
+                    return best;
+                };
+                // The empire's own race first, then its donor's stand-in hulls (races without legacy catalogue ships).
+                for (const int race : {raceId, donorRace(empId)}) {
+                    if (race < 0) continue;
+                    if (!rec) rec = pick(race, r);
+                    if (!rec) for (int fallbackRole : {2, 1, 0}) { rec = pick(race, fallbackRole); if (rec) break; }
+                    if (rec) break;
                 }
                 require(rec != nullptr, "Missing catalogue ship for era role");
                 f.referenceShipId = rec->id;
@@ -4266,14 +4304,30 @@ void applyCampaignEra(GameState& s, StartingEra era) {
     }
 }
 
-GameState generateCampaign(std::uint64_t seed, int empires, int width, int height, int systems, int playerEmpire, StartingEra era, GalaxyShape shape) {
+GameState generateCampaign(std::uint64_t seed, int empires, int width, int height, int systems, int playerEmpire, StartingEra era, GalaxyShape shape,
+    const std::vector<int>& lineup) {
     require(startingEraValid(era), "Invalid starting era");
-    require(empires >= 2 && empires <= 5 && systems >= empires && playerEmpire >= 1 && playerEmpire <= empires,
-        "Campaign needs two to five empires, a playable faction and sufficient systems");
+    // The lineup is the empire ids (race slots 1..8) in seating order; empty means the first `empires` slots, as before schema 17.
+    std::vector<int> ids = lineup;
+    if (ids.empty()) for (int id = 1; id <= empires; ++id) ids.push_back(id);
+    empires = static_cast<int>(ids.size());
+    require(empires >= 2 && empires <= MaxMajors && systems >= empires, "Campaign needs two to eight empires, a playable faction and sufficient systems");
+    {
+        std::set<int> seen;
+        for (int id : ids) require(id >= 1 && id <= MaxMajors && slots::validSlot(id) && seen.insert(id).second, "Lineup holds an unknown or repeated empire");
+    }
+    // Generation runs on temporary ids 1..N in seating order (so every placement and every random draw matches the original
+    // five-empire code); the ids are mapped to the lineup's race slots once the world is laid out.
+    const auto seat = std::find(ids.begin(), ids.end(), playerEmpire);
+    require(seat != ids.end(), "The player's empire is not in the lineup");
+    const int playerSeat = static_cast<int>(seat - ids.begin()) + 1;
     auto s = generate(seed, width, height, systems, shape);
     s.startingEra = era;
     s.populationEnabled = true;
-    static constexpr const char* Homes[] = {"", "Sol", "Qo'noS", "Romulus", "Cardassia", "Ferenginar"};
+    if (ids[0] != 1) {
+        s.systems.front().name = slots::capital(ids[0]);
+        s.systems.front().planets = generateSystemPlanets(seed, s.systems.front().id, s.systems.front().name, true);
+    }
     for (int id = 2; id <= empires; ++id) {
         System* chosen = nullptr; int best = -1;
         for (auto& system : s.systems) {
@@ -4285,7 +4339,7 @@ GameState generateCampaign(std::uint64_t seed, int empires, int width, int heigh
             }
             if (distance > best) { best = distance; chosen = &system; }
         }
-        require(chosen != nullptr, "No empire home available"); chosen->name = Homes[id];
+        require(chosen != nullptr, "No empire home available"); chosen->name = slots::capital(ids[static_cast<std::size_t>(id - 1)]);
         chosen->planets = generateSystemPlanets(seed, chosen->id, chosen->name, true);
         EmpireState owner; owner.id = id; s.rivals.push_back(owner);
         Colony home; home.systemId = chosen->id; home.ownerId = id; home.shipyards = 1;
@@ -4308,23 +4362,38 @@ GameState generateCampaign(std::uint64_t seed, int empires, int width, int heigh
     for (int first = 1; first <= empires; ++first)
         for (int second = first + 1; second <= empires; ++second)
             s.majorRelations.push_back({first, second, false, false, false});
-    if (playerEmpire != 1) {
+    if (playerSeat != 1) {
         const EmpireState originalPlayer = s;
-        const auto selected = std::find_if(s.rivals.begin(), s.rivals.end(), [&](const EmpireState& e) { return e.id == playerEmpire; });
+        const auto selected = std::find_if(s.rivals.begin(), s.rivals.end(), [&](const EmpireState& e) { return e.id == playerSeat; });
         const EmpireState chosen = *selected;
         s.rivals.erase(selected);
         s.rivals.push_back(originalPlayer);
         std::sort(s.rivals.begin(), s.rivals.end(), [](const EmpireState& a, const EmpireState& b) { return a.id < b.id; });
         static_cast<EmpireState&>(s) = chosen;
-        s.playerEmpire = playerEmpire;
+        s.playerEmpire = playerSeat;
+    }
+    const bool identitySeats = [&] { for (std::size_t i = 0; i < ids.size(); ++i) if (ids[i] != static_cast<int>(i) + 1) return false; return true; }();
+    if (!identitySeats) {
+        // Map the temporary seats to the lineup's race slots.
+        const auto real = [&](int seatId) { return ids[static_cast<std::size_t>(seatId - 1)]; };
+        s.id = real(s.id); s.playerEmpire = real(s.playerEmpire);
+        for (auto& e : s.rivals) e.id = real(e.id);
+        std::sort(s.rivals.begin(), s.rivals.end(), [](const EmpireState& a, const EmpireState& b) { return a.id < b.id; });
+        for (auto& c : s.colonies) c.ownerId = real(c.ownerId);
+        for (auto& r : s.majorRelations) {
+            r.first = real(r.first); r.second = real(r.second);
+            if (r.first > r.second) std::swap(r.first, r.second);
+        }
+        std::sort(s.majorRelations.begin(), s.majorRelations.end(), [](const auto& a, const auto& b) { return std::tie(a.first, a.second) < std::tie(b.first, b.second); });
     }
     applyCampaignEra(s, era);
     syncDiplomacyStateInternal(s);
     validate(s); return s;
 }
 
-GameState generateReferenceCampaign(std::uint64_t seed, int empires, int width, int height, int systems, int playerEmpire, StartingEra era, GalaxyShape shape) {
-    auto s = generateCampaign(seed, empires, width, height, systems, playerEmpire, era, shape);
+GameState generateReferenceCampaign(std::uint64_t seed, int empires, int width, int height, int systems, int playerEmpire, StartingEra era, GalaxyShape shape,
+    const std::vector<int>& lineup) {
+    auto s = generateCampaign(seed, empires, width, height, systems, playerEmpire, era, shape, lineup);
     s.ruleset = Ruleset::Reference;
     s.advancedRulesEnabled = true;
     s.campaignExpansionEnabled = true;
@@ -4373,7 +4442,7 @@ void validate(const GameState& s) {
     require(!s.advancedRulesEnabled || s.ruleset == Ruleset::Reference, "Advanced rules require a reference campaign");
     require(startingEraValid(s.startingEra), "Invalid campaign starting era");
     auto validateEmpire = [&](const EmpireState& e) {
-        require(e.id >= 1 && e.id <= 5, "Invalid empire identity");
+        require(e.id >= 1 && e.id <= MaxMajors, "Invalid empire identity");
         require(e.credits >= -MaxBalance && e.credits <= MaxBalance && e.research >= 0 && e.research <= MaxBalance &&
             e.intelligence >= 0 && e.intelligence <= MaxBalance, "Empire balance out of bounds");
         int allocated = 0;
@@ -4393,14 +4462,14 @@ void validate(const GameState& s) {
     };
     validateEmpire(s);
     int priorEmpire = 0;
-    require(s.rivals.size() <= 4, "Too many empires");
+    require(s.rivals.size() <= static_cast<std::size_t>(MaxMajors - 1), "Too many empires");
     for (const auto& e : s.rivals) { require(e.id > priorEmpire && e.id != s.playerEmpire, "Rival IDs must be sorted and unique"); priorEmpire = e.id; validateEmpire(e); }
     require(s.nextFleetId >= 3 && s.nextFleetId <= 1000001, "Invalid next fleet ID");
-    require(s.playerEmpire >= 1 && s.playerEmpire <= 5 && s.id == s.playerEmpire, "Invalid playable empire identity");
+    require(s.playerEmpire >= 1 && s.playerEmpire <= MaxMajors && s.id == s.playerEmpire, "Invalid playable empire identity");
     require(s.turn >= 0 && s.turn <= MaxTurns, "Turn out of bounds");
     require(s.outcome == CampaignOutcome::Ongoing || s.outcome == CampaignOutcome::Victory ||
         s.outcome == CampaignOutcome::Defeat, "Invalid campaign outcome");
-    require(s.winnerEmpire >= 0 && s.winnerEmpire <= 5 && s.lastRandomEventTurn >= 0 &&
+    require(s.winnerEmpire >= 0 && s.winnerEmpire <= MaxMajors && s.lastRandomEventTurn >= 0 &&
         s.lastRandomEventTurn <= s.turn, "Invalid campaign event state");
     require(s.outcome != CampaignOutcome::Victory || s.winnerEmpire == s.playerEmpire, "Campaign winner mismatch");
     require(s.outcome != CampaignOutcome::Ongoing || s.winnerEmpire == 0, "Active campaign has a winner");
@@ -4439,11 +4508,11 @@ void validate(const GameState& s) {
     for (const auto& m : s.minors) {
         require(m.systemId > priorMinor && ids.count(m.systemId) == 1, "Invalid minor system"); priorMinor = m.systemId;
         require(!m.name.empty() && m.name.size() <= 64 && m.name.find_first_of("\r\n\t") == std::string::npos, "Invalid minor name");
-        require(m.memberOf >= 0 && m.memberOf <= 5, "Invalid minor membership");
+        require(m.memberOf >= 0 && m.memberOf <= MaxMajors, "Invalid minor membership");
         const auto colony = colonyAt(s, m.systemId);
         require(m.memberOf == 0 ? colony == nullptr : colony && colony->ownerId == m.memberOf, "Minor ownership mismatch");
         if (m.memberOf) empire(s, m.memberOf);
-        for (int i = 0; i < 6; ++i) require(m.attitude[i] >= 0 && m.attitude[i] <= 100 && m.friendshipTurn[i] >= -1 &&
+        for (int i = 0; i < MajorSlots; ++i) require(m.attitude[i] >= 0 && m.attitude[i] <= 100 && m.friendshipTurn[i] >= -1 &&
             m.friendshipTurn[i] <= s.turn && (m.friendshipTurn[i] < 0 || m.contact[i]), "Invalid minor relations");
     }
     minors::validateMinorRaces(s); // Lane G: roster identity and progression bounds
@@ -4459,7 +4528,7 @@ void validate(const GameState& s) {
     require(s.majorRelations.size() == (s.rivals.size() + 1) * s.rivals.size() / 2, "Incomplete major relations");
     std::set<std::pair<int,int>> relationPairs;
     for (const auto& r : s.majorRelations) {
-        require(r.first >= 1 && r.first < r.second && r.second <= 5 &&
+        require(r.first >= 1 && r.first < r.second && r.second <= MaxMajors &&
             relationPairs.insert({r.first, r.second}).second, "Invalid major relation pair");
         empire(s, r.first); empire(s, r.second);
         require(!r.atWar || (r.contact && !r.tradeTreaty), "War relation mismatch");
@@ -4501,7 +4570,7 @@ void validate(const GameState& s) {
     }
     for (const auto& b : s.latestBattles) {
         require(b.turn >= 0 && b.turn <= s.turn && b.x >= 0 && b.x < s.width && b.y >= 0 && b.y < s.height &&
-            b.firstOwner != b.secondOwner && b.winnerOwner >= 0 && b.winnerOwner <= 5,
+            b.firstOwner != b.secondOwner && b.winnerOwner >= 0 && b.winnerOwner <= MaxMajors,
             "Invalid battle record");
         empire(s, b.firstOwner); empire(s, b.secondOwner);
         require(b.participants.size() <= 256 && b.rounds.size() <= 65, "Battle timeline out of bounds");
@@ -4616,7 +4685,7 @@ void validate(const GameState& s) {
             require(!roster::isExpandedId(project.referenceId) || s.rules.expandedRoster,
                 "Expanded roster ship queued while the roster is off");
         for (const auto& project : c.queue) if (project.referenceId >= 0)
-            require(s.ruleset == Ruleset::Reference && sourceShip(project.referenceId).raceId == catalogueRace(c.ownerId),
+            require(s.ruleset == Ruleset::Reference && shipUsable(sourceShip(project.referenceId), c.ownerId),
                 "Reference project owner mismatch");
     }
     previous = -1;
@@ -4632,7 +4701,7 @@ void validate(const GameState& s) {
     for (const auto& tf : s.taskForces) {
         require(tf.id > priorTfId && tf.id < s.nextTaskForceId, "Task force IDs must be unique, positive and sorted");
         priorTfId = tf.id;
-        require(tf.ownerId >= 1 && tf.ownerId <= 5, "Invalid task force owner");
+        require(tf.ownerId >= 1 && tf.ownerId <= MaxMajors, "Invalid task force owner");
         require(!tf.name.empty() && tf.name.size() <= 64 && tf.name.find_first_of("\r\n\t") == std::string::npos,
             "Invalid task force name");
         require(!tf.fleetIds.empty() && tf.fleetIds.size() <= 256, "Invalid task force member count");
@@ -4653,7 +4722,7 @@ void validate(const GameState& s) {
     }
     previous = 0;
     for (const auto& f : s.fleets) {
-        require(f.id > previous && f.id < s.nextFleetId && f.ownerId >= 1 && f.ownerId <= 5 && !f.colonize, "Invalid fleet identity or transient state");
+        require(f.id > previous && f.id < s.nextFleetId && f.ownerId >= 1 && f.ownerId <= MaxMajors && !f.colonize, "Invalid fleet identity or transient state");
         previous = f.id;
         require(f.x >= 0 && f.x < s.width && f.y >= 0 && f.y < s.height &&
             f.targetX >= 0 && f.targetX < s.width && f.targetY >= 0 && f.targetY < s.height,
@@ -4678,7 +4747,7 @@ void validate(const GameState& s) {
             const auto& ship = sourceShip(f.referenceShipId);
             require(!roster::isExpandedId(f.referenceShipId) || s.rules.expandedRoster,
                 "Expanded roster ship present while the roster is off");
-            require(s.ruleset == Ruleset::Reference && playableShip(ship) && ship.raceId == catalogueRace(f.ownerId) &&
+            require(s.ruleset == Ruleset::Reference && playableShip(ship) && shipUsable(ship, f.ownerId) &&
                 roleProduct(ship.role) == f.shipClass, "Invalid reference ship owner or role");
         }
     }
@@ -4728,17 +4797,17 @@ void validate(const GameState& s) {
             require(m.membershipOwner == 0 || validEmpires.count(m.membershipOwner) == 1,
                 "Diplomacy minor membershipOwner is not a valid campaign empire");
             for (const auto& [empId, att] : m.attitudes) {
-                require(empId >= 1 && empId <= 5, "Diplomacy minor attitude refers to invalid empire slot");
+                require(empId >= 1 && empId <= MaxMajors, "Diplomacy minor attitude refers to invalid empire slot");
                 require(att >= 0 && att <= 100, "Diplomacy minor attitude out of range");
             }
             for (const auto& [empId, con] : m.contacts) {
-                require(empId >= 1 && empId <= 5, "Diplomacy minor contact refers to invalid empire slot");
+                require(empId >= 1 && empId <= MaxMajors, "Diplomacy minor contact refers to invalid empire slot");
                 if (con) {
                     require(validEmpires.count(empId) == 1, "Diplomacy minor has contact with nonexistent empire");
                 }
             }
             for (const auto& [empId, ft] : m.friendshipTurns) {
-                require(empId >= 1 && empId <= 5, "Diplomacy minor friendshipTurn refers to invalid empire slot");
+                require(empId >= 1 && empId <= MaxMajors, "Diplomacy minor friendshipTurn refers to invalid empire slot");
                 if (ft >= 0) {
                     require(validEmpires.count(empId) == 1, "Diplomacy minor has friendship with nonexistent empire");
                 }
@@ -4939,7 +5008,7 @@ TurnReport advanceWithCombat(GameState& state, const std::function<void(GameStat
                 : "Intelligence report: " + std::string(empireName(intel.target)) + " has " +
                     std::to_string(intel.knownColonies) + " colonies and roughly " + std::to_string(intel.estimatedCredits) + " credits.");
     }
-    std::array<std::int64_t, 6> researchGained{};
+    std::array<std::int64_t, MajorSlots> researchGained{}; // Indexed by empire id (1..8).
     for (const auto& f : next.fleets) {
         const int upkeep = fleetUpkeep(f);
         mutableEmpire(next, f.ownerId).credits -= upkeep;
@@ -5272,8 +5341,11 @@ GameState deserialize(const std::string& text) {
     // differs from 16 only by the header and the optional EMPIRE_RULES section (never present in 14 or 15).
     const bool legacy14 = version == 14 && content == "remaster-14";
     const bool legacy15 = version == 15 && content == "remaster-15";
-    const bool current16 = version == SaveVersion && content == ContentVersion;
-    const bool current = current16 || legacy14 || legacy15; // Older text is a valid schema-16 layout without the newer sections.
+    // Schema 16 differs from 17 only by the header and the optional EMPIRE_SLOTS section (never present in 16).
+    const bool legacy16 = version == 16 && content == "remaster-16";
+    const bool current17 = version == SaveVersion && content == ContentVersion;
+    const bool current16 = current17 || legacy16; // Sections added in schema 16 are legal from schema 16 on.
+    const bool current = current16 || legacy14 || legacy15; // Older text is a valid schema-17 layout without the newer sections.
     require(current || legacy7 || legacy8 || legacy9 || legacy10 || legacy11 || legacy12 || legacy13, "Unsupported save version");
     require(current || legacy7 || legacy8 || legacy9 || legacy10 || legacy11 || legacy12 || legacy13,
         "Incompatible prototype content");
@@ -5281,7 +5353,7 @@ GameState deserialize(const std::string& text) {
     require(checksumStart != std::string::npos, "Missing save checksum");
     const auto rawBody = text.substr(0, checksumStart);
     require(text.substr(checksumStart) == "CHECKSUM " + std::to_string(hashText(rawBody)) + "\n",
-        (legacy7 || legacy8 || legacy9 || legacy10 || legacy11 || legacy12 || legacy13 || legacy14 || legacy15) ? "Legacy save checksum mismatch" : "Save checksum mismatch");
+        (legacy7 || legacy8 || legacy9 || legacy10 || legacy11 || legacy12 || legacy13 || legacy14 || legacy15 || legacy16) ? "Legacy save checksum mismatch" : "Save checksum mismatch");
     GameState s;
     tag(in, "STATE");
     in >> s.seed >> s.rngState >> s.lastAcceptedCommand >> s.width >> s.height >> s.turn >> s.credits >> s.research;
@@ -5290,7 +5362,7 @@ GameState deserialize(const std::string& text) {
     tag(in, "RESEARCH"); in >> s.researchReserve;
     for (auto& tech : s.technologies) in >> tech.level >> tech.progress >> tech.allocation;
     if (!legacy7) in >> s.intelligence;
-    tag(in, "RIVALS"); auto n = count(in, 4);
+    tag(in, "RIVALS"); auto n = count(in, MaxMajors - 1);
     for (int i = 0; i < n; ++i) {
         EmpireState e; in >> e.id >> e.credits >> e.research >> e.researchReserve;
         for (auto& tech : e.technologies) in >> tech.level >> tech.progress >> tech.allocation;
@@ -5299,10 +5371,30 @@ GameState deserialize(const std::string& text) {
         if (!legacy7) in >> e.intelligence;
         s.rivals.push_back(e);
     }
+    bool wideSlots = false;
+    {   // Schema 17 optional EMPIRE_SLOTS line, directly before MINORS: the empire ids in play (a lineup above slot five).
+        std::string slotTag; const auto here = in.tellg();
+        in >> slotTag;
+        if (slotTag == "EMPIRE_SLOTS") {
+            require(current17, "Schema 17 section in an older save");
+            int slotVersion = 0, slotCount = 0; in >> slotVersion >> slotCount;
+            require(slotVersion == 1 && slotCount >= 2 && slotCount <= MaxMajors, "Malformed EMPIRE_SLOTS section");
+            int prior = 0;
+            for (int i = 0; i < slotCount; ++i) {
+                int id = 0; in >> id;
+                require(id > prior && id <= MaxMajors, "Malformed EMPIRE_SLOTS section");
+                prior = id;
+            }
+            require(prior > LegacyMajors, "EMPIRE_SLOTS holds only a lineup above slot five");
+            wideSlots = true;
+        } else {
+            in.clear(); in.seekg(here);
+        }
+    }
     tag(in, "MINORS"); in >> s.nextDiplomacyId; n = count(in, MaxSystems);
     for (int i = 0; i < n; ++i) {
         Minor m; in >> m.systemId >> std::quoted(m.name) >> m.memberOf;
-        for (int j = 0; j < 6; ++j) in >> m.contact[j] >> m.attitude[j] >> m.friendshipTurn[j];
+        for (int j = 0; j < (wideSlots ? MajorSlots : LegacyMajors + 1); ++j) in >> m.contact[j] >> m.attitude[j] >> m.friendshipTurn[j];
         s.minors.push_back(m);
     }
     tag(in, "DIPLOMACY"); n = count(in, MaxPending);
@@ -5332,7 +5424,7 @@ GameState deserialize(const std::string& text) {
                 offer.type = static_cast<CommandType>(type); s.pendingMajorOffers.push_back(offer);
             }
         }
-        tag(in, "RELATIONS"); n = count(in, 10);
+        tag(in, "RELATIONS"); n = count(in, MaxMajors * (MaxMajors - 1) / 2);
         for (int i = 0; i < n; ++i) {
             MajorRelation r; in >> r.first >> r.second >> r.contact >> r.atWar >> r.tradeTreaty;
             if (!legacy8 && !legacy9) in >> r.warStartTurn >> r.trust;
@@ -5461,8 +5553,8 @@ GameState deserialize(const std::string& text) {
                 int deptFocusVal = 0;
                 std::size_t rivalCount = 0;
                 if (rem >> c.intelInternalSecurity >> deptFocusVal >> rivalCount) {
-                    // A crafted count must not drive an unbounded loop: at most five empires exist.
-                    require(rivalCount <= 5, "Invalid intel rival allocation count");
+                    // A crafted count must not drive an unbounded loop: at most eight empires exist.
+                    require(rivalCount <= static_cast<std::size_t>(MaxMajors), "Invalid intel rival allocation count");
                     c.intelDepartmentFocus = static_cast<intelligence::IntelDepartment>(deptFocusVal);
                     for (std::size_t m = 0; m < rivalCount; ++m) {
                         int rId = 0, espPct = 0, sabPct = 0;
@@ -5730,12 +5822,12 @@ GameState deserialize(const std::string& text) {
             (!s.modernEnginesActive || hasIntelOperations),
             current ? "Schema 14 save is missing a required section" : "Schema 13 save is missing a required section");
         std::string expected = payload(s);
-        if (legacy13 || legacy14 || legacy15) {
-            // Schema 13 text is the schema-14 payload of a campaign without recorded round orders; schema 14 and 15 text are
-            // the schema-16 payload of a campaign without a galaxy setup / empire rules.
+        if (legacy13 || legacy14 || legacy15 || legacy16) {
+            // Schema 13 text is the schema-14 payload of a campaign without recorded round orders; schema 14, 15 and 16 text are
+            // the schema-17 payload of a campaign without a galaxy setup / empire rules / lineup above slot five.
             const std::string header = std::string("BOTF_SIM ") + std::to_string(SaveVersion) + ' ' + ContentVersion + '\n';
             require(expected.starts_with(header), "Malformed canonical payload header");
-            expected.replace(0, header.size(), legacy15 ? "BOTF_SIM 15 remaster-15\n" : legacy14 ? "BOTF_SIM 14 remaster-14\n" : "BOTF_SIM 13 remaster-13\n");
+            expected.replace(0, header.size(), legacy16 ? "BOTF_SIM 16 remaster-16\n" : legacy15 ? "BOTF_SIM 15 remaster-15\n" : legacy14 ? "BOTF_SIM 14 remaster-14\n" : "BOTF_SIM 13 remaster-13\n");
         }
         require(rawBody == expected, "Save is not in canonical format");
     } else if (legacy12) {
@@ -6466,6 +6558,8 @@ bool queueShip(GameState& state, Colony& colony, Building role) { return queueMi
 void detachFromTaskForce(GameState& state, Fleet& fleet) { botf::detachFromTaskForce(state, fleet); }
 void reconcileTaskForces(GameState& state) { botf::reconcileTaskForces(state); }
 int catalogueRace(int owner) { return botf::catalogueRace(owner); }
+int donorRace(int owner) { return botf::donorRace(owner); }
+bool shipUsable(const referenceData::ShipRecord& ship, int owner) { return botf::shipUsable(ship, owner); }
 bool playableShip(const referenceData::ShipRecord& ship) { return botf::playableShip(ship); }
 Building roleProduct(int role) { return botf::roleProduct(role); }
 const referenceData::ShipRecord& sourceShip(int id) { return botf::sourceShip(id); }

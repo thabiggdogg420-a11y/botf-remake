@@ -39,7 +39,10 @@ SCHEMA = {
     "events": ["kind", "name", "defaultChoice", "choices", "description"],
 }
 NESTED = {"weapons": ["type", "count", "arc"], "flight": ["turnRate", "acceleration", "lateral", "size"],
-          "choices": ["label", "effect"]}
+          "choices": ["label", "effect"],
+          "major": ["empireId", "key", "empireName", "capital", "shipDonor", "traits", "startingFleet"]}
+# Keys a record may omit (schema 17: a race that is a playable major carries a `major` block).
+OPTIONAL = {"races": ["major"]}
 SECTIONS = list(SCHEMA)
 PACK_KEYS = ["format", "id", "name", "revision"]
 
@@ -49,13 +52,14 @@ def fail(msg: str) -> None:
     sys.exit(1)
 
 
-def ordered(value, keys, where):
+def ordered(value, keys, where, optional=()):
     if not isinstance(value, dict):
         fail(f"{where}: expected an object")
-    if set(value) != set(keys):
-        fail(f"{where}: keys {sorted(set(value) ^ set(keys))} missing or unknown")
+    present = [k for k in keys if k in value or k not in optional]
+    if set(value) != set(present):
+        fail(f"{where}: keys {sorted(set(value) ^ set(present))} missing or unknown")
     out = {}
-    for k in keys:
+    for k in present:
         v = value[k]
         if k in NESTED:
             if isinstance(v, list):
@@ -131,7 +135,8 @@ def load_pack(folder):
             doc = json.load(fh)
         if not isinstance(doc, dict) or list(doc) != [name] or not isinstance(doc[name], list):
             fail(f"{path}: expected {{\"{name}\": [...]}}")
-        sections[name] = [ordered(r, SCHEMA[name], f"{name}[{i}]") for i, r in enumerate(doc[name])]
+        keys = SCHEMA[name] + OPTIONAL.get(name, [])
+        sections[name] = [ordered(r, keys, f"{name}[{i}]", OPTIONAL.get(name, ())) for i, r in enumerate(doc[name])]
     return meta, sections, files
 
 

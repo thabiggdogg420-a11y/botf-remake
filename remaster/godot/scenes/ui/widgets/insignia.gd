@@ -5,14 +5,14 @@ extends RefCounted
 ##
 ##   Insignia.draw(canvas_item, empire, rect, colour, style = "auto", bg = null)
 ##
-## empire: 0..5 (neutral, Federation, Klingon, Romulan, Cardassian, Ferengi) or a key: "dominion", "borg", "species8472",
+## empire: 0..8 (neutral, Federation, Klingon, Romulan, Cardassian, Ferengi, Dominion, Borg, Breen) or a key: "dominion", "borg", "species8472",
 ##   "breen", "hirogen", "kazon", "xindi", "krenim", "tholian", "gorn", "orion", "maquis", "devore", "minor", "neutral"
 ##   (roster faction names such as "Dominion" work too). Unknown keys draw the neutral mark.
 ## style: "auto" (the small variant under SMALL_PX), "full", "small", "outline".
 ## bg: colour of the cut-outs and halos (default Lcars.BG); pass the surface the emblem sits on.
 ## Every mark is one colour plus cut-outs, drawn in a 0..100 box. Each has a heavier small variant for 14 px use.
 
-const BY_ID := ["neutral", "federation", "klingon", "romulan", "cardassian", "ferengi"]
+const BY_ID := ["neutral", "federation", "klingon", "romulan", "cardassian", "ferengi", "dominion", "borg", "breen"]
 const ALL := ["federation", "ufp", "klingon", "romulan", "cardassian", "ferengi", "dominion", "borg", "species8472", "breen", "hirogen",
 	"kazon", "xindi", "krenim", "tholian", "gorn", "orion", "maquis", "devore", "minor", "neutral"]
 const ALIASES := {"fed": "federation", "starfleet": "federation", "klingons": "klingon", "romulans": "romulan",

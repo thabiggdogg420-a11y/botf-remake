@@ -191,7 +191,7 @@ inline void placeRosterMinors(GameState& s, std::uint64_t seed, StartingEra era,
             m.name = race.name;
             adopt(m, race, era);
             const int xenophobia = race.temperament == Temperament::Xenophobic ? 5 : 0;
-            for (int e = 1; e <= 5; ++e) m.attitude[static_cast<std::size_t>(e)] = std::clamp(60 + 5 * race.affinity[static_cast<std::size_t>(e)] - xenophobia, 0, 100);
+            for (int e = 1; e <= MaxMajors; ++e) if (e <= LegacyMajors || detail::campaignEmpire(s, e)) m.attitude[static_cast<std::size_t>(e)] = std::clamp(60 + 5 * race.affinity[static_cast<std::size_t>(e)] - xenophobia, 0, 100);
             s.minors.push_back(m);
         }
     }
@@ -278,7 +278,7 @@ inline void reviewMinorRaces(GameState& s, std::vector<std::string>& events) {
             const int cap = std::min(MaxMinorPopulation, 2 * r->population);
             if (m.population < cap) m.population = std::min(cap, m.population + std::max(1, m.population * growthPct / 100));
         }
-        for (int e = 1; e <= 5; ++e) {
+        for (int e = 1; e <= MaxMajors; ++e) {
             const auto slot = static_cast<std::size_t>(e);
             if (!m.contact[slot] || !detail::campaignEmpire(s, e) || empireEliminated(s, e)) continue;
             int& att = m.attitude[slot];

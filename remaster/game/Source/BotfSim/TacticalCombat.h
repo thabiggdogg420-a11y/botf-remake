@@ -3059,7 +3059,7 @@ inline Encounter deserializeEncounter(const std::string& text) {
             if (enc.currentRound < 0 || enc.maxRounds <= 0 || enc.maxRounds > 500 || enc.currentRound > enc.maxRounds) {
                 fail("ROUNDS counts out of valid bounds.");
             }
-            if (enc.winnerOwnerId < 0 || enc.winnerOwnerId > 5) fail("ROUNDS winner out of bounds.");
+            if (enc.winnerOwnerId < 0 || enc.winnerOwnerId > 8) fail("ROUNDS winner out of bounds.");
             enc.isFinished = (fin == 1);
             hasRounds = true;
         } else if (tag == "SECTOR") {
@@ -3089,7 +3089,7 @@ inline Encounter deserializeEncounter(const std::string& text) {
             if (applied != 0 && applied != 1) {
                 fail("Invalid boolean for resultsApplied in CONTROLLER (expected 0 or 1).");
             }
-            if (enc.controllingOwnerId < 1 || enc.controllingOwnerId > 5) {
+            if (enc.controllingOwnerId < 1 || enc.controllingOwnerId > 8) {
                 fail("CONTROLLER owner out of bounds [1, 5].");
             }
             enc.resultsApplied = (applied == 1);
@@ -3130,7 +3130,7 @@ inline Encounter deserializeEncounter(const std::string& text) {
                 if (s.fleetId <= 0 || !seenFleetIds.insert(s.fleetId).second) {
                     fail("Invalid or duplicate fleet ID in SHIPS section: " + std::to_string(s.fleetId));
                 }
-                if (s.ownerId < 1 || s.ownerId > 5) fail("Ship owner out of bounds [1, 5].");
+                if (s.ownerId < 1 || s.ownerId > 8) fail("Ship owner out of bounds [1, 8].");
                 owners.insert(s.ownerId);
 
                 // Bounds & consistency validation
@@ -3385,7 +3385,7 @@ inline Encounter deserializeEncounter(const std::string& text) {
                     fail("Failed to parse GROUPS header record.");
                 }
                 if (g.groupId <= 0 || !groupIds.insert(g.groupId).second) fail("Invalid or duplicate group ID.");
-                if (g.ownerId < 1 || g.ownerId > 5) fail("Group owner out of bounds.");
+                if (g.ownerId < 1 || g.ownerId > 8) fail("Group owner out of bounds.");
                 if (gc < 0 || gc > 3) fail("Invalid tactical group class.");
                 if (!maneuverValid(man)) fail("Invalid group standing maneuver.");
                 if (fCount < 0 || fCount > 256) fail("Group member count out of bounds.");

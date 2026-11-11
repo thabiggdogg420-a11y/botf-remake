@@ -29,6 +29,9 @@ const PALETTES := {
 	3: {"key": "romulan", "primary": "#3fc98a", "secondary": "#93dcbf", "tertiary": "#59a88a", "map": "#35c37f", "ink": "#03110a"},
 	4: {"key": "cardassian", "primary": "#d9a44a", "secondary": "#e9d6a6", "tertiary": "#b88a55", "map": "#d6a13f", "ink": "#120c03"},
 	5: {"key": "ferengi", "primary": "#f08a2c", "secondary": "#f5c16c", "tertiary": "#c8743d", "map": "#f28c28", "ink": "#130902"},
+	6: {"key": "dominion", "primary": "#8f6ad8", "secondary": "#c7b3f0", "tertiary": "#6f55a8", "map": "#8a5fd6", "ink": "#0a0614"},
+	7: {"key": "borg", "primary": "#5cd45a", "secondary": "#a8e8a4", "tertiary": "#3f9a3e", "map": "#4fcf4c", "ink": "#040e04"},
+	8: {"key": "breen", "primary": "#7fd3e0", "secondary": "#c2edf3", "tertiary": "#559fab", "map": "#6ccadb", "ink": "#041013"},
 }
 ## Okabe-Ito owner colours for the colour-blind setting.
 const COLORBLIND := {
@@ -37,6 +40,9 @@ const COLORBLIND := {
 	3: {"key": "romulan", "primary": "#16b38a", "secondary": "#8fe0c8", "tertiary": "#0b7a5e", "map": "#009e73", "ink": "#00130d"},
 	4: {"key": "cardassian", "primary": "#f0e442", "secondary": "#faf3a8", "tertiary": "#b8ad2a", "map": "#f0e442", "ink": "#141200"},
 	5: {"key": "ferengi", "primary": "#d98cbb", "secondary": "#f0c6df", "tertiary": "#a8628e", "map": "#cc79a7", "ink": "#14060e"},
+	6: {"key": "dominion", "primary": "#b9b9ff", "secondary": "#e0e0ff", "tertiary": "#8c8cc8", "map": "#a6a6ff", "ink": "#0a0a18"},
+	7: {"key": "borg", "primary": "#8fe28a", "secondary": "#c9f2c6", "tertiary": "#5fae5a", "map": "#7cd977", "ink": "#04100a"},
+	8: {"key": "breen", "primary": "#4fb0c8", "secondary": "#a4dae6", "tertiary": "#37808f", "map": "#3fa2bd", "ink": "#03121a"},
 }
 const FACTIONS := [
 	{"id": 1, "short": "Federation", "capital": "Sol", "motto": "Explore. Unite. Endure.", "traits": ["Balanced economy", "Diplomatic reach", "Science vessels"]},
@@ -44,6 +50,9 @@ const FACTIONS := [
 	{"id": 3, "short": "Romulan", "capital": "Romulus", "motto": "Patience is the sharpest blade.", "traits": ["Cloaked warbirds", "Espionage", "Secretive state"]},
 	{"id": 4, "short": "Cardassian", "capital": "Cardassia", "motto": "Order. Duty. The State.", "traits": ["Industrial might", "Security services", "Disciplined"]},
 	{"id": 5, "short": "Ferengi", "capital": "Ferenginar", "motto": "Every contact is a customer.", "traits": ["Trade & credits", "Opportunists", "Fast traders"]},
+	{"id": 6, "short": "Dominion", "key": "dominion", "capital": "Omarion Nebula", "motto": "Order is the only peace.", "traits": ["Founders and Vorta", "Jem'Hadar shock troops", "Absolute order"]},
+	{"id": 7, "short": "Borg", "key": "borg", "capital": "Unimatrix 001", "motto": "Resistance is futile.", "traits": ["Collective will", "Adaptive weapons", "Assimilation"]},
+	{"id": 8, "short": "Breen", "key": "breen", "capital": "Breen", "motto": "Silence keeps the confederacy.", "traits": ["Energy dampeners", "Secretive confederacy", "Cold-world raiders"]},
 ]
 const RESEARCH_BLURBS := [
 	"Life sciences, terraforming and food production.",

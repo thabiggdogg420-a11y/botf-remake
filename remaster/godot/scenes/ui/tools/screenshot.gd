@@ -521,7 +521,7 @@ func _force_contact() -> void:
 		var id := int(e.get("empire", e.get("id", 0)))
 		if e.get("atWar", false) or not e.get("contact", false):
 			continue
-		if id != 0 and id != me and id <= 5:
+		if id != 0 and id != me and id <= 8:
 			app.core.invoke("submit", {"command": {"type": "DeclareWar", "targetEmpire": id}, "cancelIds": []})
 	var fleets: Array = app.view.get("fleets", [])
 	var targets := []

@@ -20,9 +20,16 @@ namespace botf {
 // schema 15 adds the optional GALAXY_SETUP section (galaxy shape, minor-race density, difficulty;
 // docs/design/GALAXY-GENERATOR.md); schema 16 adds the empire rules (EmpireRules.h, docs/design/EMPIRE-RULES.md):
 // dilithium refineries, emergency programs, invasion aftermath, minor conquest and minor guard ships
-// (optional EMPIRE_RULES section). Schemas 4-15 still load and continue.
-inline constexpr const char* ContentVersion = "remaster-16";
-inline constexpr int SaveVersion = 16;
+// (optional EMPIRE_RULES section); schema 17 generalises the empire slots (docs/design/EMPIRE-SLOTS.md): two to eight majors
+// with stable ids 1..8 (optional EMPIRE_SLOTS section, written only when an id above five is in play). Schemas 4-16 still
+// load and continue.
+inline constexpr const char* ContentVersion = "remaster-17";
+inline constexpr int SaveVersion = 17;
+// Campaign empire ids are race slots: 1 Federation, 2 Klingon, 3 Romulan, 4 Cardassian, 5 Ferengi, 6 Dominion, 7 Borg,
+// 8 Breen. A campaign seats two to eight of them (any subset); per-empire arrays are indexed by id, so they hold nine entries.
+inline constexpr int MaxMajors = 8;
+inline constexpr int MajorSlots = MaxMajors + 1;   // Index 0 is unused (neutral).
+inline constexpr int LegacyMajors = 5;             // The five majors of schemas 4-16.
 // Largest campaign save deserialize() accepts (and the CLI reads). A 300-turn
 // five-empire Remastered soak peaks far below this; see GAMEPLAY-REMASTER.md.
 inline constexpr std::size_t MaxSaveBytes = 8u * 1024u * 1024u;
@@ -317,9 +324,9 @@ struct Minor {
     int systemId = 0;
     std::string name;
     int memberOf = 0;
-    std::array<bool, 6> contact{};
-    std::array<int, 6> attitude{0,60,60,60,60,60};
-    std::array<int, 6> friendshipTurn{-1,-1,-1,-1,-1,-1};
+    std::array<bool, MajorSlots> contact{};
+    std::array<int, MajorSlots> attitude{0,60,60,60,60,60,60,60,60};
+    std::array<int, MajorSlots> friendshipTurn{-1,-1,-1,-1,-1,-1,-1,-1,-1};
     // Minor-race roster (Lane G, MinorRaces.h; optional MINOR_RACES save section).
     // raceId 0 = legacy minor without roster progression; the other three are then 0.
     int raceId = 0;
@@ -401,7 +408,7 @@ struct GalaxyFeature {
     int clusterId = 0;         // Nebula cells of one cloud share a cluster (one survey reward).
     int driftX = 0, driftY = 0; // Ion storm drift direction (moves every IonStormDriftTurns).
     int expiresTurn = 0;       // Temporary features (subspace rifts) vanish after this turn; 0 = permanent.
-    int surveyedMask = 0;      // Bit (1 << empireId) once that empire collected the survey reward.
+    int surveyedMask = 0;      // Bit (1 << empireId, id 1..8) once that empire collected the survey reward.
 };
 inline constexpr int IonStormDriftTurns = 2;
 
@@ -616,8 +623,11 @@ GameState generate(std::uint64_t seed, int width = 12, int height = 8, int count
 // Campaigns generated before the star-name table named their systems System-<id>; this gives each such system (and its
 // planets) the name generate() now gives that id, unless another system already has it. Returns the systems renamed.
 int adoptStarNames(GameState& s);
-GameState generateCampaign(std::uint64_t seed, int empires = 2, int width = 16, int height = 12, int systems = 28, int playerEmpire = 1, StartingEra era = StartingEra::Early, GalaxyShape shape = GalaxyShape::Legacy);
-GameState generateReferenceCampaign(std::uint64_t seed, int empires = 2, int width = 16, int height = 12, int systems = 28, int playerEmpire = 1, StartingEra era = StartingEra::Early, GalaxyShape shape = GalaxyShape::Legacy);
+// `lineup` (schema 17) lists the empire ids (race slots 1..8) seated in the campaign, in seating order: the first takes the
+// origin star, the rest are placed farthest-first. Empty means slots 1..`empires`; a non-empty lineup overrides `empires`.
+// `playerEmpire` is an empire id and must be in the lineup.
+GameState generateCampaign(std::uint64_t seed, int empires = 2, int width = 16, int height = 12, int systems = 28, int playerEmpire = 1, StartingEra era = StartingEra::Early, GalaxyShape shape = GalaxyShape::Legacy, const std::vector<int>& lineup = {});
+GameState generateReferenceCampaign(std::uint64_t seed, int empires = 2, int width = 16, int height = 12, int systems = 28, int playerEmpire = 1, StartingEra era = StartingEra::Early, GalaxyShape shape = GalaxyShape::Legacy, const std::vector<int>& lineup = {});
 GameState generateCampaignWithEra(std::uint64_t seed, StartingEra era, int empires = 2, int width = 16, int height = 12, int systems = 28, int playerEmpire = 1);
 GameState generateReferenceCampaignWithEra(std::uint64_t seed, StartingEra era, int empires = 2, int width = 16, int height = 12, int systems = 28, int playerEmpire = 1);
 const EmpireState& empire(const GameState& state, int id);
@@ -788,6 +798,10 @@ struct CampaignSetup {
     bool reference = true;
     RulesetPreset preset = RulesetPreset::Remastered;
     GalaxySetup galaxy;
+    // Schema 17: the lineup as race keys ("federation", "klingon", "romulan", "cardassian", "ferengi", "dominion", "borg",
+    // "breen"), two to eight, in seating order. Empty keeps `empires` (slots 1..empires). When set it overrides `empires`, and
+    // `playerEmpire` is the empire id (race slot) of a seated race.
+    std::vector<std::string> lineup;
 };
 // Star positions only (no names, planets or empires): the layout generate() would give this shape, so a setup
 // screen can preview the exact galaxy. Index 0 is Sol. Deterministic on every platform (integer arithmetic).
@@ -797,6 +811,8 @@ GameState newCampaign(const CampaignSetup& setup);
 // on a turn-0 campaign and adopts roster-named starter minors. newCampaign() calls it for every preset;
 // generateCampaign()/generateReferenceCampaign() stay on the legacy baseline.
 void placeMinorRaceRoster(GameState& state);
+// Schema 17: adds the home-system ships a race lists as `major.startingFleet` (Dominion, Borg, Breen); needs the expanded roster.
+void addStartingFleets(GameState& state);
 GameplayRules rulesForPreset(RulesetPreset preset);
 const char* rulesetPresetName(RulesetPreset preset);
 bool parseRulesetPreset(const std::string& text, RulesetPreset& preset); // "classic" / "remastered" (case-insensitive)

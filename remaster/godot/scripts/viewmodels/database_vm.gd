@@ -4,9 +4,9 @@ extends ViewModel
 ## field filter, the selected entry, and the list rows and entry lookups over the core's `encyclopedia`.
 
 const ROLE_NAMES := {0: "Scout", 1: "Destroyer", 2: "Cruiser", 3: "Strike cruiser", 4: "Command ship", 5: "Colony ship", 6: "Outpost", 7: "Starbase", 8: "Station", 9: "Troop transport"}
-const RACE_TO_EMPIRE := {1: 1, 3: 2, 4: 3, 0: 4, 2: 5}
-const RACE_TO_FACTION := {1: "Federation", 3: "Klingon", 4: "Romulan", 0: "Cardassian", 2: "Ferengi"}
-const MAJOR_FACTIONS := ["Federation", "Klingon", "Romulan", "Cardassian", "Ferengi"]
+const RACE_TO_EMPIRE := {1: 1, 3: 2, 4: 3, 0: 4, 2: 5, 35: 6, 36: 7, 37: 8}
+const RACE_TO_FACTION := {1: "Federation", 3: "Klingon", 4: "Romulan", 0: "Cardassian", 2: "Ferengi", 35: "Dominion", 36: "Borg", 37: "Breen"}
+const MAJOR_FACTIONS := ["Federation", "Klingon", "Romulan", "Cardassian", "Ferengi", "Dominion", "Borg", "Breen"]
 const TABS := [["ships", "Ships"], ["technologies", "Tech"], ["structures", "Structures"], ["races", "Races"], ["minors", "Minor races"]]
 const SOURCES := ["Legacy", "Canon", "ModDerived", "Kelvin"]
 

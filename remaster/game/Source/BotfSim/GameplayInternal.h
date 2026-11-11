@@ -33,6 +33,8 @@ bool queueShip(GameState& state, Colony& colony, Building role);
 void detachFromTaskForce(GameState& state, Fleet& fleet);
 void reconcileTaskForces(GameState& state);
 int catalogueRace(int owner);
+int donorRace(int owner);
+bool shipUsable(const referenceData::ShipRecord& ship, int owner);
 bool playableShip(const referenceData::ShipRecord& ship);
 Building roleProduct(int role);
 const referenceData::ShipRecord& sourceShip(int id);

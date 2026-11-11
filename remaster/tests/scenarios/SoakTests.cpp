@@ -40,12 +40,13 @@ struct SoakConfig {
     bool gameplayLayer = false; // newCampaign() with `preset` and a scripted player.
     botf::RulesetPreset preset = botf::RulesetPreset::Remastered;
     bool passivePlayer = false; // No scripted orders or governors: AI-vs-AI statistics.
+    std::vector<std::string> lineup; // Schema 17: race keys (two to eight majors); `player` is then an empire id (race slot).
 };
 
 std::string describe(const SoakConfig& c) {
     std::ostringstream out;
     out << (c.reference ? "reference" : "prototype") << " seed " << c.seed << " era " << botf::eraName(c.era)
-        << " empires " << c.empires << " player " << c.player;
+        << " empires " << (c.lineup.empty() ? c.empires : static_cast<int>(c.lineup.size())) << " player " << c.player;
     if (c.gameplayLayer) out << " ruleset " << botf::rulesetPresetName(c.preset);
     return out.str();
 }
@@ -200,6 +201,8 @@ SoakStats soak(const SoakConfig& config) {
     botf::CampaignSetup setup;
     setup.seed = config.seed; setup.empires = config.empires; setup.playerEmpire = config.player;
     setup.era = config.era; setup.reference = config.reference; setup.preset = config.preset;
+    setup.lineup = config.lineup;
+    if (config.lineup.size() > 5) { setup.width = 22; setup.height = 15; setup.systems = 48; } // Eight majors need room.
     auto state = config.gameplayLayer ? botf::newCampaign(setup) : config.reference
         ? botf::generateReferenceCampaign(config.seed, config.empires, 16, 12, 28, config.player, config.era)
         : botf::generateCampaign(config.seed, config.empires, 16, 12, 28, config.player, config.era);
@@ -353,6 +356,25 @@ int main() {
                 c.turns = 300 + 50 * (scale - 1);
                 c.gameplayLayer = true;
                 c.passivePlayer = true;
+                configs.push_back(c);
+            }
+        // Schema 17: lineups above five majors (Dominion, Borg, Breen), scripted player, Remastered and Classic.
+        const std::vector<std::pair<std::vector<std::string>, std::vector<int>>> slotLineups{
+            {{"federation", "klingon", "romulan", "cardassian", "ferengi", "dominion"}, {6, 1}},
+            {{"federation", "klingon", "romulan", "cardassian", "ferengi", "dominion", "borg", "breen"}, {7, 8, 2}},
+            {{"dominion", "borg"}, {6, 7}},
+            {{"klingon", "dominion", "borg"}, {7}}};
+        for (std::size_t l = 0; l < slotLineups.size(); ++l)
+            for (int player : slotLineups[l].second) {
+                SoakConfig c;
+                c.seed = 6100 + 17 * l + static_cast<std::uint64_t>(player) + 3 * static_cast<std::uint64_t>(era);
+                c.era = era;
+                c.lineup = slotLineups[l].first;
+                c.player = player;
+                c.turns = 150 + 50 * (scale - 1);
+                c.gameplayLayer = true;
+                c.preset = (l + static_cast<std::size_t>(era)) % 4 == 3 ? botf::RulesetPreset::Classic : botf::RulesetPreset::Remastered;
+                c.lockstepSession = l == 1 && player == 7;
                 configs.push_back(c);
             }
         SoakConfig classic;

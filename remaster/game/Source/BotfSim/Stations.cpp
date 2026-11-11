@@ -36,8 +36,12 @@ int totalStationsAndBuilds(const GameState& s) {
 // The best catalogue station record (role 6 outpost, role 7 starbase) of the
 // owner's race: the upgraded "II" design once its technology is met.
 const referenceData::ShipRecord* catalogueStation(const GameState& s, int owner, StationType type) {
-    const int race = internal::catalogueRace(owner);
+    int race = internal::catalogueRace(owner);
     const int role = type == StationType::Outpost ? 6 : 7;
+    // A race without its own outpost or starbase plan builds its donor's.
+    if (!std::any_of(referenceData::ShipCatalogue.begin(), referenceData::ShipCatalogue.end(),
+            [&](const referenceData::ShipRecord& ship) { return ship.raceId == race && ship.role == role; }) && internal::donorRace(owner) >= 0)
+        race = internal::donorRace(owner);
     const referenceData::ShipRecord* basic = nullptr;
     const referenceData::ShipRecord* best = nullptr;
     const auto& tech = empire(s, owner).technologies;

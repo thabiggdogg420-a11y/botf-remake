@@ -432,14 +432,14 @@ void testMalformedSaveRejection() {
     std::string trailingJunk = validSave + "extra_junk_data\n";
     assert(!deserializeIntelState(trailingJunk, out, &err));
 
-    // 9. More than 4 rivals
+    // 9. More than 7 rivals (eight majors)
     std::string tooManyRivals =
         "BOTF_INTEL_V1\n"
         "empireId 1\n"
         "secStockpile 80 1\n"
         "secAlloc 80 0\n"
         "secHistory 0\n"
-        "rivalCount 5\n"
+        "rivalCount 8\n"
         "rival 2 2 0 2 0\n"
         "rData 0 0 -100 -100 0 10 10 10 10\nespHist 0\nsabHist 0\n"
         "rival 3 2 0 2 0\n"
@@ -449,6 +449,12 @@ void testMalformedSaveRejection() {
         "rival 5 2 0 2 0\n"
         "rData 0 0 -100 -100 0 10 10 10 10\nespHist 0\nsabHist 0\n"
         "rival 6 2 0 2 0\n"
+        "rData 0 0 -100 -100 0 10 10 10 10\nespHist 0\nsabHist 0\n"
+        "rival 7 2 0 2 0\n"
+        "rData 0 0 -100 -100 0 10 10 10 10\nespHist 0\nsabHist 0\n"
+        "rival 8 2 0 2 0\n"
+        "rData 0 0 -100 -100 0 10 10 10 10\nespHist 0\nsabHist 0\n"
+        "rival 9 2 0 2 0\n"
         "rData 0 0 -100 -100 0 10 10 10 10\nespHist 0\nsabHist 0\n"
         "END_BOTF_INTEL\n";
     assert(!deserializeIntelState(tooManyRivals, out, &err));

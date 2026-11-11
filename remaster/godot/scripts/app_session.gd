@@ -228,7 +228,7 @@ static func campaign_options(options: Dictionary) -> Dictionary:
 		if not o.has("faction"):
 			o["faction"] = int(o["empire"])
 		o.erase("empire")
-	if o.has("faction") and o.has("empires"):
+	if o.has("faction") and o.has("empires") and not o.has("lineup"):
 		o["empires"] = max(int(o["empires"]), int(o["faction"]))
 	# Galaxy size: a "size" id ("small".."huge") resolves through NewCampaignVM.SIZES, the one table; a call that names no
 	# dimensions gets the default (Medium, 22x16, 50 systems) so no player ever lands on the core's old 16x12/28 default.

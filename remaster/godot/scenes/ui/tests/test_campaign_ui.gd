@@ -64,7 +64,7 @@ func _new_app(backend: String) -> void:
 
 func _workflow(backend: String) -> void:
 	await _new_app(backend)
-	check(not app.meta.is_empty() and app.meta.get("empires", []).size() == 5, "meta lists five major powers")
+	check(not app.meta.is_empty() and app.meta.get("empires", []).size() == 8, "meta lists the eight playable powers")
 	check(app.screen == "title" and find(app, "NewCampaign") != null, "title screen shows New campaign")
 
 	# ---- New campaign

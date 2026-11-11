@@ -75,7 +75,7 @@ func refresh() -> void:
 	sub.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	head.add_child(sub)
 	col.add_child(head)
-	var cards := Lcars.hbox(14)
+	var cards := Lcars.hbox(10)
 	col.add_child(cards)
 	for f in Lcars.FACTIONS:
 		cards.add_child(_faction_card(f))
@@ -118,15 +118,7 @@ func _galaxy_panel() -> Control:
 	gb.add_child(_choice_row("Shape", NewCampaignVM.SHAPES.map(func(s): return [s["id"], s["label"], s["blurb"]]), vm.shape, func(id): vm.shape = id; refresh(), "shape"))
 	gb.add_child(_choice_row("Size", SIZES.map(func(s): return [s["id"], s["label"], "%dx%d sectors, %d star systems. %s" % [s["width"], s["height"], s["systems"], s["blurb"]]]), size_id, func(id): size_id = id; refresh(), "systems"))
 	gb.add_child(_choice_row("Minor races", NewCampaignVM.DENSITIES.map(func(d): return [d["id"], d["label"], "%s minor races on this size (at most 29)." % _minors_for(d["id"])]), vm.minor_density, func(id): vm.minor_density = id; refresh(), "minorDensity"))
-	var pw_items := []
-	for n in [2, 3, 4, 5]:
-		pw_items.append([str(n), str(n), "%d major powers compete." % n])
-	var pw := _choice_row("Powers in play", pw_items, str(vm.powers()), func(id): empires = int(id); refresh(), "empires", 56)
-	for t in pw.find_children("*", "Button", true, false):
-		if int((t as Button).text) < faction:
-			(t as Button).disabled = true
-			(t as Button).tooltip_text = "Powers join in canonical order (Federation, Klingon, Romulan, Cardassian, Ferengi)."
-	gb.add_child(pw)
+	gb.add_child(_powers_row())
 	gb.add_child(Lcars.caption("Seed"))
 	var sr := Lcars.hbox(8)
 	var seed_edit := SpinBox.new()
@@ -139,6 +131,29 @@ func _galaxy_panel() -> Control:
 	sr.add_child(Lcars.pill("Randomise", "ghost", func(): vm.roll_seed(); refresh(), "", "Roll a new galaxy"))
 	gb.add_child(sr)
 	return galaxy
+
+## "Powers in play": one toggle per playable power (two to eight; your own cannot be switched off).
+func _powers_row() -> Control:
+	var box := Lcars.vbox(5)
+	box.name = "PowersInPlay"
+	var cap := Lcars.hbox(8)
+	cap.add_child(Lcars.caption("Powers in play  %d" % vm.powers()))
+	box.add_child(cap)
+	var row := HFlowContainer.new()
+	row.add_theme_constant_override("h_separation", 6)
+	row.add_theme_constant_override("v_separation", 6)
+	var ids := vm.lineup_ids()
+	for f in Lcars.FACTIONS:
+		var id := int(f["id"])
+		var blocked := vm.toggle_block(id)
+		var t := Lcars.toggle(str(f["short"]), ids.has(id), func(_on): vm.toggle_power(id); refresh(), "%s: %s" % [f["short"], ", ".join(f["traits"])])
+		t.name = "Power%d" % id
+		t.disabled = blocked != "" and ids.has(id) and id == faction
+		if blocked != "":
+			t.tooltip_text = blocked
+		row.add_child(t)
+	box.add_child(row)
+	return box
 
 func _preview_panel() -> Control:
 	var f := Lcars.frame("Preview", "%s · %d systems" % [vm.shape, int(vm.size_def()["systems"])], "primary", "star")
@@ -161,15 +176,19 @@ func _preview_panel() -> Control:
 		stats.add_child(t)
 	b.add_child(stats)
 	var leg := Lcars.hbox(16)
-	for e in range(1, vm.powers() + 1):
+	var legend := HFlowContainer.new()
+	legend.add_theme_constant_override("h_separation", 14)
+	legend.add_theme_constant_override("v_separation", 4)
+	for e in vm.lineup_ids():
 		var it := Lcars.hbox(6)
-		it.add_child(Lcars.emblem(e, 16))
-		it.add_child(Lcars.label(Lcars.FACTIONS[e - 1]["short"], "Muted", 13))
-		leg.add_child(it)
+		it.add_child(Lcars.emblem(int(e), 16))
+		it.add_child(Lcars.label(Lcars.FACTIONS[int(e) - 1]["short"], "Muted", 13))
+		legend.add_child(it)
 	var mi := Lcars.hbox(6)
 	mi.add_child(Lcars.label("○", "", 14, Lcars.TEXT2))
 	mi.add_child(Lcars.label("Minor race", "Muted", 13))
-	leg.add_child(mi)
+	legend.add_child(mi)
+	leg.add_child(legend)
 	b.add_child(leg)
 	return f
 
@@ -185,7 +204,7 @@ func _update_preview() -> void:
 	if _preview:
 		var pv := vm.preview_galaxy()
 		if pv.is_empty():
-			_preview.configure(vm.shape, seed_value, int(vm.size_def()["systems"]), vm.powers(), vm.minors_count(), faction)
+			_preview.configure(vm.shape, seed_value, int(vm.size_def()["systems"]), vm.powers(), vm.minors_count(), faction, vm.lineup_ids())
 		else:
 			_preview.configure_core(pv, faction)
 
@@ -255,7 +274,8 @@ func _faction_card(f: Dictionary) -> Control:
 	b.button_pressed = selected
 	b.custom_minimum_size = Vector2(0, 186)
 	b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	b.tooltip_text = "%s · capital %s\n%s" % [f["short"], f["capital"], ", ".join(f["traits"])]
+	b.clip_contents = true
+	b.tooltip_text = "%s · capital %s\n“%s”\n%s" % [f["short"], f["capital"], f["motto"], ", ".join(f["traits"])]
 	var bg := Lcars.box(Color(col, 0.16) if selected else Color(Lcars.PANEL2, 0.85), UiTokens.radius(), col if selected else Lcars.LINE2, 3 if selected else 1, Vector4(16, 14, 16, 14))
 	if selected:
 		bg.shadow_color = Color(col, 0.35)
@@ -266,28 +286,30 @@ func _faction_card(f: Dictionary) -> Control:
 			s.border_color = col
 		b.add_theme_stylebox_override(st, s)
 	b.pressed.connect(_pick_faction.bind(id))
-	var h := Lcars.hbox(14)
+	var h := Lcars.vbox(6)
 	h.set_anchors_preset(Control.PRESET_FULL_RECT)
 	h.offset_left = 14
 	h.offset_top = 12
 	h.offset_right = -12
 	h.offset_bottom = -12
 	b.add_child(h)
-	var ps := PortraitSlot.make(id, Vector2(110, 150))
+	# Eight powers share the row, so a card is a column: portrait over name, capital and traits (the motto is in the tooltip).
+	var ps := PortraitSlot.make(id, Vector2(76, 62))
 	ps.live = selected
+	ps.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	h.add_child(ps)
-	var v := Lcars.vbox(4)
+	var v := Lcars.vbox(3)
 	v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	h.add_child(v)
-	var nm := Lcars.label(vm.faction_name(id, f["short"]), "", 22, col)
+	var nm := Lcars.label(str(f["short"]).to_upper(), "", 19, col)
 	nm.add_theme_font_override("font", Lcars.font("display", 600))
 	nm.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	v.add_child(nm)
-	v.add_child(Lcars.caption("Capital · " + f["capital"]))
-	var mo := Lcars.para("“%s”" % f["motto"], Lcars.TEXT, 13)
-	v.add_child(mo)
+	v.add_child(Lcars.caption(str(f["capital"])))
 	for t in f["traits"]:
-		v.add_child(Lcars.label("▸ " + t, "Muted", 12, Color(pal["secondary"])))
+		var tl := Lcars.label("▸ " + t, "Muted", 11, Color(pal["secondary"]))
+		tl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		v.add_child(tl)
 	for n in h.find_children("*", "Control", true, false):
 		n.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	h.mouse_filter = Control.MOUSE_FILTER_IGNORE

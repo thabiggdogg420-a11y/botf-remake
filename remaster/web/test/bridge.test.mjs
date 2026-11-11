@@ -41,7 +41,7 @@ console.log('BOTF web bridge');
 
 test('meta lists five majors and the starting eras', () => {
   const meta = call('meta');
-  assert.equal(meta.empires.length, 5);
+  assert.equal(meta.empires.length, 8); // five originals, Dominion, Borg, Breen (schema 17)
   assert.ok(meta.eras.length >= 1);
   assert.equal(meta.researchFields.length, 6);
   assert.ok(meta.maneuvers.some((m) => m.key === 'Engage'));
@@ -507,6 +507,20 @@ test('tactical rules 3: rounds carry the core combat event stream and ships thei
   const r2 = call('tacticalRound');
   assert.equal(r2.rules, 2);
   assert.deepEqual(r2.rounds[0].events, []);
+});
+
+// Empire slots (schema 17): a lineup of race keys seats Dominion and Borg as majors; the preview marks their capitals by id.
+test('a lineup seats Dominion and Borg as majors and the preview shows their capitals', () => {
+  const args = { faction: 6, lineup: ['federation', 'dominion', 'borg'], seed: 424242, era: 1, ruleset: 'reference', width: 22, height: 16, systems: 50 };
+  const v = call('newCampaign', args);
+  assert.equal(v.meta.player, 6);
+  assert.deepEqual(v.empires.map((e) => e.empire).sort(), [1, 7]);
+  const kinds = new Set(call('galaxyPreview', args).stars.map((s) => s[2]));
+  assert.ok(kinds.has(1) && kinds.has(6) && kinds.has(7) && kinds.has(9), 'capitals by empire id, 9 for a minor race');
+  const meta = call('meta');
+  assert.deepEqual(meta.empires.map((e) => e.key), ['federation', 'klingon', 'romulan', 'cardassian', 'ferengi', 'dominion', 'borg', 'breen']);
+  const bad = attempt('newCampaign', { faction: 1, lineup: ['federation', 'gorn'] });
+  assert.equal(bad.ok, false);
 });
 
 console.log(`${passed} bridge tests passed`);

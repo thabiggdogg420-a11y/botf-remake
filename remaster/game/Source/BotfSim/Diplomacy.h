@@ -418,11 +418,14 @@ enum class MajorPersonality : int {
     Klingon = 1,    // Honor & aggression: respects strength, detests demands, never breaks its word
     Romulan = 2,    // Suspicion: demands more trust for everything, breaks pacts when overwhelming
     Cardassian = 3, // Order & expansion: demands tribute from the weak, expands by force
-    Ferengi = 4     // Profit: credits and trade pacts decide almost everything
+    Ferengi = 4,    // Profit: credits and trade pacts decide almost everything
+    Dominion = 5,   // Control: the Founders' order, tribute from the weak, treaties only on its terms (schema 17)
+    Borg = 6,       // Assimilation: cold, demanding, rarely friendly (schema 17; the full collective rules are lane MOD-5)
+    Breen = 7       // Secretive confederacy: generic profile until its own lane (schema 17)
 };
 
 inline bool isValidPersonality(int val) {
-    return val >= 0 && val <= 4;
+    return val >= 0 && val <= 7;
 }
 
 inline const char* personalityName(MajorPersonality personality) {
@@ -432,14 +435,17 @@ inline const char* personalityName(MajorPersonality personality) {
         case MajorPersonality::Romulan: return "Romulan";
         case MajorPersonality::Cardassian: return "Cardassian";
         case MajorPersonality::Ferengi: return "Ferengi";
+        case MajorPersonality::Dominion: return "Dominion";
+        case MajorPersonality::Borg: return "Borg";
+        case MajorPersonality::Breen: return "Breen";
         default: return "Unknown";
     }
 }
 
-// Campaign empire slots follow the original race order: 1 Federation, 2 Klingon,
-// 3 Romulan, 4 Cardassian, 5 Ferengi. Unknown slots behave like the Federation.
+// Campaign empire slots follow the race order: 1 Federation, 2 Klingon, 3 Romulan, 4 Cardassian, 5 Ferengi, 6 Dominion,
+// 7 Borg, 8 Breen. Unknown slots behave like the Federation.
 inline MajorPersonality personalityForEmpire(int empireId) {
-    return (empireId >= 1 && empireId <= 5) ? static_cast<MajorPersonality>(empireId - 1)
+    return (empireId >= 1 && empireId <= 8) ? static_cast<MajorPersonality>(empireId - 1)
                                             : MajorPersonality::Federation;
 }
 
@@ -1094,6 +1100,8 @@ inline PersonalityThresholds thresholdsFor(MajorPersonality personality) {
         case MajorPersonality::Romulan:    return {55, 55, 65, 75, 85, 55, 60};
         case MajorPersonality::Cardassian: return {50, 50, 60, 70, 80, 50, 65};
         case MajorPersonality::Ferengi:    return {45, 45, 55, 65, 80, 35, 60};
+        case MajorPersonality::Dominion:   return {55, 55, 70, 80, 90, 50, 60};
+        case MajorPersonality::Borg:       return {70, 65, 85, 95, 99, 70, 90};
         default: return {50, 45, 55, 65, 75, 50, 55};
     }
 }
@@ -1315,6 +1323,8 @@ inline PersonalityProfile profileFor(MajorPersonality personality) {
         case MajorPersonality::Romulan:    return {25, 1, 10, 35, 55, 70, 85, 95, 55, true, false, false};
         case MajorPersonality::Cardassian: return {40, 1, 12, 40, 55, 65, 75, 85, 50, true, true, false};
         case MajorPersonality::Ferengi:    return {10, 1, 4, 50, 50, 60, 70, 85, 30, false, false, false};
+        case MajorPersonality::Dominion:   return {35, 1, 12, 35, 50, 65, 80, 90, 50, true, true, false};
+        case MajorPersonality::Borg:       return {5, 2, 15, 40, 70, 80, 95, 99, 40, false, true, false};
         default: return {0, 1, 3, 50, 50, 60, 70, 80, 45, false, false, false};
     }
 }
@@ -1337,6 +1347,11 @@ inline int personalityAffinity(MajorPersonality a, MajorPersonality b) {
         case 23: return 0;   // Romulan-Cardassian
         case 24: return 0;   // Romulan-Ferengi
         case 34: return 5;   // Cardassian-Ferengi
+        case 5: return -10;  // Federation-Dominion
+        case 15: return -15; // Klingon-Dominion
+        case 25: return -5;  // Romulan-Dominion
+        case 35: return 15;  // Cardassian-Dominion (allies in the war)
+        case 6: case 16: case 26: case 36: case 46: case 56: return -20; // Everyone-Borg
         default: return 0;
     }
 }
@@ -3498,7 +3513,7 @@ inline bool deserializeDiplomacyState(
     }
 
     // Optional modern-rule sections, in fixed order, each at most once.
-    auto validMajor = [](int id) { return id >= 1 && id <= 5; };
+    auto validMajor = [](int id) { return id >= 1 && id <= 8; };
     if (!(ss >> token)) {
         if (outError) *outError = "Missing END_BOTF_DIPLOMACY terminal token";
         return false;
