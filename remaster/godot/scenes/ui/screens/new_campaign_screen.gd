@@ -79,9 +79,16 @@ func refresh() -> void:
 	col.add_child(cards)
 	for f in Lcars.FACTIONS:
 		cards.add_child(_faction_card(f))
+	# The option columns scroll: with the preset and Threats panels the middle column is taller than a 1080p window.
+	var scroll := ScrollContainer.new()
+	scroll.name = "OptionsScroll"
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	col.add_child(scroll)
 	var opts := Lcars.hbox(16)
+	opts.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	opts.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	col.add_child(opts)
+	scroll.add_child(opts)
 	opts.add_child(_galaxy_panel())
 	# The middle column holds the preview and, under it, the preset picker (the Rules column keeps the height the launch card needs).
 	var mid := Lcars.vbox(14)

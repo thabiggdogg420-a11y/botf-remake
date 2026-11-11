@@ -191,6 +191,10 @@ func _prepare(s: String) -> void:
 			tpicker.vm.pick_preset(_env("SHOT_PRESET") if _env("SHOT_PRESET") != "" else "dominion-war")
 			tpicker.refresh()
 			await _wait(4)
+			var tscroll := tpicker.find_child("OptionsScroll", true, false) as ScrollContainer
+			if tscroll:
+				tscroll.scroll_vertical = 100000   # down to the Threats panel under the preset picker
+				await _wait(3)
 		"threats-galaxy", "threats-assimilated":
 			# Threat drill (schema 20): actors around the capital and one Borg-held ruin; -assimilated frames the ruin.
 			app.start_drill("newThreatDrill", "Threat drill")
