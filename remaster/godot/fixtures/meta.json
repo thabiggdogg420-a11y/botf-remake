@@ -2,38 +2,112 @@
  "method": "meta",
  "args": {},
  "result": {
-  "contentVersion": "remaster-16",
-  "saveVersion": 16,
+  "contentVersion": "remaster-17",
+  "saveVersion": 17,
   "empires": [
    {
     "id": 1,
+    "key": "federation",
     "name": "Federation",
     "home": "Sol",
-    "race": 1
+    "race": 1,
+    "shipDonor": -1,
+    "traits": [
+     "Balanced economy",
+     "Diplomatic reach",
+     "Science vessels"
+    ]
    },
    {
     "id": 2,
+    "key": "klingon",
     "name": "Klingon Empire",
     "home": "Qo'noS",
-    "race": 3
+    "race": 3,
+    "shipDonor": -1,
+    "traits": [
+     "Aggressive fleets",
+     "Cloaking raiders",
+     "Warrior culture"
+    ]
    },
    {
     "id": 3,
+    "key": "romulan",
     "name": "Romulan Star Empire",
     "home": "Romulus",
-    "race": 4
+    "race": 4,
+    "shipDonor": -1,
+    "traits": [
+     "Cloaked warbirds",
+     "Espionage",
+     "Secretive state"
+    ]
    },
    {
     "id": 4,
+    "key": "cardassian",
     "name": "Cardassian Union",
     "home": "Cardassia",
-    "race": 0
+    "race": 0,
+    "shipDonor": -1,
+    "traits": [
+     "Industrial might",
+     "Security services",
+     "Disciplined"
+    ]
    },
    {
     "id": 5,
+    "key": "ferengi",
     "name": "Ferengi Alliance",
     "home": "Ferenginar",
-    "race": 2
+    "race": 2,
+    "shipDonor": -1,
+    "traits": [
+     "Trade & credits",
+     "Opportunists",
+     "Fast traders"
+    ]
+   },
+   {
+    "id": 6,
+    "key": "dominion",
+    "name": "Dominion",
+    "home": "Omarion Nebula",
+    "race": 35,
+    "shipDonor": 0,
+    "traits": [
+     "Founders and Vorta",
+     "Jem'Hadar shock troops",
+     "Absolute order"
+    ]
+   },
+   {
+    "id": 7,
+    "key": "borg",
+    "name": "Borg Collective",
+    "home": "Unimatrix 001",
+    "race": 36,
+    "shipDonor": 1,
+    "traits": [
+     "Collective will",
+     "Adaptive weapons",
+     "Assimilation"
+    ]
+   },
+   {
+    "id": 8,
+    "key": "breen",
+    "name": "Breen Confederacy",
+    "home": "Breen",
+    "race": 37,
+    "shipDonor": 4,
+    "traits": [
+     "Energy dampeners",
+     "Secretive confederacy",
+     "Cold-world raiders"
+    ]
    }
   ],
   "eras": [
