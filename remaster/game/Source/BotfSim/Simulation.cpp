@@ -3968,7 +3968,11 @@ std::vector<std::pair<int, int>> galaxyLayout(std::uint64_t seed, int width, int
             return {centres[c].u + triangular(st, spreads[c]), centres[c].v + triangular(st, spreads[c])};
         }
         case GalaxyShape::Spiral: {
-            if (roll(st, 100) < 18) return polar(roll(st, 260), roll(st, 360)); // The bright core.
+            if (roll(st, 100) < 18) { // The bright core. (Draws are sequenced in statements: argument order is unspecified in C++.)
+                const int coreR = roll(st, 260);
+                const int coreA = roll(st, 360);
+                return polar(coreR, coreA);
+            }
             const int t = 80 + roll(st, 921);
             const int r = std::max(60, t * t / 1000);                 // Denser towards the core.
             const int arm = roll(st, 3) * 120;
@@ -3976,7 +3980,12 @@ std::vector<std::pair<int, int>> galaxyLayout(std::uint64_t seed, int width, int
             return polar(r, arm + r * 300 / 1000 + roll(st, 2 * noise + 1) - noise);
         }
         case GalaxyShape::Ring:
-            return polar(std::clamp(640 + roll(st, 261) + roll(st, 81) - 40, 560, 1000), roll(st, 360));
+        {
+            const int base = roll(st, 261);
+            const int jitter = roll(st, 81);
+            const int angle = roll(st, 360);
+            return polar(std::clamp(640 + base + jitter - 40, 560, 1000), angle);
+        }
         case GalaxyShape::Elliptical: {
             int u = 0, v = 0;
             for (int i = 0; i < 4; ++i) { u += roll(st, 2001) - 1000; v += roll(st, 2001) - 1000; }
