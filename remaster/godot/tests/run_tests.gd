@@ -367,7 +367,7 @@ func test_uncharted_view() -> void:
 
 ## The view is a read: a fixed-seed autoplay to turn 20 reaches the same state with or without the view being read every turn,
 ## and the hash is the one the core produced before the view change (recorded from the unchanged simulation sources).
-const FINGERPRINT_T20 := "14246520332045042113" # re-pinned for schema 20 (the header line is in the payload; body unchanged vs schema 18, see THREAT-ACTORS.md and the 7-seed body comparison); native and wasm agree
+const FINGERPRINT_T20 := "12390440946089379385" # re-pinned for schema 21 (the header line is in the payload; body unchanged vs schema 20, see DOMINION.md); native and wasm agree
 
 func _autoplay_fingerprint(read_view: bool) -> String:
 	api("newCampaign", CAMPAIGN)
