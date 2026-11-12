@@ -294,7 +294,8 @@ func _build_chrome() -> void:
 		b.name = "Rail_" + s["id"]
 		var sid: String = s["id"]
 		b.pressed.connect(func(): goto(sid))
-		if s["id"] == screen:
+		_rail_era_style(b, GAME_SCREENS.find(s), s["id"] == screen, 50)
+		if s["id"] == screen and UiTokens.era in ["tng", "voy", "late"]:
 			var sb := Lcars.box(Lcars.accent2(), 0, Color.TRANSPARENT, 0, Vector4(14, 8, 14, 8))
 			sb.corner_radius_top_right = 18
 			sb.corner_radius_bottom_right = 18
@@ -324,6 +325,7 @@ func _build_chrome() -> void:
 		sb2.corner_radius_top_right = 14
 		sb2.corner_radius_bottom_right = 14
 		b2.add_theme_stylebox_override("normal", sb2)
+		_rail_era_style(b2, _rail.get_child_count() + 2, false, 38)
 		b2.tooltip_text = ex["hint"] + ("  [%s]" % ex["key"] if str(ex.get("key", "")) != "" else "")
 		var ic2 := UiIcon.make(str(ex.get("icon", "arrow_right")), 16, Color(Lcars.ink(), 0.8))
 		ic2.position = Vector2(10, 11)
@@ -332,6 +334,28 @@ func _build_chrome() -> void:
 		var xid: String = ex["id"]
 		b2.pressed.connect(func(): goto(xid) if xid == "combat" else open_overlay(xid))
 		_rail.add_child(b2)
+
+## The rail button's shape per interface look: TOS gets square push-button blocks in the console's gold, red, blue and green with a
+## black gap; the movies a flat grey-blue plate with a hairline; the later looks keep the LCARS tab from the theme.
+func _rail_era_style(b: Button, index: int, active: bool, h: int) -> void:
+	var era := str(UiTokens.era)
+	if era != "tos" and era != "movie":
+		return
+	var base: Color
+	if era == "tos":
+		base = [UiTokens.era_hi(), UiTokens.era_lo(), Lcars.accent(), Color("#6fd98f"), Lcars.accent2(), UiTokens.era_hi(), Color("#c98ad8"), UiTokens.era_lo()][maxi(0, index) % 8]
+	else:
+		base = UiTokens.era_hi().darkened(0.55)
+	var make := func(c: Color) -> StyleBoxFlat:
+		var sbx := Lcars.box(c, 0, Color.TRANSPARENT, 0, Vector4(14, 8, 14, 8))
+		if era == "movie":
+			sbx.border_color = UiTokens.era_hi()
+			sbx.set_border_width_all(1)
+		return sbx
+	var lit: Color = base if era == "tos" else UiTokens.era_hi().darkened(0.2)
+	b.add_theme_stylebox_override("normal", make.call(lit if active else (base.darkened(0.2) if era == "tos" else base)))
+	b.add_theme_stylebox_override("hover", make.call(base.lightened(0.15)))
+	b.add_theme_stylebox_override("pressed", make.call(base.lightened(0.3)))
 
 func _top_stat(cap: String, value: String, tone: String, tip: String) -> Control:
 	var v := Lcars.vbox(-2)
@@ -626,7 +650,11 @@ func toast(text: String, tone: String = "info", seconds: float = 3.4) -> void:
 	p.add_theme_stylebox_override("panel", sb)
 	var l := Lcars.para(text, Lcars.TEXT, 15)
 	l.custom_minimum_size.x = 380
-	p.add_child(l)
+	var trow := Lcars.hbox(10)
+	var ticon: String = {"alert": "alert", "warn": "warn", "good": "good", "info": "info"}.get(tone, "padd")
+	trow.add_child(UiIcon.make(ticon, 20, c))
+	trow.add_child(l)
+	p.add_child(trow)
 	_toasts.add_child(p)
 	while _toasts.get_child_count() > 5:
 		_toasts.get_child(0).free()

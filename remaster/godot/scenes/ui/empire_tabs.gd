@@ -228,7 +228,7 @@ static func _member_card(app: App, m: Dictionary, is_member: bool) -> Control:
 	card.add_child(cv)
 	var att := int(m["attitude"])
 	var h := Lcars.hbox(8)
-	h.add_child(Lcars.marked("minor", str(m["name"]), "SubHeading", 17, Lcars.TEXT, 18))
+	h.add_child(Lcars.marked(UiIcon.minor_name(str((m["race"] as Dictionary).get("temperament", "")) if m.get("race") is Dictionary else ""), str(m["name"]), "SubHeading", 17, Lcars.TEXT, 18))
 	h.add_child(Lcars.label(str(m.get("system", "")), "Muted", 12))
 	if m.get("race") is Dictionary:
 		h.add_child(Lcars.badge(str(m["race"]["temperament"]), "dim"))

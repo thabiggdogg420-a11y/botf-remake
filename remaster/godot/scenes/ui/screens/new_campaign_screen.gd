@@ -69,7 +69,7 @@ func refresh() -> void:
 	var col := Lcars.vbox(16)
 	margin.add_child(col)
 	var head := Lcars.hbox(18)
-	head.add_child(Lcars.pill("Back", "ghost", func(): app.goto("title", false), "", "", "Esc"))
+	head.add_child(Lcars.back_pill(func(): app.goto("title", false)))
 	head.add_child(Lcars.heading("New campaign", 46))
 	var sub := Lcars.caption("Choose a power and shape the quadrant")
 	sub.size_flags_vertical = Control.SIZE_SHRINK_CENTER

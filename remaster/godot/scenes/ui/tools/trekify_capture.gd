@@ -12,7 +12,7 @@ var app: App
 const ALL := ["title", "new", "new-preset", "galaxy", "galaxy-whole", "galaxy-menu", "station", "system-installed", "system-structures", "system-ships",
 	"research", "fleets", "empire-colonies", "empire-fleets", "empire-trade", "empire-governors", "empire-templates", "empire-stations", "empire-members",
 	"empire-programs", "diplomacy", "diplomacy-propose", "diplomacy-history", "diplomacy-ledger", "diplomacy-news", "intel", "db-ships", "db-tech",
-	"db-structures", "db-races", "db-minors", "events", "victory", "briefing", "end", "settings", "saves", "menu", "help", "packs", "palette"]
+	"db-structures", "db-races", "db-minors", "events", "victory", "briefing", "end", "settings", "saves", "menu", "help", "packs", "palette", "confirm", "toast", "aftermath", "frontier", "events-drill"]
 
 func _initialize() -> void:
 	var a := OS.get_cmdline_user_args()
@@ -29,8 +29,9 @@ func _wait(n: int = 6) -> void:
 
 func _save(name_: String) -> void:
 	await _wait(8)
-	for t in app.get_node("Toasts").get_children():
-		t.queue_free()
+	if name_ != "toast":
+		for t in app.get_node("Toasts").get_children():
+			t.queue_free()
 	await _wait(3)
 	var img := root.get_viewport().get_texture().get_image()
 	var p := out_dir.path_join("%s-%s-%s.png" % [tag, look, name_])
@@ -65,6 +66,9 @@ func _run() -> void:
 		await _prepare(s, faction)
 		await _save(s)
 		app.close_all_modals()
+		if s == "toast":
+			for t in app.get_node("Toasts").get_children():
+				t.queue_free()
 	app.queue_free()
 	quit(0)
 
@@ -186,4 +190,40 @@ func _prepare(s: String, faction: int) -> void:
 			app.goto("galaxy")
 			await _wait(3)
 			app.open_palette()
+		"confirm":
+			app.goto("galaxy")
+			await _wait(3)
+			app.confirm("Scrap a farm?", "The structure is demolished at turn end. Cancel the order to undo it before then.", "Scrap", func(): pass)
+		"toast":
+			app.goto("galaxy")
+			await _wait(3)
+			app.toast("Sol laboratory is operational.", "good")
+			app.toast("Treasury falls by 3 per turn.", "warn")
+			app.toast("Klingon Empire declared war.", "alert")
+		"aftermath":
+			app.goto("galaxy")
+			await _wait(3)
+			var home_sys: Dictionary = {}
+			for sy in app.view.get("systems", []):
+				if sy.get("owner", 0) == faction:
+					home_sys = sy
+					break
+			var opts := []
+			for o in 3:
+				opts.append({"id": o, "name": ["Liberate", "Subjugate", "Exterminate and recolonise"][o], "effect": ["The world is freed and its race is independent again.", "Keep the world as taken: 80% of its people, morale 35.", "The population is cut to a tenth and settlers move in."][o], "blocker": "" if o != 2 else "The Bolian would be wiped out; liberate or subjugate their world"})
+			app.view["aftermaths"] = [{"systemId": int(home_sys.get("id", 1)), "name": str(home_sys.get("name", "Bolarus")), "conqueror": faction, "formerOwner": 0, "formerName": "natives", "minor": "Bolian", "turn": 12, "turnsLeft": 3, "populationBefore": 30, "population": 24, "options": opts}]
+			app.open_overlay("aftermath")
+		"frontier":
+			app.start_drill("newFrontierDrill", "Frontier drill")
+			app.close_all_modals()
+			var st: Array = app.view.get("stations", [])
+			if st.size() > 0:
+				app.select_cell(int(st[0]["y"]) * app.width() + int(st[0]["x"]))
+			await _wait(8)
+		"events-drill":
+			app.start_drill("newFrontierDrill", "Frontier drill")
+			app.close_all_modals()
+			app.goto("galaxy")
+			await _wait(3)
+			app.open_overlay("events")
 	await _wait(8)

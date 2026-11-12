@@ -14,7 +14,13 @@ const NAMES := ["credits", "research", "industry", "food", "population", "intel"
 	"arrow_right", "lock", "eye", "orders", "tech_biotech", "tech_computers", "tech_construction", "tech_energy", "tech_propulsion",
 	"tech_weapons", "ev_plague", "ev_supernova", "ev_rift", "ev_trade", "ev_derelict", "ev_unrest", "ev_breakthrough", "starbase", "contact",
 	"delta_up", "delta_down", "delta_left", "delta_right", "tick", "cross", "pin", "pin_on", "minor", "sensor", "anomaly", "threat",
-	"unexplored", "territory", "supply", "routes", "grid", "labels", "padd", "quadrant"]
+	"unexplored", "territory", "supply", "routes", "grid", "labels", "padd", "quadrant",
+	"minor_mercantile", "minor_warlike", "minor_peaceful", "minor_xenophobic", "minor_spiritual", "minor_scientific"]
+## The mark of a minor race by temperament (minors.json: Mercantile, Warlike, Peaceful, Xenophobic, Spiritual, Scientific).
+static func minor_name(temperament: String) -> String:
+	var k := "minor_" + temperament.to_lower()
+	return k if NAMES.has(k) else "minor"
+
 ## The six research fields in core order (research_screen.gd field index).
 const TECH_FIELDS := ["tech_biotech", "tech_computers", "tech_construction", "tech_energy", "tech_propulsion", "tech_weapons"]
 
@@ -325,9 +331,27 @@ static func draw_icon(ci: CanvasItem, name_: String, r: Rect2, c: Color) -> void
 		"pin_on":
 			DF.call(12, 12, 8.5, 0.0, true)
 		"minor":
-			# an independent world: ring, core and four marks
-			C.call(12, 12, 8.0); D.call(12, 12, 2.6)
-			L.call([[12, 1], [12, 4]]); L.call([[12, 20], [12, 23]]); L.call([[1, 12], [4, 12]]); L.call([[20, 12], [23, 12]])
+			# an independent world: the same mark the chart uses
+			Insignia.draw(ci, "minor", r, c, "small")
+		"minor_mercantile":
+			C.call(12, 12, 10.0); L.call([[5, 15], [7.5, 11], [15.5, 11], [13, 15], [5, 15]]); L.call([[9, 9.5], [11, 6], [19, 6], [17, 9.5], [9, 9.5]])
+		"minor_warlike":
+			C.call(12, 12, 10.0); L.call([[7, 7], [17, 17]]); L.call([[17, 7], [7, 17]]); D.call(12, 12, 1.8)
+		"minor_peaceful":
+			C.call(12, 12, 10.0); ci.draw_arc(P.call(12, 12), 5.5 * k, 2.1, 4.2, 8, c, w, true); ci.draw_arc(P.call(12, 12), 5.5 * k, -1.05, 1.05, 8, c, w, true); D.call(12, 12, 1.8)
+		"minor_xenophobic":
+			C.call(12, 12, 10.0); C.call(12, 12, 3.2)
+			for n in 6:
+				var a5 := TAU * n / 6.0
+				L.call([[12 + cos(a5) * 3.2, 12 + sin(a5) * 3.2], [12 + cos(a5 + 0.6) * 8.0, 12 + sin(a5 + 0.6) * 8.0]])
+		"minor_spiritual":
+			C.call(12, 12, 10.0); D.call(12, 12, 2.2)
+			for n in 8:
+				var a6 := TAU * n / 8.0
+				L.call([[12 + cos(a6) * 4.2, 12 + sin(a6) * 4.2], [12 + cos(a6) * 7.2, 12 + sin(a6) * 7.2]])
+		"minor_scientific":
+			C.call(12, 12, 10.0); D.call(12, 12, 1.8)
+			ci.draw_arc(P.call(12, 12), 6.5 * k, 0.4, 2.6, 10, c, w * 0.9, true); ci.draw_arc(P.call(12, 12), 6.5 * k, 3.5, 5.7, 10, c, w * 0.9, true)
 		"anomaly":
 			ci.draw_arc(P.call(12, 12), 3.5 * k, 0.0, 4.5, 10, c, w, true); ci.draw_arc(P.call(12, 12), 7.0 * k, 2.0, 6.5, 14, c, w, true); ci.draw_arc(P.call(12, 12), 10.5 * k, 4.0, 8.3, 18, c, w, true)
 		"threat":

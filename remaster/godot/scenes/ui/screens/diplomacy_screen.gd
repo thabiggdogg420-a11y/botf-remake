@@ -113,7 +113,7 @@ func _race_list() -> Control:
 		var sid := int(mi["systemId"])
 		var btn2 := Lcars.row_button(vm.is_selected(true, sid))
 		var h2 := Lcars.row_inner(btn2)
-		h2.add_child(UiIcon.make("minor", 22, Color("#d8c3ff")))
+		h2.add_child(UiIcon.make(UiIcon.minor_name(str((mi.get("race", {}) as Dictionary).get("temperament", "")) if mi.get("race") is Dictionary else ""), 22, Color("#d8c3ff")))
 		var t2 := Lcars.vbox(-2)
 		t2.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		t2.add_child(Lcars.label(str(mi["name"]), "", 15, Lcars.TEXT))

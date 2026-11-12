@@ -249,7 +249,7 @@ func _on_hover(cell: int, pos: Vector2) -> void:
 		if not s.is_empty() and int(s.get("owner", 0)) != 0:
 			col.add_child(Lcars.label("Your colony" if int(s["owner"]) == app.player() else app.empire_name(int(s["owner"])), "", 13, Lcars.owner_color(int(s["owner"]))))
 		if not s.is_empty() and s.has("minor"):
-			col.add_child(Lcars.marked("minor", "%s%s" % [s["minor"]["name"], (" · " + str(s["minor"]["temperament"])) if s["minor"].has("temperament") else ""], "", 13, Color("#d8c3ff"), 14))
+			col.add_child(Lcars.marked(UiIcon.minor_name(str(s["minor"].get("temperament", ""))), "%s%s" % [s["minor"]["name"], (" · " + str(s["minor"]["temperament"])) if s["minor"].has("temperament") else ""], "", 13, Color("#d8c3ff"), 14))
 		if fog == "1":
 			col.add_child(Lcars.label("Surveyed - outside sensor range", "Muted"))
 		for st in v.get("stations", []):
@@ -570,7 +570,7 @@ func _sector_card(cell: int, primary: bool) -> Control:
 		if m.get("unknown", false):
 			col.add_child(Lcars.para("An inhabited world. Make contact to learn more.", Color("#d8c3ff"), 13))
 		else:
-			col.add_child(Lcars.marked("minor", "%s" % m["name"], "", 13, Color("#d8c3ff"), 14))
+			col.add_child(Lcars.marked(UiIcon.minor_name(str(m.get("temperament", ""))), "%s" % m["name"], "", 13, Color("#d8c3ff"), 14))
 			var txt := ("member of " + app.empire_name(int(m["memberOf"]))) if int(m.get("memberOf", 0)) != 0 else "independent"
 			if m.has("attitude"):
 				txt += " · relations %d" % int(m["attitude"])

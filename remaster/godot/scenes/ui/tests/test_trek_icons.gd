@@ -27,6 +27,20 @@ class Canvas extends Control:
 		ShipGlyph.draw_contact(self, Vector2(50, 50), 10.0, Color.WHITE, 2, "K'T'Inga")
 		ShipGlyph.draw_contact(self, Vector2(50, 50), 10.0, Color.WHITE, 0, "")
 
+## Draws every UI icon at three sizes (M4 Trekify round 2).
+class IconCanvas extends Control:
+	func _draw() -> void:
+		for n in UiIcon.NAMES:
+			for px in [14, 24, 48]:
+				UiIcon.draw_icon(self, n, Rect2(Vector2(4, 4), Vector2(px, px)), Color.WHITE)
+		for e in UiTokens.ERA_ORDER:
+			UiTokens.era = e
+			UiIcon.draw_icon(self, "intel", Rect2(Vector2(4, 4), Vector2(24, 24)), Color.WHITE)
+		UiIcon.draw_seg_ring(self, Vector2(50, 50), 20.0, Color.WHITE)
+		UiIcon.draw_reticle(self, Vector2(50, 50), 16.0, Color.WHITE)
+		UiIcon.draw_octagon(self, Vector2(50, 50), 12.0, Color.BLACK, Color.WHITE)
+		UiIcon.draw_delta(self, Vector2(50, 50), 10.0, 0.5, Color.WHITE)
+
 func _initialize() -> void:
 	_run.call_deferred()
 
@@ -60,5 +74,44 @@ func _run() -> void:
 	check(ShipIcons.texture(1, "Galaxy") == null and not ShipIcons.has_any(), "BOTF_SHIP_ICONS=none hides every baked icon")
 	var shape := ShipGlyph.shape("saucer")
 	check(shape["polys"].size() >= 4, "saucer silhouette has saucer, neck, hull and nacelles")
+	# The Starfleet and LCARS icon set: every named icon draws at 14, 24 and 48 px in every interface look.
+	var keep_era := UiTokens.era
+	var ic := IconCanvas.new()
+	ic.size = Vector2(200, 200)
+	root.add_child(ic)
+	await process_frame
+	await process_frame
+	UiTokens.era = keep_era
+	check(UiIcon.NAMES.size() >= 94, "the icon set has %d icons" % UiIcon.NAMES.size())
+	var seen := {}
+	var dup := PackedStringArray()
+	for n in UiIcon.NAMES:
+		if seen.has(n):
+			dup.append(n)
+		seen[n] = true
+	check(dup.is_empty(), "no icon name is listed twice %s" % str(dup))
+	var bad := PackedStringArray()
+	for k in Lcars.TEXT_GLYPHS:
+		if not UiIcon.NAMES.has(Lcars.TEXT_GLYPHS[k]):
+			bad.append(str(k))
+	check(bad.is_empty(), "every text mark that stood for an icon maps to a named glyph %s" % str(bad))
+	var named := PackedStringArray()
+	for sc in ShellVM.SCREEN_ICONS.values():
+		if not UiIcon.NAMES.has(sc):
+			named.append(sc)
+	for l in GalaxyVM.LAYERS:
+		if not UiIcon.NAMES.has(l[3]):
+			named.append(l[3])
+	check(named.is_empty(), "rail and layer icons are in the set %s" % str(named))
+	check(UiIcon.minor_name("Warlike") == "minor_warlike" and UiIcon.minor_name("") == "minor" and UiIcon.minor_name("Odd") == "minor", "minor race marks by temperament")
+	check(ChoiceIcon.glyph_for("Fusion plant") == "energy" and ChoiceIcon.glyph_for("Laboratory") == "research" and ChoiceIcon.glyph_for("Farm") == "food" and ChoiceIcon.glyph_for("Shipyard") == "ship" and ChoiceIcon.glyph_for("Whatsit") == "build", "structure glyphs by name")
+	check(Lcars.meter(3, 10, Color.RED, 8) is ProgressBar and Lcars.meter(3, 10).get_class() == "ProgressBar", "the LCARS meter is still a ProgressBar")
+	var gb := Lcars.icon_button("▾", "x", "", func(): pass)
+	check(gb is Lcars.GlyphButton and (gb as Lcars.GlyphButton).glyph == "delta_down", "a text mark becomes a glyph button")
+	check(Lcars.icon_button("Go", "x", "", func(): pass) is Button and not (Lcars.icon_button("Go", "x", "", func(): pass) is Lcars.GlyphButton), "plain text buttons stay plain")
+	var th := Lcars.build_theme(1)
+	check(th.has_icon("checked", "CheckButton") and th.has_icon("arrow", "OptionButton") and th.has_icon("grabber", "HSlider") and th.has_icon("updown", "SpinBox"), "the theme carries LCARS switch, dropdown, slider and spin icons")
+	check(Lcars.delta_texture(Color.WHITE, 14, PI).get_width() == 14 and Lcars.switch_texture(Color.WHITE, true).get_width() == 46, "theme icon textures rasterise")
+	check(UiTokens.icon_stroke() > 0.0 and float(UiTokens.ERAS["tos"]["stroke"]) > float(UiTokens.ERAS["movie"]["stroke"]), "TOS strokes are heavier than the movie strokes")
 	print("trek icons: ", "FAILED %d" % failures if failures > 0 else "all passed")
 	quit(1 if failures > 0 else 0)

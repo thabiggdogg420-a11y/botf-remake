@@ -441,6 +441,16 @@ static func pill(text: String, tone: String = "primary", on_press: Callable = Ca
 		b.pressed.connect(on_press)
 	return b
 
+## The Back control of the bare screens: a tertiary pill with the delta pointing back, not a plain dark box.
+static func back_pill(on_press: Callable) -> Button:
+	var b := pill("    Back", "tertiary", on_press, "", "", "Esc")
+	b.name = "Back"
+	var ic := UiIcon.make("delta_left", 16, ink())
+	ic.position = Vector2(14, 9)
+	b.add_child(ic)
+	b.custom_minimum_size.y = 40
+	return b
+
 static func toggle(text: String, on: bool, on_toggle: Callable, hint: String = "") -> Button:
 	var b := Button.new()
 	b.text = text
