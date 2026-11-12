@@ -359,7 +359,7 @@ Stroke weight follows the look (`UiTokens.icon_stroke()`: TOS 2.8, TNG and Voyag
 
 ### G2. Count per screen (found and fixed)
 
-Counted from the before frames: each distinct icon, glyph or shape that was generic on that screen. Shared chrome (rail, elbow, top-bar stats, theme controls) is counted once under Chrome and is visible on every screen.
+Approximate count, tallied by hand from the before frames: each distinct icon, glyph or shape that was generic on that screen. Shared chrome (rail, elbow, top-bar stats, theme controls) is counted once under Chrome and is visible on every screen.
 
 | Screen (shot) | Found | Fixed | Before frame (tng) |
 |---|---|---|---|
