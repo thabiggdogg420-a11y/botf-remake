@@ -320,6 +320,20 @@
    },
    {
     "product": "Structure",
+    "referenceId": 100037,
+    "name": "Starfleet Academy",
+    "cost": 5000,
+    "upkeep": 12,
+    "blocker": "",
+    "isShip": false,
+    "turns": 239,
+    "description": "The school in San Francisco where Starfleet officers are made. New ships enter service with experienced crews.",
+    "effect": "",
+    "tier": 1,
+    "energyCost": 0
+   },
+   {
+    "product": "Structure",
     "referenceId": 1000000,
     "name": "Upgrade farms",
     "cost": 36,

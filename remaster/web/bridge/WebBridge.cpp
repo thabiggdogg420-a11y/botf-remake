@@ -704,8 +704,8 @@ void writeOwnFleet(Writer& w, const botf::GameState& d, const botf::GameState& c
     w.field("invadeSystemId", f.invadeSystemId);
     w.field("order", f.order).field("orderName", botf::economy_rules::orderName(f.order)).field("raidSystemId", f.raidSystemId)
         .field("postX", f.postX).field("postY", f.postY); // Schema 23
-    w.field("experience", f.experience).field("crewRating", botf::crew::ratingName(botf::crew::rating(f.experience)))
-        .field("crewLevel", botf::crew::rating(f.experience)).field("raidPercent", botf::economy_rules::raidPercent(d, f));
+    w.field("experience", f.experience).field("crewRating", botf::crew::ratingName(botf::crew::ratingFor(f.experience, f.ownerId)))
+        .field("crewLevel", botf::crew::ratingFor(f.experience, f.ownerId)).field("raidPercent", botf::economy_rules::raidPercent(d, f));
     w.field("terraforming", f.terraforming);
     w.field("terraformSystemId", f.terraformSystemId);
     w.field("terraformPlanetIndex", f.terraformPlanetIndex);

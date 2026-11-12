@@ -17,7 +17,7 @@
     "preset": "classic"
    },
    "turns": 8,
-   "result": "16408688987751223374",
+   "result": "12295664153458114243",
    "content": {
     "id": "botf-base",
     "checksum": "4f178d941a2a4de1",
@@ -59,7 +59,7 @@
     "preset": "dominion-war"
    },
    "turns": 8,
-   "result": "16797548770296686159",
+   "result": "8663712265600869621",
    "content": {
     "id": "botf-base+dominion+dominion-war+economy",
     "checksum": "1c6ae8f544738e5c",
