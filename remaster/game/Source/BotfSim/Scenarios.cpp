@@ -45,7 +45,12 @@ int empireOrThrow(const GameState& s, const std::string& ref) {
 }
 int systemOrThrow(const GameState& s, const std::string& ref) {
     const int id = resolveSystem(s, ref);
-    if (!id && !g_soft) require(false, "Scenario: no system matches \"" + ref + "\"");
+    if (!id && !g_soft) {
+        const auto colon = ref.rfind("capital:");
+        if (colon != std::string::npos && !resolveEmpire(s, ref.substr(colon + 8)))
+            require(false, "Scenario: an empire that is not seated in this game: \"" + ref + "\"");
+        require(false, "Scenario: no system matches \"" + ref + "\"");
+    }
     return id;
 }
 
@@ -284,8 +289,7 @@ bool secede(GameState& s, TurnReport* report, int parent, int house, int pct) {
     houseState.id = house;
     const std::int64_t share = std::max<std::int64_t>(0, empire(s, parent).credits) * pct / 100;
     internal::mutableEmpire(s, parent).credits -= share;
-    houseState.credits = share; houseState.research = 0; houseState.researchReserve = 0; houseState.intelligence = 0;
-    for (auto& t : houseState.technologies) t.progress = 0;
+    houseState.credits = share; houseState.intelligence = 0;   // The house keeps its parent's technology, research ledger and charts.
     internal::seatEmpire(s, houseState);
 
     // Colonies: the far provinces rise under the house. Its first world becomes its capital (renamed, with a shipyard).
@@ -294,6 +298,7 @@ bool secede(GameState& s, TurnReport* report, int parent, int house, int pct) {
         c->ownerId = house;
         c->queue.clear(); c->overflow = 0; c->program = 0; c->programTurns = 0; c->subjugated = false;
         c->workforceManualOverride = false;
+        if (const auto* sys = gameplay::systemById(s, id)) internal::reveal(s, sys->x, sys->y, house);
     }
     {
         auto* capital = [&]() -> Colony* { for (auto& col : s.colonies) if (col.systemId == pool.front()) return &col; return nullptr; }();
@@ -444,6 +449,7 @@ void runAction(GameState& s, const Action& a, TurnReport* report) {
         it->systemId = target;
         for (auto& ms : s.diplomacyEngineState.minorStates) if (ms.minorId == old) { ms.minorId = target; ms.systemId = target; }
         for (auto& g : s.minorGuards) if (g.systemId == old) g.systemId = target;
+        std::sort(s.minors.begin(), s.minors.end(), [](const Minor& l, const Minor& r) { return l.systemId < r.systemId; });
         break;
     }
     case ActionKind::Wormhole: {

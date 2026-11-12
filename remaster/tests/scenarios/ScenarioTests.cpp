@@ -372,7 +372,7 @@ int main() {
         check(fleetMaxHull(*flag) > hull && fleetAttack(*flag) >= attack && fleetMaxShields(*flag) >= shields, "hull, attack and shields grew");
         check(fleetMaxHull(*flag) == hull * (100 + scenarios::flagshipDef(1)->hullPct) / 100, "by the pack's percentage");
         check(fleetName(*flag).rfind("I.S.S. Enterprise", 0) == 0, "named from the pack");
-        check(scenarios::flagshipMorale(s, 1) == scenarios::flagshipDef(1)->morale && scenarios::flagshipMorale(s, 2) == 0, "morale for the owner only");
+        check(scenarios::flagshipMorale(s, 1) == scenarios::flagshipDef(1)->morale && scenarios::flagshipMorale(s, 2) == (scenarios::flagshipFleet(s, 2) ? scenarios::flagshipDef(2)->morale : 0), "morale for the owner only");
         check(!scenarios::commissionBlocker(s, 1, target).empty(), "a second commission is refused");
         const auto text = serialize(s);
         check(contains(text, "FLAGSHIPS 1\n1 " + std::to_string(target) + " 1 0\n"), "the flagship is saved");

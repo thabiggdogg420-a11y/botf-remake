@@ -4525,7 +4525,7 @@ GameState generateCampaign(std::uint64_t seed, int empires, int width, int heigh
     auto s = generate(seed, width, height, systems, shape);
     s.startingEra = era;
     s.populationEnabled = true;
-    if (ids[0] != 1) {
+    if (ids[0] != 1 || (scenarioMapOverride && s.systems.front().name != slots::capital(ids[0]))) {   // A fixed map's first star is the player's home.
         s.systems.front().name = slots::capital(ids[0]);
         s.systems.front().planets = generateSystemPlanets(seed, s.systems.front().id, s.systems.front().name, true);
     }
