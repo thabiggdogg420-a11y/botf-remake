@@ -87,6 +87,7 @@ var needs: Array = []
 var dirty := false
 var error := ""                            ## the core's refusal of the current draft, "" when it is valid
 var error_tab := ""                        ## the tab the refusal points at
+var error_core := false                    ## true when `error` is the core's own message, false for a missing id or name the editor asks for
 var status := {}                           ## {id, stackId, checksum} of the last valid draft
 var _cache := {}                           ## section -> records under `under`
 
@@ -618,7 +619,7 @@ func preset_text() -> String:
 # ---- validation and saving ------------------------------------------------------------------------------------------------------
 ## Hands the draft to the core's validators. Sets `error` (the core's own message) and `error_tab`; true when valid.
 func validate() -> bool:
-	error = ""; error_tab = ""; status = {}
+	error = ""; error_tab = ""; error_core = false; status = {}
 	if pack_id == "":
 		error = "Give the pack an id (letters, digits and dashes) on the Pack tab."
 		error_tab = "identity"
@@ -637,6 +638,7 @@ func validate() -> bool:
 		return true
 	error = str(r.get("error", "The core refused the pack."))
 	error_tab = _tab_of(error)
+	error_core = true
 	return false
 
 static func _valid_id(id: String) -> bool:
@@ -675,6 +677,7 @@ func save() -> String:
 	if not r.get("ok", false):
 		revision -= 1
 		error = str(r.get("error", "The core refused the pack."))
+		error_core = true
 		return error
 	var err := UserPacks.write(pack_id, ov, pr)
 	if err != "":

@@ -119,8 +119,8 @@ func _update_status() -> void:
 		line.add_child(Lcars.badge("Valid", "good"))
 		line.add_child(Lcars.label("Stack %s · checksum %s" % [vm.status.get("stackId", ""), str(vm.status.get("checksum", ""))], "Mono", 14, Lcars.TEXT2))
 	else:
-		line.add_child(Lcars.badge("Refused", "alert"))
-		var msg := Lcars.para(vm.error, Lcars.ALERT, 15)
+		line.add_child(Lcars.badge("Refused" if vm.error_core else "Needed", "alert" if vm.error_core else "warn"))
+		var msg := Lcars.para(vm.error, Lcars.ALERT if vm.error_core else Lcars.WARN, 15)
 		msg.name = "ErrorText"
 		msg.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		line.add_child(msg)
@@ -173,7 +173,7 @@ func _rebuild_content() -> void:
 		_content.remove_child(c)
 		c.queue_free()
 	if vm.error != "" and vm.error_tab == tab:
-		var inline := Lcars.para("The core refused this part of the pack: " + vm.error, Lcars.ALERT, 15)
+		var inline := Lcars.para(("The core refused this part of the pack: " + vm.error) if vm.error_core else vm.error, Lcars.ALERT if vm.error_core else Lcars.WARN, 15)
 		inline.name = "InlineError"
 		_content.add_child(inline)
 	if note != "":

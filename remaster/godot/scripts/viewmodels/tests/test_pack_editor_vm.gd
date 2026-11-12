@@ -72,7 +72,7 @@ func _live() -> void:
 	check(vm.supported(), "the native core takes user packs")
 	var shipped: int = s.meta.get("presets", []).size()
 	vm.new_pack()
-	check(vm.error != "" and vm.error_tab == "identity", "an empty draft asks for an id first")
+	check(vm.error != "" and vm.error_tab == "identity" and not vm.error_core, "an empty draft asks for an id first (the editor's own note, not a core refusal)")
 	vm.set_identity("ut-pack", "Test pack", "A pack made by the editor test.")
 	check(vm.error == "" and str(vm.status.get("stackId", "")) == "botf-base+ut-pack", "a named draft is valid: %s" % vm.error)
 	# Ship class edit.
@@ -82,7 +82,7 @@ func _live() -> void:
 	check(vm.field_value("roster", 1000, "industryCost") == 1500 and vm.is_changed("roster", 1000, "industryCost") and vm.base_value("roster", 1000, "industryCost") == 1830, "the patch is held and the base value kept")
 	check(vm.set_field("roster", 1000, "industryCost", "abc") != "", "a non-number is refused by the editor before the core")
 	# A core refusal, inline.
-	check(vm.set_field("roster", 1000, "hull", "-5") == "" and vm.error != "" and vm.error.contains("outside") and vm.error_tab == "roster", "the core's range error comes back on the roster tab: %s" % vm.error)
+	check(vm.set_field("roster", 1000, "hull", "-5") == "" and vm.error != "" and vm.error.contains("outside") and vm.error_tab == "roster" and vm.error_core, "the core's range error comes back on the roster tab: %s" % vm.error)
 	check(vm.save() != "" and UserPacks.ids().is_empty(), "an invalid pack is not saved")
 	check(vm.set_field("roster", 1000, "hull", "140") == "" and vm.error == "", "fixing the value clears the error")
 	# Other sections.
