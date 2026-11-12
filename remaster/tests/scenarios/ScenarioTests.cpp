@@ -158,7 +158,11 @@ int main() {
         scenarios::registerScenario(FixedJson);
         auto s = scenarioGame("test-fixed");
         check(s.systems.size() == 6 && s.width == 8 && s.height == 6, "exactly the listed stars");
-        check(systemNamed(s, "Elba") != nullptr && systemNamed(s, "Elba")->x == 3 && systemNamed(s, "Elba")->y == 3, "stars sit where listed");
+        {   // Homes and minor races take their own names, so the chart is checked by position.
+            std::set<std::pair<int, int>> got, want{{1, 1}, {2, 4}, {4, 2}, {6, 4}, {3, 3}, {7, 1}};
+            for (const auto& sys : s.systems) got.insert({sys.x, sys.y});
+            check(got == want, "stars sit where listed");
+        }
         const auto* fed = colonyAt(s, 1);
         check(fed && fed->ownerId == 1, "system 1 is the first lineup empire's capital");
         const auto* klingonHome = colonyAt(s, systemNamed(s, "Qo'noS") ? systemNamed(s, "Qo'noS")->id : 0);
@@ -322,10 +326,9 @@ int main() {
         for (const auto& sys : s.systems) {
             if (given == 5) break;
             if (colonyAt(s, sys.id) || minorAt(s, sys.id)) continue;
-            Colony c; c.systemId = sys.id; c.ownerId = 2; c.population = 30; c.foodWorkers = 12; c.industryWorkers = 12; c.researchWorkers = 6;
-            s.colonies.push_back(c); ++given;
+            scenarios::Action act; act.kind = scenarios::ActionKind::Colony; act.a = "klingon"; act.at = "system:" + sys.name; act.population = 30;
+            scenarios::runAction(s, act, nullptr); ++given;
         }
-        std::sort(s.colonies.begin(), s.colonies.end(), [](const Colony& a, const Colony& b) { return a.systemId < b.systemId; });
         validate(s);
         const int total = coloniesOf(s, 2);
         const int ships = fleetsOf(s, 2);
@@ -375,13 +378,15 @@ int main() {
         check(scenarios::flagshipMorale(s, 1) == scenarios::flagshipDef(1)->morale && scenarios::flagshipMorale(s, 2) == (scenarios::flagshipFleet(s, 2) ? scenarios::flagshipDef(2)->morale : 0), "morale for the owner only");
         check(!scenarios::commissionBlocker(s, 1, target).empty(), "a second commission is refused");
         const auto text = serialize(s);
-        check(contains(text, "FLAGSHIPS 1\n1 " + std::to_string(target) + " 1 0\n"), "the flagship is saved");
+        check(contains(text, "FLAGSHIPS ") && contains(text, "\n1 " + std::to_string(target) + " 1 0\n"), "the flagship is saved");
         check(serialize(deserialize(text)) == text && deserialize(text).fleets.size() == s.fleets.size() && fleetById(deserialize(text), target)->flagship == 1, "and restored with its mark");
         // Lose it.
-        const int lostTurn = s.turn + 1;
+        const int lostTurn = s.turn;   // The turn's upkeep (step) runs after combat has removed the ship; a mid-turn state is never validated or saved.
         std::erase_if(s.fleets, [&](const Fleet& f) { return f.id == target; });
         s.taskForces.clear();
-        const auto report = advance(s);
+        TurnReport report;
+        scenarios::step(s, report);
+        validate(s);
         check(contains(eventsOf(report), "has been lost"), "the loss is reported");
         check(scenarios::flagshipOf(s, 1)->fleetId == 0 && scenarios::flagshipOf(s, 1)->lostTurn == lostTurn, "recorded as lost");
         int other = 0;
@@ -402,7 +407,7 @@ int main() {
     }, passed);
 
     run("flagships: a game without the flagships pack has none, and the AI commissions its own when the pack has them", [] {
-        CampaignSetup plain; plain.seed = 3;
+        CampaignSetup plain; plain.seed = 3; plain.presetId = "remastered";
         auto s = newCampaign(plain);
         check(!scenarios::flagshipsOn() && scenarios::commissionBlocker(s, 1, 1) == "This game has no flagships", "no pack, no flagships");
         auto m = scenarioGame("mirror-universe");

@@ -651,7 +651,8 @@ void validate(const GameState& s) {
             require(f.lostTurn == 0, "A living flagship was lost");
             const Fleet* fleet = nullptr;
             for (const auto& fl : s.fleets) if (fl.id == f.fleetId) fleet = &fl;
-            require(fleet && fleet->ownerId == f.empireId && fleet->flagship == f.serial && fleet->hull > 0, "Flagship record does not match its ship");
+            require(fleet && fleet->ownerId == f.empireId && fleet->flagship == f.serial && fleet->hull > 0,
+                "Flagship record does not match its ship (empire " + std::to_string(f.empireId) + ", fleet " + std::to_string(f.fleetId) + ", serial " + std::to_string(f.serial) + (fleet ? ", fleet owner " + std::to_string(fleet->ownerId) + " mark " + std::to_string(fleet->flagship) + " hull " + std::to_string(fleet->hull) : ", fleet gone") + ")");
             marked.insert(f.fleetId);
         }
     }

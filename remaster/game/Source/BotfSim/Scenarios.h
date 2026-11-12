@@ -395,6 +395,12 @@ inline const content::FlagshipDef* flagshipDef(int empireId) {
     for (const auto& d : content::flagships().defs) if (d.empireId == empireId) return &d;
     return nullptr;
 }
+inline int maxFlagshipPct(bool shields) {   // The largest hull (or shield) bonus any flagship definition carries: the bound for battle records.
+    int best = 0;
+    if (content::flagships().present)
+        for (const auto& d : content::flagships().defs) best = std::max(best, shields ? d.shieldsPct : d.hullPct);
+    return best;
+}
 inline bool flagshipsOn() { return content::flagships().present && !content::flagships().defs.empty(); }
 // Percent bonuses for a ship that carries a flagship mark (zero for any other ship, or an owner the pack lists no flagship for).
 struct Bonus { int hull = 0, attack = 0, shields = 0; };

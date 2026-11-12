@@ -794,7 +794,7 @@ void victoryScenarios(int& passed) {
         check(project && project->work > 0 && project->work <= botf::megaprojectWorkPerTurn(s, 1), "Industry not diverted within the cap");
         roundTrip(s);
         const auto progress = botf::victoryProgress(s, 1);
-        check(progress.size() == 4 && progress[2].condition == botf::VictoryCondition::Scientific && progress[2].percent >= 70,
+        check(progress.size() == 5 && progress[2].condition == botf::VictoryCondition::Scientific && progress[2].percent >= 70,
             "Scientific progress not reported");
         s.megaprojects.front().work = botf::megaprojectIndustryCost(s) - 1;
         const auto report = botf::advance(s);

@@ -4865,7 +4865,7 @@ void validate(const GameState& s) {
         for (const auto& participant : b.participants)
             shieldCeiling[participant.fleetId] = threats::isThreatCombatant(participant.fleetId) ? std::max(participant.initialShields, std::max(0, sourceShip(participant.referenceShipId).shields) * 3 / 2) :
                 isStationCombatant(participant.fleetId) ? participant.initialShields :
-                participant.referenceShipId < 0 ? 0 : std::max(0, sourceShip(participant.referenceShipId).shields);
+                participant.referenceShipId < 0 ? 0 : std::max(0, sourceShip(participant.referenceShipId).shields) * (100 + scenarios::maxFlagshipPct(true)) / 100;
         const auto ceiling = [&](const FleetDamage& d) {
             const auto found = shieldCeiling.find(d.fleetId);
             return found == shieldCeiling.end() ? d.shieldBefore : std::max(d.shieldBefore, found->second);
@@ -4892,9 +4892,9 @@ void validate(const GameState& s) {
             require(sides.count(participant.fleetId) && participant.ownerId == sides.at(participant.fleetId) &&
                 isShip(participant.shipClass) && participant.initialHull > 0 &&
                 participant.initialHull <= (stationSide ? 100000 : participant.referenceShipId < 0 ? shipMaxHull(participant.shipClass) :
-                    sourceShip(participant.referenceShipId).hull) &&
+                    sourceShip(participant.referenceShipId).hull * (100 + scenarios::maxFlagshipPct(false)) / 100) &&
                 participant.initialShields >= 0 && participant.initialShields <=
-                    (stationSide ? 100000 : participant.referenceShipId < 0 ? 0 : sourceShip(participant.referenceShipId).shields) &&
+                    (stationSide ? 100000 : participant.referenceShipId < 0 ? 0 : sourceShip(participant.referenceShipId).shields * (100 + scenarios::maxFlagshipPct(true)) / 100) &&
                 summaries.at(participant.fleetId).hullBefore == participant.initialHull &&
                 summaries.at(participant.fleetId).shieldBefore == participant.initialShields &&
                 participantIds.insert(participant.fleetId).second, "Invalid battle participant");
