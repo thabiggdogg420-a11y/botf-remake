@@ -335,7 +335,7 @@ int main() {
         auto s = warGame(15, 6);
         for (int i = 0; i < 4; ++i) advance(s);
         const auto text = serialize(s);
-        check(contains(text, "\nSTRUCTURES 1\n") && text.starts_with("BOTF_SIM 21 remaster-21\n"), "schema 21 with a section");
+        check(contains(text, "\nSTRUCTURES 1\n") && text.starts_with("BOTF_SIM " + std::to_string(SaveVersion) + " remaster-" + std::to_string(SaveVersion) + "\n"), "current schema with a section");
         check(serialize(deserialize(text)) == text && fingerprint(deserialize(text)) == fingerprint(s), "round trip");
         for (int version : {14, 15, 16, 17, 18, 20})
             rejects([&] { deserialize(withHeader(text, version)); }, "STRUCTURES under a schema-" + std::to_string(version) + " header", "older save");
