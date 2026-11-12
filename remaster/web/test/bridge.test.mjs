@@ -554,4 +554,54 @@ test('a lineup seats Dominion and Borg as majors and the preview shows their cap
   assert.equal(bad.ok, false);
 });
 
+test('eras: the timeline year, the research cap and level 11+ research data, the picker summary, a save that carries the rule', () => {
+  const meta = call('meta');
+  assert.equal(meta.maxTechLevel, 10);
+  assert.equal(meta.highestTechLevel, 14);
+  assert.deepEqual(meta.eras.map((e) => e.year), [2240, 2280, 2320, 2350, 2380]);
+  const ages = meta.presets.find((p) => p.id === 'ages');
+  const galaxies = meta.presets.find((p) => p.id === 'galaxies');
+  assert.deepEqual(ages.eras.startTech, [1, 3, 5, 8, 11]);
+  assert.deepEqual(galaxies.eras.startTech, [1, 4, 7, 10, 14]);
+  assert.equal(ages.eras.techCap, 14);
+  assert.equal(meta.presets.find((p) => p.id === 'remastered').eras, undefined, 'Remastered has no timeline');
+  // A Remastered game is unchanged: cap 10, no year, no ERAS section.
+  let v = call('newCampaign', { faction: 1, empires: 3, seed: 7, era: 1, ruleset: 'reference', width: 16, height: 13, systems: 30, preset: 'remastered' });
+  assert.equal(v.meta.techCap, 10);
+  assert.equal(v.meta.year, 0);
+  assert.equal(v.meta.erasRule, false);
+  assert.equal(call('research').techCap, 10);
+  assert.equal(call('research').fields[0].levels.length, 11);
+  assert.ok(!String(call('save').data).includes('\nERAS '));
+  // Ages at 2380: level 11 start, cap 14, year 2380; the ladder shows 15 rungs with the original level 11 to 14 text.
+  const camp = { faction: 1, empires: 5, seed: 7, era: 5, ruleset: 'reference', width: 22, height: 16, systems: 50, preset: 'ages' };
+  v = call('newCampaign', camp);
+  assert.equal(v.meta.techCap, 14);
+  assert.equal(v.meta.year, 2380);
+  assert.equal(v.meta.erasRule, true);
+  const research = call('research');
+  assert.equal(research.techCap, 14);
+  assert.equal(research.fields[0].level, 11);
+  assert.equal(research.fields[0].levels.length, 15);
+  assert.equal(research.fields[0].levels[14].name, 'Transcendent Biology');
+  assert.ok(research.fields[0].levels[12].description.length > 20);
+  assert.ok(research.fields[0].levels[12].cost > research.fields[0].levels[11].cost);
+  for (let i = 0; i < 8; i++) endTurn();
+  assert.equal(call('view').meta.year, 2382);
+  const fp = call('fingerprint');
+  const save = call('save');
+  assert.ok(String(save.data).includes('\nERAS 1\n'));
+  call('loadBaseContent');
+  call('load', { data: save.data });
+  assert.equal(call('fingerprint'), fp, 'the reloaded timeline game has the saved fingerprint');
+  assert.equal(call('view').meta.techCap, 14);
+  // A 2240 Ages start cannot queue a ship that has not entered service.
+  v = call('newCampaign', { ...camp, era: 1 });
+  const home = v.colonies[0].systemId;
+  const refused = attempt('submit', { command: { type: 'EnqueueBuilding', systemId: home, building: 'Destroyer', referenceId: 1003 } });
+  assert.equal(refused.ok, false);
+  assert.ok(String(refused.error).includes('Enters service in 2245'), refused.error);
+  call('newCampaign', { faction: 1, empires: 3, seed: 7, era: 1, ruleset: 'reference', width: 16, height: 13, systems: 30, preset: 'remastered' });
+});
+
 console.log(`${passed} bridge tests passed`);

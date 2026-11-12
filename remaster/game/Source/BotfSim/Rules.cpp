@@ -575,7 +575,7 @@ GameState newCampaign(const CampaignSetup& setup) {
         }
         // Schema 22: under the eras rule the start era's tech levels, credits and home fleets come from the pack's eras block, so the
         // era is applied again with the rule on (the call is idempotent; it draws no random numbers). Off, nothing changes.
-        if (rules.eras && setup.reference) { state.rules.eras = true; applyCampaignEra(state, setup.era); }
+        if (rules.eras && setup.reference) { state.rules.eras = true; state.rules.expandedRoster = rules.expandedRoster; applyCampaignEra(state, setup.era); }
         applyGameplayRules(state, rules);
         state.presetId = content::active().stack.empty() ? std::string() : named->id;
     } else {

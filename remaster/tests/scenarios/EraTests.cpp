@@ -161,6 +161,22 @@ int main() {
         content::installBase();
     }, passed);
 
+    run("home fleets: the start era's own canon classes first, the legacy catalogue for the rest", [] {
+        // 2380: a Federation home fleet holds roster classes; every one in service in the start year, none retired or early.
+        auto s = game("ages", StartingEra::Supreme);
+        int rosterShips = 0, legacy = 0;
+        for (const auto& f : s.fleets) {
+            if (f.referenceShipId < 0) continue;
+            if (roster::isExpandedId(f.referenceShipId)) { ++rosterShips; check(eraBlocker(s, f.referenceShipId).empty(), "a start ship in service: " + std::to_string(f.referenceShipId)); }
+            else ++legacy;
+        }
+        check(rosterShips > 0 && legacy > 0, "both catalogues field ships (" + std::to_string(rosterShips) + " roster, " + std::to_string(legacy) + " legacy)");
+        // 2240: nothing newer than the start year; the opening fleet is scouts and colony ships from the legacy catalogue.
+        s = game("ages", StartingEra::Early);
+        for (const auto& f : s.fleets) check(f.referenceShipId < 0 || eraBlocker(s, f.referenceShipId).empty(), "a 2240 start ship is in service");
+        content::installBase();
+    }, passed);
+
     run("era gate: classes enter service and retire on the timeline, in every start era", [] {
         // 2240: the Enterprise line is in service, the Constitution waits for 2245, the Excelsior for 2285.
         auto s = game("ages", StartingEra::Early);

@@ -260,6 +260,18 @@ func test_fixture_determinism() -> void:
 		check(api("fingerprint") == run.result, "threats %s: fingerprint %s == wasm %s" % [JSON.stringify(run.campaign.threats), api("fingerprint"), run.result])
 		check(int(tv.threatsSpawned) == int(run.spawned) and int(run.spawned) > 2, "threats: the native core spawned %d actors, wasm %d" % [int(tv.threatsSpawned), int(run.spawned)])
 		check(JSON.stringify(tv.threatSetup) == JSON.stringify(run.threats), "threats: the view reports the switches the game was started with")
+	# Campaign eras (schema 22): Ages and Galaxies at every start year, native against wasm, with the year, cap and start level.
+	var ex := load_fixture("determinism-eras")
+	for run in ex.result:
+		api("newCampaign", run.campaign)
+		for i in int(run.turns):
+			end_turn()
+		var ev: Dictionary = api("view")
+		var tag := "%s/%d" % [run.campaign.preset, int(run.campaign.era)]
+		check(api("fingerprint") == run.result, "eras %s: fingerprint %s == wasm %s" % [tag, api("fingerprint"), run.result])
+		check(int(ev.meta.year) == int(run.year) and int(ev.meta.techCap) == int(run.techCap) and int(ev.meta.techCap) == 14 and int(run.year) >= 2240, "eras %s: year %d and cap %d match the wasm core" % [tag, int(ev.meta.year), int(ev.meta.techCap)])
+		check(int(api("research").fields[0].level) == int(run.level), "eras %s: research level matches" % tag)
+	api("loadBaseContent")
 	# Packs and presets (schema 17): every preset's fingerprint, stack checksum and recorded preset id, native against wasm.
 	var px := load_fixture("determinism-presets")
 	for run in px.result:
