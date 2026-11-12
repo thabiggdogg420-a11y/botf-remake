@@ -476,7 +476,7 @@ test('expanded ship roster: database, build options and typed weapon mounts', ()
 
 test('presets: the registry, a stacked game, a save that carries its packs, and the plain pack coming back', () => {
   const list = call('listPresets');
-  assert.deepEqual(list.map((p) => p.id), ['classic', 'remastered', 'dominion-war', 'ages', 'galaxies', 'balance-of-power', 'ultimate']);
+  assert.deepEqual(list.map((p) => p.id), ['classic', 'remastered', 'dominion-war', 'ages', 'galaxies', 'balance-of-power', 'ultimate', 'klingon-civil-war', 'mirror-universe']);
   assert.equal(call('meta').presets.length, list.length, 'meta carries the presets');
   assert.ok(list.every((p) => p.blurb && p.options && typeof p.lineupPlayable === 'boolean'));
   assert.equal(list.find((p) => p.id === 'galaxies').lineupPlayable, true, 'Galaxies seats the Dominion and the Borg (MOD-2)');
@@ -560,7 +560,7 @@ test('Economy rules (MOD-6): flags in the view, upgrade entries in the build lis
   assert.equal(bad.ok, false, 'a raid on your own colony is refused');
   for (let i = 0; i < 3; i++) endTurn();
   const save = call('save');
-  assert.ok(String(save.data).startsWith('BOTF_SIM 24 remaster-24\n') && String(save.data).includes('\nECONOMY_RULES 1 '), 'schema 24 with the economy section');
+  assert.ok(String(save.data).startsWith('BOTF_SIM 25 remaster-25\n') && String(save.data).includes('\nECONOMY_RULES 1 '), 'schema 25 with the economy section');
   const fp = call('fingerprint');
   call('load', { data: save.data });
   assert.equal(call('fingerprint'), fp);
@@ -570,7 +570,7 @@ test('Balance and AI (MOD-7): Expert, planets per star, start colonies, race sta
   const base = { faction: 1, seed: 424242, era: 1, ruleset: 'reference', width: 22, height: 16, systems: 50 };
   assert.equal(attempt('newCampaign', { ...base, difficulty: 'godlike' }).ok, false, 'an unknown difficulty is refused');
   const ex = call('newCampaign', { ...base, difficulty: 'expert' });
-  assert.equal(call('meta').saveVersion, 24);
+  assert.equal(call('meta').saveVersion, 25);
   const crowded = call('newCampaign', { ...base, planetsMin: 6, planetsMax: 9, startSystems: 2, starTypes: true });
   const owned = crowded.systems.filter((x) => x.owner === 1);
   assert.ok(owned.length >= 1, 'the player has colonies');
@@ -584,7 +584,7 @@ test('Balance and AI (MOD-7): Expert, planets per star, start colonies, race sta
   assert.ok(bop.options.startSystems === 1 && bop.options.planetsMin === 2 && bop.options.planetsMax === 9, 'Balance of Power option defaults');
   assert.equal(presets.find((x) => x.id === 'galaxies').options.starTypes, true);
   const save = call('save');
-  assert.ok(String(save.data).startsWith('BOTF_SIM 24 remaster-24\n'));
+  assert.ok(String(save.data).startsWith('BOTF_SIM 25 remaster-25\n'));
   call('load', { data: save.data });
   assert.equal(ex.meta.playerName, 'Federation');
 });
@@ -699,6 +699,6 @@ test('scenarios: meta lists them; a scenario overrides the setup and carries obj
   assert.equal(mirror.meta.year, 2267);
   assert.ok(mirror.meta.scenarioInfo.objectives.length >= 2);
   assert.ok(Object.values(mirror.meta.empireNames).includes('Terran Empire'));
-  assert.ok(mirror.meta.flagships.length >= 1);
+  assert.ok(mirror.meta.flagships.enabled && mirror.meta.flagships.cost > 0 && mirror.meta.flagships.nextName);
   assert.equal(attempt('newCampaign', { scenario: 'no-such' }).ok, false);
 });

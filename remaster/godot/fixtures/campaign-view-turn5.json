@@ -18,8 +18,8 @@
    "erasRule": false,
    "year": 0,
    "techCap": 10,
-   "contentVersion": "remaster-24",
-   "saveVersion": 24,
+   "contentVersion": "remaster-25",
+   "saveVersion": 25,
    "outcome": "ongoing",
    "winner": 0,
    "advancedRules": true,
@@ -48,6 +48,17 @@
     "raidBonus": false,
     "crewExperience": true,
     "exploitFixes": true
+   },
+   "empireNames": {
+    "1": "Federation",
+    "2": "Klingon Empire",
+    "3": "Romulan Star Empire",
+    "4": "Cardassian Union",
+    "5": "Ferengi Alliance"
+   },
+   "secessions": [],
+   "flagships": {
+    "enabled": false
    }
   },
   "empire": {
@@ -805,6 +816,14 @@
      "achieved": false,
      "percent": 15,
      "explanation": "Alliance bloc holds 43 of 407 galactic population with 0 partner(s). Victory needs two-thirds of the population, at least 2 allied empires or member races, the largest population among the allies, and turn 150 or later."
+    },
+    {
+     "condition": "Vendetta",
+     "name": "Vendetta",
+     "enabled": true,
+     "achieved": false,
+     "percent": 0,
+     "explanation": "Sworn rivals: Romulan Star Empire and Cardassian Union. Eliminating both wins the vendetta (from turn 20)."
     }
    ],
    "alternative": true,

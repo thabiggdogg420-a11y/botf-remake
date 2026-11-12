@@ -18,8 +18,8 @@
    "erasRule": false,
    "year": 0,
    "techCap": 10,
-   "contentVersion": "remaster-24",
-   "saveVersion": 24,
+   "contentVersion": "remaster-25",
+   "saveVersion": 25,
    "outcome": "ongoing",
    "winner": 0,
    "advancedRules": true,
@@ -48,6 +48,17 @@
     "raidBonus": false,
     "crewExperience": false,
     "exploitFixes": false
+   },
+   "empireNames": {
+    "1": "Federation",
+    "2": "Klingon Empire",
+    "3": "Romulan Star Empire",
+    "4": "Cardassian Union",
+    "5": "Ferengi Alliance"
+   },
+   "secessions": [],
+   "flagships": {
+    "enabled": false
    }
   },
   "empire": {
@@ -901,6 +912,14 @@
     {
      "condition": "Diplomatic",
      "name": "Diplomatic",
+     "enabled": false,
+     "achieved": false,
+     "percent": 0,
+     "explanation": "Disabled by the Classic ruleset."
+    },
+    {
+     "condition": "Vendetta",
+     "name": "Vendetta",
      "enabled": false,
      "achieved": false,
      "percent": 0,

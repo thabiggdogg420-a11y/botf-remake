@@ -1,0 +1,32 @@
+{
+ "method": "fingerprint",
+ "args": {
+  "runs": 3
+ },
+ "result": [
+  {
+   "campaign": {
+    "scenario": "dominion-war",
+    "seed": 4242
+   },
+   "turns": 50,
+   "result": "2055550415581471824"
+  },
+  {
+   "campaign": {
+    "scenario": "klingon-civil-war",
+    "seed": 4242
+   },
+   "turns": 50,
+   "result": "1730951328044133384"
+  },
+  {
+   "campaign": {
+    "scenario": "mirror-universe",
+    "seed": 4242
+   },
+   "turns": 50,
+   "result": "12505755838839497994"
+  }
+ ]
+}

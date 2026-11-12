@@ -191,6 +191,7 @@ void writeThreatSetup(Writer& w, const botf::ThreatSetup& t) {
     w.endArray().endObject();
 }
 // The actors a new-game screen can toggle: key, name, family, what it does, the asset used for its map marker and battle model.
+void writeScenarios(Writer& w);   // Defined with the scenario registry calls, below the meta writer that lists them.
 void writeThreatKinds(Writer& w) {
     static const char* const EffectNames[] = {"none", "assimilate", "bombard", "strip", "raid"};
     static const char* const BehaviourNames[] = {"hunt", "roam", "drift", "guard"};
