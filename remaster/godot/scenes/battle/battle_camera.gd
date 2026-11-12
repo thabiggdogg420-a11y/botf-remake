@@ -865,9 +865,17 @@ func _film_pose(shot: Dictionary, key: String, time: float) -> Array:
 			look = a.lerp(b, 0.15)
 			fov = 42.0
 		_:
-			eye = a - dir * ra * 3.4 + side * sgn * ra * 1.3 + Vector3.UP * ra * 1.0
-			look = a.lerp(b, 0.65)
-			fov = 46.0
+			# M4 combat, the tracking shot: both ships in frame, seen from the side and a little above, the lens riding with
+			# the pair and drifting round them slowly. Distance follows the pair, so a capital never fills the frame from
+			# a few radii away (the first cut sat 3.4 radii behind the shooter).
+			var mid := (a + b) * 0.5
+			var sep := maxf(to_b.length(), (ra + rb) * 1.6)
+			var span := maxf(sep * 0.75, (ra + rb) * 2.6)
+			var drift := deg_to_rad(5.0) * (time - _shot_start) * sgn
+			var off := (side * sgn - dir * 0.35) * span + Vector3.UP * span * 0.4
+			eye = mid + off.rotated(Vector3.UP, drift)
+			look = mid
+			fov = 40.0
 	eye = _clear_of_hulls(eye, look)
 	return [eye, look]
 

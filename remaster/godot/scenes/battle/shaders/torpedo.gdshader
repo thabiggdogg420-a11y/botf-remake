@@ -42,7 +42,7 @@ void fragment() {
 	float core_r = torp_style == 1 ? 0.16 : (torp_style == 2 ? 0.17 : 0.13);
 	float core = 1.0 - smoothstep(core_r * 0.55, core_r, r);
 	// Two-tone glow: a warm inner glow round the core, then the weapon colour further out.
-	float glow = exp(-r * (torp_style == 0 ? 4.2 : 6.0) / pulse) * rim; // battlechoreo compare 02: a soft round halo
+	float glow = exp(-r * (torp_style == 0 ? 6.5 : 6.0) / pulse) * rim; // M4: a smaller halo so the star reads (footage WotW 4891: an orange 4-point star, near-white core, soft halo) // battlechoreo compare 02: a soft round halo
 	float inner = exp(-r * 11.0 / pulse);
 	vec3 tint = torp_color.rgb;
 	vec3 warm = mix(tint, vec3(1.0, 0.82, 0.55), torp_style == 1 ? 0.3 : 0.55);
@@ -60,16 +60,16 @@ void fragment() {
 	float fi = floor(k + 0.5);
 	float off = (k - fi) * 6.2831853 / n;
 	float h = hash1(fi + ph * 13.0);
-	float slen = torp_style == 0 ? 0.5 + 0.12 * h : 0.55 + 0.45 * h; // battlechoreo compare 02: short flared spikes
+	float slen = torp_style == 0 ? 0.88 + 0.1 * h : 0.55 + 0.45 * h; // M4: photon spikes long and thin // battlechoreo compare 02: short flared spikes
 	float twinkle = 0.75 + 0.25 * sin(t * (9.0 + 6.0 * h) + fi * 1.7 + ph);
-	float thin = torp_style == 1 ? 0.02 : (torp_style == 0 ? mix(0.09, 0.02, clamp(r / 0.55, 0.0, 1.0)) : 0.034); // photon: flared at the base
+	float thin = torp_style == 1 ? 0.02 : (torp_style == 0 ? mix(0.075, 0.012, clamp(r / 0.8, 0.0, 1.0)) : 0.034); // photon: flared at the base
 	float spike = exp(-abs(r * sin(off)) / thin) * (1.0 - smoothstep(0.0, slen, r)) * twinkle * rim;
 	spike *= torp_style == 2 ? 0.35 : 1.0;
 	// The lens streak: screen-horizontal (it does not turn), the full width of the sprite.
 	float streak = torp_style != 1 ? 0.0 : 0.4 * exp(-abs(p.y) / 0.035) * exp(-abs(p.x) / (aspect * 0.42)) * (0.8 + 0.2 * pulse);
 	float ring = torp_style == 1 ? exp(-pow((r - 0.45) / 0.035, 2.0)) * 0.6 * rim : 0.0;
 	vec3 streak_col = torp_style == 1 ? mix(tint, vec3(0.9, 0.95, 1.0), 0.5) : tint;
-	vec3 col = tint * (glow * 2.0 + spike * 3.0 + ring * 2.0) + warm * inner * 2.2 + streak_col * streak * 1.8
+	vec3 col = tint * (glow * 2.0 + spike * (torp_style == 0 ? 4.0 : 3.0) + ring * 2.0) + warm * inner * 2.2 + streak_col * streak * 1.8
 		+ torp_core.rgb * core * 2.4;
 	float near_fade = smoothstep(1.0, 8.0, -VERTEX.z); // a torpedo passing the lens does not blind it
 	ALBEDO = col * torp_intensity * near_fade;

@@ -536,7 +536,7 @@ func _update_camera(t: float, delta: float, centroid: Vector3, spread: float) ->
 		shot = {"key": "%d_%d_%d_%.2f" % [round_index, director.subject, director.other, director.since],
 			"kind": director.kind, "subject": subject.global_position, "subject_size": subject.length,
 			"other": other.global_position if other != null else centroid, "other_size": other.length if other != null else subject.length, "centroid": centroid, "spread": spread}
-	if film_cuts and (_playing or not _finished_sent) and not (round_index == 0 and t < 1.2):
+	if film_cuts and (_playing or not _finished_sent) and not ((round_index == 0 and t < 3.0) or t < 1.0):
 		var fs := _film_shot(t, centroid, spread)
 		if not fs.is_empty():
 			shot = fs
@@ -559,12 +559,12 @@ func _film_shot(t: float, centroid: Vector3, spread: float) -> Dictionary:
 	if _film.round != round_index or t < float(_film.get("from", 0.0)) or t >= float(_film.until):
 		var n: int = int(_film.n) + 1 if _film.round == round_index and t >= float(_film.get("from", 0.0)) else 0
 		var h := BattleTimeline.unit_hash(round_index * 977 + n, 61)
-		var length := 1.0 + 2.0 * h
+		var length := 2.4 + 2.2 * h # M4: shots of 2.4-4.6 s (the first cut flipped every 1-3 s between unrelated ships)
 		_film = {"n": n, "from": t, "until": t + length, "round": round_index, "type": "wide"}
 		if n % 3 != 2:
 			_film.merge(_pick_film(t, length, n), true)
 		if _film.type == "wide":
-			_film.until = t + 1.0 + 0.5 * h
+			_film.until = t + 1.6 + 0.8 * h
 	var typ: String = _film.type
 	if typ == "wide":
 		return {}
