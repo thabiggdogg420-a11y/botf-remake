@@ -26,7 +26,12 @@ inline constexpr const char* StockEmpires[] = {"Federation", "Klingon", "Romulan
 inline constexpr int StockEmpireCount = 8;
 
 inline constexpr const char* FlagNames[] = {"stations", "galaxyFeatures", "curatedEvents", "alternativeVictories",
-    "expandedRoster", "flightModel", "wegoCombat", "empireRules"};
+    "expandedRoster", "flightModel", "wegoCombat", "empireRules",
+    // Schema 23 (EconomyRules.h): the economy and rules mechanics.
+    "structureUpgrades", "autoUpgrades", "noUpgrades", "sharedMorale", "protectorateHq", "allDilithium", "interceptOrders",
+    "raidOrders", "raidBonus", "crewExperience", "exploitFixes"};
+// The flags a Remastered base turns on besides the four layers and the roster (the rest of the economy flags start off).
+inline constexpr const char* RemasteredEconomyFlags[] = {"structureUpgrades", "interceptOrders", "raidOrders", "crewExperience", "exploitFixes"};
 inline constexpr const char* SizeIds[] = {"small", "medium", "large", "huge"};
 inline constexpr const char* ShapeIds[] = {"legacy", "irregular", "spiral", "ring", "elliptical"};
 inline constexpr const char* DensityIds[] = {"legacy", "none", "few", "some", "many"};
@@ -101,6 +106,13 @@ inline void checkFlags(const std::string& base, const std::vector<std::pair<std:
     const bool remastered = base == "remastered";
     auto value = [&](const char* name) {
         bool v = remastered || std::string(name) == "stations" || std::string(name) == "empireRules";
+        const std::string n(name);
+        const bool economyFlag = n == "structureUpgrades" || n == "autoUpgrades" || n == "noUpgrades" || n == "sharedMorale" || n == "protectorateHq" ||
+            n == "allDilithium" || n == "interceptOrders" || n == "raidOrders" || n == "raidBonus" || n == "crewExperience" || n == "exploitFixes";
+        if (economyFlag) {
+            v = false;
+            for (const char* on : RemasteredEconomyFlags) if (remastered && n == on) v = true;
+        }
         for (const auto& o : overrides) if (o.first == name) v = o.second;
         return v;
     };
@@ -112,6 +124,8 @@ inline void checkFlags(const std::string& base, const std::vector<std::pair<std:
             if (value(off)) content::detail::bad(path, std::string("flag ") + off + " cannot be on under the classic base");
     }
     if (value("wegoCombat") && !value("flightModel")) content::detail::bad(path, "wegoCombat needs flightModel");
+    if (value("noUpgrades") && value("autoUpgrades")) content::detail::bad(path, "noUpgrades excludes autoUpgrades");
+    if (value("raidBonus") && !value("raidOrders")) content::detail::bad(path, "raidBonus needs raidOrders");
 }
 
 inline Preset parsePreset(std::string_view bytes) {

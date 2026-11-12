@@ -20,6 +20,7 @@
 #include "Content.h"
 #include "EmpireSlots.h"
 #include "Simulation.h"
+#include "StructureUpgrades.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -36,7 +37,10 @@ inline constexpr int MaxPerColony = 12;
 inline constexpr int MaxSabotagePercent = 150, MaxSecurityPercent = 150;
 
 enum Effect : int { Credits = 5, Security = 11, Industry = 14, Morale = 20, Research = 30, GroundDefense = 37, Food = 42,
-                    ShapeshifterNetwork = 90, KetracelWhite = 91 };
+                    ShapeshifterNetwork = 90, KetracelWhite = 91,
+                    // Schema 23 (EconomyRules.h): academy (values[0] experience points a turn for fleets in its system, values[1] the cap),
+                    // shared morale (values[0] morale for every colony of the empire) and Protectorate HQ (values[0] morale for subjugated worlds).
+                    Academy = 92, SharedMorale = 93, ProtectorateHq = 94 };
 
 inline bool isRef(int referenceId) { return referenceId >= RefBase && referenceId < RefBase + 1000000; }
 inline int refFor(int recordId) { return RefBase + recordId; }
@@ -74,15 +78,20 @@ inline std::string effectText(const referenceData::BuildingRecord& r) {
         case Security: return "+" + v + "% internal security output (empire-wide)";
         case ShapeshifterNetwork: return "+" + v + "% sabotage output, +" + std::to_string(r.bonusValues[1]) + " sabotage damage (empire-wide)";
         case KetracelWhite: return "Jem'Hadar warships need one in the empire";
+        case Academy: return "Fleets in this system train +" + v + " experience a turn up to " + std::to_string(r.bonusValues[1]) + "; new ships launch with " + std::to_string(r.bonusValues[0] * 4) + " extra";
+        case SharedMorale: return "+" + v + " morale in every colony of the empire";
+        case ProtectorateHq: return "Subjugated worlds hold order (+" + v + " morale) and pay tribute; built in a subjugated world";
         default: return "";
     }
 }
 inline int cost(int referenceId) {
+    if (upgrades::isRecord(recordIdOf(referenceId))) return upgrades::cost(recordIdOf(referenceId)); // Schema 23: a structure upgrade project.
     const auto* r = campaignRecord(recordIdOf(referenceId));
     if (!r) throw std::runtime_error("Unknown campaign structure");
     return r->industryCost;
 }
 inline const char* name(int referenceId) {
+    if (upgrades::isRecord(recordIdOf(referenceId))) return upgrades::name(recordIdOf(referenceId));
     const auto* r = record(recordIdOf(referenceId));
     return r ? r->name : "Structure";
 }
@@ -136,12 +145,21 @@ inline int heldInEmpire(const GameState& s, int empireId, int id) {
     return n;
 }
 
+// Schema 23: rule-flag gates of the economy records (a pack may carry them while the rule is off).
+inline std::string recordFlagBlocker(const GameState& s, const referenceData::BuildingRecord& r) {
+    if (r.bonusType == Academy && !s.rules.crewExperience) return "Crew experience is off in this ruleset";
+    if (r.bonusType == SharedMorale && !s.rules.sharedMorale) return "Shared morale is off in this ruleset";
+    if (r.bonusType == ProtectorateHq && !s.rules.protectorateHq) return "The Protectorate is off in this ruleset";
+    return {};
+}
 // Empire-level reasons the owner cannot build the structure: not a campaign record, wrong race, technology. A queued project is
 // re-checked with this every turn (it must not count itself against the empire limit).
 inline std::string empireBlockerForProject(const GameState& s, int owner, int id) {
+    if (upgrades::isRecord(id)) return upgrades::empireBlocker(s, owner, id);
     const auto* r = campaignRecord(id);
     if (!r) return "Not a campaign structure";
     if (!allowedFor(*r, owner)) return std::string(r->name) + " is not available to this empire";
+    if (auto flag = recordFlagBlocker(s, *r); !flag.empty()) return flag;
     if (r->technologyField >= 0 && r->technologyField < ResearchFields && r->technologyLevel > 0 &&
         empire(s, owner).technologies[static_cast<std::size_t>(r->technologyField)].level < r->technologyLevel)
         return std::string("Requires ") + researchName(r->technologyField) + " level " + std::to_string(r->technologyLevel);
@@ -159,6 +177,7 @@ inline std::string empireBlocker(const GameState& s, int owner, int id) {
 inline std::string colonyBlocker(const Colony& c, int id) {
     const auto* r = campaignRecord(id);
     if (!r) return "Not a campaign structure";
+    if (r->bonusType == ProtectorateHq && !c.subjugated) return "Build it in a subjugated world";
     if (built(c, id)) return "Already built here";
     for (const auto& p : c.queue) if (p.product == Building::Structure && recordIdOf(p.referenceId) == id) return "Already queued here";
     if (r->requiresId >= 0 && !built(c, r->requiresId)) {
@@ -169,6 +188,7 @@ inline std::string colonyBlocker(const Colony& c, int id) {
     return {};
 }
 inline std::string blocker(const GameState& s, const Colony& c, int id) {
+    if (upgrades::isRecord(id)) return upgrades::blocker(s, c, id);
     if (auto b = empireBlocker(s, c.ownerId, id); !b.empty()) return b;
     return colonyBlocker(c, id);
 }

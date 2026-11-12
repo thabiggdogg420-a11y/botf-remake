@@ -3,6 +3,7 @@
 #include "MinorRaces.h"
 #include "EmpireRules.h"
 #include "Structures.h"
+#include "EconomyRules.h"
 #include "ReferenceCatalogue.h"
 #include "ReferencePlanets.h"
 #include "ShipRoster.h"
@@ -1085,6 +1086,7 @@ void applyDraft(GameState& state) {
             require(f != state.fleets.end() && f->ownerId == state.playerEmpire, "Fleet is not owned");
             if (command.type != CommandType::SetTacticalStance) {
                 detachFromTaskForce(state, *f);
+                economy_rules::clearOrder(*f); // Schema 23
             }
             if (command.type == CommandType::SetTacticalStance) {
                 require(state.advancedRulesEnabled, "Tactical stance requires advanced reference rules");
@@ -1151,6 +1153,7 @@ void applyDraft(GameState& state) {
                 [&](const Fleet& x) { return x.id == command.fleetId; });
             require(f != state.fleets.end() && f->ownerId == state.playerEmpire, "Fleet is not owned");
             detachFromTaskForce(state, *f);
+            economy_rules::clearOrder(*f); // Schema 23: a move order ends a standing intercept or raid order
             if (command.type == CommandType::MoveFleet) {
                 require(command.targetX >= 0 && command.targetX < state.width && command.targetY >= 0 &&
                     command.targetY < state.height, "Destination outside galaxy");
@@ -1191,15 +1194,15 @@ void applyDraft(GameState& state) {
             if (command.building == Building::Farm) {
                 require(it->farms > 0, "No farm to scrap");
                 require(it->foodWorkers <= (it->farms - 1) * 10, "Workforce exceeds remaining farms; reassign workers first");
-                --it->farms;
+                --it->farms; upgrades::onScrap(*it, 0);
             } else if (command.building == Building::Factory) {
                 require(it->factories > 0, "No factory to scrap");
                 require(it->industryWorkers <= (it->factories - 1) * 10, "Workforce exceeds remaining factories; reassign workers first");
-                --it->factories;
+                --it->factories; upgrades::onScrap(*it, 1);
             } else if (command.building == Building::Laboratory) {
                 require(it->laboratories > 0, "No laboratory to scrap");
                 require(it->researchWorkers <= (it->laboratories - 1) * 10, "Workforce exceeds remaining laboratories; reassign workers first");
-                --it->laboratories;
+                --it->laboratories; upgrades::onScrap(*it, 2);
             } else if (command.building == Building::PowerPlant) {
                 require(it->powerPlants > 0, "No power plant to scrap");
                 require(it->energy >= 10, "Energy level below decommission capacity");
@@ -1388,6 +1391,7 @@ void planRivals(GameState& s) {
         const bool atWar = std::any_of(s.majorRelations.begin(), s.majorRelations.end(), [&](const MajorRelation& r) {
             return r.atWar && (r.first == owner.id || r.second == owner.id);
         });
+        economy_rules::planOrders(s, owner.id, atWar); // Schema 23: AI intercept posts and raids
         const int focus = (s.turn / 20 + owner.id) % ResearchFields;
         for (int field = 0; field < ResearchFields; ++field)
             owner.technologies[field].allocation = atWar ? (field == 4 || field == 5 ? 40 : 5) : (field == focus ? 50 : 10);
@@ -1440,6 +1444,7 @@ void planRivals(GameState& s) {
             else if (c.shipyards == 0) c.queue.push_back(Building::Shipyard);
             else if (empire_rules::aiWantsRefinery(s, owner.id, c)) c.queue.push_back(Building::DilithiumRefinery);
             else if (const int rung = structures::aiNext(s, c, economy(s, c).industry); rung >= 0) c.queue.emplace_back(Building::Structure, 0, structures::refFor(rung));
+            else if (const int up = economy_rules::aiUpgrade(s, c); up >= 0) c.queue.emplace_back(Building::Structure, 0, structures::refFor(up)); // Schema 23
             else if (atWar && s.advancedRulesEnabled && c.defenseBatteries < 1) c.queue.push_back(Building::DefenseBattery);
             else if (empire_rules::aiMinorCampaign(s, owner.id, atWar) && destroyers < 2 && queueMilitaryShip(s, c, Building::Destroyer)) ++destroyers;
             else if (empire_rules::aiMinorCampaign(s, owner.id, atWar) && transports < 2 && queueMilitaryShip(s, c, Building::Transport)) ++transports;
@@ -1574,7 +1579,7 @@ void planRivals(GameState& s) {
 
         std::set<int> reserved;
         for (auto& f : s.fleets) {
-            if (f.ownerId != owner.id || f.colonize || f.taskForceId > 0) continue;
+            if (f.ownerId != owner.id || f.colonize || f.taskForceId > 0 || f.order != 0) continue; // Schema 23: a standing order keeps the ship
 
             if (s.advancedRulesEnabled) {
                 if (f.retreat) {
@@ -2698,6 +2703,7 @@ void resolveModernIntelligence(GameState& next, TurnReport& report) {
 
 void resolveFleets(GameState& s, TurnReport& report) {
     const auto before = s.explored;
+    std::map<std::pair<int, int>, int> terraformAdded; // Schema 23: work added to each planet this turn
     std::map<int, std::vector<int>> tfRoutes;
     for (const auto& tf : s.taskForces) {
         if (tf.fleetIds.empty()) continue;
@@ -2746,6 +2752,11 @@ void resolveFleets(GameState& s, TurnReport& report) {
                 if (f.referenceShipId >= 0) {
                     const auto& rShip = sourceShip(f.referenceShipId);
                     workInc = (std::string_view(rShip.name).find("II") != std::string_view::npos || rShip.technologyRequirements[0] >= 5) ? 300 : 100;
+                }
+                if (s.rules.exploitFixes) { // Schema 23: any number of ships add at most the planet's cap in a turn (never one-turn terraforming)
+                    int& added = terraformAdded[{sysIt->id, f.terraformPlanetIndex}];
+                    workInc = std::max(0, std::min(workInc, economy_rules::terraformCap(p) - added));
+                    added += workInc;
                 }
                 p.terraformWork += workInc;
                 p.terraformState = TerraformingState::InProgress;
@@ -3279,6 +3290,7 @@ std::string payload(const GameState& s) {
             << static_cast<int>(s.galaxy.difficulty) << '\n';
     empire_rules::writeSection(out, s); // Schema 16: optional EMPIRE_RULES section.
     structures::writeSection(out, s);   // Schema 21: optional STRUCTURES section.
+    economy_rules::writeSection(out, s); // Schema 23: optional ECONOMY_RULES section.
     threats::writeSection(out, s);      // Schema 20: optional THREATS section.
     // Schema 14: per-ship orders of recorded battle rounds. Written only when some
     // round carries orders, so campaigns without them keep the schema-13 layout.
@@ -3811,6 +3823,15 @@ std::vector<ConstructionChoice> constructionChoices(const GameState& state, int 
         if (queueFull) blocker = "Construction queue is full";
         choices.push_back({Building::Structure, structures::refFor(rec.id), rec.name, rec.industryCost, structures::upkeepOf(rec), blocker});
     }
+    // Schema 23: the structure upgrades, one entry per kind (the blocker says why one cannot be queued).
+    if (state.rules.structureUpgrades || state.rules.autoUpgrades || state.rules.noUpgrades) {
+        for (int kind = 0; kind < upgrades::Kinds; ++kind) {
+            const int record = upgrades::recordFor(kind, false);
+            std::string blocker = upgrades::blocker(state, *colony, record);
+            if (queueFull) blocker = "Construction queue is full";
+            choices.push_back({Building::Structure, structures::refFor(record), upgrades::name(record), upgrades::cost(record), 0, blocker});
+        }
+    }
     if (state.ruleset == Ruleset::Prototype) {
         for (Building b : {Building::Scout, Building::ColonyShip, Building::Destroyer, Building::Transport}) {
             auto blocker = technologyBlocker(state, b, colony->ownerId);
@@ -3970,6 +3991,8 @@ std::vector<int> route(const GameState& s, const Fleet& f, int x, int y) {
 std::string constructionBlocker(const GameState& s, const Colony& c) {
     if (c.queue.empty()) return {};
     if (const auto blocked = constructionTechBlocker(s, c.queue.front(), c.ownerId); !blocked.empty()) return blocked;
+    if (c.queue.front().product == Building::Structure && upgrades::isRecord(structures::recordIdOf(c.queue.front().referenceId)))
+        if (const auto blocked = upgrades::projectBlocker(s, c, structures::recordIdOf(c.queue.front().referenceId)); !blocked.empty()) return blocked; // Schema 23
     if (isShip(c.queue.front())) {
         if (!economy(s, c).shipyardPowered) return "Shipyard is unpowered";
         if (s.fleets.size() >= 256 || s.nextFleetId > 1000000) return "Prototype fleet limit reached";
@@ -4895,6 +4918,7 @@ void validate(const GameState& s) {
     threats::validate(s);  // Schema 20: threat actors and assimilated systems.
     empire_rules::validate(s); // Schema-15 empire rules.
     structures::validate(s);   // Schema-19 race structures.
+    economy_rules::validate(s); // Schema 23: economy rules, upgrades, orders and crew experience.
     auto draft = s;
     applyDraft(draft);
 }
@@ -4961,17 +4985,18 @@ Economy economy(const GameState& s, const Colony& c) {
     auto e = economy(powered);
     const auto minorBonus = minors::memberBonuses(s, c.ownerId); // Lane G: member-minor join bonuses
     const auto built = structures::colonyEffects(c); // Schema 21: race structures (all zero without them).
-    e.food = e.food * (100 + 5 * owner.technologies[0].level + minorBonus.foodPct + built.foodPct) / 100;
+    e.food = e.food * (100 + 5 * owner.technologies[0].level + minorBonus.foodPct + built.foodPct + upgrades::percent(c, 0)) / 100; // Schema 23: farm tiers
     e.foodDeficit = std::max(0, c.population - e.food);
-    e.industry = e.industry * (100 + 5 * owner.technologies[2].level + minorBonus.industryPct + built.industryPct) / 100;
+    e.industry = e.industry * (100 + 5 * owner.technologies[2].level + minorBonus.industryPct + built.industryPct + upgrades::percent(c, 1)) / 100; // factory tiers
     if (c.morale < 50) e.industry = e.industry * 75 / 100;
     e.industry = e.industry * empire_rules::programIndustryPercent(c) / 100; // Schema 15 emergency programs
-    e.research = e.research * (100 + 5 * owner.technologies[1].level + minorBonus.researchPct + built.researchPct) / 100;
+    e.research = e.research * (100 + 5 * owner.technologies[1].level + minorBonus.researchPct + built.researchPct + upgrades::percent(c, 2)) / 100; // laboratory tiers
     if (c.morale < 50) e.research = e.research * 75 / 100;
     e.research = e.research * empire_rules::programResearchPercent(c) / 100;
     e.upkeep += empire_rules::programUpkeep(c);
     if (s.ruleset == Ruleset::Reference) e.income += c.population * 2;
     e.income = e.income * (100 + minorBonus.creditsPct + built.creditsPct) / 100;
+    e.income += economy_rules::tribute(s, c); // Schema 23: subjugated worlds pay tribute under a Protectorate HQ
     e.upkeep += built.upkeep;
     return e;
 }
@@ -5110,7 +5135,10 @@ TurnReport advanceWithCombat(GameState& state, const std::function<void(GameStat
                 else if (b == Building::ResearchInstitute) c.laboratories += 2;
                 else if (b == Building::DefenseBattery) ++c.defenseBatteries;
                 else if (b == Building::DilithiumRefinery) ++c.refineries;
-                else if (b == Building::Structure) {
+                else if (b == Building::Structure && upgrades::isRecord(structures::recordIdOf(project.referenceId))) {
+                    const auto text = economy_rules::finishUpgrade(next, c, project.referenceId); // Schema 23: a tier upgrade
+                    if (c.ownerId == next.playerEmpire) report.events.push_back(text);
+                } else if (b == Building::Structure) {
                     const int recordId = structures::recordIdOf(project.referenceId);
                     c.structures.insert(std::lower_bound(c.structures.begin(), c.structures.end(), recordId), recordId);
                     if (c.ownerId == next.playerEmpire) report.events.push_back(std::string(structures::name(project.referenceId)) + " completed at " + std::to_string(c.systemId) + ".");
@@ -5121,6 +5149,7 @@ TurnReport advanceWithCombat(GameState& state, const std::function<void(GameStat
                         location->x, location->y, b == Building::ColonyShip, false, b,
                         project.referenceId >= 0 ? sourceShip(project.referenceId).hull : shipMaxHull(b)};
                     launchedShip.referenceShipId = project.referenceId;
+                    launchedShip.experience = economy_rules::graduateExperience(next, c); // Schema 23: academy graduates
                     launchedShip.shields = next.advancedRulesEnabled ? fleetMaxShields(launchedShip) : 0;
                     launched.push_back(launchedShip);
                     if (c.ownerId == next.playerEmpire) report.events.push_back(fleetName(launchedShip) + " launched at " + location->name + ".");
@@ -5164,6 +5193,7 @@ TurnReport advanceWithCombat(GameState& state, const std::function<void(GameStat
     settleResearch(next); for (auto& owner : next.rivals) settleResearch(owner);
     auto moving = productionSnapshot;
     moving.nextFleetId = next.nextFleetId; // Schema 20: ships made during combat (assimilated drones) must not reuse a launched ship's id.
+    economy_rules::beforeMovement(moving, report); // Schema 23: intercepts and raids set their courses
     resolveFleets(moving, report);
     establishMajorContact(moving, report);
     threats::step(moving, report); // Schema 20: threat actors spawn, retarget and move (no draw unless a switch is on).
@@ -5249,6 +5279,7 @@ TurnReport advanceWithCombat(GameState& state, const std::function<void(GameStat
             existing->workforcePriority = c.workforcePriority;
             existing->queuePriority = c.queuePriority;
             existing->workforceManualOverride = c.workforceManualOverride;
+            existing->subjugated = false; // Schema 23: a world changing hands starts over
             existing->workforceExplanation.clear();
             existing->queueExplanation.clear();
             existing->governorWarning.clear();
@@ -5263,6 +5294,8 @@ TurnReport advanceWithCombat(GameState& state, const std::function<void(GameStat
     std::stable_sort(next.fleets.begin(), next.fleets.end(), [](const Fleet& a, const Fleet& b) { return a.id < b.id; }); // Drones assimilated in combat take ids above the launches.
     reconcileTaskForces(next);
     gameplay::carryOver(next, moving, layerEffects, report);
+    economy_rules::resolveRaids(next, report); // Schema 23: raiders plunder undefended colonies
+    economy_rules::trainCrews(next, report);   // Schema 23: battles and academies train crews
     minors::reviewMinorRaces(next, report.events); // Lane G: minor growth, tech and temperament
     resolveDiplomacy(next, report);
     if (next.campaignExpansionEnabled && next.modernEnginesActive) {
@@ -5302,10 +5335,11 @@ TurnReport advanceWithCombat(GameState& state, const std::function<void(GameStat
         }
     }
     for (auto& c : next.colonies) {
-        const int moraleTarget = std::min(100, threats::moraleTarget(next, c, minors::moraleTarget(next, c.ownerId)) + structures::colonyEffects(c).morale); // Lane G: 70 plus member-minor morale (Borg colonies hold their own value); schema 21 adds the colony's structures
+        const int moraleTarget = std::min(100, threats::moraleTarget(next, c, minors::moraleTarget(next, c.ownerId)) + structures::colonyEffects(c).morale + economy_rules::moraleBonus(next, c)); // Schema 23 shared morale and the Protectorate; Lane G: 70 plus member-minor morale (Borg colonies hold their own value); schema 21 adds the colony's structures
         if (c.morale < moraleTarget) ++c.morale;
         else if (c.morale > moraleTarget) --c.morale;
     }
+    economy_rules::autoUpgrade(next); // Schema 23: automatic upgrades fill empty queues
     empire_rules::endOfTurn(next, report); // Schema 15: emergency programs hold morale, purge, expire
     if (next.rules.curatedEvents) {
         gameplay::resolveGalacticEvents(next, report); // Schema-13 event deck (eventsEnabled gates new draws).
@@ -5412,7 +5446,12 @@ GameState deserialize(const std::string& text) {
     const bool legacy17 = version == 17 && content == "remaster-17";
     const bool legacy18 = version == 18 && content == "remaster-18";   // Differs from 21 only by the header and the optional THREATS and STRUCTURES sections.
     const bool legacy20 = version == 20 && content == "remaster-20";   // Differs from 21 only by the header and the optional STRUCTURES section (never present in 20).
-    const bool current21 = version == SaveVersion && content == ContentVersion;
+    // Schema 21 differs from 23 only by the header and the optional ECONOMY_RULES section (never present in 21); schema 22 (the era
+    // lane's number) is accepted the same way, so a save from either loads.
+    const bool legacy21 = version == 21 && content == "remaster-21";
+    const bool legacy22 = version == 22 && content == "remaster-22";
+    const bool current23 = version == SaveVersion && content == ContentVersion;
+    const bool current21 = current23 || legacy21 || legacy22;   // The STRUCTURES section is legal from schema 21 on.
     const bool current20 = current21 || legacy20;   // The THREATS section is legal from schema 20 on.
     const bool current18 = current20 || legacy18;   // The EMPIRE_SLOTS section is legal from schema 18 on.
     const bool current17 = current18 || legacy17;   // The PACKS section is legal from schema 17 on.
@@ -5425,7 +5464,7 @@ GameState deserialize(const std::string& text) {
     require(checksumStart != std::string::npos, "Missing save checksum");
     const auto rawBody = text.substr(0, checksumStart);
     require(text.substr(checksumStart) == "CHECKSUM " + std::to_string(hashText(rawBody)) + "\n",
-        (legacy7 || legacy8 || legacy9 || legacy10 || legacy11 || legacy12 || legacy13 || legacy14 || legacy15 || legacy16 || legacy17 || legacy18) ? "Legacy save checksum mismatch" : "Save checksum mismatch");
+        (legacy7 || legacy8 || legacy9 || legacy10 || legacy11 || legacy12 || legacy13 || legacy14 || legacy15 || legacy16 || legacy17 || legacy18 || legacy20 || legacy21 || legacy22) ? "Legacy save checksum mismatch" : "Save checksum mismatch");
     GameState s;
     tag(in, "STATE");
     in >> s.seed >> s.rngState >> s.lastAcceptedCommand >> s.width >> s.height >> s.turn >> s.credits >> s.research;
@@ -5864,6 +5903,11 @@ GameState deserialize(const std::string& text) {
         structures::readSection(in, s);
         nextTag = readTag("Malformed save section after STRUCTURES");
     }
+    if (nextTag == "ECONOMY_RULES") {
+        require(current23, "Schema 23 section in an older save");
+        economy_rules::readSection(in, s);
+        nextTag = readTag("Malformed save section after ECONOMY_RULES");
+    }
     if (nextTag == "THREATS") {
         require(current20, "Schema 20 section in an older save");
         threats::readSection(in, s);
@@ -5931,12 +5975,12 @@ GameState deserialize(const std::string& text) {
             (!s.modernEnginesActive || hasIntelOperations),
             current ? "Schema 14 save is missing a required section" : "Schema 13 save is missing a required section");
         std::string expected = payload(s);
-        if (legacy13 || legacy14 || legacy15 || legacy16 || legacy17 || legacy18 || legacy20) {
+        if (legacy13 || legacy14 || legacy15 || legacy16 || legacy17 || legacy18 || legacy20 || legacy21 || legacy22) {
             // Schema 13 text is the schema-14 payload of a campaign without recorded round orders; schema 14 to 17 text are
             // the schema-18 payload of a campaign without a galaxy setup / empire rules / preset packs / lineup above slot five.
             const std::string header = std::string("BOTF_SIM ") + std::to_string(SaveVersion) + ' ' + ContentVersion + '\n';
             require(expected.starts_with(header), "Malformed canonical payload header");
-            expected.replace(0, header.size(), legacy20 ? "BOTF_SIM 20 remaster-20\n" : legacy18 ? "BOTF_SIM 18 remaster-18\n" : legacy17 ? "BOTF_SIM 17 remaster-17\n" : legacy16 ? "BOTF_SIM 16 remaster-16\n" : legacy15 ? "BOTF_SIM 15 remaster-15\n" : legacy14 ? "BOTF_SIM 14 remaster-14\n" : "BOTF_SIM 13 remaster-13\n");
+            expected.replace(0, header.size(), legacy22 ? "BOTF_SIM 22 remaster-22\n" : legacy21 ? "BOTF_SIM 21 remaster-21\n" : legacy20 ? "BOTF_SIM 20 remaster-20\n" : legacy18 ? "BOTF_SIM 18 remaster-18\n" : legacy17 ? "BOTF_SIM 17 remaster-17\n" : legacy16 ? "BOTF_SIM 16 remaster-16\n" : legacy15 ? "BOTF_SIM 15 remaster-15\n" : legacy14 ? "BOTF_SIM 14 remaster-14\n" : "BOTF_SIM 13 remaster-13\n");
         }
         require(rawBody == expected, "Save is not in canonical format");
     } else if (legacy12) {

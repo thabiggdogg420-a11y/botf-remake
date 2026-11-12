@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Simulation.h"
+#include "Crew.h"
 #include "ReferenceCatalogue.h"
 #include "ShipRoster.h"
 
@@ -2366,6 +2367,9 @@ inline Encounter constructEncounter(const GameState& state,
         int totalAtk = fleetAttack(*f);
         if (f->ownerId != ThreatOwner) totalAtk += empire(state, f->ownerId).technologies[5].level;
         totalAtk = std::max(0, totalAtk);
+        // Schema 23: a veteran crew hits harder where the rules have no crew accuracy (rules 2 and 3); rules 4 use the crew rating below.
+        if (state.rules.crewExperience && !(state.rules.wegoCombat && state.rules.flightModel) && f->ownerId != ThreatOwner && totalAtk > 0)
+            totalAtk = std::max(1, totalAtk * (100 + crew::attackPercent(f->experience)) / 100);
 
         const auto* extendedClass = roster::findRosterClass(f->referenceShipId);
         if (f->shipClass == Building::Transport || f->shipClass == Building::ColonyShip) {
@@ -2490,7 +2494,12 @@ inline Encounter constructEncounter(const GameState& state,
     }
 
     // Rules 4: Remastered campaigns with the WEGO flag fight with facings, subsystems and crew ratings.
-    if (state.rules.wegoCombat && state.rules.flightModel) enableWegoRules(enc);
+    if (state.rules.wegoCombat && state.rules.flightModel) {
+        enableWegoRules(enc);
+        if (state.rules.crewExperience) // Schema 23: the crew rating is the fleet's experience, not a function of its id
+            for (auto& ship : enc.ships)
+                for (const Fleet* f : matched) if (f->id == ship.fleetId && f->ownerId != ThreatOwner) ship.crew = crew::rating(f->experience);
+    }
     return enc;
 }
 
