@@ -323,7 +323,7 @@ int main() {
         expectRefusal([&] { presets::parsePreset(noRoster); }, "eras needs expandedRoster", "eras without the roster");
         const auto* ages = presets::find("ages");
         const auto* galaxies = presets::find("galaxies");
-        check(ages && galaxies && ages->needs.empty() && galaxies->needs == std::vector<std::string>{"MOD-3"}, "needs lists");
+        check(ages && galaxies && ages->needs.empty() && galaxies->needs.empty() && galaxies->overlays == std::vector<std::string>{"dominion", "galaxies"}, "needs lists");
         bool agesEras = false, galEras = false;
         for (const auto& f : ages->flags) if (f.first == "eras" && f.second) agesEras = true;
         for (const auto& f : galaxies->flags) if (f.first == "eras" && f.second) galEras = true;
