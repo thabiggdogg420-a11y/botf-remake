@@ -147,7 +147,7 @@ func test_save_load_determinism() -> void:
 func test_presets() -> void:
 	var list: Array = api("listPresets")
 	var ids: Array = list.map(func(p): return p.id)
-	check(ids == ["classic", "remastered", "dominion-war", "ages", "galaxies", "balance-of-power", "ultimate"], "seven presets in screen order: %s" % str(ids))
+	check(ids == ["classic", "remastered", "dominion-war", "ages", "galaxies", "balance-of-power", "ultimate", "klingon-civil-war", "mirror-universe"], "nine presets in screen order: %s" % str(ids))
 	check(api("meta").presets.size() == list.size(), "meta carries the presets")
 	check(list.all(func(p): return p.blurb != "" and p.has("options") and p.has("lineupPlayable")), "every preset has text, options and a lineup verdict")
 	check(not attempt("newCampaign", {"preset": "no-such-preset", "faction": 1, "empires": 2, "seed": 1}).ok, "an unknown preset is refused")
@@ -403,7 +403,7 @@ func test_uncharted_view() -> void:
 
 ## The view is a read: a fixed-seed autoplay to turn 20 reaches the same state with or without the view being read every turn,
 ## and the hash is the one the core produced before the view change (recorded from the unchanged simulation sources).
-const FINGERPRINT_T20 := "13826943614340628568" # re-pinned for schema 24: the header line is in the payload, and the AI now builds its race academy (BALANCE-AI.md section 4); native and wasm agree
+const FINGERPRINT_T20 := "8684820387310109984" # re-pinned for schema 25 (the header line is in the payload; the body is unchanged, see SCENARIOS.md section 9); schema 24: the header line is in the payload, and the AI now builds its race academy (BALANCE-AI.md section 4); native and wasm agree
 
 func _autoplay_fingerprint(read_view: bool) -> String:
 	api("newCampaign", CAMPAIGN)
