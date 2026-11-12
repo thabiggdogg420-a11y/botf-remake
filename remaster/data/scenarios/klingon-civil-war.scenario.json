@@ -1,0 +1,38 @@
+{"format":1,
+"id":"klingon-civil-war",
+"name":"The Klingon Civil War",
+"blurb":"Winter 2367. The Chancellor is dead and the High Council is split. On turn 4 the House of Duras takes a share of the Empire's worlds and ships and raises its banner; the Romulans fund the rebels. You are the loyalist Klingon Empire. Federation, Romulans and Cardassians watch the war.",
+"order":20,
+"preset":"klingon-civil-war",
+"map":{"width":22,"height":16,"systems":50,"seed":2367,"shape":"spiral","minorDensity":"some"},
+"lineup":["klingon","federation","romulan","cardassian"],
+"player":"klingon",
+"era":3,
+"year":2367,
+"briefing":[
+"The Empire is about to split. A rival house will rise on turn 4 and take the worlds farthest from Qo'noS.",
+"The Romulans will back the House of Duras with an alliance.",
+"Win by breaking the House of Duras, or by keeping a colony to turn 90."
+],
+"setup":[
+{"do":"colony","a":"klingon","at":"near:1:capital:klingon","population":35},
+{"do":"colony","a":"klingon","at":"near:2:capital:klingon","population":35},
+{"do":"colony","a":"klingon","at":"near:3:capital:klingon","population":30},
+{"do":"colony","a":"klingon","at":"near:4:capital:klingon","population":30},
+{"do":"colony","a":"klingon","at":"near:5:capital:klingon","population":30},
+{"do":"fleet","a":"klingon","at":"capital:klingon","ships":["Vor'cha","K'Vort"]},
+{"do":"fleet","a":"klingon","at":"near:1:capital:klingon","ships":["K'T'Inga"],"count":2},
+{"do":"fleet","a":"klingon","at":"near:3:capital:klingon","ships":["Vor'cha"]},
+{"do":"flagship","a":"klingon","at":"capital:klingon","ship":"Negh'Var"},
+{"do":"contact","a":"klingon","b":"federation"},
+{"do":"contact","a":"klingon","b":"romulan"}
+],
+"triggers":[
+{"id":"house-of-duras-rises","text":"The High Council has split: the House of Duras has raised its banner against the Empire.","when":{"turn":4},"do":[{"do":"secede","a":"klingon","b":"duras","pct":40}]},
+{"id":"romulans-back-duras","text":"Romulan agents fund the House of Duras; the Romulan Star Empire declares itself its ally.","when":{"turn":8},"do":[{"do":"alliance","a":"romulan","b":"duras"}]},
+{"id":"qonos-falls","text":"Qo'noS has fallen. The Empire's heart is in rebel hands.","when":{"capitalLost":"klingon"},"do":[]}
+],
+"victory":[
+{"id":"break-duras","name":"The House of Duras broken","kind":"eliminate","empires":["duras"],"text":"The rebel house has no world left and the Empire is whole again."},
+{"id":"empire-endures","name":"The Empire endures","kind":"survive","turn":90,"text":"The Empire outlasted the civil war."}
+]}

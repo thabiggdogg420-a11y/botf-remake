@@ -1,0 +1,17 @@
+{"format":1,"kind":"overlay","id":"klingon-civil-war","name":"Klingon Civil War: the House of Duras as an extra major in the eighth slot, Klingon hulls for both houses (MOD-8)","revision":1,"requires":["botf-base"],
+"races":{"patch":[
+{"id":37,"major":{"key":"duras","empireName":"House of Duras","capital":"Ty'Gokor","shipDonor":3,"traits":["Duras bloodline","Rebel warlords","Romulan-funded fleets"],"startingFleet":[]}}
+]},
+"roster":{"patch":[{"id":1503,"buildable":false}]},
+"flagships":{"empires":[
+{"empire":1,"names":["U.S.S. Enterprise","U.S.S. Defiant","U.S.S. Voyager","U.S.S. Excalibur"],"hullPct":25,"attackPct":25,"shieldsPct":20,"morale":3,"cost":500,"cooldown":12},
+{"empire":2,"names":["I.K.S. Rotarran","I.K.S. Bortas","I.K.S. Gorkon","I.K.S. Kronos One"],"hullPct":30,"attackPct":30,"shieldsPct":15,"morale":3,"cost":500,"cooldown":12},
+{"empire":3,"names":["I.R.W. Valdore","I.R.W. Terix","I.R.W. Haakona","I.R.W. Scimitar"],"hullPct":20,"attackPct":25,"shieldsPct":25,"morale":3,"cost":500,"cooldown":12},
+{"empire":4,"names":["C.U. Prakesh","C.U. Vetar","C.U. Rehaek","C.U. Zhentar"],"hullPct":30,"attackPct":25,"shieldsPct":15,"morale":3,"cost":500,"cooldown":12},
+{"empire":5,"names":["F.M.S. Kreechta","F.M.S. Bulwark of Profit","F.M.S. Nagus' Purse","F.M.S. Rule Two"],"hullPct":20,"attackPct":15,"shieldsPct":25,"morale":4,"cost":400,"cooldown":12},
+{"empire":6,"names":["Founders' Wrath","Weyoun's Pride","The Great Link","Karana's Vengeance"],"hullPct":30,"attackPct":30,"shieldsPct":20,"morale":3,"cost":500,"cooldown":12},
+{"empire":7,"names":["Unicomplex Prime","Cube 001","Cube 112","Cube 885"],"hullPct":35,"attackPct":25,"shieldsPct":25,"morale":0,"cost":500,"cooldown":12},
+{"empire":8,"names":["I.K.S. Toh'Kaht","I.K.S. Vor'nak","I.K.S. B'Moth","I.K.S. Duras' Vengeance"],"hullPct":30,"attackPct":30,"shieldsPct":15,"morale":2,"cost":500,"cooldown":12}
+]},
+"palette":{"empires":[{"empire":8,"color":"#b8561a","accent":"#f0c070"}]}
+}

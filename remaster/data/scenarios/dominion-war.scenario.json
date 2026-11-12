@@ -1,0 +1,52 @@
+{"format":1,
+"id":"dominion-war",
+"name":"The Dominion War",
+"blurb":"Autumn 2373. The Cardassian Union has joined the Dominion; the Federation and the Klingon Empire stand together against them. Bajor and Deep Space Nine sit on the front, the wormhole opens onto the Dominion's home, and the Romulans have yet to choose. Flagships: the Enterprise, the Rotarran and the Founders' Wrath.",
+"order":10,
+"preset":"dominion-war",
+"overlays":["flagships"],
+"map":{"width":28,"height":20,"systems":80,"seed":2373,"shape":"irregular","minorDensity":"many"},
+"lineup":["federation","klingon","romulan","cardassian","dominion"],
+"player":"federation",
+"era":3,
+"year":2373,
+"briefing":[
+"The Dominion and the Cardassian Union are at war with the Federation and the Klingon Empire.",
+"Deep Space Nine guards Bajor; the Bajoran wormhole joins it to the Dominion's home.",
+"The Romulans are neutral for now. Win by breaking the Dominion, or by holding the Alliance together to turn 100.",
+"Each empire has a flagship; commission yours from any armed ship."
+],
+"setup":[
+{"do":"war","a":"dominion","b":"federation"},
+{"do":"war","a":"dominion","b":"klingon"},
+{"do":"war","a":"cardassian","b":"federation"},
+{"do":"war","a":"cardassian","b":"klingon"},
+{"do":"alliance","a":"federation","b":"klingon"},
+{"do":"alliance","a":"dominion","b":"cardassian"},
+{"do":"placeMinor","name":"Bajorans","at":"near:1:capital:cardassian"},
+{"do":"placeThreat","name":"deep_space_9","at":"minor:Bajorans"},
+{"do":"wormhole","at":"minor:Bajorans","to":"capital:dominion"},
+{"do":"colony","a":"cardassian","at":"near:2:capital:cardassian","population":35},
+{"do":"colony","a":"cardassian","at":"near:3:capital:cardassian","population":30},
+{"do":"colony","a":"federation","at":"near:1:capital:federation","population":35},
+{"do":"colony","a":"federation","at":"near:2:capital:federation","population":30},
+{"do":"colony","a":"klingon","at":"near:1:capital:klingon","population":35},
+{"do":"colony","a":"klingon","at":"near:2:capital:klingon","population":30},
+{"do":"colony","a":"dominion","at":"near:1:capital:dominion","population":35},
+{"do":"colony","a":"dominion","at":"near:2:capital:dominion","population":30},
+{"do":"fleet","a":"federation","at":"minor:Bajorans","ships":["Defiant","Akira"]},
+{"do":"fleet","a":"klingon","at":"capital:klingon","ships":["Vor'cha","K'Vort"]},
+{"do":"fleet","a":"cardassian","at":"capital:cardassian","ships":["Galor"],"count":2},
+{"do":"fleet","a":"dominion","at":"capital:dominion","ships":["Jem'Hadar Battle Cruiser"]},
+{"do":"flagship","a":"federation","at":"capital:federation","ship":"Sovereign"},
+{"do":"flagship","a":"klingon","at":"capital:klingon","ship":"Negh'Var"},
+{"do":"flagship","a":"dominion","at":"capital:dominion","ship":"Jem'Hadar Battleship"}
+],
+"triggers":[
+{"id":"romulan-pact","text":"The Romulan Star Empire has signed the pact with the Federation and declared war on the Dominion.","when":{"turn":15},"do":[{"do":"war","a":"romulan","b":"dominion"},{"do":"alliance","a":"romulan","b":"federation"}]},
+{"id":"cardassian-revolt","text":"Cardassia is in revolt against its Dominion overlords: the Union turns on the Dominion and asks for peace with the Alliance.","when":{"colonies":"cardassian","atMost":2},"do":[{"do":"war","a":"cardassian","b":"dominion"},{"do":"peace","a":"cardassian","b":"federation"},{"do":"peace","a":"cardassian","b":"klingon"}]}
+],
+"victory":[
+{"id":"break-the-dominion","name":"The Dominion broken","kind":"eliminate","empires":["dominion"],"text":"The last Dominion world has fallen."},
+{"id":"hold-the-line","name":"The line holds","kind":"survive","turn":100,"text":"The Alliance outlasted the Dominion's offensive."}
+]}

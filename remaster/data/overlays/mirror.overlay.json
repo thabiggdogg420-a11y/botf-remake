@@ -1,0 +1,18 @@
+{"format":1,"kind":"overlay","id":"mirror","name":"Mirror Universe: the Terran Empire and the Klingon-Cardassian Alliance, recoloured and renamed (MOD-8)","revision":1,"requires":["botf-base"],
+"races":{"patch":[
+{"id":1,"major":{"empireName":"Terran Empire","capital":"Earth","traits":["Conquest and tribute","Assassination as promotion","Agony booths and the Tantalus eye"]}},
+{"id":3,"major":{"empireName":"Klingon-Cardassian Alliance","capital":"Qo'noS","traits":["Klingon-Cardassian pact","Rebels in the ranks","Raiders of the Terran frontier"]}},
+{"id":0,"major":{"empireName":"Cardassian Alliance","capital":"Cardassia","traits":["Allied to the Klingons","Slave-driven mines","Order at any price"]}}
+]},
+"flagships":{"empires":[
+{"empire":1,"names":["I.S.S. Enterprise","I.S.S. Defiant","I.S.S. Avenger","I.S.S. Terra Prime"],"hullPct":30,"attackPct":35,"shieldsPct":15,"morale":2,"cost":500,"cooldown":12},
+{"empire":2,"names":["Alliance Flagship Kronos","K.C.A. Rotarran","K.C.A. Bortas","K.C.A. Gorkon"],"hullPct":30,"attackPct":30,"shieldsPct":20,"morale":3,"cost":500,"cooldown":12},
+{"empire":3,"names":["I.R.W. Valdore","I.R.W. Terix","I.R.W. Haakona","I.R.W. Scimitar"],"hullPct":20,"attackPct":25,"shieldsPct":25,"morale":3,"cost":500,"cooldown":12},
+{"empire":4,"names":["K.C.A. Prakesh","K.C.A. Vetar","K.C.A. Rehaek","K.C.A. Zhentar"],"hullPct":30,"attackPct":25,"shieldsPct":20,"morale":3,"cost":500,"cooldown":12},
+{"empire":5,"names":["F.M.S. Kreechta","F.M.S. Bulwark of Profit","F.M.S. Nagus' Purse","F.M.S. Rule Two"],"hullPct":20,"attackPct":15,"shieldsPct":25,"morale":4,"cost":400,"cooldown":12},
+{"empire":6,"names":["Founders' Wrath","Weyoun's Pride","The Great Link","Karana's Vengeance"],"hullPct":30,"attackPct":30,"shieldsPct":20,"morale":3,"cost":500,"cooldown":12},
+{"empire":7,"names":["Unicomplex Prime","Cube 001","Cube 112","Cube 885"],"hullPct":35,"attackPct":25,"shieldsPct":25,"morale":0,"cost":500,"cooldown":12},
+{"empire":8,"names":["Chintoka","Thot Gor's Dread","Thot Pran's Ice","The Cold Hand"],"hullPct":25,"attackPct":30,"shieldsPct":20,"morale":3,"cost":500,"cooldown":12}
+]},
+"palette":{"empires":[{"empire":1,"color":"#9b1c1c","accent":"#e0b030"},{"empire":2,"color":"#4d5d6b","accent":"#c8d0d8"},{"empire":4,"color":"#7a5320","accent":"#e6b866"}]}
+}

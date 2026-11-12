@@ -8,6 +8,7 @@
 #include "ShipRoster.h"
 #include "MinorRaces.h"
 #include "Presets.h"
+#include "Scenarios.h"
 
 #include <algorithm>
 #include <iomanip>
@@ -31,7 +32,7 @@ bool isGameplayCommand(CommandType type) {
         type == CommandType::DeleteBuildTemplate || type == CommandType::ApplyBuildTemplate ||
         type == CommandType::SetDefaultBuildTemplate || type == CommandType::StartMegaproject ||
         type == CommandType::CancelMegaproject || type == CommandType::SetEmergencyProgram ||
-        type == CommandType::ResolveAftermath || type == CommandType::SetFleetOrder;
+        type == CommandType::ResolveAftermath || type == CommandType::SetFleetOrder || type == CommandType::CommissionFlagship;
 }
 
 namespace rules_detail {
@@ -56,7 +57,7 @@ void checkCommand(const Command& c) {
         c.stance == TacticalStance::Balanced && c.referenceId == -1,
         "Gameplay command contains unrelated fields");
     for (int amount : c.researchAllocation) require(amount == 0, "Gameplay command contains research fields");
-    const bool usesFleet = c.type == CommandType::BuildOutpost || c.type == CommandType::SetFleetOrder;
+    const bool usesFleet = c.type == CommandType::BuildOutpost || c.type == CommandType::SetFleetOrder || c.type == CommandType::CommissionFlagship;
     const bool usesSystem = c.type == CommandType::UpgradeStation || c.type == CommandType::ApplyBuildTemplate ||
         c.type == CommandType::StartMegaproject || c.type == CommandType::SetEmergencyProgram ||
         c.type == CommandType::ResolveAftermath;
@@ -114,6 +115,8 @@ void applyCommand(GameState& state, const Command& command, std::set<int>& order
     case CommandType::SetFleetOrder: // Schema 23 (EconomyRules.h): the fleet joins the draft's ordered set like any fleet order.
         require(orderedFleets.insert(command.fleetId).second, "Cancel existing fleet draft before replacing it");
         economy_rules::applyOrderCommand(state, command); break;
+    case CommandType::CommissionFlagship: // Schema 25 (Scenarios.h): the player's empire commissions one of its ships
+        scenarios::commission(state, state.playerEmpire, command.fleetId); break;
     default:
         throw std::runtime_error("Not a gameplay-layer command");
     }
@@ -550,12 +553,37 @@ int minorRaceTarget(MinorDensity density, int systemCount) {
     return std::min({count, 29, std::max(0, systemCount / 2 - 3), minors::minorRaceCount()});
 }
 
-GameState newCampaign(const CampaignSetup& setup) {
+GameState newCampaign(const CampaignSetup& requested) {
+    CampaignSetup setup = requested;
+    // Schema 25: a scenario fixes the preset, lineup, galaxy and era; the player's empire (when chosen) and difficulty stay the caller's.
+    const scenarios::Scenario* scenario = nullptr;
+    presets::Preset scenarioPreset;
+    if (!setup.scenarioId.empty()) {
+        scenario = scenarios::find(setup.scenarioId);
+        gameplay::require(scenario != nullptr, "Unknown scenario");
+        scenarioPreset = scenarios::effectivePreset(*scenario);
+        setup.presetId = scenario->preset;
+        setup.lineup = scenario->lineup;
+        setup.empires = static_cast<int>(scenario->lineup.size());
+        setup.era = static_cast<StartingEra>(scenario->era);
+        setup.width = scenario->map.width; setup.height = scenario->map.height; setup.systems = scenario->map.systems;
+        if (scenario->map.seed) setup.seed = *scenario->map.seed;
+        if (!scenario->map.shape.empty()) parseGalaxyShape(scenario->map.shape, setup.galaxy.shape);
+        if (!scenario->map.density.empty()) parseMinorDensity(scenario->map.density, setup.galaxy.density);
+        setup.reference = true;
+        int player = slots::raceForKey(scenario->player)->empireId;
+        if (setup.playerSet) {
+            const auto ids = slots::idsFromKeys(scenario->lineup);
+            gameplay::require(std::find(ids.begin(), ids.end(), setup.playerEmpire) != ids.end(), "The player's empire is not in the scenario's lineup");
+            player = setup.playerEmpire;
+        }
+        setup.playerEmpire = player;
+    }
     // Schema 17: a registered preset makes its overlay stack the active content before anything is generated (research
     // costs and the roster feed the generator), then sets its rule flags over the base ruleset.
     const presets::Preset* named = nullptr;
     if (!setup.presetId.empty()) {
-        named = presets::find(setup.presetId);
+        named = scenario ? &scenarioPreset : presets::find(setup.presetId);
         gameplay::require(named != nullptr, "Unknown preset");
         presets::activate(*named);
     }
@@ -565,9 +593,18 @@ GameState newCampaign(const CampaignSetup& setup) {
         try { ids = slots::idsFromKeys(setup.lineup); }
         catch (const std::invalid_argument& e) { throw std::runtime_error(e.what()); }
     }
-    auto state = setup.reference
-        ? generateReferenceCampaign(setup.seed, setup.empires, setup.width, setup.height, setup.systems, setup.playerEmpire, setup.era, setup.galaxy.shape, ids)
-        : generateCampaign(setup.seed, setup.empires, setup.width, setup.height, setup.systems, setup.playerEmpire, setup.era, setup.galaxy.shape, ids);
+    scenarios::MapOverride mapOverride;   // Schema 25: a fixed-map scenario's stars and homes, for generation only
+    if (scenario && !scenario->map.fixed.empty()) {
+        mapOverride.systems = &scenario->map.fixed; mapOverride.homes = &scenario->map.homes;
+        internal::setMapOverride(&mapOverride);
+    }
+    GameState state;
+    try {
+        state = setup.reference
+            ? generateReferenceCampaign(setup.seed, setup.empires, setup.width, setup.height, setup.systems, setup.playerEmpire, setup.era, setup.galaxy.shape, ids)
+            : generateCampaign(setup.seed, setup.empires, setup.width, setup.height, setup.systems, setup.playerEmpire, setup.era, setup.galaxy.shape, ids);
+    } catch (...) { internal::setMapOverride(nullptr); throw; }
+    internal::setMapOverride(nullptr);
     state.galaxy = setup.galaxy;
     // Schema 20: the threat switches; a preset's defaults apply when the setup leaves them unset. Off for everything else.
     if (setup.threats) state.threats = *setup.threats;
@@ -600,6 +637,7 @@ GameState newCampaign(const CampaignSetup& setup) {
     // Difficulty: rival treasuries start scaled; their per-turn output scales in advance() (Simulation.cpp).
     const auto& dp = difficultyProfile(state.galaxy.difficulty);
     for (auto& rival : state.rivals) rival.credits = rival.credits * dp.aiStartCreditsPct / 100;
+    if (scenario) scenarios::applySetup(state, *scenario); // Schema 25: the scripted start
     validate(state);
     return state;
 }

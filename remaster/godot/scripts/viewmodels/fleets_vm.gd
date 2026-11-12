@@ -133,6 +133,21 @@ func drafted(ids: Array) -> Array:
 func split(tf: Dictionary) -> bool:
 	return issue({"type": "DisbandTaskForce", "taskForceId": int(tf["id"])}, [], "%s split into individual ships." % tf["name"])
 
+## Schema 25 (docs/design/SCENARIOS.md): the empire's flagship. `flagships()` is the view's meta.flagships ({enabled, nextName, cost, hullPct, ...}).
+func flagships() -> Dictionary:
+	return view().get("meta", {}).get("flagships", {})
+
+func flagships_on() -> bool:
+	return bool(flagships().get("enabled", false)) and flagships().has("cost")
+
+func flagship_tip() -> String:
+	var f := flagships()
+	return "Commission this ship as the flagship %s for %d credits: +%d%% hull, +%d%% attack, +%d%% shields, and +%d morale across the empire while it lives. One at a time." % [
+		str(f.get("nextName", "")), int(f.get("cost", 0)), int(f.get("hullPct", 0)), int(f.get("attackPct", 0)), int(f.get("shieldsPct", 0)), int(f.get("morale", 0))]
+
+func commission_flagship(lead: Dictionary) -> bool:
+	return issue({"type": "CommissionFlagship", "fleetId": int(lead["id"])}, [], "%s commissioned as the flagship." % str(flagships().get("nextName", "Flagship")))
+
 ## Schema 23: standing orders (intercept and raid) and crew experience.
 func rules() -> Dictionary:
 	return view().get("meta", {}).get("rules", {})

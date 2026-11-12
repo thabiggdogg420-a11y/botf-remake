@@ -2,6 +2,7 @@
 // Simulation.cpp; this module adds the scientific megaproject victory, the
 // diplomatic victory hook and the per-empire VictoryProgress query.
 #include "GameplayInternal.h"
+#include "Scenarios.h"
 
 #include <algorithm>
 #include <set>
@@ -119,6 +120,26 @@ bool diplomaticVictoryClaimed(const GameState& state, int empireId) {
     return partners >= DiplomaticVictoryMinimumPartners && diplomaticSupermajority(bloc) && leadsBloc(state, empireId, bloc);
 }
 
+// Schema 25: the vanilla vendetta victory. An empire wins by eliminating both of its designated racial rivals (scenarios::vendettaRivals),
+// once turn 20 is past; the rule is live only while both are seated, and it is part of the alternative victories.
+constexpr int VendettaEarliestTurn = 20;
+bool colonyOwnedBy(const GameState& state, int empireId) {
+    return std::any_of(state.colonies.begin(), state.colonies.end(), [empireId](const Colony& c) { return c.ownerId == empireId; });
+}
+bool vendettaLive(const GameState& state, int empireId, std::vector<int>& rivals) {
+    rivals = scenarios::vendettaRivals(empireId);
+    if (rivals.size() != 2) return false;
+    const auto empires = internal::activeEmpires(state);
+    for (int r : rivals) if (!std::binary_search(empires.begin(), empires.end(), r)) return false;
+    return true;
+}
+bool vendettaClaimed(const GameState& state, int empireId) {
+    std::vector<int> rivals;
+    if (state.turn < VendettaEarliestTurn || !vendettaLive(state, empireId, rivals) || !colonyOwnedBy(state, empireId)) return false;
+    for (int r : rivals) if (colonyOwnedBy(state, r)) return false;
+    return true;
+}
+
 void evaluateVictory(GameState& next, TurnReport& report) {
     if (!next.rules.alternativeVictories || next.outcome != CampaignOutcome::Ongoing) return;
     const int cost = megaprojectIndustryCost(next);
@@ -134,10 +155,18 @@ void evaluateVictory(GameState& next, TurnReport& report) {
             if (diplomaticVictoryClaimed(next, id)) { winner = id; how = VictoryCondition::Diplomatic; break; }
         }
     }
+    if (!winner) {
+        for (int id : internal::activeEmpires(next)) {
+            if (vendettaClaimed(next, id)) { winner = id; how = VictoryCondition::Vendetta; break; }
+        }
+    }
     if (!winner) return;
     next.winnerEmpire = winner;
     next.outcome = winner == next.playerEmpire ? CampaignOutcome::Victory : CampaignOutcome::Defeat;
-    const std::string text = how == VictoryCondition::Scientific
+    const std::string text = how == VictoryCondition::Vendetta
+        ? std::string(empireName(winner)) + " settled its vendetta: both of its sworn rivals are finished. Vendetta victory. " +
+            (winner == next.playerEmpire ? "Campaign victory." : "Campaign defeat.")
+        : how == VictoryCondition::Scientific
         ? std::string(empireName(winner)) + " completed the " + megaprojectName(next) + " at " + systemLabel(next, where) +
             ": scientific victory. " + (winner == next.playerEmpire ? "Campaign victory." : "Campaign defeat.")
         : std::string(empireName(winner)) + " united the galaxy through diplomacy: diplomatic victory. " +
@@ -153,6 +182,7 @@ const char* victoryConditionName(VictoryCondition condition) {
     case VictoryCondition::Domination: return "Domination";
     case VictoryCondition::Scientific: return "Scientific";
     case VictoryCondition::Diplomatic: return "Diplomatic";
+    case VictoryCondition::Vendetta: return "Vendetta";
     default: return "Unknown";
     }
 }
@@ -285,6 +315,30 @@ std::vector<VictoryProgress> victoryProgress(const GameState& state, int empireI
         diplomacyProgress.explanation = "Disabled by the Classic ruleset.";
     }
     result.push_back(diplomacyProgress);
+
+    VictoryProgress vendetta;   // Schema 25: the vanilla vendetta victory.
+    vendetta.empireId = empireId;
+    vendetta.condition = VictoryCondition::Vendetta;
+    std::vector<int> rivals;
+    const bool live = gameplay::vendettaLive(state, empireId, rivals);
+    vendetta.enabled = state.rules.alternativeVictories && live;
+    if (!state.rules.alternativeVictories) {
+        vendetta.explanation = "Disabled by the Classic ruleset.";
+    } else if (!live) {
+        vendetta.explanation = "Needs both sworn rivals in the game; they are not both seated here.";
+    } else {
+        int down = 0;
+        std::string names;
+        for (int r : rivals) {
+            const bool gone = !gameplay::colonyOwnedBy(state, r);
+            down += gone ? 1 : 0;
+            names += (names.empty() ? "" : " and ") + std::string(empireName(r)) + (gone ? " (finished)" : "");
+        }
+        vendetta.achieved = gameplay::vendettaClaimed(state, empireId);
+        vendetta.percent = vendetta.achieved ? 100 : 50 * down;
+        vendetta.explanation = "Sworn rivals: " + names + ". Eliminating both wins the vendetta (from turn " + std::to_string(gameplay::VendettaEarliestTurn) + ").";
+    }
+    result.push_back(vendetta);
     return result;
 }
 

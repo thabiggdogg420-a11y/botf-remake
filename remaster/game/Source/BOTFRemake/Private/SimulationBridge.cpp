@@ -10,3 +10,4 @@
 #include "../../BotfSim/Victory.cpp"
 #include "../../BotfSim/Chronicle.cpp"
 #include "../../BotfSim/Threats.cpp"
+#include "../../BotfSim/Scenarios.cpp"

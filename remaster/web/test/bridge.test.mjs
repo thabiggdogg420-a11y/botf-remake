@@ -336,7 +336,7 @@ test('new campaigns default to the Remastered preset; Classic is selectable', ()
   const remastered = call('newCampaign', { faction: 1, seed: 5150, era: 1, ruleset: 'reference' });
   assert.equal(remastered.meta.rules.preset, 'remastered');
   assert.ok(remastered.meta.rules.galaxyFeatures && remastered.meta.rules.curatedEvents && remastered.meta.rules.alternativeVictories);
-  assert.equal(remastered.victory.conditions.length, 4);
+  assert.equal(remastered.victory.conditions.length, 5);
   const classic = call('newCampaign', { faction: 1, seed: 5150, era: 1, ruleset: 'reference', preset: 'classic' });
   assert.equal(classic.meta.rules.preset, 'classic');
   assert.equal(classic.meta.rules.galaxyFeatures, false);
@@ -666,3 +666,16 @@ test('eras: the timeline year, the research cap and level 11+ research data, the
 });
 
 console.log(`${passed} bridge tests passed`);
+
+// ---- Schema-25 scenarios and flagships ----------------------------------------------------------
+test('scenarios: meta lists them; a scenario overrides the setup and carries objectives, names and flagships', () => {
+  const m = call('meta');
+  assert.deepEqual(m.scenarios.map((s) => s.id).sort(), ['dominion-war', 'klingon-civil-war', 'mirror-universe']);
+  const mirror = call('newCampaign', { scenario: 'mirror-universe', seed: 1 });
+  assert.equal(mirror.meta.scenarioInfo.id, 'mirror-universe');
+  assert.equal(mirror.meta.year, 2267);
+  assert.ok(mirror.meta.scenarioInfo.objectives.length >= 2);
+  assert.ok(Object.values(mirror.meta.empireNames).includes('Terran Empire'));
+  assert.ok(mirror.meta.flagships.length >= 1);
+  assert.equal(attempt('newCampaign', { scenario: 'no-such' }).ok, false);
+});

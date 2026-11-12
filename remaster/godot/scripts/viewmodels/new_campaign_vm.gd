@@ -38,6 +38,9 @@ var ruleset := "reference"
 ## The preset id (docs/design/PACKS-AND-PRESETS.md): "classic", "remastered", or a mod preset such as "dominion-war". The core
 ## resolves it to overlay packs, rule flags and a lineup; the picker fills the other options from its defaults (pick_preset).
 var preset := "remastered"
+## A registered scenario id (docs/design/SCENARIOS.md), "" for a free game. A scenario fixes the preset, the powers in play, the galaxy
+## and the era; the player still picks which of its powers to play, the difficulty and (for a seeded galaxy) the seed.
+var scenario := ""
 var seed_value := 0
 var events := true
 var aggression := true
@@ -107,7 +110,7 @@ const DIFFICULTIES := [
 ]
 ## Option keys the core reads. Shape, minor-race density and difficulty joined them with the schema-15 generator.
 const CORE_READS := ["faction", "empires", "lineup", "seed", "era", "ruleset", "width", "height", "systems", "events", "aiAggression", "preset",
-	"shape", "minorDensity", "difficulty", "threats"]
+	"shape", "minorDensity", "difficulty", "threats", "scenario"]
 
 static func core_reads(key: String) -> bool:
 	return key in CORE_READS
@@ -141,6 +144,7 @@ func pick_preset(id: String) -> bool:
 	var d := preset_def(id)
 	if d.is_empty():
 		return false
+	scenario = ""   # Choosing a preset by hand leaves any scenario.
 	preset = id
 	var o: Dictionary = d.get("options", {})
 	if o.has("era"):
@@ -178,6 +182,59 @@ func pick_preset(id: String) -> bool:
 			if not ids.has(faction):
 				faction = int(ids[0])
 	return true
+
+## Scenarios in screen order: the core's registry (meta.scenarios), else none (a backend without a core offers free games only).
+func scenarios() -> Array:
+	var m: Dictionary = session.meta if session != null else {}
+	var p: Variant = m.get("scenarios", null)
+	return p if p is Array else []
+
+func scenario_def(id: String = "") -> Dictionary:
+	var want := scenario if id == "" else id
+	for s in scenarios():
+		if str(s["id"]) == want:
+			return s
+	return {}
+
+func scenario_active() -> bool:
+	return scenario != "" and not scenario_def().is_empty()
+
+## Chooses a scenario ("" for a free game) and fills every option it fixes: preset, era, galaxy, powers in play, the default power.
+func pick_scenario(id: String) -> bool:
+	if id == "":
+		scenario = ""
+		return true
+	var d := scenario_def(id)
+	if d.is_empty():
+		return false
+	pick_preset(str(d["preset"]))
+	scenario = id
+	era = int(d["era"])
+	var m: Dictionary = d.get("map", {})
+	if m.has("shape") and SHAPES.any(func(s): return s["id"] == m["shape"]):
+		shape = str(m["shape"])
+	if m.has("minorDensity") and DENSITIES.any(func(s): return s["id"] == m["minorDensity"]):
+		minor_density = str(m["minorDensity"])
+	var ids: Array = (d.get("lineupIds", []) as Array).map(func(v): return int(v))
+	ids.sort()
+	lineup = [] if ids == range(1, ids.size() + 1) else ids
+	empires = ids.size()
+	faction = int(d["playerId"])
+	return true
+
+## The picker's text for a scenario: the blurb, the start year, the briefing and what wins it.
+func scenario_text(id: String) -> String:
+	var d := scenario_def(id)
+	if d.is_empty():
+		return "A free game: your choices of preset, powers, galaxy and era, no scripted start."
+	var lines := [str(d["blurb"]), "Year %d · %d systems%s · powers: %s" % [int(d["year"]), int((d["map"] as Dictionary).get("systems", 0)),
+		" (fixed chart)" if bool((d["map"] as Dictionary).get("fixed", false)) else "", " · ".join((d.get("lineup", []) as Array).map(func(k): return str(k).capitalize()))]]
+	for b in d.get("briefing", []):
+		lines.append("• " + str(b))
+	var wins := (d.get("victories", []) as Array).map(func(v): return str(v["name"]))
+	if not wins.is_empty():
+		lines.append("Victory: " + " · ".join(wins) + " (and the standard victories).")
+	return "\n".join(lines)
 
 ## The picker's text for a preset: what it is, who plays, and what it is still waiting for.
 func preset_text(id: String) -> String:
@@ -221,6 +278,9 @@ func roll_seed() -> void:
 	seed_value = randi_range(100000, 999999)
 
 func size_def() -> Dictionary:
+	if scenario_active():   # A scenario brings its own galaxy.
+		var m: Dictionary = scenario_def()["map"]
+		return {"id": "scenario", "label": "Scenario", "width": int(m["width"]), "height": int(m["height"]), "systems": int(m["systems"]), "blurb": "Fixed by the scenario."}
 	return SIZES.filter(func(s): return s["id"] == size_id)[0]
 
 ## Race keys of the eight playable powers, in empire-id order (schema 17, docs/design/EMPIRE-SLOTS.md). The core sends the same
@@ -239,6 +299,8 @@ func lineup_ids() -> Array:
 	return lineup.duplicate() if not lineup.is_empty() else range(1, powers() + 1)
 
 func pick_faction(id: int) -> void:
+	if scenario_active() and not lineup_ids().has(id):
+		return   # A scenario's powers are fixed; choose one of them.
 	faction = id
 	if lineup.is_empty():
 		empires = max(empires, id)
@@ -255,7 +317,7 @@ func toggle_block(id: int) -> String:
 	return ""
 
 func toggle_power(id: int) -> void:
-	if toggle_block(id) != "":
+	if scenario_active() or toggle_block(id) != "":
 		return
 	var ids := lineup_ids()
 	if ids.has(id):
@@ -317,6 +379,8 @@ func options() -> Dictionary:
 	if not lineup.is_empty():
 		o["lineup"] = lineup_keys()
 	o["threats"] = threats.duplicate(true)
+	if scenario_active():
+		o["scenario"] = scenario
 	return o
 
 ## The chosen preset's eras block ({techCap, years, startTech}), or {} when it has none (Classic, Remastered and the other presets).

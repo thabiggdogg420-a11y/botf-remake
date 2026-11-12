@@ -125,6 +125,26 @@ struct Eras {
     std::vector<referenceData::TechnologyRecord> highTech; // Levels 11..14 of the six fields: index = field * 4 + (level - 11).
 };
 
+// Schema 25 (docs/design/SCENARIOS.md): the optional "flagships" object. A pack that carries it gives each listed empire one flagship
+// at a time: the commissioned ship (any armed ship of the empire) gains the percent bonuses below, a name from `names` (in order)
+// and morale for the empire's colonies while it lives. Absent in the base pack, so base bytes and checksum are unchanged.
+struct FlagshipDef {
+    int empireId = 0;
+    std::vector<std::string> names;
+    int hullPct = 0, attackPct = 0, shieldsPct = 0;   // Added to the ship's hull, attack and shields.
+    int morale = 0;                                   // Added to the morale target of every colony of the empire while the flagship lives.
+    int cost = 0;                                     // Credits to commission (refit).
+    int cooldown = 0;                                 // Turns after a loss before another may be commissioned.
+};
+struct Flagships {
+    bool present = false;
+    std::vector<FlagshipDef> defs;
+};
+
+// Schema 25: the optional "palette" object, a pack's recolouring of the empires on the map and in the UI (the Mirror Universe pack).
+struct PaletteEntry { int empireId = 0; std::string color, accent; };   // "#rrggbb"
+struct Palette { bool present = false; std::vector<PaletteEntry> empires; };
+
 struct Pack {
     PackInfo info;
     std::deque<std::string> strings; // Owns every const char* in the records (deque: stable addresses).
@@ -139,6 +159,8 @@ struct Pack {
     std::vector<EventDefinition> events;
     Balance balance;
     Eras eras;
+    Flagships flagships;
+    Palette palette;
     const char* keep(std::string s) { strings.push_back(std::move(s)); return strings.back().c_str(); }
 };
 
@@ -763,6 +785,56 @@ inline std::unique_ptr<Pack> parsePackValue(const json::Value& doc) {
         if (er.techCap > 10 && er.highTech.size() != 24) bad(e.at("techCap"), "a cap above 10 needs highTechnologies");
         e.done();
     }
+    if (root.has("flagships")) {   // Schema 25.
+        Object f(root.get("flagships"), "pack.flagships");
+        p.flagships.present = true;
+        const auto& a = f.array("empires");
+        for (std::size_t i = 0; i < a.items.size(); ++i) {
+            Object o(a.items[i], "pack.flagships.empires[" + std::to_string(i) + "]");
+            FlagshipDef d;
+            d.empireId = o.i32("empire", 1, 8);
+            const auto& names = o.array("names");
+            if (names.items.empty() || names.items.size() > 12) bad(o.at("names"), "expected 1 to 12 flagship names");
+            for (std::size_t k = 0; k < names.items.size(); ++k) {
+                if (names.items[k].kind != json::Value::Kind::String || names.items[k].text.empty() || names.items[k].text.size() > 48)
+                    bad(o.at("names") + "[" + std::to_string(k) + "]", "expected a name of 1 to 48 characters");
+                d.names.push_back(names.items[k].text);
+            }
+            d.hullPct = o.i32("hullPct", 0, 200);
+            d.attackPct = o.i32("attackPct", 0, 200);
+            d.shieldsPct = o.i32("shieldsPct", 0, 200);
+            d.morale = o.i32("morale", 0, 20);
+            d.cost = o.i32("cost", 0, 100000);
+            d.cooldown = o.i32("cooldown", 0, 200);
+            o.done();
+            for (const auto& other : p.flagships.defs) if (other.empireId == d.empireId) bad(o.at("empire"), "empire listed twice");
+            p.flagships.defs.push_back(std::move(d));
+        }
+        f.done();
+    }
+    if (root.has("palette")) {   // Schema 25.
+        Object pal(root.get("palette"), "pack.palette");
+        p.palette.present = true;
+        const auto& a = pal.array("empires");
+        const auto hex = [&](const std::string& v, const std::string& path) {
+            if (v.size() != 7 || v[0] != '#') bad(path, "expected a colour like #8c1a1a");
+            for (std::size_t i = 1; i < 7; ++i) {
+                const char c = v[i];
+                if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F'))) bad(path, "expected a colour like #8c1a1a");
+            }
+        };
+        for (std::size_t i = 0; i < a.items.size(); ++i) {
+            Object o(a.items[i], "pack.palette.empires[" + std::to_string(i) + "]");
+            PaletteEntry e;
+            e.empireId = o.i32("empire", 1, 8);
+            e.color = o.str("color", 7); hex(e.color, o.at("color"));
+            e.accent = o.str("accent", 7); hex(e.accent, o.at("accent"));
+            o.done();
+            for (const auto& other : p.palette.empires) if (other.empireId == e.empireId) bad(o.at("empire"), "empire listed twice");
+            p.palette.empires.push_back(std::move(e));
+        }
+        pal.done();
+    }
     root.done();
     return pack;
 }
@@ -849,7 +921,7 @@ inline void mergeOverlay(json::Value& doc, const Overlay& ov) {
     for (const auto& m : ov.doc.members) {
         const std::string& key = m.first;
         if (key == "format" || key == "kind" || key == "id" || key == "name" || key == "revision" || key == "requires") continue;
-        if (key == "balance" || key == "eras") {   // "eras" (schema 22) merges the same way: each listed key replaces the pack's.
+        if (key == "balance" || key == "eras" || key == "flagships" || key == "palette") {   // "eras" (schema 22) and "flagships" (schema 25) merge the same way: each listed key replaces the pack's.
             if (m.second.kind != json::Value::Kind::Object) bad(where + "." + key, "expected an object");
             json::Value* target = member(doc, key);
             if (!target) {
@@ -1006,6 +1078,8 @@ inline const PackInfo& installStack(const std::vector<std::string_view>& overlay
 }
 inline const Balance& balance() { return detail::pack().balance; }
 inline const Eras& eras() { return detail::pack().eras; }
+inline const Flagships& flagships() { return detail::pack().flagships; }
+inline const Palette& palette() { return detail::pack().palette; }
 inline std::uint64_t baseChecksum() { return detail::baseChecksumValue(); }
 
 // Event text for GalacticEventKind index 0..6.
