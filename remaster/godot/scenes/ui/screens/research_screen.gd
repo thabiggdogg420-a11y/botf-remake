@@ -72,8 +72,8 @@ func _field_card(i: int, fd: Dictionary, lock: String) -> Control:
 	var outer := Lcars.hbox(14)
 	card.add_child(outer)
 	var pg0 := vm.progress(i)
-	var ring := RingGauge.make(96, float(fd["progress"]), max(1, int(pg0["cost"])), col_c, "L%d" % int(fd["level"]), "OF 10",
-		{"title": str(fd["name"]), "value": "Level %d of 10" % int(fd["level"]), "parts": [["Progress", "%s / %s" % [Lcars.fmt(fd["progress"]), Lcars.fmt(pg0["cost"])], ""], ["Share", "%d%%" % int(vm.alloc[i]), ""], ["Next turn", "+%d" % int(pg0["gained"]), "good"]],
+	var ring := RingGauge.make(96, float(fd["progress"]), max(1, int(pg0["cost"])), col_c, "L%d" % int(fd["level"]), "OF %d" % vm.cap(),
+		{"title": str(fd["name"]), "value": "Level %d of %d" % [int(fd["level"]), vm.cap()], "parts": [["Progress", "%s / %s" % [Lcars.fmt(fd["progress"]), Lcars.fmt(pg0["cost"])], ""], ["Share", "%d%%" % int(vm.alloc[i]), ""], ["Next turn", "+%d" % int(pg0["gained"]), "good"]],
 			"effect": Lcars.RESEARCH_BLURBS[i] if i < Lcars.RESEARCH_BLURBS.size() else "",
 			"forecast": ("Next level in %d turns at this share." % int(pg0["turns"])) if int(pg0["turns"]) > 0 else "No progress at this share."})
 	outer.add_child(ring)
@@ -86,7 +86,7 @@ func _field_card(i: int, fd: Dictionary, lock: String) -> Control:
 	nm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	Lcars.tip(nm, Lcars.RESEARCH_BLURBS[i] if i < Lcars.RESEARCH_BLURBS.size() else "")
 	top.add_child(nm)
-	top.add_child(Lcars.label("L%d/10" % int(fd["level"]), "Mono", 18, Lcars.TEXT))
+	top.add_child(Lcars.label("L%d/%d" % [int(fd["level"]), vm.cap()], "Mono", 18, Lcars.TEXT))
 	v.add_child(top)
 	var pg := vm.progress(i)
 	var nxt: Dictionary = pg["next"]
@@ -148,7 +148,7 @@ func apply() -> void:
 	vm.apply()
 
 func _ladder(fd: Dictionary) -> Control:
-	var f := Lcars.frame("%s - technology ladder" % fd["name"], "level %d of 10" % int(fd["level"]), "secondary", "research")
+	var f := Lcars.frame("%s - technology ladder" % fd["name"], "level %d of %d" % [int(fd["level"]), vm.cap()], "secondary", "research")
 	f.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	var b := Lcars.body(f)
 	var rungs := Lcars.hbox(4)

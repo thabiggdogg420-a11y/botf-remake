@@ -102,6 +102,25 @@ dump('determinism-rules3', 'fingerprint', { campaign: campaign3, turns: 10 }, ca
   }
   dump('determinism-threats', 'fingerprint', { runs: runs.length }, runs);
 }
+// Campaign eras (schema 22, docs/design/ERAS.md): Ages and Galaxies at every start year, after a scripted 60-turn run long enough
+// for the AI to build era ships and cross a year of the timeline. Records the year and research cap the wasm core reports, so a native
+// core with a different clock or cap cannot pass. The native core must reproduce every fingerprint.
+{
+  const runs = [];
+  const base = { faction: 1, seed: 424242, ruleset: 'reference', width: 22, height: 16, systems: 50 };
+  for (const [preset, lineup] of [['ages', undefined], ['galaxies', ['federation', 'klingon', 'romulan', 'dominion', 'borg']]]) {
+    for (let era = 1; era <= 5; era++) {
+      const c = { ...base, era, preset, ...(lineup ? { lineup } : {}) };
+      call('newCampaign', c);
+      let ran = 0;
+      for (let i = 0; i < 60; i++) { try { endTurn(); ran++; } catch (e) { if (String(e).includes('Campaign has ended')) break; throw e; } }
+      const v = call('view');
+      runs.push({ campaign: c, turns: ran, result: call('fingerprint'), year: v.meta.year, techCap: v.meta.techCap, level: call('research').fields[0].level });
+    }
+  }
+  call('loadBaseContent');
+  dump('determinism-eras', 'fingerprint', { runs: runs.length }, runs);
+}
 // Packs and presets (schema 17, docs/design/PACKS-AND-PRESETS.md): one wasm-recorded fingerprint and stack checksum per preset
 // after a scripted 8-turn run. The native core must reproduce every one, so the overlay merge, the stack checksum and the
 // preset flags are proven identical native against wasm. The preset list itself (meta.presets) rides in the meta fixture.

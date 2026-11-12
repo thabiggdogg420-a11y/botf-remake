@@ -366,6 +366,7 @@ int main() {
         const auto old = deserialize(withHeader(dt, 18));
         check(serialize(old) == dt, "a schema-18 default save loads and re-saves as 21");
         check(serialize(deserialize(withHeader(dt, 20))) == dt, "a schema-20 default save loads and re-saves as 21");
+        check(serialize(deserialize(withHeader(dt, 21))) == dt, "a schema-21 default save loads and re-saves as the current schema");
         auto playing = old; advance(playing);
         check(playing.turn == old.turn + 1, "and plays on");
         presets::activate(*presets::find("dominion-war"));

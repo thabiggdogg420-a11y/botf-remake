@@ -14,6 +14,13 @@ const SIZES = [
   { id: 'huge', label: 'Huge', width: 34, height: 24, systems: 120, blurb: 'A long campaign across a wide quadrant.' },
 ] as const;
 
+const TIMELINE_BLURBS: Record<number, string> = {
+  1: 'The Original Series age: NX-era ships retire, Constitution-class cruisers enter service in 2245.',
+  2: 'The film era: refit Constitutions, the Excelsior from 2285, D7s and Romulan Birds-of-Prey.',
+  3: 'The dawn of the next generation: the Challenger and Cheyenne lines enter service from 2340.',
+  4: 'Deep in the next generation; the Dominion War fleet (Intrepid, Akira) arrives from 2368.',
+  5: 'The war is over: Prometheus, Mogai, Negh\'Tev and the Nemesis-era fleets, research to level 14.',
+};
 const ERA_BLURBS: Record<number, string> = {
   1: 'Warp-capable newcomers. Build everything from the ground up.',
   2: 'Established powers with developed technology.',
@@ -162,12 +169,19 @@ export function NewCampaignScreen() {
           </Frame>
           <Frame title="Era & rules" tone="tertiary">
             <div class="era-list" role="radiogroup" aria-label="Starting era">
-              {m.eras.map((e) => (
-                <button type="button" key={e.id} role="radio" aria-checked={era === e.id} class={`era-item${era === e.id ? ' selected' : ''}`} onClick={() => setEra(e.id)}
-                  {...tip(`${ERA_BLURBS[e.id] ?? ''}\nStarting technology level ${ruleset === 'reference' ? e.techLevel : e.prototypeTechLevel} in every field.`, `${e.name} era`)}>
-                  <span class="era-name">{e.name}</span><span class="era-level">T{ruleset === 'reference' ? e.techLevel : e.prototypeTechLevel}</span>
-                </button>
-              ))}
+              {m.eras.map((e) => {
+                // Under a preset with the eras rule (Ages, Galaxies) the picker shows the timeline year and that preset's start level.
+                const tl = presetDef.eras;
+                const level = tl ? tl.startTech[e.id - 1]! : ruleset === 'reference' ? e.techLevel : e.prototypeTechLevel;
+                const name = tl ? String(tl.years[e.id - 1]) : e.name;
+                const blurb = tl ? TIMELINE_BLURBS[e.id] ?? '' : ERA_BLURBS[e.id] ?? '';
+                return (
+                  <button type="button" key={e.id} role="radio" aria-checked={era === e.id} class={`era-item${era === e.id ? ' selected' : ''}`} onClick={() => setEra(e.id)}
+                    {...tip(`${blurb}\nStarting technology level ${level} in every field.${tl ? ` Research runs to level ${tl.techCap}; ships enter service and retire on the timeline.` : ''}`, tl ? `${name} start` : `${e.name} era`)}>
+                    <span class="era-name">{name}</span><span class="era-level">T{level}</span>
+                  </button>
+                );
+              })}
             </div>
             <div class="option-row">
               <Pill tone="ghost" active={ruleset === 'reference'} onClick={() => setRuleset('reference')}
@@ -191,7 +205,7 @@ export function NewCampaignScreen() {
             <div class="ss-head"><Emblem empire={faction} size={40} /><div><div class="ss-name">{m.empires.find((e) => e.id === faction)?.name}</div><div class="ss-sub">from {chosen.capital}</div></div></div>
             <ul>
               <li>{effectiveEmpires} major powers · {sz.systems} systems · {sz.width}×{sz.height} sectors</li>
-              <li>{eraInfo?.name ?? ''} era · {ruleset === 'reference' ? 'reference' : 'prototype'} rules · {presetDef.name} preset</li>
+              <li>{presetDef.eras ? `${presetDef.eras.years[era - 1]} start` : `${eraInfo?.name ?? ''} era`} · {ruleset === 'reference' ? 'reference' : 'prototype'} rules · {presetDef.name} preset</li>
               <li>Seed {seed}{events ? ' · events' : ''}{aggression ? ' · aggressive AI' : ''}</li>
             </ul>
             <button type="button" class="launch" data-testid="start-campaign" onClick={start}>

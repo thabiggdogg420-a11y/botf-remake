@@ -29,6 +29,7 @@ namespace botf {
 // schema 21 adds the race structures (Structures.h, docs/design/DOMINION.md; optional STRUCTURES section, written only while a colony holds one);
 // schema 23 adds the economy and rules mechanics (EconomyRules.h, docs/design/ECONOMY-MECHANICS.md; optional ECONOMY_RULES section, written
 // only when a rule flag is on): structure upgrades, shared morale, Protectorate HQ, intercept and raid orders, crew experience.
+// schema 22 (the era lane) adds the campaign era (docs/design/ERAS.md; optional ERAS section, written only when the eras rule is on).
 // Schemas 4-22 still load and continue.
 inline constexpr const char* ContentVersion = "remaster-23";
 inline constexpr int SaveVersion = 23;
@@ -78,7 +79,9 @@ enum class CommandType : int {
     SetFleetOrder
 };
 enum class CampaignOutcome : int { Ongoing, Victory, Defeat };
-inline constexpr int ResearchFields = 6, MaxTechLevel = 10;
+// MaxTechLevel is the classic research cap (every game without the eras rule); HighestTechLevel is the hard ceiling the data
+// tables and saves allow. techCap(state) is the cap a campaign plays under.
+inline constexpr int ResearchFields = 6, MaxTechLevel = 10, HighestTechLevel = 14;
 enum class ResearchField : int { Biotech, Computers, Construction, Energy, Propulsion, Weapons };
 struct ResearchTrack { int level = 0; std::int64_t progress = 0; int allocation = 0; };
 struct Construction {
@@ -435,8 +438,11 @@ struct GameplayRules {
     // Schema 15: dilithium ship slots, emergency programs, invasion aftermath, minor conquest and guard ships
     // (EMPIRE-RULES.md). Saved as the optional EMPIRE_RULES section, so older saves keep it off.
     bool empireRules = false;
-    // Schema 23 (EconomyRules.h, docs/design/ECONOMY-MECHANICS.md). All off for older saves and for the Classic preset; each is saved as
-    // one bit of the optional ECONOMY_RULES section.
+    // Schema 22: campaign era (ERAS.md): a timeline year, era-gated roster classes, the pack's start tech levels and research
+    // cap (10..14). Needs expandedRoster and a pack with an eras block. Saved as the optional ERAS section.
+    bool eras = false;
+    // Schema 23 (EconomyRules.h, docs/design/ECONOMY-MECHANICS.md). The first three are the original game's rules and start on in both
+    // bases (rulesForPreset); older saves load with them off. Each is saved as one bit of the optional ECONOMY_RULES section.
     bool structureUpgrades = false;  // Farms, factories and laboratories can be upgraded in tiers as the matching technology advances.
     bool autoUpgrades = false;       // Colonies with an empty queue queue the cheaper automatic upgrade themselves.
     bool noUpgrades = false;         // Variant: structures never upgrade (blocks both of the above).
@@ -678,6 +684,14 @@ const char* startingEraName(StartingEra era);
 inline const char* eraName(StartingEra era) { return startingEraName(era); }
 bool startingEraValid(StartingEra era);
 int eraBaseTechLevel(StartingEra era, Ruleset ruleset = Ruleset::Reference);
+// Schema 22 (ERAS.md). All of these are the classic answers when the eras rule is off.
+int techCap(const GameState& state);                  // Highest research level: 10, or the pack's cap (up to 14) under eras.
+int eraStartTech(const GameState& state);             // Tech level every field starts at for the campaign's start era.
+int campaignYear(const GameState& state);             // Timeline year: the start era's year plus turn / turnsPerYear (eras rule only; 0 otherwise).
+int eraStartYear(StartingEra era);                    // The year a start era begins (the active pack's table; 2240..2380 by default).
+// Why this roster class cannot be built yet or any more under the campaign's timeline; empty when it can (or the rule is off).
+std::string eraBlocker(const GameState& state, int shipId);
+void applyCampaignEra(GameState& state, StartingEra era);
 std::vector<StartingEra> availableStartingEras();
 StartingEra campaignStartingEra(const GameState& state);
 
