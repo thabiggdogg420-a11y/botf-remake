@@ -232,7 +232,7 @@ func _preset_panel() -> Control:
 	frame.name = "PresetPanel"
 	var box := Lcars.body(frame)
 	box.add_theme_constant_override("separation", 8)
-	var items := vm.presets().map(func(p): return [str(p["id"]), str(p["name"]), vm.preset_text(str(p["id"])), "Preset" + "".join(Array(str(p["id"]).split("-")).map(func(w): return str(w).capitalize()))])
+	var items := vm.presets().map(func(p): return [str(p["id"]), str(p["name"]) + (" (yours)" if bool(p.get("user", false)) else ""), vm.preset_text(str(p["id"])), "Preset" + "".join(Array(str(p["id"]).split("-")).map(func(w): return str(w).capitalize()))])
 	box.add_child(_choice_row("Pick a starting point", items, vm.preset, func(id): vm.pick_preset(id); refresh(), "preset"))
 	var note := Lcars.para(vm.preset_text(vm.preset), Lcars.TEXT2, 13)
 	note.name = "PresetNote"

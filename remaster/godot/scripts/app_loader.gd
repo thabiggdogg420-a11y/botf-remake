@@ -239,6 +239,18 @@ static func write_json(path: String, data: Variant) -> String:
 	f.close()
 	return ""
 
+## Writes exact text bytes to user:// (no re-serialising: a user pack's checksum is over these bytes). Returns "" or an error.
+static func write_text(path: String, text: String) -> String:
+	if not path.begins_with("user://"):
+		return "Only user:// is writable"
+	DirAccess.make_dir_recursive_absolute(path.get_base_dir())
+	var f := FileAccess.open(path, FileAccess.WRITE)
+	if f == null:
+		return "Could not write %s" % path.get_file()
+	f.store_string(text)
+	f.close()
+	return ""
+
 ## File names in a res:// or user:// directory ([] when it does not exist).
 static func list(dir: String) -> PackedStringArray:
 	if not _check(dir):

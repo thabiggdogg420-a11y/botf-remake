@@ -261,6 +261,7 @@ try {
             @('core', 'res://tests/run_tests.gd'),
             @('trade-route', 'res://tests/test_trade_route.gd'),
             @('empire-rules-vm', 'res://scripts/viewmodels/tests/test_empire_rules_vm.gd'),
+            @('pack-editor-vm', 'res://scripts/viewmodels/tests/test_pack_editor_vm.gd'),
             @('ui', 'res://scenes/ui/tests/test_campaign_ui.gd'),
             @('trek-icons', 'res://scenes/ui/tests/test_trek_icons.gd'),
             @('trek-text', 'res://scenes/ui/tests/test_trek_text.gd'),
