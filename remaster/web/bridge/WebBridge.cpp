@@ -1091,6 +1091,7 @@ void writeView(Writer& w) {
         w.field("id", sys.id); w.field("x", sys.x); w.field("y", sys.y); w.field("name", sys.name);
         w.field("explored", true);
         w.field("visible", seen);
+        if (sys.starType >= 0) w.field("starType", sys.starType);   // Schema 24: a race's own star; the client draws its own hash otherwise.
         int owner = 0;
         if (col && (col->ownerId == me || seen)) owner = col->ownerId;
         w.field("owner", owner);
@@ -2767,6 +2768,12 @@ botf::CampaignSetup campaignSetup(const Value& a) {
     if (a.has("shape") && !botf::parseGalaxyShape(a.getString("shape"), setup.galaxy.shape)) fail("Unknown galaxy shape");
     if (a.has("minorDensity") && !botf::parseMinorDensity(a.getString("minorDensity"), setup.galaxy.density)) fail("Unknown minor-race density");
     if (a.has("difficulty") && !botf::parseDifficulty(a.getString("difficulty"), setup.galaxy.difficulty)) fail("Unknown difficulty");
+    // Schema 24: "startSystems" (extra colonies per empire, 0..8), "planetsMin"/"planetsMax" (planets per ordinary star, 1..9) and
+    // "starTypes" (race home stars take their race's star type; absent = the preset's own).
+    if (a.has("startSystems")) setup.startSystems = a.getInt("startSystems", 0);
+    if (a.has("planetsMin")) setup.planetsMin = a.getInt("planetsMin", 0);
+    if (a.has("planetsMax")) setup.planetsMax = a.getInt("planetsMax", 0);
+    if (a.has("starTypes")) setup.starTypes = a.getBool("starTypes", false) ? 1 : 0;
     return setup;
 }
 
@@ -3274,6 +3281,9 @@ void writePresets(Writer& w) {
         if (!p->difficulty.empty()) w.field("difficulty", p->difficulty);
         if (p->events >= 0) w.field("events", p->events == 1);
         if (p->aiAggression >= 0) w.field("aiAggression", p->aiAggression == 1);
+        if (p->startSystems >= 0) w.field("startSystems", p->startSystems);
+        if (p->planetsMin > 0) w.field("planetsMin", p->planetsMin).field("planetsMax", p->planetsMax);
+        if (p->starTypes >= 0) w.field("starTypes", p->starTypes == 1);
         if (p->threats) { w.key("threats"); writeThreatSetup(w, *p->threats); }
         w.endObject();
         w.key("needs").beginArray(); for (const auto& n : p->needs) w.value(n); w.endArray();

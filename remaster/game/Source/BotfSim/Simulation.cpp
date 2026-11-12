@@ -70,10 +70,22 @@ bool playableShip(const referenceData::ShipRecord& ship) {
     return ship.raceId >= 0 && static_cast<std::size_t>(ship.raceId) < races.size() && races[static_cast<std::size_t>(ship.raceId)].empireId != 0 && (ship.role == 0 || ship.role == 5 || ship.role == 9 ||
         (ship.role >= 1 && ship.role <= 4));
 }
-int constructionCost(const Construction& project) {
+// Schema 24: what powered orbital batteries add to a colony's ground defence (vanilla 12 each; the pack's balance scales it).
+int batteryDefense(int powered) {
+    return powered * 12 * content::balance().batteryDefensePercent / 100;
+}
+int constructionCost(const Construction& project, int owner = 0) {
     if (project.product == Building::Structure) return structures::cost(project.referenceId); // Schema 21: the pack record's cost.
-    if (project.referenceId < 0) return definition(project.product).industryCost;
-    const int percent = content::balance().shipCostPercent; // Pack balance; 100 is the identity.
+    const auto& balance = content::balance();
+    if (project.referenceId < 0) {
+        const int base = definition(project.product).industryCost;
+        const bool ship = project.product == Building::Scout || project.product == Building::ColonyShip || project.product == Building::Destroyer || project.product == Building::Transport;
+        const int trait = owner > 0 && ship ? slots::traitEffects(owner).shipCostPct : 0;
+        const int percent = (ship ? 100 : balance.structureCostPercent) * (100 + trait) / 100; // Schema 24: pack and trait cost (100 = identity).
+        return percent == 100 ? base : std::max(1, static_cast<int>(static_cast<std::int64_t>(base) * percent / 100));
+    }
+    const int trait = owner > 0 ? slots::traitEffects(owner).shipCostPct : 0;
+    const int percent = balance.shipCostPercent * (100 + trait) / 100; // Pack balance and the owner's race trait; 100 is the identity.
     const int cost = sourceShip(project.referenceId).industryCost;
     return percent == 100 ? cost : std::max(1, static_cast<int>(static_cast<std::int64_t>(cost) * percent / 100));
 }
@@ -139,7 +151,7 @@ referencePlanets::EPlanetType toReferencePlanetType(PlanetClass pc) {
     }
 }
 
-std::vector<Planet> generateSystemPlanets(std::uint64_t seed, int systemId, const std::string& systemName, bool isHome = false) {
+std::vector<Planet> generateSystemPlanets(std::uint64_t seed, int systemId, const std::string& systemName, bool isHome = false, int minCount = 0, int maxCount = 0) {
     std::uint64_t prng = seed ^ (static_cast<std::uint64_t>(systemId) * 0x9e3779b97f4a7c15ULL);
     std::vector<Planet> planets;
     if (isHome) {
@@ -156,7 +168,8 @@ std::vector<Planet> generateSystemPlanets(std::uint64_t seed, int systemId, cons
             0, 0, 0});
         return planets;
     }
-    const int count = 2 + static_cast<int>(bounded(prng, 4)); // 2 to 5 planets
+    // Schema 24: a setup may name another planet range (1..9); without one the draw is the generator's own, 2 to 5.
+    const int count = minCount > 0 ? minCount + static_cast<int>(bounded(prng, static_cast<std::uint64_t>(maxCount - minCount + 1))) : 2 + static_cast<int>(bounded(prng, 4)); // 2 to 5 planets
     const int primaryIdx = static_cast<int>(bounded(prng, static_cast<std::uint64_t>(count)));
     for (int i = 0; i < count; ++i) {
         Planet p;
@@ -263,7 +276,7 @@ void validateColony(const Colony& c) {
     for (auto b : c.queue) {
         require(buildingValid(b), "Unknown queued building");
         require((b.product == Building::Structure) == structures::isRef(b.referenceId), "Structure project needs a structure reference");
-        require(b.referenceId >= -1 && b.work >= 0 && b.work <= constructionCost(b), "Project work out of bounds");
+        require(b.referenceId >= -1 && b.work >= 0 && b.work <= constructionCost(b, c.ownerId), "Project work out of bounds");
         if (b.referenceId >= 0 && b.product != Building::Structure)
             require(playableShip(sourceShip(b.referenceId)) && roleProduct(sourceShip(b.referenceId).role) == b.product,
                 "Invalid reference construction role");
@@ -545,7 +558,7 @@ void draftDiplomacy(GameState& s, int owner, int systemId, CommandType type) {
         return o.empireId == owner && o.systemId == systemId;
     }), "An offer to this minor is already pending");
     auto& e = mutableEmpire(s, owner);
-    if (type == CommandType::SendGift) { require(e.credits >= 50, "Gift needs 50 available credits"); e.credits -= 50; }
+    if (type == CommandType::SendGift) { const int cost = minorGiftCost(); require(e.credits >= cost, ("Gift needs " + std::to_string(cost) + " available credits").c_str()); e.credits -= cost; }
     s.diplomacy.push_back({s.nextDiplomacyId++, owner, systemId, s.turn + (type == CommandType::SendGift ? 1 : 0), type});
 }
 
@@ -1183,7 +1196,7 @@ void applyDraft(GameState& state) {
             auto& owner = mutableEmpire(state, state.playerEmpire);
             require(owner.credits >= cost, "Insufficient credits to rush construction");
             owner.credits -= cost;
-            it->queue.front().work = constructionCost(it->queue.front());
+            it->queue.front().work = constructionCost(it->queue.front(), it->ownerId);
             validateColony(*it);
             continue;
         }
@@ -1345,13 +1358,23 @@ bool queueMilitaryShip(GameState& s, Colony& colony, Building role) {
     const referenceData::ShipRecord* choice = nullptr;
     // A donor race's stand-in hulls count only while the empire's own race has no eligible hull for the role.
     const auto own = [&](const referenceData::ShipRecord& ship) { return ship.raceId == catalogueRace(colony.ownerId); };
+    // Schema 24 (BALANCE-AI.md section 4): under the newest-ship policy the class with the highest technology requirements wins
+    // (ties: the dearer, then the lower id); otherwise the cheapest, as before.
+    const bool newest = aiPolicy(s).newestShips;
+    const auto techSum = [](const referenceData::ShipRecord& ship) { int t = 0; for (int v : ship.technologyRequirements) t += v; return t; };
+    const auto newer = [&](const referenceData::ShipRecord& a, const referenceData::ShipRecord& b) {
+        const int ta = techSum(a), tb = techSum(b);
+        if (ta != tb) return ta > tb;
+        if (a.industryCost != b.industryCost) return a.industryCost > b.industryCost;
+        return a.id < b.id;
+    };
     for (int pass = 0; pass < 2 && !choice; ++pass) {
         if (pass == 1 && donorRace(colony.ownerId) < 0) break;
         for (const auto& ship : referenceData::ShipCatalogue) {
             if (!playableShip(ship) || (pass == 0 ? !own(ship) : !shipUsable(ship, colony.ownerId)) || roleProduct(ship.role) != role) continue;
             const Construction project(role, 0, ship.id);
             if (!constructionTechBlocker(s, project, colony.ownerId).empty()) continue;
-            if (!choice || ship.industryCost < choice->industryCost) choice = &ship;
+            if (!choice || (newest ? newer(ship, *choice) : ship.industryCost < choice->industryCost)) choice = &ship;
         }
     }
     if (s.rules.expandedRoster) {
@@ -1365,7 +1388,7 @@ bool queueMilitaryShip(GameState& s, Colony& colony, Building role) {
             if (!playableShip(ship) || (donors ? !shipUsable(ship, colony.ownerId) : !own(ship)) || roleProduct(ship.role) != role) return;
             const Construction project(role, 0, ship.id);
             if (!constructionTechBlocker(s, project, colony.ownerId).empty()) return;
-            if (!choice || score(ship) > score(*choice)) choice = &ship;
+            if (!choice || (newest ? newer(ship, *choice) : score(ship) > score(*choice))) choice = &ship;
         };
         choice = nullptr;
         for (int pass = 0; pass < 2 && !choice; ++pass) {
@@ -1397,7 +1420,7 @@ void planRivals(GameState& s) {
             })) continue;
             if (m.friendshipTurn[owner.id] < 0 && m.attitude[owner.id] >= 50)
                 draftDiplomacy(s, owner.id, m.systemId, CommandType::OfferFriendship);
-            else if (m.attitude[owner.id] < 80 && owner.credits >= 50)
+            else if (m.attitude[owner.id] < 80 && owner.credits >= minorGiftCost())
                 draftDiplomacy(s, owner.id, m.systemId, CommandType::SendGift);
             else if (m.attitude[owner.id] >= 80 && m.friendshipTurn[owner.id] >= 0 && m.friendshipTurn[owner.id] < s.turn)
                 draftDiplomacy(s, owner.id, m.systemId, CommandType::OfferMembership);
@@ -1423,7 +1446,19 @@ void planRivals(GameState& s) {
                 ++uncolonizedTargets;
             }
         }
-        const int desiredColonyShips = std::min(2, uncolonizedTargets);
+        const auto policy = aiPolicy(s); // Schema 24: the AI behaviours the pack flags and the difficulty switch on (all off by default).
+        const int desiredColonyShips = std::min(policy.aggressiveExpansion ? 4 : 2, uncolonizedTargets);
+        // A colony is on the border when another empire holds a colony within five sectors of it.
+        const auto onBorder = [&](const Colony& mine) {
+            const auto here = std::find_if(s.systems.begin(), s.systems.end(), [&](const System& x) { return x.id == mine.systemId; });
+            if (here == s.systems.end()) return false;
+            for (const auto& other : s.colonies) {
+                if (other.ownerId == owner.id) continue;
+                const auto there = std::find_if(s.systems.begin(), s.systems.end(), [&](const System& x) { return x.id == other.systemId; });
+                if (there != s.systems.end() && std::max(std::abs(there->x - here->x), std::abs(there->y - here->y)) <= 5) return true;
+            }
+            return false;
+        };
 
         for (auto& c : s.colonies) {
             if (c.ownerId != owner.id) continue;
@@ -1437,10 +1472,13 @@ void planRivals(GameState& s) {
                 c.queue.push_back(Building::PowerPlant);
             else if (s.campaignExpansionEnabled && c.factories < 2 && c.factories < MaxBuildings)
                 c.queue.push_back(Building::Factory);
+            else if (policy.standardBuild && c.laboratories < 2) c.queue.push_back(Building::Laboratory); // Standard order: labs before yards.
             else if (c.shipyards == 0) c.queue.push_back(Building::Shipyard);
             else if (empire_rules::aiWantsRefinery(s, owner.id, c)) c.queue.push_back(Building::DilithiumRefinery);
             else if (const int rung = structures::aiNext(s, c, economy(s, c).industry); rung >= 0) c.queue.emplace_back(Building::Structure, 0, structures::refFor(rung));
-            else if (atWar && s.advancedRulesEnabled && c.defenseBatteries < 1) c.queue.push_back(Building::DefenseBattery);
+            else if ((atWar || (policy.standardBuild && onBorder(c))) && s.advancedRulesEnabled && c.defenseBatteries < 1) c.queue.push_back(Building::DefenseBattery);
+            else if (policy.aggressiveExpansion && colonyShips < desiredColonyShips && s.fleets.size() < 256 && s.nextFleetId <= 1000000 &&
+                queueMilitaryShip(s, c, Building::ColonyShip)) ++colonyShips; // Aggressive expansion: colony ships ahead of warships.
             else if (empire_rules::aiMinorCampaign(s, owner.id, atWar) && destroyers < 2 && queueMilitaryShip(s, c, Building::Destroyer)) ++destroyers;
             else if (empire_rules::aiMinorCampaign(s, owner.id, atWar) && transports < 2 && queueMilitaryShip(s, c, Building::Transport)) ++transports;
             else if (atWar && destroyers < 3 && queueMilitaryShip(s, c, Building::Destroyer)) ++destroyers;
@@ -1561,7 +1599,7 @@ void planRivals(GameState& s) {
                         m->targetX = loc->x; m->targetY = loc->y;
                         if (m->shipClass == Building::Transport && m->x == loc->x && m->y == loc->y) {
                             const int defBat = s.advancedRulesEnabled ? economy(s, *targetColony).poweredBatteries : 0;
-                            const int defStr = 8 + targetColony->population / 3 + targetColony->morale / 10 + defBat * 12;
+                            const int defStr = (8 + targetColony->population / 3 + targetColony->morale / 10 + batteryDefense(defBat)) * content::balance().shieldDefensePercent / 100;
                             const int atkStr = 8 + m->hull + 2 * empire(s, owner.id).technologies[5].level;
                             if (atkStr * 10 >= defStr * 7) {
                                 m->invadeSystemId = targetColony->systemId;
@@ -1637,7 +1675,7 @@ void planRivals(GameState& s) {
                         if (atHostileColony) {
                             if (evaluateSectorSafety(f.x, f.y, true, &f)) {
                                 const int defBat = s.advancedRulesEnabled ? economy(s, *atHostileColony).poweredBatteries : 0;
-                                const int defStr = 8 + atHostileColony->population / 3 + atHostileColony->morale / 10 + defBat * 12;
+                                const int defStr = (8 + atHostileColony->population / 3 + atHostileColony->morale / 10 + batteryDefense(defBat)) * content::balance().shieldDefensePercent / 100;
                                 const int atkStr = 8 + f.hull + 2 * empire(s, owner.id).technologies[5].level;
                                 if (atkStr * 10 >= defStr * 7) {
                                     f.invadeSystemId = atHostileColony->systemId;
@@ -1728,7 +1766,7 @@ void planRivals(GameState& s) {
                         f.targetX = loc->x; f.targetY = loc->y;
                         if (f.shipClass == Building::Transport && f.x == loc->x && f.y == loc->y) {
                             const int defBat = s.advancedRulesEnabled ? economy(s, *enemyColony).poweredBatteries : 0;
-                            const int defStr = 8 + enemyColony->population / 3 + enemyColony->morale / 10 + defBat * 12;
+                            const int defStr = (8 + enemyColony->population / 3 + enemyColony->morale / 10 + batteryDefense(defBat)) * content::balance().shieldDefensePercent / 100;
                             const int atkStr = 8 + f.hull + 2 * empire(s, owner.id).technologies[5].level;
                             if (atkStr * 10 >= defStr * 7) {
                                 f.invadeSystemId = enemyColony->systemId;
@@ -1817,11 +1855,11 @@ void resolveDiplomacy(GameState& s, TurnReport& report) {
             if (offer.systemId != m.systemId || offer.dueTurn > s.turn) continue;
             const int owner = offer.empireId;
             if (m.memberOf != 0) {
-                if (offer.type == CommandType::SendGift) mutableEmpire(s, owner).credits += 50;
+                if (offer.type == CommandType::SendGift) mutableEmpire(s, owner).credits += minorGiftCost();
                 notify(offer, "offer withdrawn because the minor has joined an empire. Any undelivered gift is refunded.");
             } else if (offer.type == CommandType::SendGift) {
-                m.attitude[owner] = std::min(100, m.attitude[owner] + 20);
-                notify(offer, "gift delivered. Relations improved by 20.");
+                m.attitude[owner] = std::min(100, m.attitude[owner] + minorGiftAttitude());
+                notify(offer, "gift delivered. Relations improved by " + std::to_string(minorGiftAttitude()) + ".");
             } else if (offer.type == CommandType::OfferFriendship) {
                 if (m.attitude[owner] >= 50 && m.contact[owner]) {
                     if (m.friendshipTurn[owner] < 0) m.friendshipTurn[owner] = s.turn;
@@ -2602,6 +2640,12 @@ void resolveModernIntelligence(GameState& next, TurnReport& report) {
         intelligence::TurnContext tctx;
         tctx.currentTurn = next.turn;
         tctx.totalEmpireBaseIntelOutput = std::clamp<std::int64_t>(botf::empireIntelOutput(next, empId), 0, 100000000);
+        {   // Schema 24 (BALANCE-AI.md section 3): the pack's intel rebalance and the empire's race trait; all identity in the base pack.
+            const auto& bal = content::balance();
+            std::int64_t out = tctx.totalEmpireBaseIntelOutput * bal.intelOutputPercent / 100;
+            if (empId != next.playerEmpire) out = out * bal.aiIntelPercent / 100;
+            tctx.totalEmpireBaseIntelOutput = out * (100 + slots::traitEffects(empId).intelPct) / 100;
+        }
         tctx.buildingBonusPercent = 0;
         const auto structureIntel = structures::empireIntel(next, empId); // Schema 21: Vorta directorate and Shapeshifter Network.
         tctx.securityBonusPercent = structureIntel.securityPct;
@@ -3013,7 +3057,7 @@ void resolveInvasions(GameState& s, TurnReport& report) {
         }
         const int attacker = 8 + fleet.hull + 2 * empire(s, fleet.ownerId).technologies[5].level;
         const int defenderBatteries = s.advancedRulesEnabled ? economy(s, *target).poweredBatteries : 0;
-        const int defender = minors::invasionDefense(s, *target, 8 + target->population / 3 + target->morale / 10 + defenderBatteries * 12)
+        const int defender = minors::invasionDefense(s, *target, 8 + target->population / 3 + target->morale / 10 + batteryDefense(defenderBatteries))
             * (100 + empire_rules::programDefensePercent(*target)) / 100; // Schema 15: Martial Law, Tribunal
         const std::uint64_t a2 = static_cast<std::uint64_t>(attacker) * attacker;
         const std::uint64_t d2 = static_cast<std::uint64_t>(defender) * defender;
@@ -3282,6 +3326,14 @@ std::string payload(const GameState& s) {
     structures::writeSection(out, s);   // Schema 21: optional STRUCTURES section.
     threats::writeSection(out, s);      // Schema 20: optional THREATS section.
     if (s.rules.eras) out << "ERAS 1\n";   // Schema 22: the eras rule (ERAS.md); the pack's eras block carries the data.
+    {   // Schema 24: the star types, only while some system has one (ascending system id).
+        std::size_t typed = 0;
+        for (const auto& sys : s.systems) if (sys.starType >= 0) ++typed;
+        if (typed) {
+            out << "STAR_TYPES 1 " << typed << '\n';
+            for (const auto& sys : s.systems) if (sys.starType >= 0) out << sys.id << ' ' << sys.starType << '\n';
+        }
+    }
     // Schema 14: per-ship orders of recorded battle rounds. Written only when some
     // round carries orders, so campaigns without them keep the schema-13 layout.
     const bool anyOrders = std::any_of(s.latestBattles.begin(), s.latestBattles.end(), [](const CombatReport& b) {
@@ -3465,7 +3517,7 @@ int systemCapacity(const GameState& state, int systemId) {
     if (it == state.systems.end() || it->planets.empty()) return PrototypePopulationCapacity;
     int total = 0;
     for (const auto& p : it->planets) total += p.currentCapacity();
-    return std::max(20, total);
+    return std::max(20, total * content::balance().populationCapacityPercent / 100);
 }
 int systemBaseCapacity(const GameState& state, int systemId) {
     if (!state.campaignExpansionEnabled) return PrototypePopulationCapacity;
@@ -3473,7 +3525,7 @@ int systemBaseCapacity(const GameState& state, int systemId) {
     if (it == state.systems.end() || it->planets.empty()) return PrototypePopulationCapacity;
     int total = 0;
     for (const auto& p : it->planets) total += p.baseCapacity;
-    return std::max(20, total);
+    return std::max(20, total * content::balance().populationCapacityPercent / 100);
 }
 int systemMaxCapacity(const GameState& state, int systemId) {
     if (!state.campaignExpansionEnabled) return PrototypePopulationCapacity;
@@ -3481,7 +3533,7 @@ int systemMaxCapacity(const GameState& state, int systemId) {
     if (it == state.systems.end() || it->planets.empty()) return PrototypePopulationCapacity;
     int total = 0;
     for (const auto& p : it->planets) total += p.maxCapacity;
-    return std::max(20, total);
+    return std::max(20, total * content::balance().populationCapacityPercent / 100);
 }
 bool canTerraformPlanet(const GameState& state, int fleetId, int systemId, int planetIndex) {
     if (!state.campaignExpansionEnabled) return false;
@@ -3646,7 +3698,7 @@ int rushCost(const GameState& state, int systemId) {
     const auto colony = colonyAt(state, systemId);
     if (!colony || colony->queue.empty()) return 0;
     const auto& project = colony->queue.front();
-    const int total = constructionCost(project);
+    const int total = constructionCost(project, colony->ownerId);
     const int remaining = std::max(0, total - project.work);
     // PROVISIONAL: 2 credits per remaining industry unit
     return remaining * 2;
@@ -3782,6 +3834,13 @@ int researchCost(int nextLevel) {
     require(nextLevel >= 1 && nextLevel <= HighestTechLevel, "Invalid technology level");
     return 100 * nextLevel * (nextLevel + 1);
 }
+// Schema 24: the pack's research-cost percent for the level being bought: the flat percent times the level curve (100 = identity).
+std::int64_t researchScaled(std::int64_t cost, int level) {
+    const auto& b = content::balance();
+    const int at = std::clamp(level, 2, MaxTechLevel);
+    const int curve = b.researchCurveLow + (b.researchCurveHigh - b.researchCurveLow) * (at - 2) / (MaxTechLevel - 2);
+    return cost * b.researchCostPercent / 100 * curve / 100;
+}
 int researchCost(const GameState& state, int field, int nextLevel) {
     require(field >= 0 && field < ResearchFields && nextLevel >= 1 && nextLevel <= techCap(state),
         "Invalid research catalogue position");
@@ -3789,7 +3848,7 @@ int researchCost(const GameState& state, int field, int nextLevel) {
     if (nextLevel > MaxTechLevel) {   // Schema 22: levels 11..14 come from the pack's eras block.
         const auto& high = content::eras().highTech;
         require(high.size() == 24, "Research levels above 10 need a pack with an eras block");
-        const std::int64_t above = high[static_cast<std::size_t>(field * 4 + nextLevel - 11)].cost * content::balance().researchCostPercent / 100;
+        const std::int64_t above = researchScaled(high[static_cast<std::size_t>(field * 4 + nextLevel - 11)].cost, nextLevel);
         require(above <= std::numeric_limits<int>::max(), "Invalid sourced research cost");
         return static_cast<int>(above);
     }
@@ -3797,7 +3856,7 @@ int researchCost(const GameState& state, int field, int nextLevel) {
     require(entry.field == field && entry.level == nextLevel && entry.cost >= 0 &&
         entry.cost <= std::numeric_limits<int>::max(), "Invalid sourced research cost");
     // Pack balance (docs/design/PACKS-AND-PRESETS.md): the active pack's research-cost percentage; 100 is the identity.
-    const std::int64_t scaled = entry.cost * content::balance().researchCostPercent / 100;
+    const std::int64_t scaled = researchScaled(entry.cost, nextLevel);
     require(scaled <= std::numeric_limits<int>::max(), "Invalid sourced research cost");
     return static_cast<int>(scaled);
 }
@@ -3845,7 +3904,7 @@ std::vector<ConstructionChoice> constructionChoices(const GameState& state, int 
         if (queueFull) blocker = "Construction queue is full";
         const auto& def = definition(b);
         choices.push_back({b, -1, std::string(def.name) + (state.ruleset == Ruleset::Reference ? " (remake infrastructure)" : ""),
-            def.industryCost, def.creditUpkeep, blocker});
+            constructionCost(Construction(b, 0, -1), colony->ownerId), def.creditUpkeep, blocker});
     }
     // Schema 21: the race structures this empire may use (Structures.h); the blocker says why one cannot be queued.
     for (const auto& rec : content::tables::buildings()) {
@@ -3860,7 +3919,7 @@ std::vector<ConstructionChoice> constructionChoices(const GameState& state, int 
             if (!yardAvailable && blocker.empty()) blocker = "Build or queue a shipyard first";
             if (queueFull) blocker = "Construction queue is full";
             const auto& def = definition(b);
-            choices.push_back({b, -1, def.name, def.industryCost, def.creditUpkeep, blocker});
+            choices.push_back({b, -1, def.name, constructionCost(Construction(b, 0, -1), colony->ownerId), def.creditUpkeep, blocker});
         }
     } else {
         for (const auto& ship : referenceData::ShipCatalogue) {
@@ -3871,7 +3930,7 @@ std::vector<ConstructionChoice> constructionChoices(const GameState& state, int 
             if (!yardAvailable && blocker.empty()) blocker = "Build or queue a shipyard first";
             if (queueFull) blocker = "Construction queue is full";
             choices.push_back({product, ship.id, std::string(ship.shipClass) + " — " + ship.name,
-                ship.industryCost, ship.maintenance, blocker});
+                constructionCost(project, colony->ownerId), ship.maintenance, blocker});
         }
         if (state.rules.expandedRoster) {
             for (const auto& ship : roster::ExpandedShipRecords) {
@@ -3882,7 +3941,7 @@ std::vector<ConstructionChoice> constructionChoices(const GameState& state, int 
                 if (!yardAvailable && blocker.empty()) blocker = "Build or queue a shipyard first";
                 if (queueFull) blocker = "Construction queue is full";
                 choices.push_back({product, ship.id, std::string(ship.shipClass) + " — " + ship.name,
-                    ship.industryCost, ship.maintenance, blocker});
+                    constructionCost(project, colony->ownerId), ship.maintenance, blocker});
             }
         }
     }
@@ -4496,6 +4555,69 @@ GameState generateReferenceCampaign(std::uint64_t seed, int empires, int width, 
     validate(s); return s;
 }
 
+// Schema 24 (BALANCE-AI.md section 6): planets per star, extra start colonies and race star types. Every default leaves the state untouched.
+void applyGalaxyOptions(GameState& s, const CampaignSetup& o) {
+    require(s.turn == 0 && s.pending.empty(), "Galaxy options apply to a new campaign");
+    require(o.startSystems >= 0 && o.startSystems <= 8, "Extra start systems must be 0 to 8");
+    require((o.planetsMin == 0 && o.planetsMax == 0) || (o.planetsMin >= 1 && o.planetsMax <= 9 && o.planetsMin <= o.planetsMax), "Planets per star must be 1 to 9, minimum first");
+    require(o.starTypes >= -1 && o.starTypes <= 1, "Unknown star type option");
+    if (o.planetsMin > 0) {   // Ordinary stars only: empire homes keep their layout.
+        for (auto& sys : s.systems) {
+            if (colonyAt(s, sys.id)) continue;
+            sys.planets = generateSystemPlanets(s.seed, sys.id, sys.name, false, o.planetsMin, o.planetsMax);
+        }
+    }
+    if (o.starTypes == 1 || (o.starTypes < 0 && content::balance().starTypesPerRace != 0)) {   // Capitals take their race's star.
+        for (const auto& c : s.colonies) {
+            const auto* race = slots::raceForEmpire(c.ownerId);
+            if (!race) continue;
+            // The pack's `major.traitEffects.homeStar` wins; otherwise the built-in table (design values, BALANCE-AI.md section 7).
+            static constexpr std::pair<std::string_view, int> Defaults[] = {{"federation", 0}, {"klingon", 2}, {"romulan", 5}, {"cardassian", 1},
+                {"ferengi", 3}, {"dominion", 4}, {"borg", 6}, {"breen", 3}};
+            int star = race->homeStar;
+            if (star < 0) for (const auto& d : Defaults) if (d.first == race->key) star = d.second;
+            if (star < 0) continue;
+            for (auto& sys : s.systems) if (sys.id == c.systemId) sys.starType = star;
+        }
+    }
+    if (o.startSystems > 0) {   // Round-robin so no empire picks the best neighbours first.
+        std::vector<int> ids{s.playerEmpire};
+        for (const auto& e : s.rivals) ids.push_back(e.id);
+        std::sort(ids.begin(), ids.end());
+        std::vector<std::pair<int, int>> homes; // (empire, system id)
+        for (int id : ids) for (const auto& c : s.colonies) if (c.ownerId == id) { homes.emplace_back(id, c.systemId); break; }
+        const auto sysOf = [&](int id) -> const System& { return *std::find_if(s.systems.begin(), s.systems.end(), [id](const System& x) { return x.id == id; }); };
+        for (int round = 0; round < o.startSystems; ++round) {
+            for (const auto& home : homes) {
+                const auto& from = sysOf(home.second);
+                const System* best = nullptr; int bestDistance = 0;
+                for (const auto& sys : s.systems) {
+                    if (colonyAt(s, sys.id) || minorAt(s, sys.id)) continue;
+                    int capacity = 0;
+                    for (const auto& p : sys.planets) capacity += p.currentCapacity();
+                    if (capacity < 10) continue;
+                    const int distance = std::max(std::abs(sys.x - from.x), std::abs(sys.y - from.y));
+                    if (!best || distance < bestDistance) { best = &sys; bestDistance = distance; }
+                }
+                if (!best) continue;
+                int capacity = 0;
+                for (const auto& p : best->planets) capacity += p.currentCapacity();
+                Colony c;
+                c.systemId = best->id; c.ownerId = home.first;
+                c.population = std::min(20, capacity);
+                c.foodWorkers = c.population / 2; c.industryWorkers = c.population / 4; c.researchWorkers = c.population / 4;
+                c.farms = 1; c.factories = 1; c.laboratories = 1; c.energy = 20; c.morale = 70;
+                const int bx = best->x, by = best->y;
+                s.colonies.push_back(c);
+                reveal(s, bx, by, home.first);
+            }
+        }
+        std::sort(s.colonies.begin(), s.colonies.end(), [](const Colony& a, const Colony& b) { return a.systemId < b.systemId; });
+        syncDiplomacyStateInternal(s);
+    }
+    validate(s);
+}
+
 // Lane G: seeded minor-race roster for a new campaign, scaled to galaxy size (MinorRaces.h).
 void placeMinorRaceRoster(GameState& s) {
     require(s.turn == 0 && s.pending.empty(), "Minor races are placed in a new campaign");
@@ -4569,6 +4691,7 @@ void validate(const GameState& s) {
     require(s.credits >= -MaxBalance && s.credits <= MaxBalance &&
         s.research >= 0 && s.research <= MaxBalance, "Balance out of bounds");
     require(!s.systems.empty() && s.systems.size() <= MaxSystems, "Invalid system count");
+    for (const auto& sys : s.systems) require(sys.starType >= -1 && sys.starType <= 6, "Star type out of bounds");
     std::set<std::pair<int, int>> locations;
     std::set<int> ids;
     int previous = 0;
@@ -5148,8 +5271,8 @@ TurnReport advanceWithCombat(GameState& state, const std::function<void(GameStat
             const int available = project.work + c.overflow + projectIndustry;
             c.overflow = 0;
             const auto b = project.product;
-            if (available >= constructionCost(project)) {
-                c.overflow = available - constructionCost(project);
+            if (available >= constructionCost(project, c.ownerId)) {
+                c.overflow = available - constructionCost(project, c.ownerId);
                 c.queue.erase(c.queue.begin());
                 if (b == Building::Farm) ++c.farms;
                 else if (b == Building::Factory) ++c.factories;
@@ -5329,7 +5452,8 @@ TurnReport advanceWithCombat(GameState& state, const std::function<void(GameStat
         const auto food = economy(productionSnapshot, inputs).food;
         const int cap = systemCapacity(productionSnapshot, c.systemId);
         const auto change = populationForecast(inputs.population, food, cap,
-            10 * (inputs.farms + inputs.factories + inputs.laboratories), PrototypeGrowthBasisPoints);
+            10 * (inputs.farms + inputs.factories + inputs.laboratories),
+            std::min(10000, PrototypeGrowthBasisPoints * content::balance().populationGrowthPercent / 100));
         int delta = change.minimum + (change.upwardChances > 0 && bounded(next.rngState, 20000) < static_cast<std::uint64_t>(change.upwardChances) ? 1 : 0);
         if (delta > 0 && empire_rules::programBlocksGrowth(c)) delta = 0; // Cardassian Inquisition: no growth
         c.population += delta;
@@ -5463,7 +5587,9 @@ GameState deserialize(const std::string& text) {
     const bool legacy18 = version == 18 && content == "remaster-18";   // Differs from 22 only by the header and the optional THREATS, STRUCTURES and ERAS sections.
     const bool legacy20 = version == 20 && content == "remaster-20";   // Differs from 22 only by the header and the optional STRUCTURES and ERAS sections.
     const bool legacy21 = version == 21 && content == "remaster-21";   // Differs from 22 only by the header and the optional ERAS section.
-    const bool current22 = version == SaveVersion && content == ContentVersion;
+    const bool legacy22 = version == 22 && content == "remaster-22";   // Differs from 24 only by the header and the optional STAR_TYPES section.
+    const bool current24 = version == SaveVersion && content == ContentVersion;
+    const bool current22 = current24 || legacy22;
     const bool current21 = current22 || legacy21;   // The STRUCTURES section is legal from schema 21 on.
     const bool current20 = current21 || legacy20;   // The THREATS section is legal from schema 20 on.
     const bool current18 = current20 || legacy18;   // The EMPIRE_SLOTS section is legal from schema 18 on.
@@ -5477,7 +5603,7 @@ GameState deserialize(const std::string& text) {
     require(checksumStart != std::string::npos, "Missing save checksum");
     const auto rawBody = text.substr(0, checksumStart);
     require(text.substr(checksumStart) == "CHECKSUM " + std::to_string(hashText(rawBody)) + "\n",
-        (legacy7 || legacy8 || legacy9 || legacy10 || legacy11 || legacy12 || legacy13 || legacy14 || legacy15 || legacy16 || legacy17 || legacy18 || legacy20 || legacy21) ? "Legacy save checksum mismatch" : "Save checksum mismatch");
+        (legacy7 || legacy8 || legacy9 || legacy10 || legacy11 || legacy12 || legacy13 || legacy14 || legacy15 || legacy16 || legacy17 || legacy18 || legacy20 || legacy21 || legacy22) ? "Legacy save checksum mismatch" : "Save checksum mismatch");
     GameState s;
     tag(in, "STATE");
     in >> s.seed >> s.rngState >> s.lastAcceptedCommand >> s.width >> s.height >> s.turn >> s.credits >> s.research;
@@ -5899,7 +6025,7 @@ GameState deserialize(const std::string& text) {
         require(current16 || legacy15, "Schema 15 section in an older save");
         int shape = -1, density = -1, difficulty = -1;
         require(static_cast<bool>(in >> shape >> density >> difficulty) && shape >= 0 && shape <= 4 && density >= 0 && density <= 4 &&
-            difficulty >= 0 && difficulty <= 4, "Malformed GALAXY_SETUP section");
+            difficulty >= 0 && difficulty <= 5 && (difficulty <= 4 || current24), "Malformed GALAXY_SETUP section");
         s.galaxy.shape = static_cast<GalaxyShape>(shape);
         s.galaxy.density = static_cast<MinorDensity>(density);
         s.galaxy.difficulty = static_cast<Difficulty>(difficulty);
@@ -5927,6 +6053,20 @@ GameState deserialize(const std::string& text) {
         require(static_cast<bool>(in >> revision) && revision == 1, "Unsupported ERAS revision");
         s.rules.eras = true;
         nextTag = readTag("Malformed save section after ERAS");
+    }
+    if (nextTag == "STAR_TYPES") {   // Schema 24: system star types (ascending ids).
+        require(current24, "Schema 24 section in an older save");
+        int revision = 0; std::size_t typed = 0;
+        require(static_cast<bool>(in >> revision >> typed) && revision == 1 && typed >= 1 && typed <= s.systems.size(), "Malformed STAR_TYPES section");
+        int last = -1;
+        for (std::size_t i = 0; i < typed; ++i) {
+            int id = -1, type = -1;
+            require(static_cast<bool>(in >> id >> type) && id > last && type >= 0 && type <= 6, "Malformed STAR_TYPES entry");
+            const auto sys = std::find_if(s.systems.begin(), s.systems.end(), [id](const System& x) { return x.id == id; });
+            require(sys != s.systems.end(), "STAR_TYPES names an unknown system");
+            sys->starType = type; last = id;
+        }
+        nextTag = readTag("Malformed save section after STAR_TYPES");
     }
     if (nextTag == "COMBAT_ORDERS") {
         require(current, "Schema 14 section in an older save");
@@ -5990,12 +6130,12 @@ GameState deserialize(const std::string& text) {
             (!s.modernEnginesActive || hasIntelOperations),
             current ? "Schema 14 save is missing a required section" : "Schema 13 save is missing a required section");
         std::string expected = payload(s);
-        if (legacy13 || legacy14 || legacy15 || legacy16 || legacy17 || legacy18 || legacy20 || legacy21) {
+        if (legacy13 || legacy14 || legacy15 || legacy16 || legacy17 || legacy18 || legacy20 || legacy21 || legacy22) {
             // Schema 13 text is the schema-14 payload of a campaign without recorded round orders; schema 14 to 17 text are
             // the schema-18 payload of a campaign without a galaxy setup / empire rules / preset packs / lineup above slot five.
             const std::string header = std::string("BOTF_SIM ") + std::to_string(SaveVersion) + ' ' + ContentVersion + '\n';
             require(expected.starts_with(header), "Malformed canonical payload header");
-            expected.replace(0, header.size(), legacy21 ? "BOTF_SIM 21 remaster-21\n" : legacy20 ? "BOTF_SIM 20 remaster-20\n" : legacy18 ? "BOTF_SIM 18 remaster-18\n" : legacy17 ? "BOTF_SIM 17 remaster-17\n" : legacy16 ? "BOTF_SIM 16 remaster-16\n" : legacy15 ? "BOTF_SIM 15 remaster-15\n" : legacy14 ? "BOTF_SIM 14 remaster-14\n" : "BOTF_SIM 13 remaster-13\n");
+            expected.replace(0, header.size(), legacy22 ? "BOTF_SIM 22 remaster-22\n" : legacy21 ? "BOTF_SIM 21 remaster-21\n" : legacy20 ? "BOTF_SIM 20 remaster-20\n" : legacy18 ? "BOTF_SIM 18 remaster-18\n" : legacy17 ? "BOTF_SIM 17 remaster-17\n" : legacy16 ? "BOTF_SIM 16 remaster-16\n" : legacy15 ? "BOTF_SIM 15 remaster-15\n" : legacy14 ? "BOTF_SIM 14 remaster-14\n" : "BOTF_SIM 13 remaster-13\n");
         }
         require(rawBody == expected, "Save is not in canonical format");
     } else if (legacy12) {
@@ -6731,7 +6871,7 @@ bool shipUsable(const referenceData::ShipRecord& ship, int owner) { return botf:
 bool playableShip(const referenceData::ShipRecord& ship) { return botf::playableShip(ship); }
 Building roleProduct(int role) { return botf::roleProduct(role); }
 const referenceData::ShipRecord& sourceShip(int id) { return botf::sourceShip(id); }
-int constructionCost(const Construction& project) { return botf::constructionCost(project); }
+int constructionCost(const Construction& project, int owner) { return botf::constructionCost(project, owner); }
 std::string constructionTechBlocker(const GameState& state, const Construction& project, int owner) {
     return botf::constructionTechBlocker(state, project, owner);
 }

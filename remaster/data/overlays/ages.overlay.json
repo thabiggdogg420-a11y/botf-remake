@@ -3,10 +3,17 @@
  "kind": "overlay",
  "id": "ages",
  "name": "Ages: All The Ages timeline (2240 to 2380), canon per-race era ship lists, research levels 11 to 14",
- "revision": 2,
+ "revision": 3,
  "requires": [
   "botf-base"
  ],
+ "balance":{"weaponOutputPercent":85},
+ "races":{"patch":[
+{"id":1,"major":{"traitEffects":{"researchPct":8,"morale":3,"groundDefensePct":-10,"shipCostPct":5}}},
+{"id":3,"major":{"traitEffects":{"groundDefensePct":20,"shipCostPct":-8,"researchPct":-10,"creditsPct":-5}}},
+{"id":4,"major":{"traitEffects":{"intelPct":20,"shipCostPct":-3,"foodPct":-8,"morale":-2}}},
+{"id":0,"major":{"traitEffects":{"industryPct":8,"securityPct":15,"intelPct":10,"foodPct":-10}}},
+{"id":2,"major":{"traitEffects":{"creditsPct":15,"shipCostPct":8,"groundDefensePct":-15,"industryPct":-3}}}]},
  "eras": {
   "turnsPerYear": 4,
   "years": [

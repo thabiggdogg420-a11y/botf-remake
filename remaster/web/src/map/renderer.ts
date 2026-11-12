@@ -64,7 +64,10 @@ const STAR_TYPES = [
   { core: '#ffd0c4', glow: '#ff6a55' },   // M
   { core: '#f4f7ff', glow: '#bcd2ff' },   // F
   { core: '#e8f1ff', glow: '#7fb0ff' },   // A/B
+  { core: '#e2ffe6', glow: '#6bff8a' },   // green (Romulan home star, schema 24)
+  { core: '#f1e6ff', glow: '#b88dff' },   // violet (Borg home star, schema 24)
 ];
+const HASHED_STAR_TYPES = 5;
 
 const emblemPaths: Record<number, Path2D> = {};
 function emblemPath(empire: number): Path2D {
@@ -673,7 +676,7 @@ export class GalaxyRenderer {
     const z = cam.zoom;
     const [cx, cy] = this.worldToScreen(cam, (s.x + 0.5) * CELL, (s.y + 0.5) * CELL);
     if (cx < -80 || cy < -80 || cx > this.width + 80 || cy > this.height + 80) return;
-    const type = STAR_TYPES[hash(s.id) % STAR_TYPES.length]!;
+    const type = STAR_TYPES[s.starType ?? hash(s.id) % HASHED_STAR_TYPES]!;
     const baseR = (5 + (hash(s.id * 7) % 4)) * Math.min(1.6, Math.max(0.55, z));
     const flicker = overlay.reduceMotion ? 1 : 0.92 + 0.08 * Math.sin(t * 2 + s.id);
     // glow

@@ -515,13 +515,13 @@ func _build_stars(v: Dictionary, g: Vector2i) -> void:
 		var y := int(s["y"])
 		keep[sid] = true
 		_cell_system[y * g.x + x] = sid
-		if systems3d.has(sid) and systems3d[sid]["cell"] == y * g.x + x:
+		if systems3d.has(sid) and systems3d[sid]["cell"] == y * g.x + x and (not s.has("starType") or int(s["starType"]) == int(systems3d[sid]["type"])):
 			systems3d[sid]["system"] = s
 			continue
 		if systems3d.has(sid):
 			(systems3d[sid]["node"] as Node).queue_free()
 		var pos := GalaxyLayout.system_position(x, y, g, _seed)
-		var ti := GalaxyLayout.star_type(x, y, _seed)
+		var ti := int(s["starType"]) if s.has("starType") else GalaxyLayout.star_type(x, y, _seed)   # schema 24: a race home star is the core's
 		var st: Dictionary = GalaxyLayout.STAR_TYPES[ti]
 		var node := Node3D.new()
 		node.name = "Star%d" % sid

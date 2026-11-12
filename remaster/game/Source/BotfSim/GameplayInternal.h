@@ -38,7 +38,7 @@ bool shipUsable(const referenceData::ShipRecord& ship, int owner);
 bool playableShip(const referenceData::ShipRecord& ship);
 Building roleProduct(int role);
 const referenceData::ShipRecord& sourceShip(int id);
-int constructionCost(const Construction& project);
+int constructionCost(const Construction& project, int owner = 0);
 std::string constructionTechBlocker(const GameState& state, const Construction& project, int owner);
 void validateColony(const Colony& colony);
 // supplied() without the gameplay layer: powered shipyards within ship range.

@@ -205,7 +205,7 @@ int main(int argc, char** argv) {
         botf::GalaxyShape sh; botf::MinorDensity md; botf::Difficulty df;
         check(botf::parseGalaxyShape("Spiral", sh) && sh == botf::GalaxyShape::Spiral && !botf::parseGalaxyShape("scatter", sh), "shape");
         check(botf::parseMinorDensity("MANY", md) && md == botf::MinorDensity::Many && !botf::parseMinorDensity("lots", md), "density");
-        check(botf::parseDifficulty("impossible", df) && df == botf::Difficulty::Impossible && !botf::parseDifficulty("expert", df), "difficulty");
+        check(botf::parseDifficulty("impossible", df) && df == botf::Difficulty::Impossible && botf::parseDifficulty("expert", df) && df == botf::Difficulty::Expert && !botf::parseDifficulty("godlike", df), "difficulty");
     }, passed);
 
     if (failed) { std::cout << "FAILED " << passed << " passed, " << failed << " failed" << std::endl; return 1; }

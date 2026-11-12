@@ -21,6 +21,9 @@ const STAR_TYPES := [
 	{"id": "red", "name": "M red dwarf", "color": Color(1.0, 0.42, 0.26), "radius": 0.032, "spike": 0.55, "weight": 22},
 	{"id": "white", "name": "F/A white star", "color": Color(0.93, 0.95, 1.0), "radius": 0.05, "spike": 1.2, "weight": 16},
 	{"id": "blue", "name": "B blue giant", "color": Color(0.62, 0.74, 1.0), "radius": 0.06, "spike": 1.5, "weight": 10},
+	# Schema 24: race home stars the core sets (System.starType 5 and 6); weight 0, so the hash never draws them.
+	{"id": "green", "name": "Green giant", "color": Color(0.55, 1.0, 0.62), "radius": 0.05, "spike": 1.1, "weight": 0},
+	{"id": "violet", "name": "Violet giant", "color": Color(0.78, 0.56, 1.0), "radius": 0.055, "spike": 1.3, "weight": 0},
 ]
 
 ## A 32-bit integer hash (PCG-style mix) folded to [0, 1). Integer only, so it matches on every platform.

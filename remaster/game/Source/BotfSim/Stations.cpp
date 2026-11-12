@@ -578,11 +578,12 @@ void planRivalStations(GameState& next) {
         int colonies = 0;
         for (const auto& c : next.colonies) if (c.ownerId == owner) ++colonies;
         if (colonies == 0) continue;
-        const int desired = std::min(4, 1 + colonies / 2);
+        const bool starbases = aiPolicy(next).alwaysStarbases; // Schema 24: build outposts also at war, upgrade them at once.
+        const int desired = starbases ? std::min(6, 2 + colonies / 2) : std::min(4, 1 + colonies / 2);
         int have = stationsOwnedOrBuilding(next, owner);
         std::set<int> claimed;
         int idleTransports = 0;
-        if (!war && have < desired && totalStationsAndBuilds(next) < StationLimit) {
+        if ((!war || starbases) && have < desired && totalStationsAndBuilds(next) < StationLimit) {
             for (auto& f : next.fleets) {
                 if (have >= desired) break;
                 if (f.ownerId != owner || f.shipClass != Building::Transport || f.buildingOutpost || f.hull <= 0 ||
@@ -639,7 +640,7 @@ void planRivalStations(GameState& next) {
             const auto st = stationById(next, u.stationId);
             return st && st->ownerId == owner;
         });
-        if (upgrading || rival.credits < cost.credits * 3) continue;
+        if (upgrading || rival.credits < cost.credits * (starbases ? 1 : 3)) continue;
         const Station* bestStation = nullptr;
         int bestColony = 0, bestScore = std::numeric_limits<int>::min();
         for (const auto& st : next.stations) {

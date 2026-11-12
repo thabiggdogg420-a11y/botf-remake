@@ -1,6 +1,7 @@
 // Schema-13 gameplay layer: ruleset presets, gameplay command plumbing, the
 // GAMEPLAY_LAYER save section and the per-turn orchestration hooks that
 // Simulation.cpp calls. See docs/GAMEPLAY-REMASTER.md.
+#include "Content.h"
 #include "EmpireRules.h"
 #include "EmpireSlots.h"
 #include "GameplayInternal.h"
@@ -473,10 +474,28 @@ const DifficultyProfile& difficultyProfile(Difficulty d) {
         /* Normal     */ {100, 100, 100, 100, 100, 0},
         /* Hard       */ {115, 115, 115, 115, 115, -30},
         /* Impossible */ {135, 135, 135, 140, 130, -60},
+        /* Expert     */ {100, 100, 100, 100, 100, 0}, // Schema 24: no bonus of any kind; the AI plays better instead (aiPolicy).
     };
     const int i = static_cast<int>(d);
-    return Table[i >= 0 && i <= 4 ? i : 2];
+    return Table[i >= 0 && i <= 5 ? i : 2];
 }
+int difficultyRank(Difficulty d) {
+    for (std::size_t i = 0; i < DifficultyOrder.size(); ++i) if (DifficultyOrder[i] == d) return static_cast<int>(i);
+    return 2;
+}
+AiPolicy aiPolicy(const GameState& s) {
+    const auto& b = content::balance();
+    AiPolicy p;
+    p.alwaysStarbases = b.aiAlwaysStarbases != 0; p.newestShips = b.aiNewestShips != 0;
+    p.standardBuild = b.aiStandardBuild != 0; p.aggressiveExpansion = b.aiAggressiveExpansion != 0;
+    const Difficulty d = s.galaxy.difficulty;
+    if (d == Difficulty::Hard) p.standardBuild = true;
+    if (d == Difficulty::Expert || d == Difficulty::Impossible) p.alwaysStarbases = p.newestShips = p.standardBuild = p.aggressiveExpansion = true;
+    return p;
+}
+int minorGiftCost() { return content::balance().minorGiftCost; }
+int minorGiftAttitude() { return content::balance().minorGiftAttitude; }
+int packWeaponOutputPercent() { return content::balance().weaponOutputPercent; }
 const char* galaxyShapeName(GalaxyShape s) {
     switch (s) {
     case GalaxyShape::Irregular: return "irregular";
@@ -504,6 +523,7 @@ const char* difficultyName(Difficulty d) {
     case Difficulty::Normal: return "normal";
     case Difficulty::Hard: return "hard";
     case Difficulty::Impossible: return "impossible";
+    case Difficulty::Expert: return "expert";
     }
     return "normal";
 }
@@ -521,7 +541,7 @@ bool parseMinorDensity(const std::string& text, MinorDensity& out) {
 }
 bool parseDifficulty(const std::string& text, Difficulty& out) {
     const auto v = lowered(text);
-    for (auto d : {Difficulty::Simple, Difficulty::Easy, Difficulty::Normal, Difficulty::Hard, Difficulty::Impossible})
+    for (auto d : DifficultyOrder)
         if (v == difficultyName(d)) { out = d; return true; }
     return false;
 }
@@ -583,6 +603,7 @@ GameState newCampaign(const CampaignSetup& setup) {
     }
     addStartingFleets(state);
     structures::seedStart(state); // Schema 21: the pack's start structures in each eligible capital.
+    applyGalaxyOptions(state, setup); // Schema 24: planets per star, extra start colonies, race star types (all off by default).
     // Difficulty: rival treasuries start scaled; their per-turn output scales in advance() (Simulation.cpp).
     const auto& dp = difficultyProfile(state.galaxy.difficulty);
     for (auto& rival : state.rivals) rival.credits = rival.credits * dp.aiStartCreditsPct / 100;

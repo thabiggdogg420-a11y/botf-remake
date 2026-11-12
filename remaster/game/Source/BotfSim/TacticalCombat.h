@@ -2365,7 +2365,7 @@ inline Encounter constructEncounter(const GameState& state,
         // Attack derivation & beam/torpedo split
         int totalAtk = fleetAttack(*f);
         if (f->ownerId != ThreatOwner) totalAtk += empire(state, f->ownerId).technologies[5].level;
-        totalAtk = std::max(0, totalAtk);
+        totalAtk = std::max(0, totalAtk) * packWeaponOutputPercent() / 100; // Schema 24: the pack's weapon output (100 = vanilla)
 
         const auto* extendedClass = roster::findRosterClass(f->referenceShipId);
         if (f->shipClass == Building::Transport || f->shipClass == Building::ColonyShip) {
