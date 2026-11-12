@@ -490,6 +490,7 @@ int main() {
             check(serialize(m) == remastered && fingerprint(m) == fingerprint(d), "a schema-" + std::to_string(old) + " header over a four-empire Remastered text migrates");
         }
         auto t = game(22, everything());
+        economy_rules::setFlagBits(t.rules, 0); // legacy-header scenarios pin the pre-schema-23 text
         for (int i = 0; i < 3; ++i) advance(t);
         const auto threatText = serialize(t);
         check(contains(threatText, "THREATS 1"), "a threats-on game saves the section");

@@ -19,12 +19,12 @@ Lane MOD-6 (Barclay, 12 Nov 2026). Outranked by `AI_stuff\standing\simon\botf-ru
 
 ## 2. Rule flags and presets (item 7)
 
-`GameplayRules` gains eleven flags, saved as one bit set (section `ECONOMY_RULES`). All start off. The Remastered *preset* (`data/presets/remastered.preset.json`) turns on the vanilla-order set (`interceptOrders`, `raidOrders`, `crewExperience`, `structureUpgrades`, `exploitFixes`); `rulesForPreset` itself leaves every flag off so the CLI, the tests and old saves are untouched; **the Classic preset keeps every flag off, so the default Classic five-empire game plays exactly as before** (see section 9). The mod-only flags come from a preset's `rules.flags`:
+`GameplayRules` gains eleven flags, saved as one bit set (section `ECONOMY_RULES`). All start off. The Remastered *preset* (`data/presets/remastered.preset.json`) turns on the vanilla-order set (`interceptOrders`, `raidOrders`, `crewExperience`, `structureUpgrades`, `exploitFixes`); **Revised 12 Nov 2026 (Simon: every vanilla feature is a vanilla rule, not a mod option): the original game's intercept order, raid order and crew experience (`interceptOrders`, `raidOrders`, `crewExperience`) are on in `rulesForPreset` for both Classic and Remastered**, so every new game, the CLI and the tests have them; the mod-only flags (`sharedMorale`, `protectorateHq`, `allDilithium`, `raidBonus`, upgrades, `exploitFixes`) come only from a preset's flags. This deliberately changes the default game (section 9). The mod-only flags come from a preset's `rules.flags`:
 
 | Preset | Flags added to its base | Overlay |
 |---|---|---|
-| Classic | none | none |
-| Remastered | the vanilla set (from the preset file) | none |
+| Classic | none beyond the vanilla three (on in both bases) | none |
+| Remastered | `structureUpgrades`, `exploitFixes` (and the vanilla three) | none |
 | Dominion War (UDM) | vanilla set, `sharedMorale`, `protectorateHq`, `allDilithium`, `raidBonus` | `dominion`, `dominion-war`, `economy` |
 | Galaxies | vanilla set | `galaxies` |
 | Ages | vanilla set | `ages` |
@@ -64,7 +64,7 @@ The `economy` overlay patches three vanilla records that every race may use (ids
 
 ## 7. Crew experience and academies (X19)
 
-`Fleet.experience` (25 = a fresh Regular crew, 0 to 100). Ratings: Green under 15, Regular under 40, Veteran under 65, Elite under 90, Legendary (`Crew.h`). Gains: +4 for surviving a battle, +4 more for winning it, +2 for a successful raid, academy training (a Fleet Academy gives its system's fleets +4 a turn up to 80). **The training fix (our reading; the mod's own bug is not documented):** new ships launch from a colony with an academy already trained (`+16`), and training needs no order and applies to every fleet in the sector, in a task force or not.
+`Fleet.experience` (25 = a fresh Regular crew, 0 to 100). Ratings: Green under 15, Regular under 40, Veteran under 65, Elite under 90, Legendary (`Crew.h`). Legendary is a Klingon rating only (original game): every other empire's crews stop at Elite, whatever their points (`crew::ratingFor`). Gains: +4 for surviving a battle, +4 more for winning it, +2 for a successful raid, academy training. **Academies.** The original per-race academy records already in `buildings.json` (type 16: Central Command 25 Cardassian, Starfleet Academy 37 Federation, Tactical College 43 Klingon, Naval Academy 50 Romulan; the Ferengi have none) are now campaign structures in every game with crew experience on, without an overlay (`structures::isVanillaAcademy`; they are left out of `anyBuildable()`, so the AI structure rules and started-built records still belong to packs). Each trains the fleets in its system by `max(1, percent / 12)` a turn (Starfleet 4, Tactical College 3, Naval Academy 2, Central Command 3), to Elite (80); the Klingon Tactical College trains to 100 so Klingon crews can reach Legendary. The generic Fleet Academy (record 85, `economy` overlay, Dominion War only) remains as the fallback for races with no academy of their own: it is refused ("This empire has its own academy") for a race that has one. **The training fix (our reading; the mod's own bug is not documented):** new ships launch from a colony with an academy already trained (`+16`), and training needs no order and applies to every fleet in the sector, in a task force or not.
 
 Effect: under WEGO rules the ship's crew rating (accuracy, repair, restore) is the fleet's rating instead of a hash of its id; under rules 2 and 3 attack changes by -10, 0, +5, +10, +15 percent. The ship systems panel's crew badge shows the rating and experience points.
 
@@ -72,13 +72,20 @@ Effect: under WEGO rules the ship's crew rating (accuracy, repair, restore) is t
 
 `BOTF_SIM 23 remaster-23`. Optional `ECONOMY_RULES 1 <flag bits>` after STRUCTURES and before THREATS, written only when a flag is on: `COLONIES n` rows `systemId farmSteps factorySteps labSteps subjugated`, `FLEETS n` rows `fleetId order postX postY raidSystemId experience`, only for non-default colonies and fleets. Schemas 14 to 22 load (21 and 22 differ from 23 only by the header). The section is refused under an older header.
 
-## 9. Default Classic game
+## 9. Default Classic and Remastered games
 
-Classic has every new flag off, so no section is written and no rule differs: only the header changes. Nothing in this lane restores a vanilla rule in Classic (the intercept and raid orders and crew experience are vanilla features, but turning them on would change the Classic AI game; they are on in Remastered and every mod preset instead). Putting them on in Classic is a one-line change to `rulesForPreset` and Simon's call.
+Deliberate changes to the default game (Simon, 12 Nov 2026), all vanilla-restoring:
+
+1. The intercept order and the raid order exist for the player and the AI (`SetFleetOrder`; AI `planOrders`).
+2. Crew experience: fleets carry experience, ratings Green to Elite (Legendary Klingon only), battle, raid and academy gains, rating shown in the ship systems panel, attack modifier in the rules-2/3 combat resolver, WEGO crew rating from experience instead of a hash of the fleet id.
+3. The four per-race academies are buildable (cost 5000 industry each) and train crews.
+4. Saves carry an `ECONOMY_RULES 1 <bits>` section with the three vanilla bits.
+
+Proof that nothing else changed (`BotfSim --economy-flags 0` forces the three flags off; baseline c95f1c3): see the lane report, Classic and Remastered, seeds 1999, 7 and 42, 20 and 60 turns, saves identical apart from the header line and checksum. With the flags on the games differ as listed above.
 
 ## 10. Not done
 
-* The structure ladder of each mod's own building tables (MOD-7); the per-race academies of vanilla (one generic Fleet Academy stands in).
+* The structure ladder of each mod's own building tables (MOD-7). The Ferengi have no academy in the original game and so none here (the generic Fleet Academy exists only under Dominion War). The AI does not build the per-race academies (the structure engine is for packs).
 * No trade-route interdiction beyond plunder; no raid on stations; raid ships take no damage from a repelled raid.
 * Tribute and morale are balanced by hand, not tuned in long AI soaks.
 
