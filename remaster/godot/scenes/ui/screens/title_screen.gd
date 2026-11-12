@@ -76,6 +76,10 @@ func refresh() -> void:
 	row2.add_child(_wide(Lcars.pill("Starbase drill", "tertiary", func(): app.start_drill("newBattleDrill", "Starbase drill", {"station": true}), "", "The skirmish at Sol under Remastered rules: 3D flight, weapon arcs and a starbase in the fight")))
 	menu.add_child(row2)
 	var row3 := Lcars.hbox(10)
+	if UserPacks.supported(app.session.core if app and app.session else null):
+		var pe := _wide(Lcars.pill("Pack editor", "tertiary", func(): app.goto("packs"), "", "Make your own pack: ship classes, structures, techs, balance, eras and powers. Packs you save join the preset picker"))
+		pe.name = "PackEditor"
+		row3.add_child(pe)
 	row3.add_child(_wide(Lcars.pill("Settings", "ghost", func(): app.open_overlay("settings"))))
 	var quit := _wide(Lcars.pill("Quit", "ghost", func(): Overlays.confirm_quit_game(app), "", "Close the game", "Alt+F4"))
 	quit.name = "Quit"

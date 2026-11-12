@@ -3367,6 +3367,7 @@ void writePresets(Writer& w) {
     w.beginArray();
     for (const auto* p : botf::presets::all()) {
         w.beginObject().field("id", p->id).field("name", p->name).field("blurb", p->blurb).field("rulesBase", p->rulesBase);
+        if (botf::presets::isUserPreset(p->id)) w.field("user", true);   // MOD-10: written only for a user pack, so shipped output is unchanged.
         w.key("overlays").beginArray(); for (const auto& o : p->overlays) w.value(o); w.endArray();
         w.key("flags").beginObject(); for (const auto& f : p->flags) w.field(f.first, f.second); w.endObject();
         w.key("lineup").beginArray(); for (const auto& e : p->lineup) w.value(e); w.endArray();
@@ -3413,6 +3414,31 @@ std::string dispatch(const std::string& method, const Value& a) {
     else if (method == "listPresets") writePresets(w);
     else if (method == "registerOverlay") w.beginObject().field("id", botf::presets::registerOverlay(a.getString("bytes"))).endObject();
     else if (method == "registerPreset") w.beginObject().field("id", botf::presets::registerPreset(a.getString("bytes"))).endObject();
+    // Lane MOD-10 (docs/design/MOD-TOOLS.md): the pack editor's calls. packPart {"under":[overlay ids],"key":"roster"} is the merged JSON of
+    // one pack key under the base pack and those overlays; validatePack / installUserPack {"overlay","preset"} take the exact file text of
+    // a user pack (validate registers nothing, install registers or replaces a user pack, never a shipped one); removeUserPack {"id"};
+    // userPacks lists the user overlays with the checksum of their bytes. Refusals carry the core's own message.
+    else if (method == "packPart") {
+        std::vector<std::string> under;
+        for (const auto& u : a["under"].items) under.push_back(u.asString());
+        w.raw(botf::presets::packPart(under, a.getString("key")));
+    }
+    else if (method == "validatePack") {
+        const auto c = botf::presets::validateUserPack(a.getString("overlay"), a.getString("preset"));
+        w.beginObject().field("ok", true).field("id", c.id).field("stackId", c.stackId).field("checksum", c.checksum).endObject();
+    }
+    else if (method == "installUserPack") {
+        const auto c = botf::presets::validateUserPack(a.getString("overlay"), a.getString("preset"));
+        botf::presets::installUserPack(a.getString("overlay"), a.getString("preset"));
+        w.beginObject().field("id", c.id).field("stackId", c.stackId).field("checksum", c.checksum).endObject();
+    }
+    else if (method == "removeUserPack") w.beginObject().field("removed", botf::presets::removeUserPack(a.getString("id"))).endObject();
+    else if (method == "userPacks") {
+        w.beginArray();
+        for (const auto& e : botf::presets::userPacks())
+            w.beginObject().field("id", e.id).field("checksum", botf::content::checksumHex(e.checksum)).field("hasPreset", e.hasPreset).endObject();
+        w.endArray();
+    }
     else if (method == "encyclopedia") writeEncyclopedia(w);
     else if (method == "newCampaign") { newCampaign(a); writeView(w); }
     else if (method == "galaxyPreview") galaxyPreview(w, a);

@@ -35,9 +35,19 @@ var content: Dictionary = {}
 ## "" when the pack loaded, else why not (the core then keeps the base content it embeds).
 var content_note := ""
 
+## What registering the player's own packs gave at boot ({"loaded": [ids], "errors": {id: message}}); see UserPacks.
+var user_packs: Dictionary = {"loaded": [], "errors": {}}
+
 func connect_core(c: CoreClient) -> void:
 	core = c
 	load_content()
+	user_packs = UserPacks.register_all(core)
+	for id in user_packs["errors"]:
+		push_warning("user pack %s: %s" % [id, user_packs["errors"][id]])
+	refresh_meta()
+
+## Re-reads `meta` (the preset list changes when a user pack is saved or removed).
+func refresh_meta() -> void:
 	var m: Variant = core.request("meta")
 	meta = m if m is Dictionary else {}
 
@@ -246,7 +256,7 @@ static func campaign_options(options: Dictionary) -> Dictionary:
 func start(method: String, args: Dictionary) -> Dictionary:
 	var r := core.invoke(method, args)
 	if not r["ok"]:
-		failed.emit(r["error"])
+		failed.emit(UserPacks.friendly_load_error(str(r["error"])) if method == "load" else r["error"])
 		return {}
 	return r["result"]
 

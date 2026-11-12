@@ -17,10 +17,11 @@ const OUTSIDE_SCREENS := {
 	"title": "res://scenes/ui/screens/title_screen.gd",
 	"new": "res://scenes/ui/screens/new_campaign_screen.gd",
 	"saves": "res://scenes/ui/screens/saves_screen.gd",
+	"packs": "res://scenes/ui/screens/pack_editor_screen.gd",
 	"combat": "res://scenes/ui/screens/combat_screen.gd",
 }
 ## Screens shown without the in-game chrome (top bar and rail).
-const BARE := ["title", "new", "saves"]
+const BARE := ["title", "new", "saves", "packs"]
 
 static func script_for(id: String) -> String:
 	for s in GAME_SCREENS:

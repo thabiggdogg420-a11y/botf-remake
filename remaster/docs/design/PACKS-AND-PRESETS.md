@@ -85,4 +85,4 @@ New-campaign Rules panel: a **Preset** row (one LCARS toggle per preset from `me
 
 ## 5. Not in this lane
 
-Real content for any overlay (MOD-3, 4, 5, 7, 8); lifting the cap and the empire arrays (MOD-2); a preset editor (MOD-10); more `balance` values and rule flags (MOD-6/7). A user pack replacing the base bundle (`loadContent`) and a preset stack do not combine: a preset stacks on the embedded base.
+Real content for any overlay (MOD-3, 4, 5, 7, 8); lifting the cap and the empire arrays (MOD-2); a preset editor (MOD-10, built: `docs/design/MOD-TOOLS.md`; user packs are an overlay plus a preset in the user data folder, registered with `installUserPack`); more `balance` values and rule flags (MOD-6/7). A user pack replacing the base bundle (`loadContent`) and a preset stack do not combine: a preset stacks on the embedded base.
