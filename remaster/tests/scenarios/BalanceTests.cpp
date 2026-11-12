@@ -225,8 +225,8 @@ int main() {
         for (auto* g : {&fast, &slow}) {
             auto& c = g->colonies.front(); c.population = 20; c.foodWorkers = 10; c.industryWorkers = 5; c.researchWorkers = 5;
         }
-        for (int i = 0; i < 6; ++i) { content::installBase(); advance(fast); content::installStack({overlay("t-p2", "\"balance\":{\"populationGrowthPercent\":50}")}); advance(slow); }
-        check(fast.colonies.front().population > slow.colonies.front().population, "growth at 50% is slower than vanilla over six turns");
+        for (int i = 0; i < 25; ++i) { content::installBase(); advance(fast); content::installStack({overlay("t-p2", "\"balance\":{\"populationGrowthPercent\":50}")}); advance(slow); }
+        check(fast.colonies.front().population > slow.colonies.front().population, "growth at 50% is slower than vanilla over 25 turns (" + std::to_string(fast.colonies.front().population) + " vs " + std::to_string(slow.colonies.front().population) + ")");
         content::installBase();
     }, passed);
 
