@@ -3762,9 +3762,11 @@ int campaignYear(const GameState& state) {
 std::string eraBlocker(const GameState& state, int shipId) {
     if (!state.rules.eras) return {};
     const auto* cls = roster::findRosterClass(shipId);
-    if (!cls) return {};   // The legacy catalogue is not on the timeline (tech gating only).
     const auto& e = content::eras();
-    int from = e.tagYears[static_cast<std::size_t>(cls->era)], until = 0;
+    // A roster class starts at its era tag's year; a legacy catalogue ship is on the timeline only when the pack lists a window for it
+    // (the basic utility hulls carry none and stay available in every era).
+    if (!cls && shipId >= roster::ExpandedIdBase) return {};
+    int from = cls ? e.tagYears[static_cast<std::size_t>(cls->era)] : 0, until = 0;
     for (const auto& w : e.windows) if (w.id == shipId) { from = w.from; until = w.until; break; }
     const int year = campaignYear(state);
     if (year < from) return "Enters service in " + std::to_string(from);

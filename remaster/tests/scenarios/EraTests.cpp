@@ -79,6 +79,7 @@ const content::EraWindow* windowOf(int id) {
 // The first year a roster class may be built, as the gate computes it.
 int firstYear(int id) {
     if (const auto* w = windowOf(id)) return w->from;
+    if (id < roster::ExpandedIdBase) return 0;   // A legacy ship the pack lists no window for: always in service.
     return content::eras().tagYears[static_cast<std::size_t>(roster::findRosterClass(id)->era)];
 }
 // Sets every field to `level` with a reconciled research ledger (the validator counts every level's cost).
@@ -138,7 +139,7 @@ int main() {
         }
         expectRefusal([&] { researchCost(s, 0, 15); }, "Invalid research catalogue position", "level 15");
         check(technologyName(s, 0, 11) == "Genomic Synthesis" && technologyName(s, 5, 14) == "Temporal Lock Targeting", "named levels");
-        for (const auto& w : e.windows) check(roster::findRosterClass(w.id) != nullptr && (w.until == 0 || w.until > w.from), "window of class " + std::to_string(w.id));
+        for (const auto& w : e.windows) check((roster::findRosterClass(w.id) != nullptr || w.id < roster::ExpandedIdBase) && (w.until == 0 || w.until > w.from), "window of class " + std::to_string(w.id));
         // Galaxies: GALM's tech 1 / 4 / 7 / 10 / 14 across the five stages.
         const auto g = game("galaxies", StartingEra::Supreme, 22, {"federation", "klingon", "romulan", "dominion", "borg"});
         check(content::eras().startTech == std::array<int, 5>({1, 4, 7, 10, 14}) && g.technologies[0].level == 14, "Galaxies start tech and 2380 at level 14");
@@ -213,8 +214,25 @@ int main() {
             check(roster::findRosterClass(id)->buildable && eraBlocker(s, id).empty(), "class " + std::to_string(id) + " is buildable and in service in 2380");
         check(eraBlocker(game("ages", StartingEra::Early), 1106) == "Enters service in 2379", "Negh'Tev waits for 2379 in a 2240 start");
         check(blockerFor(s, 1000) == "Retired in 2255", "the NX is long gone");
-        // The legacy catalogue is not on the timeline: tech gating only.
-        check(eraBlocker(s, 0).empty() && eraBlocker(s, 124).empty(), "legacy ships are not era-gated");
+        // The legacy catalogue is on the timeline through the pack's windows: in 2380 every playable ship is in service.
+        for (int id = 0; id <= 104; ++id) check(eraBlocker(s, id).empty(), "legacy ship " + std::to_string(id) + " in service in 2380");
+        check(eraBlocker(s, 115).empty() && eraBlocker(s, 124).empty(), "ships the pack does not list are never era-gated");
+        // 2240: a Federation player is offered no Nebula, Galaxy, Sovereign, Ambassador or Defiant, only the basic utility hulls and the roster's period classes.
+        s = game("ages", StartingEra::Early);
+        check(blockerFor(s, 20) == "Enters service in 2360", "Nebula waits for 2360 in a 2240 start: " + blockerFor(s, 20));
+        check(blockerFor(s, 24) == "Enters service in 2360", "Galaxy waits: " + blockerFor(s, 24));
+        check(blockerFor(s, 26) == "Enters service in 2370", "Sovereign waits: " + blockerFor(s, 26));
+        check(blockerFor(s, 43) == "Enters service in 2335" && blockerFor(s, 34) == "Enters service in 2370", "Ambassador and Defiant wait");
+        check(blockerFor(s, 22).find("Enters") == std::string::npos && blockerFor(s, 10).find("Enters") == std::string::npos, "the basic colony ship stays on offer");
+        check(eraBlocker(s, 8).empty() && eraBlocker(s, 16).empty(), "the Union's first destroyer and cruiser are always on offer");
+        // 2350 and 2320: each class appears on its own year (Galaxy and Nebula in the 2360s, Sovereign in the 2370s).
+        s = game("ages", StartingEra::Advanced);
+        check(blockerFor(s, 20) == "Enters service in 2360" && blockerFor(s, 43).find("Enters") == std::string::npos, "2350: Ambassador yes, Nebula no");
+        for (int t = 0; t < 40; ++t) advance(s);
+        check(campaignYear(s) == 2360 && blockerFor(s, 24).find("Enters") == std::string::npos, "Galaxy enters service in 2360");
+        check(blockerFor(s, 26) == "Enters service in 2370", "Sovereign still waits in 2360");
+        s = game("ages", StartingEra::Expanded);
+        check(blockerFor(s, 43) == "Enters service in 2335" && blockerFor(s, 30).find("Enters") == std::string::npos, "2320: Miranda yes, Ambassador no");
         content::installBase();
     }, passed);
 
@@ -305,6 +323,7 @@ int main() {
         bad("\"eras\":{\"startTech\":[1,4,3,10,10]}", "must not fall", "start tech falling");
         bad("\"eras\":{\"startTech\":[1,4,7,10,12]}", "above techCap", "a start level over the cap");
         bad("\"eras\":{\"classes\":[{\"id\":1000,\"from\":2200,\"until\":2100}]}", "retirement year", "retired before it entered service");
+        bad("\"eras\":{\"classes\":[{\"id\":500,\"from\":2200,\"until\":0}]}", "no such roster class or catalogue ship", "a window for a missing legacy ship");
         bad("\"eras\":{\"classes\":[{\"id\":1999,\"from\":2200,\"until\":0}]}", "no such roster class", "a window for a missing class");
         bad("\"eras\":{\"classes\":[{\"id\":1000,\"from\":2200,\"until\":0},{\"id\":1000,\"from\":2210,\"until\":0}]}", "listed twice", "a class listed twice");
         bad("\"eras\":{\"bogus\":1}", "unknown key", "an unknown key");
@@ -337,7 +356,7 @@ int main() {
     run("soak: 100 turns per start era, Ages (stock five) and Galaxies (Dominion and Borg), deterministic, save-stable, gate respected", [] {
         struct Case { const char* preset; std::vector<std::string> lineup; };
         const std::vector<Case> cases{{"ages", {}}, {"galaxies", {"federation", "klingon", "romulan", "dominion", "borg"}}};
-        int rosterBuilds = 0;
+        int rosterBuilds = 0, legacyBuilds = 0;
         std::map<int, int> byClass;
         for (const auto& c : cases) for (int e = 1; e <= 5; ++e) {
             auto a = game(c.preset, static_cast<StartingEra>(e), 40 + e, c.lineup);
@@ -349,7 +368,12 @@ int main() {
                 if (twin) check(ra.stateHash == advance(b).stateHash, std::string(c.preset) + " era " + std::to_string(e) + ": two runs agree at turn " + std::to_string(turn));
                 const int year = campaignYear(a);
                 for (const auto& f : a.fleets) {
-                    if (f.id < firstNew || f.referenceShipId < 0 || !roster::isExpandedId(f.referenceShipId)) continue;
+                    if (f.id < firstNew || f.referenceShipId < 0) continue;
+                    if (!roster::isExpandedId(f.referenceShipId)) {   // A legacy ship: only its window (when the pack lists one) matters.
+                        ++legacyBuilds;
+                        check(year >= firstYear(f.referenceShipId), "a legacy ship (" + std::to_string(f.referenceShipId) + ") was built before its year, " + std::to_string(year));
+                        continue;
+                    }
                     ++rosterBuilds; ++byClass[f.referenceShipId];
                     check(year >= firstYear(f.referenceShipId), "a roster ship (" + std::to_string(f.referenceShipId) + ") was built before its year, " + std::to_string(year));
                 }
@@ -362,7 +386,7 @@ int main() {
             }
             check(a.rules.eras && campaignYear(a) >= eraStartYear(static_cast<StartingEra>(e)), "still on the timeline");
         }
-        std::cout << "  soak: roster ships built " << rosterBuilds << " across " << byClass.size() << " classes" << std::endl;
+        std::cout << "  soak: roster ships built " << rosterBuilds << " across " << byClass.size() << " classes, legacy ships built " << legacyBuilds << std::endl;
         check(rosterBuilds > 0, "the AI built roster ships");
         content::installBase();
     }, passed);

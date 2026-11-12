@@ -225,7 +225,10 @@ func _prepare(s: String) -> void:
 				var esys = app.current_screen()
 				esys.tab = "ships"
 				esys.refresh()
-				await _wait(4)
+				# The planet globes are SubViewports that load their texture sets on first use: wait on the clock, not on frames.
+				var t_globes := Time.get_ticks_msec()
+				while Time.get_ticks_msec() - t_globes < 3000:
+					await _wait(5)
 		"threats-galaxy", "threats-assimilated":
 			# Threat drill (schema 20): actors around the capital and one Borg-held ruin; -assimilated frames the ruin.
 			app.start_drill("newThreatDrill", "Threat drill")

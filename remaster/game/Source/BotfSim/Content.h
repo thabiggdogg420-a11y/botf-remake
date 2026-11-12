@@ -727,14 +727,15 @@ inline std::unique_ptr<Pack> parsePackValue(const json::Value& doc) {
             for (std::size_t i = 0; i < a.items.size(); ++i) {
                 Object o(a.items[i], "pack.eras.classes[" + std::to_string(i) + "]");
                 EraWindow w;
-                w.id = o.i32("id", ExpandedIdBase, ExpandedIdLimit - 1);
+                w.id = o.i32("id", 0, ExpandedIdLimit - 1);   // A roster class (1000..1999) or a legacy catalogue ship (0..124).
                 w.from = o.i32("from", 0, 3000);
                 w.until = o.i32("until", 0, 3000);
                 o.done();
                 if (w.until != 0 && w.until <= w.from) bad(o.at("until"), "retirement year must follow the first year");
                 bool known = false;
                 for (const auto& c : p.roster) known = known || c.id == w.id;
-                if (!known) bad(o.at("id"), "no such roster class");
+                if (w.id < ExpandedIdBase) known = w.id < static_cast<int>(p.ships.size());
+                if (!known) bad(o.at("id"), "no such roster class or catalogue ship");
                 for (const auto& other : er.windows) if (other.id == w.id) bad(o.at("id"), "class listed twice");
                 er.windows.push_back(w);
             }
