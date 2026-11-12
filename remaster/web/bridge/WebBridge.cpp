@@ -22,6 +22,7 @@
 #include "../../game/Source/BotfSim/Content.h"
 #include "../../game/Source/BotfSim/EmpireSlots.h"
 #include "../../game/Source/BotfSim/Structures.h"
+#include "../../game/Source/BotfSim/EconomyRules.h"
 #include "../../game/Source/BotfSim/Presets.h"
 #include "../../game/Source/BotfSim/Threats.h"
 #include "Json.h"
@@ -57,7 +58,7 @@ namespace intel = botf::intelligence;
 // ------------------------------------------------------------------------------------------------
 // Enum name tables. Numbers are always accepted as well, so enum growth in the core keeps working.
 // ------------------------------------------------------------------------------------------------
-constexpr std::array<const char*, 49> CommandTypeNames{
+constexpr std::array<const char*, 50> CommandTypeNames{
     "AssignWorkers", "EnqueueBuilding", "MoveFleet", "Colonize", "ToggleShipyard",
     "CancelFirstConstruction", "PrioritizeLastConstruction", "MoveConstruction",
     "RemoveConstruction", "AllocateResearch", "SendGift", "OfferFriendship",
@@ -72,7 +73,7 @@ constexpr std::array<const char*, 49> CommandTypeNames{
     "BuildOutpost", "UpgradeStation", "ResolveEventChoice",
     "DefineBuildTemplate", "DeleteBuildTemplate", "ApplyBuildTemplate", "SetDefaultBuildTemplate",
     "StartMegaproject", "CancelMegaproject", "RefuseCallToArms",
-    "SetEmergencyProgram", "ResolveAftermath"};
+    "SetEmergencyProgram", "ResolveAftermath", "SetFleetOrder"};
 constexpr std::array<const char*, 2> StationTypeNames{"Outpost", "Starbase"};
 constexpr std::array<const char*, 6> FeatureKeys{"Nebula", "Wormhole", "BlackHole", "NeutronStar", "IonStorm", "SubspaceRift"};
 constexpr std::array<const char*, 7> EventKeys{"Plague", "SupernovaWarning", "SubspaceRift", "TradeBoom", "DerelictVessel",
@@ -322,6 +323,9 @@ std::string describeCommand(const botf::GameState& s, const botf::Command& c) {
         return systemLabel(s, c.systemId) + (c.eventOption == 0 ? ": lift the emergency program" : ": " + std::string(botf::empire_rules::programName(c.eventOption)));
     case botf::CommandType::ResolveAftermath:
         return systemLabel(s, c.systemId) + ": " + botf::empire_rules::aftermathName(c.eventOption);
+    case botf::CommandType::SetFleetOrder:
+        return fleet(c.fleetId) + (c.eventOption == 0 ? ": stand down" : c.eventOption == 1 ? ": hold an intercept post"
+            : ": raid " + systemLabel(s, c.systemId));
     case botf::CommandType::EnqueueBuilding:
         return systemLabel(s, c.systemId) + ": build " + constructionLabel(s, botf::Construction(c.building, 0, c.referenceId));
     case botf::CommandType::MoveFleet: return fleet(c.fleetId) + ": set course for " + place(c.targetX, c.targetY);
@@ -579,6 +583,17 @@ void writeColonyBrief(Writer& w, const botf::GameState& s, const botf::Colony& c
     w.field("population", c.population);
     w.field("capacity", botf::systemCapacity(s, c.systemId));
     w.field("morale", c.morale);
+    w.key("economyRules").beginObject() // Schema 23
+        .field("subjugated", c.subjugated).field("moraleBonus", botf::economy_rules::moraleBonus(s, c))
+        .field("tribute", botf::economy_rules::tribute(s, c)).field("hasHq", botf::economy_rules::protectorateHq(s, c.ownerId) >= 0)
+        .field("sharedMorale", botf::economy_rules::sharedMorale(s, c.ownerId));
+    w.key("upgrades").beginArray();
+    for (int k = 0; k < botf::upgrades::Kinds; ++k)
+        w.beginObject().field("kind", botf::upgrades::kindName(k)).field("units", botf::upgrades::unitsOf(c, k))
+            .field("steps", c.upgradeSteps[static_cast<std::size_t>(k)]).field("tier", botf::upgrades::tierOf(c, k))
+            .field("available", botf::upgrades::tierAvailable(s, c.ownerId, k)).field("percent", botf::upgrades::percent(c, k)).endObject();
+    w.endArray();
+    w.endObject();
     w.key("workers").beginObject().field("food", c.foodWorkers).field("industry", c.industryWorkers).field("research", c.researchWorkers)
         .field("unassigned", c.population - c.foodWorkers - c.industryWorkers - c.researchWorkers).endObject();
     w.key("structures").beginObject().field("farms", c.farms).field("factories", c.factories).field("laboratories", c.laboratories)
@@ -687,6 +702,10 @@ void writeOwnFleet(Writer& w, const botf::GameState& d, const botf::GameState& c
     w.field("attackTarget", f.attackTarget);
     w.field("retreat", f.retreat);
     w.field("invadeSystemId", f.invadeSystemId);
+    w.field("order", f.order).field("orderName", botf::economy_rules::orderName(f.order)).field("raidSystemId", f.raidSystemId)
+        .field("postX", f.postX).field("postY", f.postY); // Schema 23
+    w.field("experience", f.experience).field("crewRating", botf::crew::ratingName(botf::crew::ratingFor(f.experience, f.ownerId)))
+        .field("crewLevel", botf::crew::ratingFor(f.experience, f.ownerId)).field("raidPercent", botf::economy_rules::raidPercent(d, f));
     w.field("terraforming", f.terraforming);
     w.field("terraformSystemId", f.terraformSystemId);
     w.field("terraformPlanetIndex", f.terraformPlanetIndex);
@@ -969,7 +988,12 @@ void writeView(Writer& w) {
         }())
         .field("stations", s.rules.stations).field("galaxyFeatures", s.rules.galaxyFeatures)
         .field("curatedEvents", s.rules.curatedEvents).field("alternativeVictories", s.rules.alternativeVictories)
-        .field("empireRules", s.rules.empireRules).endObject();
+        .field("empireRules", s.rules.empireRules)
+        // Schema 23: the economy flags (docs/design/ECONOMY-MECHANICS.md).
+        .field("structureUpgrades", s.rules.structureUpgrades).field("autoUpgrades", s.rules.autoUpgrades).field("noUpgrades", s.rules.noUpgrades)
+        .field("sharedMorale", s.rules.sharedMorale).field("protectorateHq", s.rules.protectorateHq).field("allDilithium", s.rules.allDilithium)
+        .field("interceptOrders", s.rules.interceptOrders).field("raidOrders", s.rules.raidOrders).field("raidBonus", s.rules.raidBonus)
+        .field("crewExperience", s.rules.crewExperience).field("exploitFixes", s.rules.exploitFixes).endObject();
     w.endObject();
 
     // --- empire summary (player only)
@@ -2082,6 +2106,10 @@ void writeWegoShip(Writer& w, const tac::Ship& ship) {
     w.key("subsystems").beginObject();
     for (int i = 1; i <= tac::SubsystemCount; ++i) w.field(SubsystemKeys[static_cast<std::size_t>(i)], ship.subsystems[static_cast<std::size_t>(i - 1)]);
     w.endObject();
+    {   // Schema 23: the fleet's experience points behind the crew rating (campaign encounters only).
+        const auto* fl = fleetById(B.state, ship.fleetId);
+        w.field("experience", fl && B.state.rules.crewExperience ? fl->experience : -1);
+    }
     w.field("crew", tac::crewRatingName(ship.crew)).field("crewLevel", ship.crew)
         .field("elevation", ship.elevation).field("coreBreached", ship.coreBreached)
         .field("canWarp", ship.canRetreat && ship.system(tac::Subsystem::WarpCore) > 0 && ship.system(tac::Subsystem::Engines) > 0);
@@ -2955,6 +2983,77 @@ void newThreatDrill(bool battle, int ships) {
     startGame(std::move(s), battle ? "drill-threat-battle" : "drill-threats");
 }
 
+// Economy drill (schema 23, docs/design/ECONOMY-MECHANICS.md): a Dominion War game (all the UDM economy flags) with the map charted, the
+// Federation's science at level 6, a Fleet Academy and a Unity Monument in the capital, upgrade steps taken and an upgrade queued, a
+// subjugated Klingon world holding a Protectorate HQ, a veteran squadron with an intercept post, and raiders at the Romulan capital
+// (at war) with an Orion member. Nothing spawns or fights on its own. Used by the capture tools and the tests.
+void newEconomyDrill() {
+    botf::CampaignSetup setup;
+    setup.presetId = "dominion-war"; setup.seed = 9191; setup.era = botf::StartingEra::Expanded;
+    setup.lineup = {"federation", "klingon", "romulan", "cardassian", "dominion"}; setup.playerEmpire = 1;
+    setup.width = 22; setup.height = 16; setup.systems = 48;
+    setup.galaxy.density = botf::MinorDensity::Many;
+    setup.threats = botf::ThreatSetup{};
+    auto s = botf::newCampaign(setup);
+    s.aiAggressionEnabled = false; s.eventsEnabled = false;
+    const int me = s.playerEmpire;
+    for (int y = 0; y < s.height; ++y) for (int x = 0; x < s.width; ++x) markExplored(s.explored, y * s.width + x);
+    normaliseExplored(s.explored);
+    {   // Science at level 6, the research ledger reconciled.
+        std::int64_t total = s.researchReserve;
+        for (int f = 0; f < botf::ResearchFields; ++f) {
+            auto& t = s.technologies[static_cast<std::size_t>(f)];
+            t.level = 6; t.progress = 0;
+            for (int l = 1; l <= 6; ++l) total += botf::researchCost(s, f, l);
+        }
+        s.research = total;
+    }
+    auto addStructure = [](botf::Colony& c, int id) { c.structures.insert(std::lower_bound(c.structures.begin(), c.structures.end(), id), id); };
+    auto ownColony = [&](int owner) -> botf::Colony* {
+        for (auto& c : s.colonies) if (c.ownerId == owner) return &c;
+        return nullptr;
+    };
+    auto* capital = ownColony(me);
+    addStructure(*capital, 85); addStructure(*capital, 73);
+    capital->upgradeSteps = {2, 1, 1};
+    capital->queue.clear();
+    capital->queue.emplace_back(botf::Building::Structure, 0, botf::structures::refFor(botf::upgrades::recordFor(0, false)));
+    capital->queue.emplace_back(botf::Building::Structure, 0, botf::structures::refFor(botf::upgrades::recordFor(1, false)));
+    if (auto* klingon = ownColony(2)) {   // A conquered Klingon world, subjugated, with the Protectorate Headquarters standing.
+        klingon->ownerId = me; klingon->subjugated = true; klingon->queue.clear();
+        addStructure(*klingon, 61);
+        klingon->morale = 80;
+    }
+    for (auto& r : s.majorRelations)
+        if ((r.first == me && r.second == 3) || (r.first == 3 && r.second == me)) { r.contact = true; r.atWar = true; }
+    const auto& cs = *botf::empire_rules::systemOf(s, capital->systemId);
+    botf::Colony* romulan = ownColony(3);
+    const auto& rs = *botf::empire_rules::systemOf(s, romulan->systemId);
+    romulan->defenseBatteries = 0;
+    s.fleets.erase(std::remove_if(s.fleets.begin(), s.fleets.end(), [&](const botf::Fleet& f) { return f.ownerId == 3 && f.x == rs.x && f.y == rs.y; }), s.fleets.end());
+    s.stations.erase(std::remove_if(s.stations.begin(), s.stations.end(), [&](const botf::Station& st) { return st.x == rs.x && st.y == rs.y; }), s.stations.end());
+    for (auto& e : s.rivals) if (e.id == 3) e.credits = 900;
+    const auto before = s.fleets.size();
+    addDrillShips(s, me, cs.x, cs.y, 3);
+    addDrillShips(s, me, rs.x, rs.y, 2);
+    std::size_t i = 0;
+    for (auto& f : s.fleets) {
+        if (i++ < before || f.ownerId != me) continue;
+        const std::size_t k = i - before - 1;
+        if (k == 0) { f.experience = 72; f.order = botf::economy_rules::OrderIntercept; f.postX = f.x; f.postY = f.y; }
+        else if (k == 1) f.experience = 91;
+        else if (k == 2) f.experience = 12;
+        else { f.order = botf::economy_rules::OrderRaid; f.raidSystemId = romulan->systemId; f.experience = 40 + 10 * static_cast<int>(k - 3); }
+    }
+    for (auto& m : s.minors) if (m.name.find("Orion") != std::string::npos) { m.memberOf = me; break; }
+    // Two Romulan raiders one sector from the capital: the interceptor goes after them, so ending the turn opens a battle.
+    const int ix = std::min(s.width - 1, cs.x + 1) == cs.x ? cs.x - 1 : cs.x + 1;
+    addDrillShips(s, 3, ix, cs.y, 2);
+    for (auto& e : s.rivals) if (e.id == 3) { markExplored(e.explored, cs.y * s.width + ix); normaliseExplored(e.explored); }
+    botf::validate(s);
+    startGame(std::move(s), "drill-economy");
+}
+
 void newFrontierDrill() {
     botf::CampaignSetup setup;
     setup.presetId = "remastered";
@@ -3309,6 +3408,7 @@ std::string dispatch(const std::string& method, const Value& a) {
     else if (method == "galaxyPreview") galaxyPreview(w, a);
     else if (method == "newBattleDrill") { newBattleDrill(a.getBool("station"), a.getInt("ships", 3), a.getBool("foeStation")); writeView(w); }
     else if (method == "newFrontierDrill") { newFrontierDrill(); writeView(w); }
+    else if (method == "newEconomyDrill") { newEconomyDrill(); writeView(w); }
     else if (method == "newThreatDrill") { newThreatDrill(a.getBool("battle"), a.getInt("ships", 3)); writeView(w); }
     else if (method == "station") writeStationDetail(w, a.getInt("stationId"));
     else if (method == "newDiplomacyDrill") { newDiplomacyDrill(); writeView(w); }

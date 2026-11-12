@@ -292,6 +292,14 @@ func test_fixture_determinism() -> void:
 		check(api("fingerprint") == run.result, "Dominion War as empire %d: fingerprint %s == wasm %s" % [int(run.campaign.faction), api("fingerprint"), run.result])
 		check(dinfo.id == run.content.id and dinfo.checksum == run.content.checksum and dinfo.stack.size() == int(run.content.stack), "Dominion War stack %s %s == wasm %s %s" % [dinfo.id, dinfo.checksum, run.content.id, run.content.checksum])
 	api("loadBaseContent")
+	# Economy and rules mechanics (schema 23): presets carrying the economy flags, 50 turns, native against wasm.
+	var exx := load_fixture("determinism-economy")
+	for run in exx.result:
+		api("newCampaign", run.campaign)
+		for i in int(run.turns):
+			end_turn()
+		check(api("fingerprint") == run.result, "economy preset %s: fingerprint %s == wasm %s" % [run.campaign.preset, api("fingerprint"), run.result])
+	api("loadBaseContent")
 	var fx_view := load_fixture("campaign-view")
 	var raw: String = core.request_json("newCampaign", JSON.stringify(fx_view.args))
 	var reparsed: Dictionary = JSON.parse_string(raw)
@@ -379,7 +387,7 @@ func test_uncharted_view() -> void:
 
 ## The view is a read: a fixed-seed autoplay to turn 20 reaches the same state with or without the view being read every turn,
 ## and the hash is the one the core produced before the view change (recorded from the unchanged simulation sources).
-const FINGERPRINT_T20 := "10661046938819612369" # re-pinned for schema 22 (the header line is in the payload; body unchanged vs schema 21, see ERAS.md); native and wasm agree
+const FINGERPRINT_T20 := "6926177897153747072" # re-pinned for schema 23 (the header line is in the payload; body unchanged vs schema 21, see docs/design/ECONOMY-MECHANICS.md section 9); native and wasm agree
 
 func _autoplay_fingerprint(read_view: bool) -> String:
 	api("newCampaign", CAMPAIGN)

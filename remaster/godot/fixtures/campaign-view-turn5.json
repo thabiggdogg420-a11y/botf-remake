@@ -18,8 +18,8 @@
    "erasRule": false,
    "year": 0,
    "techCap": 10,
-   "contentVersion": "remaster-22",
-   "saveVersion": 22,
+   "contentVersion": "remaster-23",
+   "saveVersion": 23,
    "outcome": "ongoing",
    "winner": 0,
    "advancedRules": true,
@@ -36,7 +36,18 @@
     "galaxyFeatures": true,
     "curatedEvents": true,
     "alternativeVictories": true,
-    "empireRules": true
+    "empireRules": true,
+    "structureUpgrades": true,
+    "autoUpgrades": false,
+    "noUpgrades": false,
+    "sharedMorale": false,
+    "protectorateHq": false,
+    "allDilithium": false,
+    "interceptOrders": true,
+    "raidOrders": true,
+    "raidBonus": false,
+    "crewExperience": true,
+    "exploitFixes": true
    }
   },
   "empire": {
@@ -447,6 +458,39 @@
     "population": 43,
     "capacity": 130,
     "morale": 70,
+    "economyRules": {
+     "subjugated": false,
+     "moraleBonus": 0,
+     "tribute": 0,
+     "hasHq": false,
+     "sharedMorale": 0,
+     "upgrades": [
+      {
+       "kind": "farms",
+       "units": 2,
+       "steps": 0,
+       "tier": 0,
+       "available": 0,
+       "percent": 0
+      },
+      {
+       "kind": "factories",
+       "units": 3,
+       "steps": 0,
+       "tier": 0,
+       "available": 0,
+       "percent": 0
+      },
+      {
+       "kind": "laboratories",
+       "units": 1,
+       "steps": 0,
+       "tier": 0,
+       "available": 0,
+       "percent": 0
+      }
+     ]
+    },
     "workers": {
      "food": 20,
      "industry": 10,
@@ -563,6 +607,15 @@
     "attackTarget": 0,
     "retreat": false,
     "invadeSystemId": 0,
+    "order": 0,
+    "orderName": "None",
+    "raidSystemId": 0,
+    "postX": 0,
+    "postY": 0,
+    "experience": 25,
+    "crewRating": "Regular",
+    "crewLevel": 1,
+    "raidPercent": 100,
     "terraforming": false,
     "terraformSystemId": 0,
     "terraformPlanetIndex": 0,
@@ -604,6 +657,15 @@
     "attackTarget": 0,
     "retreat": false,
     "invadeSystemId": 0,
+    "order": 0,
+    "orderName": "None",
+    "raidSystemId": 0,
+    "postX": 0,
+    "postY": 0,
+    "experience": 25,
+    "crewRating": "Regular",
+    "crewLevel": 1,
+    "raidPercent": 100,
     "terraforming": false,
     "terraformSystemId": 0,
     "terraformPlanetIndex": 0,

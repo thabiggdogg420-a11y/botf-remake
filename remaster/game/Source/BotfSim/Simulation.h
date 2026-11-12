@@ -27,11 +27,12 @@ namespace botf {
 // schema 20 adds the threat actors (Borg, Species 8472, the vanilla monsters; Threats.h, docs/design/THREAT-ACTORS.md; optional
 // THREATS section, written only when a threat switch is on or an actor or assimilated system exists);
 // schema 21 adds the race structures (Structures.h, docs/design/DOMINION.md; optional STRUCTURES section, written only while a colony holds one);
-// schema 22 adds the campaign era (docs/design/ERAS.md): a timeline year per start era, era-gated ship classes and research levels
-// 11 to 14 (optional ERAS section, written only when the eras rule is on).
-// Schemas 4-21 still load and continue.
-inline constexpr const char* ContentVersion = "remaster-22";
-inline constexpr int SaveVersion = 22;
+// schema 23 adds the economy and rules mechanics (EconomyRules.h, docs/design/ECONOMY-MECHANICS.md; optional ECONOMY_RULES section, written
+// only when a rule flag is on): structure upgrades, shared morale, Protectorate HQ, intercept and raid orders, crew experience.
+// schema 22 (the era lane) adds the campaign era (docs/design/ERAS.md; optional ERAS section, written only when the eras rule is on).
+// Schemas 4-22 still load and continue.
+inline constexpr const char* ContentVersion = "remaster-23";
+inline constexpr int SaveVersion = 23;
 // Campaign empire ids are race slots: 1 Federation, 2 Klingon, 3 Romulan, 4 Cardassian, 5 Ferengi, 6 Dominion, 7 Borg,
 // 8 Breen. A campaign seats two to eight of them (any subset); per-empire arrays are indexed by id, so they hold nine entries.
 inline constexpr int MaxMajors = 8;
@@ -73,7 +74,9 @@ enum class CommandType : int {
     // Appended for schema 14 (treaty integration, DIPLOMACY.md 4.1):
     RefuseCallToArms,
     // Appended for schema 15 (EMPIRE-RULES.md). Both use systemId and eventOption.
-    SetEmergencyProgram, ResolveAftermath
+    SetEmergencyProgram, ResolveAftermath,
+    // Appended for schema 23 (ECONOMY-MECHANICS.md): fleetId plus eventOption (0 clear, 1 intercept, 2 raid); raid names the target colony in systemId.
+    SetFleetOrder
 };
 enum class CampaignOutcome : int { Ongoing, Victory, Defeat };
 // MaxTechLevel is the classic research cap (every game without the eras rule); HighestTechLevel is the hard ceiling the data
@@ -160,6 +163,10 @@ struct Colony {
     std::vector<int> structures;
     int program = 0;
     int programTurns = 0;
+    // Schema 23 (EconomyRules.h): tier steps applied to farms, factories and laboratories, and whether the world was taken under the
+    // Subjugate choice while the Protectorate rule is on. Saved in the optional ECONOMY_RULES section.
+    std::array<int, 3> upgradeSteps{};
+    bool subjugated = false;
     // Colony automation:
     GovernorPriority workforcePriority = GovernorPriority::Manual;
     GovernorPriority queuePriority = GovernorPriority::Manual;
@@ -229,6 +236,12 @@ struct Fleet {
     // Schema 13: a troop transport assembling an outpost in its current sector.
     bool buildingOutpost = false;
     int outpostProgress = 0; // Turns of assembly completed.
+    // Schema 23 (EconomyRules.h): standing order (0 none, 1 intercept, 2 raid), the sector an intercepting fleet guards, the colony a
+    // raider works on, and the crew's experience points (25 = a fresh Regular crew). Saved in the optional ECONOMY_RULES section.
+    int order = 0;
+    int postX = 0, postY = 0;
+    int raidSystemId = 0;
+    int experience = 25;
 };
 
 struct TaskForce {
@@ -428,6 +441,19 @@ struct GameplayRules {
     // Schema 22: campaign era (ERAS.md): a timeline year, era-gated roster classes, the pack's start tech levels and research
     // cap (10..14). Needs expandedRoster and a pack with an eras block. Saved as the optional ERAS section.
     bool eras = false;
+    // Schema 23 (EconomyRules.h, docs/design/ECONOMY-MECHANICS.md). The first three are the original game's rules and start on in both
+    // bases (rulesForPreset); older saves load with them off. Each is saved as one bit of the optional ECONOMY_RULES section.
+    bool structureUpgrades = false;  // Farms, factories and laboratories can be upgraded in tiers as the matching technology advances.
+    bool autoUpgrades = false;       // Colonies with an empty queue queue the cheaper automatic upgrade themselves.
+    bool noUpgrades = false;         // Variant: structures never upgrade (blocks both of the above).
+    bool sharedMorale = false;       // A shared morale structure lifts every colony of its empire.
+    bool protectorateHq = false;     // Subjugated worlds are restless until a Protectorate HQ stands among them.
+    bool allDilithium = false;       // Every minor race's homeworld has dilithium.
+    bool interceptOrders = false;    // Warships can hold an intercept post.
+    bool raidOrders = false;         // Warships can raid an enemy colony's treasury and trade.
+    bool raidBonus = false;          // Orion and Maquis hulls and members raid better.
+    bool crewExperience = false;     // Fleets carry crew experience, academies and battle feed it, it shows in combat.
+    bool exploitFixes = false;       // Terraforming cannot be stacked or finish in one turn; upgrades do not refund.
     bool operator==(const GameplayRules&) const = default;
 };
 

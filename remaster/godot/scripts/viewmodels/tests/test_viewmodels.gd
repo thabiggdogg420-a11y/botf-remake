@@ -302,6 +302,13 @@ func _session_models(backend: String) -> void:
 		check(fl.status(units[0]["lead"]) != "", "unit status line")
 		fl.dest = 0
 		check(fl.send_plan(units[0]["lead"])["block"] == "Choose a destination", "send-to needs a destination")
+	# MOD-6: standing orders and crew experience on the fleet rows (the fixture campaign is the Remastered preset: vanilla economy flags)
+	for u in units:
+		var lead: Dictionary = u["lead"]
+		check(lead.has("experience") and lead.has("crewRating") and lead.has("order"), "fleet rows carry order and crew experience")
+		check(fl.standing_text(lead) == "None", "no standing order at the start")
+		check(fl.can_order(lead) == (fl.rules().get("interceptOrders", false) and int(lead.get("attack", 0)) > 0 and not lead.get("colonyShip", false) and lead.get("shipClass", "") != "Transport" and int(lead.get("taskForceId", 0)) == 0), "can_order follows the rules and the ship")
+		break
 	# system
 	var sy := SystemVM.new(s)
 	var sid := sy.system_id()

@@ -8,6 +8,7 @@
 #include "Presets.h"
 #include "ShipRoster.h"
 #include "Simulation.h"
+#include "EconomyRules.h"
 #include "Structures.h"
 
 #include <algorithm>
@@ -353,11 +354,12 @@ int main() {
         // A save made on the Dominion stack needs it.
         presets::activate(*presets::find("remastered"));
         const auto reloaded = deserialize(text);
-        check(content::active().id == "botf-base+dominion+dominion-war" && serialize(reloaded) == text, "the loader rebuilds the stack the save names");
+        check(content::active().id == "botf-base+dominion+dominion-war+economy" && serialize(reloaded) == text, "the loader rebuilds the stack the save names");
         // Default game: no section, a schema-18 or schema-20 header over the same text loads and re-saves as 21.
         presets::activate(*presets::find("remastered"));
         CampaignSetup plain; plain.seed = 1999;
         auto d = newCampaign(plain);
+        economy_rules::setFlagBits(d.rules, 0); // legacy-header scenarios pin the pre-schema-23 text: no ECONOMY_RULES section
         for (int i = 0; i < 5; ++i) advance(d);
         const auto dt = serialize(d);
         check(!contains(dt, "STRUCTURES") && !contains(dt, "EMPIRE_SLOTS") && !contains(dt, "PACKS"), "the default five-empire game has no new section");

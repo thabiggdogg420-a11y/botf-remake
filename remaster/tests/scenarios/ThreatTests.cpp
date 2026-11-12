@@ -3,6 +3,7 @@
 // a player battle through a turn session, and 100-turn AI soaks with every actor on.
 #include "CampaignSession.h"
 #include "Simulation.h"
+#include "EconomyRules.h"
 #include "Threats.h"
 
 #include <algorithm>
@@ -133,7 +134,7 @@ int main() {
         for (int t = 0; t < 12; ++t) advance(s);
         check(!contains(serialize(s), "THREATS") && s.threatActors.empty(), "twelve turns later still no threat state");
         for (const auto k : AllKinds) check(!threats::kindEnabled(s, static_cast<int>(k)), "no kind enabled");
-        check(ContentVersion == "remaster-" + std::to_string(SaveVersion) && SaveVersion >= 20, "schema 20 or later (22 adds eras)");
+        check(ContentVersion == std::string("remaster-23") && SaveVersion == 23, "schema 23 (MOD-6 over the schema-20 THREATS and schema-21 STRUCTURES sections)");
     }, passed);
 
     run("switches: monsters, Borg-only off, sphere/8472/Edo replacements, mask, frequency, Borg seated", [] {
@@ -481,6 +482,7 @@ int main() {
         }
         CampaignSetup setup; setup.seed = 21; setup.empires = 4;
         auto d = newCampaign(setup);
+        economy_rules::setFlagBits(d.rules, 0); // legacy-header scenarios pin the pre-schema-23 text: no ECONOMY_RULES section
         for (int i = 0; i < 3; ++i) advance(d);
         const auto remastered = serialize(d);
         for (int old : {16, 17, 18, 20, 21}) {
@@ -488,6 +490,7 @@ int main() {
             check(serialize(m) == remastered && fingerprint(m) == fingerprint(d), "a schema-" + std::to_string(old) + " header over a four-empire Remastered text migrates");
         }
         auto t = game(22, everything());
+        economy_rules::setFlagBits(t.rules, 0); // legacy-header scenarios pin the pre-schema-23 text
         for (int i = 0; i < 3; ++i) advance(t);
         const auto threatText = serialize(t);
         check(contains(threatText, "THREATS 1"), "a threats-on game saves the section");

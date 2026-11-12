@@ -62,6 +62,7 @@ inline bool enabled(const GameState& s) { return s.rules.empireRules; }
 // A system has a dilithium deposit (refinery site) by a seeded hash; a colony that already has a refinery always does.
 inline bool hasDeposit(const GameState& s, int systemId) {
     for (const auto& c : s.colonies) if (c.systemId == systemId && c.refineries > 0) return true;
+    if (s.rules.allDilithium && minorAt(s, systemId)) return true; // Schema 23 (UDM): every minor homeworld has dilithium
     return static_cast<int>(detail::mix(s.seed ^ 0x646c697468697561ULL ^ static_cast<std::uint64_t>(systemId)) % 100) < RefineryDepositPercent;
 }
 
@@ -331,6 +332,7 @@ inline void applyAftermath(GameState& s, const AftermathChoice& a, Aftermath o, 
         if (events && (a.conqueror == s.playerEmpire || a.formerOwner == s.playerEmpire))
             events->push_back(name + " was cleansed by " + who + " and resettled.");
     }
+    else if (s.rules.protectorateHq) colony->subjugated = true; // Schema 23: a Subjugated world is the Protectorate's to hold
     std::erase_if(s.aftermaths, [&](const AftermathChoice& p) { return p.systemId == a.systemId; });
 }
 
@@ -378,6 +380,7 @@ inline void lapseAftermaths(GameState& s, std::vector<std::string>& events) {
         const auto* colony = colonyAt(s, a.systemId);
         if (!colony || colony->ownerId != a.conqueror) return true;
         if (s.turn >= a.turn + AftermathLapseTurns) {
+            if (s.rules.protectorateHq) if (auto* sub = detail::colonyOf(s, a.systemId)) sub->subjugated = true; // Schema 23
             events.push_back("No decision was made about " + std::string([&] { for (const auto& sys : s.systems) if (sys.id == a.systemId) return sys.name; return std::string("the conquered world"); }()) + ": it stays subjugated.");
             return true;
         }

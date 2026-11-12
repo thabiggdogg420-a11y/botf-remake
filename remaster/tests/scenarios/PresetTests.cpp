@@ -1,6 +1,7 @@
 // Packs and presets (lane MOD-1, docs/design/PACKS-AND-PRESETS.md): overlay merge rules, stack checksums, the preset
 // registry and lineup validation, preset new games, the schema-17 PACKS section and determinism.
 #include "Content.h"
+#include "EconomyRules.h"
 #include "Presets.h"
 #include "ReferenceCatalogue.h"
 #include "ShipRoster.h"
@@ -51,7 +52,9 @@ GameState game(const std::string& presetId, std::uint64_t seed = 31, int empires
     setup.seed = seed; setup.empires = empires; setup.width = 16; setup.height = 12; setup.systems = 28;
     setup.presetId = presetId;
     setup.threats = ThreatSetup{};   // Pack and save-format scenarios: the presets' threat defaults are tested in ThreatTests.cpp.
-    return newCampaign(setup);
+    auto state = newCampaign(setup);
+    economy_rules::setFlagBits(state.rules, 0); // The economy flags (schema 23) are tested in EconomyRulesTests.cpp; these scenarios pin the older formats.
+    return state;
 }
 bool contains(const std::string& text, const std::string& part) { return text.find(part) != std::string::npos; }
 std::string replaceFirst(std::string text, const std::string& from, const std::string& to) {
@@ -183,9 +186,11 @@ int main() {
         CampaignSetup old;
         old.seed = 31; old.empires = 3; old.width = 16; old.height = 12; old.systems = 28;
         old.preset = RulesetPreset::Remastered;
-        const auto legacyRemastered = newCampaign(old);
+        auto legacyRemastered = newCampaign(old);
+        economy_rules::setFlagBits(legacyRemastered.rules, 0); // game() pins the pre-schema-23 formats with the economy flags cleared
         old.preset = RulesetPreset::Classic;
-        const auto legacyClassic = newCampaign(old);
+        auto legacyClassic = newCampaign(old);
+        economy_rules::setFlagBits(legacyClassic.rules, 0);
         check(fingerprint(game("remastered")) == fingerprint(legacyRemastered), "preset remastered == the pre-preset Remastered game");
         check(fingerprint(game("classic")) == fingerprint(legacyClassic), "preset classic == the pre-preset Classic game");
         check(game("remastered").presetId.empty() && serialize(game("remastered")).find("\nPACKS ") == std::string::npos, "built-ins write no PACKS section");

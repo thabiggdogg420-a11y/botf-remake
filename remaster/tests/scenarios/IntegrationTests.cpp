@@ -640,6 +640,7 @@ void combatRecordScenarios(int& passed) {
         auto s = botf::newCampaign(setup);
         // The schema-13 forgeries below need a campaign without schema-15 content: switch the empire rules off.
         s.rules.empireRules = false;
+        s.rules.interceptOrders = s.rules.raidOrders = s.rules.crewExperience = false; // pre-schema-23 text for the forgeries
         s.minorGuards.clear();
         for (auto& c : s.colonies) { c.energy -= 5 * c.refineries; c.refineries = 0; }
         bool withOrders = false;

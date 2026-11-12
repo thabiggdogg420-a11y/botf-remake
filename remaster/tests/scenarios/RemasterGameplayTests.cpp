@@ -466,6 +466,7 @@ void stationScenarios(int& passed) {
         // Schema 15 empire rules speed the idle player's fall (AI conquest, dilithium); this stations fixture stays on the
         // pre-schema-15 rules so a rival starbase can appear. The empire rules have their own suite (EmpireRulesTests).
         s.rules.empireRules = false;
+        s.rules.interceptOrders = s.rules.raidOrders = s.rules.crewExperience = false; // pre-schema-23 rules: AI raids would end this long run early
         s.minorGuards.clear();
         for (auto& c : s.colonies) { c.energy -= 5 * c.refineries; c.refineries = 0; c.program = 0; c.programTurns = 0; }
         std::erase_if(s.diplomacyEngineState.minorStates, [&](const auto& ms) { return !botf::minorAt(s, ms.minorId); });
