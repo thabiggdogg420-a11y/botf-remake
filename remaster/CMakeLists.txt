@@ -77,6 +77,7 @@ set_tests_properties(BotfSoakTests PROPERTIES TIMEOUT 1800)
 botf_suite(BotfCampaignDiplomacyTests CampaignDiplomacyTests.cpp)
 botf_suite(BotfContentTests ContentTests.cpp) # Lane G: original text + minor-race roster
 botf_suite(BotfPresetTests PresetTests.cpp) # M3-PRESETS (MOD-1): overlay packs, presets, lineup validation, schema-17 PACKS section
+botf_suite(BotfModToolsTests ModToolsTests.cpp) # M3-MODTOOLS (MOD-10): user packs, packPart, validatePack, installUserPack, tamper and missing-pack refusals
 botf_suite(BotfThreatTests ThreatTests.cpp) # M3-THREATS (MOD-5): threat actors, assimilation, schema-20 THREATS section
 botf_suite(BotfGalaxyGenTests GalaxyGenTests.cpp) # M2-GEN: galaxy shapes, minor-race density, difficulty, GALAXY_SETUP save section
 botf_suite(BotfBalanceTests BalanceTests.cpp) # M3-BALANCE (MOD-7): balance overlays, traits, AI policy, galaxy options, schema-24 STAR_TYPES

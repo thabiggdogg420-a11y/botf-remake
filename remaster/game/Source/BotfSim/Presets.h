@@ -11,7 +11,9 @@
 #include <algorithm>
 #include <array>
 #include <map>
+#include <cstdio>
 #include <optional>
+#include <set>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -225,6 +227,7 @@ struct Registry {
     std::map<std::string, std::string> overlays;  // id -> exact bytes (map nodes are stable, so views stay valid)
     std::vector<Preset> presets;
     std::size_t embeddedOverlays = 0, embeddedPresets = 0;
+    std::set<std::string> embeddedOverlayIds;      // The shipped overlays: a user pack never replaces one.
 };
 inline void addOverlay(Registry& r, std::string bytes) {
     const auto ov = content::detail::parseOverlay(bytes);
@@ -249,6 +252,7 @@ inline Registry& registry() {
         for (const auto& text : embeddedPresetFiles()) addPreset(fresh, text);
         fresh.embeddedOverlays = fresh.overlays.size();
         fresh.embeddedPresets = fresh.presets.size();
+        for (const auto& kv : fresh.overlays) fresh.embeddedOverlayIds.insert(kv.first);
         return fresh;
     }();
     return r;
@@ -283,6 +287,150 @@ inline const std::string* overlayBytes(const std::string& id) {
     const auto& o = detail::registry().overlays;
     const auto at = o.find(id);
     return at == o.end() ? nullptr : &at->second;
+}
+
+// ---- User packs (lane MOD-10, docs/design/MOD-TOOLS.md) -------------------------------------------------------------
+// A user pack is one overlay plus one preset the host read from the player's data folder. Unlike registerOverlay (which refuses
+// a same-id overlay with other bytes), a user pack may be replaced by its author: the editor saves, the registry takes the new
+// bytes, and a save made on the old bytes is refused by its checksum (ensureStack). A shipped overlay or preset is never
+// replaced. Nothing here touches the rules or the campaign RNG.
+namespace detail {
+inline void writeNumber(const content::json::Value& v, std::string& out) {
+    std::string digits = std::to_string(v.mantissa);
+    if (v.scale > 0) {
+        while (digits.size() <= static_cast<std::size_t>(v.scale)) digits.insert(digits.begin(), '0');
+        digits.insert(digits.size() - static_cast<std::size_t>(v.scale), 1, '.');
+    }
+    if (v.negative) out += '-';
+    out += digits;
+}
+inline void writeString(const std::string& text, std::string& out) {
+    out += '"';
+    for (unsigned char c : text) {
+        if (c == '"') out += "\\\"";
+        else if (c == '\\') out += "\\\\";
+        else if (c == '\n') out += "\\n";
+        else if (c == '\r') out += "\\r";
+        else if (c == '\t') out += "\\t";
+        else if (c < 0x20) { char buf[8]; std::snprintf(buf, sizeof buf, "\\u%04x", c); out += buf; }
+        else out += static_cast<char>(c);
+    }
+    out += '"';
+}
+inline void writeValue(const content::json::Value& v, std::string& out) {
+    using K = content::json::Value::Kind;
+    switch (v.kind) {
+        case K::Null: out += "null"; break;
+        case K::Bool: out += v.boolean ? "true" : "false"; break;
+        case K::Number: writeNumber(v, out); break;
+        case K::String: writeString(v.text, out); break;
+        case K::Array:
+            out += '[';
+            for (std::size_t i = 0; i < v.items.size(); ++i) { if (i) out += ','; writeValue(v.items[i], out); }
+            out += ']';
+            break;
+        case K::Object:
+            out += '{';
+            for (std::size_t i = 0; i < v.members.size(); ++i) {
+                if (i) out += ',';
+                writeString(v.members[i].first, out);
+                out += ':';
+                writeValue(v.members[i].second, out);
+            }
+            out += '}';
+            break;
+    }
+}
+} // namespace detail
+
+// The merged JSON of one top-level pack key ("roster", "buildings", "balance", "eras" ...) under the base pack plus the
+// registered overlays `under`, in order: what a pack editor shows as the current value. "null" when there is no such key.
+inline std::string packPart(const std::vector<std::string>& under, const std::string& key) {
+    auto doc = content::json::Parser(content::embeddedBaseBundle()).document();
+    for (const auto& id : under) {
+        const std::string* bytes = overlayBytes(id);
+        if (!bytes) content::detail::bad("under", "overlay " + id + " is not registered");
+        content::detail::mergeOverlay(doc, content::detail::parseOverlay(*bytes));
+    }
+    for (const auto& m : doc.members) {
+        if (m.first != key) continue;
+        std::string out;
+        detail::writeValue(m.second, out);
+        return out;
+    }
+    return "null";
+}
+
+struct UserPackCheck { std::string id, stackId, checksum; };
+// Everything a user pack must satisfy to register: the overlay parses and merges over the base and the preset's other overlays
+// exactly as at game start (so the typed parse reports a bad record), the preset parses (flags, lineup, options), names the
+// overlay last in its stack, and an eras flag has an eras block under it. Throws the core's own message; registers nothing.
+inline UserPackCheck validateUserPack(std::string_view ovBytes, std::string_view presetBytes) {
+    using content::detail::bad;
+    const auto& r = detail::registry();
+    const auto ov = content::detail::parseOverlay(ovBytes);
+    if (r.embeddedOverlayIds.count(ov.id)) bad("overlay id", "\"" + ov.id + "\" is a shipped pack and cannot be replaced; save the pack under another id");
+    const Preset p = parsePreset(presetBytes);
+    for (std::size_t i = 0; i < r.embeddedPresets && i < r.presets.size(); ++i)
+        if (r.presets[i].id == p.id) bad("preset " + p.id, "is a shipped preset and cannot be replaced; save the pack under another id");
+    if (p.overlays.empty() || p.overlays.back() != ov.id) bad("preset " + p.id, "must list the pack's overlay \"" + ov.id + "\" last in its overlays");
+    std::vector<std::string_view> stack;
+    for (const auto& id : p.overlays) {
+        if (id == ov.id) { stack.push_back(ovBytes); continue; }
+        const std::string* b = overlayBytes(id);
+        if (!b) bad("preset " + p.id, "overlay " + id + " is not registered");
+        stack.push_back(*b);
+    }
+    const auto pack = content::detail::buildStack(content::embeddedBaseBundle(), content::baseChecksum(), stack);
+    bool erasOn = false;
+    for (const auto& f : p.flags) if (f.first == "eras") erasOn = f.second;
+    if (erasOn && !pack->eras.present) bad("preset " + p.id, "the eras flag needs an overlay with an eras block in the stack");
+    return {ov.id, pack->info.id, content::checksumHex(pack->info.checksum)};
+}
+
+// Validates, then registers (or replaces) the user pack's overlay and preset. Atomic: a refusal changes nothing.
+inline std::string installUserPack(std::string_view ovBytes, std::string_view presetBytes) {
+    const auto check = validateUserPack(ovBytes, presetBytes);
+    auto& r = detail::registry();
+    Preset p = parsePreset(presetBytes);
+    r.overlays[check.id] = std::string(ovBytes);
+    for (auto& have : r.presets) if (have.id == p.id) { have = std::move(p); return have.id; }
+    r.presets.push_back(std::move(p));
+    return r.presets.back().id;
+}
+
+// Removes a user pack: its preset and its overlay (never a shipped one). False when nothing user-made had that id.
+inline bool removeUserPack(const std::string& id) {
+    auto& r = detail::registry();
+    bool removed = false;
+    for (std::size_t i = r.embeddedPresets; i < r.presets.size(); ++i)
+        if (r.presets[i].id == id) { r.presets.erase(r.presets.begin() + static_cast<std::ptrdiff_t>(i)); removed = true; break; }
+    if (!r.embeddedOverlayIds.count(id) && r.overlays.count(id)) {
+        for (const auto& p : r.presets) for (const auto& o : p.overlays) if (o == id) return removed;  // another preset still lists it
+        r.overlays.erase(id);
+        removed = true;
+    }
+    return removed;
+}
+
+inline bool isUserPreset(const std::string& id) {
+    const auto& r = detail::registry();
+    for (std::size_t i = r.embeddedPresets; i < r.presets.size(); ++i) if (r.presets[i].id == id) return true;
+    return false;
+}
+
+struct UserPackEntry { std::string id; std::uint64_t checksum = 0; bool hasPreset = false; };
+// The overlays a host registered beyond the shipped ones, with the checksum of their exact bytes.
+inline std::vector<UserPackEntry> userPacks() {
+    const auto& r = detail::registry();
+    std::vector<UserPackEntry> out;
+    for (const auto& kv : r.overlays) {
+        if (r.embeddedOverlayIds.count(kv.first)) continue;
+        UserPackEntry e{kv.first, content::fnv1a64(kv.second), false};
+        for (std::size_t i = r.embeddedPresets; i < r.presets.size(); ++i) e.hasPreset = e.hasPreset || r.presets[i].id == kv.first;
+        out.push_back(e);
+    }
+    return out;
 }
 
 // Schema 22: what a preset's overlay stack says about eras (docs/design/ERAS.md), for the new-game screen. Builds the stack

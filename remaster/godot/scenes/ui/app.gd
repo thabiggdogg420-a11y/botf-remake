@@ -770,7 +770,7 @@ func _unhandled_key_input(event: InputEvent) -> void:
 			open_menu()
 		elif screen == "combat" and encounter is Dictionary and not encounter.get("finished", false):
 			return
-		elif screen in ["new", "saves"] and view.is_empty():
+		elif (screen in ["new", "saves"] and view.is_empty()) or screen == "packs":
 			goto("title", false)
 		else:
 			back()

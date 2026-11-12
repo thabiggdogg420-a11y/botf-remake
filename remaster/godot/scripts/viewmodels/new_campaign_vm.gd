@@ -267,6 +267,8 @@ func preset_text(id: String) -> String:
 	if d.is_empty():
 		return ""
 	var lines := [str(d["blurb"]), "Powers: " + " · ".join(d.get("lineup", []))]
+	if bool(d.get("user", false)):
+		lines.append("Your own pack, made in the pack editor. Saves made with it will only load while its files are unchanged.")
 	if not bool(d.get("lineupPlayable", true)):
 		lines.append("Not seated yet: " + str(d.get("lineupNote", "")) + " This game plays the stock powers.")
 	var needs: Array = d.get("needs", [])
