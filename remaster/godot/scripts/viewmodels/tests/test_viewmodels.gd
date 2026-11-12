@@ -124,7 +124,7 @@ func _preset_picker_model(nc: NewCampaignVM, label: String) -> void:
 	check(nc.options()["preset"] == "ultimate" and nc.options()["difficulty"] == "hard" and int(nc.options()["systems"]) == 80, "%s: Ultimate's options reach the core call" % label)
 	check(nc.pick_preset("galaxies") and nc.size_id == "huge" and int(nc.options()["systems"]) == 120 and nc.options()["preset"] == "galaxies", "%s: Galaxies is a huge galaxy" % label)
 	var gx := nc.preset_text("galaxies")
-	check(gx.contains("Borg") and gx.contains("Not seated yet") and gx.contains("MOD-2") and gx.contains("stock powers"), "%s: a lineup the core cannot seat says so, and what it waits for" % label)
+	check(gx.contains("Borg") and not gx.contains("Not seated yet") and not gx.contains("Content still to come"), "%s: Galaxies seats its lineup and waits for nothing" % label)
 	check(nc.preset_text("dominion-war").contains("Dominion") and nc.preset_text("ultimate").contains("Content still to come: MOD-7"), "%s: preset text names its lineup and pending lanes" % label)
 	check(not nc.preset_text("ages").contains("Not seated") and not nc.preset_text("ages").contains("MOD-4"), "%s: Ages seats the stock powers and waits for nothing" % label)
 	# Era picker (docs/design/ERAS.md): a preset with the eras rule shows the timeline year and its own start level; others keep names.
@@ -135,6 +135,9 @@ func _preset_picker_model(nc: NewCampaignVM, label: String) -> void:
 	check(nc.era_name() == "2280 start" and nc.summary()[1].contains("2280 start"), "%s: the summary names the start year" % label)
 	check(nc.pick_preset("galaxies") and int(nc.eras()[4]["level"]) == 14 and int(nc.eras()[3]["level"]) == 10 and int(nc.eras()[1]["level"]) == 4, "%s: Galaxies eras start at tech 1/4/7/10/14" % label)
 	check(nc.pick_preset("remastered") and nc.preset_eras().is_empty() and int(nc.eras()[0]["year"]) == 0 and str(nc.eras()[0]["label"]).begins_with("Early T") and int(nc.eras()[4]["level"]) == 10, "%s: Remastered keeps the era names and classic levels" % label)
+	# MOD-3: a pack's race structure carries its effect into the build list text.
+	var rung := {"name": "Vorta Administrative Center", "isShip": false, "cost": 800, "upkeep": 2, "effect": "+6 morale here", "description": "Vorta governors."}
+	check(SystemVM.choice_meta(rung).begins_with("+6 morale here") and SystemVM.choice_tip(rung).contains("Vorta governors."), "%s: a race structure shows its effect and description" % label)
 	check(nc.summary()[1].contains("Galaxies preset"), "%s: the summary names the preset" % label)
 	check(nc.pick_preset("balance-of-power") and nc.rules_base() == "classic" and nc.size_id == "large", "%s: Balance of Power sits on the classic rules" % label)
 	# Threat switches (docs/design/THREAT-ACTORS.md): the preset fills them, the panel edits them, the core call carries them.

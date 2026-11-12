@@ -2,6 +2,7 @@
 #include "GameplayInternal.h"
 #include "MinorRaces.h"
 #include "EmpireRules.h"
+#include "Structures.h"
 #include "ReferenceCatalogue.h"
 #include "ReferencePlanets.h"
 #include "ShipRoster.h"
@@ -70,13 +71,14 @@ bool playableShip(const referenceData::ShipRecord& ship) {
         (ship.role >= 1 && ship.role <= 4));
 }
 int constructionCost(const Construction& project) {
+    if (project.product == Building::Structure) return structures::cost(project.referenceId); // Schema 21: the pack record's cost.
     if (project.referenceId < 0) return definition(project.product).industryCost;
     const int percent = content::balance().shipCostPercent; // Pack balance; 100 is the identity.
     const int cost = sourceShip(project.referenceId).industryCost;
     return percent == 100 ? cost : std::max(1, static_cast<int>(static_cast<std::int64_t>(cost) * percent / 100));
 }
 std::string constructionTechBlocker(const GameState& state, const Construction& project, int owner);
-constexpr std::array<BuildingDefinition, 13> Definitions{{
+constexpr std::array<BuildingDefinition, 14> Definitions{{
     {Building::Farm, "Farm", 60, 0, 1},
     {Building::Factory, "Factory", 100, 5, 1},
     {Building::Laboratory, "Laboratory", 80, 5, 1},
@@ -89,7 +91,8 @@ constexpr std::array<BuildingDefinition, 13> Definitions{{
     {Building::Destroyer, "Destroyer", 160, 0, 0},
     {Building::Transport, "Transport", 120, 0, 0},
     {Building::DefenseBattery, "Defense battery", 140, 5, 2},
-    {Building::DilithiumRefinery, "Dilithium refinery", 120, 5, 2}
+    {Building::DilithiumRefinery, "Dilithium refinery", 120, 5, 2},
+    {Building::Structure, "Structure", 0, 0, 0} // Cost, name and upkeep come from the pack record (Structures.h).
 }};
 void require(bool condition, const char* message) {
     if (!condition) throw std::runtime_error(message);
@@ -259,8 +262,9 @@ void validateColony(const Colony& c) {
     int yards = c.shipyards, batteries = c.defenseBatteries, refineries = c.refineries;
     for (auto b : c.queue) {
         require(buildingValid(b), "Unknown queued building");
+        require((b.product == Building::Structure) == structures::isRef(b.referenceId), "Structure project needs a structure reference");
         require(b.referenceId >= -1 && b.work >= 0 && b.work <= constructionCost(b), "Project work out of bounds");
-        if (b.referenceId >= 0)
+        if (b.referenceId >= 0 && b.product != Building::Structure)
             require(playableShip(sourceShip(b.referenceId)) && roleProduct(sourceShip(b.referenceId).role) == b.product,
                 "Invalid reference construction role");
         if (b == Building::Shipyard) require(++yards <= 1, "Shipyard already built or queued");
@@ -308,7 +312,7 @@ void checkCommand(const Command& c) {
     require(static_cast<int>(c.stance) >= 0 && static_cast<int>(c.stance) <= 3 &&
         (c.type == CommandType::SetTacticalStance || c.type == CommandType::SetTaskForceOrder || c.stance == TacticalStance::Balanced),
         "Invalid tactical stance field");
-    require((c.referenceId == -1 || roster::validShipId(c.referenceId)) &&
+    require((c.referenceId == -1 || roster::validShipId(c.referenceId) || (c.building == Building::Structure && structures::isRef(c.referenceId))) &&
         (c.type == CommandType::EnqueueBuilding || c.referenceId == -1), "Invalid reference project field");
     require(c.type == CommandType::AssignWorkers || c.type == CommandType::EnqueueBuilding ||
         c.type == CommandType::MoveFleet || c.type == CommandType::Colonize || c.type == CommandType::ToggleShipyard ||
@@ -1290,7 +1294,12 @@ void applyDraft(GameState& state) {
         } else {
             require(it->queue.size() < MaxQueue, "Construction queue full");
             const Construction project(command.building, 0, command.referenceId);
-            require(command.referenceId < 0 || (state.ruleset == Ruleset::Reference &&
+            require((command.building == Building::Structure) == structures::isRef(command.referenceId), "Choose a campaign structure");
+            if (command.building == Building::Structure) {
+                const auto problem = structures::blocker(state, *it, structures::recordIdOf(command.referenceId));
+                if (!problem.empty()) throw std::runtime_error(problem);
+            }
+            require(command.referenceId < 0 || command.building == Building::Structure || (state.ruleset == Ruleset::Reference &&
                 playableShip(sourceShip(command.referenceId)) &&
                 shipUsable(sourceShip(command.referenceId), state.playerEmpire) &&
                 roleProduct(sourceShip(command.referenceId).role) == command.building),
@@ -1430,6 +1439,7 @@ void planRivals(GameState& s) {
                 c.queue.push_back(Building::Factory);
             else if (c.shipyards == 0) c.queue.push_back(Building::Shipyard);
             else if (empire_rules::aiWantsRefinery(s, owner.id, c)) c.queue.push_back(Building::DilithiumRefinery);
+            else if (const int rung = structures::aiNext(s, c, economy(s, c).industry); rung >= 0) c.queue.emplace_back(Building::Structure, 0, structures::refFor(rung));
             else if (atWar && s.advancedRulesEnabled && c.defenseBatteries < 1) c.queue.push_back(Building::DefenseBattery);
             else if (empire_rules::aiMinorCampaign(s, owner.id, atWar) && destroyers < 2 && queueMilitaryShip(s, c, Building::Destroyer)) ++destroyers;
             else if (empire_rules::aiMinorCampaign(s, owner.id, atWar) && transports < 2 && queueMilitaryShip(s, c, Building::Transport)) ++transports;
@@ -2593,6 +2603,9 @@ void resolveModernIntelligence(GameState& next, TurnReport& report) {
         tctx.currentTurn = next.turn;
         tctx.totalEmpireBaseIntelOutput = std::clamp<std::int64_t>(botf::empireIntelOutput(next, empId), 0, 100000000);
         tctx.buildingBonusPercent = 0;
+        const auto structureIntel = structures::empireIntel(next, empId); // Schema 21: Vorta directorate and Shapeshifter Network.
+        tctx.securityBonusPercent = structureIntel.securityPct;
+        tctx.sabotageBonusPercent = structureIntel.sabotagePct;
         const auto& empState = empire(next, empId);
         tctx.attackerComputerTechLevel = empState.technologies[static_cast<int>(ResearchField::Computers)].level;
 
@@ -2656,7 +2669,7 @@ void resolveModernIntelligence(GameState& next, TurnReport& report) {
                     }
                     for (auto& c : next.colonies) {
                         if (c.ownerId == op.defenderEmpireId && !c.queue.empty()) {
-                            c.queue.front().work = std::max(0, c.queue.front().work - 25 * std::max(1, op.sabotageSeverity));
+                            c.queue.front().work = std::max(0, c.queue.front().work - 25 * (std::max(1, op.sabotageSeverity) + structures::empireIntel(next, op.attackerEmpireId).sabotageDamage));
                             break;
                         }
                     }
@@ -3038,12 +3051,14 @@ void resolveInvasions(GameState& s, TurnReport& report) {
 }
 
 std::string constructionTechBlocker(const GameState& state, const Construction& project, int owner) {
+    if (project.product == Building::Structure) return structures::empireBlockerForProject(state, owner, structures::recordIdOf(project.referenceId));
     if (project.referenceId < 0) return technologyBlocker(state, project.product, owner);
     if (roster::isExpandedId(project.referenceId) && !state.rules.expandedRoster)
         return "Expanded ship roster is off in this ruleset";
     const auto& ship = sourceShip(project.referenceId);
     if (!playableShip(ship) || !shipUsable(ship, owner)) return "Ship class is unavailable to this empire";
     if (state.rules.eras) { const auto era = eraBlocker(state, ship.id); if (!era.empty()) return era; }   // Schema 22
+    if (const auto gate = structures::shipGate(state, owner, ship.id); !gate.empty()) return gate; // Schema 21: Ketracel-White.
     for (int field = 0; field < ResearchFields; ++field) {
         if (empire(state, owner).technologies[field].level < ship.technologyRequirements[field])
             return std::string("Requires ") + researchName(field) + " level " +
@@ -3264,6 +3279,7 @@ std::string payload(const GameState& s) {
         out << "GALAXY_SETUP " << static_cast<int>(s.galaxy.shape) << ' ' << static_cast<int>(s.galaxy.density) << ' '
             << static_cast<int>(s.galaxy.difficulty) << '\n';
     empire_rules::writeSection(out, s); // Schema 16: optional EMPIRE_RULES section.
+    structures::writeSection(out, s);   // Schema 21: optional STRUCTURES section.
     threats::writeSection(out, s);      // Schema 20: optional THREATS section.
     if (s.rules.eras) out << "ERAS 1\n";   // Schema 22: the eras rule (ERAS.md); the pack's eras block carries the data.
     // Schema 14: per-ship orders of recorded battle rounds. Written only when some
@@ -3828,6 +3844,13 @@ std::vector<ConstructionChoice> constructionChoices(const GameState& state, int 
         const auto& def = definition(b);
         choices.push_back({b, -1, std::string(def.name) + (state.ruleset == Ruleset::Reference ? " (remake infrastructure)" : ""),
             def.industryCost, def.creditUpkeep, blocker});
+    }
+    // Schema 21: the race structures this empire may use (Structures.h); the blocker says why one cannot be queued.
+    for (const auto& rec : content::tables::buildings()) {
+        if (!rec.buildable || !structures::allowedFor(rec, colony->ownerId)) continue;
+        std::string blocker = structures::blocker(state, *colony, rec.id);
+        if (queueFull) blocker = "Construction queue is full";
+        choices.push_back({Building::Structure, structures::refFor(rec.id), rec.name, rec.industryCost, structures::upkeepOf(rec), blocker});
     }
     if (state.ruleset == Ruleset::Prototype) {
         for (Building b : {Building::Scout, Building::ColonyShip, Building::Destroyer, Building::Transport}) {
@@ -4752,10 +4775,10 @@ void validate(const GameState& s) {
     for (const auto& c : s.colonies) {
         require(c.systemId > previous && ids.count(c.systemId) == 1, "Invalid colony system ID");
         previous = c.systemId; validateColony(c); empire(s, c.ownerId);
-        for (const auto& project : c.queue) if (project.referenceId >= 0)
+        for (const auto& project : c.queue) if (project.referenceId >= 0 && project.product != Building::Structure)
             require(!roster::isExpandedId(project.referenceId) || s.rules.expandedRoster,
                 "Expanded roster ship queued while the roster is off");
-        for (const auto& project : c.queue) if (project.referenceId >= 0)
+        for (const auto& project : c.queue) if (project.referenceId >= 0 && project.product != Building::Structure)
             require(s.ruleset == Ruleset::Reference && shipUsable(sourceShip(project.referenceId), c.ownerId),
                 "Reference project owner mismatch");
     }
@@ -4919,6 +4942,7 @@ void validate(const GameState& s) {
     gameplay::validate(s); // Schema-13 gameplay layer.
     threats::validate(s);  // Schema 20: threat actors and assimilated systems.
     empire_rules::validate(s); // Schema-15 empire rules.
+    structures::validate(s);   // Schema-19 race structures.
     auto draft = s;
     applyDraft(draft);
 }
@@ -4984,17 +5008,19 @@ Economy economy(const GameState& s, const Colony& c) {
     powered.energy = std::min(100000, c.energy * (100 + 5 * owner.technologies[3].level) / 100);
     auto e = economy(powered);
     const auto minorBonus = minors::memberBonuses(s, c.ownerId); // Lane G: member-minor join bonuses
-    e.food = e.food * (100 + 5 * owner.technologies[0].level + minorBonus.foodPct) / 100;
+    const auto built = structures::colonyEffects(c); // Schema 21: race structures (all zero without them).
+    e.food = e.food * (100 + 5 * owner.technologies[0].level + minorBonus.foodPct + built.foodPct) / 100;
     e.foodDeficit = std::max(0, c.population - e.food);
-    e.industry = e.industry * (100 + 5 * owner.technologies[2].level + minorBonus.industryPct) / 100;
+    e.industry = e.industry * (100 + 5 * owner.technologies[2].level + minorBonus.industryPct + built.industryPct) / 100;
     if (c.morale < 50) e.industry = e.industry * 75 / 100;
     e.industry = e.industry * empire_rules::programIndustryPercent(c) / 100; // Schema 15 emergency programs
-    e.research = e.research * (100 + 5 * owner.technologies[1].level + minorBonus.researchPct) / 100;
+    e.research = e.research * (100 + 5 * owner.technologies[1].level + minorBonus.researchPct + built.researchPct) / 100;
     if (c.morale < 50) e.research = e.research * 75 / 100;
     e.research = e.research * empire_rules::programResearchPercent(c) / 100;
     e.upkeep += empire_rules::programUpkeep(c);
     if (s.ruleset == Ruleset::Reference) e.income += c.population * 2;
-    e.income = e.income * (100 + minorBonus.creditsPct) / 100;
+    e.income = e.income * (100 + minorBonus.creditsPct + built.creditsPct) / 100;
+    e.upkeep += built.upkeep;
     return e;
 }
 
@@ -5132,7 +5158,11 @@ TurnReport advanceWithCombat(GameState& state, const std::function<void(GameStat
                 else if (b == Building::ResearchInstitute) c.laboratories += 2;
                 else if (b == Building::DefenseBattery) ++c.defenseBatteries;
                 else if (b == Building::DilithiumRefinery) ++c.refineries;
-                else {
+                else if (b == Building::Structure) {
+                    const int recordId = structures::recordIdOf(project.referenceId);
+                    c.structures.insert(std::lower_bound(c.structures.begin(), c.structures.end(), recordId), recordId);
+                    if (c.ownerId == next.playerEmpire) report.events.push_back(std::string(structures::name(project.referenceId)) + " completed at " + std::to_string(c.systemId) + ".");
+                } else {
                     const auto location = std::find_if(next.systems.begin(), next.systems.end(),
                         [&](const System& system) { return system.id == c.systemId; });
                     Fleet launchedShip{next.nextFleetId++, c.ownerId, location->x, location->y,
@@ -5143,7 +5173,8 @@ TurnReport advanceWithCombat(GameState& state, const std::function<void(GameStat
                     launched.push_back(launchedShip);
                     if (c.ownerId == next.playerEmpire) report.events.push_back(fleetName(launchedShip) + " launched at " + location->name + ".");
                 }
-                cr.completed = project.referenceId >= 0 ? sourceShip(project.referenceId).name : definition(b).name;
+                cr.completed = b == Building::Structure ? structures::name(project.referenceId)
+                    : project.referenceId >= 0 ? sourceShip(project.referenceId).name : definition(b).name;
             } else c.queue.front().work = available;
         }
         if (c.ownerId == next.playerEmpire) report.colonies.push_back(cr);
@@ -5319,7 +5350,7 @@ TurnReport advanceWithCombat(GameState& state, const std::function<void(GameStat
         }
     }
     for (auto& c : next.colonies) {
-        const int moraleTarget = threats::moraleTarget(next, c, minors::moraleTarget(next, c.ownerId)); // Lane G: 70 plus member-minor morale (Borg colonies hold their own value)
+        const int moraleTarget = std::min(100, threats::moraleTarget(next, c, minors::moraleTarget(next, c.ownerId)) + structures::colonyEffects(c).morale); // Lane G: 70 plus member-minor morale (Borg colonies hold their own value); schema 21 adds the colony's structures
         if (c.morale < moraleTarget) ++c.morale;
         else if (c.morale > moraleTarget) --c.morale;
     }
@@ -5427,10 +5458,12 @@ GameState deserialize(const std::string& text) {
     // from 18 only by the header and the optional EMPIRE_SLOTS section (never present in 17).
     const bool legacy16 = version == 16 && content == "remaster-16";
     const bool legacy17 = version == 17 && content == "remaster-17";
-    const bool legacy18 = version == 18 && content == "remaster-18";   // Differs from 20 only by the header and the optional THREATS section.
-    const bool legacy20 = version == 20 && content == "remaster-20";   // Differs from 22 only by the header and the optional ERAS section.
+    const bool legacy18 = version == 18 && content == "remaster-18";   // Differs from 22 only by the header and the optional THREATS, STRUCTURES and ERAS sections.
+    const bool legacy20 = version == 20 && content == "remaster-20";   // Differs from 22 only by the header and the optional STRUCTURES and ERAS sections.
+    const bool legacy21 = version == 21 && content == "remaster-21";   // Differs from 22 only by the header and the optional ERAS section.
     const bool current22 = version == SaveVersion && content == ContentVersion;
-    const bool current20 = current22 || legacy20;
+    const bool current21 = current22 || legacy21;   // The STRUCTURES section is legal from schema 21 on.
+    const bool current20 = current21 || legacy20;   // The THREATS section is legal from schema 20 on.
     const bool current18 = current20 || legacy18;   // The EMPIRE_SLOTS section is legal from schema 18 on.
     const bool current17 = current18 || legacy17;   // The PACKS section is legal from schema 17 on.
     const bool current16 = current17 || legacy16;   // Has the schema-15 and 16 sections.
@@ -5442,7 +5475,7 @@ GameState deserialize(const std::string& text) {
     require(checksumStart != std::string::npos, "Missing save checksum");
     const auto rawBody = text.substr(0, checksumStart);
     require(text.substr(checksumStart) == "CHECKSUM " + std::to_string(hashText(rawBody)) + "\n",
-        (legacy7 || legacy8 || legacy9 || legacy10 || legacy11 || legacy12 || legacy13 || legacy14 || legacy15 || legacy16 || legacy17 || legacy18 || legacy20) ? "Legacy save checksum mismatch" : "Save checksum mismatch");
+        (legacy7 || legacy8 || legacy9 || legacy10 || legacy11 || legacy12 || legacy13 || legacy14 || legacy15 || legacy16 || legacy17 || legacy18 || legacy20 || legacy21) ? "Legacy save checksum mismatch" : "Save checksum mismatch");
     GameState s;
     tag(in, "STATE");
     in >> s.seed >> s.rngState >> s.lastAcceptedCommand >> s.width >> s.height >> s.turn >> s.credits >> s.research;
@@ -5876,6 +5909,11 @@ GameState deserialize(const std::string& text) {
         empire_rules::readSection(in, s);
         nextTag = readTag("Malformed save section after EMPIRE_RULES");
     }
+    if (nextTag == "STRUCTURES") {
+        require(current21, "Schema 21 section in an older save");
+        structures::readSection(in, s);
+        nextTag = readTag("Malformed save section after STRUCTURES");
+    }
     if (nextTag == "THREATS") {
         require(current20, "Schema 20 section in an older save");
         threats::readSection(in, s);
@@ -5950,12 +5988,12 @@ GameState deserialize(const std::string& text) {
             (!s.modernEnginesActive || hasIntelOperations),
             current ? "Schema 14 save is missing a required section" : "Schema 13 save is missing a required section");
         std::string expected = payload(s);
-        if (legacy13 || legacy14 || legacy15 || legacy16 || legacy17 || legacy18 || legacy20) {
+        if (legacy13 || legacy14 || legacy15 || legacy16 || legacy17 || legacy18 || legacy20 || legacy21) {
             // Schema 13 text is the schema-14 payload of a campaign without recorded round orders; schema 14 to 17 text are
             // the schema-18 payload of a campaign without a galaxy setup / empire rules / preset packs / lineup above slot five.
             const std::string header = std::string("BOTF_SIM ") + std::to_string(SaveVersion) + ' ' + ContentVersion + '\n';
             require(expected.starts_with(header), "Malformed canonical payload header");
-            expected.replace(0, header.size(), legacy20 ? "BOTF_SIM 20 remaster-20\n" : legacy18 ? "BOTF_SIM 18 remaster-18\n" : legacy17 ? "BOTF_SIM 17 remaster-17\n" : legacy16 ? "BOTF_SIM 16 remaster-16\n" : legacy15 ? "BOTF_SIM 15 remaster-15\n" : legacy14 ? "BOTF_SIM 14 remaster-14\n" : "BOTF_SIM 13 remaster-13\n");
+            expected.replace(0, header.size(), legacy21 ? "BOTF_SIM 21 remaster-21\n" : legacy20 ? "BOTF_SIM 20 remaster-20\n" : legacy18 ? "BOTF_SIM 18 remaster-18\n" : legacy17 ? "BOTF_SIM 17 remaster-17\n" : legacy16 ? "BOTF_SIM 16 remaster-16\n" : legacy15 ? "BOTF_SIM 15 remaster-15\n" : legacy14 ? "BOTF_SIM 14 remaster-14\n" : "BOTF_SIM 13 remaster-13\n");
         }
         require(rawBody == expected, "Save is not in canonical format");
     } else if (legacy12) {

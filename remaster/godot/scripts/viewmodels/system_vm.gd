@@ -232,6 +232,8 @@ func choice_block(ch: Dictionary) -> String:
 static func choice_tip(ch: Dictionary) -> String:
 	if ch["isShip"] and ch.has("hull"):
 		return "%s %s\nHull %d · shields %d · attack %d\nSpeed %d · range %d · upkeep %d\n%s" % [ch.get("designClass", ""), ch.get("designName", ""), int(ch["hull"]), int(ch["shields"]), int(ch["attack"]), int(ch.get("speed", 0)), int(ch.get("range", 0)), int(ch.get("maintenance", 0)), ch.get("description", "")]
+	if ch.has("effect"): # a pack's race structure (MOD-3): what it does, then its description
+		return "%s\n%s\nIndustry %d · upkeep %d credits/turn\n%s" % [ch["name"], ch["effect"], int(ch["cost"]), int(ch["upkeep"]), ch.get("description", "")]
 	return "%s\nIndustry %d%s · upkeep %d credits/turn" % [ch["name"], int(ch["cost"]), (" · energy %d" % int(ch["energyCost"])) if ch.has("energyCost") else "", int(ch["upkeep"])]
 
 static func choice_meta(ch: Dictionary) -> String:
@@ -239,6 +241,8 @@ static func choice_meta(ch: Dictionary) -> String:
 	if ch["isShip"] and ch.has("hull"):
 		meta_ = "H%d · S%d · A%d · " % [int(ch["hull"]), int(ch["shields"]), int(ch["attack"])]
 	meta_ += "%s ind · %s" % [Fmt.fmt(ch["cost"]), ("¢%d/t" % int(ch["upkeep"])) if int(ch["upkeep"]) > 0 else "no upkeep"]
+	if ch.has("effect") and str(ch["effect"]) != "":
+		meta_ = "%s · %s" % [ch["effect"], meta_]
 	return meta_
 
 func enqueue(ch: Dictionary) -> bool:

@@ -6,6 +6,12 @@
   "reserve": 0,
   "output": 10,
   "securityStockpile": 0,
+  "structureBonus": {
+   "networks": 0,
+   "sabotagePercent": 0,
+   "sabotageDamage": 0,
+   "securityPercent": 0
+  },
   "budget": {
    "security": 80,
    "rivals": [

@@ -24,7 +24,14 @@
 namespace botf::referenceData {
 struct TechnologyRecord { int id; const char* name; int field; int level; std::int64_t cost; const char* description; };
 struct ShipRecord { int id; int raceId; const char* name; const char* shipClass; std::array<int, 6> technologyRequirements; int industryCost; int maintenance; int hull; int shields; int attack; double range; double speed; int role; int troopCapacity; const char* description; };
-struct BuildingRecord { int id; const char* name; int technologyField; int technologyLevel; int industryCost; int energyCost; int populationCost; int moraleBonus; int excludedEmpireMask; std::uint64_t residentRaceMask; int bonusType; std::array<int, 6> bonusValues; std::array<int, 6> unrestBonuses; const char* description; };
+// excludedEmpireMask: bit N set = race N (RaceCatalogue id) cannot use the structure (64 bits since MOD-3; the vanilla records use the low five).
+// buildable..perEmpireLimit are the MOD-3 campaign fields (docs/design/DOMINION.md); a vanilla record has none of them and stays reference data.
+struct BuildingRecord { int id; const char* name; int technologyField; int technologyLevel; int industryCost; int energyCost; int populationCost; int moraleBonus; std::uint64_t excludedEmpireMask; std::uint64_t residentRaceMask; int bonusType; std::array<int, 6> bonusValues; std::array<int, 6> unrestBonuses; const char* description;
+    bool buildable = false;        // A campaign structure: a colony may queue it (structures::).
+    bool startsBuilt = false;      // Built in the capital of every empire that may use it, at turn 0.
+    int requiresId = -1;             // Record id that must stand in the same colony first (the ladder), -1 none.
+    int perEmpireLimit = 0;        // Most the empire may hold (built or queued), 0 unlimited.
+};
 // A race with empireId 1..8 is a playable major (docs/design/EMPIRE-SLOTS.md); every other record is portrait/icon data only.
 struct RaceRecord {
     int id; const char* name; const char* icon;
@@ -35,6 +42,9 @@ struct RaceRecord {
     const char* traits = "";          // '|' separated display traits.
     int shipDonor = -1;               // Catalogue race whose utility and escort hulls this race may also build, -1 none.
     std::array<int, 4> startingFleet{-1, -1, -1, -1}; // Expanded-roster class ids added to the home fleet (-1 unused).
+    // MOD-3 trait effects (race `major.traitEffects`; all 0 in the base pack): morale added to the level the empire's colonies settle toward,
+    // percent added to colony credit income, percent added to ground defence, percent added to internal-security output.
+    int traitMorale = 0, traitCreditsPct = 0, traitGroundPct = 0, traitSecurityPct = 0;
 };
 } // namespace botf::referenceData
 
@@ -57,6 +67,11 @@ struct MinorRaceRecord {
     int signatureShipId;           // referenceData::ShipCatalogue id of its own design, -1 if none.
     std::array<int, 9> affinity;   // By major slot 1..8 (1 Fed, 2 Klingon, 3 Romulan, 4 Cardassian, 5 Ferengi, 6 Dominion, 7 Borg, 8 Breen); -2..+2. Data gives slots 0..5; the rest load as 0.
     const char* description;       // Original remaster text.
+    // MOD-3 placement fields (optional in data): an unavailable minor is never placed (a pack replaces Edo by Bajor), a featured one is
+    // placed first, and a minor with majorRaceId >= 0 is skipped while that race is seated as a major (Breen minor, Breen major).
+    bool available = true;
+    bool featured = false;
+    int majorRaceId = -1;
 };
 } // namespace botf::minors
 
@@ -479,14 +494,21 @@ inline std::unique_ptr<Pack> parsePackValue(const json::Value& doc) {
             r.energyCost = o.i32("energyCost", -Big, Big);
             r.populationCost = o.i32("populationCost", -Big, Big);
             r.moraleBonus = o.i32("moraleBonus", -Big, Big);
-            r.excludedEmpireMask = o.i32("excludedEmpireMask", 0, Big);
+            r.excludedEmpireMask = o.u64("excludedEmpireMask");
             r.residentRaceMask = o.u64("residentRaceMask");
             r.bonusType = o.i32("bonusType", -Big, Big);
             r.bonusValues = o.six("bonusValues", -Big, Big);
             r.unrestBonuses = o.six("unrestBonuses", -Big, Big);
             r.description = p.keep(o.str("description"));
+            if (o.has("buildable")) r.buildable = o.flag("buildable");
+            if (o.has("startsBuilt")) r.startsBuilt = o.flag("startsBuilt");
+            if (o.has("requires")) r.requiresId = o.i32("requires", -1, Big);
+            if (o.has("perEmpireLimit")) r.perEmpireLimit = o.i32("perEmpireLimit", 0, 1000);
             o.done();
             if (r.id != static_cast<int>(i)) bad(o.at("id"), "building ids must equal their index");
+            if (r.requiresId >= r.id) bad(o.at("requires"), "a structure can only require an earlier record");
+            if ((r.startsBuilt || r.requiresId >= 0 || r.perEmpireLimit > 0) && !r.buildable) bad(o.at("buildable"), "startsBuilt, requires and perEmpireLimit need buildable");
+            if (r.startsBuilt && r.requiresId >= 0 && !p.buildings[static_cast<std::size_t>(r.requiresId)].startsBuilt) bad(o.at("startsBuilt"), "a start structure cannot require one that does not start built");
             p.buildings.push_back(r);
         }
     }
@@ -515,6 +537,14 @@ inline std::unique_ptr<Pack> parsePackValue(const json::Value& doc) {
                 if (fv.items.size() > r.startingFleet.size()) bad(m.at("startingFleet"), "at most 4 starting ships");
                 for (std::size_t k = 0; k < fv.items.size(); ++k)
                     r.startingFleet[k] = static_cast<int>(integer(fv.items[k], m.at("startingFleet") + "[" + std::to_string(k) + "]", 1000, 1999));
+                if (m.has("traitEffects")) {
+                    Object te(m.get("traitEffects"), m.at("traitEffects"));
+                    if (te.has("morale")) r.traitMorale = te.i32("morale", -30, 30);
+                    if (te.has("creditsPct")) r.traitCreditsPct = te.i32("creditsPct", -50, 100);
+                    if (te.has("groundDefensePct")) r.traitGroundPct = te.i32("groundDefensePct", -50, 200);
+                    if (te.has("securityPct")) r.traitSecurityPct = te.i32("securityPct", -50, 200);
+                    te.done();
+                }
                 m.done();
                 if (r.key[0] == '\0') bad(m.at("key"), "empty race key");
                 for (const auto& other : p.races) {
@@ -600,16 +630,25 @@ inline std::unique_ptr<Pack> parsePackValue(const json::Value& doc) {
             r.population = o.i32("population", 1, 1000);
             r.bonus = static_cast<minors::JoinBonus>(o.enumeration("bonus", JoinBonusNames, "JoinBonus"));
             r.bonusValue = o.i32("bonusValue", 0, 100);
-            r.signatureShipId = o.i32("signatureShipId", -1, LegacyShipLimit - 1);
-            {   const auto six = o.six("affinity", -2, 2);
+            r.signatureShipId = o.i32("signatureShipId", -1, ExpandedIdLimit - 1);
+            {   // Six values (slots 0..5) or all nine (slots 0..8, with the Dominion, Borg and Breen at 6..8).
+                const auto& av = o.array("affinity");
+                if (av.items.size() != 6 && av.items.size() != 9) bad(o.at("affinity"), "expected an array of 6 or 9 integers");
                 r.affinity = {};
-                for (std::size_t k = 0; k < six.size(); ++k) r.affinity[k] = six[k];
+                for (std::size_t k = 0; k < av.items.size(); ++k)
+                    r.affinity[k] = static_cast<int>(integer(av.items[k], o.at("affinity") + "[" + std::to_string(k) + "]", -2, 2));
             }
             r.description = p.keep(o.str("description"));
+            if (o.has("available")) r.available = o.flag("available");
+            if (o.has("featured")) r.featured = o.flag("featured");
+            if (o.has("majorRaceId")) r.majorRaceId = o.i32("majorRaceId", -1, 63);
             o.done();
             if (r.id != static_cast<int>(i) + 1) bad(o.at("id"), "minor race ids must equal their index + 1");
             if (r.referenceRaceId >= static_cast<int>(p.races.size())) bad(o.at("referenceRaceId"), "no such race");
-            if (r.signatureShipId >= static_cast<int>(p.ships.size())) bad(o.at("signatureShipId"), "no such legacy ship");
+            if (r.signatureShipId >= 0 && r.signatureShipId < ExpandedIdBase && r.signatureShipId >= static_cast<int>(p.ships.size())) bad(o.at("signatureShipId"), "no such legacy ship");
+            if (r.signatureShipId >= ExpandedIdBase && p.rosterIndex[static_cast<std::size_t>(r.signatureShipId - ExpandedIdBase)] < 0) bad(o.at("signatureShipId"), "no such roster class");
+            if (r.majorRaceId >= static_cast<int>(p.races.size())) bad(o.at("majorRaceId"), "no such race");
+            if (r.featured && !r.available) bad(o.at("featured"), "a minor cannot be featured and unavailable");
             for (std::size_t j = 0; j < i; ++j)
                 if (std::string_view(p.minors[j].name) == r.name) bad(o.at("name"), "duplicate minor race name");
             p.minors.push_back(r);
@@ -779,6 +818,12 @@ inline Overlay parseOverlay(std::string_view bytes) {
 
 inline constexpr const char* OverlaySections[] = {"technologies", "ships", "buildings", "races", "roster", "minors", "events"};
 
+// Optional record keys (absent from the base pack's records): a patch may add them to a record that lacks them. The strict typed parse
+// after the merge still checks name, type and range, so a stray key anywhere else stays an error.
+inline bool optionalField(const std::string& key) {
+    return key == "available" || key == "featured" || key == "majorRaceId" || key == "traitEffects";
+}
+
 inline json::Value* member(json::Value& obj, const std::string& key) {
     for (auto& m : obj.members) if (m.first == key) return &m.second;
     return nullptr;
@@ -850,10 +895,12 @@ inline void mergeOverlay(json::Value& doc, const Overlay& ov) {
                     for (const auto& f : entry.members) {
                         if (f.first == idKey) continue;
                         json::Value* t = member(*target, f.first);
+                        if (!t && optionalField(f.first)) { target->members.push_back(f); continue; }
                         if (!t) bad(epath, "unknown field \"" + f.first + "\"");
                         if (t->kind == json::Value::Kind::Object && f.second.kind == json::Value::Kind::Object) {
                             for (const auto& nf : f.second.members) {
                                 json::Value* nt = member(*t, nf.first);
+                                if (!nt && optionalField(nf.first)) { t->members.push_back(nf); continue; }
                                 if (!nt) bad(epath + "." + f.first, "unknown field \"" + nf.first + "\"");
                                 *nt = nf.second;
                             }

@@ -1,0 +1,62 @@
+{
+ "method": "fingerprint",
+ "args": {
+  "runs": 2
+ },
+ "result": [
+  {
+   "campaign": {
+    "faction": 1,
+    "lineup": [
+     "federation",
+     "klingon",
+     "romulan",
+     "cardassian",
+     "dominion"
+    ],
+    "seed": 424242,
+    "era": 3,
+    "ruleset": "reference",
+    "width": 22,
+    "height": 16,
+    "systems": 48,
+    "preset": "dominion-war",
+    "minorDensity": "many"
+   },
+   "turns": 30,
+   "result": "6356996677363395245",
+   "content": {
+    "id": "botf-base+dominion+dominion-war",
+    "checksum": "b0e2213f7ef37219",
+    "stack": 2
+   }
+  },
+  {
+   "campaign": {
+    "faction": 6,
+    "lineup": [
+     "federation",
+     "klingon",
+     "romulan",
+     "cardassian",
+     "dominion"
+    ],
+    "seed": 424242,
+    "era": 3,
+    "ruleset": "reference",
+    "width": 22,
+    "height": 16,
+    "systems": 48,
+    "preset": "dominion-war",
+    "minorDensity": "many"
+   },
+   "turns": 30,
+   "result": "7882142267373110875",
+   "content": {
+    "id": "botf-base+dominion+dominion-war",
+    "checksum": "b0e2213f7ef37219",
+    "stack": 2
+   }
+  }
+ ]
+}

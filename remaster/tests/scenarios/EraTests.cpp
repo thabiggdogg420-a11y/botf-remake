@@ -275,6 +275,7 @@ int main() {
         check(serialize(again) == text, "round trip after the base pack was reinstalled");
         // The schema-22 section is refused under an older header.
         expectRefusal([&] { deserialize(withHeader(text, 20)); }, "older save", "ERAS under a schema-20 header");
+        expectRefusal([&] { deserialize(withHeader(text, 21)); }, "older save", "ERAS under a schema-21 header");
         // A schema-20 Classic text (header only differs) loads and re-saves as 22.
         auto cl = classic(26);
         const auto classicText = serialize(cl);

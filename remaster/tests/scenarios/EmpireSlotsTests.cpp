@@ -125,7 +125,8 @@ int main() {
         check(hasShip(8, 1503), "Breen start with a Warship");
         for (int id : {6, 7, 8}) check(fleetsOf(s, id) >= 3, "a scout, a colony ship and the roster ships for empire " + std::to_string(id));
         // Build: the player's own colony lists its race's ships (tech-gated) and the donor's stand-in hulls.
-        const auto& home = *std::find_if(s.colonies.begin(), s.colonies.end(), [](const Colony& c) { return c.ownerId == 6; });
+        const int domSystem = std::find_if(s.colonies.begin(), s.colonies.end(), [](const Colony& c) { return c.ownerId == 6; })->systemId; // a copy: `s` is replaced below
+        const auto home = *std::find_if(s.colonies.begin(), s.colonies.end(), [](const Colony& c) { return c.ownerId == 6; });
         const auto choices = constructionChoices(s, home.systemId);
         const auto own = std::count_if(choices.begin(), choices.end(), [](const ConstructionChoice& c) { return c.name.find("Jem'Hadar") != std::string::npos; });
         check(own == 3, "Dominion lists the three Jem'Hadar classes");
@@ -144,7 +145,6 @@ int main() {
         const auto report = advance(s);
         check(!report.events.empty(), "the turn resolves with the proposal on the table");
         // Fight: a Federation armed fleet at the Dominion capital, at war, ends in a battle.
-        const int domSystem = home.systemId;
         s = lineupGame(21, All8, 6);   // a fresh world: the proposal above may have bound the two empires by treaty
         const auto sys = *std::find_if(s.systems.begin(), s.systems.end(), [&](const System& x) { return x.id == domSystem; });
         for (auto& f : s.fleets) if (f.ownerId == 1) { f.x = f.targetX = sys.x; f.y = f.targetY = sys.y; }

@@ -21,6 +21,7 @@
 #include "../../game/Source/BotfSim/EmpireRules.h"
 #include "../../game/Source/BotfSim/Content.h"
 #include "../../game/Source/BotfSim/EmpireSlots.h"
+#include "../../game/Source/BotfSim/Structures.h"
 #include "../../game/Source/BotfSim/Presets.h"
 #include "../../game/Source/BotfSim/Threats.h"
 #include "Json.h"
@@ -79,9 +80,9 @@ constexpr std::array<const char*, 7> EventKeys{"Plague", "SupernovaWarning", "Su
 constexpr std::array<const char*, 4> VictoryKeys{"Conquest", "Domination", "Scientific", "Diplomatic"};
 constexpr std::array<const char*, 10> ChronicleKeys{"construction", "research", "exploration", "colonization", "combat",
     "diplomacy", "intel", "events", "stations", "victory"};
-constexpr std::array<const char*, 13> BuildingNames{
+constexpr std::array<const char*, 14> BuildingNames{
     "Farm", "Factory", "Laboratory", "Shipyard", "Scout", "ColonyShip", "PowerPlant", "FusionPlant",
-    "ResearchInstitute", "Destroyer", "Transport", "DefenseBattery", "DilithiumRefinery"};
+    "ResearchInstitute", "Destroyer", "Transport", "DefenseBattery", "DilithiumRefinery", "Structure"};
 constexpr std::array<const char*, 4> StanceNames{"Balanced", "Aggressive", "Defensive", "Withdraw"};
 constexpr std::array<const char*, 5> GovernorNames{"Manual", "Balanced", "Growth", "Research", "Manufacturing"};
 constexpr std::array<const char*, 12> ManeuverKeys{"Engage", "Charge", "Circle", "Hold", "Retreat", "Assault",
@@ -294,6 +295,7 @@ botf::Command commandFromJson(const Value& j, std::uint64_t id) {
 }
 
 std::string constructionLabel(const botf::GameState& s, const botf::Construction& project) {
+    if (project.product == botf::Building::Structure) return botf::structures::name(project.referenceId);
     if (botf::roster::validShipId(project.referenceId)) {
         const auto& ship = *botf::roster::findShip(project.referenceId);
         return std::string(ship.shipClass) + " " + ship.name;
@@ -557,6 +559,16 @@ void writeEmpireRulesColony(Writer& w, const botf::GameState& s, const botf::Col
             .field("turnsLeft", c.programTurns).field("blocker", er::programBlocker(s, c, mine)).endObject();
     }
     w.endObject();
+}
+
+// Schema 19: the race structures standing in a colony (the pack's records), for the system screen.
+void writeRaceStructures(Writer& w, const botf::Colony& c) {
+    w.key("raceStructures").beginArray();
+    for (int id : c.structures)
+        if (const auto* rec = botf::structures::record(id))
+            w.beginObject().field("id", id).field("name", rec->name).field("effect", botf::structures::effectText(*rec))
+                .field("description", rec->description).field("upkeep", botf::structures::upkeepOf(*rec)).endObject();
+    w.endArray();
 }
 
 void writeColonyBrief(Writer& w, const botf::GameState& s, const botf::Colony& c) {
@@ -916,10 +928,8 @@ void writeMinorProfile(Writer& w, const botf::minors::MinorRaceRecord& r) {
     w.field("bonusKind", botf::minors::joinBonusName(r.bonus));
     w.field("bonusValue", r.bonusValue);
     w.field("description", r.description);
-    if (r.signatureShipId >= 0 && static_cast<std::size_t>(r.signatureShipId) < botf::referenceData::ShipCatalogue.size()) {
-        const auto& ship = botf::referenceData::ShipCatalogue[static_cast<std::size_t>(r.signatureShipId)];
-        w.field("signatureShip", std::string(ship.shipClass) + " " + ship.name);
-    }
+    if (const auto* ship = r.signatureShipId >= 0 ? botf::roster::findShip(r.signatureShipId) : nullptr) // A legacy class or (MOD-3) a roster class.
+        w.field("signatureShip", std::string(ship->shipClass) + " " + ship->name);
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -1342,6 +1352,7 @@ void writeColonyDetail(Writer& w, int systemId) {
         .field("research", c->laboratories * 10).endObject();
     w.field("baseCapacity", botf::systemBaseCapacity(d, systemId));
     w.field("maxCapacity", botf::systemMaxCapacity(d, systemId));
+    writeRaceStructures(w, *c);
     const auto* sys = systemById(d, systemId);
     w.key("planets").beginArray();
     if (sys) for (const auto& p : sys->planets) writePlanet(w, p);
@@ -1361,7 +1372,12 @@ void writeColonyDetail(Writer& w, int systemId) {
         w.field("blocker", ch.blocker);
         w.field("isShip", botf::isShip(ch.product));
         w.field("turns", e.industry > 0 ? std::max(1, (ch.industryCost + e.industry - 1) / e.industry) : -1);
-        if (const auto* ship = botf::roster::findShip(ch.referenceId))
+        if (ch.product == botf::Building::Structure) {
+            if (const auto* rec = botf::structures::record(botf::structures::recordIdOf(ch.referenceId))) {
+                w.field("description", rec->description); w.field("effect", botf::structures::effectText(*rec));
+                w.field("tier", rec->requiresId >= 0 ? 2 : 1); w.field("energyCost", 0);
+            }
+        } else if (const auto* ship = botf::roster::findShip(ch.referenceId))
             writeShipRecord(w, *ship);
         else {
             const auto& def = botf::definition(ch.product);
@@ -1953,6 +1969,11 @@ void writeIntel(Writer& w) {
     w.field("reserve", s.intelligence);
     w.field("output", botf::empireIntelOutput(s, me));
     w.field("securityStockpile", botf::empireSecurityStockpile(s, me));
+    {   // MOD-3: what the empire's race structures and traits add to its intelligence (all zero without a Dominion-style pack).
+        const auto bonus = botf::structures::empireIntel(s, me);
+        w.key("structureBonus").beginObject().field("networks", bonus.networks).field("sabotagePercent", bonus.sabotagePct)
+            .field("sabotageDamage", bonus.sabotageDamage).field("securityPercent", bonus.securityPct).endObject();
+    }
     const auto* draftIntel = botf::empireIntelState(d, me);
     const auto* committedIntel = botf::empireIntelState(s, me);
     const auto writeBudget = [&](const intel::EmpireIntelState* st) {

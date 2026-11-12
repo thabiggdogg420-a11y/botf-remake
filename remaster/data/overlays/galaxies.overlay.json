@@ -5,7 +5,8 @@
  "name": "Galaxies: GALM timeline (2240 to 2380, tech 1/4/7/10/14), Dominion Alliance and Borg era lines",
  "revision": 2,
  "requires": [
-  "botf-base"
+  "botf-base",
+  "dominion"
  ],
  "eras": {
   "turnsPerYear": 4,

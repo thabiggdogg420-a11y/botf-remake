@@ -473,7 +473,7 @@ int main() {
         for (int i = 0; i < 4; ++i) advance(legacy);
         const auto text = serialize(legacy);
         check(text.starts_with(headerOf(SaveVersion)) && !contains(text, "THREATS"), "a legacy-shaped campaign saves without the section");
-        for (int old : {14, 15, 16, 17, 18, 20}) {
+        for (int old : {14, 15, 16, 17, 18, 20, 21}) {
             const auto migrated = deserialize(withHeader(text, old));
             check(serialize(migrated) == text, "schema " + std::to_string(old) + " text migrates to the current text");
             auto playing = migrated; advance(playing);
@@ -483,7 +483,7 @@ int main() {
         auto d = newCampaign(setup);
         for (int i = 0; i < 3; ++i) advance(d);
         const auto remastered = serialize(d);
-        for (int old : {16, 17, 18, 20}) {
+        for (int old : {16, 17, 18, 20, 21}) {
             const auto m = deserialize(withHeader(remastered, old));
             check(serialize(m) == remastered && fingerprint(m) == fingerprint(d), "a schema-" + std::to_string(old) + " header over a four-empire Remastered text migrates");
         }

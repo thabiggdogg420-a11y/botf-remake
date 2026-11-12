@@ -332,10 +332,55 @@ inline constexpr const char* const Overlay1[] = {
 };
 // dominion-war
 inline constexpr const char* const Overlay2[] = {
-    "{\"format\":1,\"kind\":\"overlay\",\"id\":\"dominion-war\",\"name\":\"Dominion War overlay (UDM III content arrives with lanes MOD-3 and MOD-8)\",\"revision\":1,\"requires\":[\"botf-base\"]}\n"
+    "{\"format\":1,\"kind\":\"overlay\",\"id\":\"dominion-war\",\"name\":\"Dominion War content: Bajor for the Edo, new minors (UDM III, MOD-3)\",\"revision\":2,\"requires\":[\"botf-base\",\"dominion\"],\n",
+    "\"races\":{\"append\":[\n",
+    "{\"id\":38,\"name\":\"Son'a\",\"icon\":\"sona.tga\"},\n",
+    "{\"id\":39,\"name\":\"Maquis\",\"icon\":\"maquis.tga\"},\n",
+    "{\"id\":40,\"name\":\"Miradorn\",\"icon\":\"miradorn.tga\"},\n",
+    "{\"id\":41,\"name\":\"Karemma\",\"icon\":\"karemma.tga\"},\n",
+    "{\"id\":42,\"name\":\"Kazon\",\"icon\":\"kazon.tga\"},\n",
+    "{\"id\":43,\"name\":\"Orion Syndicate\",\"icon\":\"orion.tga\"}\n",
+    "]},\n",
+    "\"minors\":{\"patch\":[{\"id\":6,\"bonusValue\":8,\"techLevel\":5,\"population\":80,\"signatureShipId\":106,\"featured\":true,\"affinity\":[0,2,0,0,-2,0,-2,-1,0],\"description\":\"A deeply spiritual people who endured a brutal occupation with their faith intact, and who guard the Celestial Temple. They despise Cardassian rule and fear the Dominion, and in this war their devotion lifts morale across the empire they join.\"},\n",
+    "{\"id\":14,\"available\":false}],\"append\":[\n",
+    "{\"id\":31,\"name\":\"Breen\",\"homeworld\":\"Breen\",\"referenceRaceId\":37,\"temperament\":\"Xenophobic\",\"techLevel\":7,\"population\":60,\"bonus\":\"Industry\",\"bonusValue\":10,\"signatureShipId\":1503,\"affinity\":[0,-1,-1,0,-1,0,1,-2,0],\"description\":\"A cold, masked confederacy that keeps its own counsel and its energy-dampening weapons. Their foundries add industry to any empire that earns their trust. Appears only while the Breen are not a major power.\",\"majorRaceId\":37},\n",
+    "{\"id\":32,\"name\":\"Ferengi\",\"homeworld\":\"Ferenginar\",\"referenceRaceId\":2,\"temperament\":\"Mercantile\",\"techLevel\":6,\"population\":50,\"bonus\":\"Credits\",\"bonusValue\":15,\"signatureShipId\":1400,\"affinity\":[0,0,-1,0,0,0,1,-1,0],\"description\":\"The Alliance as an independent trading power, once the Dominion has taken its place at the table. Their profit margins feed the credit income of a patron. Appears only while the Ferengi are not a major power.\",\"majorRaceId\":2},\n",
+    "{\"id\":33,\"name\":\"Son'a\",\"homeworld\":\"Son'a Prime\",\"referenceRaceId\":38,\"temperament\":\"Xenophobic\",\"techLevel\":7,\"population\":40,\"bonus\":\"Research\",\"bonusValue\":10,\"signatureShipId\":1718,\"affinity\":[0,-1,0,0,0,0,0,0,0],\"description\":\"Exiles from the Ba'ku who treat their own bodies as raw material. Brilliant, brittle and dangerous, they sharpen the research of any empire that tolerates them.\"},\n",
+    "{\"id\":34,\"name\":\"Maquis\",\"homeworld\":\"Dorvan\",\"referenceRaceId\":39,\"temperament\":\"Warlike\",\"techLevel\":4,\"population\":35,\"bonus\":\"GroundDefense\",\"bonusValue\":20,\"signatureShipId\":1719,\"affinity\":[0,-1,0,0,-2,0,-1,0,0],\"description\":\"Settlers who refused to leave their colonies when a treaty handed them to Cardassia. Armed, bitter and expert in guerrilla war, they stiffen every garrison of their patron.\"},\n",
+    "{\"id\":35,\"name\":\"Miradorn\",\"homeworld\":\"Miradorn\",\"referenceRaceId\":40,\"temperament\":\"Warlike\",\"techLevel\":5,\"population\":45,\"bonus\":\"Industry\",\"bonusValue\":10,\"signatureShipId\":-1,\"affinity\":[0,0,1,0,0,0,0,0,0],\"description\":\"Twinned raiders and hard bargainers who fight, trade and sulk in pairs. Their workshops add industry to an empire that can keep both halves happy.\"},\n",
+    "{\"id\":36,\"name\":\"Karemma\",\"homeworld\":\"Karemma\",\"referenceRaceId\":41,\"temperament\":\"Mercantile\",\"techLevel\":6,\"population\":55,\"bonus\":\"Credits\",\"bonusValue\":15,\"signatureShipId\":-1,\"affinity\":[0,1,0,0,1,1,1,0,0],\"description\":\"Patient, courteous traders whose Gamma Quadrant routes the Dominion has long used. A membership brings their cargo networks and a steady flow of credits.\"},\n",
+    "{\"id\":37,\"name\":\"Kazon\",\"homeworld\":\"Ogla\",\"referenceRaceId\":42,\"temperament\":\"Warlike\",\"techLevel\":3,\"population\":45,\"bonus\":\"GroundDefense\",\"bonusValue\":10,\"signatureShipId\":1705,\"affinity\":[0,-1,0,0,0,0,0,0,0],\"description\":\"Sect-ridden raiders who take what they cannot build. Their warriors swell the garrison of any empire strong enough to keep the sects in line.\"},\n",
+    "{\"id\":38,\"name\":\"Orion Syndicate\",\"homeworld\":\"Orion\",\"referenceRaceId\":43,\"temperament\":\"Mercantile\",\"techLevel\":5,\"population\":50,\"bonus\":\"Credits\",\"bonusValue\":10,\"signatureShipId\":1702,\"affinity\":[0,-2,0,0,1,1,0,0,0],\"description\":\"A web of pirates, smugglers and brokers who sell to everyone and answer to no one. The Syndicate's cut keeps a patron's treasury full if it looks the other way.\"}\n",
+    "]},\n",
+    "\"roster\":{\"patch\":[{\"id\":1718,\"minorRaceId\":33},\n",
+    "{\"id\":1719,\"minorRaceId\":34},\n",
+    "{\"id\":1705,\"minorRaceId\":37},\n",
+    "{\"id\":1702,\"minorRaceId\":38}]}\n",
+    "}\n"
+};
+// dominion
+inline constexpr const char* const Overlay3[] = {
+    "{\"format\":1,\"kind\":\"overlay\",\"id\":\"dominion\",\"name\":\"Dominion content: structure ladder, Founders and Vorta traits, Jem'Hadar line (MOD-3)\",\"revision\":1,\"requires\":[\"botf-base\"],\n",
+    "\"buildings\":{\"append\":[\n",
+    "{\"id\":318,\"name\":\"Vorta Administrative Center\",\"technologyField\":1,\"technologyLevel\":1,\"industryCost\":800,\"energyCost\":0,\"populationCost\":0,\"moraleBonus\":0,\"excludedEmpireMask\":240518168575,\"residentRaceMask\":274877906943,\"bonusType\":20,\"bonusValues\":[6,0,0,0,0,0],\"unrestBonuses\":[0,0,0,0,0,0],\"description\":\"Vorta governors and clerks run the colony by the book, and the book says the Founders are gods. Raises morale. The first rung of the Dominion ladder.\",\"buildable\":true,\"startsBuilt\":true},\n",
+    "{\"id\":319,\"name\":\"Ketracel-White Facility\",\"technologyField\":0,\"technologyLevel\":2,\"industryCost\":1200,\"energyCost\":0,\"populationCost\":0,\"moraleBonus\":0,\"excludedEmpireMask\":240518168575,\"residentRaceMask\":274877906943,\"bonusType\":91,\"bonusValues\":[1500,1501,1502,0,0,0],\"unrestBonuses\":[0,0,0,0,0,0],\"description\":\"Vats and distribution lines for the white that keeps the Jem'Hadar loyal and alive. Jem'Hadar warships cannot be built until one stands in the empire.\",\"buildable\":true,\"requires\":318,\"startsBuilt\":true},\n",
+    "{\"id\":320,\"name\":\"Jem'Hadar Barracks\",\"technologyField\":5,\"technologyLevel\":2,\"industryCost\":1000,\"energyCost\":0,\"populationCost\":0,\"moraleBonus\":0,\"excludedEmpireMask\":240518168575,\"residentRaceMask\":274877906943,\"bonusType\":37,\"bonusValues\":[50,0,0,0,0,0],\"unrestBonuses\":[0,0,0,0,0,0],\"description\":\"Hatchery barracks that field shock troops who consider surrender a sin. Strengthens ground defence.\",\"buildable\":true,\"requires\":318},\n",
+    "{\"id\":321,\"name\":\"Vorta Commerce Bureau\",\"technologyField\":1,\"technologyLevel\":3,\"industryCost\":1800,\"energyCost\":0,\"populationCost\":0,\"moraleBonus\":0,\"excludedEmpireMask\":240518168575,\"residentRaceMask\":274877906943,\"bonusType\":5,\"bonusValues\":[25,0,0,0,0,0],\"unrestBonuses\":[0,0,0,0,0,0],\"description\":\"Vorta factors assess every transaction in the colony and report the surplus to the Founders. Raises credit income.\",\"buildable\":true,\"requires\":318},\n",
+    "{\"id\":322,\"name\":\"Dominion Foundry\",\"technologyField\":2,\"technologyLevel\":3,\"industryCost\":2000,\"energyCost\":0,\"populationCost\":0,\"moraleBonus\":0,\"excludedEmpireMask\":240518168575,\"residentRaceMask\":274877906943,\"bonusType\":14,\"bonusValues\":[30,0,0,0,0,0],\"unrestBonuses\":[0,0,0,0,0,0],\"description\":\"Orderly shifts of cloned labour keep the foundries running without a break. Raises industry.\",\"buildable\":true,\"requires\":318},\n",
+    "{\"id\":323,\"name\":\"Cloning Vats\",\"technologyField\":0,\"technologyLevel\":3,\"industryCost\":1600,\"energyCost\":0,\"populationCost\":0,\"moraleBonus\":0,\"excludedEmpireMask\":240518168575,\"residentRaceMask\":274877906943,\"bonusType\":42,\"bonusValues\":[40,0,0,0,0,0],\"unrestBonuses\":[0,0,0,0,0,0],\"description\":\"Vorta and Jem'Hadar are grown to order; the same vats raise the colony's food stocks. Raises food output.\",\"buildable\":true,\"requires\":319},\n",
+    "{\"id\":324,\"name\":\"Genetic Research Station\",\"technologyField\":0,\"technologyLevel\":4,\"industryCost\":2400,\"energyCost\":0,\"populationCost\":0,\"moraleBonus\":0,\"excludedEmpireMask\":240518168575,\"residentRaceMask\":274877906943,\"bonusType\":30,\"bonusValues\":[40,0,0,0,0,0],\"unrestBonuses\":[0,0,0,0,0,0],\"description\":\"The Dominion's ancient work on engineered life, continued under Vorta supervision. Raises research.\",\"buildable\":true,\"requires\":319},\n",
+    "{\"id\":325,\"name\":\"Vorta Intelligence Directorate\",\"technologyField\":1,\"technologyLevel\":4,\"industryCost\":2800,\"energyCost\":0,\"populationCost\":0,\"moraleBonus\":0,\"excludedEmpireMask\":240518168575,\"residentRaceMask\":274877906943,\"bonusType\":11,\"bonusValues\":[40,0,0,0,0,0],\"unrestBonuses\":[0,0,0,0,0,0],\"description\":\"Vorta analysts watch every other Vorta and every foreign visitor. Raises internal security output across the empire.\",\"buildable\":true,\"requires\":318},\n",
+    "{\"id\":326,\"name\":\"Founders' Sanctuary\",\"technologyField\":0,\"technologyLevel\":6,\"industryCost\":4800,\"energyCost\":0,\"populationCost\":0,\"moraleBonus\":0,\"excludedEmpireMask\":240518168575,\"residentRaceMask\":274877906943,\"bonusType\":20,\"bonusValues\":[10,0,0,0,0,0],\"unrestBonuses\":[0,0,0,0,0,0],\"description\":\"A hidden retreat where a Founder may rest among the Great Link's emissaries. Greatly raises morale here and unlocks the Shapeshifter Network.\",\"buildable\":true,\"requires\":324,\"perEmpireLimit\":2},\n",
+    "{\"id\":327,\"name\":\"Changeling Shapeshifter Network\",\"technologyField\":1,\"technologyLevel\":6,\"industryCost\":5200,\"energyCost\":0,\"populationCost\":0,\"moraleBonus\":0,\"excludedEmpireMask\":240518168575,\"residentRaceMask\":274877906943,\"bonusType\":90,\"bonusValues\":[30,1,0,0,0,0],\"unrestBonuses\":[0,0,0,0,0,0],\"description\":\"Changelings placed in rival governments, fleets and boardrooms. Each Network adds to the empire's sabotage output and the damage its saboteurs do. Needs a Founders' Sanctuary in the same colony.\",\"buildable\":true,\"requires\":326,\"perEmpireLimit\":2}\n",
+    "]},\n",
+    "\"races\":{\"patch\":[{\"id\":35,\"major\":{\"traits\":[\"Founders' will\",\"Vorta administrators\",\"Jem'Hadar shock troops\"],\"traitEffects\":{\"morale\":5,\"creditsPct\":10,\"groundDefensePct\":25}}}]},\n",
+    "\"roster\":{\"patch\":[{\"id\":1500,\"technologyRequirements\":[3,4,4,4,4,5],\"industryCost\":3600,\"description\":\"The Jem'Hadar Attack Ship (the Bug): the cheap, fast fighter-cruiser that is the first rung of the Dominion's line. Needs a Ketracel-White Facility.\"},\n",
+    "{\"id\":1501,\"technologyRequirements\":[5,6,6,6,6,7]},\n",
+    "{\"id\":1502,\"technologyRequirements\":[7,8,8,8,8,9]}]}\n",
+    "}\n"
 };
 // galaxies
-inline constexpr const char* const Overlay3[] = {
+inline constexpr const char* const Overlay4[] = {
     "{\n",
     " \"format\": 1,\n",
     " \"kind\": \"overlay\",\n",
@@ -343,7 +388,8 @@ inline constexpr const char* const Overlay3[] = {
     " \"name\": \"Galaxies: GALM timeline (2240 to 2380, tech 1/4/7/10/14), Dominion Alliance and Borg era lines\",\n",
     " \"revision\": 2,\n",
     " \"requires\": [\n",
-    "  \"botf-base\"\n",
+    "  \"botf-base\",\n",
+    "  \"dominion\"\n",
     " ],\n",
     " \"eras\": {\n",
     "  \"turnsPerYear\": 4,\n",
@@ -687,10 +733,10 @@ inline constexpr const char* const Overlay3[] = {
     "}\n"
 };
 // ultimate
-inline constexpr const char* const Overlay4[] = {
+inline constexpr const char* const Overlay5[] = {
     "{\"format\":1,\"kind\":\"overlay\",\"id\":\"ultimate\",\"name\":\"Ultimate overlay (UM5 Redux: research costs scaled back so the AI keeps pace; the rest arrives with lane MOD-7)\",\"revision\":1,\"requires\":[\"botf-base\"],\"balance\":{\"researchCostPercent\":85}}\n"
 };
-inline constexpr File OverlayFiles[] = {{Overlay0, sizeof(Overlay0) / sizeof(Overlay0[0])}, {Overlay1, sizeof(Overlay1) / sizeof(Overlay1[0])}, {Overlay2, sizeof(Overlay2) / sizeof(Overlay2[0])}, {Overlay3, sizeof(Overlay3) / sizeof(Overlay3[0])}, {Overlay4, sizeof(Overlay4) / sizeof(Overlay4[0])}};
+inline constexpr File OverlayFiles[] = {{Overlay0, sizeof(Overlay0) / sizeof(Overlay0[0])}, {Overlay1, sizeof(Overlay1) / sizeof(Overlay1[0])}, {Overlay2, sizeof(Overlay2) / sizeof(Overlay2[0])}, {Overlay3, sizeof(Overlay3) / sizeof(Overlay3[0])}, {Overlay4, sizeof(Overlay4) / sizeof(Overlay4[0])}, {Overlay5, sizeof(Overlay5) / sizeof(Overlay5[0])}};
 // ages
 inline constexpr const char* const Preset0[] = {
     "{\"format\":1,\"id\":\"ages\",\"name\":\"Ages\",\"blurb\":\"All The Ages: pick a start year from 2240 to 2380. Every empire fields the canon ships of its period (Enterprise to Nemesis), ships enter service and retire on the timeline, and research runs to level 14.\",\"order\":40,\"overlays\":[\"ages\"],\"rules\":{\"base\":\"remastered\",\"flags\":{\"expandedRoster\":true,\"eras\":true}},\"lineup\":[\"Federation\",\"Klingon\",\"Romulan\",\"Cardassian\",\"Ferengi\"],\"options\":{\"empires\":5,\"era\":1,\"size\":\"medium\",\"shape\":\"spiral\",\"minorDensity\":\"some\",\"difficulty\":\"normal\",\"events\":true,\"aiAggression\":true,\"threats\":{\"monsters\":true,\"borg\":true,\"frequency\":\"rare\"}},\"needs\":[]}"
@@ -705,11 +751,11 @@ inline constexpr const char* const Preset2[] = {
 };
 // dominion-war
 inline constexpr const char* const Preset3[] = {
-    "{\"format\":1,\"id\":\"dominion-war\",\"name\":\"Dominion War\",\"blurb\":\"The Ultimate Dominion Mod: the Dominion takes the Ferengi's place in a large, crowded galaxy at war. Dominion content is still being built; until then you play the stock empires.\",\"order\":30,\"overlays\":[\"dominion-war\"],\"rules\":{\"base\":\"remastered\",\"flags\":{}},\"lineup\":[\"Federation\",\"Klingon\",\"Romulan\",\"Cardassian\",\"Dominion\"],\"options\":{\"empires\":5,\"era\":3,\"size\":\"large\",\"shape\":\"irregular\",\"minorDensity\":\"many\",\"difficulty\":\"hard\",\"events\":true,\"aiAggression\":true,\"threats\":{\"monsters\":true,\"borg\":true,\"borgSphere\":true,\"species8472\":true,\"edoStation\":true,\"frequency\":\"normal\"}},\"needs\":[\"MOD-2\",\"MOD-3\",\"MOD-8\"]}\n"
+    "{\"format\":1,\"id\":\"dominion-war\",\"name\":\"Dominion War\",\"blurb\":\"The Ultimate Dominion Mod: the Dominion takes the Ferengi's place. It plays with its own structure ladder (Vorta centres, Ketracel-White, the Founders' Sanctuary, the Changeling Shapeshifter Network), Founders and Vorta traits and the Jem'Hadar line. Bajor replaces the Edo and new minors join. Scripted war to come.\",\"order\":30,\"overlays\":[\"dominion\",\"dominion-war\"],\"rules\":{\"base\":\"remastered\",\"flags\":{}},\"lineup\":[\"Federation\",\"Klingon\",\"Romulan\",\"Cardassian\",\"Dominion\"],\"options\":{\"empires\":5,\"era\":3,\"size\":\"large\",\"shape\":\"irregular\",\"minorDensity\":\"many\",\"difficulty\":\"hard\",\"events\":true,\"aiAggression\":true,\"threats\":{\"monsters\":true,\"borg\":true,\"borgSphere\":true,\"species8472\":true,\"edoStation\":true,\"frequency\":\"normal\"}},\"needs\":[\"MOD-8\"]}\n"
 };
 // galaxies
 inline constexpr const char* const Preset4[] = {
-    "{\"format\":1,\"id\":\"galaxies\",\"name\":\"Galaxies\",\"blurb\":\"The Galaxies Mod: 2240 to 2380 on a huge map, tech levels 1, 4, 7, 10 and 14 by start year, canon era ship lists, with the Dominion Alliance and a playable Borg beside the Federation, Klingons and Romulans.\",\"order\":50,\"overlays\":[\"galaxies\"],\"rules\":{\"base\":\"remastered\",\"flags\":{\"eras\":true}},\"lineup\":[\"Federation\",\"Klingon\",\"Romulan\",\"Dominion\",\"Borg\"],\"options\":{\"empires\":5,\"era\":1,\"size\":\"huge\",\"shape\":\"spiral\",\"minorDensity\":\"many\",\"difficulty\":\"normal\",\"events\":true,\"aiAggression\":true,\"threats\":{\"monsters\":true,\"borg\":true,\"frequency\":\"normal\"}},\"needs\":[\"MOD-3\"]}"
+    "{\"format\":1,\"id\":\"galaxies\",\"name\":\"Galaxies\",\"blurb\":\"The Galaxies Mod: 2240 to 2380 on a huge map, tech levels 1, 4, 7, 10 and 14 by start year, canon era ship lists, with the Dominion content (structure ladder, Founders and Vorta, Jem'Hadar line) and a playable Borg beside the Federation, Klingons and Romulans.\",\"order\":50,\"overlays\":[\"dominion\",\"galaxies\"],\"rules\":{\"base\":\"remastered\",\"flags\":{\"eras\":true}},\"lineup\":[\"Federation\",\"Klingon\",\"Romulan\",\"Dominion\",\"Borg\"],\"options\":{\"empires\":5,\"era\":1,\"size\":\"huge\",\"shape\":\"spiral\",\"minorDensity\":\"many\",\"difficulty\":\"normal\",\"events\":true,\"aiAggression\":true,\"threats\":{\"monsters\":true,\"borg\":true,\"frequency\":\"normal\"}},\"needs\":[]}"
 };
 // remastered
 inline constexpr const char* const Preset5[] = {

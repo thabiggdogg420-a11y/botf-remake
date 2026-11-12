@@ -25,10 +25,11 @@ namespace botf {
 // docs/design/PACKS-AND-PRESETS.md; optional PACKS section); schema 18 generalises the empire slots (docs/design/EMPIRE-SLOTS.md):
 // two to eight majors with stable ids 1..8 (optional EMPIRE_SLOTS section, written only when an id above five is in play);
 // schema 20 adds the threat actors (Borg, Species 8472, the vanilla monsters; Threats.h, docs/design/THREAT-ACTORS.md; optional
-// THREATS section, written only when a threat switch is on or an actor or assimilated system exists).
+// THREATS section, written only when a threat switch is on or an actor or assimilated system exists);
+// schema 21 adds the race structures (Structures.h, docs/design/DOMINION.md; optional STRUCTURES section, written only while a colony holds one);
 // schema 22 adds the campaign era (docs/design/ERAS.md): a timeline year per start era, era-gated ship classes and research levels
 // 11 to 14 (optional ERAS section, written only when the eras rule is on).
-// Schemas 4-20 still load and continue (21 is reserved for lane MOD-3 and does not exist on this branch).
+// Schemas 4-21 still load and continue.
 inline constexpr const char* ContentVersion = "remaster-22";
 inline constexpr int SaveVersion = 22;
 // Campaign empire ids are race slots: 1 Federation, 2 Klingon, 3 Romulan, 4 Cardassian, 5 Ferengi, 6 Dominion, 7 Borg,
@@ -47,7 +48,8 @@ enum class GovernorPriority : int { Manual = 0, Balanced = 1, Growth = 2, Resear
 const char* governorPriorityName(GovernorPriority priority);
 // Queue products include ships; existing Building name retained for source compatibility.
 enum class Building : int { Farm, Factory, Laboratory, Shipyard, Scout, ColonyShip, PowerPlant, FusionPlant, ResearchInstitute, Destroyer, Transport, DefenseBattery,
-    DilithiumRefinery /* schema 15 */ };
+    DilithiumRefinery /* schema 15 */,
+    Structure /* schema 21: a race structure from the pack; Construction::referenceId = structures::RefBase + record id */ };
 enum class CommandType : int {
     AssignWorkers, EnqueueBuilding, MoveFleet, Colonize, ToggleShipyard,
     CancelFirstConstruction, PrioritizeLastConstruction, MoveConstruction,
@@ -154,6 +156,8 @@ struct Colony {
     // Schema 15 (EmpireRules.h): dilithium refinery (0 or 1), emergency program (EmergencyProgram, 0 = none)
     // and the turns it has left. Saved in the optional EMPIRE_RULES section.
     int refineries = 0;
+    // Schema 21 (Structures.h): built race structures, ascending buildings.json record ids. Saved in the optional STRUCTURES section.
+    std::vector<int> structures;
     int program = 0;
     int programTurns = 0;
     // Colony automation:

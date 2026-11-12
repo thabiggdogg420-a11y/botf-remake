@@ -71,13 +71,13 @@ All seven use the five stock empires today. "Needs" is content that arrives with
 |---|---|---|---|---|---|
 | **Classic** | none | classic | Fed, Klingon, Romulan, Cardassian, Ferengi | medium, elliptical, some minors, normal, era 1 | nothing |
 | **Remastered** (default) | none | remastered | stock five | medium, spiral, some, normal, era 1 | nothing |
-| **Dominion War** (UDM III) | `dominion-war` (empty) | remastered | Fed, Klingon, Romulan, Cardassian, **Dominion** (replaces Ferengi) | large, irregular, many, hard, era 3 | MOD-2, MOD-3, MOD-8 |
+| **Dominion War** (UDM III) | `dominion` (structure ladder, traits, Jem'Hadar line) then `dominion-war` (Bajor for the Edo, eight new minors); MOD-3, see DOMINION.md | remastered | Fed, Klingon, Romulan, Cardassian, **Dominion** (replaces Ferengi) | large, irregular, many, hard, era 3 | MOD-8 |
 | **Ages** (AAM) | `ages`: eras block (2240 to 2380, start tech 1/3/5/8/11, cap 14), canon windows, 7 classes switched on | remastered, `expandedRoster`, `eras` | stock five | medium, spiral, some, normal, era 1 | nothing |
-| **Galaxies** (GALM) | `galaxies`: eras block (start tech 1/4/7/10/14, cap 14), Dominion, Breen and Borg windows | remastered, `eras` | Fed, Klingon, Romulan, **Dominion, Borg** | huge, spiral, many, normal, era 1 | MOD-3 |
+| **Galaxies** (GALM) | `dominion` (MOD-3) then `galaxies`: eras block (start tech 1/4/7/10/14, cap 14), Jem'Hadar, Breen and Borg windows | remastered, `eras` | Fed, Klingon, Romulan, **Dominion, Borg** | huge, spiral, many, normal, era 1 | nothing |
 | **Balance of Power** | `balance-of-power` (empty) | classic | stock five | large, spiral, many, normal, era 1 | MOD-6, MOD-7 |
 | **Ultimate** (UM5 Redux) | `ultimate`: `balance.researchCostPercent` 85 | remastered | stock five | large, irregular, many, hard, era 1 | MOD-7 |
 
-The 85% research scale is a placeholder for UM5's "research costs scaled back to help the AI"; MOD-7 sets the real curve. Dominion War and Galaxies report `lineupPlayable:false` until MOD-2 and MOD-3 land; the Borg being playable (Simon, 11 Nov) is in the Galaxies lineup from day one so the validation has something to lift.
+The 85% research scale is a placeholder for UM5's "research costs scaled back to help the AI"; MOD-7 sets the real curve. Dominion War and Galaxies reported `lineupPlayable:false` until MOD-2 landed (they seat now; MOD-3 gave the Dominion its content); the Borg being playable (Simon, 11 Nov) is in the Galaxies lineup from day one so the validation has something to lift.
 
 ## 4. Screen
 
