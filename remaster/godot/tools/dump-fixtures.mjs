@@ -158,9 +158,30 @@ dump('determinism-rules3', 'fingerprint', { campaign: campaign3, turns: 10 }, ca
   for (const preset of ['remastered', 'ultimate', 'balance-of-power', 'dominion-war']) {
     const c = { faction: 1, empires: 5, seed: 31337, era: 2, ruleset: 'reference', preset };
     call('newCampaign', c);
-    for (let i = 0; i < 50; i++) endTurn();
-    eco.push({ campaign: c, turns: 50, result: call('fingerprint') });
+    let played = 0;   // A campaign may end early under the schema-24 AI; the fixture records the turns actually played.
+    for (let i = 0; i < 50; i++) { try { endTurn(); played++; } catch (e) { if (!/ended/.test(String(e.message))) throw e; break; } }
+    eco.push({ campaign: c, turns: played, result: call('fingerprint') });
   }
   call('loadBaseContent');
   dump('determinism-economy', 'fingerprint', { runs: eco.length }, eco);
+}
+// Balance and AI (schema 24, docs/design/BALANCE-AI.md): every difficulty tier incl. Expert, the galaxy options (planets per star, extra
+// start colonies, race star types) and the three balance presets, 40 turns of AI play. The native core must reproduce each fingerprint.
+{
+  const bal = [];
+  const runs = [
+    { difficulty: 'expert' }, { difficulty: 'impossible' }, { difficulty: 'hard' }, { difficulty: 'simple' },
+    { difficulty: 'normal', startSystems: 2, planetsMin: 3, planetsMax: 8, starTypes: true },
+    { preset: 'balance-of-power', difficulty: 'expert', startSystems: 1, planetsMin: 2, planetsMax: 9 },
+    { preset: 'ultimate' }, { preset: 'dominion-war', lineup: ['federation', 'klingon', 'romulan', 'cardassian', 'dominion'], era: 3 },
+  ];
+  for (const r of runs) {
+    const c = { faction: 1, empires: 5, seed: 20261112, era: 2, ruleset: 'reference', width: 22, height: 16, systems: 50, ...r };
+    call('newCampaign', c);
+    let played = 0;
+    for (let i = 0; i < 40; i++) { try { endTurn(); played++; } catch (e) { if (!/ended/.test(String(e.message))) throw e; break; } }
+    bal.push({ campaign: c, turns: played, result: call('fingerprint') });
+  }
+  call('loadBaseContent');
+  dump('determinism-balance', 'fingerprint', { runs: bal.length }, bal);
 }

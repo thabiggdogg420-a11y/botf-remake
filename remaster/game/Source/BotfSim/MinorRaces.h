@@ -237,6 +237,7 @@ inline MemberBonuses memberBonuses(const GameState& s, int empireId) {
     // MOD-3: the empire's race traits (Founders' will, Vorta commerce, Jem'Hadar troops) ride on the same totals; all zero in the base pack.
     const auto trait = slots::traitEffects(empireId);
     b.morale += trait.morale; b.creditsPct += trait.creditsPct; b.groundDefensePct += trait.groundDefensePct;
+    b.industryPct += trait.industryPct; b.researchPct += trait.researchPct; b.foodPct += trait.foodPct; // MOD-7 traits
     b.morale = std::min(b.morale, 20);
     return b;
 }
@@ -251,7 +252,8 @@ inline int invasionDefense(const GameState& s, const Colony& target, int baseDef
     if (const auto* m = minorAt(s, target.systemId); m && managed(*m) && m->memberOf == target.ownerId) {
         if (const auto* r = raceFor(*m); r && r->temperament == Temperament::Warlike) defense += 5 + 2 * m->techLevel;
     }
-    return defense * (100 + memberBonuses(s, target.ownerId).groundDefensePct + structures::colonyEffects(target).groundPct) / 100;
+    return defense * (100 + memberBonuses(s, target.ownerId).groundDefensePct + structures::colonyEffects(target).groundPct) / 100
+        * content::balance().shieldDefensePercent / 100; // MOD-7: planetary shield grid (100 = vanilla)
 }
 
 // Shapes the colony a managed minor brings when it joins: its own population and a workforce that

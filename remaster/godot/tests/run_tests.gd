@@ -300,6 +300,14 @@ func test_fixture_determinism() -> void:
 			end_turn()
 		check(api("fingerprint") == run.result, "economy preset %s: fingerprint %s == wasm %s" % [run.campaign.preset, api("fingerprint"), run.result])
 	api("loadBaseContent")
+	# Balance and AI (schema 24): difficulty tiers incl. Expert, galaxy options, the balance presets, 40 turns, native against wasm.
+	var bx := load_fixture("determinism-balance")
+	for run in bx.result:
+		api("newCampaign", run.campaign)
+		for i in int(run.turns):
+			end_turn()
+		check(api("fingerprint") == run.result, "balance run %s: fingerprint %s == wasm %s" % [JSON.stringify(run.campaign), api("fingerprint"), run.result])
+	api("loadBaseContent")
 	var fx_view := load_fixture("campaign-view")
 	var raw: String = core.request_json("newCampaign", JSON.stringify(fx_view.args))
 	var reparsed: Dictionary = JSON.parse_string(raw)
@@ -387,7 +395,7 @@ func test_uncharted_view() -> void:
 
 ## The view is a read: a fixed-seed autoplay to turn 20 reaches the same state with or without the view being read every turn,
 ## and the hash is the one the core produced before the view change (recorded from the unchanged simulation sources).
-const FINGERPRINT_T20 := "6926177897153747072" # re-pinned for schema 23 (the header line is in the payload; body unchanged vs schema 21, see docs/design/ECONOMY-MECHANICS.md section 9); native and wasm agree
+const FINGERPRINT_T20 := "13826943614340628568" # re-pinned for schema 24: the header line is in the payload, and the AI now builds its race academy (BALANCE-AI.md section 4); native and wasm agree
 
 func _autoplay_fingerprint(read_view: bool) -> String:
 	api("newCampaign", CAMPAIGN)

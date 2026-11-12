@@ -425,7 +425,7 @@ int main() {
         check(contains(serialize(classic), "ECONOMY_RULES 1 "), "default Classic writes the vanilla flag bits");
         setEconomyFlags(classic, 0);
         const auto ct = serialize(classic);
-        check(!contains(ct, "ECONOMY_RULES") && ct.starts_with("BOTF_SIM 23 remaster-23\n"), "flags off: header 23, no section");
+        check(!contains(ct, "ECONOMY_RULES") && ct.starts_with("BOTF_SIM " + std::to_string(SaveVersion) + " remaster-" + std::to_string(SaveVersion) + "\n"), "flags off: current header, no section");
         check(serialize(deserialize(withHeader(ct, 21))) == ct && serialize(deserialize(withHeader(ct, 22))) == ct, "a 21 or 22 header over a Classic text loads and re-saves as 23");
         auto s = game(72, "dominion-war", 5);
         setTech(s, 4);

@@ -2366,7 +2366,7 @@ inline Encounter constructEncounter(const GameState& state,
         // Attack derivation & beam/torpedo split
         int totalAtk = fleetAttack(*f);
         if (f->ownerId != ThreatOwner) totalAtk += empire(state, f->ownerId).technologies[5].level;
-        totalAtk = std::max(0, totalAtk);
+        totalAtk = std::max(0, totalAtk) * packWeaponOutputPercent() / 100; // Schema 24: the pack's weapon output (100 = vanilla)
         // Schema 23: a veteran crew hits harder where the rules have no crew accuracy (rules 2 and 3); rules 4 use the crew rating below.
         if (state.rules.crewExperience && !(state.rules.wegoCombat && state.rules.flightModel) && f->ownerId != ThreatOwner && totalAtk > 0)
             totalAtk = std::max(1, totalAtk * (100 + crew::attackPercentFor(f->experience, f->ownerId)) / 100);

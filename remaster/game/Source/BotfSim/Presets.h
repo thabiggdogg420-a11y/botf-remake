@@ -34,7 +34,7 @@ inline constexpr const char* FlagNames[] = {"stations", "galaxyFeatures", "curat
 inline constexpr const char* SizeIds[] = {"small", "medium", "large", "huge"};
 inline constexpr const char* ShapeIds[] = {"legacy", "irregular", "spiral", "ring", "elliptical"};
 inline constexpr const char* DensityIds[] = {"legacy", "none", "few", "some", "many"};
-inline constexpr const char* DifficultyIds[] = {"simple", "easy", "normal", "hard", "impossible"};
+inline constexpr const char* DifficultyIds[] = {"simple", "easy", "normal", "hard", "expert", "impossible"};
 
 struct Preset {
     std::string id, name, blurb;
@@ -49,6 +49,7 @@ struct Preset {
     int empires = 0, era = 0;
     std::string size, shape, minorDensity, difficulty;
     int events = -1, aiAggression = -1;
+    int startSystems = -1, planetsMin = 0, planetsMax = 0, starTypes = -1; // Schema 24: extra start colonies, planets per star, race star types.
     std::optional<ThreatSetup> threats;                // Schema 20: threat-switch defaults (absent = threats off).
     std::vector<std::string> needs;                   // Later lanes whose content this preset is waiting for.
 };
@@ -176,6 +177,11 @@ inline Preset parsePreset(std::string_view bytes) {
         pick("difficulty", p.difficulty, DifficultyIds, "difficulty");
         if (o.has("events")) p.events = o.flag("events") ? 1 : 0;
         if (o.has("aiAggression")) p.aiAggression = o.flag("aiAggression") ? 1 : 0;
+        if (o.has("startSystems")) p.startSystems = o.i32("startSystems", 0, 8);
+        if (o.has("planetsMin")) p.planetsMin = o.i32("planetsMin", 1, 9);
+        if (o.has("planetsMax")) p.planetsMax = o.i32("planetsMax", 1, 9);
+        if ((p.planetsMin > 0) != (p.planetsMax > 0) || p.planetsMin > p.planetsMax) bad(o.at("planetsMin"), "planetsMin and planetsMax come as a pair, minimum first");
+        if (o.has("starTypes")) p.starTypes = o.flag("starTypes") ? 1 : 0;
         if (o.has("threats")) {   // Schema 20 (docs/design/THREAT-ACTORS.md section 4).
             content::detail::Object t(o.get("threats"), o.at("threats"));
             ThreatSetup ts;

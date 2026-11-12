@@ -225,6 +225,17 @@ inline int aiNext(const GameState& s, const Colony& c, int industry) {
     return -1;
 }
 
+// Schema 24 (BALANCE-AI.md section 4): the AI's own race academy, when crew experience is on. The record id of the vanilla academy this
+// empire may build at the colony (one per empire, a yard, a treasury and an industry that can pay for it in 150 turns), or -1.
+inline int aiAcademy(const GameState& s, const Colony& c, int industry) {
+    if (!s.rules.crewExperience || c.shipyards == 0 || industry <= 0 || empire(s, c.ownerId).credits < 300) return -1;
+    for (const auto& r : content::tables::buildings()) {
+        if (!isVanillaAcademy(r) || !allowedFor(r, c.ownerId) || r.industryCost > 150 * industry) continue;
+        if (blocker(s, c, r.id).empty()) return r.id;
+    }
+    return -1;
+}
+
 // Turn 0: every eligible capital gets the `startsBuilt` records (they only require earlier start records, so id order is the ladder).
 inline void seedStart(GameState& s) {
     if (s.turn != 0 || !anyBuildable()) return;
