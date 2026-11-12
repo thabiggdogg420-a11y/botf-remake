@@ -300,6 +300,14 @@ func test_fixture_determinism() -> void:
 			end_turn()
 		check(api("fingerprint") == run.result, "economy preset %s: fingerprint %s == wasm %s" % [run.campaign.preset, api("fingerprint"), run.result])
 	api("loadBaseContent")
+	# Scenarios (schema 25): each scenario for 50 turns, native against wasm.
+	var sx := load_fixture("determinism-scenarios")
+	for run in sx.result:
+		api("newCampaign", run.campaign)
+		for i in int(run.turns):
+			end_turn()
+		check(api("fingerprint") == run.result, "scenario %s: fingerprint %s == wasm %s" % [run.campaign.scenario, api("fingerprint"), run.result])
+	api("loadBaseContent")
 	var fx_view := load_fixture("campaign-view")
 	var raw: String = core.request_json("newCampaign", JSON.stringify(fx_view.args))
 	var reparsed: Dictionary = JSON.parse_string(raw)
