@@ -91,23 +91,39 @@ func _run() -> void:
 	await _shot("%s/mirror-galaxy.png" % out)
 	app.goto("empire")
 	await _shot("%s/mirror-empire.png" % out)
-	# 5. A flagship: the Federation's Enterprise in the Dominion War, then commission one on the Mirror's fleets screen.
+	# 5. A flagship: the Terran Empire's scenario-placed I.S.S. Enterprise, then a commission by the Cardassian Alliance on the fleets screen.
+	var placed := {}
+	for f in app.view.get("fleets", []):
+		if int(f.get("flagship", 0)) > 0:
+			placed = f
+	app.select_fleet(int(placed.get("id", 0)))
+	app.goto("fleets")
+	await wait(8)
+	print("SCN placed flagship: %s name %s hull %s/%s" % [str(placed.get("name")), str(placed.get("flagshipName")), str(placed.get("hull")), str(placed.get("maxHull"))])
+	await _shot("%s/flagship-placed.png" % out)
+	ok = app.start_campaign({"scenario": "mirror-universe", "seed": 1, "faction": 4})
+	app.close_all_modals()
+	await wait(10)
 	var fl := {}
 	for f in app.view.get("fleets", []):
-		if int(f.get("flagship", 0)) == 0 and int(f.get("attack", 0)) > 0:
+		if int(f.get("attack", 0)) > 0 and int(f.get("flagship", 0)) == 0:
 			fl = f
 			break
 	app.select_fleet(int(fl.get("id", 0)))
 	app.goto("fleets")
 	await wait(8)
-	print("SCN fleet before: %s blocker=%s" % [str(fl.get("name")), str(fl.get("flagshipBlocker"))])
+	print("SCN cardassian fleet before: %s blocker=%s credits=%s" % [str(fl.get("name")), str(fl.get("flagshipBlocker")), str(app.view.get("empire", {}).get("credits"))])
 	await _shot("%s/flagship-before.png" % out)
 	var vm: Variant = app.current_screen().vm
-	var done: Variant = vm.commission_flagship(int(fl.get("id", 0)))
+	var done: Variant = vm.commission_flagship(fl)
 	print("SCN commission: %s" % str(done))
 	await wait(8)
-	app.current_screen().refresh()
-	await wait(8)
+	app.end_turn()
+	app.close_all_modals()
+	app.select_fleet(int(fl.get("id", 0)))
+	app.goto("galaxy")
+	app.goto("fleets")
+	await wait(10)
 	for f in app.view.get("fleets", []):
 		if int(f.get("flagship", 0)) > 0:
 			print("SCN flagship: %s hull %s/%s" % [str(f.get("flagshipName", f.get("name"))), str(f.get("hull")), str(f.get("maxHull"))])
