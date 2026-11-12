@@ -2,8 +2,8 @@
  "method": "meta",
  "args": {},
  "result": {
-  "contentVersion": "remaster-21",
-  "saveVersion": 21,
+  "contentVersion": "remaster-22",
+  "saveVersion": 22,
   "empires": [
    {
     "id": 1,
@@ -114,30 +114,35 @@
    {
     "id": 1,
     "name": "Early",
+    "year": 2240,
     "techLevel": 1,
     "prototypeTechLevel": 0
    },
    {
     "id": 2,
     "name": "Developed",
+    "year": 2280,
     "techLevel": 3,
     "prototypeTechLevel": 3
    },
    {
     "id": 3,
     "name": "Expanded",
+    "year": 2320,
     "techLevel": 5,
     "prototypeTechLevel": 5
    },
    {
     "id": 4,
     "name": "Advanced",
+    "year": 2350,
     "techLevel": 7,
     "prototypeTechLevel": 7
    },
    {
     "id": 5,
     "name": "Supreme",
+    "year": 2380,
     "techLevel": 10,
     "prototypeTechLevel": 10
    }
@@ -151,6 +156,7 @@
    "Weapons"
   ],
   "maxTechLevel": 10,
+  "highestTechLevel": 14,
   "presets": [
    {
     "id": "classic",
@@ -254,13 +260,14 @@
    {
     "id": "ages",
     "name": "Ages",
-    "blurb": "All The Ages: every empire fields the ships of the period you start in, from Enterprise to Nemesis. The era picker and canon ship lists are still being built.",
+    "blurb": "All The Ages: pick a start year from 2240 to 2380. Every empire fields the canon ships of its period (Enterprise to Nemesis), ships enter service and retire on the timeline, and research runs to level 14.",
     "rulesBase": "remastered",
     "overlays": [
      "ages"
     ],
     "flags": {
-     "expandedRoster": true
+     "expandedRoster": true,
+     "eras": true
     },
     "lineup": [
      "Federation",
@@ -291,19 +298,37 @@
       "disabled": []
      }
     },
-    "needs": [
-     "MOD-4"
-    ]
+    "needs": [],
+    "eras": {
+     "techCap": 14,
+     "years": [
+      2240,
+      2280,
+      2320,
+      2350,
+      2380
+     ],
+     "startTech": [
+      1,
+      3,
+      5,
+      8,
+      11
+     ]
+    }
    },
    {
     "id": "galaxies",
     "name": "Galaxies",
-    "blurb": "The Galaxies Mod: 2240 to 2380 on a huge map, with the Dominion Alliance and a playable Borg beside the Federation, Klingons and Romulans. Needs the new empires; until then you play the stock empires.",
+    "blurb": "The Galaxies Mod: 2240 to 2380 on a huge map, tech levels 1, 4, 7, 10 and 14 by start year, canon era ship lists, with the Dominion content (structure ladder, Founders and Vorta, Jem'Hadar line) and a playable Borg beside the Federation, Klingons and Romulans.",
     "rulesBase": "remastered",
     "overlays": [
+     "dominion",
      "galaxies"
     ],
-    "flags": {},
+    "flags": {
+     "eras": true
+    },
     "lineup": [
      "Federation",
      "Klingon",
@@ -333,11 +358,24 @@
       "disabled": []
      }
     },
-    "needs": [
-     "MOD-2",
-     "MOD-3",
-     "MOD-4"
-    ]
+    "needs": [],
+    "eras": {
+     "techCap": 14,
+     "years": [
+      2240,
+      2280,
+      2320,
+      2350,
+      2380
+     ],
+     "startTech": [
+      1,
+      4,
+      7,
+      10,
+      14
+     ]
+    }
    },
    {
     "id": "balance-of-power",
