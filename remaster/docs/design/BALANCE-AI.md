@@ -82,9 +82,9 @@ Run of 12 Nov 2026 (8 seeds x 3 rivals, 100 turns, Remastered rules):
 | Simple | 478 | 91.7 | 4.5 | 10.0 | 238 |
 | Easy | 508 | 91.7 | 4.8 | 10.4 | 237 |
 | Normal | 515 | 91.7 | 4.7 | 10.8 | 236 |
-| Hard | 559 | 100 | 4.5 | 12.9 | 220 |
-| Expert | 634 | 100 | 4.9 | 13.0 | 239 |
-| Impossible | 738 | 100 | 5.8 | 14.0 | 239 |
+| Hard | 541 | 95.8 | 4.2 | 12.7 | 198 |
+| Expert | 632 | 100 | 5.0 | 12.3 | 241 |
+| Impossible | 695 | 100 | 5.4 | 13.3 | 235 |
 
 The strength score is strictly ordered Simple < Easy < Normal < Hard < Expert < Impossible, and Expert (no bonus at all) beats Hard (+15% output) by playing better. The win rate is coarse: a passive baseline loses to almost any AI, so it saturates at 100% from Hard on. The score is the sensitive measure, and the suite checks the score order and that the win rate never falls along the tiers.
 
