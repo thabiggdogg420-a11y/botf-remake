@@ -1,4 +1,5 @@
 #include "Simulation.h"
+#include "EconomyRules.h"
 
 #include <algorithm>
 #include <charconv>
@@ -94,6 +95,7 @@ int main(int argc, char** argv) {
         bool seedSet = false;
         bool reference = false;
         bool eraSet = false, rulesetSet = false, chronicle = false;
+        int economyFlags = -1;   // --economy-flags BITS: replace the new game's economy flag set (0 plays the schema-22 rules)
         botf::StartingEra era = botf::StartingEra::Early;
         botf::RulesetPreset preset = botf::RulesetPreset::Remastered;
         std::string loadPath, savePath, battleFixturePath;
@@ -142,6 +144,7 @@ int main(int argc, char** argv) {
                 if (!botf::parseRulesetPreset(value, preset)) throw std::runtime_error("Unknown ruleset: " + value + " (classic, remastered)");
                 rulesetSet = true;
             }
+            else if (option == "--economy-flags") economyFlags = static_cast<int>(number(value));
             else if (option == "--load") loadPath = value;
             else if (option == "--save") savePath = value;
             else if (option == "--battle-fixture") battleFixturePath = value;
@@ -180,6 +183,7 @@ int main(int argc, char** argv) {
         setup.seed = seed; setup.empires = empires; setup.playerEmpire = playerEmpire; setup.lineup = lineup;
         setup.era = era; setup.reference = reference; setup.preset = preset;
         auto state = loadPath.empty() ? (empires ? botf::newCampaign(setup) : botf::generate(seed)) : botf::deserialize(readSave(loadPath));
+        if (loadPath.empty() && economyFlags >= 0) botf::economy_rules::setFlagBits(state.rules, economyFlags);
         if (loadPath.empty()) {
             std::uint64_t id = 0;
             const auto home = std::find_if(state.colonies.begin(), state.colonies.end(), [&](const botf::Colony& colony) {

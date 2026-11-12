@@ -464,7 +464,7 @@ test('expanded ship roster: database, build options and typed weapon mounts', ()
   // Remastered build options list buildable expanded classes with their roster detail; Classic never does.
   const v = call('newCampaign', { faction: 1, seed: 424242, era: 1, ruleset: 'reference' });
   const choices = call('colony', { systemId: v.colonies[0].systemId }).choices;
-  const rosterChoices = choices.filter((c) => c.referenceId >= 1000);
+  const rosterChoices = choices.filter((c) => c.referenceId >= 1000 && c.referenceId < 100000);
   assert.ok(rosterChoices.length > 0, 'expanded classes are offered');
   assert.ok(rosterChoices.every((c) => c.roster && c.roster.faction === 'Federation' && c.roster.buildable));
   const nx = rosterChoices.find((c) => c.designClass === 'NX');
@@ -510,12 +510,13 @@ test('Dominion War (MOD-3): race structures in the build list and on the colony,
     lineup: ['federation', 'klingon', 'romulan', 'cardassian', 'dominion'], minorDensity: 'many' };
   const v = call('newCampaign', camp);
   assert.equal(v.meta.playerName, 'Dominion');
-  assert.equal(call('contentInfo').id, 'botf-base+dominion+dominion-war');
+  assert.equal(call('contentInfo').id, 'botf-base+dominion+dominion-war+economy');
   const home = v.colonies[0].systemId;
   const col = call('colony', { systemId: home });
   assert.deepEqual(col.raceStructures.map((x) => x.name), ['Vorta Administrative Center', 'Ketracel-White Facility']);
-  const rung = col.choices.filter((x) => x.product === 'Structure');
+  const rung = col.choices.filter((x) => x.product === 'Structure' && x.referenceId < 1000000).filter((x) => !['Fleet Academy', 'Unity Monument', 'Protectorate Headquarters'].includes(x.name));
   assert.equal(rung.length, 10, 'ten Dominion structures are listed');
+  assert.equal(col.choices.filter((x) => ['Fleet Academy', 'Unity Monument', 'Protectorate Headquarters'].includes(x.name)).length, 3, 'the economy overlay adds three structures');
   assert.ok(rung.every((x) => x.referenceId >= 100000 && x.isShip === false && x.effect !== undefined));
   assert.equal(rung.find((x) => x.name === 'Vorta Administrative Center').blocker, 'Already built here');
   assert.ok(rung.find((x) => x.name === 'Changeling Shapeshifter Network').blocker.length > 0, 'the network is far up the ladder');
@@ -531,9 +532,38 @@ test('Dominion War (MOD-3): race structures in the build list and on the colony,
   assert.equal(call('fingerprint'), fp, 'the loaded game has the saved fingerprint');
   const fed = call('newCampaign', { ...camp, faction: 1 });
   const fedCol = call('colony', { systemId: fed.colonies[0].systemId });
-  assert.ok(!fedCol.choices.some((x) => x.product === 'Structure'), 'the Federation is offered no Dominion structure');
+  assert.ok(!fedCol.choices.some((x) => x.product === 'Structure' && x.referenceId < 1000000 && !['Fleet Academy', 'Unity Monument', 'Protectorate Headquarters'].includes(x.name)), 'the Federation is offered no Dominion structure');
   call('newCampaign', { faction: 1, seed: 1, preset: 'remastered' });
   assert.equal(call('contentInfo').base, true, 'a built-in preset restores the base pack');
+});
+
+test('Economy rules (MOD-6): flags in the view, upgrade entries in the build list, fleet orders, crew experience, schema 23 save', () => {
+  const classic = call('newCampaign', { faction: 1, seed: 424242, era: 1, ruleset: 'reference', preset: 'classic' });
+  assert.equal(classic.meta.rules.structureUpgrades, false);
+  assert.equal(classic.meta.rules.interceptOrders, false);
+  assert.ok(!call('colony', { systemId: classic.colonies[0].systemId }).choices.some((x) => /^Upgrade/.test(x.name)), 'Classic lists no upgrades');
+  const v = call('newCampaign', { faction: 1, seed: 424242, era: 1, ruleset: 'reference', preset: 'remastered' });
+  for (const k of ['structureUpgrades', 'interceptOrders', 'raidOrders', 'crewExperience', 'exploitFixes']) assert.equal(v.meta.rules[k], true, k);
+  assert.equal(v.meta.rules.sharedMorale, false);
+  const col = call('colony', { systemId: v.colonies[0].systemId });
+  assert.deepEqual(col.choices.filter((x) => /^Upgrade/.test(x.name)).map((x) => x.name), ['Upgrade farms', 'Upgrade factories', 'Upgrade laboratories']);
+  assert.ok(col.choices.find((x) => x.name === 'Upgrade farms').blocker.includes('level 2'), 'tier 1 needs science');
+  assert.equal(col.colony.economyRules.upgrades.length, 3);
+  assert.equal(col.colony.economyRules.subjugated, false);
+  const fleet = v.fleets.find((f) => f.attack > 0);
+  assert.equal(fleet.experience, 25);
+  assert.equal(fleet.crewRating, 'Regular');
+  assert.equal(fleet.order, 0);
+  call('submit', { command: { type: 'SetFleetOrder', fleetId: fleet.id, eventOption: 1 } });
+  assert.ok(call('view').pending.some((p) => /intercept post/.test(p.summary)), 'the intercept order is drafted');
+  const bad = attempt('submit', { command: { type: 'SetFleetOrder', fleetId: fleet.id, eventOption: 2, systemId: v.colonies[0].systemId } });
+  assert.equal(bad.ok, false, 'a raid on your own colony is refused');
+  for (let i = 0; i < 3; i++) endTurn();
+  const save = call('save');
+  assert.ok(String(save.data).startsWith('BOTF_SIM 23 remaster-23\n') && String(save.data).includes('\nECONOMY_RULES 1 '), 'schema 23 with the section');
+  const fp = call('fingerprint');
+  call('load', { data: save.data });
+  assert.equal(call('fingerprint'), fp);
 });
 
 test('tactical rules 3: rounds carry the core combat event stream and ships their mounts', () => {

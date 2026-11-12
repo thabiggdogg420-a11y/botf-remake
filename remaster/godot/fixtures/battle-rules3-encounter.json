@@ -109,6 +109,7 @@
       "sensors": 100,
       "warpCore": 100
      },
+     "experience": 25,
      "crew": "Regular",
      "crewLevel": 1,
      "elevation": 0,
@@ -198,8 +199,9 @@
       "sensors": 100,
       "warpCore": 100
      },
-     "crew": "Elite",
-     "crewLevel": 3,
+     "experience": 25,
+     "crew": "Regular",
+     "crewLevel": 1,
      "elevation": 1,
      "coreBreached": false,
      "canWarp": true
@@ -299,8 +301,9 @@
       "sensors": 100,
       "warpCore": 100
      },
-     "crew": "Elite",
-     "crewLevel": 3,
+     "experience": 25,
+     "crew": "Regular",
+     "crewLevel": 1,
      "elevation": -1,
      "coreBreached": false,
      "canWarp": true
@@ -400,6 +403,7 @@
       "sensors": 100,
       "warpCore": 100
      },
+     "experience": 25,
      "crew": "Regular",
      "crewLevel": 1,
      "elevation": 0,
@@ -501,8 +505,9 @@
       "sensors": 100,
       "warpCore": 100
      },
-     "crew": "Veteran",
-     "crewLevel": 2,
+     "experience": 25,
+     "crew": "Regular",
+     "crewLevel": 1,
      "elevation": 1,
      "coreBreached": false,
      "canWarp": true
@@ -605,8 +610,9 @@
       "sensors": 100,
       "warpCore": 100
      },
-     "crew": "Veteran",
-     "crewLevel": 2,
+     "experience": -1,
+     "crew": "Regular",
+     "crewLevel": 1,
      "elevation": 0,
      "coreBreached": false,
      "canWarp": false

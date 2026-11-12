@@ -183,7 +183,9 @@ int main() {
     // ---------------------------------------------------------------- (a) emergency programs
     auto asEmpire = [](int e, std::uint64_t seed = 55) {
         CampaignSetup setup; setup.seed = seed; setup.empires = 5; setup.playerEmpire = e;
-        return newCampaign(setup);
+        auto s = newCampaign(setup);
+        s.rules.interceptOrders = s.rules.raidOrders = s.rules.crewExperience = false; // this suite pins the empire rules; the vanilla orders have EconomyRulesTests
+        return s;
     };
     auto declare = [](GameState& s, int systemId, int program) {
         submit(s, Command{.id = nextId(s), .type = CommandType::SetEmergencyProgram, .systemId = systemId, .eventOption = program});

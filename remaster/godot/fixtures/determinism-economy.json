@@ -1,0 +1,56 @@
+{
+ "method": "fingerprint",
+ "args": {
+  "runs": 4
+ },
+ "result": [
+  {
+   "campaign": {
+    "faction": 1,
+    "empires": 5,
+    "seed": 31337,
+    "era": 2,
+    "ruleset": "reference",
+    "preset": "remastered"
+   },
+   "turns": 50,
+   "result": "18414559130665717236"
+  },
+  {
+   "campaign": {
+    "faction": 1,
+    "empires": 5,
+    "seed": 31337,
+    "era": 2,
+    "ruleset": "reference",
+    "preset": "ultimate"
+   },
+   "turns": 50,
+   "result": "6021758823915833715"
+  },
+  {
+   "campaign": {
+    "faction": 1,
+    "empires": 5,
+    "seed": 31337,
+    "era": 2,
+    "ruleset": "reference",
+    "preset": "balance-of-power"
+   },
+   "turns": 50,
+   "result": "17323166462976196719"
+  },
+  {
+   "campaign": {
+    "faction": 1,
+    "empires": 5,
+    "seed": 31337,
+    "era": 2,
+    "ruleset": "reference",
+    "preset": "dominion-war"
+   },
+   "turns": 50,
+   "result": "10377829961743354376"
+  }
+ ]
+}

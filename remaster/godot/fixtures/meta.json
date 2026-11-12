@@ -2,8 +2,8 @@
  "method": "meta",
  "args": {},
  "result": {
-  "contentVersion": "remaster-22",
-  "saveVersion": 22,
+  "contentVersion": "remaster-23",
+  "saveVersion": 23,
   "empires": [
    {
     "id": 1,
@@ -192,7 +192,13 @@
     "blurb": "The default: every BOTF feature plus our layers. Galaxy features, curated events, WEGO combat, the expanded ship roster and the extra victories.",
     "rulesBase": "remastered",
     "overlays": [],
-    "flags": {},
+    "flags": {
+     "interceptOrders": true,
+     "raidOrders": true,
+     "crewExperience": true,
+     "structureUpgrades": true,
+     "exploitFixes": true
+    },
     "lineup": [
      "Federation",
      "Klingon",
@@ -221,9 +227,20 @@
     "rulesBase": "remastered",
     "overlays": [
      "dominion",
-     "dominion-war"
+     "dominion-war",
+     "economy"
     ],
-    "flags": {},
+    "flags": {
+     "interceptOrders": true,
+     "raidOrders": true,
+     "crewExperience": true,
+     "structureUpgrades": true,
+     "exploitFixes": true,
+     "sharedMorale": true,
+     "protectorateHq": true,
+     "allDilithium": true,
+     "raidBonus": true
+    },
     "lineup": [
      "Federation",
      "Klingon",
@@ -267,7 +284,9 @@
     ],
     "flags": {
      "expandedRoster": true,
-     "eras": true
+     "eras": true,
+     "structureUpgrades": true,
+     "exploitFixes": true
     },
     "lineup": [
      "Federation",
@@ -327,7 +346,9 @@
      "galaxies"
     ],
     "flags": {
-     "eras": true
+     "eras": true,
+     "structureUpgrades": true,
+     "exploitFixes": true
     },
     "lineup": [
      "Federation",
@@ -385,7 +406,14 @@
     "overlays": [
      "balance-of-power"
     ],
-    "flags": {},
+    "flags": {
+     "interceptOrders": true,
+     "raidOrders": true,
+     "crewExperience": true,
+     "structureUpgrades": true,
+     "exploitFixes": true,
+     "autoUpgrades": true
+    },
     "lineup": [
      "Federation",
      "Klingon",
@@ -418,7 +446,14 @@
     "overlays": [
      "ultimate"
     ],
-    "flags": {},
+    "flags": {
+     "interceptOrders": true,
+     "raidOrders": true,
+     "crewExperience": true,
+     "structureUpgrades": true,
+     "exploitFixes": true,
+     "autoUpgrades": true
+    },
     "lineup": [
      "Federation",
      "Klingon",

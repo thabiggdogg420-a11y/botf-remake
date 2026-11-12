@@ -3,6 +3,7 @@
 // Simulation.cpp calls. See docs/GAMEPLAY-REMASTER.md.
 #include "Content.h"
 #include "EmpireRules.h"
+#include "EconomyRules.h"
 #include "EmpireSlots.h"
 #include "GameplayInternal.h"
 #include "ShipRoster.h"
@@ -31,7 +32,7 @@ bool isGameplayCommand(CommandType type) {
         type == CommandType::DeleteBuildTemplate || type == CommandType::ApplyBuildTemplate ||
         type == CommandType::SetDefaultBuildTemplate || type == CommandType::StartMegaproject ||
         type == CommandType::CancelMegaproject || type == CommandType::SetEmergencyProgram ||
-        type == CommandType::ResolveAftermath;
+        type == CommandType::ResolveAftermath || type == CommandType::SetFleetOrder;
 }
 
 namespace rules_detail {
@@ -56,14 +57,17 @@ void checkCommand(const Command& c) {
         c.stance == TacticalStance::Balanced && c.referenceId == -1,
         "Gameplay command contains unrelated fields");
     for (int amount : c.researchAllocation) require(amount == 0, "Gameplay command contains research fields");
-    const bool usesFleet = c.type == CommandType::BuildOutpost;
+    const bool usesFleet = c.type == CommandType::BuildOutpost || c.type == CommandType::SetFleetOrder;
     const bool usesSystem = c.type == CommandType::UpgradeStation || c.type == CommandType::ApplyBuildTemplate ||
         c.type == CommandType::StartMegaproject || c.type == CommandType::SetEmergencyProgram ||
         c.type == CommandType::ResolveAftermath;
     const bool usesTemplateId = c.type == CommandType::DefineBuildTemplate || c.type == CommandType::DeleteBuildTemplate ||
         c.type == CommandType::ApplyBuildTemplate || c.type == CommandType::SetDefaultBuildTemplate;
     require(usesFleet ? c.fleetId > 0 : c.fleetId == 0, "Invalid gameplay command fleet field");
-    require(usesSystem ? c.systemId > 0 : c.systemId == 0, "Invalid gameplay command system field");
+    if (c.type == CommandType::SetFleetOrder) // A raid names its target colony; a clear or an intercept names none.
+        require(c.systemId >= 0 && (c.eventOption == 2) == (c.systemId > 0), "Invalid fleet order fields");
+    else
+        require(usesSystem ? c.systemId > 0 : c.systemId == 0, "Invalid gameplay command system field");
     require(c.type == CommandType::UpgradeStation ? c.stationId > 0 : c.stationId == 0, "Invalid station field");
     if (c.type == CommandType::ResolveEventChoice)
         require(c.eventId > 0 && c.eventOption >= 0 && c.eventOption <= 2, "Invalid event choice fields");
@@ -71,6 +75,8 @@ void checkCommand(const Command& c) {
         require(c.eventId == 0 && c.eventOption >= 0 && c.eventOption <= 5, "Invalid emergency program fields");
     else if (c.type == CommandType::ResolveAftermath)
         require(c.eventId == 0 && c.eventOption >= 0 && c.eventOption <= 2, "Invalid aftermath fields");
+    else if (c.type == CommandType::SetFleetOrder)
+        require(c.eventId == 0 && c.eventOption >= 0 && c.eventOption <= 2, "Invalid fleet order fields");
     else
         require(c.eventId == 0 && c.eventOption == 0, "Invalid event fields");
     if (usesTemplateId) {
@@ -106,6 +112,9 @@ void applyCommand(GameState& state, const Command& command, std::set<int>& order
     case CommandType::SetEmergencyProgram:
     case CommandType::ResolveAftermath:
         empire_rules::applyCommand(state, command); break;
+    case CommandType::SetFleetOrder: // Schema 23 (EconomyRules.h): the fleet joins the draft's ordered set like any fleet order.
+        require(orderedFleets.insert(command.fleetId).second, "Cancel existing fleet draft before replacing it");
+        economy_rules::applyOrderCommand(state, command); break;
     default:
         throw std::runtime_error("Not a gameplay-layer command");
     }
@@ -385,6 +394,10 @@ GameplayRules rulesForPreset(RulesetPreset preset) {
     r.flightModel = remastered;
     r.wegoCombat = remastered;
     r.empireRules = true; // Schema 15: dilithium slots, programs, aftermath, minor conquest, guards (both presets).
+    // Schema 23 (EconomyRules.h): the original game's intercept order, raid order and crew experience are vanilla rules, on in both bases
+    // (Simon's scope, 12 Nov 2026). Mod rules (shared morale, Protectorate HQ, dilithium everywhere, the raid bonus, upgrades, exploit fixes)
+    // come only from a preset's flags. A save written before schema 23 has no ECONOMY_RULES section and loads with them off.
+    r.interceptOrders = r.raidOrders = r.crewExperience = true;
     return r;
 }
 
@@ -592,6 +605,7 @@ GameState newCampaign(const CampaignSetup& setup) {
             else if (flag.first == "wegoCombat") rules.wegoCombat = flag.second;
             else if (flag.first == "empireRules") rules.empireRules = flag.second;
             else if (flag.first == "eras") rules.eras = flag.second;
+            else economy_rules::setFlagByName(rules, flag.first, flag.second); // Schema 23 economy flags
         }
         // Schema 22: under the eras rule the start era's tech levels, credits and home fleets come from the pack's eras block, so the
         // era is applied again with the rule on (the call is idempotent; it draws no random numbers). Off, nothing changes.

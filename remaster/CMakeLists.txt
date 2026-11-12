@@ -95,6 +95,7 @@ set_tests_properties(BotfEmpireRulesTests PROPERTIES TIMEOUT 900)
 botf_suite(BotfEmpireSlotsTests EmpireSlotsTests.cpp)
 set_tests_properties(BotfEmpireSlotsTests PROPERTIES TIMEOUT 900)
 botf_suite(BotfDominionTests DominionTests.cpp) # MOD-3: Dominion overlay, race structures, new minors, schema-21 STRUCTURES section
+botf_suite(BotfEconomyRulesTests EconomyRulesTests.cpp) # MOD-6: upgrades, shared morale, Protectorate, orders, crew experience, schema-23 ECONOMY_RULES section
 set_tests_properties(BotfDominionTests PROPERTIES TIMEOUT 900)
 # Campaign eras (docs/design/ERAS.md, schema 22): era gate, timeline year, research levels 11-14, ERAS section, per-era soaks.
 botf_suite(BotfEraTests EraTests.cpp)

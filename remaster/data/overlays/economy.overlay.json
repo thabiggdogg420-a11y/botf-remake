@@ -1,0 +1,6 @@
+{"format":1,"kind":"overlay","id":"economy","name":"Economy structures: Fleet Academy, Unity Monument, Protectorate Headquarters (MOD-6)","revision":1,"requires":["botf-base"],
+"buildings":{"patch":[
+{"id":85,"name":"Fleet Academy","technologyField":1,"technologyLevel":1,"industryCost":400,"bonusType":92,"bonusValues":[4,80,0,0,0,0],"description":"Crews run simulated campaigns until nothing surprises them. Fleets in this system train a little every turn, and new ships launch with graduates aboard.","buildable":true,"perEmpireLimit":3},
+{"id":73,"name":"Unity Monument","technologyField":1,"technologyLevel":2,"industryCost":900,"bonusType":93,"bonusValues":[5,0,0,0,0,0],"description":"A memorial every citizen of the empire can point to. Raises morale in every colony of the empire.","buildable":true,"perEmpireLimit":1},
+{"id":61,"name":"Protectorate Headquarters","technologyField":1,"technologyLevel":2,"industryCost":700,"bonusType":94,"bonusValues":[10,0,0,0,0,0],"description":"A governor's seat in a subjugated world. While it stands, subjugated worlds hold order and pay tribute instead of seething. Build it in a subjugated world.","buildable":true,"perEmpireLimit":1}
+]}}

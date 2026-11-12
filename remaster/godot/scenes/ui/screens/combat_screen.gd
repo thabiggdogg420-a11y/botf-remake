@@ -317,9 +317,12 @@ func _systems(s: Dictionary) -> Control:
 	f.custom_minimum_size.x = 400
 	var b := Lcars.body(f)
 	var top := Lcars.hbox(8)
-	var cb := Lcars.badge("Crew · " + crew, CombatVM.CREW_TONES.get(crew, "primary"))
+	var xp_text := " · %d xp" % int(w["experience"]) if int(w.get("experience", -1)) >= 0 else ""  # Schema 23: campaign experience behind the rating
+	var cb := Lcars.badge("Crew · " + crew + xp_text, CombatVM.CREW_TONES.get(crew, "primary"))
 	cb.name = "CrewBadge"
 	cb.tooltip_text = "Crew rating %s: it sets repair speed, fire accuracy and how fast destroyed systems come back." % crew
+	if int(w.get("experience", -1)) >= 0:
+		cb.tooltip_text += " Experience %d of 100 from battles, raids and academies." % int(w["experience"])
 	top.add_child(cb)
 	if w.get("coreBreached", false):
 		top.add_child(Lcars.badge("Core breached", "alert"))

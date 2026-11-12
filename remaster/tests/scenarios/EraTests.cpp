@@ -4,6 +4,7 @@
 #include "Presets.h"
 #include "ShipRoster.h"
 #include "Simulation.h"
+#include "EconomyRules.h"
 
 #include <algorithm>
 #include <array>
@@ -110,7 +111,7 @@ int main() {
             check(campaignYear(s) == 0 && eraStartTech(s) == eraBaseTechLevel(s.startingEra, s.ruleset), std::string(id) + ": no timeline, classic start tech");
             check(s.presetId.empty(), std::string(id) + ": plain pack");
             check(!contains(serialize(s), "ERAS"), std::string(id) + ": no ERAS section");
-            check(contains(serialize(s), "BOTF_SIM 24 remaster-24\n"), std::string(id) + ": schema 24 header");
+            check(contains(serialize(s), "BOTF_SIM " + std::to_string(SaveVersion) + " remaster-" + std::to_string(SaveVersion) + "\n"), std::string(id) + ": schema 22 header");
             expectRefusal([&] { researchCost(s, 0, 11); }, "Invalid research catalogue position", std::string(id) + ": level 11");
             expectRefusal([&] { technologyName(s, 0, 11); }, "Invalid technology position", std::string(id) + ": level 11 name");
             check(researchCost(s, 0, 10) == 81700 && researchCost(s, 5, 10) == 128500, std::string(id) + ": level 10 costs");
@@ -284,7 +285,7 @@ int main() {
         for (int t = 0; t < 10; ++t) advance(s);
         const auto text = serialize(s);
         check(contains(text, "\nERAS 1\n") && contains(text, "PACKS ages 2 ") == false && contains(text, "PACKS ages 1 "), "ERAS and PACKS in the text");
-        check(text.find("BOTF_SIM 24 remaster-24\n") == 0, "schema 24 header");
+        check(text.find("BOTF_SIM " + std::to_string(SaveVersion) + " remaster-" + std::to_string(SaveVersion) + "\n") == 0, "schema 22 header");
         const auto back = deserialize(text);
         check(serialize(back) == text && fingerprint(back) == fingerprint(s) && back.rules.eras && campaignYear(back) == campaignYear(s), "round trip is byte-stable");
         // A reload on a different active pack still plays: the save names its overlay stack.
@@ -296,6 +297,7 @@ int main() {
         expectRefusal([&] { deserialize(withHeader(text, 21)); }, "older save", "ERAS under a schema-21 header");
         // A schema-20 Classic text (header only differs) loads and re-saves as 22.
         auto cl = classic(26);
+        economy_rules::setFlagBits(cl.rules, 0); // legacy-header scenarios pin the pre-schema-23 text
         const auto classicText = serialize(cl);
         check(!contains(classicText, "ERAS"), "classic text has no ERAS");
         const auto migrated = deserialize(withHeader(classicText, 20));
