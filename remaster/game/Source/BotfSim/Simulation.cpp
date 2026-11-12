@@ -1476,12 +1476,12 @@ void planRivals(GameState& s) {
                 c.queue.push_back(Building::PowerPlant);
             else if (s.campaignExpansionEnabled && c.factories < 2 && c.factories < MaxBuildings)
                 c.queue.push_back(Building::Factory);
-            else if (policy.standardBuild && c.laboratories < 2) c.queue.push_back(Building::Laboratory); // Standard order: labs before yards.
             else if (c.shipyards == 0) c.queue.push_back(Building::Shipyard);
             else if (empire_rules::aiWantsRefinery(s, owner.id, c)) c.queue.push_back(Building::DilithiumRefinery);
             else if (const int rung = structures::aiNext(s, c, economy(s, c).industry); rung >= 0) c.queue.emplace_back(Building::Structure, 0, structures::refFor(rung));
             else if (const int academy = structures::aiAcademy(s, c, economy(s, c).industry); academy >= 0) c.queue.emplace_back(Building::Structure, 0, structures::refFor(academy)); // Schema 24: the AI trains crews
             else if (const int up = economy_rules::aiUpgrade(s, c); up >= 0) c.queue.emplace_back(Building::Structure, 0, structures::refFor(up)); // Schema 23
+            else if (policy.standardBuild && c.laboratories < 2) c.queue.push_back(Building::Laboratory); // Standard order: a second laboratory once the race structures are in hand.
             else if ((atWar || (policy.standardBuild && onBorder(c))) && s.advancedRulesEnabled && c.defenseBatteries < 1) c.queue.push_back(Building::DefenseBattery);
             else if (policy.aggressiveExpansion && colonyShips < desiredColonyShips && s.fleets.size() < 256 && s.nextFleetId <= 1000000 &&
                 queueMilitaryShip(s, c, Building::ColonyShip)) ++colonyShips; // Aggressive expansion: colony ships ahead of warships.

@@ -726,7 +726,7 @@ inline constexpr const char* const Overlay1[] = {
 // dominion-war
 inline constexpr const char* const Overlay2[] = {
     "{\"format\":1,\"kind\":\"overlay\",\"id\":\"dominion-war\",\"name\":\"Dominion War content: Bajor for the Edo, new minors (UDM III, MOD-3)\",\"revision\":3,\"requires\":[\"botf-base\",\"dominion\"],\n",
-    "\"balance\":{\"researchCurveLow\":90,\"researchCurveHigh\":110,\"batteryDefensePercent\":150,\"shieldDefensePercent\":115,\"populationCapacityPercent\":115,\"populationGrowthPercent\":90,\"minorGiftCost\":100,\"minorGiftAttitude\":25,\"aiStandardBuild\":1},\n",
+    "\"balance\":{\"researchCurveLow\":90,\"researchCurveHigh\":110,\"batteryDefensePercent\":150,\"shieldDefensePercent\":115,\"populationCapacityPercent\":115,\"minorGiftCost\":100,\"minorGiftAttitude\":25,\"aiStandardBuild\":1},\n",
     "\"ships\":{\"patch\":[\n",
     "{\"id\":2,\"name\":\"Armed Colony Ship\",\"attack\":40},\n",
     "{\"id\":3,\"name\":\"Armed Colony Ship II\",\"attack\":160},\n",

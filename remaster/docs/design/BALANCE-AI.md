@@ -53,10 +53,12 @@ The test checks that every empire has at least one of each.
 
 * **Always builds starbases** (`Stations.cpp`, `planRivalStations`): the empire keeps building outposts at war too, wants `min(6, 2 + colonies/2)` stations instead of `min(4, 1 + colonies/2)`, and starts an outpost-to-starbase upgrade as soon as it can pay one (not three times over).
 * **Prefers newest ships** (`queueMilitaryShip`): the class with the highest technology requirements wins (ties: the dearer, then the lower id); otherwise the cheapest or best-value one as before. Era gates, tech and the Ketracel-White rule still filter the candidates first.
-* **Standard build order** (`planRivals`): a second laboratory before the shipyard, and a defence battery on every colony that has a rival colony within five sectors (not only at war).
+* **Standard build order** (`planRivals`): a second laboratory (after the race structures, academy and upgrades), and a defence battery on every colony that has a rival colony within five sectors (not only at war).
 * **Aggressive expansion**: up to four colony ships out or queued (two otherwise), and colony ships queued ahead of warships.
 
 Presets: Balance of Power sets starbases, newest ships and the standard build; Ultimate sets the standard build and aggressive expansion (UM5's "smoother, more aggressive expansion"); Dominion War sets the standard build ("AI buy priorities standardised").
+
+**AI and the vanilla rules (lead's addition, 12 Nov).** MOD-6 put intercept, raid and crew experience on in Classic and Remastered. Its AI already holds intercept posts and raids at war (`economy_rules::planOrders`; the soak shows hundreds of AI order-turns). The AI did not build its race's academy, so `structures::aiAcademy` (Structures.h) now queues the vanilla academy (records 25, 37, 43, 50) in a colony with a shipyard, 300 credits and an industry that can pay for it in 150 turns, while crew experience is on. This is the one deliberate change to a default Classic or Remastered game in this lane; a build with that rule switched off is byte-identical to main (section 9).
 
 ## 5. Difficulty (X22)
 
@@ -72,7 +74,19 @@ Six tiers in play order: Simple, Easy, Normal, Hard, **Expert**, Impossible (`Di
 
 Expert is "Impossible without the bonuses": it plays the way Impossible does and cheats in nothing. The AI reads the tier through `aiPolicy` at the three places above and through `difficultyProfile` as before (verified, not assumed: the soak and the tier table below run through those paths).
 
-**Win-rate table.** `BotfDifficultyTests` plays each tier on the same eight seeds for 100 turns, four empires: three AI rivals against a baseline empire that only runs colony governors, and counts a rival as winning when its strength score (tech levels, colonies and population, fleet attack and hull, stations) beats the baseline's. It is AI against a fixed baseline, not AI against AI, because the difficulty applies to every non-player empire at once (a head-to-head between tiers would need a per-empire level, which nothing asks for). The table is printed by the suite and copied into the lane report. TABLE-PLACEHOLDER
+**Win-rate table.** `BotfDifficultyTests` plays each tier on the same eight seeds for 100 turns, four empires: three AI rivals against a baseline empire that only runs colony governors, and counts a rival as winning when its strength score (tech levels, colonies and population, fleet attack and hull, stations) beats the baseline's. It is AI against a fixed baseline, not AI against AI, because the difficulty applies to every non-player empire at once (a head-to-head between tiers would need a per-empire level, which nothing asks for). The table is printed by the suite and copied into the lane report.
+Run of 12 Nov 2026 (8 seeds x 3 rivals, 100 turns, Remastered rules):
+
+| Tier | Rival strength score | Rival win % | Rival colonies | Rival tech levels (sum of six fields) | Baseline player score |
+|---|---|---|---|---|---|
+| Simple | 478 | 91.7 | 4.5 | 10.0 | 238 |
+| Easy | 508 | 91.7 | 4.8 | 10.4 | 237 |
+| Normal | 515 | 91.7 | 4.7 | 10.8 | 236 |
+| Hard | 559 | 100 | 4.5 | 12.9 | 220 |
+| Expert | 634 | 100 | 4.9 | 13.0 | 239 |
+| Impossible | 738 | 100 | 5.8 | 14.0 | 239 |
+
+The strength score is strictly ordered Simple < Easy < Normal < Hard < Expert < Impossible, and Expert (no bonus at all) beats Hard (+15% output) by playing better. The win rate is coarse: a passive baseline loses to almost any AI, so it saturates at 100% from Hard on. The score is the sensitive measure, and the suite checks the score order and that the win rate never falls along the tiers.
 
 ## 6. Galaxy options (X06)
 
@@ -88,11 +102,11 @@ The Cardassians already had armed colony and troop ships in vanilla (attack 48 a
 
 ## 9. Save schema 24
 
-* Header `BOTF_SIM 24 remaster-24`. Saves 14 to 22 load (a schema-22 save differs from the schema-24 text by the header alone; the loader rebuilds the canonical text for the old header). MOD-6 takes schema 23; after the merge the migration list is 14 to 23.
+* Header `BOTF_SIM 24 remaster-24`. Saves 14 to 23 load (a schema-22 or -23 save without the newer sections differs from the schema-24 text by the header alone; the loader rebuilds the canonical text for the old header). MOD-6's schema 23 is merged in (ECONOMY_RULES); saves 14 to 23 load.
 * `GALAXY_SETUP` accepts difficulty 5 (Expert) only under a schema-24 header.
 * `STAR_TYPES 1 <n>` then `<systemId> <type>` per typed system, after `ERAS`, written only while a system has a star type. Refused under an older header, with a wrong count, an unknown system or a type outside 0 to 6.
 * The balance values and traits live in the pack data, so they reach the save through the existing `PACKS` and `CONTENT` lines (schema 17).
-* A default Classic or Remastered game differs from main (b74ba2d, schema 22) in the header line alone (proof in the lane report).
+* A default Classic or Remastered game differs from main (059ec08, schema 23) in the header line alone, once the AI academy rule is switched off in a proof build (12 of 12 saves identical, seeds 1999, 7 and 42, 20 and 60 turns, both rulesets; with the rule on the AI builds its academy, which changes the AI's queue and so the later game).
 
 ## 10. Tests
 
@@ -100,7 +114,7 @@ The Cardassians already had armed colony and troop ships in vanilla (attack 48 a
 
 ## 11. Design values Simon may want to overturn
 
-* Every number in the overlays (Balance of Power: research x105 with a 85% to 125% curve, ships x90, structures x85, weapons x75, population capacity x110; Ultimate: research x85 with a 100% to 90% curve, weapons x85, AI spy output x75; Dominion War: batteries x150, shields x115, population capacity x115 and growth x90, gifts 100 credits for +25, research curve 90% to 110%; Ages: weapons x85 and the trait table in section 3).
+* Every number in the overlays (Balance of Power: research x105 with a 85% to 125% curve, ships x90, structures x85, weapons x75, population capacity x110; Ultimate: research x85 with a 100% to 90% curve, weapons x85, AI spy output x75; Dominion War: batteries x150, shields x115, population capacity x115, gifts 100 credits for +25, research curve 90% to 110%; Ages: weapons x85 and the trait table in section 3).
 * The AI policy bundles (which mod sets which flag) and the Hard tier getting the standard build order.
 * Star types per race; extra colonies' size; the planet range names.
 * The Expert placement between Hard and Impossible and its definition: no economy bonus, all four behaviours.
