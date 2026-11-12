@@ -198,15 +198,26 @@ static func box(bg: Color, radius: int = 12, border: Color = Color.TRANSPARENT, 
 	s.anti_aliasing = true
 	return s
 
-## The era's panel: tinted surface, hairline border, a lit top edge in the accent and a soft drop shadow.
+## Drop-in for box(): the LCARS sweep, a big radius on the left and a quarter of it on the right.
+static func box_lcars(bg: Color, radius: int = 12, border: Color = Color.TRANSPARENT, border_w: int = 0, pad: Vector4 = Vector4(10, 6, 10, 6)) -> StyleBoxFlat:
+	return box_tab(bg, radius, maxi(2, radius / 4), border, border_w, pad)
+
+## An LCARS tab: the left end rounded to `r_left`, the right end nearly square (`r_right`), the Okudagram way round.
+static func box_tab(bg: Color, r_left: int = 12, r_right: int = 3, border: Color = Color.TRANSPARENT, border_w: int = 0, pad: Vector4 = Vector4(10, 6, 10, 6)) -> StyleBoxFlat:
+	var s := box(bg, r_left, border, border_w, pad)
+	s.corner_radius_top_right = r_right
+	s.corner_radius_bottom_right = r_right
+	return s
+
+## The era's panel: tinted surface, a hairline border and a lit top edge in the accent. The sweep is the LCARS one (a big radius at
+## the top left, small elsewhere) and there is no web-style drop shadow: LCARS is flat colour on black (lcars-theme DESIGN.md).
 static func panel_box(edge: Color = Color(0, 0, 0, 0)) -> StyleBoxFlat:
-	var sb := box(Color(UiTokens.panel(), 0.9), UiTokens.radius(), LINE, 1, Vector4(16, 14, 16, 14))
+	var rr := UiTokens.radius()
+	var sb := box(Color(UiTokens.panel(), 0.9), maxi(3, rr / 3), LINE, 1, Vector4(16, 14, 16, 14))
+	sb.corner_radius_top_left = rr
 	if edge.a > 0:
 		sb.border_color = Color(edge, 0.22)
 		sb.border_width_top = 2
-	sb.shadow_color = Color(0, 0, 0, 0.35)
-	sb.shadow_size = 10
-	sb.shadow_offset = Vector2(0, 4)
 	return sb
 
 ## Builds the complete LCARS Theme for a faction accent. Saved as lcars_theme.tres by tools/build_theme.gd.
@@ -260,14 +271,16 @@ static func build_theme(empire: int = 1) -> Theme:
 	t.set_stylebox("focus", "Button", focus)
 	# Ghost pill variation (toggles, secondary controls)
 	t.set_type_variation("GhostButton", "Button")
-	t.set_stylebox("normal", "GhostButton", box(Color(PANEL2, 0.8), maxi(3, pr - 4), LINE2, 1, pad))
-	t.set_stylebox("hover", "GhostButton", box(PANEL3, maxi(3, pr - 4), a, 1, pad))
-	t.set_stylebox("pressed", "GhostButton", box(Color(a, 0.35), maxi(3, pr - 4), a, 1, pad))
-	t.set_stylebox("hover_pressed", "GhostButton", box(Color(a, 0.45), maxi(3, pr - 4), a, 1, pad))
+	# LCARS tabs: the left end round, the right end square; the lit one is a filled tab, not a web-style outline
+	var gl := maxi(3, pr - 4)
+	t.set_stylebox("normal", "GhostButton", box_tab(Color(a, 0.12), gl, 2, Color.TRANSPARENT, 0, pad))
+	t.set_stylebox("hover", "GhostButton", box_tab(Color(a, 0.26), gl, 2, Color.TRANSPARENT, 0, pad))
+	t.set_stylebox("pressed", "GhostButton", box_tab(Color(a, 0.55), gl, 2, Color.TRANSPARENT, 0, pad))
+	t.set_stylebox("hover_pressed", "GhostButton", box_tab(Color(a, 0.65), gl, 2, Color.TRANSPARENT, 0, pad))
 	t.set_color("font_color", "GhostButton", TEXT2)
 	t.set_color("font_hover_color", "GhostButton", TEXT)
-	t.set_color("font_pressed_color", "GhostButton", TEXT)
-	t.set_color("font_hover_pressed_color", "GhostButton", TEXT)
+	t.set_color("font_pressed_color", "GhostButton", ink())
+	t.set_color("font_hover_pressed_color", "GhostButton", ink())
 	t.set_color("font_focus_color", "GhostButton", TEXT)
 	# Rail buttons: square-left LCARS blocks
 	t.set_type_variation("RailButton", "Button")
@@ -283,7 +296,7 @@ static func build_theme(empire: int = 1) -> Theme:
 	t.set_stylebox("panel", "Panel", box(Color(pnl, 0.9), rr, LINE, 1))
 	t.set_stylebox("panel", "PanelContainer", panel_box(a))
 	t.set_type_variation("Card", "PanelContainer")
-	t.set_stylebox("panel", "Card", box(Color(PANEL2, 0.92), maxi(4, rr - 2), LINE2, 1, Vector4(12, 10, 12, 10)))
+	t.set_stylebox("panel", "Card", box_tab(Color(PANEL2, 0.92), maxi(4, rr - 2), 3, LINE2, 1, Vector4(12, 10, 12, 10)))
 	t.set_type_variation("Inset", "PanelContainer")
 	t.set_stylebox("panel", "Inset", box(Color(BG2, 0.85), maxi(4, rr - 4), LINE, 1, Vector4(10, 8, 10, 8)))
 	# Inputs
@@ -292,9 +305,11 @@ static func build_theme(empire: int = 1) -> Theme:
 		t.set_stylebox("focus", type, box(BG2, 10, a, 2, Vector4(10, 6, 10, 6)))
 		t.set_color("font_color", type, TEXT)
 	t.set_font("font", "LineEdit", font("mono"))
-	t.set_stylebox("normal", "OptionButton", box(PANEL2, 12, LINE2, 1, pad))
-	t.set_stylebox("hover", "OptionButton", box(PANEL3, 12, a, 1, pad))
-	t.set_stylebox("pressed", "OptionButton", box(PANEL3, 12, a, 1, pad))
+	t.set_stylebox("normal", "OptionButton", box_tab(PANEL2, pr, 3, LINE2, 1, pad))
+	t.set_stylebox("hover", "OptionButton", box_tab(PANEL3, pr, 3, a, 1, pad))
+	t.set_stylebox("pressed", "OptionButton", box_tab(PANEL3, pr, 3, a, 1, pad))
+	t.set_icon("arrow", "OptionButton", delta_texture(a, 14, PI))
+	t.set_constant("arrow_margin", "OptionButton", 8)
 	t.set_color("font_color", "OptionButton", TEXT)
 	t.set_color("font_hover_color", "OptionButton", TEXT)
 	t.set_color("font_pressed_color", "OptionButton", TEXT)
@@ -309,30 +324,46 @@ static func build_theme(empire: int = 1) -> Theme:
 	var empty := StyleBoxEmpty.new()
 	for st in ["normal", "hover", "pressed", "hover_pressed", "focus"]:
 		t.set_stylebox(st, "CheckBox", empty)
+	# Switches and check lamps in LCARS blocks instead of the engine's rounded web toggles
+	for ty in ["CheckButton", "CheckBox"]:
+		var on_tex := switch_texture(a, true) if ty == "CheckButton" else lamp_texture(a, true)
+		var off_tex := switch_texture(a, false) if ty == "CheckButton" else lamp_texture(a, false)
+		for nm in ["checked", "checked_mirrored"]:
+			t.set_icon(nm, ty, on_tex)
+		for nm in ["unchecked", "unchecked_mirrored"]:
+			t.set_icon(nm, ty, off_tex)
+		t.set_icon("checked_disabled", ty, switch_texture(TEXT3, true) if ty == "CheckButton" else lamp_texture(TEXT3, true))
+		t.set_icon("unchecked_disabled", ty, switch_texture(TEXT3, false) if ty == "CheckButton" else lamp_texture(TEXT3, false))
+		t.set_icon("radio_checked", ty, lamp_texture(a, true))
+		t.set_icon("radio_unchecked", ty, lamp_texture(a, false))
+	t.set_icon("updown", "SpinBox", updown_texture(a))
+	t.set_icon("grabber", "HSlider", slider_knob_texture(a.darkened(0.1)))
+	t.set_icon("grabber_highlight", "HSlider", slider_knob_texture(a.lightened(0.25)))
+	t.set_icon("grabber_disabled", "HSlider", slider_knob_texture(TEXT3))
 	# Sliders and progress
-	t.set_stylebox("slider", "HSlider", box(PANEL3, 4, Color.TRANSPARENT, 0, Vector4(0, 3, 0, 3)))
-	t.set_stylebox("grabber_area", "HSlider", box(a.darkened(0.2), 4, Color.TRANSPARENT, 0, Vector4(0, 3, 0, 3)))
-	t.set_stylebox("grabber_area_highlight", "HSlider", box(a, 4, Color.TRANSPARENT, 0, Vector4(0, 3, 0, 3)))
-	t.set_stylebox("background", "ProgressBar", box(PANEL3, 4, Color.TRANSPARENT, 0, Vector4.ZERO))
-	t.set_stylebox("fill", "ProgressBar", box(a, 4, Color.TRANSPARENT, 0, Vector4.ZERO))
+	t.set_stylebox("slider", "HSlider", box_tab(PANEL3, 4, 1, Color.TRANSPARENT, 0, Vector4(0, 3, 0, 3)))
+	t.set_stylebox("grabber_area", "HSlider", box_tab(a.darkened(0.2), 4, 1, Color.TRANSPARENT, 0, Vector4(0, 3, 0, 3)))
+	t.set_stylebox("grabber_area_highlight", "HSlider", box_tab(a, 4, 1, Color.TRANSPARENT, 0, Vector4(0, 3, 0, 3)))
+	t.set_stylebox("background", "ProgressBar", StyleBoxEmpty.new())   # LcarsMeter draws its own segmented bar
+	t.set_stylebox("fill", "ProgressBar", StyleBoxEmpty.new())
 	t.set_color("font_color", "ProgressBar", TEXT)
 	# Popups, menus, tooltips
-	t.set_stylebox("panel", "PopupPanel", box(Color(PANEL_SOLID, 0.97), 14, a, 1, Vector4(8, 8, 8, 8)))
-	t.set_stylebox("panel", "PopupMenu", box(Color(PANEL_SOLID, 0.97), 12, a, 1, Vector4(6, 6, 6, 6)))
-	t.set_stylebox("hover", "PopupMenu", box(Color(a, 0.3), 8))
+	t.set_stylebox("panel", "PopupPanel", box_tab(Color(PANEL_SOLID, 0.97), rr, 3, a, 1, Vector4(8, 8, 8, 8)))
+	t.set_stylebox("panel", "PopupMenu", box_tab(Color(PANEL_SOLID, 0.97), rr, 3, a, 1, Vector4(6, 6, 6, 6)))
+	t.set_stylebox("hover", "PopupMenu", box_tab(Color(a, 0.3), 8, 2))
 	t.set_color("font_color", "PopupMenu", TEXT)
 	t.set_color("font_disabled_color", "PopupMenu", TEXT3)
-	t.set_stylebox("panel", "TooltipPanel", box(Color(PANEL_SOLID, 0.97), 10, a, 1, Vector4(12, 8, 12, 8)))
+	t.set_stylebox("panel", "TooltipPanel", box_tab(Color(PANEL_SOLID, 0.97), maxi(6, rr - 2), 3, a, 1, Vector4(12, 8, 12, 8)))
 	t.set_color("font_color", "TooltipLabel", TEXT)
 	t.set_font("font", "TooltipLabel", font("ui", 420))
 	t.set_font_size("font_size", "TooltipLabel", 14)
 	# Scroll bars
-	t.set_stylebox("scroll", "VScrollBar", box(Color(0, 0, 0, 0.2), 4, Color.TRANSPARENT, 0, Vector4(3, 0, 3, 0)))
-	t.set_stylebox("grabber", "VScrollBar", box(Color(a, 0.45), 4))
-	t.set_stylebox("grabber_highlight", "VScrollBar", box(a, 4))
-	t.set_stylebox("grabber_pressed", "VScrollBar", box(a, 4))
-	t.set_stylebox("scroll", "HScrollBar", box(Color(0, 0, 0, 0.2), 4, Color.TRANSPARENT, 0, Vector4(0, 3, 0, 3)))
-	t.set_stylebox("grabber", "HScrollBar", box(Color(a, 0.45), 4))
+	t.set_stylebox("scroll", "VScrollBar", box(Color(0, 0, 0, 0.2), 1, Color.TRANSPARENT, 0, Vector4(3, 0, 3, 0)))
+	t.set_stylebox("grabber", "VScrollBar", box_tab(Color(a, 0.45), 1, 1))
+	t.set_stylebox("grabber_highlight", "VScrollBar", box_tab(a, 1, 1))
+	t.set_stylebox("grabber_pressed", "VScrollBar", box_tab(a, 1, 1))
+	t.set_stylebox("scroll", "HScrollBar", box(Color(0, 0, 0, 0.2), 1, Color.TRANSPARENT, 0, Vector4(0, 3, 0, 3)))
+	t.set_stylebox("grabber", "HScrollBar", box_tab(Color(a, 0.45), 1, 1))
 	# Tabs
 	t.set_stylebox("tab_selected", "TabBar", box(a, 12, Color.TRANSPARENT, 0, Vector4(14, 4, 14, 4)))
 	t.set_stylebox("tab_unselected", "TabBar", box(PANEL2, 12, LINE2, 1, Vector4(14, 4, 14, 4)))
@@ -517,18 +548,74 @@ static func card() -> PanelContainer:
 	p.theme_type_variation = "Card"
 	return p
 
-## Horizontal meter bar drawn as two rounded boxes.
+## A horizontal meter: the LCARS segmented bar (see LcarsMeter), still a ProgressBar so callers can set `value`.
 static func meter(value: float, max_value: float, color: Color = Color(0, 0, 0, 0), height: int = 8, width: int = 0) -> ProgressBar:
-	var bar := ProgressBar.new()
+	var bar := LcarsMeter.new()
 	bar.max_value = max(1.0, max_value)
 	bar.value = clamp(value, 0.0, bar.max_value)
 	bar.show_percentage = false
 	bar.custom_minimum_size = Vector2(width, height)
 	bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	bar.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	if color.a > 0:
-		bar.add_theme_stylebox_override("fill", box(color, 4, Color.TRANSPARENT, 0, Vector4.ZERO))
+	bar.fill_color = color if color.a > 0 else accent()
 	return bar
+
+## The meter bar: an Okudagram run of blocks separated by black gaps, the left end rounded in the looks that round their pills and
+## square in TOS and the movie looks. Under 6 px high it is one solid bar with quarter gaps. Replaces the engine's two rounded boxes.
+class LcarsMeter extends ProgressBar:
+	var fill_color := Color.WHITE
+	func _draw() -> void:
+		var h := size.y
+		var w := size.x
+		if w < 4 or h < 1:
+			return
+		var f: float = clamp(value / max(0.0001, max_value), 0.0, 1.0)
+		var track := Color(Lcars.PANEL3, 0.95)
+		var round_left := UiTokens.pill_radius() >= 10 and h >= 4
+		var seg_w: float = clamp(h * 2.6, 7.0, 16.0)
+		if h < 6.0:
+			_run(0.0, w, h, track, round_left)
+			if f > 0.0:
+				_run(0.0, w * f, h, fill_color, round_left)
+			for q in [0.25, 0.5, 0.75]:
+				draw_rect(Rect2(w * q - 0.75, 0, 1.5, h), Lcars.BG)
+			return
+		var n: int = maxi(3, int(w / (seg_w + 2.0)))
+		var each := (w - 2.0 * (n - 1)) / n
+		for i in n:
+			var x0 := i * (each + 2.0)
+			var lo := float(i) / n
+			var hi := float(i + 1) / n
+			var rl: bool = round_left and i == 0
+			_seg(x0, each, h, track, rl)
+			if f > lo:
+				var part: float = clamp((f - lo) / (hi - lo), 0.0, 1.0)
+				_seg(x0, each * part, h, fill_color, rl)
+	func _seg(x0: float, sw: float, h: float, col: Color, round_end: bool) -> void:
+		if sw <= 0.0:
+			return
+		_run(x0, x0 + sw, h, col, round_end)
+	func _run(x0: float, x1: float, h: float, col: Color, round_end: bool) -> void:
+		if round_end:
+			var r: float = min(h / 2.0, x1 - x0)
+			draw_circle(Vector2(x0 + r, h / 2.0), r, col)
+			draw_rect(Rect2(x0 + r, 0, max(0.0, x1 - x0 - r), h), col)
+		else:
+			draw_rect(Rect2(x0, 0, x1 - x0, h), col)
+
+## A flat glyph button drawn from the UI icon set (delta, cross, pin ...), tinted by state.
+class GlyphButton extends Button:
+	var glyph := "delta_right"
+	var px := 16.0
+	func _draw() -> void:
+		var col := Lcars.TEXT2
+		if disabled:
+			col = Color(Lcars.TEXT3, 0.5)
+		elif is_pressed():
+			col = Lcars.accent().lightened(0.3)
+		elif is_hovered():
+			col = Lcars.accent()
+		UiIcon.draw_icon(self, glyph, Rect2((size - Vector2(px, px)) / 2.0, Vector2(px, px)), col)
 
 ## A stat: small caption over a large value, explained on hover. `tip` is a string or an explanation Dictionary
 ## (docs/UI-DESIGN-SYSTEM.md §8); with none, the caption and value form the explanation's title.
@@ -558,13 +645,26 @@ static func kpi(icon_name: String, caption_text: String, value: Variant, delta: 
 static func icon(name_: String, px: float = 20.0, tint: Variant = null) -> UiIcon:
 	return UiIcon.make(name_, px, tint)
 
-static func badge(text: String, tone: String = "primary") -> PanelContainer:
+## An icon with a text beside it (the mark that used to be a text glyph such as a diamond).
+static func marked(icon_name: String, text: String, variation: String = "", size: int = 0, color: Variant = null, px: float = 14.0) -> HBoxContainer:
+	var h := hbox(5)
+	h.add_child(UiIcon.make(icon_name, px, (color if color != null else TEXT2)))
+	h.add_child(label(text, variation, size, color))
+	return h
+
+static func badge(text: String, tone: String = "primary", icon_name: String = "") -> PanelContainer:
 	var p := PanelContainer.new()
 	var c := tone_color(tone)
-	p.add_theme_stylebox_override("panel", box(Color(c, 0.18), 9, Color(c, 0.7), 1, Vector4(8, 1, 8, 1)))
+	p.add_theme_stylebox_override("panel", box_tab(Color(c, 0.18), 9, 2, Color(c, 0.7), 1, Vector4(8, 1, 8, 1)))
 	var l := label(text.to_upper(), "", 12, c)
 	l.add_theme_font_override("font", font("display", 600))
-	p.add_child(l)
+	if icon_name != "":
+		var hb := hbox(4)
+		hb.add_child(UiIcon.make(icon_name, 12, c))
+		hb.add_child(l)
+		p.add_child(hb)
+	else:
+		p.add_child(l)
 	p.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	return p
 
@@ -613,6 +713,90 @@ class EmblemView extends Control:
 			Lcars.draw_emblem(self, empire, size / 2.0, min(size.x, size.y), tint, false, bg)
 
 # ---------------------------------------------------------------------------------------------
+# Small raster textures for theme icons (switches, lamps, the dropdown delta): drawn in code, cached
+# ---------------------------------------------------------------------------------------------
+static var _tex := {}
+
+static func _cached(key: String, w: int, h: int, painter: Callable) -> ImageTexture:
+	if not _tex.has(key):
+		var img := Image.create(w, h, false, Image.FORMAT_RGBA8)
+		img.fill(Color(0, 0, 0, 0))
+		painter.call(img)
+		_tex[key] = ImageTexture.create_from_image(img)
+	return _tex[key]
+
+static func _px_rect(img: Image, x0: int, y0: int, x1: int, y1: int, col: Color) -> void:
+	for y in range(maxi(0, y0), mini(img.get_height(), y1)):
+		for x in range(maxi(0, x0), mini(img.get_width(), x1)):
+			img.set_pixel(x, y, col)
+
+## A bar with a round left end (cap) of radius h/2, square on the right.
+static func _px_tab(img: Image, x0: int, y0: int, x1: int, y1: int, col: Color, round_left: bool = true) -> void:
+	var r := (y1 - y0) / 2.0
+	for y in range(y0, y1):
+		for x in range(x0, x1):
+			var ok := true
+			if round_left and x < x0 + r:
+				var dx := (x + 0.5) - (x0 + r)
+				var dy := (y + 0.5) - (y0 + r)
+				ok = dx * dx + dy * dy <= r * r
+			if ok:
+				img.set_pixel(x, y, col)
+
+## Fills a polygon with 3x3 supersampling (even-odd), scaling `col`'s alpha by coverage.
+static func _px_poly(img: Image, pts: PackedVector2Array, col: Color) -> void:
+	var lo := Vector2(1e9, 1e9)
+	var hi := Vector2(-1e9, -1e9)
+	for p in pts:
+		lo = Vector2(min(lo.x, p.x), min(lo.y, p.y))
+		hi = Vector2(max(hi.x, p.x), max(hi.y, p.y))
+	for y in range(maxi(0, int(floor(lo.y))), mini(img.get_height(), int(ceil(hi.y)) + 1)):
+		for x in range(maxi(0, int(floor(lo.x))), mini(img.get_width(), int(ceil(hi.x)) + 1)):
+			var hit := 0
+			for sy in 3:
+				for sx in 3:
+					if Geometry2D.is_point_in_polygon(Vector2(x + (sx + 0.5) / 3.0, y + (sy + 0.5) / 3.0), pts):
+						hit += 1
+			if hit > 0:
+				img.set_pixel(x, y, Color(col, col.a * hit / 9.0))
+
+## The Starfleet delta as a small theme icon (the dropdown arrow), tip rotated by `ang` (PI points it down).
+static func delta_texture(col: Color, px: int, ang: float = 0.0) -> ImageTexture:
+	return _cached("delta:%s:%d:%.2f" % [col.to_html(), px, ang], px, px, func(img: Image):
+		_px_poly(img, UiIcon.delta_points(Vector2(px, px) / 2.0, px * 0.46, ang), col))
+
+## The two stacked deltas of a spin box.
+static func updown_texture(col: Color) -> ImageTexture:
+	return _cached("updown:" + col.to_html(), 10, 16, func(img: Image):
+		_px_poly(img, UiIcon.delta_points(Vector2(5, 4.2), 3.6, 0.0), col)
+		_px_poly(img, UiIcon.delta_points(Vector2(5, 11.8), 3.6, PI), col))
+
+## A rocker switch in LCARS blocks: a track with a round left end and a square block that sits on the lit side.
+static func switch_texture(col: Color, on: bool) -> ImageTexture:
+	return _cached("switch:%s:%s" % [col.to_html(), on], 46, 22, func(img: Image):
+		_px_tab(img, 0, 2, 46, 20, Color(col, 0.28) if on else Color(PANEL3, 1.0), true)
+		if on:
+			_px_rect(img, 25, 0, 45, 22, col)
+			_px_rect(img, 8, 9, 20, 13, Color(col, 0.55))
+		else:
+			_px_rect(img, 3, 0, 23, 22, Color(TEXT3, 0.9))
+			_px_rect(img, 28, 9, 40, 13, Color(TEXT3, 0.35)))
+
+## A check lamp: a square housing, lit solid when on.
+static func lamp_texture(col: Color, on: bool) -> ImageTexture:
+	return _cached("lamp:%s:%s" % [col.to_html(), on], 20, 20, func(img: Image):
+		_px_rect(img, 1, 1, 19, 19, Color(col, 0.9) if on else Color(TEXT3, 0.7))
+		_px_rect(img, 3, 3, 17, 17, Color(PANEL_SOLID, 1.0))
+		if on:
+			_px_rect(img, 5, 5, 15, 15, col))
+
+## A slider knob: a tall LCARS block.
+static func slider_knob_texture(col: Color) -> ImageTexture:
+	return _cached("knob:" + col.to_html(), 12, 22, func(img: Image):
+		_px_rect(img, 0, 0, 12, 22, col)
+		_px_rect(img, 5, 4, 7, 18, Color(BG, 0.55)))
+
+# ---------------------------------------------------------------------------------------------
 # Layout components shared by the screens
 # ---------------------------------------------------------------------------------------------
 ## A full-rect MarginContainer added to `host`; returns it. `sides` is margin per side (left, right, top, bottom).
@@ -659,8 +843,22 @@ static func ignore_mouse(n: Control) -> void:
 	for c in n.find_children("*", "Control", true, false):
 		c.mouse_filter = Control.MOUSE_FILTER_IGNORE
 
-## A flat glyph button with a disabled reason.
+## The text marks that used to stand for icons, and the Starfleet glyph each one is now.
+const TEXT_GLYPHS := {"▾": "delta_down", "▸": "delta_right", "▴": "delta_up", "◂": "delta_left", "▲": "delta_up", "▼": "delta_down",
+	"✕": "cross", "◆": "pin_on", "◇": "pin", "✓": "tick", "✗": "cross"}
+
+## A flat glyph button with a disabled reason. A text mark from TEXT_GLYPHS is drawn as that glyph.
 static func icon_button(text: String, hint: String, reason: String, on: Callable) -> Button:
+	if TEXT_GLYPHS.has(text):
+		var g := GlyphButton.new()
+		g.glyph = TEXT_GLYPHS[text]
+		g.flat = true
+		g.custom_minimum_size = Vector2(30, 30)
+		g.focus_mode = Control.FOCUS_ALL
+		g.tooltip_text = ("Unavailable: " + reason) if reason != "" else hint
+		g.disabled = reason != ""
+		g.pressed.connect(on)
+		return g
 	var b := Button.new()
 	b.text = text
 	b.flat = true

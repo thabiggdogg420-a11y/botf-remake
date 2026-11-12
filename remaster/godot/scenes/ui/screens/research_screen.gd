@@ -65,7 +65,7 @@ func _field_card(i: int, fd: Dictionary, lock: String) -> Control:
 	var card := PanelContainer.new()
 	card.name = "Field%d" % i
 	card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	var sb := Lcars.box(Color(Lcars.PANEL2, 0.92), 16, col_c if focus == i else Lcars.LINE2, 2 if focus == i else 1, Vector4(14, 12, 14, 12))
+	var sb := Lcars.box_lcars(Color(Lcars.PANEL2, 0.92), 16, col_c if focus == i else Lcars.LINE2, 2 if focus == i else 1, Vector4(14, 12, 14, 12))
 	sb.border_width_top = 5
 	sb.border_color = col_c if focus == i else Color(col_c, 0.6)
 	card.add_theme_stylebox_override("panel", sb)
@@ -157,7 +157,7 @@ func _ladder(fd: Dictionary) -> Control:
 		var n := int(l["level"])
 		var p := PanelContainer.new()
 		var c := Lcars.accent() if n <= lvl else (Lcars.accent2() if n == lvl + 1 else Lcars.PANEL3)
-		p.add_theme_stylebox_override("panel", Lcars.box(Color(c, 0.85 if n <= lvl + 1 else 0.6), 10, Color.TRANSPARENT, 0, Vector4(8, 4, 8, 4)))
+		p.add_theme_stylebox_override("panel", Lcars.box_lcars(Color(c, 0.85 if n <= lvl + 1 else 0.6), 10, Color.TRANSPARENT, 0, Vector4(8, 4, 8, 4)))
 		p.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		var lb := Lcars.label("%d  %s" % [n, l["name"]], "", 13, Lcars.ink() if n <= lvl + 1 else Lcars.TEXT2)
 		lb.clip_text = true
@@ -196,7 +196,11 @@ func _ladder(fd: Dictionary) -> Control:
 	if nxt["structures"].is_empty():
 		st.add_child(Lcars.label("None catalogued.", "Muted"))
 	for s in nxt["structures"].slice(0, 8):
-		st.add_child(Lcars.label("%s  ·  %s ind · ⚡%d" % [s["name"], Lcars.fmt(s["cost"]), int(s["energy"])], "", 14))
+		var sr := Lcars.hbox(4)
+		sr.add_child(Lcars.label("%s  ·  %s ind ·" % [s["name"], Lcars.fmt(s["cost"])], "", 14))
+		sr.add_child(UiIcon.make("energy", 14, Lcars.TEXT2))
+		sr.add_child(Lcars.label("%d" % int(s["energy"]), "", 14))
+		st.add_child(sr)
 	cols.add_child(st)
 	b.add_child(cols)
 	var blocked: Array = vm.blocked()

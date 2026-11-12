@@ -55,7 +55,7 @@ func _draw() -> void:
 		var fnt := Lcars.font("ui", 420)
 		var lx := 0.0
 		for p in parts:
-			draw_circle(Vector2(lx + 5, h + 12), 4, p[2] if float(p[1]) >= 0 else Lcars.ALERT)
+			draw_rect(Rect2(lx + 1, h + 8, 8, 8), p[2] if float(p[1]) >= 0 else Lcars.ALERT)
 			var t := "%s %s" % [p[0], Fmt.num(p[1])]
 			draw_string(fnt, Vector2(lx + 13, h + 17), t, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Lcars.TEXT2)
 			lx += 22 + fnt.get_string_size(t, HORIZONTAL_ALIGNMENT_LEFT, -1, 12).x

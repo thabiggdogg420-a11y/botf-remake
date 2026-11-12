@@ -5,11 +5,11 @@ extends RefCounted
 
 ## Era looks (§2.3). radius = panel corner, pill = button corner, header = frame header style.
 const ERAS := {
-	"tos": {"label": "TOS", "name": "The Original Series", "tint": "#0b0a12", "panel": "#15111d", "radius": 4, "pill": 6, "line": 1, "header": "bar", "hi": "#f2c14e", "lo": "#d6453d"},
-	"movie": {"label": "Movie", "name": "Motion Picture era", "tint": "#070a10", "panel": "#0e131b", "radius": 6, "pill": 8, "line": 1, "header": "bracket", "hi": "#9fb4c8", "lo": "#c06a4a"},
-	"tng": {"label": "TNG / DS9", "name": "Next Generation and Deep Space Nine", "tint": "#04060c", "panel": "#0a1022", "radius": 14, "pill": 18, "line": 1, "header": "cap", "hi": "#f2b45a", "lo": "#9d8cff"},
-	"voy": {"label": "Voyager", "name": "Voyager", "tint": "#050a12", "panel": "#0b1528", "radius": 12, "pill": 16, "line": 1, "header": "cap", "hi": "#7fb3ff", "lo": "#d9a36a"},
-	"late": {"label": "Late", "name": "Post-Nemesis", "tint": "#03050a", "panel": "#0a0f18", "radius": 6, "pill": 10, "line": 1, "header": "hairline", "hi": "#5fe0ff", "lo": "#ff8a5c"},
+	"tos": {"label": "TOS", "name": "The Original Series", "tint": "#0b0a12", "panel": "#15111d", "radius": 4, "pill": 6, "line": 1, "header": "bar", "stroke": 2.8, "hi": "#f2c14e", "lo": "#d6453d"},
+	"movie": {"label": "Movie", "name": "Motion Picture era", "tint": "#070a10", "panel": "#0e131b", "radius": 6, "pill": 8, "line": 1, "header": "bracket", "stroke": 1.5, "hi": "#9fb4c8", "lo": "#c06a4a"},
+	"tng": {"label": "TNG / DS9", "name": "Next Generation and Deep Space Nine", "tint": "#04060c", "panel": "#0a1022", "radius": 14, "pill": 18, "line": 1, "header": "cap", "stroke": 2.0, "hi": "#f2b45a", "lo": "#9d8cff"},
+	"voy": {"label": "Voyager", "name": "Voyager", "tint": "#050a12", "panel": "#0b1528", "radius": 12, "pill": 16, "line": 1, "header": "cap", "stroke": 2.0, "hi": "#7fb3ff", "lo": "#d9a36a"},
+	"late": {"label": "Late", "name": "Post-Nemesis", "tint": "#03050a", "panel": "#0a0f18", "radius": 6, "pill": 10, "line": 1, "header": "hairline", "stroke": 1.5, "hi": "#5fe0ff", "lo": "#ff8a5c"},
 }
 const ERA_ORDER := ["tos", "movie", "tng", "voy", "late"]
 
@@ -35,6 +35,10 @@ static func radius() -> int:
 
 static func pill_radius() -> int:
 	return int(era_def()["pill"])
+
+## Stroke weight of the UI icons on the 24 px grid: heavy for TOS, thin for the movies and Late.
+static func icon_stroke() -> float:
+	return float(era_def().get("stroke", 2.0))
 
 static func header_style() -> String:
 	return str(era_def()["header"])

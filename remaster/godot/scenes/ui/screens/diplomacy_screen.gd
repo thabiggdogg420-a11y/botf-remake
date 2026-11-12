@@ -113,7 +113,7 @@ func _race_list() -> Control:
 		var sid := int(mi["systemId"])
 		var btn2 := Lcars.row_button(vm.is_selected(true, sid))
 		var h2 := Lcars.row_inner(btn2)
-		h2.add_child(Lcars.label("◇", "", 22, Color("#d8c3ff")))
+		h2.add_child(UiIcon.make("minor", 22, Color("#d8c3ff")))
 		var t2 := Lcars.vbox(-2)
 		t2.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		t2.add_child(Lcars.label(str(mi["name"]), "", 15, Lcars.TEXT))
@@ -530,7 +530,8 @@ func _minor_standing(minor: Dictionary) -> Control:
 		col.add_child(Lcars.label("Member of %s. A gift to it lowers its attitude toward its owner by half the gain." % app.empire_name(int(minor["memberOf"])), "", 14, Lcars.TEXT2))
 	else:
 		var friend := bool(minor.get("friendship", false))
-		col.add_child(Lcars.label("%s Attitude %d of %d needed" % ["✓" if att >= EmpireTabs.JOIN_LINE else "✗", att, EmpireTabs.JOIN_LINE], "", 14, Lcars.GOOD if att >= EmpireTabs.JOIN_LINE else Lcars.TEXT2))
-		col.add_child(Lcars.label("%s Friendship signed in an earlier turn" % ("✓" if friend else "✗"), "", 14, Lcars.GOOD if friend else Lcars.TEXT2))
+		var att_ok: bool = att >= EmpireTabs.JOIN_LINE
+		col.add_child(Lcars.marked("tick" if att_ok else "cross", "Attitude %d of %d needed" % [att, EmpireTabs.JOIN_LINE], "", 14, Lcars.GOOD if att_ok else Lcars.TEXT2, 14))
+		col.add_child(Lcars.marked("tick" if friend else "cross", "Friendship signed in an earlier turn", "", 14, Lcars.GOOD if friend else Lcars.TEXT2, 14))
 		col.add_child(Lcars.para("A gift raises attitude by 4 per 1,000 credits. A friendship class treaty adds +2 per review (every 5 turns); rivals with a friendship take -2.", Lcars.TEXT3, 12))
 	return col

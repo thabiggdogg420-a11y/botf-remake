@@ -222,7 +222,7 @@ func _preview_panel() -> Control:
 		it.add_child(Lcars.label(Lcars.FACTIONS[int(e) - 1]["short"], "Muted", 13))
 		legend.add_child(it)
 	var mi := Lcars.hbox(6)
-	mi.add_child(Lcars.label("○", "", 14, Lcars.TEXT2))
+	mi.add_child(UiIcon.make("minor", 16, Lcars.TEXT2))
 	mi.add_child(Lcars.label("Minor race", "Muted", 13))
 	legend.add_child(mi)
 	leg.add_child(legend)
@@ -354,7 +354,7 @@ func _rules_column() -> Control:
 	rb.add_child(_choice_row("Interface look", UiTokens.ERA_ORDER.map(func(id): return [id, UiTokens.ERAS[id]["label"], "%s interface: shapes and colours of that era's LCARS." % UiTokens.ERAS[id]["name"]]), vm.ui_era, func(id): vm.ui_era = id; UiTokens.era = id; refresh()))
 	colr.add_child(rules)
 	var summ := PanelContainer.new()
-	var ss := Lcars.box(Color(Lcars.accent().darkened(0.8), 0.95), UiTokens.radius(), Lcars.accent(), 2, Vector4(18, 14, 18, 14))
+	var ss := Lcars.box_lcars(Color(Lcars.accent().darkened(0.8), 0.95), UiTokens.radius(), Lcars.accent(), 2, Vector4(18, 14, 18, 14))
 	ss.shadow_color = Color(Lcars.accent(), 0.25)
 	ss.shadow_size = 16
 	summ.add_theme_stylebox_override("panel", ss)
@@ -395,7 +395,7 @@ func _faction_card(f: Dictionary) -> Control:
 	b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	b.clip_contents = true
 	b.tooltip_text = "%s · capital %s\n“%s”\n%s" % [f["short"], f["capital"], f["motto"], ", ".join(f["traits"])]
-	var bg := Lcars.box(Color(col, 0.16) if selected else Color(Lcars.PANEL2, 0.85), UiTokens.radius(), col if selected else Lcars.LINE2, 3 if selected else 1, Vector4(16, 14, 16, 14))
+	var bg := Lcars.box_lcars(Color(col, 0.16) if selected else Color(Lcars.PANEL2, 0.85), UiTokens.radius(), col if selected else Lcars.LINE2, 3 if selected else 1, Vector4(16, 14, 16, 14))
 	if selected:
 		bg.shadow_color = Color(col, 0.35)
 		bg.shadow_size = 18
@@ -426,9 +426,13 @@ func _faction_card(f: Dictionary) -> Control:
 	v.add_child(nm)
 	v.add_child(Lcars.caption(str(f["capital"])))
 	for t in f["traits"]:
-		var tl := Lcars.label("▸ " + t, "Muted", 11, Color(pal["secondary"]))
+		var tl := Lcars.label(t, "Muted", 11, Color(pal["secondary"]))
 		tl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		v.add_child(tl)
+		var trow := Lcars.hbox(4)
+		trow.add_child(UiIcon.make("delta_right", 8, Color(pal["secondary"])))
+		tl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		trow.add_child(tl)
+		v.add_child(trow)
 	for n in h.find_children("*", "Control", true, false):
 		n.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	h.mouse_filter = Control.MOUSE_FILTER_IGNORE

@@ -251,7 +251,7 @@ func _members(v: Dictionary) -> Control:
 		var parts: Array = b["parts"]
 		h.add_child(Lcars.label(" · ".join(parts) if parts.size() > 0 else "no bonus", "", 14, Lcars.GOOD))
 		for mm in b["minors"]:
-			var bd := Lcars.badge("◇ " + str(mm["name"]), "primary")
+			var bd := Lcars.badge(str(mm["name"]), "primary", "minor")
 			bd.tooltip_text = str(mm["bonus"])
 			h.add_child(bd)
 	else:

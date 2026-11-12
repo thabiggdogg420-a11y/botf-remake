@@ -6,13 +6,13 @@ extends ViewModel
 
 ## Map layers: [key, label, hint, icon].
 const LAYERS := [
-	["territory", "Territory", "Colony influence of every known empire", "empire"],
-	["supply", "Supply", "Supply range of the selected unit (from the core)", "range"],
-	["routes", "Routes", "Plotted courses and ETAs", "arrow_right"],
-	["trade", "Trade", "Trade routes", "trade"],
-	["fog", "Fog", "Fog of war", "eye"],
-	["grid", "Grid", "Sector grid and coordinates", "galaxy"],
-	["labels", "Labels", "System names", "database"],
+	["territory", "Territory", "Colony influence of every known empire", "territory"],
+	["supply", "Supply", "Supply range of the selected unit (from the core)", "supply"],
+	["routes", "Courses", "Plotted courses and ETAs", "routes"],
+	["trade", "Trade", "Trade lanes and routes", "trade"],
+	["fog", "Sensors", "Which sectors your sensors reach (fog of war)", "sensor"],
+	["grid", "Grid", "Sector grid and coordinates", "grid"],
+	["labels", "Names", "System names", "labels"],
 ]
 
 ## Alerts shown at once in the panel; the rest are counted.
@@ -80,10 +80,13 @@ func orders() -> Dictionary:
 func cancel_order(id: int) -> void:
 	cancel([id], "Order cancelled.")
 
-## Map legend: [{label, color}] where color is a token the presentation maps: owner | alert | secondary | anomaly | dim.
+## Map legend: [{label, color, icon}] where color is a token the presentation maps (owner | alert | secondary | anomaly | dim) and
+## icon is the UI-set glyph drawn beside it (the same marks the chart uses).
 func legend() -> Array:
-	return [{"label": "Your ships", "color": "owner"}, {"label": "Contacts", "color": "alert"}, {"label": "Station", "color": "secondary"},
-		{"label": "Anomaly", "color": "anomaly"}, {"label": "Threat", "color": "alert"}, {"label": "Unexplored", "color": "dim"}]
+	return [{"label": TrekText.term(player(), "legend_ships", "Your ships"), "color": "owner", "icon": "ship"},
+		{"label": "Foreign contacts", "color": "alert", "icon": "contact"}, {"label": "Starbase", "color": "secondary", "icon": "starbase"},
+		{"label": "Spatial anomaly", "color": "anomaly", "icon": "anomaly"}, {"label": "Hostile", "color": "alert", "icon": "threat"},
+		{"label": "Uncharted", "color": "dim", "icon": "unexplored"}]
 
 ## The status strip: [{cap, icon, value, tone, tip}] over the chart (sectors charted, colonies, ships, contacts in range).
 func status() -> Array:
@@ -103,7 +106,7 @@ func status() -> Array:
 			"tip": {"title": "Colonies", "value": str(v.get("colonies", []).size()), "effect": "Your inhabited systems. Open System (F2) to manage one."}},
 		{"cap": "Ships", "icon": "ship", "value": str(v.get("fleets", []).size()), "tone": "",
 			"tip": {"title": "Your ships", "value": str(v.get("fleets", []).size()), "effect": "Tab cycles through them on the chart."}},
-		{"cap": "Contacts", "icon": "eye", "value": str(contacts.size()), "tone": "alert" if hostile > 0 else "",
+		{"cap": "Contacts", "icon": "sensor", "value": str(contacts.size()), "tone": "alert" if hostile > 0 else "",
 			"tip": {"title": "Foreign contacts", "value": "%d in sensor range" % contacts.size(), "parts": [["At war with you", str(hostile), "alert" if hostile > 0 else ""]],
 				"effect": "Contacts are only tracked inside your sensor range."}},
 	]

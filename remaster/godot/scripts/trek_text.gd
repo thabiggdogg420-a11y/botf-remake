@@ -106,6 +106,8 @@ static func term(empire: Variant, key: String, fallback: String) -> String:
 			return "Sensors detect hostile vessels"
 		"unknown_vessel":
 			return "Unidentified vessel"
+		"legend_ships":
+			return "Starfleet vessels" if v == 0 else fallback
 	return fallback
 
 # ---------------------------------------------------------------------------------------------

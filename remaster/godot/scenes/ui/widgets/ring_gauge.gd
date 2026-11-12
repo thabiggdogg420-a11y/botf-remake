@@ -34,23 +34,50 @@ func _make_custom_tooltip(_for_text: String) -> Object:
 func _draw() -> void:
 	var c := size / 2.0
 	var r: float = min(size.x, size.y) / 2.0 - thickness / 2.0 - 1.0
-	draw_arc(c, r, 0, TAU, 64, Lcars.LINE2, thickness, true)
+	# An LCARS arc gauge: a ring of blocks with black gaps and quarter ticks inside, not a plain donut.
+	var n: int = 24 if r < 24.0 else (36 if r < 44.0 else 48)
+	var step := TAU / n
+	var gap: float = clamp(2.2 / max(1.0, r), 0.02, 0.07)
 	var start := -PI / 2.0
+	var shares: Array = []   # per block: its colour, or a clear colour when the block is empty
 	if segments.size() > 0:
 		var tot := 0.0
-		for s in segments:
-			tot += max(0.0, float(s[0]))
-		if tot > 0:
-			for s in segments:
-				var span: float = TAU * max(0.0, float(s[0])) / tot
-				if span > 0.01:
-					draw_arc(c, r, start + 0.02, start + span - 0.02, max(4, int(64 * span / TAU)), s[1], thickness, true)
-				start += span
+		for sg in segments:
+			tot += max(0.0, float(sg[0]))
+		var acc := 0.0
+		for i in n:
+			var mid := (i + 0.5) / n
+			var col := Color(0.55, 0.67, 0.9, 0.2)
+			var lo := 0.0
+			for sg in segments:
+				var span: float = (max(0.0, float(sg[0])) / tot) if tot > 0.0 else 0.0
+				if mid >= lo and mid < lo + span:
+					col = sg[1]
+					break
+				lo += span
+			shares.append(col)
 	else:
 		var f: float = clamp(value / max_value, 0.0, 1.0)
-		if f > 0.0:
-			draw_arc(c, r, start, start + TAU * f, max(4, int(64 * f)), color, thickness, true)
-			draw_circle(c + Vector2(cos(start + TAU * f), sin(start + TAU * f)) * r, thickness * 0.55, color.lightened(0.25))
+		for i in n:
+			var lo2 := float(i) / n
+			var hi2 := float(i + 1) / n
+			if f >= hi2 - 0.0001:
+				shares.append(color)
+			elif f > lo2:
+				shares.append(color.darkened(0.15))   # the partly lit block
+			else:
+				shares.append(Color(0.55, 0.67, 0.9, 0.2))
+	for i in n:
+		var a0 := start + i * step + gap / 2.0
+		var a1 := start + (i + 1) * step - gap / 2.0
+		draw_arc(c, r, a0, a1, 6, shares[i], thickness, false)
+	# inner track with quarter ticks
+	var ri := r - thickness / 2.0 - 4.0
+	if ri > 8.0:
+		draw_arc(c, ri, 0, TAU, 48, Color(Lcars.LINE2, 0.9), 1.0, true)
+		for q in 4:
+			var ang := start + q * PI / 2.0
+			draw_line(c + Vector2(cos(ang), sin(ang)) * (ri - 3.0), c + Vector2(cos(ang), sin(ang)) * (ri + 1.5), Lcars.TEXT3, 1.5)
 	var fnt := Lcars.font("display", 600)
 	var fs := int(clamp(r * 0.62, 12, 40))
 	if center_text != "":

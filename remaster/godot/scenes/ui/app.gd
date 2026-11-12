@@ -621,7 +621,7 @@ func toast(text: String, tone: String = "info", seconds: float = 3.4) -> void:
 		return
 	var p := PanelContainer.new()
 	var c := Lcars.tone_color(tone)
-	var sb := Lcars.box(Color(Lcars.PANEL_SOLID, 0.96), 12, c, 1, Vector4(16, 10, 16, 10))
+	var sb := Lcars.box_lcars(Color(Lcars.PANEL_SOLID, 0.96), 12, c, 1, Vector4(16, 10, 16, 10))
 	sb.border_width_left = 6
 	p.add_theme_stylebox_override("panel", sb)
 	var l := Lcars.para(text, Lcars.TEXT, 15)
@@ -650,7 +650,7 @@ func open_modal(content: Control, title: String = "", min_size: Vector2 = Vector
 	center.set_anchors_preset(Control.PRESET_FULL_RECT)
 	backdrop.add_child(center)
 	var panel := Lcars.frame(title, "", tone) if title != "" else PanelContainer.new()
-	panel.add_theme_stylebox_override("panel", Lcars.box(Color(Lcars.PANEL_SOLID, 0.98), 20, Color(Lcars.tone_color(tone), 0.6), 1, Vector4(22, 18, 22, 18)))
+	panel.add_theme_stylebox_override("panel", Lcars.box_lcars(Color(Lcars.PANEL_SOLID, 0.98), 20, Color(Lcars.tone_color(tone), 0.6), 1, Vector4(22, 18, 22, 18)))
 	panel.custom_minimum_size = min_size
 	center.add_child(panel)
 	var host: Control = Lcars.body(panel) if title != "" else panel
