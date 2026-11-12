@@ -22,6 +22,7 @@
 #include "../../game/Source/BotfSim/Content.h"
 #include "../../game/Source/BotfSim/EmpireSlots.h"
 #include "../../game/Source/BotfSim/Structures.h"
+#include "../../game/Source/BotfSim/EconomyRules.h"
 #include "../../game/Source/BotfSim/Presets.h"
 #include "../../game/Source/BotfSim/Threats.h"
 #include "Json.h"
@@ -57,7 +58,7 @@ namespace intel = botf::intelligence;
 // ------------------------------------------------------------------------------------------------
 // Enum name tables. Numbers are always accepted as well, so enum growth in the core keeps working.
 // ------------------------------------------------------------------------------------------------
-constexpr std::array<const char*, 49> CommandTypeNames{
+constexpr std::array<const char*, 50> CommandTypeNames{
     "AssignWorkers", "EnqueueBuilding", "MoveFleet", "Colonize", "ToggleShipyard",
     "CancelFirstConstruction", "PrioritizeLastConstruction", "MoveConstruction",
     "RemoveConstruction", "AllocateResearch", "SendGift", "OfferFriendship",
@@ -72,7 +73,7 @@ constexpr std::array<const char*, 49> CommandTypeNames{
     "BuildOutpost", "UpgradeStation", "ResolveEventChoice",
     "DefineBuildTemplate", "DeleteBuildTemplate", "ApplyBuildTemplate", "SetDefaultBuildTemplate",
     "StartMegaproject", "CancelMegaproject", "RefuseCallToArms",
-    "SetEmergencyProgram", "ResolveAftermath"};
+    "SetEmergencyProgram", "ResolveAftermath", "SetFleetOrder"};
 constexpr std::array<const char*, 2> StationTypeNames{"Outpost", "Starbase"};
 constexpr std::array<const char*, 6> FeatureKeys{"Nebula", "Wormhole", "BlackHole", "NeutronStar", "IonStorm", "SubspaceRift"};
 constexpr std::array<const char*, 7> EventKeys{"Plague", "SupernovaWarning", "SubspaceRift", "TradeBoom", "DerelictVessel",
@@ -322,6 +323,9 @@ std::string describeCommand(const botf::GameState& s, const botf::Command& c) {
         return systemLabel(s, c.systemId) + (c.eventOption == 0 ? ": lift the emergency program" : ": " + std::string(botf::empire_rules::programName(c.eventOption)));
     case botf::CommandType::ResolveAftermath:
         return systemLabel(s, c.systemId) + ": " + botf::empire_rules::aftermathName(c.eventOption);
+    case botf::CommandType::SetFleetOrder:
+        return fleet(c.fleetId) + (c.eventOption == 0 ? ": stand down" : c.eventOption == 1 ? ": hold an intercept post"
+            : ": raid " + systemLabel(s, c.systemId));
     case botf::CommandType::EnqueueBuilding:
         return systemLabel(s, c.systemId) + ": build " + constructionLabel(s, botf::Construction(c.building, 0, c.referenceId));
     case botf::CommandType::MoveFleet: return fleet(c.fleetId) + ": set course for " + place(c.targetX, c.targetY);
@@ -579,6 +583,17 @@ void writeColonyBrief(Writer& w, const botf::GameState& s, const botf::Colony& c
     w.field("population", c.population);
     w.field("capacity", botf::systemCapacity(s, c.systemId));
     w.field("morale", c.morale);
+    w.key("economyRules").beginObject() // Schema 23
+        .field("subjugated", c.subjugated).field("moraleBonus", botf::economy_rules::moraleBonus(s, c))
+        .field("tribute", botf::economy_rules::tribute(s, c)).field("hasHq", botf::economy_rules::protectorateHq(s, c.ownerId) >= 0)
+        .field("sharedMorale", botf::economy_rules::sharedMorale(s, c.ownerId));
+    w.key("upgrades").beginArray();
+    for (int k = 0; k < botf::upgrades::Kinds; ++k)
+        w.beginObject().field("kind", botf::upgrades::kindName(k)).field("units", botf::upgrades::unitsOf(c, k))
+            .field("steps", c.upgradeSteps[static_cast<std::size_t>(k)]).field("tier", botf::upgrades::tierOf(c, k))
+            .field("available", botf::upgrades::tierAvailable(s, c.ownerId, k)).field("percent", botf::upgrades::percent(c, k)).endObject();
+    w.endArray();
+    w.endObject();
     w.key("workers").beginObject().field("food", c.foodWorkers).field("industry", c.industryWorkers).field("research", c.researchWorkers)
         .field("unassigned", c.population - c.foodWorkers - c.industryWorkers - c.researchWorkers).endObject();
     w.key("structures").beginObject().field("farms", c.farms).field("factories", c.factories).field("laboratories", c.laboratories)
@@ -687,6 +702,10 @@ void writeOwnFleet(Writer& w, const botf::GameState& d, const botf::GameState& c
     w.field("attackTarget", f.attackTarget);
     w.field("retreat", f.retreat);
     w.field("invadeSystemId", f.invadeSystemId);
+    w.field("order", f.order).field("orderName", botf::economy_rules::orderName(f.order)).field("raidSystemId", f.raidSystemId)
+        .field("postX", f.postX).field("postY", f.postY); // Schema 23
+    w.field("experience", f.experience).field("crewRating", botf::crew::ratingName(botf::crew::rating(f.experience)))
+        .field("crewLevel", botf::crew::rating(f.experience)).field("raidPercent", botf::economy_rules::raidPercent(d, f));
     w.field("terraforming", f.terraforming);
     w.field("terraformSystemId", f.terraformSystemId);
     w.field("terraformPlanetIndex", f.terraformPlanetIndex);
@@ -968,7 +987,12 @@ void writeView(Writer& w) {
         }())
         .field("stations", s.rules.stations).field("galaxyFeatures", s.rules.galaxyFeatures)
         .field("curatedEvents", s.rules.curatedEvents).field("alternativeVictories", s.rules.alternativeVictories)
-        .field("empireRules", s.rules.empireRules).endObject();
+        .field("empireRules", s.rules.empireRules)
+        // Schema 23: the economy flags (docs/design/ECONOMY-MECHANICS.md).
+        .field("structureUpgrades", s.rules.structureUpgrades).field("autoUpgrades", s.rules.autoUpgrades).field("noUpgrades", s.rules.noUpgrades)
+        .field("sharedMorale", s.rules.sharedMorale).field("protectorateHq", s.rules.protectorateHq).field("allDilithium", s.rules.allDilithium)
+        .field("interceptOrders", s.rules.interceptOrders).field("raidOrders", s.rules.raidOrders).field("raidBonus", s.rules.raidBonus)
+        .field("crewExperience", s.rules.crewExperience).field("exploitFixes", s.rules.exploitFixes).endObject();
     w.endObject();
 
     // --- empire summary (player only)
@@ -2078,6 +2102,10 @@ void writeWegoShip(Writer& w, const tac::Ship& ship) {
     w.key("subsystems").beginObject();
     for (int i = 1; i <= tac::SubsystemCount; ++i) w.field(SubsystemKeys[static_cast<std::size_t>(i)], ship.subsystems[static_cast<std::size_t>(i - 1)]);
     w.endObject();
+    {   // Schema 23: the fleet's experience points behind the crew rating (campaign encounters only).
+        const auto* fl = fleetById(B.state, ship.fleetId);
+        w.field("experience", fl && B.state.rules.crewExperience ? fl->experience : -1);
+    }
     w.field("crew", tac::crewRatingName(ship.crew)).field("crewLevel", ship.crew)
         .field("elevation", ship.elevation).field("coreBreached", ship.coreBreached)
         .field("canWarp", ship.canRetreat && ship.system(tac::Subsystem::WarpCore) > 0 && ship.system(tac::Subsystem::Engines) > 0);

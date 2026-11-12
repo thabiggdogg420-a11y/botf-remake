@@ -50,6 +50,10 @@ inline EmpireState& empireRef(GameState& s, int id) {
     for (auto& e : s.rivals) if (e.id == id) return e;
     throw std::runtime_error("Empire does not exist");
 }
+inline bool knownBy(const GameState& s, int owner, int x, int y) {
+    const auto& cells = empire(s, owner).explored;
+    return std::binary_search(cells.begin(), cells.end(), y * s.width + x);
+}
 inline bool armedShip(const Fleet& f) { return f.hull > 0 && !f.colonyShip && f.shipClass != Building::Transport && fleetAttack(f) > 0; }
 inline int distance(int ax, int ay, int bx, int by) { return std::max(std::abs(ax - bx), std::abs(ay - by)); }
 } // namespace detail
@@ -243,7 +247,7 @@ inline std::string orderBlocker(const GameState& s, const Fleet& f, int order, i
     if (!colony || colony->ownerId == f.ownerId) return "Raid an enemy colony";
     if (!combatAllowed(s, f.ownerId, colony->ownerId)) return "Declare war before raiding";
     const auto* sys = empire_rules::systemOf(s, systemId);
-    if (!sys || !explored(s, sys->x, sys->y)) return "That system is not charted";
+    if (!sys || !detail::knownBy(s, f.ownerId, sys->x, sys->y)) return "That system is not charted";
     if (route(s, f, sys->x, sys->y).empty() && !(f.x == sys->x && f.y == sys->y)) return "Target is outside supplied range";
     return {};
 }
@@ -344,7 +348,7 @@ inline void planOrders(GameState& s, int owner, bool atWar) {
             for (const auto& c : s.colonies) {
                 if (c.ownerId == owner || !combatAllowed(s, owner, c.ownerId)) continue;
                 const auto* sys = empire_rules::systemOf(s, c.systemId);
-                if (!sys || !explored(s, sys->x, sys->y)) continue;
+                if (!sys || !detail::knownBy(s, owner, sys->x, sys->y)) continue;
                 if (s.advancedRulesEnabled && economy(s, c).poweredBatteries > 0) continue;
                 const int d = detail::distance(f.x, f.y, sys->x, sys->y);
                 if (d >= bestDistance || route(s, f, sys->x, sys->y).empty()) continue;
