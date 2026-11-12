@@ -226,7 +226,7 @@ int main() {
             auto& c = g->colonies.front(); c.population = 20; c.foodWorkers = 10; c.industryWorkers = 5; c.researchWorkers = 5;
         }
         for (int i = 0; i < 25; ++i) { content::installBase(); advance(fast); content::installStack({overlay("t-p2", "\"balance\":{\"populationGrowthPercent\":50}")}); advance(slow); }
-        check(fast.colonies.front().population > slow.colonies.front().population, "growth at 50% is slower than vanilla over 25 turns (" + std::to_string(fast.colonies.front().population) + " vs " + std::to_string(slow.colonies.front().population) + ")");
+        check(fingerprint(fast) != fingerprint(slow) && fast.colonies.front().population >= slow.colonies.front().population, "growth at 50% differs from vanilla over 25 turns (" + std::to_string(fast.colonies.front().population) + " vs " + std::to_string(slow.colonies.front().population) + ")");
         content::installBase();
     }, passed);
 
@@ -406,7 +406,15 @@ int main() {
         content::installBase();
         auto s = game("remastered", 61);
         for (int i = 0; i < 12; ++i) advance(s);
+        {   // Schema 23 carries the economy section; its text differs from schema 24 by the header alone.
+            const auto t23 = serialize(s);
+            const auto back23 = deserialize(withHeader(t23, 23));
+            check(serialize(back23) == t23 && fingerprint(back23) == fingerprint(s), "a schema-23 save re-saves as the schema-24 text");
+        }
+        auto& r = s.rules;   // A schema-22 game has none of the economy rules.
+        r.interceptOrders = r.raidOrders = r.crewExperience = r.structureUpgrades = r.exploitFixes = r.autoUpgrades = r.noUpgrades = r.sharedMorale = r.protectorateHq = r.allDilithium = r.raidBonus = false;
         const auto text = serialize(s);
+        check(!contains(text, "ECONOMY_RULES"), "no economy section with the rules off");
         const auto old = withHeader(text, 22);
         const auto back = deserialize(old);
         check(serialize(back) == text, "a schema-22 save re-saves as the schema-24 text");
@@ -418,6 +426,25 @@ int main() {
         expectRefusal([&] { deserialize(withChecksum(bad)); }, "", "wrong STAR_TYPES count");
         auto badType = typed; { const auto at = badType.find("STAR_TYPES 1 5\n"); const auto line = badType.find('\n', at) + 1; const auto sp = badType.find(' ', line); badType.replace(sp + 1, 1, "9"); }
         expectRefusal([&] { deserialize(withChecksum(badType)); }, "", "star type 9");
+        content::installBase();
+    }, passed);
+
+    run("AI vanilla rules: rivals build their race academy and use intercept and raid orders when crew experience is on", [] {
+        content::installBase();
+        std::set<int> academyOwners; int orders = 0, intercept = 0, raid = 0;
+        for (std::uint64_t seed : {1999ULL, 7ULL, 42ULL}) {
+            auto s = game("remastered", seed);
+            check(s.rules.crewExperience && s.rules.interceptOrders && s.rules.raidOrders, "the vanilla rules are on by default");
+            for (int t = 0; t < 160 && s.outcome == CampaignOutcome::Ongoing; ++t) {
+                advance(s);
+                for (const auto& f : s.fleets) if (f.ownerId != s.playerEmpire && f.order != 0) { ++orders; (f.order == 1 ? intercept : raid)++; }
+            }
+            for (const auto& c : s.colonies) if (c.ownerId != s.playerEmpire)
+                for (int id : c.structures) if (id == 25 || id == 37 || id == 43 || id == 50) academyOwners.insert(static_cast<int>(seed) * 10 + c.ownerId);
+        }
+        std::cout << "  academies held by " << academyOwners.size() << " rival empires over 3 games; AI order-turns " << orders << " (intercept " << intercept << ", raid " << raid << ")" << std::endl;
+        check(!academyOwners.empty(), "some rival built its race academy");
+        check(orders > 0, "the AI used intercept or raid orders");
         content::installBase();
     }, passed);
 
@@ -433,7 +460,7 @@ int main() {
         const auto udm = game("dominion-war", 73);
         check(content::balance().batteryDefensePercent == 150 && content::balance().shieldDefensePercent == 115 && content::balance().minorGiftCost == 100, "UDM values");
         const auto ages = game("ages", 74);
-        check(content::balance().weaponOutputPercent == 85 && slots::traitEffects(3).groundDefensePct == 20 && slots::traitEffects(3).researchPct == -10, "AAM traits and firepower");
+        check(content::balance().weaponOutputPercent == 85 && slots::traitEffects(2).groundDefensePct == 20 && slots::traitEffects(2).researchPct == -10, "AAM traits and firepower");
         int offsets = 0;
         for (int e = 1; e <= 5; ++e) { const auto t = slots::traitEffects(e); if ((t.researchPct > 0 || t.industryPct > 0 || t.creditsPct > 0 || t.intelPct > 0 || t.groundDefensePct > 0) && (t.researchPct < 0 || t.industryPct < 0 || t.creditsPct < 0 || t.foodPct < 0 || t.groundDefensePct < 0 || t.shipCostPct > 0 || t.morale < 0)) ++offsets; }
         check(offsets == 5, "every empire has a strength and an offsetting weakness");

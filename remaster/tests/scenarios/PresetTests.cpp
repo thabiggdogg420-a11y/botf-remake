@@ -208,7 +208,9 @@ int main() {
         const int baseRc = researchCost(legacyRemastered, 1, 3);
         const auto ultimate = game("ultimate");
         check(content::balance().researchCostPercent == 85, "ultimate balance");
-        check(researchCost(ultimate, 1, 3) == static_cast<int>(static_cast<std::int64_t>(baseRc) * 85 / 100) && researchCost(ultimate, 1, 3) < baseRc, "research cost scaled");
+        // MOD-7: 85% flat times the level curve (100% at level 2 to 90% at level 10): level 3 is 85% * (100 - 10 * 1 / 8)%.
+        const int curve = 100 + (90 - 100) * (3 - 2) / 8;
+        check(researchCost(ultimate, 1, 3) == static_cast<int>(static_cast<std::int64_t>(baseRc) * 85 / 100 * curve / 100) && researchCost(ultimate, 1, 3) < baseRc, "research cost scaled");
         validate(ultimate);
         // Choosing a built-in after a mod preset puts the base pack back.
         game("classic");
