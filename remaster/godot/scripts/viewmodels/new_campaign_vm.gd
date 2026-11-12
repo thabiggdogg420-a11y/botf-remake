@@ -44,6 +44,23 @@ var scenario := ""
 var seed_value := 0
 var events := true
 var aggression := true
+## Schema 24 (docs/design/BALANCE-AI.md section 6): extra colonies each empire starts with, planets per ordinary star, race star types.
+var start_systems := 0
+var planets_id := "standard"
+var star_types := false
+const START_SYSTEM_CHOICES := [0, 1, 2, 3, 4, 6, 8]
+const PLANET_RANGES := [
+	{"id": "standard", "label": "Standard", "min": 0, "max": 0, "blurb": "2 to 5 planets around each star."},
+	{"id": "sparse", "label": "Sparse", "min": 1, "max": 3, "blurb": "1 to 3 planets: small colonies, fierce competition."},
+	{"id": "rich", "label": "Rich", "min": 4, "max": 7, "blurb": "4 to 7 planets around each star."},
+	{"id": "wide", "label": "Wide", "min": 2, "max": 9, "blurb": "2 to 9 planets (the Balance of Power range)."},
+	{"id": "crowded", "label": "Crowded", "min": 6, "max": 9, "blurb": "6 to 9 planets: big systems worth fighting for."},
+]
+func planet_range() -> Dictionary:
+	for r in PLANET_RANGES:
+		if str(r["id"]) == planets_id:
+			return r
+	return PLANET_RANGES[0]
 ## WS02 options (docs/design/WS02-GALAXY-AND-STRATEGIC-MAP.md §1-2). The core's newCampaign does not read these yet
 ## (web/bridge/WebBridge.cpp newCampaign reads faction, empires, seed, era, ruleset, size, preset, events,
 ## aiAggression); they are passed through so the generator lane can pick them up, and the screen marks them.
@@ -105,12 +122,13 @@ const DIFFICULTIES := [
 	{"id": "simple", "label": "Simple", "blurb": "Rivals produce 75% of normal, start poorer, hesitate to go to war and spy slowly."},
 	{"id": "easy", "label": "Easy", "blurb": "Rivals produce 90% of normal and are cautious."},
 	{"id": "normal", "label": "Normal", "blurb": "The reference balance."},
-	{"id": "hard", "label": "Hard", "blurb": "Rivals produce 115% of normal, judge themselves stronger and spy harder."},
-	{"id": "impossible", "label": "Impossible", "blurb": "Rivals produce 135% of normal, start 40% richer and never let up. They cheat; you do not."},
+	{"id": "hard", "label": "Hard", "blurb": "Rivals produce 115% of normal, judge themselves stronger, spy harder and follow the standard build order."},
+	{"id": "expert", "label": "Expert", "blurb": "No bonus of any kind: rivals play the best game they can. They build starbases, queue their newest ships, expand fast and keep the standard build order."},
+	{"id": "impossible", "label": "Impossible", "blurb": "Rivals produce 135% of normal, start 40% richer and play like an Expert. They cheat; you do not."},
 ]
 ## Option keys the core reads. Shape, minor-race density and difficulty joined them with the schema-15 generator.
 const CORE_READS := ["faction", "empires", "lineup", "seed", "era", "ruleset", "width", "height", "systems", "events", "aiAggression", "preset",
-	"shape", "minorDensity", "difficulty", "threats", "scenario"]
+	"shape", "minorDensity", "difficulty", "threats", "scenario", "startSystems", "planetsMin", "planetsMax", "starTypes"]
 
 static func core_reads(key: String) -> bool:
 	return key in CORE_READS
@@ -163,6 +181,13 @@ func pick_preset(id: String) -> bool:
 		aggression = bool(o["aiAggression"])
 	if o.has("empires"):
 		empires = maxi(int(o["empires"]), faction)
+	# Schema 24 options: the preset's defaults, or the plain galaxy when it names none.
+	start_systems = int(o.get("startSystems", 0))
+	planets_id = "standard"
+	for r in PLANET_RANGES:
+		if int(r["min"]) == int(o.get("planetsMin", 0)) and int(r["max"]) == int(o.get("planetsMax", 0)):
+			planets_id = str(r["id"])
+	star_types = bool(o.get("starTypes", false))
 	# Threat switches: the preset's defaults, or everything off when it names none (Classic, Remastered).
 	var t: Dictionary = o.get("threats", {}) if o.get("threats", {}) is Dictionary else {}
 	threats = {"monsters": bool(t.get("monsters", false)), "borg": bool(t.get("borg", false)), "frequency": str(t.get("frequency", "normal")),
@@ -381,6 +406,13 @@ func options() -> Dictionary:
 	o["threats"] = threats.duplicate(true)
 	if scenario_active():
 		o["scenario"] = scenario
+	if start_systems > 0:
+		o["startSystems"] = start_systems
+	var pr := planet_range()
+	if int(pr["min"]) > 0:
+		o["planetsMin"] = int(pr["min"])
+		o["planetsMax"] = int(pr["max"])
+	o["starTypes"] = star_types
 	return o
 
 ## The chosen preset's eras block ({techCap, years, startTech}), or {} when it has none (Classic, Remastered and the other presets).
@@ -428,5 +460,5 @@ func summary() -> Array:
 	return ["%d major powers · %d systems · %dx%d sectors" % [o["empires"], o["systems"], o["width"], o["height"]],
 		"%s era · %s rules · %s preset" % [era_name(), ruleset, preset_name()],
 		"%s galaxy · %s minor races (%d) · %s difficulty" % [shape.capitalize(), minor_density, minors_count(), difficulty.capitalize()],
-		"Seed %d%s%s" % [seed_value, " · events" if events else "", " · aggressive AI" if aggression else ""],
+		"Seed %d%s%s%s" % [seed_value, " · events" if events else "", " · aggressive AI" if aggression else "", (" · +%d start colonies" % start_systems) if start_systems > 0 else ""],
 		threats_text()]

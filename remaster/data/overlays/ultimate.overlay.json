@@ -1,1 +1,5 @@
-{"format":1,"kind":"overlay","id":"ultimate","name":"Ultimate overlay (UM5 Redux: research costs scaled back so the AI keeps pace; the rest arrives with lane MOD-7)","revision":1,"requires":["botf-base"],"balance":{"researchCostPercent":85}}
+{"format":1,"kind":"overlay","id":"ultimate","name":"Ultimate (UM5 Redux): research scaled back, a firepower cut, a harder-expanding AI that frames the player less. Design values (MOD-7).","revision":2,"requires":["botf-base"],
+"balance":{"researchCostPercent":85,"researchCurveLow":100,"researchCurveHigh":90,"weaponOutputPercent":85,"aiIntelPercent":75,"aiStandardBuild":1,"aiAggressiveExpansion":1},
+"races":{"patch":[
+{"id":0,"major":{"traitEffects":{"intelPct":-25}}},
+{"id":4,"major":{"traitEffects":{"intelPct":-25}}}]}}

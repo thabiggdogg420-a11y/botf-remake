@@ -31,8 +31,10 @@ namespace botf {
 // only when a rule flag is on): structure upgrades, shared morale, Protectorate HQ, intercept and raid orders, crew experience.
 // schema 25 adds the scenario layer (Scenarios.h, docs/design/SCENARIOS.md; optional SCENARIO section, written only in a scenario game or
 // once a flagship or secession exists): scripted starts, deterministic triggers, major-empire secession, flagships and the vendetta victory.
+// schema 24 (the balance lane) adds the Expert difficulty (GALAXY_SETUP difficulty 5, docs/design/BALANCE-AI.md) and star types (optional STAR_TYPES section,
+// written only while a system has one);
 // schema 22 (the era lane) adds the campaign era (docs/design/ERAS.md; optional ERAS section, written only when the eras rule is on).
-// Schemas 4-22 still load and continue.
+// Schemas 4-24 still load and continue.
 inline constexpr const char* ContentVersion = "remaster-25";
 inline constexpr int SaveVersion = 25;
 // Campaign empire ids are race slots: 1 Federation, 2 Klingon, 3 Romulan, 4 Cardassian, 5 Ferengi, 6 Dominion, 7 Borg,
@@ -140,6 +142,7 @@ struct System {
     int x = 0, y = 0;
     std::string name;
     std::vector<Planet> planets;
+    int starType = -1;  // Schema 24: 0 yellow, 1 orange, 2 red, 3 white, 4 blue, 5 green, 6 violet; -1 = not set (the client draws its own).
     System() = default;
     System(int id_, int x_, int y_, std::string name_, std::vector<Planet> planets_ = {})
         : id(id_), x(x_), y(y_), name(std::move(name_)), planets(std::move(planets_)) {}
@@ -562,7 +565,9 @@ struct ChronicleEntry {
 // (uniform scatter; minors = systems / 5; Normal difficulty), so a setup that names none of them plays as before.
 enum class GalaxyShape : int { Legacy = 0, Irregular = 1, Spiral = 2, Ring = 3, Elliptical = 4 };
 enum class MinorDensity : int { Legacy = 0, None = 1, Few = 2, Some = 3, Many = 4 };
-enum class Difficulty : int { Simple = 0, Easy = 1, Normal = 2, Hard = 3, Impossible = 4 };
+// Expert (schema 24) is saved as 5 so Impossible keeps its 4; it plays in tier order between Hard and Impossible (difficultyRank).
+enum class Difficulty : int { Simple = 0, Easy = 1, Normal = 2, Hard = 3, Impossible = 4, Expert = 5 };
+inline constexpr std::array<Difficulty, 6> DifficultyOrder{Difficulty::Simple, Difficulty::Easy, Difficulty::Normal, Difficulty::Hard, Difficulty::Expert, Difficulty::Impossible};
 struct GalaxySetup {
     GalaxyShape shape = GalaxyShape::Legacy;
     MinorDensity density = MinorDensity::Legacy;
@@ -728,6 +733,16 @@ struct DifficultyProfile {
                                                    // player (more is safer); subtracted from the player's against rivals.
 };
 const DifficultyProfile& difficultyProfile(Difficulty d);
+int difficultyRank(Difficulty d);  // 0..5 in play order (Simple, Easy, Normal, Hard, Expert, Impossible).
+// Schema 24 (BALANCE-AI.md section 4): how the AI plays. Pack flags (balance.ai*) switch single behaviours on for a preset; the Hard tier
+// adds the standard build order, Expert and Impossible add all four. All false for a default Normal game.
+struct AiPolicy { bool alwaysStarbases = false, newestShips = false, standardBuild = false, aggressiveExpansion = false; };
+AiPolicy aiPolicy(const GameState& state);
+// Pack balance values read by the rules (identity for the base pack).
+int minorGiftCost();
+int minorGiftAttitude();
+int packWeaponOutputPercent();
+
 const char* galaxyShapeName(GalaxyShape s);
 const char* minorDensityName(MinorDensity d);
 const char* difficultyName(Difficulty d);
@@ -930,11 +945,17 @@ struct CampaignSetup {
     // (an empire id in the scenario's lineup) and the difficulty are still the player's. Empty plays a free game.
     std::string scenarioId;
     bool playerSet = false;   // The caller chose `playerEmpire` (otherwise a scenario's own default player applies).
+    // Schema 24 (docs/design/BALANCE-AI.md section 6). Generation options; their results live in the state, so they are not saved.
+    int startSystems = 0;            // Extra colonies each empire starts with (0..8) beside its capital.
+    int planetsMin = 0, planetsMax = 0; // Planets per ordinary star, 1..9 each; 0 keeps the generator's own 2..5.
+    int starTypes = -1;              // Race home stars take their race's star type: -1 the pack's default, 0 off, 1 on.
 };
 // Star positions only (no names, planets or empires): the layout generate() would give this shape, so a setup
 // screen can preview the exact galaxy. Index 0 is Sol. Deterministic on every platform (integer arithmetic).
 std::vector<std::pair<int, int>> galaxyLayout(std::uint64_t seed, int width, int height, int systems, GalaxyShape shape);
 GameState newCampaign(const CampaignSetup& setup);
+// Applies the generation options of a setup (planets per star, extra start colonies, race star types) to a fresh campaign.
+void applyGalaxyOptions(GameState& state, const CampaignSetup& setup);
 // Lane G: places a deterministic, galaxy-size-scaled subset of the minor-race roster (MinorRaces.h)
 // on a turn-0 campaign and adopts roster-named starter minors. newCampaign() calls it for every preset;
 // generateCampaign()/generateReferenceCampaign() stay on the legacy baseline.

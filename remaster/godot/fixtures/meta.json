@@ -2,8 +2,8 @@
  "method": "meta",
  "args": {},
  "result": {
-  "contentVersion": "remaster-23",
-  "saveVersion": 23,
+  "contentVersion": "remaster-24",
+  "saveVersion": 24,
   "empires": [
    {
     "id": 1,
@@ -223,7 +223,7 @@
    {
     "id": "dominion-war",
     "name": "Dominion War",
-    "blurb": "The Ultimate Dominion Mod: the Dominion takes the Ferengi's place. It plays with its own structure ladder (Vorta centres, Ketracel-White, the Founders' Sanctuary, the Changeling Shapeshifter Network), Founders and Vorta traits and the Jem'Hadar line. Bajor replaces the Edo and new minors join. Scripted war to come.",
+    "blurb": "The Ultimate Dominion Mod: the Dominion replaces the Ferengi, with its structure ladder, Founders and Vorta traits and the Jem'Hadar line. Bajor replaces the Edo, new minors join. Stronger batteries and shields, costlier gifts, bigger populations, armed colony and troop ships.",
     "rulesBase": "remastered",
     "overlays": [
      "dominion",
@@ -259,6 +259,7 @@
      "difficulty": "hard",
      "events": true,
      "aiAggression": true,
+     "startSystems": 1,
      "threats": {
       "monsters": true,
       "borg": true,
@@ -368,6 +369,7 @@
      "difficulty": "normal",
      "events": true,
      "aiAggression": true,
+     "starTypes": true,
      "threats": {
       "monsters": true,
       "borg": true,
@@ -401,7 +403,7 @@
    {
     "id": "balance-of-power",
     "name": "Balance of Power",
-    "blurb": "Balance of Power: original rules on a larger map, with reworked building and ship numbers and a faster AI. The balance numbers are still being built.",
+    "blurb": "Balance of Power: original rules on a larger map, more planets per star and an extra colony each. Longer battles (weapons 75%), cheaper ships and structures, a cheap-early, dear-late research curve, and an AI that builds starbases and its newest ships by a standard order.",
     "rulesBase": "classic",
     "overlays": [
      "balance-of-power"
@@ -431,17 +433,19 @@
      "minorDensity": "many",
      "difficulty": "normal",
      "events": true,
-     "aiAggression": true
+     "aiAggression": true,
+     "startSystems": 1,
+     "planetsMin": 2,
+     "planetsMax": 9
     },
     "needs": [
-     "MOD-6",
-     "MOD-7"
+     "MOD-6"
     ]
    },
    {
     "id": "ultimate",
     "name": "Ultimate",
-    "blurb": "Ultimate Mod 5: a harder game on a large map. Research costs are scaled back so the AI keeps pace. More of its balance is still being built.",
+    "blurb": "Ultimate Mod 5: a harder game on a large map. Research is scaled back so the AI keeps pace, weapons run at 85%, the AI expands harder and frames you less, and the Cardassian and Romulan spy services are weaker. Borg and monsters roam.",
     "rulesBase": "remastered",
     "overlays": [
      "ultimate"
@@ -483,9 +487,7 @@
       "disabled": []
      }
     },
-    "needs": [
-     "MOD-7"
-    ]
+    "needs": []
    }
   ],
   "threatKinds": [

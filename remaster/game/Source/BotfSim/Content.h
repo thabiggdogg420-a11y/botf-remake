@@ -45,6 +45,12 @@ struct RaceRecord {
     // MOD-3 trait effects (race `major.traitEffects`; all 0 in the base pack): morale added to the level the empire's colonies settle toward,
     // percent added to colony credit income, percent added to ground defence, percent added to internal-security output.
     int traitMorale = 0, traitCreditsPct = 0, traitGroundPct = 0, traitSecurityPct = 0;
+    // MOD-7 trait effects (docs/design/BALANCE-AI.md section 3; all 0 in the base pack): percent added to colony industry, research and
+    // food output, percent added to the empire's ship and structure build cost (negative = cheaper), percent added to its spy output.
+    int traitIndustryPct = 0, traitResearchPct = 0, traitFoodPct = 0, traitShipCostPct = 0, traitIntelPct = 0;
+    // MOD-7: the star type of this race's home star (docs/design/BALANCE-AI.md section 7), -1 = the galaxy's own draw. Used only under the
+    // pack balance flag `starTypesPerRace`. Indexes the five star types (0 yellow, 1 orange, 2 red, 3 white, 4 blue) plus 5 green, 6 violet.
+    int homeStar = -1;
 };
 } // namespace botf::referenceData
 
@@ -107,6 +113,23 @@ struct PackInfo {
 struct Balance {
     int researchCostPercent = 100;  // Every research cost (Reference ruleset): cost * percent / 100.
     int shipCostPercent = 100;      // Every ship's industry cost in a build queue.
+    int researchCurveLow = 100, researchCurveHigh = 100; // Schema 24: extra research-cost percent at level 2 and at level 10, linear between (levels above 10 take the high end).
+    // Schema 24 (docs/design/BALANCE-AI.md): the values the balance mods retune. All identity (100, or the vanilla figure) in the base pack.
+    int structureCostPercent = 100;     // Industry cost of the basic colony structures (farm to refinery, batteries).
+    int batteryDefensePercent = 100;    // What a powered orbital battery adds to a colony's ground defence (vanilla 12 each).
+    int shieldDefensePercent = 100;     // Planetary shield grid: scales a colony's whole ground defence in an invasion.
+    int populationCapacityPercent = 100; // Population every system can carry.
+    int populationGrowthPercent = 100;  // Growth rate of colonies.
+    int weaponOutputPercent = 100;      // Damage of every weapon mount in tactical combat (longer or shorter battles).
+    int minorGiftCost = 50;             // Credits a gift to a minor race costs.
+    int minorGiftAttitude = 20;         // Attitude a delivered gift gives.
+    int intelOutputPercent = 100;       // Espionage and sabotage output of every empire.
+    int aiIntelPercent = 100;           // Extra scale on the AI empires' spy output (the intel rebalance: the AI frames the player less).
+    int aiAlwaysStarbases = 0;          // AI keeps building outposts (also at war) and upgrades them to starbases at once.
+    int aiNewestShips = 0;              // AI queues the newest class it may build rather than the best value.
+    int aiStandardBuild = 0;            // AI follows the fixed standard build order (labs before yards, a battery on every border colony).
+    int aiAggressiveExpansion = 0;      // AI keeps up to four colony ships out and sends them first.
+    int starTypesPerRace = 0;           // Race home stars take the race's own star type.
     bool operator==(const Balance&) const = default;
 };
 
@@ -565,6 +588,12 @@ inline std::unique_ptr<Pack> parsePackValue(const json::Value& doc) {
                     if (te.has("creditsPct")) r.traitCreditsPct = te.i32("creditsPct", -50, 100);
                     if (te.has("groundDefensePct")) r.traitGroundPct = te.i32("groundDefensePct", -50, 200);
                     if (te.has("securityPct")) r.traitSecurityPct = te.i32("securityPct", -50, 200);
+                    if (te.has("industryPct")) r.traitIndustryPct = te.i32("industryPct", -50, 100);
+                    if (te.has("researchPct")) r.traitResearchPct = te.i32("researchPct", -50, 100);
+                    if (te.has("foodPct")) r.traitFoodPct = te.i32("foodPct", -50, 100);
+                    if (te.has("shipCostPct")) r.traitShipCostPct = te.i32("shipCostPct", -50, 100);
+                    if (te.has("intelPct")) r.traitIntelPct = te.i32("intelPct", -80, 200);
+                    if (te.has("homeStar")) r.homeStar = te.i32("homeStar", 0, 6);
                     te.done();
                 }
                 m.done();
@@ -723,6 +752,18 @@ inline std::unique_ptr<Pack> parsePackValue(const json::Value& doc) {
         Object b(root.get("balance"), "pack.balance");
         if (b.has("researchCostPercent")) p.balance.researchCostPercent = b.i32("researchCostPercent", 10, 1000);
         if (b.has("shipCostPercent")) p.balance.shipCostPercent = b.i32("shipCostPercent", 10, 1000);
+        const auto pct = [&](const char* key, int& out) { if (b.has(key)) out = b.i32(key, 10, 1000); };
+        pct("researchCurveLow", p.balance.researchCurveLow); pct("researchCurveHigh", p.balance.researchCurveHigh);
+        pct("structureCostPercent", p.balance.structureCostPercent); pct("batteryDefensePercent", p.balance.batteryDefensePercent);
+        pct("shieldDefensePercent", p.balance.shieldDefensePercent); pct("populationCapacityPercent", p.balance.populationCapacityPercent);
+        pct("populationGrowthPercent", p.balance.populationGrowthPercent); pct("weaponOutputPercent", p.balance.weaponOutputPercent);
+        pct("intelOutputPercent", p.balance.intelOutputPercent); pct("aiIntelPercent", p.balance.aiIntelPercent);
+        if (b.has("minorGiftCost")) p.balance.minorGiftCost = b.i32("minorGiftCost", 10, 1000);
+        if (b.has("minorGiftAttitude")) p.balance.minorGiftAttitude = b.i32("minorGiftAttitude", 1, 50);
+        const auto flag = [&](const char* key, int& out) { if (b.has(key)) out = b.i32(key, 0, 1); };
+        flag("aiAlwaysStarbases", p.balance.aiAlwaysStarbases); flag("aiNewestShips", p.balance.aiNewestShips);
+        flag("aiStandardBuild", p.balance.aiStandardBuild); flag("aiAggressiveExpansion", p.balance.aiAggressiveExpansion);
+        flag("starTypesPerRace", p.balance.starTypesPerRace);
         b.done();
     }
     if (root.has("eras")) {

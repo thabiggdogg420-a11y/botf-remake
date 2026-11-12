@@ -13,10 +13,17 @@ inline constexpr const char* const Overlay0[] = {
     " \"kind\": \"overlay\",\n",
     " \"id\": \"ages\",\n",
     " \"name\": \"Ages: All The Ages timeline (2240 to 2380), canon per-race era ship lists, research levels 11 to 14\",\n",
-    " \"revision\": 2,\n",
+    " \"revision\": 3,\n",
     " \"requires\": [\n",
     "  \"botf-base\"\n",
     " ],\n",
+    " \"balance\":{\"weaponOutputPercent\":85},\n",
+    " \"races\":{\"patch\":[\n",
+    "{\"id\":1,\"major\":{\"traitEffects\":{\"researchPct\":8,\"morale\":3,\"groundDefensePct\":-10,\"shipCostPct\":5}}},\n",
+    "{\"id\":3,\"major\":{\"traitEffects\":{\"groundDefensePct\":20,\"shipCostPct\":-8,\"researchPct\":-10,\"creditsPct\":-5}}},\n",
+    "{\"id\":4,\"major\":{\"traitEffects\":{\"intelPct\":20,\"shipCostPct\":-3,\"foodPct\":-8,\"morale\":-2}}},\n",
+    "{\"id\":0,\"major\":{\"traitEffects\":{\"industryPct\":8,\"securityPct\":15,\"intelPct\":10,\"foodPct\":-10}}},\n",
+    "{\"id\":2,\"major\":{\"traitEffects\":{\"creditsPct\":15,\"shipCostPct\":8,\"groundDefensePct\":-15,\"industryPct\":-3}}}]},\n",
     " \"eras\": {\n",
     "  \"turnsPerYear\": 4,\n",
     "  \"years\": [\n",
@@ -713,11 +720,30 @@ inline constexpr const char* const Overlay0[] = {
 };
 // balance-of-power
 inline constexpr const char* const Overlay1[] = {
-    "{\"format\":1,\"kind\":\"overlay\",\"id\":\"balance-of-power\",\"name\":\"Balance of Power overlay (BoP balance numbers arrive with lane MOD-7)\",\"revision\":1,\"requires\":[\"botf-base\"]}\n"
+    "{\"format\":1,\"kind\":\"overlay\",\"id\":\"balance-of-power\",\"name\":\"Balance of Power (BoP 1.2c): longer battles, cheaper ships and structures, a reshaped research curve, a starbase-building AI. Design values (MOD-7).\",\"revision\":2,\"requires\":[\"botf-base\"],\n",
+    "\"balance\":{\"researchCostPercent\":105,\"researchCurveLow\":85,\"researchCurveHigh\":125,\"shipCostPercent\":90,\"structureCostPercent\":85,\"weaponOutputPercent\":75,\"populationCapacityPercent\":110,\"aiAlwaysStarbases\":1,\"aiNewestShips\":1,\"aiStandardBuild\":1}}\n"
 };
 // dominion-war
 inline constexpr const char* const Overlay2[] = {
-    "{\"format\":1,\"kind\":\"overlay\",\"id\":\"dominion-war\",\"name\":\"Dominion War content: Bajor for the Edo, new minors (UDM III, MOD-3)\",\"revision\":2,\"requires\":[\"botf-base\",\"dominion\"],\n",
+    "{\"format\":1,\"kind\":\"overlay\",\"id\":\"dominion-war\",\"name\":\"Dominion War content: Bajor for the Edo, new minors (UDM III, MOD-3)\",\"revision\":3,\"requires\":[\"botf-base\",\"dominion\"],\n",
+    "\"balance\":{\"researchCurveLow\":90,\"researchCurveHigh\":110,\"batteryDefensePercent\":150,\"shieldDefensePercent\":115,\"populationCapacityPercent\":115,\"minorGiftCost\":100,\"minorGiftAttitude\":25,\"aiStandardBuild\":1},\n",
+    "\"ships\":{\"patch\":[\n",
+    "{\"id\":2,\"name\":\"Armed Colony Ship\",\"attack\":40},\n",
+    "{\"id\":3,\"name\":\"Armed Colony Ship II\",\"attack\":160},\n",
+    "{\"id\":22,\"name\":\"Armed Colony Ship\",\"attack\":40},\n",
+    "{\"id\":23,\"name\":\"Armed Colony Ship II\",\"attack\":160},\n",
+    "{\"id\":47,\"name\":\"Armed Colony Ship\",\"attack\":40},\n",
+    "{\"id\":48,\"name\":\"Armed Colony Ship II\",\"attack\":160},\n",
+    "{\"id\":87,\"name\":\"Armed Colony Ship\",\"attack\":40},\n",
+    "{\"id\":88,\"name\":\"Armed Colony Ship II\",\"attack\":160},\n",
+    "{\"id\":14,\"name\":\"Assault Transport\",\"attack\":40},\n",
+    "{\"id\":15,\"name\":\"Assault Transport II\",\"attack\":160},\n",
+    "{\"id\":39,\"name\":\"Assault Transport\",\"attack\":40},\n",
+    "{\"id\":40,\"name\":\"Assault Transport II\",\"attack\":160},\n",
+    "{\"id\":61,\"name\":\"Assault Transport\",\"attack\":40},\n",
+    "{\"id\":62,\"name\":\"Assault Transport II\",\"attack\":160},\n",
+    "{\"id\":99,\"name\":\"Assault Transport\",\"attack\":40},\n",
+    "{\"id\":100,\"name\":\"Assault Transport II\",\"attack\":160}]},\n",
     "\"races\":{\"append\":[\n",
     "{\"id\":38,\"name\":\"Son'a\",\"icon\":\"sona.tga\"},\n",
     "{\"id\":39,\"name\":\"Maquis\",\"icon\":\"maquis.tga\"},\n",
@@ -795,11 +821,12 @@ inline constexpr const char* const Overlay6[] = {
     " \"kind\": \"overlay\",\n",
     " \"id\": \"galaxies\",\n",
     " \"name\": \"Galaxies: GALM timeline (2240 to 2380, tech 1/4/7/10/14), Dominion Alliance and Borg era lines\",\n",
-    " \"revision\": 2,\n",
+    " \"revision\": 3,\n",
     " \"requires\": [\n",
     "  \"botf-base\",\n",
     "  \"dominion\"\n",
     " ],\n",
+    " \"balance\":{\"starTypesPerRace\":1},\n",
     " \"eras\": {\n",
     "  \"turnsPerYear\": 4,\n",
     "  \"years\": [\n",
@@ -1569,7 +1596,11 @@ inline constexpr const char* const Overlay8[] = {
 };
 // ultimate
 inline constexpr const char* const Overlay9[] = {
-    "{\"format\":1,\"kind\":\"overlay\",\"id\":\"ultimate\",\"name\":\"Ultimate overlay (UM5 Redux: research costs scaled back so the AI keeps pace; the rest arrives with lane MOD-7)\",\"revision\":1,\"requires\":[\"botf-base\"],\"balance\":{\"researchCostPercent\":85}}\n"
+    "{\"format\":1,\"kind\":\"overlay\",\"id\":\"ultimate\",\"name\":\"Ultimate (UM5 Redux): research scaled back, a firepower cut, a harder-expanding AI that frames the player less. Design values (MOD-7).\",\"revision\":2,\"requires\":[\"botf-base\"],\n",
+    "\"balance\":{\"researchCostPercent\":85,\"researchCurveLow\":100,\"researchCurveHigh\":90,\"weaponOutputPercent\":85,\"aiIntelPercent\":75,\"aiStandardBuild\":1,\"aiAggressiveExpansion\":1},\n",
+    "\"races\":{\"patch\":[\n",
+    "{\"id\":0,\"major\":{\"traitEffects\":{\"intelPct\":-25}}},\n",
+    "{\"id\":4,\"major\":{\"traitEffects\":{\"intelPct\":-25}}}]}}\n"
 };
 inline constexpr File OverlayFiles[] = {{Overlay0, sizeof(Overlay0) / sizeof(Overlay0[0])}, {Overlay1, sizeof(Overlay1) / sizeof(Overlay1[0])}, {Overlay2, sizeof(Overlay2) / sizeof(Overlay2[0])}, {Overlay3, sizeof(Overlay3) / sizeof(Overlay3[0])}, {Overlay4, sizeof(Overlay4) / sizeof(Overlay4[0])}, {Overlay5, sizeof(Overlay5) / sizeof(Overlay5[0])}, {Overlay6, sizeof(Overlay6) / sizeof(Overlay6[0])}, {Overlay7, sizeof(Overlay7) / sizeof(Overlay7[0])}, {Overlay8, sizeof(Overlay8) / sizeof(Overlay8[0])}, {Overlay9, sizeof(Overlay9) / sizeof(Overlay9[0])}};
 // ages
@@ -1578,7 +1609,7 @@ inline constexpr const char* const Preset0[] = {
 };
 // balance-of-power
 inline constexpr const char* const Preset1[] = {
-    "{\"format\":1,\"id\":\"balance-of-power\",\"name\":\"Balance of Power\",\"blurb\":\"Balance of Power: original rules on a larger map, with reworked building and ship numbers and a faster AI. The balance numbers are still being built.\",\"order\":60,\"overlays\":[\"balance-of-power\"],\"rules\":{\"base\":\"classic\",\"flags\":{\"interceptOrders\":true,\"raidOrders\":true,\"crewExperience\":true,\"structureUpgrades\":true,\"exploitFixes\":true,\"autoUpgrades\":true}},\"lineup\":[\"Federation\",\"Klingon\",\"Romulan\",\"Cardassian\",\"Ferengi\"],\"options\":{\"empires\":5,\"era\":1,\"size\":\"large\",\"shape\":\"spiral\",\"minorDensity\":\"many\",\"difficulty\":\"normal\",\"events\":true,\"aiAggression\":true},\"needs\":[\"MOD-6\",\"MOD-7\"]}\n"
+    "{\"format\":1,\"id\":\"balance-of-power\",\"name\":\"Balance of Power\",\"blurb\":\"Balance of Power: original rules on a larger map, more planets per star and an extra colony each. Longer battles (weapons 75%), cheaper ships and structures, a cheap-early, dear-late research curve, and an AI that builds starbases and its newest ships by a standard order.\",\"order\":60,\"overlays\":[\"balance-of-power\"],\"rules\":{\"base\":\"classic\",\"flags\":{\"interceptOrders\":true,\"raidOrders\":true,\"crewExperience\":true,\"structureUpgrades\":true,\"exploitFixes\":true,\"autoUpgrades\":true}},\"lineup\":[\"Federation\",\"Klingon\",\"Romulan\",\"Cardassian\",\"Ferengi\"],\"options\":{\"empires\":5,\"era\":1,\"size\":\"large\",\"shape\":\"spiral\",\"minorDensity\":\"many\",\"difficulty\":\"normal\",\"events\":true,\"aiAggression\":true,\"startSystems\":1,\"planetsMin\":2,\"planetsMax\":9},\"needs\":[\"MOD-6\"]}\n"
 };
 // classic
 inline constexpr const char* const Preset2[] = {
@@ -1586,11 +1617,11 @@ inline constexpr const char* const Preset2[] = {
 };
 // dominion-war
 inline constexpr const char* const Preset3[] = {
-    "{\"format\":1,\"id\":\"dominion-war\",\"name\":\"Dominion War\",\"blurb\":\"The Ultimate Dominion Mod: the Dominion takes the Ferengi's place. It plays with its own structure ladder (Vorta centres, Ketracel-White, the Founders' Sanctuary, the Changeling Shapeshifter Network), Founders and Vorta traits and the Jem'Hadar line. Bajor replaces the Edo and new minors join. Scripted war to come.\",\"order\":30,\"overlays\":[\"dominion\",\"dominion-war\",\"economy\"],\"rules\":{\"base\":\"remastered\",\"flags\":{\"interceptOrders\":true,\"raidOrders\":true,\"crewExperience\":true,\"structureUpgrades\":true,\"exploitFixes\":true,\"sharedMorale\":true,\"protectorateHq\":true,\"allDilithium\":true,\"raidBonus\":true}},\"lineup\":[\"Federation\",\"Klingon\",\"Romulan\",\"Cardassian\",\"Dominion\"],\"options\":{\"empires\":5,\"era\":3,\"size\":\"large\",\"shape\":\"irregular\",\"minorDensity\":\"many\",\"difficulty\":\"hard\",\"events\":true,\"aiAggression\":true,\"threats\":{\"monsters\":true,\"borg\":true,\"borgSphere\":true,\"species8472\":true,\"edoStation\":true,\"frequency\":\"normal\"}},\"needs\":[\"MOD-8\"]}\n"
+    "{\"format\":1,\"id\":\"dominion-war\",\"name\":\"Dominion War\",\"blurb\":\"The Ultimate Dominion Mod: the Dominion replaces the Ferengi, with its structure ladder, Founders and Vorta traits and the Jem'Hadar line. Bajor replaces the Edo, new minors join. Stronger batteries and shields, costlier gifts, bigger populations, armed colony and troop ships.\",\"order\":30,\"overlays\":[\"dominion\",\"dominion-war\",\"economy\"],\"rules\":{\"base\":\"remastered\",\"flags\":{\"interceptOrders\":true,\"raidOrders\":true,\"crewExperience\":true,\"structureUpgrades\":true,\"exploitFixes\":true,\"sharedMorale\":true,\"protectorateHq\":true,\"allDilithium\":true,\"raidBonus\":true}},\"lineup\":[\"Federation\",\"Klingon\",\"Romulan\",\"Cardassian\",\"Dominion\"],\"options\":{\"empires\":5,\"era\":3,\"size\":\"large\",\"shape\":\"irregular\",\"minorDensity\":\"many\",\"difficulty\":\"hard\",\"events\":true,\"aiAggression\":true,\"startSystems\":1,\"threats\":{\"monsters\":true,\"borg\":true,\"borgSphere\":true,\"species8472\":true,\"edoStation\":true,\"frequency\":\"normal\"}},\"needs\":[]}"
 };
 // galaxies
 inline constexpr const char* const Preset4[] = {
-    "{\"format\":1,\"id\":\"galaxies\",\"name\":\"Galaxies\",\"blurb\":\"The Galaxies Mod: 2240 to 2380 on a huge map, tech levels 1, 4, 7, 10 and 14 by start year, canon era ship lists, with the Dominion content (structure ladder, Founders and Vorta, Jem'Hadar line) and a playable Borg beside the Federation, Klingons and Romulans.\",\"order\":50,\"overlays\":[\"dominion\",\"galaxies\"],\"rules\":{\"base\":\"remastered\",\"flags\":{\"eras\":true,\"structureUpgrades\":true,\"exploitFixes\":true}},\"lineup\":[\"Federation\",\"Klingon\",\"Romulan\",\"Dominion\",\"Borg\"],\"options\":{\"empires\":5,\"era\":1,\"size\":\"huge\",\"shape\":\"spiral\",\"minorDensity\":\"many\",\"difficulty\":\"normal\",\"events\":true,\"aiAggression\":true,\"threats\":{\"monsters\":true,\"borg\":true,\"frequency\":\"normal\"}},\"needs\":[]}"
+    "{\"format\":1,\"id\":\"galaxies\",\"name\":\"Galaxies\",\"blurb\":\"The Galaxies Mod: 2240 to 2380 on a huge map, tech levels 1, 4, 7, 10 and 14 by start year, canon era ship lists, with the Dominion content (structure ladder, Founders and Vorta, Jem'Hadar line) and a playable Borg beside the Federation, Klingons and Romulans.\",\"order\":50,\"overlays\":[\"dominion\",\"galaxies\"],\"rules\":{\"base\":\"remastered\",\"flags\":{\"eras\":true,\"structureUpgrades\":true,\"exploitFixes\":true}},\"lineup\":[\"Federation\",\"Klingon\",\"Romulan\",\"Dominion\",\"Borg\"],\"options\":{\"empires\":5,\"era\":1,\"size\":\"huge\",\"shape\":\"spiral\",\"minorDensity\":\"many\",\"difficulty\":\"normal\",\"events\":true,\"aiAggression\":true,\"starTypes\":true,\"threats\":{\"monsters\":true,\"borg\":true,\"frequency\":\"normal\"}},\"needs\":[]}\n"
 };
 // klingon-civil-war
 inline constexpr const char* const Preset5[] = {
@@ -1606,7 +1637,7 @@ inline constexpr const char* const Preset7[] = {
 };
 // ultimate
 inline constexpr const char* const Preset8[] = {
-    "{\"format\":1,\"id\":\"ultimate\",\"name\":\"Ultimate\",\"blurb\":\"Ultimate Mod 5: a harder game on a large map. Research costs are scaled back so the AI keeps pace. More of its balance is still being built.\",\"order\":70,\"overlays\":[\"ultimate\"],\"rules\":{\"base\":\"remastered\",\"flags\":{\"interceptOrders\":true,\"raidOrders\":true,\"crewExperience\":true,\"structureUpgrades\":true,\"exploitFixes\":true,\"autoUpgrades\":true}},\"lineup\":[\"Federation\",\"Klingon\",\"Romulan\",\"Cardassian\",\"Ferengi\"],\"options\":{\"empires\":5,\"era\":1,\"size\":\"large\",\"shape\":\"irregular\",\"minorDensity\":\"many\",\"difficulty\":\"hard\",\"events\":true,\"aiAggression\":true,\"threats\":{\"monsters\":true,\"borg\":true,\"frequency\":\"normal\"}},\"needs\":[\"MOD-7\"]}\n"
+    "{\"format\":1,\"id\":\"ultimate\",\"name\":\"Ultimate\",\"blurb\":\"Ultimate Mod 5: a harder game on a large map. Research is scaled back so the AI keeps pace, weapons run at 85%, the AI expands harder and frames you less, and the Cardassian and Romulan spy services are weaker. Borg and monsters roam.\",\"order\":70,\"overlays\":[\"ultimate\"],\"rules\":{\"base\":\"remastered\",\"flags\":{\"interceptOrders\":true,\"raidOrders\":true,\"crewExperience\":true,\"structureUpgrades\":true,\"exploitFixes\":true,\"autoUpgrades\":true}},\"lineup\":[\"Federation\",\"Klingon\",\"Romulan\",\"Cardassian\",\"Ferengi\"],\"options\":{\"empires\":5,\"era\":1,\"size\":\"large\",\"shape\":\"irregular\",\"minorDensity\":\"many\",\"difficulty\":\"hard\",\"events\":true,\"aiAggression\":true,\"threats\":{\"monsters\":true,\"borg\":true,\"frequency\":\"normal\"}},\"needs\":[]}\n"
 };
 inline constexpr File PresetFiles[] = {{Preset0, sizeof(Preset0) / sizeof(Preset0[0])}, {Preset1, sizeof(Preset1) / sizeof(Preset1[0])}, {Preset2, sizeof(Preset2) / sizeof(Preset2[0])}, {Preset3, sizeof(Preset3) / sizeof(Preset3[0])}, {Preset4, sizeof(Preset4) / sizeof(Preset4[0])}, {Preset5, sizeof(Preset5) / sizeof(Preset5[0])}, {Preset6, sizeof(Preset6) / sizeof(Preset6[0])}, {Preset7, sizeof(Preset7) / sizeof(Preset7[0])}, {Preset8, sizeof(Preset8) / sizeof(Preset8[0])}};
 // dominion-war

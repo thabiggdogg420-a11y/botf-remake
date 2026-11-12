@@ -34,7 +34,16 @@ function randomSeed(): number { return Math.floor(Math.random() * 900000) + 1000
 // Galaxy setup, read by the core since schema 15 (docs/design/GALAXY-GENERATOR.md).
 const SHAPES = ['spiral', 'ring', 'irregular', 'elliptical'] as const;
 const DENSITIES = ['none', 'few', 'some', 'many'] as const;
-const DIFFICULTIES = ['simple', 'easy', 'normal', 'hard', 'impossible'] as const;
+const DIFFICULTIES = ['simple', 'easy', 'normal', 'hard', 'expert', 'impossible'] as const;
+/** Planets per ordinary star (schema 24): the generator's own 2 to 5, or a named range. */
+const PLANET_RANGES = [
+  { id: 'standard', label: 'Standard', min: 0, max: 0, blurb: '2 to 5 planets around each star.' },
+  { id: 'sparse', label: 'Sparse', min: 1, max: 3, blurb: '1 to 3 planets: small colonies, fierce competition.' },
+  { id: 'rich', label: 'Rich', min: 4, max: 7, blurb: '4 to 7 planets around each star.' },
+  { id: 'wide', label: 'Wide', min: 2, max: 9, blurb: '2 to 9 planets (the Balance of Power range).' },
+  { id: 'crowded', label: 'Crowded', min: 6, max: 9, blurb: '6 to 9 planets: big systems worth fighting for.' },
+] as const;
+const START_SYSTEMS = [0, 1, 2, 3, 4, 6, 8] as const;
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 // What a core without a preset list offers: the two built-ins (twin: new_campaign_vm.gd PRESET_FALLBACK).
@@ -73,6 +82,9 @@ export function NewCampaignScreen() {
   const [shape, setShape] = useState<(typeof SHAPES)[number]>('spiral');
   const [minorDensity, setMinorDensity] = useState<(typeof DENSITIES)[number]>('some');
   const [difficulty, setDifficulty] = useState<(typeof DIFFICULTIES)[number]>('normal');
+  const [planetsId, setPlanetsId] = useState<(typeof PLANET_RANGES)[number]['id']>('standard');
+  const [startSystems, setStartSystems] = useState(0);
+  const [starTypes, setStarTypes] = useState(false);
   const chosen = FACTIONS.find((f) => f.id === faction)!;
   const p = palette(faction);
   const sz = SIZES.find((s) => s.id === size)!;
@@ -90,10 +102,16 @@ export function NewCampaignScreen() {
     if (o.events !== undefined) setEvents(o.events);
     if (o.aiAggression !== undefined) setAggression(o.aiAggression);
     if (o.empires !== undefined) setEmpires(Math.max(o.empires, faction));
+    // Schema 24 options: the preset's defaults, or the plain galaxy when it names none.
+    setStartSystems(o.startSystems ?? 0);
+    setPlanetsId(PLANET_RANGES.find((r) => r.min === (o.planetsMin ?? 0) && r.max === (o.planetsMax ?? 0))?.id ?? 'standard');
+    setStarTypes(o.starTypes ?? false);
   };
+  const pr = PLANET_RANGES.find((r) => r.id === planetsId) ?? PLANET_RANGES[0];
   const start = () => {
     startCampaign({
       faction, empires: effectiveEmpires, seed, era, ruleset, width: sz.width, height: sz.height, systems: sz.systems, events, aiAggression: aggression, preset, shape, minorDensity, difficulty,
+      ...(startSystems > 0 ? { startSystems } : {}), ...(pr.min > 0 ? { planetsMin: pr.min, planetsMax: pr.max } : {}), starTypes,
       ...(scenarioDef ? { scenario: scenarioDef.id, faction: scenarioDef.playerId } : {}),
     });
     if (view.value) maybeStartTutorial();
@@ -151,6 +169,14 @@ export function NewCampaignScreen() {
             <div class="option-label">Minor races</div>
             <div class="option-row" role="radiogroup" aria-label="Minor-race density">
               {DENSITIES.map((d) => <Pill key={d} tone="ghost" active={minorDensity === d} onClick={() => setMinorDensity(d)} testid={`density-${d}`}>{cap(d)}</Pill>)}
+            </div>
+            <div class="option-label">Planets per star</div>
+            <div class="option-row" role="radiogroup" aria-label="Planets per star">
+              {PLANET_RANGES.map((r) => <Pill key={r.id} tone="ghost" active={planetsId === r.id} onClick={() => setPlanetsId(r.id)} hint={r.blurb} testid={`planets-${r.id}`}>{r.label}</Pill>)}
+            </div>
+            <div class="option-label">Start systems</div>
+            <div class="option-row" role="radiogroup" aria-label="Start systems">
+              {START_SYSTEMS.map((n) => <Pill key={n} tone="ghost" active={startSystems === n} onClick={() => setStartSystems(n)} hint={`Each empire starts with its capital and ${n} more ${n === 1 ? 'colony' : 'colonies'} nearby.`} testid={`start-systems-${n}`}>{n}</Pill>)}
             </div>
             <div class="option-label">Difficulty</div>
             <div class="option-row" role="radiogroup" aria-label="Difficulty">
@@ -213,6 +239,7 @@ export function NewCampaignScreen() {
             <div class="option-row toggles">
               <label class="check"><input type="checkbox" checked={events} onChange={(e) => setEvents((e.target as HTMLInputElement).checked)} /> {presetDef.rulesBase === 'remastered' ? 'Galactic events' : 'Random events'}</label>
               <label class="check"><input type="checkbox" checked={aggression} onChange={(e) => setAggression((e.target as HTMLInputElement).checked)} /> Aggressive rivals</label>
+              <label class="check" title="Each empire's home star takes its race's colour."><input type="checkbox" checked={starTypes} onChange={(e) => setStarTypes((e.target as HTMLInputElement).checked)} data-testid="star-types" /> Race star types</label>
             </div>
           </Frame>
           <div class="setup-summary" style={{ borderColor: p.primary }}>

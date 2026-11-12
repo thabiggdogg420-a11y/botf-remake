@@ -148,6 +148,8 @@ func _galaxy_panel() -> Control:
 	gb.add_child(_choice_row("Shape", NewCampaignVM.SHAPES.map(func(s): return [s["id"], s["label"], s["blurb"]]), vm.shape, func(id): vm.shape = id; refresh(), "shape"))
 	gb.add_child(_choice_row("Size", SIZES.map(func(s): return [s["id"], s["label"], "%dx%d sectors, %d star systems. %s" % [s["width"], s["height"], s["systems"], s["blurb"]]]), size_id, func(id): size_id = id; refresh(), "systems"))
 	gb.add_child(_choice_row("Minor races", NewCampaignVM.DENSITIES.map(func(d): return [d["id"], d["label"], "%s minor races on this size (at most 29)." % _minors_for(d["id"])]), vm.minor_density, func(id): vm.minor_density = id; refresh(), "minorDensity"))
+	gb.add_child(_choice_row("Planets per star", NewCampaignVM.PLANET_RANGES.map(func(r): return [r["id"], r["label"], r["blurb"]]), vm.planets_id, func(id): vm.planets_id = id; refresh(), "planetsPerStar"))
+	gb.add_child(_choice_row("Start systems", NewCampaignVM.START_SYSTEM_CHOICES.map(func(n): return [str(n), str(n), "Each empire starts with its capital and %d more colon%s nearby." % [n, "y" if n == 1 else "ies"]]), str(vm.start_systems), func(id): vm.start_systems = int(id); refresh(), "startSystems"))
 	gb.add_child(_powers_row())
 	gb.add_child(_seed_row())
 	return galaxy
@@ -341,6 +343,13 @@ func _rules_column() -> Control:
 	ag.tooltip_text = "Rivals declare war and raid when they see weakness."
 	ag.toggled.connect(func(on): aggression = on)
 	tg.add_child(ag)
+	var stt := CheckBox.new()
+	stt.text = "Race star types"
+	stt.button_pressed = vm.star_types
+	stt.tooltip_text = "Each empire's home star takes its race's colour (Federation yellow, Klingon red, Romulan green, Dominion blue, Borg violet)."
+	stt.toggled.connect(func(on): vm.star_types = on)
+	stt.name = "StarTypes"
+	tg.add_child(stt)
 	rb.add_child(tg)
 	rb.add_child(_choice_row("Interface look", UiTokens.ERA_ORDER.map(func(id): return [id, UiTokens.ERAS[id]["label"], "%s interface: shapes and colours of that era's LCARS." % UiTokens.ERAS[id]["name"]]), vm.ui_era, func(id): vm.ui_era = id; UiTokens.era = id; refresh()))
 	colr.add_child(rules)

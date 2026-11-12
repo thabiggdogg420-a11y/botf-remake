@@ -1,1 +1,2 @@
-{"format":1,"kind":"overlay","id":"balance-of-power","name":"Balance of Power overlay (BoP balance numbers arrive with lane MOD-7)","revision":1,"requires":["botf-base"]}
+{"format":1,"kind":"overlay","id":"balance-of-power","name":"Balance of Power (BoP 1.2c): longer battles, cheaper ships and structures, a reshaped research curve, a starbase-building AI. Design values (MOD-7).","revision":2,"requires":["botf-base"],
+"balance":{"researchCostPercent":105,"researchCurveLow":85,"researchCurveHigh":125,"shipCostPercent":90,"structureCostPercent":85,"weaponOutputPercent":75,"populationCapacityPercent":110,"aiAlwaysStarbases":1,"aiNewestShips":1,"aiStandardBuild":1}}

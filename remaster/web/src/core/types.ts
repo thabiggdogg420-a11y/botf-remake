@@ -12,7 +12,7 @@ export interface PresetInfo {
   eras?: { techCap: number; years: number[]; startTech: number[] };
   options: {
     empires?: number; era?: number; size?: 'small' | 'medium' | 'large' | 'huge'; shape?: string; minorDensity?: string; difficulty?: string;
-    events?: boolean; aiAggression?: boolean;
+    events?: boolean; aiAggression?: boolean; startSystems?: number; planetsMin?: number; planetsMax?: number; starTypes?: boolean;
   };
 }
 /** A scenario from the core's registry (docs/design/SCENARIOS.md): a scripted start that overrides preset, lineup, era, map and seed. */
@@ -60,6 +60,8 @@ export interface Planet {
 }
 
 export interface SystemView {
+  /** Schema 24: the core's star type (0 yellow, 1 orange, 2 red, 3 white, 4 blue, 5 green, 6 violet) for a race home star; absent = the renderer's own hash. */
+  starType?: number;
   id: number; x: number; y: number; name: string; visible: boolean; owner: number;
   capacity: number; maxCapacity: number; planets: Planet[];
   minor?: {

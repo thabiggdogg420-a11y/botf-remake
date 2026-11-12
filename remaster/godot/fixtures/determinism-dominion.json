@@ -24,10 +24,10 @@
     "minorDensity": "many"
    },
    "turns": 30,
-   "result": "3604616130019470582",
+   "result": "8430973309946470661",
    "content": {
     "id": "botf-base+dominion+dominion-war+economy",
-    "checksum": "1c6ae8f544738e5c",
+    "checksum": "62ade7a20577118f",
     "stack": 3
    }
   },
@@ -51,10 +51,10 @@
     "minorDensity": "many"
    },
    "turns": 30,
-   "result": "13903848575523010477",
+   "result": "7271981273536882164",
    "content": {
     "id": "botf-base+dominion+dominion-war+economy",
-    "checksum": "1c6ae8f544738e5c",
+    "checksum": "62ade7a20577118f",
     "stack": 3
    }
   }

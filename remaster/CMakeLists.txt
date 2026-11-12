@@ -79,6 +79,10 @@ botf_suite(BotfContentTests ContentTests.cpp) # Lane G: original text + minor-ra
 botf_suite(BotfPresetTests PresetTests.cpp) # M3-PRESETS (MOD-1): overlay packs, presets, lineup validation, schema-17 PACKS section
 botf_suite(BotfThreatTests ThreatTests.cpp) # M3-THREATS (MOD-5): threat actors, assimilation, schema-20 THREATS section
 botf_suite(BotfGalaxyGenTests GalaxyGenTests.cpp) # M2-GEN: galaxy shapes, minor-race density, difficulty, GALAXY_SETUP save section
+botf_suite(BotfBalanceTests BalanceTests.cpp) # M3-BALANCE (MOD-7): balance overlays, traits, AI policy, galaxy options, schema-24 STAR_TYPES
+botf_suite(BotfDifficultyTests DifficultyTests.cpp) # MOD-7: difficulty tiers incl. Expert, AI against a fixed baseline
+set_tests_properties(BotfBalanceTests PROPERTIES TIMEOUT 1800)
+set_tests_properties(BotfDifficultyTests PROPERTIES TIMEOUT 2400)
 # Schema-14 treaty integration, client queries and battle records (Lane H).
 botf_suite(BotfIntegrationTests IntegrationTests.cpp)
 set_tests_properties(BotfIntegrationTests PROPERTIES TIMEOUT 900)

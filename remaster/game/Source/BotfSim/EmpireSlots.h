@@ -30,10 +30,14 @@ inline int shipDonor(int empireId) { const auto* r = raceForEmpire(empireId); re
 inline const char* key(int empireId) { const auto* r = raceForEmpire(empireId); return r ? r->key : ""; }
 inline const char* name(int empireId) { const auto* r = raceForEmpire(empireId); return r ? r->empireName : ""; }
 // MOD-3 trait effects of the slot's race (the `major.traitEffects` data; all zero unless a pack sets them).
-struct TraitEffects { int morale = 0, creditsPct = 0, groundDefensePct = 0, securityPct = 0; };
+struct TraitEffects {
+    int morale = 0, creditsPct = 0, groundDefensePct = 0, securityPct = 0;
+    int industryPct = 0, researchPct = 0, foodPct = 0, shipCostPct = 0, intelPct = 0; // MOD-7 (BALANCE-AI.md section 3)
+};
 inline TraitEffects traitEffects(int empireId) {
     const auto* r = raceForEmpire(empireId);
-    return r ? TraitEffects{r->traitMorale, r->traitCreditsPct, r->traitGroundPct, r->traitSecurityPct} : TraitEffects{};
+    return r ? TraitEffects{r->traitMorale, r->traitCreditsPct, r->traitGroundPct, r->traitSecurityPct,
+                            r->traitIndustryPct, r->traitResearchPct, r->traitFoodPct, r->traitShipCostPct, r->traitIntelPct} : TraitEffects{};
 }
 inline const char* capital(int empireId) { const auto* r = raceForEmpire(empireId); return r ? r->capital : ""; }
 
