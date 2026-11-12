@@ -103,6 +103,9 @@ Saves 14 to 24 load (each is the schema-25 text without the section; the loader 
 
 `BotfScenarioTests` (`tests/scenarios/ScenarioTests.cpp`): format and refusals; the three scenarios' scripted starts; triggers; the Dominion War victory; the Mirror pack; the secession (scenario, Federation player, preconditions, conservation); flagships (commission, bonuses, naming, morale, loss, cooldown, AI, absent pack); the vendetta; each scenario played 50 turns by the AI with the player's colonies on governors (determinism, a save round trip every ten turns, a reload at turn 25); save migration and forged sections. Native versus wasm determinism: the fixture check in `godot/tools/dump-fixtures.sh`. Classic and Remastered unchanged: the `BotfSim` output of this branch against main for the same seeds and turn counts (`FINAL_HASH` and the per-turn hashes), header excluded; see the lane report.
 
+Proof as run (12 Nov 2026, after merging main 5134cc6, schema 25): all 23 ctest suites pass on the final binaries (`BotfScenarioTests` 19 of 19). Classic and Remastered: for seeds 1999, 7 and 42, 20 and 60 turns each, the saved text of this branch equals main's apart from the header line in all 12 runs, and the turn-by-turn output is identical apart from the new Vendetta row line. The turn-20 fingerprint pin in `godot/tests/run_tests.gd` moves with the header (the header is in the hashed text).
+Two bounds follow the flagship bonuses: battle records accept hull and shields up to the largest flagship percentage (`scenarios::maxFlagshipPct`).
+
 ## 10. Stand-ins and deferred
 
 * The house's AI personality, intelligence doctrine and affinities are the eighth slot's (Breen); a per-race personality field would fix it.
@@ -111,3 +114,5 @@ Saves 14 to 24 load (each is the schema-25 text without the section; the loader 
 * The stock `flagships` overlay is not yet on Ages, Galaxies or Ultimate.
 * Fixed-map scenarios place minor races at random stars (the roster placement runs over them); only the Mirror Universe uses a fixed map.
 * Scenario text is English only, in the data.
+* The Mirror Universe's Terran Empire keeps the Federation portrait and motto (existing assets only); the Cardassian Alliance and the Klingon-Cardassian Alliance both appear as separate powers, as the pack names them.
+* The scenario picker sits in the middle column under the galaxy preview; it is off-screen until the column is scrolled at 1080p (the first capture shows only its top).
