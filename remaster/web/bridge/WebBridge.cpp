@@ -2979,6 +2979,75 @@ void newThreatDrill(bool battle, int ships) {
     startGame(std::move(s), battle ? "drill-threat-battle" : "drill-threats");
 }
 
+// Economy drill (schema 23, docs/design/ECONOMY-MECHANICS.md): a Dominion War game (all the UDM economy flags) with the map charted, the
+// Federation's science at level 6, a Fleet Academy and a Unity Monument in the capital, upgrade steps taken and an upgrade queued, a
+// subjugated Klingon world holding a Protectorate HQ, a veteran squadron with an intercept post, and raiders at the Romulan capital
+// (at war) with an Orion member. Nothing spawns or fights on its own. Used by the capture tools and the tests.
+void newEconomyDrill() {
+    botf::CampaignSetup setup;
+    setup.presetId = "dominion-war"; setup.seed = 9191; setup.era = botf::StartingEra::Expanded;
+    setup.lineup = {"federation", "klingon", "romulan", "cardassian", "dominion"}; setup.playerEmpire = 1;
+    setup.width = 22; setup.height = 16; setup.systems = 48;
+    setup.galaxy.density = botf::MinorDensity::Many;
+    setup.threats = botf::ThreatSetup{};
+    auto s = botf::newCampaign(setup);
+    s.aiAggressionEnabled = false; s.eventsEnabled = false;
+    const int me = s.playerEmpire;
+    for (int y = 0; y < s.height; ++y) for (int x = 0; x < s.width; ++x) markExplored(s.explored, y * s.width + x);
+    normaliseExplored(s.explored);
+    {   // Science at level 6, the research ledger reconciled.
+        std::int64_t total = s.researchReserve;
+        for (int f = 0; f < botf::ResearchFields; ++f) {
+            auto& t = s.technologies[static_cast<std::size_t>(f)];
+            t.level = 6; t.progress = 0;
+            for (int l = 1; l <= 6; ++l) total += botf::researchCost(s, f, l);
+        }
+        s.research = total;
+    }
+    auto addStructure = [](botf::Colony& c, int id) { c.structures.insert(std::lower_bound(c.structures.begin(), c.structures.end(), id), id); };
+    auto ownColony = [&](int owner) -> botf::Colony* {
+        for (auto& c : s.colonies) if (c.ownerId == owner) return &c;
+        return nullptr;
+    };
+    auto* capital = ownColony(me);
+    addStructure(*capital, 85); addStructure(*capital, 73);
+    capital->upgradeSteps = {2, 1, 1};
+    capital->queue.clear();
+    capital->queue.emplace_back(botf::Building::Structure, 0, botf::structures::refFor(botf::upgrades::recordFor(0, false)));
+    capital->queue.emplace_back(botf::Building::Structure, 0, botf::structures::refFor(botf::upgrades::recordFor(1, false)));
+    if (auto* klingon = ownColony(2)) {   // A conquered Klingon world, subjugated, with the Protectorate Headquarters standing.
+        klingon->ownerId = me; klingon->subjugated = true; klingon->queue.clear();
+        addStructure(*klingon, 61);
+        klingon->morale = 80;
+    }
+    for (auto& r : s.majorRelations)
+        if ((r.first == me && r.second == 3) || (r.first == 3 && r.second == me)) { r.contact = true; r.atWar = true; }
+    const auto& cs = *botf::empire_rules::systemOf(s, capital->systemId);
+    botf::Colony* romulan = ownColony(3);
+    const auto& rs = *botf::empire_rules::systemOf(s, romulan->systemId);
+    romulan->defenseBatteries = 0;
+    s.fleets.erase(std::remove_if(s.fleets.begin(), s.fleets.end(), [&](const botf::Fleet& f) { return f.ownerId == 3 && f.x == rs.x && f.y == rs.y; }), s.fleets.end());
+    s.stations.erase(std::remove_if(s.stations.begin(), s.stations.end(), [&](const botf::Station& st) { return st.x == rs.x && st.y == rs.y; }), s.stations.end());
+    for (auto& e : s.rivals) if (e.id == 3) e.credits = 900;
+    const auto before = s.fleets.size();
+    addDrillShips(s, me, cs.x, cs.y, 3);
+    addDrillShips(s, me, rs.x, rs.y, 2);
+    std::size_t i = 0;
+    for (auto& f : s.fleets) {
+        if (i++ < before || f.ownerId != me) continue;
+        const std::size_t k = i - before - 1;
+        if (k == 0) { f.experience = 72; f.order = botf::economy_rules::OrderIntercept; f.postX = f.x; f.postY = f.y; }
+        else if (k == 1) f.experience = 91;
+        else if (k == 2) f.experience = 12;
+        else { f.order = botf::economy_rules::OrderRaid; f.raidSystemId = romulan->systemId; f.experience = 40 + 10 * static_cast<int>(k - 3); }
+    }
+    for (auto& m : s.minors) if (m.name.find("Orion") != std::string::npos) { m.memberOf = me; break; }
+    // Two Romulan raiders one sector from the capital: the interceptor goes after them, so ending the turn opens a battle.
+    addDrillShips(s, 3, std::min(s.width - 1, cs.x + 1) == cs.x ? cs.x - 1 : cs.x + 1, cs.y, 2);
+    botf::validate(s);
+    startGame(std::move(s), "drill-economy");
+}
+
 void newFrontierDrill() {
     botf::CampaignSetup setup;
     setup.presetId = "remastered";
@@ -3323,6 +3392,7 @@ std::string dispatch(const std::string& method, const Value& a) {
     else if (method == "galaxyPreview") galaxyPreview(w, a);
     else if (method == "newBattleDrill") { newBattleDrill(a.getBool("station"), a.getInt("ships", 3), a.getBool("foeStation")); writeView(w); }
     else if (method == "newFrontierDrill") { newFrontierDrill(); writeView(w); }
+    else if (method == "newEconomyDrill") { newEconomyDrill(); writeView(w); }
     else if (method == "newThreatDrill") { newThreatDrill(a.getBool("battle"), a.getInt("ships", 3)); writeView(w); }
     else if (method == "station") writeStationDetail(w, a.getInt("stationId"));
     else if (method == "newDiplomacyDrill") { newDiplomacyDrill(); writeView(w); }
