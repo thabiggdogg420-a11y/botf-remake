@@ -132,3 +132,16 @@ dump('determinism-rules3', 'fingerprint', { campaign: campaign3, turns: 10 }, ca
   call('loadBaseContent');
   dump('determinism-dominion', 'fingerprint', { runs: dom.length }, dom);
 }
+// Economy and rules mechanics (schema 23, docs/design/ECONOMY-MECHANICS.md): the presets that carry the economy flags (vanilla orders,
+// automatic upgrades, the UDM set) for 50 turns of AI play. The native core must reproduce each fingerprint.
+{
+  const eco = [];
+  for (const preset of ['remastered', 'ultimate', 'balance-of-power', 'dominion-war']) {
+    const c = { faction: 1, empires: 5, seed: 31337, era: 2, ruleset: 'reference', preset };
+    call('newCampaign', c);
+    for (let i = 0; i < 50; i++) endTurn();
+    eco.push({ campaign: c, turns: 50, result: call('fingerprint') });
+  }
+  call('loadBaseContent');
+  dump('determinism-economy', 'fingerprint', { runs: eco.length }, eco);
+}

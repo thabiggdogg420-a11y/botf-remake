@@ -10,6 +10,39 @@
    "population": 40,
    "capacity": 130,
    "morale": 70,
+   "economyRules": {
+    "subjugated": false,
+    "moraleBonus": 0,
+    "tribute": 0,
+    "hasHq": false,
+    "sharedMorale": 0,
+    "upgrades": [
+     {
+      "kind": "farms",
+      "units": 2,
+      "steps": 0,
+      "tier": 0,
+      "available": 0,
+      "percent": 0
+     },
+     {
+      "kind": "factories",
+      "units": 2,
+      "steps": 0,
+      "tier": 0,
+      "available": 0,
+      "percent": 0
+     },
+     {
+      "kind": "laboratories",
+      "units": 1,
+      "steps": 0,
+      "tier": 0,
+      "available": 0,
+      "percent": 0
+     }
+    ]
+   },
    "workers": {
     "food": 20,
     "industry": 10,
@@ -284,6 +317,36 @@
     "isShip": false,
     "turns": 6,
     "energyCost": 5
+   },
+   {
+    "product": "Structure",
+    "referenceId": 1000000,
+    "name": "Upgrade farms",
+    "cost": 36,
+    "upkeep": 0,
+    "blocker": "Needs Biotech level 2 to upgrade farms",
+    "isShip": false,
+    "turns": 2
+   },
+   {
+    "product": "Structure",
+    "referenceId": 1000001,
+    "name": "Upgrade factories",
+    "cost": 60,
+    "upkeep": 0,
+    "blocker": "Needs Construction level 2 to upgrade factories",
+    "isShip": false,
+    "turns": 3
+   },
+   {
+    "product": "Structure",
+    "referenceId": 1000002,
+    "name": "Upgrade laboratories",
+    "cost": 48,
+    "upkeep": 0,
+    "blocker": "Needs Computers level 2 to upgrade laboratories",
+    "isShip": false,
+    "turns": 3
    },
    {
     "product": "Destroyer",

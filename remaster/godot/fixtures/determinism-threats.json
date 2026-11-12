@@ -20,8 +20,8 @@
      "frequency": "frequent"
     }
    },
-   "turns": 72,
-   "result": "5698888260724846174",
+   "turns": 80,
+   "result": "12252040323778708890",
    "threats": {
     "monsters": true,
     "borg": true,
@@ -32,7 +32,7 @@
     "sparesAi": false,
     "disabled": []
    },
-   "spawned": 10
+   "spawned": 11
   },
   {
    "campaign": {
@@ -53,8 +53,8 @@
      "edoStation": true
     }
    },
-   "turns": 70,
-   "result": "4813462526241263285",
+   "turns": 50,
+   "result": "14968601584690239232",
    "threats": {
     "monsters": true,
     "borg": true,
@@ -65,7 +65,7 @@
     "sparesAi": false,
     "disabled": []
    },
-   "spawned": 8
+   "spawned": 7
   },
   {
    "campaign": {
@@ -89,8 +89,8 @@
      "frequency": "normal"
     }
    },
-   "turns": 70,
-   "result": "2912722626661613640",
+   "turns": 37,
+   "result": "10016399086239748054",
    "threats": {
     "monsters": true,
     "borg": true,
@@ -101,7 +101,7 @@
     "sparesAi": false,
     "disabled": []
    },
-   "spawned": 8
+   "spawned": 5
   }
  ]
 }

@@ -17,7 +17,7 @@
     "preset": "classic"
    },
    "turns": 8,
-   "result": "18223747722416403390",
+   "result": "16408688987751223374",
    "content": {
     "id": "botf-base",
     "checksum": "4f178d941a2a4de1",
@@ -38,7 +38,7 @@
     "preset": "remastered"
    },
    "turns": 8,
-   "result": "3811122055661885038",
+   "result": "12666412019879585389",
    "content": {
     "id": "botf-base",
     "checksum": "4f178d941a2a4de1",
@@ -59,11 +59,11 @@
     "preset": "dominion-war"
    },
    "turns": 8,
-   "result": "11926119266272197610",
+   "result": "16797548770296686159",
    "content": {
-    "id": "botf-base+dominion+dominion-war",
-    "checksum": "b0e2213f7ef37219",
-    "stack": 2
+    "id": "botf-base+dominion+dominion-war+economy",
+    "checksum": "1c6ae8f544738e5c",
+    "stack": 3
    },
    "preset": "dominion-war"
   },
@@ -80,7 +80,7 @@
     "preset": "ages"
    },
    "turns": 8,
-   "result": "15900925108997802065",
+   "result": "16298783125999870576",
    "content": {
     "id": "botf-base+ages",
     "checksum": "a13b2f0bb2515a0d",
@@ -101,7 +101,7 @@
     "preset": "galaxies"
    },
    "turns": 8,
-   "result": "9708843403323965762",
+   "result": "4272578540551751843",
    "content": {
     "id": "botf-base+galaxies",
     "checksum": "cf3311ce7c050c93",
@@ -122,7 +122,7 @@
     "preset": "balance-of-power"
    },
    "turns": 8,
-   "result": "7136220355282581293",
+   "result": "2636312654976280261",
    "content": {
     "id": "botf-base+balance-of-power",
     "checksum": "9a19fb250a3482cf",
@@ -143,7 +143,7 @@
     "preset": "ultimate"
    },
    "turns": 8,
-   "result": "9269189745372330109",
+   "result": "10944813574208993631",
    "content": {
     "id": "botf-base+ultimate",
     "checksum": "837b99ed2634139a",

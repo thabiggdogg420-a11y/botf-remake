@@ -24,11 +24,11 @@
     "minorDensity": "many"
    },
    "turns": 30,
-   "result": "6356996677363395245",
+   "result": "927796539768027595",
    "content": {
-    "id": "botf-base+dominion+dominion-war",
-    "checksum": "b0e2213f7ef37219",
-    "stack": 2
+    "id": "botf-base+dominion+dominion-war+economy",
+    "checksum": "1c6ae8f544738e5c",
+    "stack": 3
    }
   },
   {
@@ -51,11 +51,11 @@
     "minorDensity": "many"
    },
    "turns": 30,
-   "result": "7882142267373110875",
+   "result": "8189279034996684612",
    "content": {
-    "id": "botf-base+dominion+dominion-war",
-    "checksum": "b0e2213f7ef37219",
-    "stack": 2
+    "id": "botf-base+dominion+dominion-war+economy",
+    "checksum": "1c6ae8f544738e5c",
+    "stack": 3
    }
   }
  ]
