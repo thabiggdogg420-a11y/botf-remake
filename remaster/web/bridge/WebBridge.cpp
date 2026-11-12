@@ -3043,7 +3043,9 @@ void newEconomyDrill() {
     }
     for (auto& m : s.minors) if (m.name.find("Orion") != std::string::npos) { m.memberOf = me; break; }
     // Two Romulan raiders one sector from the capital: the interceptor goes after them, so ending the turn opens a battle.
-    addDrillShips(s, 3, std::min(s.width - 1, cs.x + 1) == cs.x ? cs.x - 1 : cs.x + 1, cs.y, 2);
+    const int ix = std::min(s.width - 1, cs.x + 1) == cs.x ? cs.x - 1 : cs.x + 1;
+    addDrillShips(s, 3, ix, cs.y, 2);
+    for (auto& e : s.rivals) if (e.id == 3) { markExplored(e.explored, cs.y * s.width + ix); normaliseExplored(e.explored); }
     botf::validate(s);
     startGame(std::move(s), "drill-economy");
 }

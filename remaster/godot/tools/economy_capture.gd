@@ -22,6 +22,27 @@ func _shot(path: String) -> void:
 	root.get_texture().get_image().save_png(path)
 	print("ECO wrote ", path)
 
+## Scrolls every ScrollContainer under `node` so the first control whose name or text contains `needle` is visible.
+func _reveal(node: Node, needle: String) -> bool:
+	var hit := _find_text(node, needle)
+	if hit == null:
+		return false
+	var p: Node = hit.get_parent()
+	while p != null:
+		if p is ScrollContainer:
+			(p as ScrollContainer).ensure_control_visible(hit)
+		p = p.get_parent()
+	return true
+
+func _find_text(node: Node, needle: String) -> Control:
+	if node is Control and (node.name == needle or (node is Label and needle in (node as Label).text)):
+		return node as Control
+	for c in node.get_children():
+		var r := _find_text(c, needle)
+		if r != null:
+			return r
+	return null
+
 func _fleet(order: int) -> Dictionary:
 	for f in app.view.get("fleets", []):
 		if int(f.get("order", 0)) == order and (order != 0 or int(f.get("experience", 25)) != 25):
@@ -52,10 +73,14 @@ func _run() -> void:
 	await wait(8)
 	var sc: Node = app.current_screen()
 	print("ECO capital queue: %s" % str(sc.vm.detail.get("queue", []).map(func(x): return x.get("name", "?"))))
+	_reveal(sc, "EconomyPanel")
+	await wait(4)
 	await _shot("%s/economy-capital.png" % out)
 	sc.tab = "structures"
 	sc.refresh()
 	await wait(6)
+	print("ECO reveal build list: %s" % str(_reveal(sc, "Upgrade laboratories")))
+	await wait(4)
 	print("ECO choices: %s" % str(sc.vm.detail.get("choices", []).filter(func(x): return x["product"] == "Structure").map(func(x): return "%s [%s]" % [x["name"], x["blocker"]])))
 	await _shot("%s/economy-buildlist.png" % out)
 	# The Protectorate HQ world.
@@ -67,9 +92,15 @@ func _run() -> void:
 		app.goto("system")
 		await wait(8)
 		var sc2: Node = app.current_screen()
+		sc2.vm.fetch(sid)
+		sc2.refresh()
+		await wait(4)
+		print("ECO probe world %d screen %s colony keys %s er %s" % [sid, sc2.name, str(sc2.vm.colony().keys()), str(sc2.vm.colony().get("economyRules", "none"))])
 		if bool(sc2.vm.colony().get("economyRules", {}).get("subjugated", false)):
 			hq = sid
 			print("ECO protectorate world %d: %s" % [sid, str(sc2.vm.colony().get("economyRules", {}))])
+			_reveal(sc2, "EconomyPanel")
+			await wait(4)
 			await _shot("%s/economy-protectorate.png" % out)
 			break
 	# Fleets: the interceptor, a veteran and the raiders.
@@ -82,7 +113,9 @@ func _run() -> void:
 	var rd := _fleet(2)
 	app.select_fleet(int(rd.get("id", 0)))
 	app.goto("fleets")
-	await wait(8)
+	await wait(4)
+	app.current_screen().refresh()
+	await wait(4)
 	print("ECO raider: order %s target %s crew %s xp %s" % [str(rd.get("orderName")), str(rd.get("raidSystemId")), str(rd.get("crewRating")), str(rd.get("experience"))])
 	await _shot("%s/economy-raid.png" % out)
 	# The turn: raid plunder and the intercept, which opens a battle.
