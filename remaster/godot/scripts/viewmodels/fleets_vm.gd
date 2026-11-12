@@ -132,3 +132,29 @@ func drafted(ids: Array) -> Array:
 
 func split(tf: Dictionary) -> bool:
 	return issue({"type": "DisbandTaskForce", "taskForceId": int(tf["id"])}, [], "%s split into individual ships." % tf["name"])
+
+## Schema 23: standing orders (intercept and raid) and crew experience.
+func rules() -> Dictionary:
+	return view().get("meta", {}).get("rules", {})
+
+func can_order(lead: Dictionary) -> bool:
+	var r := rules()
+	return (r.get("interceptOrders", false) or r.get("raidOrders", false)) and int(lead.get("attack", 0)) > 0 and not lead.get("colonyShip", false) and lead.get("shipClass", "") != "Transport" and int(lead.get("taskForceId", 0)) == 0
+
+## Charted systems of other empires, the candidates for a raid.
+func raid_targets(lead: Dictionary) -> Array:
+	var me := int(view().get("meta", {}).get("player", 0))
+	return view()["systems"].filter(func(s): return AppSession.is_charted(s) and int(s.get("owner", 0)) != 0 and int(s.get("owner", 0)) != me)
+
+func standing_text(lead: Dictionary) -> String:
+	var o := int(lead.get("order", 0))
+	if o == 1:
+		return "Intercept post at %s" % sector_name(int(lead.get("postX", 0)), int(lead.get("postY", 0)))
+	if o == 2:
+		var sys := session.find_by_id("systems", int(lead.get("raidSystemId", 0)))
+		return "Raiding %s" % (str(sys["name"]) if not sys.is_empty() else "an enemy colony")
+	return "None"
+
+func set_standing(lead: Dictionary, order: int, system_id: int, cancel_ids: Array) -> bool:
+	var msg := "Standing down." if order == 0 else ("Intercept post set." if order == 1 else "Raid ordered.")
+	return issue({"type": "SetFleetOrder", "fleetId": int(lead["id"]), "eventOption": order, "systemId": system_id}, cancel_ids, msg)

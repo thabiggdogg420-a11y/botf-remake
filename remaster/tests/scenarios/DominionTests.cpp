@@ -353,7 +353,7 @@ int main() {
         // A save made on the Dominion stack needs it.
         presets::activate(*presets::find("remastered"));
         const auto reloaded = deserialize(text);
-        check(content::active().id == "botf-base+dominion+dominion-war" && serialize(reloaded) == text, "the loader rebuilds the stack the save names");
+        check(content::active().id == "botf-base+dominion+dominion-war+economy" && serialize(reloaded) == text, "the loader rebuilds the stack the save names");
         // Default game: no section, a schema-18 or schema-20 header over the same text loads and re-saves as 21.
         presets::activate(*presets::find("remastered"));
         CampaignSetup plain; plain.seed = 1999;

@@ -72,6 +72,9 @@ func refresh() -> void:
 	var prog := _program(c)
 	if prog:
 		left.add_child(prog)
+	var eco := _economy_rules()
+	if eco:
+		left.add_child(eco)
 	cols.add_child(Lcars.scroll(left))
 	var mid := _construction()
 	mid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -384,6 +387,37 @@ func _dilithium(c: Dictionary) -> Control:
 	b.add_child(r)
 	for ln in lines:
 		b.add_child(Lcars.para(str(ln["text"]), Lcars.tone_color(str(ln["tone"])) if str(ln["tone"]) != "" else Lcars.TEXT2, 13))
+	return f
+
+## Schema 23: structure upgrade tiers, the Protectorate and shared morale at this colony. Null when none of those rules is on.
+func _economy_rules() -> Control:
+	var er: Variant = vm.colony().get("economyRules", {})
+	if not er is Dictionary or er.is_empty():
+		return null
+	var ups: Array = er.get("upgrades", [])
+	var rules: Dictionary = vm.view().get("meta", {}).get("rules", {})
+	var show_up: bool = rules.get("structureUpgrades", false) or rules.get("autoUpgrades", false) or rules.get("noUpgrades", false)
+	var show_pro: bool = bool(er.get("subjugated", false)) or int(er.get("sharedMorale", 0)) > 0
+	if not show_up and not show_pro:
+		return null
+	var f := Lcars.frame("Upgrades and order", "economy", "secondary", "energy")
+	f.name = "EconomyPanel"
+	var b := Lcars.body(f)
+	if show_up:
+		for u in ups:
+			if int(u["units"]) <= 0:
+				continue
+			var row := Lcars.hbox(8)
+			row.add_child(Lcars.label(str(u["kind"]).capitalize(), "Muted", 13))
+			row.add_child(Lcars.meter(int(u["steps"]), max(1, int(u["units"]) * 3), Lcars.accent2(), 8))
+			row.add_child(Lcars.label("tier %d of %d (+%d%%)" % [int(u["tier"]), int(u["available"]), int(u["percent"])], "Mono", 13))
+			b.add_child(row)
+		b.add_child(Lcars.para("Upgrades are in the build list. A tier needs the matching science at level 2, 4 and 6." if not rules.get("noUpgrades", false) else "This game plays without structure upgrades.", Lcars.TEXT3, 13))
+	if bool(er.get("subjugated", false)):
+		var hq: bool = bool(er.get("hasHq", false))
+		b.add_child(Lcars.para("Subjugated world. " + ("A Protectorate HQ holds order here (+%d morale) and %d credits a turn come in as tribute." % [int(er["moraleBonus"]), int(er["tribute"])] if hq else "Without a Protectorate Headquarters in a subjugated world it is restless (%d morale)." % int(er["moraleBonus"])), Lcars.GOOD if hq else Lcars.WARN, 13))
+	if int(er.get("sharedMorale", 0)) > 0:
+		b.add_child(Lcars.para("Shared morale: +%d from the empire's Unity Monument." % int(er["sharedMorale"]), Lcars.GOOD, 13))
 	return f
 
 ## The race's emergency program for this colony (schema 15). Null when the rules are off.

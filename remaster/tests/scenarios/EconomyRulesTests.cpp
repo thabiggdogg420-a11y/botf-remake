@@ -100,13 +100,15 @@ int main() {
 
     run("flags: Classic has none, Remastered the vanilla set, presets carry theirs", [] {
         check(economy_rules::flagBits(rulesForPreset(RulesetPreset::Classic)) == 0, "Classic has no economy flag");
-        const auto r = rulesForPreset(RulesetPreset::Remastered);
+        check(economy_rules::flagBits(rulesForPreset(RulesetPreset::Remastered)) == 0, "a ruleset built without a preset has no economy flag");
+        const auto r = game(10, "remastered", 3).rules;
         check(r.interceptOrders && r.raidOrders && r.crewExperience && r.structureUpgrades && r.exploitFixes, "Remastered vanilla flags");
         check(!r.sharedMorale && !r.protectorateHq && !r.allDilithium && !r.raidBonus && !r.autoUpgrades && !r.noUpgrades, "mod-only flags are off");
         const auto udm = game(11, "dominion-war", 5);
         check(udm.rules.sharedMorale && udm.rules.protectorateHq && udm.rules.allDilithium && udm.rules.raidBonus, "Dominion War carries the UDM flags");
         check(game(11, "ultimate", 5).rules.autoUpgrades && game(11, "balance-of-power", 5).rules.autoUpgrades, "UM5 and BoP upgrade automatically");
-        check(!game(11, "classic", 5).rules.structureUpgrades, "the Classic preset keeps every rule off");
+        check(content::active().id != "botf-base+economy", "only the UDM preset stacks the economy structures");
+        check(economy_rules::flagBits(game(11, "classic", 5).rules) == 0 && !game(11, "classic", 5).rules.structureUpgrades, "the Classic preset keeps every rule off");
         const auto bad = [](const char* json) { presets::parsePreset(json); };
         rejects([&] { bad("{\"format\":1,\"id\":\"x\",\"name\":\"X\",\"blurb\":\"\",\"order\":1,\"overlays\":[],\"rules\":{\"base\":\"remastered\",\"flags\":{\"noUpgrades\":true,\"autoUpgrades\":true}},\"lineup\":[\"Federation\",\"Klingon\"],\"options\":{},\"needs\":[]}"); }, "noUpgrades with autoUpgrades");
         rejects([&] { bad("{\"format\":1,\"id\":\"x\",\"name\":\"X\",\"blurb\":\"\",\"order\":1,\"overlays\":[],\"rules\":{\"base\":\"classic\",\"flags\":{\"raidBonus\":true}},\"lineup\":[\"Federation\",\"Klingon\"],\"options\":{},\"needs\":[]}"); }, "raidBonus without raid orders");

@@ -391,14 +391,8 @@ GameplayRules rulesForPreset(RulesetPreset preset) {
     r.flightModel = remastered;
     r.wegoCombat = remastered;
     r.empireRules = true; // Schema 15: dilithium slots, programs, aftermath, minor conquest, guards (both presets).
-    // Schema 23 (EconomyRules.h): the vanilla-order rules (intercept, raid, crew experience, upgrades, exploit fixes) are on in Remastered.
-    // The Classic preset stays exactly as it was; the mod-only rules (shared morale, Protectorate, all-minor dilithium, raid bonus,
-    // automatic upgrades, no-upgrades) are off in both and come from a preset's flags.
-    r.interceptOrders = remastered;
-    r.raidOrders = remastered;
-    r.crewExperience = remastered;
-    r.structureUpgrades = remastered;
-    r.exploitFixes = remastered;
+    // Schema 23 (EconomyRules.h): every economy flag starts off in both bases, so a ruleset built without a preset (the CLI, the tests,
+    // saves) plays as before. The picker's presets carry the flags: the Remastered preset the vanilla-order set, mods their own.
     return r;
 }
 

@@ -181,6 +181,38 @@ func _detail(u: Dictionary) -> Control:
 			tg.disabled = lock != ""
 			srow.add_child(tg)
 		b.add_child(srow)
+	if v["meta"].get("rules", {}).get("crewExperience", false):
+		var xp := int(lead.get("experience", 25))
+		var crow := Lcars.hbox(8)
+		crow.name = "CrewExperience"
+		crow.add_child(Lcars.badge("Crew · " + str(lead.get("crewRating", "Regular")), "primary"))
+		crow.add_child(Lcars.bar_row("Experience", xp, 100, Color("#e8b44a")))
+		Lcars.tip(crow, "Crew experience %d of 100. Battles, raids and academies raise it; it sets accuracy and repair in battle." % xp)
+		b.add_child(crow)
+	if vm.can_order(lead):
+		var orow := Lcars.hbox(4)
+		orow.name = "StandingOrders"
+		orow.add_child(Lcars.caption("Standing order"))
+		var oids := GalaxyOrders.replace_ids(app, lead)
+		var cur_o := int(lead.get("order", 0))
+		var rules := vm.rules()
+		if rules.get("interceptOrders", false):
+			var tgi := Lcars.toggle("Intercept", cur_o == 1, func(_on): vm.set_standing(lead, 1, 0, oids), "Hold this sector as a post: hostile ships that come within range are attacked, and the ship returns when none is.")
+			tgi.name = "OrderIntercept"
+			tgi.disabled = lock != ""
+			orow.add_child(tgi)
+		if rules.get("raidOrders", false):
+			var rb := OptionButton.new()
+			rb.name = "RaidTarget"
+			rb.add_item("Raid a colony...", 0)
+			for s2 in vm.raid_targets(lead):
+				rb.add_item(str(s2["name"]), int(s2["id"]))
+			rb.item_selected.connect(func(idx): if rb.get_item_id(idx) != 0: vm.set_standing(lead, 2, rb.get_item_id(idx), oids))
+			orow.add_child(rb)
+		if cur_o != 0:
+			orow.add_child(Lcars.pill("Stand down", "ghost", func(): vm.set_standing(lead, 0, 0, oids), lock))
+		b.add_child(orow)
+		b.add_child(Lcars.label("Current: " + vm.standing_text(lead), "Muted"))
 	for a in GalaxyOrders.cell_actions(app, ly * app.width() + lx):
 		if a["group"] == "orders":
 			b.add_child(Lcars.pill(a["label"], a["tone"], a["run"], a["disabled"], a["detail"]))

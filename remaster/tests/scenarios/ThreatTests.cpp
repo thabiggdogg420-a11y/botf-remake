@@ -133,7 +133,7 @@ int main() {
         for (int t = 0; t < 12; ++t) advance(s);
         check(!contains(serialize(s), "THREATS") && s.threatActors.empty(), "twelve turns later still no threat state");
         for (const auto k : AllKinds) check(!threats::kindEnabled(s, static_cast<int>(k)), "no kind enabled");
-        check(ContentVersion == std::string("remaster-21") && SaveVersion == 21, "schema 21 (MOD-3 renumbered over the schema-20 THREATS section)");
+        check(ContentVersion == std::string("remaster-23") && SaveVersion == 23, "schema 23 (MOD-6 over the schema-20 THREATS and schema-21 STRUCTURES sections)");
     }, passed);
 
     run("switches: monsters, Borg-only off, sphere/8472/Edo replacements, mask, frequency, Borg seated", [] {
