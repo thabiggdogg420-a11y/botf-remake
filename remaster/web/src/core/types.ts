@@ -15,8 +15,16 @@ export interface PresetInfo {
     events?: boolean; aiAggression?: boolean; startSystems?: number; planetsMin?: number; planetsMax?: number; starTypes?: boolean;
   };
 }
+/** A scenario from the core's registry (docs/design/SCENARIOS.md): a scripted start that overrides preset, lineup, era, map and seed. */
+export interface ScenarioInfo {
+  id: string; name: string; blurb: string; order: number; preset: string; overlays: string[]; lineup: string[]; lineupIds: number[];
+  player: string; playerId: number; era: number; year: number; briefing: string[];
+  map: { width: number; height: number; systems: number; fixed: boolean; seed?: number; shape?: string; minorDensity?: string };
+  victories: { id: string; name: string; text: string; kind: string }[]; triggers: number;
+}
 export interface Meta {
   contentVersion: string;
+  scenarios?: ScenarioInfo[];
   saveVersion: number;
   presets?: PresetInfo[];
   empires: { id: number; name: string; home: string; race: number }[];

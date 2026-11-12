@@ -41,7 +41,8 @@ set(BOTF_CORE_SOURCES
     ${BOTF_CORE_DIR}/BuildTemplates.cpp
     ${BOTF_CORE_DIR}/Victory.cpp
     ${BOTF_CORE_DIR}/Chronicle.cpp
-    ${BOTF_CORE_DIR}/Threats.cpp)
+    ${BOTF_CORE_DIR}/Threats.cpp
+    ${BOTF_CORE_DIR}/Scenarios.cpp)
 add_library(botf_core STATIC ${BOTF_CORE_SOURCES})
 target_include_directories(botf_core PUBLIC ${BOTF_CORE_DIR})
 target_compile_options(botf_core PRIVATE ${BOTF_WARN})
@@ -101,3 +102,6 @@ set_tests_properties(BotfDominionTests PROPERTIES TIMEOUT 900)
 # Campaign eras (docs/design/ERAS.md, schema 22): era gate, timeline year, research levels 11-14, ERAS section, per-era soaks.
 botf_suite(BotfEraTests EraTests.cpp)
 set_tests_properties(BotfEraTests PROPERTIES TIMEOUT 1800)
+# Scenarios and extras (docs/design/SCENARIOS.md, schema 25): scenario format, secession, flagships, vendetta, 50-turn soaks.
+botf_suite(BotfScenarioTests ScenarioTests.cpp)
+set_tests_properties(BotfScenarioTests PROPERTIES TIMEOUT 1800)

@@ -119,7 +119,7 @@ func _preset_picker_model(nc: NewCampaignVM, label: String) -> void:
 	if ids.size() < 7:
 		check(nc.preset_text("remastered").contains("Powers:") and not nc.preset_text("remastered").contains("Not seated"), "%s: built-in text lists the powers and no pending note" % label)
 		return
-	check(ids == ["classic", "remastered", "dominion-war", "ages", "galaxies", "balance-of-power", "ultimate"], "%s: seven presets in screen order" % label)
+	check(ids == ["classic", "remastered", "dominion-war", "ages", "galaxies", "balance-of-power", "ultimate", "klingon-civil-war", "mirror-universe"], "%s: nine presets in screen order" % label)
 	check(nc.pick_preset("ultimate") and nc.size_id == "large" and nc.shape == "irregular" and nc.difficulty == "hard" and nc.minor_density == "many", "%s: Ultimate fills a hard, large, irregular galaxy" % label)
 	check(nc.options()["preset"] == "ultimate" and nc.options()["difficulty"] == "hard" and int(nc.options()["systems"]) == 80, "%s: Ultimate's options reach the core call" % label)
 	check(nc.pick_preset("galaxies") and nc.size_id == "huge" and int(nc.options()["systems"]) == 120 and nc.options()["preset"] == "galaxies", "%s: Galaxies is a huge galaxy" % label)
@@ -151,6 +151,14 @@ func _preset_picker_model(nc: NewCampaignVM, label: String) -> void:
 	check(nc.threat_kinds().size() == 12 and nc.threat_kinds().all(func(k): return str(k["key"]) != "" and str(k["name"]) != ""), "%s: twelve toggleable actors" % label)
 	check(nc.pick_preset("remastered") and not nc.threats_active() and (nc.threats["disabled"] as Array).is_empty(), "%s: picking Remastered clears the threat switches" % label)
 	check(nc.pick_preset("galaxies") and bool(nc.threats["monsters"]) and bool(nc.threats["borg"]) and not bool(nc.threats["borgSphere"]), "%s: Galaxies runs the vanilla actors" % label)
+	# Scenarios (docs/design/SCENARIOS.md): the picker lists them, a pick fixes preset, powers, era, galaxy and the default power.
+	check(nc.scenarios().map(func(s): return str(s["id"])) == ["dominion-war", "klingon-civil-war", "mirror-universe"], "%s: three scenarios in screen order" % label)
+	check(not nc.pick_scenario("no-such") and not nc.scenario_active(), "%s: an unknown scenario changes nothing" % label)
+	check(nc.pick_scenario("klingon-civil-war") and nc.scenario_active() and nc.preset == "klingon-civil-war" and nc.faction == 2 and nc.options()["scenario"] == "klingon-civil-war", "%s: Klingon Civil War fixes preset and the Klingon seat, and the options carry the scenario" % label)
+	check(nc.size_def()["systems"] == 50 and nc.scenario_text("klingon-civil-war").contains("Duras"), "%s: the scenario fixes the galaxy and its text names the rival house" % label)
+	check(nc.pick_scenario("mirror-universe") and nc.era == 2 and nc.scenario_def()["map"]["fixed"] == true, "%s: Mirror Universe is a fixed chart in era 2" % label)
+	check(nc.pick_preset("remastered") and not nc.scenario_active() and not nc.options().has("scenario") or str(nc.options().get("scenario", "")) == "", "%s: picking a preset leaves the scenario" % label)
+	check(nc.pick_scenario("") and not nc.scenario_active(), "%s: an empty pick returns to a free game" % label)
 
 func _pure_models() -> void:
 	print("== pure models")

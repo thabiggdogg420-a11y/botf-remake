@@ -96,6 +96,8 @@ func refresh() -> void:
 	var pv := _preview_panel()
 	pv.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	mid.add_child(pv)
+	if not vm.scenarios().is_empty():
+		mid.add_child(_scenario_panel())
 	mid.add_child(_preset_panel())
 	mid.add_child(_threat_panel())
 	opts.add_child(mid)
@@ -130,13 +132,31 @@ func _galaxy_panel() -> Control:
 	galaxy.custom_minimum_size.x = 430
 	var gb := Lcars.body(galaxy)
 	gb.add_theme_constant_override("separation", 14)
+	if vm.scenario_active():
+		# A scenario brings its own galaxy and powers; only the seed of an unseeded one is the player's.
+		var sd := vm.scenario_def()
+		var m: Dictionary = sd["map"]
+		var fixed_note := Lcars.para("Fixed by the scenario %s: %dx%d sectors, %d stars%s%s. Powers: %s." % [str(sd["name"]), int(m["width"]), int(m["height"]), int(m["systems"]),
+			", a fixed chart" if bool(m.get("fixed", false)) else "", (", " + str(m["shape"]) + " shape") if m.has("shape") else "",
+			", ".join((sd.get("lineup", []) as Array).map(func(k): return str(k).capitalize()))], Lcars.TEXT2, 13)
+		fixed_note.name = "ScenarioFixed"
+		gb.add_child(fixed_note)
+		if m.has("seed") or bool(m.get("fixed", false)):
+			return galaxy
+		gb.add_child(_seed_row())
+		return galaxy
 	gb.add_child(_choice_row("Shape", NewCampaignVM.SHAPES.map(func(s): return [s["id"], s["label"], s["blurb"]]), vm.shape, func(id): vm.shape = id; refresh(), "shape"))
 	gb.add_child(_choice_row("Size", SIZES.map(func(s): return [s["id"], s["label"], "%dx%d sectors, %d star systems. %s" % [s["width"], s["height"], s["systems"], s["blurb"]]]), size_id, func(id): size_id = id; refresh(), "systems"))
 	gb.add_child(_choice_row("Minor races", NewCampaignVM.DENSITIES.map(func(d): return [d["id"], d["label"], "%s minor races on this size (at most 29)." % _minors_for(d["id"])]), vm.minor_density, func(id): vm.minor_density = id; refresh(), "minorDensity"))
 	gb.add_child(_choice_row("Planets per star", NewCampaignVM.PLANET_RANGES.map(func(r): return [r["id"], r["label"], r["blurb"]]), vm.planets_id, func(id): vm.planets_id = id; refresh(), "planetsPerStar"))
 	gb.add_child(_choice_row("Start systems", NewCampaignVM.START_SYSTEM_CHOICES.map(func(n): return [str(n), str(n), "Each empire starts with its capital and %d more colon%s nearby." % [n, "y" if n == 1 else "ies"]]), str(vm.start_systems), func(id): vm.start_systems = int(id); refresh(), "startSystems"))
 	gb.add_child(_powers_row())
-	gb.add_child(Lcars.caption("Seed"))
+	gb.add_child(_seed_row())
+	return galaxy
+
+func _seed_row() -> Control:
+	var box := Lcars.vbox(5)
+	box.add_child(Lcars.caption("Seed"))
 	var sr := Lcars.hbox(8)
 	var seed_edit := SpinBox.new()
 	seed_edit.max_value = 99999999
@@ -146,8 +166,8 @@ func _galaxy_panel() -> Control:
 	seed_edit.name = "Seed"
 	sr.add_child(seed_edit)
 	sr.add_child(Lcars.pill("Randomise", "ghost", func(): vm.roll_seed(); refresh(), "", "Roll a new galaxy"))
-	gb.add_child(sr)
-	return galaxy
+	box.add_child(sr)
+	return box
 
 ## "Powers in play": one toggle per playable power (two to eight; your own cannot be switched off).
 func _powers_row() -> Control:
@@ -224,6 +244,22 @@ func _update_preview() -> void:
 			_preview.configure(vm.shape, seed_value, int(vm.size_def()["systems"]), vm.powers(), vm.minors_count(), faction, vm.lineup_ids())
 		else:
 			_preview.configure_core(pv, faction)
+
+## The scenario picker (docs/design/SCENARIOS.md): a free game, or a scripted start. It sits above the preset picker; picking one fills the
+## preset, powers, galaxy and era, and the briefing, start year and victory conditions show under the buttons.
+func _scenario_panel() -> Control:
+	var frame := Lcars.frame("Scenario", "scripted starts", "primary", "alert")
+	frame.name = "ScenarioPanel"
+	var box := Lcars.body(frame)
+	box.add_theme_constant_override("separation", 8)
+	var items := [["", "Free game", vm.scenario_text(""), "ScenarioNone"]]
+	for s in vm.scenarios():
+		items.append([str(s["id"]), str(s["name"]).trim_prefix("The "), vm.scenario_text(str(s["id"])), "Scenario" + "".join(Array(str(s["id"]).split("-")).map(func(w): return str(w).capitalize()))])
+	box.add_child(_choice_row("Pick a scenario", items, vm.scenario, func(id): vm.pick_scenario(id); refresh()))
+	var note := Lcars.para(vm.scenario_text(vm.scenario), Lcars.TEXT2, 13)
+	note.name = "ScenarioNote"
+	box.add_child(note)
+	return frame
 
 ## The preset picker (docs/design/PACKS-AND-PRESETS.md): one toggle per preset, then the chosen preset's description. Picking one
 ## fills the other options (era, size, shape, minor races, difficulty, events, rivals) from the preset's defaults.
@@ -355,6 +391,7 @@ func _faction_card(f: Dictionary) -> Control:
 	b.toggle_mode = true
 	b.button_pressed = selected
 	b.custom_minimum_size = Vector2(0, 186)
+	b.disabled = vm.scenario_active() and not vm.lineup_ids().has(id)   # A scenario seats its own powers.
 	b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	b.clip_contents = true
 	b.tooltip_text = "%s · capital %s\n“%s”\n%s" % [f["short"], f["capital"], f["motto"], ", ".join(f["traits"])]

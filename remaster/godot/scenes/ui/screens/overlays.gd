@@ -296,6 +296,24 @@ static func victory(app: App) -> Control:
 	root.name = "Victory"
 	root.add_child(Lcars.caption("Paths to victory · %s rules" % v["meta"].get("rules", {}).get("presetName", "")))
 	root.add_child(victory_rows(v))
+	var sinfo: Dictionary = v["meta"].get("scenarioInfo", {}) if v["meta"].get("scenarioInfo", {}) is Dictionary else {}
+	if not sinfo.is_empty() and not (sinfo.get("objectives", []) as Array).is_empty():
+		var sf := Lcars.frame(str(sinfo.get("name", "Scenario")), "scenario objectives · year %d" % int(sinfo.get("year", 0)), "primary")
+		sf.name = "ScenarioObjectives"
+		var sb := Lcars.body(sf)
+		for o in sinfo["objectives"]:
+			var orow := Lcars.hbox(10)
+			var h := Lcars.vbox(2)
+			h.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			h.add_child(Lcars.label(str(o["name"]).to_upper(), "SubHeading", 16, Lcars.TEXT))
+			h.add_child(Lcars.para(str(o["text"]), Lcars.TEXT2, 13))
+			orow.add_child(h)
+			if bool(o["achieved"]):
+				orow.add_child(Lcars.badge("achieved", "good"))
+			orow.add_child(Lcars.label("%d%%" % int(o["percent"]), "Mono", 16))
+			sb.add_child(orow)
+			sb.add_child(Lcars.meter(int(o["percent"]), 100, Lcars.tone_color("good" if bool(o["achieved"]) else "primary"), 6))
+		root.add_child(sf)
 	if vic.get("alternative", false):
 		var box := Lcars.frame(str(vic.get("megaprojectName", "Megaproject")), "scientific victory", "secondary")
 		var b := Lcars.body(box)

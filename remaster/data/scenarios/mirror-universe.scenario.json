@@ -1,0 +1,35 @@
+{"format":1,
+"id":"mirror-universe",
+"name":"The Mirror Universe",
+"blurb":"The Terran Empire, a conquering power that promotes by assassination, fights the Klingon-Cardassian Alliance across a small fixed map of familiar worlds under darker names. Hulls and rules are the standard ones; the Enterprise is the Empire's flagship. Fixed stars, so every game starts on the same chart.",
+"order":30,
+"preset":"mirror-universe",
+"map":{"width":16,"height":12,"fixed":[{"name":"Earth","x":3,"y":6},{"name":"Alpha Centauri","x":4,"y":5},{"name":"Rigel","x":5,"y":7},{"name":"Risa","x":4,"y":10},{"name":"Tellar","x":1,"y":5},{"name":"Deneva","x":7,"y":5},{"name":"Axanar","x":8,"y":7},{"name":"Halka","x":2,"y":2},{"name":"Organia","x":7,"y":1},{"name":"Qo'noS","x":13,"y":5},{"name":"Praxis","x":11,"y":3},{"name":"Khitomer","x":12,"y":8},{"name":"Boreth","x":14,"y":2},{"name":"Narendra","x":11,"y":6},{"name":"Rura Penthe","x":14,"y":9},{"name":"Gault","x":10,"y":7},{"name":"Cardassia","x":9,"y":10},{"name":"Terok Nor","x":8,"y":3},{"name":"Chintoka","x":14,"y":11},{"name":"Torros","x":6,"y":10},{"name":"Setlik","x":11,"y":10},{"name":"Celtris","x":9,"y":8},{"name":"Kelvas","x":13,"y":11},{"name":"Sherman's Planet","x":3,"y":3},{"name":"Ferenginar","x":15,"y":6},{"name":"Regula","x":5,"y":1}],"homes":["Qo'noS","Cardassia"],"minorDensity":"few"},
+"lineup":["federation","klingon","cardassian"],
+"player":"federation",
+"era":2,
+"year":2267,
+"briefing":[
+"You command the Terran Empire. The Klingon-Cardassian Alliance holds the far side of the chart.",
+"Take the worlds between you; rebels in the Alliance will not help the Empire.",
+"Commission the I.S.S. Enterprise from your best ship."
+],
+"setup":[
+{"do":"war","a":"federation","b":"klingon"},
+{"do":"war","a":"federation","b":"cardassian"},
+{"do":"alliance","a":"klingon","b":"cardassian"},
+{"do":"colony","a":"federation","at":"system:Alpha Centauri","population":35},
+{"do":"colony","a":"klingon","at":"system:Narendra","population":35},
+{"do":"colony","a":"cardassian","at":"system:Setlik","population":35},
+{"do":"fleet","a":"federation","at":"capital:federation","ships":["Constitution"],"count":2},
+{"do":"fleet","a":"klingon","at":"capital:klingon","ships":["D7"],"count":2},
+{"do":"fleet","a":"cardassian","at":"capital:cardassian","ships":["Hideki"],"count":2},
+{"do":"flagship","a":"federation","at":"capital:federation","ship":"Constitution (refit)"}
+],
+"triggers":[
+
+],
+"victory":[
+{"id":"subjugate-the-alliance","name":"The Alliance subjugated","kind":"eliminate","empires":["klingon","cardassian"],"text":"Both halves of the Alliance have been brought under the Empire's boot."},
+{"id":"empire-stands","name":"The Empire stands","kind":"survive","turn":100,"text":"The Terran Empire held the line."}
+]}

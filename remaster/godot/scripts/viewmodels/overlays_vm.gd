@@ -9,6 +9,7 @@ const CONDITION_BLURB := {
 	"Domination": "Hold 60% of all star systems after turn 20.",
 	"Scientific": "Master every field, then complete the era megaproject.",
 	"Diplomatic": "Lead an alliance bloc holding two-thirds of the galaxy's population.",
+	"Vendetta": "Eliminate both of your sworn racial rivals, from turn 20.",
 }
 const CATEGORY_TONE := {"combat": "alert", "victory": "good", "events": "secondary", "diplomacy": "tertiary", "research": "info", "intel": "tertiary", "construction": "primary", "stations": "secondary"}
 

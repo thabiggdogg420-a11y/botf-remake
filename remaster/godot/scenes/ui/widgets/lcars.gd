@@ -71,6 +71,10 @@ const CATEGORY_LABELS := {
 ## Emblems are drawn by Insignia (insignia.gd): one vector mark per empire and power, with a heavier small variant.
 
 static var colorblind := false
+## Schema 25: the active pack's recolouring and renaming of the empires (the Mirror Universe), set from the core's game view by
+## set_pack_look. Empty for every other game, so palette() and faction_short() then answer from the tables above.
+static var _pack_palette := {}
+static var _pack_names := {}
 static var accent_empire := 1
 static var ui_scale := 1.0
 static var _fonts := {}
@@ -78,7 +82,32 @@ static var _fonts := {}
 static func palette(empire: int) -> Dictionary:
 	if colorblind and COLORBLIND.has(empire):
 		return COLORBLIND[empire]
+	if _pack_palette.has(empire):
+		return _pack_palette[empire]
 	return PALETTES.get(empire, PALETTES[0])
+
+## `palette` is the view's meta.palette ({"1": {"color": "#9b1c1c", "accent": "#e0b030"}}), `names` its meta.empireNames ({"1": "Terran Empire"}).
+static func set_pack_look(pal: Dictionary, names: Dictionary) -> void:
+	_pack_palette = {}
+	for k in pal:
+		var id := int(k)
+		var base: Dictionary = PALETTES.get(id, PALETTES[0]).duplicate()
+		var c := Color(str(pal[k]["color"]))
+		var a := Color(str(pal[k]["accent"]))
+		base["primary"] = c.lightened(0.18).to_html(false)
+		base["map"] = c.lightened(0.1).to_html(false)
+		base["secondary"] = a.to_html(false)
+		base["tertiary"] = c.darkened(0.2).lightened(0.25).to_html(false)
+		_pack_palette[id] = base
+	_pack_names = {}
+	for k in names:
+		_pack_names[int(k)] = str(names[k])
+
+## The empire's short name: the pack's own (Terran Empire), else the table's.
+static func faction_short(empire: int) -> String:
+	if _pack_names.has(empire):
+		return str(_pack_names[empire])
+	return str(FACTIONS[clampi(empire, 1, FACTIONS.size()) - 1]["short"])
 
 static func owner_color(empire: int) -> Color:
 	return Color(palette(empire)["map"])

@@ -4,7 +4,7 @@ import { maybeStartTutorial } from '../state/tutorial';
 import { Emblem, Frame, Pill, tip } from '../ui/components';
 import { Starfield } from '../ui/Starfield';
 import { FACTIONS, palette } from '../ui/theme';
-import type { PresetInfo } from '../core/types';
+import type { PresetInfo, ScenarioInfo } from '../core/types';
 
 const SIZES = [
   // The one place the web client's galaxy sizes live (twin: godot/scripts/viewmodels/new_campaign_vm.gd SIZES).
@@ -75,6 +75,9 @@ export function NewCampaignScreen() {
   const [aggression, setAggression] = useState(true);
   const presets = m.presets && m.presets.length ? m.presets : FALLBACK_PRESETS;
   const [preset, setPreset] = useState<string>('remastered');
+  const scenarios: ScenarioInfo[] = m.scenarios ?? [];
+  const [scenario, setScenario] = useState<string>('');
+  const scenarioDef = scenarios.find((q) => q.id === scenario);
   const presetDef = presets.find((q) => q.id === preset) ?? presets[0];
   const [shape, setShape] = useState<(typeof SHAPES)[number]>('spiral');
   const [minorDensity, setMinorDensity] = useState<(typeof DENSITIES)[number]>('some');
@@ -109,6 +112,7 @@ export function NewCampaignScreen() {
     startCampaign({
       faction, empires: effectiveEmpires, seed, era, ruleset, width: sz.width, height: sz.height, systems: sz.systems, events, aiAggression: aggression, preset, shape, minorDensity, difficulty,
       ...(startSystems > 0 ? { startSystems } : {}), ...(pr.min > 0 ? { planetsMin: pr.min, planetsMax: pr.max } : {}), starTypes,
+      ...(scenarioDef ? { scenario: scenarioDef.id, faction: scenarioDef.playerId } : {}),
     });
     if (view.value) maybeStartTutorial();
   };
@@ -215,6 +219,16 @@ export function NewCampaignScreen() {
               <Pill tone="ghost" active={ruleset === 'prototype'} onClick={() => setRuleset('prototype')}
                 hint="The original compact prototype ruleset with generic hulls.">Prototype rules</Pill>
             </div>
+            {scenarios.length > 0 && (<>
+              <div class="option-label">Scenario</div>
+              <div class="option-row" role="radiogroup" aria-label="Scenario">
+                <Pill tone="ghost" active={!scenarioDef} onClick={() => setScenario('')} testid="scenario-none" hint="A free game with the options below.">Free game</Pill>
+                {scenarios.map((q) => (
+                  <Pill key={q.id} tone="ghost" active={scenario === q.id} onClick={() => setScenario(q.id)} testid={`scenario-${q.id}`} hint={q.blurb}>{q.name}</Pill>
+                ))}
+              </div>
+              {scenarioDef && <p class="option-note" data-testid="scenario-note">{scenarioDef.blurb} {scenarioDef.briefing.join(' ')} Preset, powers, era and map are set by the scenario.</p>}
+            </>)}
             <div class="option-label">Preset</div>
             <div class="option-row" role="radiogroup" aria-label="Preset">
               {presets.map((q) => (

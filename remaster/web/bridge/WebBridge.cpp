@@ -25,6 +25,7 @@
 #include "../../game/Source/BotfSim/EconomyRules.h"
 #include "../../game/Source/BotfSim/Presets.h"
 #include "../../game/Source/BotfSim/Threats.h"
+#include "../../game/Source/BotfSim/Scenarios.h"
 #include "Json.h"
 
 #include <algorithm>
@@ -58,7 +59,7 @@ namespace intel = botf::intelligence;
 // ------------------------------------------------------------------------------------------------
 // Enum name tables. Numbers are always accepted as well, so enum growth in the core keeps working.
 // ------------------------------------------------------------------------------------------------
-constexpr std::array<const char*, 50> CommandTypeNames{
+constexpr std::array<const char*, 51> CommandTypeNames{
     "AssignWorkers", "EnqueueBuilding", "MoveFleet", "Colonize", "ToggleShipyard",
     "CancelFirstConstruction", "PrioritizeLastConstruction", "MoveConstruction",
     "RemoveConstruction", "AllocateResearch", "SendGift", "OfferFriendship",
@@ -73,12 +74,12 @@ constexpr std::array<const char*, 50> CommandTypeNames{
     "BuildOutpost", "UpgradeStation", "ResolveEventChoice",
     "DefineBuildTemplate", "DeleteBuildTemplate", "ApplyBuildTemplate", "SetDefaultBuildTemplate",
     "StartMegaproject", "CancelMegaproject", "RefuseCallToArms",
-    "SetEmergencyProgram", "ResolveAftermath", "SetFleetOrder"};
+    "SetEmergencyProgram", "ResolveAftermath", "SetFleetOrder", "CommissionFlagship"};
 constexpr std::array<const char*, 2> StationTypeNames{"Outpost", "Starbase"};
 constexpr std::array<const char*, 6> FeatureKeys{"Nebula", "Wormhole", "BlackHole", "NeutronStar", "IonStorm", "SubspaceRift"};
 constexpr std::array<const char*, 7> EventKeys{"Plague", "SupernovaWarning", "SubspaceRift", "TradeBoom", "DerelictVessel",
     "LaborUnrest", "ScientificBreakthrough"};
-constexpr std::array<const char*, 4> VictoryKeys{"Conquest", "Domination", "Scientific", "Diplomatic"};
+constexpr std::array<const char*, 5> VictoryKeys{"Conquest", "Domination", "Scientific", "Diplomatic", "Vendetta"};
 constexpr std::array<const char*, 10> ChronicleKeys{"construction", "research", "exploration", "colonization", "combat",
     "diplomacy", "intel", "events", "stations", "victory"};
 constexpr std::array<const char*, 14> BuildingNames{
@@ -190,6 +191,7 @@ void writeThreatSetup(Writer& w, const botf::ThreatSetup& t) {
     w.endArray().endObject();
 }
 // The actors a new-game screen can toggle: key, name, family, what it does, the asset used for its map marker and battle model.
+void writeScenarios(Writer& w);   // Defined with the scenario registry calls, below the meta writer that lists them.
 void writeThreatKinds(Writer& w) {
     static const char* const EffectNames[] = {"none", "assimilate", "bombard", "strip", "raid"};
     static const char* const BehaviourNames[] = {"hunt", "roam", "drift", "guard"};
@@ -323,6 +325,8 @@ std::string describeCommand(const botf::GameState& s, const botf::Command& c) {
         return systemLabel(s, c.systemId) + (c.eventOption == 0 ? ": lift the emergency program" : ": " + std::string(botf::empire_rules::programName(c.eventOption)));
     case botf::CommandType::ResolveAftermath:
         return systemLabel(s, c.systemId) + ": " + botf::empire_rules::aftermathName(c.eventOption);
+    case botf::CommandType::CommissionFlagship:
+        return fleet(c.fleetId) + ": commission as the flagship";
     case botf::CommandType::SetFleetOrder:
         return fleet(c.fleetId) + (c.eventOption == 0 ? ": stand down" : c.eventOption == 1 ? ": hold an intercept post"
             : ": raid " + systemLabel(s, c.systemId));
@@ -704,6 +708,8 @@ void writeOwnFleet(Writer& w, const botf::GameState& d, const botf::GameState& c
     w.field("invadeSystemId", f.invadeSystemId);
     w.field("order", f.order).field("orderName", botf::economy_rules::orderName(f.order)).field("raidSystemId", f.raidSystemId)
         .field("postX", f.postX).field("postY", f.postY); // Schema 23
+    if (f.flagship > 0) w.field("flagship", true).field("flagshipName", botf::scenarios::flagshipName(f)); // Schema 25
+    if (f.ownerId == committed.playerEmpire && botf::scenarios::flagshipsOn()) w.field("flagshipBlocker", botf::scenarios::commissionBlocker(committed, f.ownerId, f.id));
     w.field("experience", f.experience).field("crewRating", botf::crew::ratingName(botf::crew::ratingFor(f.experience, f.ownerId)))
         .field("crewLevel", botf::crew::ratingFor(f.experience, f.ownerId)).field("raidPercent", botf::economy_rules::raidPercent(d, f));
     w.field("terraforming", f.terraforming);
@@ -952,6 +958,50 @@ void writeMinorProfile(Writer& w, const botf::minors::MinorRaceRecord& r) {
 }
 
 // ------------------------------------------------------------------------------------------------
+// Schema 25 (docs/design/SCENARIOS.md): the scenario, its objectives, secessions, flagships and the pack's palette. Written inside `meta`.
+void writeScenarioLayer(Writer& w, const botf::GameState& s, int me) {
+    if (!s.scenarioId.empty()) {
+        const auto* sc = botf::scenarios::find(s.scenarioId);
+        w.key("scenarioInfo").beginObject().field("id", s.scenarioId).field("name", sc ? sc->name : s.scenarioId)
+            .field("year", botf::scenarios::yearOf(s)).field("preset", sc ? sc->preset : std::string());
+        w.key("briefing").beginArray(); if (sc) for (const auto& line : sc->briefing) w.value(line); w.endArray();
+        w.key("objectives").beginArray();
+        for (const auto& o : botf::scenarios::objectives(s))
+            w.beginObject().field("id", o.id).field("name", o.name).field("text", o.text).field("achieved", o.achieved).field("percent", o.percent).endObject();
+        w.endArray();
+        w.key("fired").beginArray(); if (sc) for (int i : s.scenarioFired) w.value(sc->triggers[static_cast<std::size_t>(i)].id); w.endArray();
+        w.endObject();
+    }
+    w.key("empireNames").beginObject();   // Names under the active pack (the Mirror Universe renames the empires)
+    w.field(std::to_string(s.playerEmpire), empireLabel(s.playerEmpire));
+    for (const auto& r : s.rivals) w.field(std::to_string(r.id), empireLabel(r.id));
+    w.endObject();
+    w.key("secessions").beginArray();
+    for (const auto& c : s.secessions)
+        w.beginObject().field("parent", c.parent).field("house", c.house).field("turn", c.turn)
+            .field("parentName", empireLabel(c.parent)).field("houseName", empireLabel(c.house)).endObject();
+    w.endArray();
+    w.key("flagships").beginObject().field("enabled", botf::scenarios::flagshipsOn());
+    if (botf::scenarios::flagshipsOn()) {
+        if (const auto* d = botf::scenarios::flagshipDef(me)) {
+            const auto* rec = botf::scenarios::flagshipOf(s, me);
+            const int serial = rec ? rec->serial : 0;
+            w.field("nextName", d->names[static_cast<std::size_t>(serial) % d->names.size()]).field("cost", d->cost).field("cooldown", d->cooldown)
+                .field("hullPct", d->hullPct).field("attackPct", d->attackPct).field("shieldsPct", d->shieldsPct).field("morale", d->morale);
+            const auto* fleet = botf::scenarios::flagshipFleet(s, me);
+            w.field("fleetId", fleet ? fleet->id : 0).field("lostTurn", rec ? rec->lostTurn : 0);
+        }
+    }
+    w.endObject();
+    if (botf::content::palette().present) {
+        w.key("palette").beginObject();
+        for (const auto& e : botf::content::palette().empires)
+            w.key(std::to_string(e.empireId)).beginObject().field("color", e.color).field("accent", e.accent).endObject();
+        w.endObject();
+    }
+}
+
+// ------------------------------------------------------------------------------------------------
 // Full player view
 // ------------------------------------------------------------------------------------------------
 void writeView(Writer& w) {
@@ -969,7 +1019,7 @@ void writeView(Writer& w) {
     w.field("player", me); w.field("playerName", empireLabel(me));
     w.field("ruleset", s.ruleset == botf::Ruleset::Reference ? "reference" : "prototype");
     w.field("era", static_cast<int>(s.startingEra)); w.field("eraName", botf::startingEraName(s.startingEra));
-    w.field("erasRule", s.rules.eras); w.field("year", botf::campaignYear(s)); w.field("techCap", botf::techCap(s)); // Schema 22
+    w.field("erasRule", s.rules.eras); w.field("year", botf::campaignYear(s) ? botf::campaignYear(s) : botf::scenarios::yearOf(s)); w.field("techCap", botf::techCap(s)); // Schema 22 (and the scenario year, schema 25)
     w.field("contentVersion", botf::ContentVersion); w.field("saveVersion", botf::SaveVersion);
     w.field("outcome", s.outcome == botf::CampaignOutcome::Victory ? "victory" : s.outcome == botf::CampaignOutcome::Defeat ? "defeat" : "ongoing");
     w.field("winner", s.winnerEmpire);
@@ -994,6 +1044,7 @@ void writeView(Writer& w) {
         .field("sharedMorale", s.rules.sharedMorale).field("protectorateHq", s.rules.protectorateHq).field("allDilithium", s.rules.allDilithium)
         .field("interceptOrders", s.rules.interceptOrders).field("raidOrders", s.rules.raidOrders).field("raidBonus", s.rules.raidBonus)
         .field("crewExperience", s.rules.crewExperience).field("exploitFixes", s.rules.exploitFixes).endObject();
+    writeScenarioLayer(w, s, me);
     w.endObject();
 
     // --- empire summary (player only)
@@ -2746,7 +2797,7 @@ botf::CampaignSetup campaignSetup(const Value& a) {
     botf::CampaignSetup setup;
     setup.presetId = "remastered";
     setup.seed = seed; setup.empires = empires; setup.width = width; setup.height = height; setup.systems = systems;
-    setup.playerEmpire = faction;
+    setup.playerEmpire = faction; setup.playerSet = a.has("faction");
     // Schema 17: "lineup" is the seated races as keys in seating order (two to eight); it overrides "empires", and "faction"
     // is the empire id (race slot 1..8) of one of them. Without it the first `empires` slots are seated, as before.
     if (a.has("lineup")) {
@@ -2792,6 +2843,12 @@ botf::CampaignSetup campaignSetup(const Value& a) {
             }
         }
         setup.threats = ts;
+    }
+    // Schema 25: "scenario" names a registered scenario (meta.scenarios). It fixes the preset, lineup, galaxy and era; "faction" (an empire
+    // id in its lineup) and "difficulty" still apply.
+    if (a.has("scenario") && !a.getString("scenario").empty()) {
+        setup.scenarioId = a.getString("scenario");
+        if (!botf::scenarios::find(setup.scenarioId)) fail("Unknown scenario");
     }
     if (a.has("shape") && !botf::parseGalaxyShape(a.getString("shape"), setup.galaxy.shape)) fail("Unknown galaxy shape");
     if (a.has("minorDensity") && !botf::parseMinorDensity(a.getString("minorDensity"), setup.galaxy.density)) fail("Unknown minor-race density");
@@ -3269,6 +3326,7 @@ void writeMeta(Writer& w) {
     w.endArray();
     w.field("maxTechLevel", botf::MaxTechLevel); w.field("highestTechLevel", botf::HighestTechLevel);
     w.key("presets"); writePresets(w);
+    w.key("scenarios"); writeScenarios(w);
     w.key("threatKinds"); writeThreatKinds(w);
     w.key("threatFrequencies").beginArray(); for (int i = 0; i < 4; ++i) w.value(botf::threats::frequencyName(i)); w.endArray();
     w.key("maneuvers"); writeManeuvers(w);
@@ -3401,6 +3459,33 @@ void writePresets(Writer& w) {
     w.endArray();
 }
 
+// The scenario registry for the new-game screen (docs/design/SCENARIOS.md): what the scenario fixes, its briefing and its objectives.
+void writeScenarios(Writer& w) {
+    w.beginArray();
+    for (const auto* sc : botf::scenarios::all()) {
+        w.beginObject().field("id", sc->id).field("name", sc->name).field("blurb", sc->blurb).field("order", sc->order).field("preset", sc->preset);
+        w.key("overlays").beginArray(); for (const auto& o : sc->overlays) w.value(o); w.endArray();
+        w.key("lineup").beginArray(); for (const auto& e : sc->lineup) w.value(e); w.endArray();
+        const auto ids = botf::slots::idsFromKeys(sc->lineup);
+        w.key("lineupIds").beginArray(); for (int id : ids) w.value(id); w.endArray();
+        w.field("player", sc->player).field("playerId", botf::slots::raceForKey(sc->player)->empireId).field("era", sc->era).field("year", sc->year);
+        w.key("map").beginObject().field("width", sc->map.width).field("height", sc->map.height).field("systems", sc->map.systems)
+            .field("fixed", !sc->map.fixed.empty());
+        if (sc->map.seed) w.field("seed", *sc->map.seed);
+        if (!sc->map.shape.empty()) w.field("shape", sc->map.shape);
+        if (!sc->map.density.empty()) w.field("minorDensity", sc->map.density);
+        w.endObject();
+        w.key("briefing").beginArray(); for (const auto& line : sc->briefing) w.value(line); w.endArray();
+        w.key("victories").beginArray();
+        for (const auto& v : sc->victories)
+            w.beginObject().field("id", v.id).field("name", v.name).field("text", v.text).field("kind", botf::scenarios::VictoryKindNames[static_cast<int>(v.kind)]).endObject();
+        w.endArray();
+        w.field("triggers", static_cast<int>(sc->triggers.size()));
+        w.endObject();
+    }
+    w.endArray();
+}
+
 std::string dispatch(const std::string& method, const Value& a) {
     Writer w;
     if (method == "meta") writeMeta(w);
@@ -3414,6 +3499,8 @@ std::string dispatch(const std::string& method, const Value& a) {
     else if (method == "listPresets") writePresets(w);
     else if (method == "registerOverlay") w.beginObject().field("id", botf::presets::registerOverlay(a.getString("bytes"))).endObject();
     else if (method == "registerPreset") w.beginObject().field("id", botf::presets::registerPreset(a.getString("bytes"))).endObject();
+    else if (method == "listScenarios") writeScenarios(w);
+    else if (method == "registerScenario") w.beginObject().field("id", botf::scenarios::registerScenario(a.getString("bytes"))).endObject();
     // Lane MOD-10 (docs/design/MOD-TOOLS.md): the pack editor's calls. packPart {"under":[overlay ids],"key":"roster"} is the merged JSON of
     // one pack key under the base pack and those overlays; validatePack / installUserPack {"overlay","preset"} take the exact file text of
     // a user pack (validate registers nothing, install registers or replaces a user pack, never a shipped one); removeUserPack {"id"};

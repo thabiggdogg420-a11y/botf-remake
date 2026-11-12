@@ -165,6 +165,19 @@ dump('determinism-rules3', 'fingerprint', { campaign: campaign3, turns: 10 }, ca
   call('loadBaseContent');
   dump('determinism-economy', 'fingerprint', { runs: eco.length }, eco);
 }
+// Scenarios (schema 25, docs/design/SCENARIOS.md): each scenario for 50 turns of AI play, with its flagships and scripted triggers.
+// The native core must reproduce each fingerprint.
+{
+  const scn = [];
+  for (const scenario of ['dominion-war', 'klingon-civil-war', 'mirror-universe']) {
+    const c = { scenario, seed: 4242 };
+    call('newCampaign', c);
+    for (let i = 0; i < 50; i++) endTurn();
+    scn.push({ campaign: c, turns: 50, result: call('fingerprint') });
+  }
+  call('loadBaseContent');
+  dump('determinism-scenarios', 'fingerprint', { runs: scn.length }, scn);
+}
 // Balance and AI (schema 24, docs/design/BALANCE-AI.md): every difficulty tier incl. Expert, the galaxy options (planets per star, extra
 // start colonies, race star types) and the three balance presets, 40 turns of AI play. The native core must reproduce each fingerprint.
 {

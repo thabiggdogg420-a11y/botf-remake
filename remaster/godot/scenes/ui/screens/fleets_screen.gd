@@ -189,6 +189,18 @@ func _detail(u: Dictionary) -> Control:
 		crow.add_child(Lcars.bar_row("Experience", xp, 100, Color("#e8b44a")))
 		Lcars.tip(crow, "Crew experience %d of 100. Battles, raids and academies raise it; it sets accuracy and repair in battle." % xp)
 		b.add_child(crow)
+	if vm.flagships_on() and members.size() == 1 and int(lead.get("attack", 0)) > 0 and not lead.get("colonyShip", false) and lead.get("shipClass", "") != "Transport":
+		var frow := Lcars.hbox(8)
+		frow.name = "Flagship"
+		frow.add_child(Lcars.caption("Flagship"))
+		if bool(lead.get("flagship", false)):
+			frow.add_child(Lcars.badge("Flagship · " + str(lead.get("flagshipName", "")), "good"))
+		else:
+			var blocker := str(lead.get("flagshipBlocker", ""))
+			var cm := Lcars.pill("Commission flagship", "tertiary", func(): vm.commission_flagship(lead), blocker if blocker != "" else lock, vm.flagship_tip())
+			cm.name = "CommissionFlagship"
+			frow.add_child(cm)
+		b.add_child(frow)
 	if vm.can_order(lead):
 		var orow := Lcars.hbox(4)
 		orow.name = "StandingOrders"

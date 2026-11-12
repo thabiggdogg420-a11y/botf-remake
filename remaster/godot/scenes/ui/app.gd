@@ -486,6 +486,8 @@ func _fetch_empire_audio(player: int) -> void:
 func _enter_game(v: Dictionary, name_: String) -> void:
 	history.clear()
 	save_name = name_
+	session._adopt_pack_look(v)   # before the theme: the pack may recolour the empires (schema 25)
+	_theme_empire = -1
 	_apply_theme(int(v["meta"]["player"]))
 	_fetch_empire_audio(int(v["meta"]["player"]))   # web: not awaited, the campaign starts while the pack downloads
 	session.enter(v)

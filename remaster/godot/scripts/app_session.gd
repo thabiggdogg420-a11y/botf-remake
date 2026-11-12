@@ -125,9 +125,17 @@ static func is_charted(s: Dictionary) -> bool:
 func charted_systems() -> Array:
 	return view.get("systems", []).filter(func(s): return is_charted(s))
 
+## Schema 25: the pack's palette and empire names (the Mirror Universe) in the view; a game without them clears the last one's.
+func _adopt_pack_look(v: Dictionary) -> void:
+	var m: Dictionary = v.get("meta", {})
+	Lcars.set_pack_look(m.get("palette", {}) if m.get("palette", {}) is Dictionary else {}, m.get("empireNames", {}) if m.get("empireNames", {}) is Dictionary else {})
+
 func empire_name(id: int) -> String:
 	if id == player():
 		return str(view["meta"]["playerName"])
+	var names: Dictionary = view.get("meta", {}).get("empireNames", {}) if not view.is_empty() else {}
+	if names.has(str(id)):
+		return str(names[str(id)])
 	for e in meta.get("empires", []):
 		if int(e["id"]) == id:
 			return str(e["name"])
@@ -262,6 +270,7 @@ func start(method: String, args: Dictionary) -> Dictionary:
 
 ## Adopts a freshly started view: clears the turn state and selects the first colony.
 func enter(v: Dictionary) -> void:
+	_adopt_pack_look(v)
 	view = v
 	briefing = null
 	encounter = null

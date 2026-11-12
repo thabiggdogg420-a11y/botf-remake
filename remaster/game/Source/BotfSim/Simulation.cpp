@@ -14,6 +14,7 @@
 #include "ContentPresets.generated.h"
 #include "Presets.h"
 #include "Threats.h"
+#include "Scenarios.h"
 
 #include <algorithm>
 #include <array>
@@ -33,6 +34,8 @@ constexpr int MaxSystems = 256, MaxQueue = 64, MaxPending = 1024;
 constexpr int MaxPopulation = 10000, MaxBuildings = 1000, MaxTurns = 1000000;
 constexpr int MaxTaskForces = 128, MaxPlanetsPerSystem = 10;
 constexpr std::int64_t MaxBalance = 1000000000000LL;
+// Schema 25: the fixed stars and home systems of a fixed-map scenario, installed around campaign generation (internal::setMapOverride).
+const scenarios::MapOverride* scenarioMapOverride = nullptr;
 void require(bool condition, const char* message);
 int catalogueRace(int owner) {
     require(owner >= 1 && owner <= MaxMajors && slots::validSlot(owner), "Invalid major empire");
@@ -1415,6 +1418,7 @@ void planRivals(GameState& s) {
             return r.atWar && (r.first == owner.id || r.second == owner.id);
         });
         economy_rules::planOrders(s, owner.id, atWar); // Schema 23: AI intercept posts and raids
+        scenarios::planFlagships(s, owner.id);         // Schema 25: AI commissions a flagship when the pack has them
         const int focus = (s.turn / 20 + owner.id) % ResearchFields;
         for (int field = 0; field < ResearchFields; ++field)
             owner.technologies[field].allocation = atWar ? (field == 4 || field == 5 ? 40 : 5) : (field == focus ? 50 : 10);
@@ -3337,6 +3341,7 @@ std::string payload(const GameState& s) {
     empire_rules::writeSection(out, s); // Schema 16: optional EMPIRE_RULES section.
     structures::writeSection(out, s);   // Schema 21: optional STRUCTURES section.
     economy_rules::writeSection(out, s); // Schema 23: optional ECONOMY_RULES section.
+    scenarios::writeSection(out, s);     // Schema 25: optional SCENARIO section (scenario, flagships, secessions).
     threats::writeSection(out, s);      // Schema 20: optional THREATS section.
     if (s.rules.eras) out << "ERAS 1\n";   // Schema 22: the eras rule (ERAS.md); the pack's eras block carries the data.
     {   // Schema 24: the star types, only while some system has one (ascending system id).
@@ -3753,18 +3758,26 @@ int shipAttack(Building shipClass) {
 std::string fleetName(const Fleet& fleet) {
     if (fleet.referenceShipId < 0) return shipName(fleet.shipClass);
     const auto& ship = sourceShip(fleet.referenceShipId);
+    if (fleet.flagship > 0) { const auto name = scenarios::flagshipName(fleet); if (!name.empty()) return name + " — " + ship.shipClass; } // Schema 25: a flagship carries its name
     return std::string(ship.shipClass) + " — " + ship.name;
 }
+// Schema 25: a flagship's percent bonuses (scenarios::bonusFor) scale its hull, attack and shields; every other ship is untouched.
 int fleetMaxHull(const Fleet& fleet) {
-    return fleet.referenceShipId < 0 ? shipMaxHull(fleet.shipClass) : sourceShip(fleet.referenceShipId).hull;
+    const int base = fleet.referenceShipId < 0 ? shipMaxHull(fleet.shipClass) : sourceShip(fleet.referenceShipId).hull;
+    const int pct = fleet.flagship > 0 ? scenarios::bonusFor(fleet).hull : 0;
+    return pct ? base * (100 + pct) / 100 : base;
 }
 int fleetAttack(const Fleet& fleet) {
     if (fleet.referenceShipId < 0) return shipAttack(fleet.shipClass);
     const int strength = sourceShip(fleet.referenceShipId).attack;
-    return strength <= 0 ? 0 : std::max(1, (strength + 9) / 20);
+    const int pct = fleet.flagship > 0 ? scenarios::bonusFor(fleet).attack : 0;
+    return strength <= 0 ? 0 : std::max(1, (strength * (100 + pct) / 100 + 9) / 20);
 }
 int fleetMaxShields(const Fleet& fleet) {
-    return fleet.referenceShipId < 0 ? 0 : std::max(0, sourceShip(fleet.referenceShipId).shields);
+    if (fleet.referenceShipId < 0) return 0;
+    const int base = std::max(0, sourceShip(fleet.referenceShipId).shields);
+    const int pct = fleet.flagship > 0 ? scenarios::bonusFor(fleet).shields : 0;
+    return pct ? base * (100 + pct) / 100 : base;
 }
 const EmpireState& empire(const GameState& s, int id) {
     if (id == s.playerEmpire) return s;
@@ -4261,7 +4274,18 @@ GameState generate(std::uint64_t seed, int width, int height, int total, GalaxyS
     GameState s;
     s.seed = seed; s.rngState = seed; s.width = width; s.height = height;
     s.unifiedCombat = true; // New (schema 12) campaigns resolve every battle tactically.
-    if (shape != GalaxyShape::Legacy) {
+    if (scenarioMapOverride && scenarioMapOverride->systems) {
+        // Schema 25: a fixed-map scenario names its stars; system 1 is the first lineup empire's capital.
+        const auto& fixed = *scenarioMapOverride->systems;
+        require(static_cast<int>(fixed.size()) == total, "A fixed map has exactly its listed stars");
+        for (int i = 0; i < total; ++i) {
+            const auto& star = fixed[static_cast<std::size_t>(i)];
+            require(star.x >= 0 && star.x < width && star.y >= 0 && star.y < height, "Fixed star outside the map");
+            s.systems.push_back({i + 1, star.x, star.y, star.name});
+            s.systems.back().planets = generateSystemPlanets(seed, i + 1, star.name, i == 0);
+        }
+        s.galaxy.shape = shape;
+    } else if (shape != GalaxyShape::Legacy) {
         const auto layout = galaxyLayout(seed, width, height, total, shape);
         for (int i = 0; i < total; ++i) {
             const std::string name = i == 0 ? "Sol" : generatedSystemName(i);
@@ -4501,13 +4525,18 @@ GameState generateCampaign(std::uint64_t seed, int empires, int width, int heigh
     auto s = generate(seed, width, height, systems, shape);
     s.startingEra = era;
     s.populationEnabled = true;
-    if (ids[0] != 1) {
+    if (ids[0] != 1 || (scenarioMapOverride && s.systems.front().name != slots::capital(ids[0]))) {   // A fixed map's first star is the player's home.
         s.systems.front().name = slots::capital(ids[0]);
         s.systems.front().planets = generateSystemPlanets(seed, s.systems.front().id, s.systems.front().name, true);
     }
     for (int id = 2; id <= empires; ++id) {
         System* chosen = nullptr; int best = -1;
-        for (auto& system : s.systems) {
+        if (scenarioMapOverride && scenarioMapOverride->homes) {   // Schema 25: a fixed-map scenario names each home star.
+            const auto& name = scenarioMapOverride->homes->at(static_cast<std::size_t>(id - 2));
+            for (auto& system : s.systems) if (system.name == name) chosen = &system;
+            require(chosen != nullptr && !colonyAt(s, chosen->id), "Fixed map home star is missing or taken");
+        }
+        else for (auto& system : s.systems) {
             if (colonyAt(s, system.id)) continue;
             int distance = std::numeric_limits<int>::max();
             for (const auto& colony : s.colonies) {
@@ -4836,7 +4865,7 @@ void validate(const GameState& s) {
         for (const auto& participant : b.participants)
             shieldCeiling[participant.fleetId] = threats::isThreatCombatant(participant.fleetId) ? std::max(participant.initialShields, std::max(0, sourceShip(participant.referenceShipId).shields) * 3 / 2) :
                 isStationCombatant(participant.fleetId) ? participant.initialShields :
-                participant.referenceShipId < 0 ? 0 : std::max(0, sourceShip(participant.referenceShipId).shields);
+                participant.referenceShipId < 0 ? 0 : std::max(0, sourceShip(participant.referenceShipId).shields) * (100 + scenarios::maxFlagshipPct(true)) / 100;
         const auto ceiling = [&](const FleetDamage& d) {
             const auto found = shieldCeiling.find(d.fleetId);
             return found == shieldCeiling.end() ? d.shieldBefore : std::max(d.shieldBefore, found->second);
@@ -4863,9 +4892,9 @@ void validate(const GameState& s) {
             require(sides.count(participant.fleetId) && participant.ownerId == sides.at(participant.fleetId) &&
                 isShip(participant.shipClass) && participant.initialHull > 0 &&
                 participant.initialHull <= (stationSide ? 100000 : participant.referenceShipId < 0 ? shipMaxHull(participant.shipClass) :
-                    sourceShip(participant.referenceShipId).hull) &&
+                    sourceShip(participant.referenceShipId).hull * (100 + scenarios::maxFlagshipPct(false)) / 100) &&
                 participant.initialShields >= 0 && participant.initialShields <=
-                    (stationSide ? 100000 : participant.referenceShipId < 0 ? 0 : sourceShip(participant.referenceShipId).shields) &&
+                    (stationSide ? 100000 : participant.referenceShipId < 0 ? 0 : sourceShip(participant.referenceShipId).shields * (100 + scenarios::maxFlagshipPct(true)) / 100) &&
                 summaries.at(participant.fleetId).hullBefore == participant.initialHull &&
                 summaries.at(participant.fleetId).shieldBefore == participant.initialShields &&
                 participantIds.insert(participant.fleetId).second, "Invalid battle participant");
@@ -5094,6 +5123,7 @@ void validate(const GameState& s) {
     empire_rules::validate(s); // Schema-15 empire rules.
     structures::validate(s);   // Schema-19 race structures.
     economy_rules::validate(s); // Schema 23: economy rules, upgrades, orders and crew experience.
+    scenarios::validate(s);     // Schema 25: scenario, flagships and secessions.
     auto draft = s;
     applyDraft(draft);
 }
@@ -5511,7 +5541,7 @@ TurnReport advanceWithCombat(GameState& state, const std::function<void(GameStat
         }
     }
     for (auto& c : next.colonies) {
-        const int moraleTarget = std::min(100, threats::moraleTarget(next, c, minors::moraleTarget(next, c.ownerId)) + structures::colonyEffects(c).morale + economy_rules::moraleBonus(next, c)); // Schema 23 shared morale and the Protectorate; Lane G: 70 plus member-minor morale (Borg colonies hold their own value); schema 21 adds the colony's structures
+        const int moraleTarget = std::min(100, threats::moraleTarget(next, c, minors::moraleTarget(next, c.ownerId)) + structures::colonyEffects(c).morale + economy_rules::moraleBonus(next, c) + scenarios::flagshipMorale(next, c.ownerId)); // Schema 23 shared morale and the Protectorate; Lane G: 70 plus member-minor morale (Borg colonies hold their own value); schema 21 adds the colony's structures
         if (c.morale < moraleTarget) ++c.morale;
         else if (c.morale > moraleTarget) --c.morale;
     }
@@ -5531,6 +5561,7 @@ TurnReport advanceWithCombat(GameState& state, const std::function<void(GameStat
             (event == 0 ? ": local trade windfall (+25 credits)." : event == 1 ? ": civic celebration (+10 morale)." :
                 ": civil unrest (-10 morale)."));
     }
+    scenarios::step(next, report); // Schema 25: scenario triggers fire, lost flagships are recorded
     if (!next.rivals.empty()) {
         std::set<int> surviving;
         for (const auto& c : next.colonies) surviving.insert(c.ownerId);
@@ -5547,6 +5578,7 @@ TurnReport advanceWithCombat(GameState& state, const std::function<void(GameStat
             std::string(empireName(next.playerEmpire)) + " campaign victory." : std::string(empireName(next.playerEmpire)) + " campaign defeat.");
     }
     if (next.outcome == CampaignOutcome::Ongoing) gameplay::evaluateVictory(next, report);
+    if (next.outcome == CampaignOutcome::Ongoing) scenarios::evaluateVictories(next, report); // Schema 25: the scenario's own conditions
     gameplay::finishTurn(state, next, report); // Upgrades, storms, templates, chronicle.
     report.outcome = next.outcome;
     validate(next);
@@ -5620,12 +5652,14 @@ GameState deserialize(const std::string& text) {
     // from 18 only by the header and the optional EMPIRE_SLOTS section (never present in 17).
     const bool legacy16 = version == 16 && content == "remaster-16";
     const bool legacy17 = version == 17 && content == "remaster-17";
-    const bool legacy18 = version == 18 && content == "remaster-18";   // Differs from 24 only by the header and the optional THREATS, STRUCTURES, ECONOMY_RULES, ERAS and STAR_TYPES sections.
-    const bool legacy20 = version == 20 && content == "remaster-20";   // Differs from 24 only by the header and the optional STRUCTURES, ECONOMY_RULES, ERAS and STAR_TYPES sections.
-    const bool legacy21 = version == 21 && content == "remaster-21";   // Differs from 24 only by the header and the optional ECONOMY_RULES, ERAS and STAR_TYPES sections.
-    const bool legacy22 = version == 22 && content == "remaster-22";   // Differs from 24 only by the header and the optional ECONOMY_RULES and STAR_TYPES sections.
-    const bool legacy23 = version == 23 && content == "remaster-23";   // Differs from 24 only by the header and the optional STAR_TYPES section.
-    const bool current24 = version == SaveVersion && content == ContentVersion;
+    const bool legacy18 = version == 18 && content == "remaster-18";   // Differs from 25 only by the header and the optional THREATS, STRUCTURES, ECONOMY_RULES, ERAS, STAR_TYPES and SCENARIO sections.
+    const bool legacy20 = version == 20 && content == "remaster-20";   // Differs from 25 only by the header and the optional STRUCTURES, ECONOMY_RULES, ERAS, STAR_TYPES and SCENARIO sections.
+    const bool legacy21 = version == 21 && content == "remaster-21";   // Differs from 25 only by the header and the optional ECONOMY_RULES, ERAS, STAR_TYPES and SCENARIO sections.
+    const bool legacy22 = version == 22 && content == "remaster-22";   // Differs from 25 only by the header and the optional ECONOMY_RULES, STAR_TYPES and SCENARIO sections.
+    const bool legacy23 = version == 23 && content == "remaster-23";   // Differs from 25 only by the header and the optional STAR_TYPES and SCENARIO sections.
+    const bool legacy24 = version == 24 && content == "remaster-24";   // Schema 24 (the balance lane): differs from 25 only by the header and the optional SCENARIO section.
+    const bool current25 = version == SaveVersion && content == ContentVersion;
+    const bool current24 = current25 || legacy24;   // The STAR_TYPES section and Expert difficulty are legal from schema 24 on.
     const bool current23 = current24 || legacy23;   // The ECONOMY_RULES section is legal from schema 23 on.
     const bool current22 = current23 || legacy22;   // The ERAS section is legal from schema 22 on.
     const bool current21 = current22 || legacy21;   // The STRUCTURES section is legal from schema 21 on.
@@ -5641,7 +5675,7 @@ GameState deserialize(const std::string& text) {
     require(checksumStart != std::string::npos, "Missing save checksum");
     const auto rawBody = text.substr(0, checksumStart);
     require(text.substr(checksumStart) == "CHECKSUM " + std::to_string(hashText(rawBody)) + "\n",
-        (legacy7 || legacy8 || legacy9 || legacy10 || legacy11 || legacy12 || legacy13 || legacy14 || legacy15 || legacy16 || legacy17 || legacy18 || legacy20 || legacy21 || legacy22 || legacy23) ? "Legacy save checksum mismatch" : "Save checksum mismatch");
+        (legacy7 || legacy8 || legacy9 || legacy10 || legacy11 || legacy12 || legacy13 || legacy14 || legacy15 || legacy16 || legacy17 || legacy18 || legacy20 || legacy21 || legacy22 || legacy23 || legacy24) ? "Legacy save checksum mismatch" : "Save checksum mismatch");
     GameState s;
     tag(in, "STATE");
     in >> s.seed >> s.rngState >> s.lastAcceptedCommand >> s.width >> s.height >> s.turn >> s.credits >> s.research;
@@ -6085,6 +6119,11 @@ GameState deserialize(const std::string& text) {
         economy_rules::readSection(in, s);
         nextTag = readTag("Malformed save section after ECONOMY_RULES");
     }
+    if (nextTag == "SCENARIO") {
+        require(current25, "Schema 25 section in an older save");
+        scenarios::readSection(in, s);
+        nextTag = readTag("Malformed save section after SCENARIO");
+    }
     if (nextTag == "THREATS") {
         require(current20, "Schema 20 section in an older save");
         threats::readSection(in, s);
@@ -6173,12 +6212,12 @@ GameState deserialize(const std::string& text) {
             (!s.modernEnginesActive || hasIntelOperations),
             current ? "Schema 14 save is missing a required section" : "Schema 13 save is missing a required section");
         std::string expected = payload(s);
-        if (legacy13 || legacy14 || legacy15 || legacy16 || legacy17 || legacy18 || legacy20 || legacy21 || legacy22 || legacy23) {
+        if (legacy13 || legacy14 || legacy15 || legacy16 || legacy17 || legacy18 || legacy20 || legacy21 || legacy22 || legacy23 || legacy24) {
             // Schema 13 text is the schema-14 payload of a campaign without recorded round orders; schema 14 to 17 text are
             // the schema-18 payload of a campaign without a galaxy setup / empire rules / preset packs / lineup above slot five.
             const std::string header = std::string("BOTF_SIM ") + std::to_string(SaveVersion) + ' ' + ContentVersion + '\n';
             require(expected.starts_with(header), "Malformed canonical payload header");
-            expected.replace(0, header.size(), legacy23 ? "BOTF_SIM 23 remaster-23\n" : legacy22 ? "BOTF_SIM 22 remaster-22\n" : legacy21 ? "BOTF_SIM 21 remaster-21\n" : legacy20 ? "BOTF_SIM 20 remaster-20\n" : legacy18 ? "BOTF_SIM 18 remaster-18\n" : legacy17 ? "BOTF_SIM 17 remaster-17\n" : legacy16 ? "BOTF_SIM 16 remaster-16\n" : legacy15 ? "BOTF_SIM 15 remaster-15\n" : legacy14 ? "BOTF_SIM 14 remaster-14\n" : "BOTF_SIM 13 remaster-13\n");
+            expected.replace(0, header.size(), legacy24 ? "BOTF_SIM 24 remaster-24\n" : legacy23 ? "BOTF_SIM 23 remaster-23\n" : legacy22 ? "BOTF_SIM 22 remaster-22\n" : legacy21 ? "BOTF_SIM 21 remaster-21\n" : legacy20 ? "BOTF_SIM 20 remaster-20\n" : legacy18 ? "BOTF_SIM 18 remaster-18\n" : legacy17 ? "BOTF_SIM 17 remaster-17\n" : legacy16 ? "BOTF_SIM 16 remaster-16\n" : legacy15 ? "BOTF_SIM 15 remaster-15\n" : legacy14 ? "BOTF_SIM 14 remaster-14\n" : "BOTF_SIM 13 remaster-13\n");
         }
         require(rawBody == expected, "Save is not in canonical format");
     } else if (legacy12) {
@@ -6934,6 +6973,41 @@ std::vector<int> activeEmpires(const GameState& state) {
     std::sort(ids.begin(), ids.end());
     return ids;
 }
+// Schema 25 (Scenarios.cpp).
+MajorRelation& relation(GameState& state, int a, int b) { return mutableRelation(state, a, b); }
+void war(GameState& state, int a, int b, bool engine) {
+    if (engine) enactWar(state, a, b); else applyWarRelation(state, a, b);
+}
+void peace(GameState& state, int a, int b) { applyPeaceRelation(state, a, b); }
+void alliance(GameState& state, int a, int b) {
+    auto& r = mutableRelation(state, a, b);
+    r.contact = true;
+    if (r.atWar) applyPeaceRelation(state, a, b);
+    r.trust = std::max(r.trust, 80);
+    require(modernDiplomacy(state), "Alliances need the modern diplomacy engine");
+    auto& ds = state.diplomacyEngineState;
+    const auto pa = diplomacy::ParticipantId::major(a), pb = diplomacy::ParticipantId::major(b);
+    std::erase_if(ds.activeTreaties, [&](const diplomacy::ActiveTreaty& t) { return t.involvesBoth(pa, pb); });
+    diplomacy::ActiveTreaty treaty;
+    treaty.id = ds.nextTreatyId++;
+    treaty.partyA = a < b ? pa : pb; treaty.partyB = a < b ? pb : pa;
+    treaty.type = diplomacy::TreatyType::Alliance;
+    treaty.duration = diplomacy::TreatyDuration::Indefinite;
+    treaty.startTurn = state.turn;
+    treaty.turnsRemaining = -1;
+    treaty.status = diplomacy::TreatyStatus::Active;
+    ds.activeTreaties.push_back(treaty);
+}
+void seatEmpire(GameState& state, const EmpireState& empire) {
+    const auto existing = activeEmpires(state);
+    state.rivals.push_back(empire);
+    std::sort(state.rivals.begin(), state.rivals.end(), [](const EmpireState& l, const EmpireState& r) { return l.id < r.id; });
+    for (int other : existing) state.majorRelations.push_back({std::min(other, empire.id), std::max(other, empire.id), false, false, false, 0, 50});
+    std::sort(state.majorRelations.begin(), state.majorRelations.end(), [](const MajorRelation& l, const MajorRelation& r) { return std::tie(l.first, l.second) < std::tie(r.first, r.second); });
+    syncDiplomacyStateInternal(state);
+}
+void syncDiplomacy(GameState& state) { syncDiplomacyStateInternal(state); }
+void setMapOverride(const void* override) { scenarioMapOverride = static_cast<const scenarios::MapOverride*>(override); }
 } // namespace internal
 } // namespace botf
 
@@ -6959,6 +7033,23 @@ const std::vector<std::string>& embeddedPresetFiles() {
     return files;
 }
 } // namespace botf::presets
+
+namespace botf::scenarios {
+// The shipped scenario files (ContentPresets.generated.h), assembled once.
+const std::vector<std::string>& embeddedScenarioFiles() {
+    static const std::vector<std::string> files = [] {
+        std::vector<std::string> out;
+        const auto* list = presets::embedded::ScenarioFiles;
+        for (std::size_t i = 0; i < sizeof(presets::embedded::ScenarioFiles) / sizeof(presets::embedded::ScenarioFiles[0]); ++i) {
+            std::string text;
+            for (std::size_t k = 0; k < list[i].count; ++k) text += list[i].lines[k];
+            out.push_back(std::move(text));
+        }
+        return out;
+    }();
+    return files;
+}
+} // namespace botf::scenarios
 
 namespace botf::content {
 // The base pack, assembled once from the generated header (docs/DATA-FORMAT.md section 6).

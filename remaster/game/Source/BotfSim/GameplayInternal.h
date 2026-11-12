@@ -48,6 +48,14 @@ bool colonySuppliedWithRange(const GameState& state, int owner, int range, int x
 // own and allied powered shipyards, own and allied stations, known wormhole exits.
 bool supplyReaches(const GameState& state, int owner, int range, int x, int y);
 std::vector<int> activeEmpires(const GameState& state); // Player and rivals, sorted.
+// Schema 25 (Scenarios.cpp): relations, treaties and seating for scenario scripts and secession.
+MajorRelation& relation(GameState& state, int a, int b);
+void war(GameState& state, int a, int b, bool engine);   // engine: through the diplomacy engine (calls to arms); false: the relation only
+void peace(GameState& state, int a, int b);
+void alliance(GameState& state, int a, int b);           // A Full Alliance treaty, indefinite; any war between them ends
+void seatEmpire(GameState& state, const EmpireState& empire); // A new rival joins mid-game: relations to every empire, intel and diplomacy state
+void syncDiplomacy(GameState& state);
+void setMapOverride(const void* override); // scenarios::MapOverride* for the next generate/generateCampaign calls (nullptr clears)
 } // namespace botf::internal
 
 namespace botf::gameplay {

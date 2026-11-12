@@ -29,12 +29,14 @@ namespace botf {
 // schema 21 adds the race structures (Structures.h, docs/design/DOMINION.md; optional STRUCTURES section, written only while a colony holds one);
 // schema 23 adds the economy and rules mechanics (EconomyRules.h, docs/design/ECONOMY-MECHANICS.md; optional ECONOMY_RULES section, written
 // only when a rule flag is on): structure upgrades, shared morale, Protectorate HQ, intercept and raid orders, crew experience.
-// schema 22 (the era lane) adds the campaign era (docs/design/ERAS.md; optional ERAS section, written only when the eras rule is on);
-// schema 24 adds the Expert difficulty (GALAXY_SETUP difficulty 5, docs/design/BALANCE-AI.md) and star types (optional STAR_TYPES section,
-// written only while a system has one).
-// Schemas 4-23 still load and continue.
-inline constexpr const char* ContentVersion = "remaster-24";
-inline constexpr int SaveVersion = 24;
+// schema 25 adds the scenario layer (Scenarios.h, docs/design/SCENARIOS.md; optional SCENARIO section, written only in a scenario game or
+// once a flagship or secession exists): scripted starts, deterministic triggers, major-empire secession, flagships and the vendetta victory.
+// schema 24 (the balance lane) adds the Expert difficulty (GALAXY_SETUP difficulty 5, docs/design/BALANCE-AI.md) and star types (optional STAR_TYPES section,
+// written only while a system has one);
+// schema 22 (the era lane) adds the campaign era (docs/design/ERAS.md; optional ERAS section, written only when the eras rule is on).
+// Schemas 4-24 still load and continue.
+inline constexpr const char* ContentVersion = "remaster-25";
+inline constexpr int SaveVersion = 25;
 // Campaign empire ids are race slots: 1 Federation, 2 Klingon, 3 Romulan, 4 Cardassian, 5 Ferengi, 6 Dominion, 7 Borg,
 // 8 Breen. A campaign seats two to eight of them (any subset); per-empire arrays are indexed by id, so they hold nine entries.
 inline constexpr int MaxMajors = 8;
@@ -78,7 +80,9 @@ enum class CommandType : int {
     // Appended for schema 15 (EMPIRE-RULES.md). Both use systemId and eventOption.
     SetEmergencyProgram, ResolveAftermath,
     // Appended for schema 23 (ECONOMY-MECHANICS.md): fleetId plus eventOption (0 clear, 1 intercept, 2 raid); raid names the target colony in systemId.
-    SetFleetOrder
+    SetFleetOrder,
+    // Appended for schema 25 (Scenarios.h): fleetId names the ship the empire commissions as its flagship.
+    CommissionFlagship
 };
 enum class CampaignOutcome : int { Ongoing, Victory, Defeat };
 // MaxTechLevel is the classic research cap (every game without the eras rule); HighestTechLevel is the hard ceiling the data
@@ -245,6 +249,9 @@ struct Fleet {
     int postX = 0, postY = 0;
     int raidSystemId = 0;
     int experience = 25;
+    // Schema 25 (Scenarios.h): 0 for an ordinary ship, else the 1-based index of its flagship name; the owner's flagship bonuses apply to
+    // the ship. Saved in the FLAGSHIPS rows of the optional SCENARIO section, not in the fleet rows.
+    int flagship = 0;
 };
 
 struct TaskForce {
@@ -372,6 +379,16 @@ struct AftermathChoice {
 struct MinorGuard {
     int systemId = 0, shipId = 0, hull = 0, shields = 0;
     bool operator==(const MinorGuard&) const = default;
+};
+// Schema 25 (Scenarios.h): an empire's flagship (fleetId 0 and lostTurn > 0 once it was lost; serial counts the commissions) and a secession
+// (parent empire, the new house, the turn).
+struct Flagship {
+    int empireId = 0, fleetId = 0, serial = 0, lostTurn = 0;
+    bool operator==(const Flagship&) const = default;
+};
+struct Secession {
+    int parent = 0, house = 0, turn = 0;
+    bool operator==(const Secession&) const = default;
 };
 // Schema 20: threat actors (Threats.h). A threat is a map object with its own hull and shields, not a Fleet and not an empire:
 // it fights through the tactical engine as a proxy combatant on the side ThreatOwner, under the fleet id ThreatCombatantBase + id.
@@ -520,7 +537,8 @@ struct BuildTemplate {
 
 struct Megaproject { int ownerId = 1, systemId = 0, work = 0, startTurn = 0; };
 
-enum class VictoryCondition : int { Conquest = 0, Domination = 1, Scientific = 2, Diplomatic = 3 };
+// Vendetta (schema 25): the vanilla victory, defeat both of your designated racial rivals (Victory.cpp).
+enum class VictoryCondition : int { Conquest = 0, Domination = 1, Scientific = 2, Diplomatic = 3, Vendetta = 4 };
 struct VictoryProgress {
     int empireId = 0;
     VictoryCondition condition = VictoryCondition::Conquest;
@@ -624,6 +642,12 @@ struct GameState : EmpireState {
     int nextThreatId = 1;
     std::array<int, ThreatKinds> threatLastSpawn{}; // Turn each kind last spawned (0 = never); spacing between spawns.
     std::vector<AssimilatedSystem> assimilated;
+    // Schema 25 (Scenarios.h; all empty for older saves and free games). The scenario this campaign plays (empty = none), the triggers that
+    // have fired (indexes, ascending), each empire's flagship and the secessions that have happened.
+    std::string scenarioId;
+    std::vector<int> scenarioFired;
+    std::vector<Flagship> flagships;
+    std::vector<Secession> secessions;
 };
 struct Economy {
     int food = 0, foodDeficit = 0, industry = 0, research = 0;
@@ -917,6 +941,10 @@ struct CampaignSetup {
     // Schema 20: the threat switches (monsters, Borg, frequency, per-actor toggles). Unset takes the preset's defaults (none for
     // Classic and Remastered: threats off); the new-game screen fills it from the preset and the player may change any switch.
     std::optional<ThreatSetup> threats;
+    // Schema 25: a registered scenario (Scenarios.h). When set it names the preset, lineup, galaxy, era and scripted start; `playerEmpire`
+    // (an empire id in the scenario's lineup) and the difficulty are still the player's. Empty plays a free game.
+    std::string scenarioId;
+    bool playerSet = false;   // The caller chose `playerEmpire` (otherwise a scenario's own default player applies).
     // Schema 24 (docs/design/BALANCE-AI.md section 6). Generation options; their results live in the state, so they are not saved.
     int startSystems = 0;            // Extra colonies each empire starts with (0..8) beside its capital.
     int planetsMin = 0, planetsMax = 0; // Planets per ordinary star, 1..9 each; 0 keeps the generator's own 2..5.
