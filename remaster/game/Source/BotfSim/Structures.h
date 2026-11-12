@@ -40,7 +40,7 @@ enum Effect : int { Credits = 5, Security = 11, Industry = 14, Morale = 20, Rese
                     ShapeshifterNetwork = 90, KetracelWhite = 91,
                     // Schema 23 (EconomyRules.h): academy (values[0] experience points a turn for fleets in its system, values[1] the cap),
                     // shared morale (values[0] morale for every colony of the empire) and Protectorate HQ (values[0] morale for subjugated worlds).
-                    Academy = 92, SharedMorale = 93, ProtectorateHq = 94 };
+                    Training = 16, Academy = 92, SharedMorale = 93, ProtectorateHq = 94 };
 
 inline bool isRef(int referenceId) { return referenceId >= RefBase && referenceId < RefBase + 1000000; }
 inline int refFor(int recordId) { return RefBase + recordId; }
@@ -50,9 +50,14 @@ inline const referenceData::BuildingRecord* record(int id) {
     const auto& all = content::tables::buildings();
     return id >= 0 && static_cast<std::size_t>(id) < all.size() ? &all[static_cast<std::size_t>(id)] : nullptr;
 }
+// Schema 23: the four per-race academies of the original game (Central Command 25, Starfleet Academy 37, Tactical College 43, Naval Academy 50)
+// are campaign structures in the base pack with no overlay needed; they train crews (EconomyRules.h academyAt) and are refused while
+// crew experience is off. They stay out of anyBuildable(): the structure engine (AI building, started-built records) is for packs.
+inline bool isVanillaAcademy(const referenceData::BuildingRecord& r) { return r.bonusType == 16 && (r.id == 25 || r.id == 37 || r.id == 43 || r.id == 50); }
+inline bool isCampaign(const referenceData::BuildingRecord& r) { return r.buildable || isVanillaAcademy(r); }
 inline const referenceData::BuildingRecord* campaignRecord(int id) {
     const auto* r = record(id);
-    return r && r->buildable ? r : nullptr;
+    return r && isCampaign(*r) ? r : nullptr;
 }
 inline bool anyBuildable() {
     for (const auto& r : content::tables::buildings()) if (r.buildable) return true;
@@ -147,7 +152,7 @@ inline int heldInEmpire(const GameState& s, int empireId, int id) {
 
 // Schema 23: rule-flag gates of the economy records (a pack may carry them while the rule is off).
 inline std::string recordFlagBlocker(const GameState& s, const referenceData::BuildingRecord& r) {
-    if (r.bonusType == Academy && !s.rules.crewExperience) return "Crew experience is off in this ruleset";
+    if ((r.bonusType == Academy || r.bonusType == Training) && !s.rules.crewExperience) return "Crew experience is off in this ruleset";
     if (r.bonusType == SharedMorale && !s.rules.sharedMorale) return "Shared morale is off in this ruleset";
     if (r.bonusType == ProtectorateHq && !s.rules.protectorateHq) return "The Protectorate is off in this ruleset";
     return {};
@@ -160,6 +165,9 @@ inline std::string empireBlockerForProject(const GameState& s, int owner, int id
     if (!r) return "Not a campaign structure";
     if (!allowedFor(*r, owner)) return std::string(r->name) + " is not available to this empire";
     if (auto flag = recordFlagBlocker(s, *r); !flag.empty()) return flag;
+    if (r->bonusType == Academy)   // The generic Fleet Academy is only for races with no academy of their own.
+        for (const auto& o : content::tables::buildings())
+            if (isCampaign(o) && o.bonusType == Training && allowedFor(o, owner)) return "This empire has its own academy";
     if (r->technologyField >= 0 && r->technologyField < ResearchFields && r->technologyLevel > 0 &&
         empire(s, owner).technologies[static_cast<std::size_t>(r->technologyField)].level < r->technologyLevel)
         return std::string("Requires ") + researchName(r->technologyField) + " level " + std::to_string(r->technologyLevel);

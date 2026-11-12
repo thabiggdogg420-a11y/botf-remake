@@ -3,6 +3,7 @@
 // a player battle through a turn session, and 100-turn AI soaks with every actor on.
 #include "CampaignSession.h"
 #include "Simulation.h"
+#include "EconomyRules.h"
 #include "Threats.h"
 
 #include <algorithm>
@@ -481,6 +482,7 @@ int main() {
         }
         CampaignSetup setup; setup.seed = 21; setup.empires = 4;
         auto d = newCampaign(setup);
+        economy_rules::setFlagBits(d.rules, 0); // legacy-header scenarios pin the pre-schema-23 text: no ECONOMY_RULES section
         for (int i = 0; i < 3; ++i) advance(d);
         const auto remastered = serialize(d);
         for (int old : {16, 17, 18}) {

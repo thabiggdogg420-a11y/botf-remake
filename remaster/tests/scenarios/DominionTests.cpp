@@ -8,6 +8,7 @@
 #include "Presets.h"
 #include "ShipRoster.h"
 #include "Simulation.h"
+#include "EconomyRules.h"
 #include "Structures.h"
 
 #include <algorithm>
@@ -358,6 +359,7 @@ int main() {
         presets::activate(*presets::find("remastered"));
         CampaignSetup plain; plain.seed = 1999;
         auto d = newCampaign(plain);
+        economy_rules::setFlagBits(d.rules, 0); // legacy-header scenarios pin the pre-schema-23 text: no ECONOMY_RULES section
         for (int i = 0; i < 5; ++i) advance(d);
         const auto dt = serialize(d);
         check(!contains(dt, "STRUCTURES") && !contains(dt, "EMPIRE_SLOTS") && !contains(dt, "PACKS"), "the default five-empire game has no new section");

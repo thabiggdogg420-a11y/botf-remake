@@ -99,8 +99,10 @@ int main() {
     int passed = 0;
 
     run("flags: Classic has none, Remastered the vanilla set, presets carry theirs", [] {
-        check(economy_rules::flagBits(rulesForPreset(RulesetPreset::Classic)) == 0, "Classic has no economy flag");
-        check(economy_rules::flagBits(rulesForPreset(RulesetPreset::Remastered)) == 0, "a ruleset built without a preset has no economy flag");
+        const int vanilla = economy_rules::flagBits([] { GameplayRules g; g.interceptOrders = g.raidOrders = g.crewExperience = true; return g; }());
+        check(economy_rules::flagBits(rulesForPreset(RulesetPreset::Classic)) == vanilla, "Classic has exactly the vanilla flags: intercept, raid, crew experience");
+        check(economy_rules::flagBits(rulesForPreset(RulesetPreset::Remastered)) == vanilla, "a ruleset built without a preset has exactly the vanilla flags");
+        check(economy_rules::flagBits(game(9, "classic", 5).rules) == vanilla, "the Classic preset game has exactly the vanilla flags");
         const auto r = game(10, "remastered", 3).rules;
         check(r.interceptOrders && r.raidOrders && r.crewExperience && r.structureUpgrades && r.exploitFixes, "Remastered vanilla flags");
         check(!r.sharedMorale && !r.protectorateHq && !r.allDilithium && !r.raidBonus && !r.autoUpgrades && !r.noUpgrades, "mod-only flags are off");
@@ -108,10 +110,10 @@ int main() {
         check(udm.rules.sharedMorale && udm.rules.protectorateHq && udm.rules.allDilithium && udm.rules.raidBonus, "Dominion War carries the UDM flags");
         check(game(11, "ultimate", 5).rules.autoUpgrades && game(11, "balance-of-power", 5).rules.autoUpgrades, "UM5 and BoP upgrade automatically");
         check(content::active().id != "botf-base+economy", "only the UDM preset stacks the economy structures");
-        check(economy_rules::flagBits(game(11, "classic", 5).rules) == 0 && !game(11, "classic", 5).rules.structureUpgrades, "the Classic preset keeps every rule off");
+        check(economy_rules::flagBits(game(11, "classic", 5).rules) == vanilla && !game(11, "classic", 5).rules.structureUpgrades, "the Classic preset has the vanilla orders and no mod rule");
         const auto bad = [](const char* json) { presets::parsePreset(json); };
         rejects([&] { bad("{\"format\":1,\"id\":\"x\",\"name\":\"X\",\"blurb\":\"\",\"order\":1,\"overlays\":[],\"rules\":{\"base\":\"remastered\",\"flags\":{\"noUpgrades\":true,\"autoUpgrades\":true}},\"lineup\":[\"Federation\",\"Klingon\"],\"options\":{},\"needs\":[]}"); }, "noUpgrades with autoUpgrades");
-        rejects([&] { bad("{\"format\":1,\"id\":\"x\",\"name\":\"X\",\"blurb\":\"\",\"order\":1,\"overlays\":[],\"rules\":{\"base\":\"classic\",\"flags\":{\"raidBonus\":true}},\"lineup\":[\"Federation\",\"Klingon\"],\"options\":{},\"needs\":[]}"); }, "raidBonus without raid orders");
+        rejects([&] { bad("{\"format\":1,\"id\":\"x\",\"name\":\"X\",\"blurb\":\"\",\"order\":1,\"overlays\":[],\"rules\":{\"base\":\"remastered\",\"flags\":{\"raidOrders\":false,\"raidBonus\":true}},\"lineup\":[\"Federation\",\"Klingon\"],\"options\":{},\"needs\":[]}"); }, "raidBonus without raid orders");
     }, passed);
 
     run("upgrades: tier needs technology, costs industry, lifts output, one project per open step", [] {
@@ -149,6 +151,7 @@ int main() {
         const auto& c = homeOf(s, s.playerEmpire);
         check(contains(structures::blocker(s, c, upgrades::recordFor(1, false)), "without structure upgrades"), "no-upgrades blocker");
         auto classic = classicGame(23);
+        setEconomyFlags(classic, 0);
         check(!structures::blocker(classic, homeOf(classic, classic.playerEmpire), upgrades::recordFor(0, false)).empty(), "Classic refuses upgrades");
         auto choicesClassic = constructionChoices(classic, homeOf(classic, classic.playerEmpire).systemId);
         check(std::none_of(choicesClassic.begin(), choicesClassic.end(), [](const ConstructionChoice& ch) { return ch.name.find("Upgrade") == 0; }), "Classic build list has no upgrade entries");
@@ -291,6 +294,8 @@ int main() {
         const auto* h2 = &*std::find_if(moving.fleets.begin(), moving.fleets.end(), [&](const Fleet& x) { return x.id == mine.id; });
         check(h2->attackTarget == 0 && h2->targetX == sys.x && h2->targetY == sys.y, "with no intruder it returns to its post");
         auto classic = classicGame(51);
+        check(classic.rules.interceptOrders && classic.rules.raidOrders && classic.rules.crewExperience, "Classic has the vanilla orders and crew experience");
+        setEconomyFlags(classic, 0);
         const auto& cs = sysOf(classic, homeOf(classic, classic.playerEmpire).systemId);
         auto cf = warship(classic, classic.playerEmpire, cs.x, cs.y);
         classic.fleets.push_back(cf);
@@ -384,10 +389,43 @@ int main() {
         check(std::find_if(off.fleets.begin(), off.fleets.end(), [&](const Fleet& x) { return x.id == ship.id; })->experience == 25, "flag off: no training");
     }, passed);
 
+    run("crew: the original per-race academies train crews, Legendary is Klingon only, the Fleet Academy is the fallback", [] {
+        check(crew::ratingFor(95, 1) == 3 && crew::ratingFor(95, 2) == 4 && crew::ratingFor(30, 2) == 1, "Legendary is a Klingon rating; the rest stop at Elite");
+        check(crew::attackPercentFor(95, 1) == 10 && crew::attackPercentFor(95, 2) == 15, "and so is its attack bonus");
+        auto s = game(62, "classic", 5);
+        setTech(s, 6);
+        const int me = s.playerEmpire;
+        auto& c = homeOf(s, me);
+        check(structures::blocker(s, c, 37).empty(), "Classic: the Federation may queue the Starfleet Academy");
+        check(!structures::blocker(s, c, 43).empty(), "but not another race's Tactical College");
+        const auto& sys = sysOf(s, c.systemId);
+        auto ship = warship(s, me, sys.x, sys.y);
+        s.fleets.push_back(ship);
+        c.structures.push_back(37); std::sort(c.structures.begin(), c.structures.end());
+        const auto a = economy_rules::academyAt(c);
+        check(a.perTurn == 4 && a.cap == 80, "Starfleet Academy trains 4 a turn up to Elite");
+        TurnReport report;
+        for (int i = 0; i < 20; ++i) economy_rules::trainCrews(s, report);
+        const auto xp = std::find_if(s.fleets.begin(), s.fleets.end(), [&](const Fleet& x) { return x.id == ship.id; })->experience;
+        check(xp == 80, "twenty turns in the yard train a crew to the cap");
+        auto k = game(63, "classic", 5);
+        auto& kc = homeOf(k, 2);
+        kc.structures.push_back(43); std::sort(kc.structures.begin(), kc.structures.end());
+        check(economy_rules::academyAt(kc).cap == 100, "the Klingon academy trains to Legendary");
+        auto off = s; off.rules.crewExperience = false;
+        check(!structures::blocker(off, homeOf(off, me), 25).empty(), "flag off keeps the academy out of the list");
+        auto dom = game(64, "dominion-war", 5);
+        setTech(dom, 6);
+        check(contains(structures::blocker(dom, homeOf(dom, dom.playerEmpire), 85), "own academy"), "the Fleet Academy is refused where the race has its own");
+        check(structures::blocker(dom, homeOf(dom, 5), 85).find("own academy") == std::string::npos, "and offered to a race without one (Ferengi)");
+    }, passed);
+
     run("save: ECONOMY_RULES round trip, default Classic writes none, 21 and 22 headers load, the section is refused in older headers", [] {
         auto classic = classicGame(71);
+        check(contains(serialize(classic), "ECONOMY_RULES 1 "), "default Classic writes the vanilla flag bits");
+        setEconomyFlags(classic, 0);
         const auto ct = serialize(classic);
-        check(!contains(ct, "ECONOMY_RULES") && ct.starts_with("BOTF_SIM 23 remaster-23\n"), "Classic: header 23, no section");
+        check(!contains(ct, "ECONOMY_RULES") && ct.starts_with("BOTF_SIM 23 remaster-23\n"), "flags off: header 23, no section");
         check(serialize(deserialize(withHeader(ct, 21))) == ct && serialize(deserialize(withHeader(ct, 22))) == ct, "a 21 or 22 header over a Classic text loads and re-saves as 23");
         auto s = game(72, "dominion-war", 5);
         setTech(s, 4);
@@ -409,8 +447,8 @@ int main() {
     }, passed);
 
     run("soak: 100 turns, every flag on, deterministic and save-stable", [] {
-        auto run1 = [] {
-            auto s = game(81, "dominion-war", 5);
+        auto run1 = [](std::uint64_t seed) {
+            auto s = game(seed, "dominion-war", 5);
             setEconomyFlags(s, economy_rules::AllFlagBits & ~(4 | 2) | 2); // everything except noUpgrades (autoUpgrades on)
             setTech(s, 4);
             makeWar(s, s.playerEmpire, s.rivals.front().id); // one war keeps raids and intercepts live without ending the campaign early
@@ -429,9 +467,12 @@ int main() {
             std::cout << "  soak: turn " << s.turn << ", upgrade steps " << steps << ", trained fleets " << exp << std::endl;
             return hashes;
         };
-        const auto first = run1();
+        // The first seed from 81 whose war lasts 80 turns (a conquest or victory can end a seed early; the choice is deterministic).
+        std::uint64_t seed = 81;
+        auto first = run1(seed);
+        while (first.size() < 8 && seed < 100) first = run1(++seed);
         check(first.size() >= 8, "the soak played at least 80 turns");
-        check(first == run1(), "two runs agree");
+        check(first == run1(seed), "two runs agree");
     }, passed);
 
     std::cout << passed << " passed, " << failed << " failed" << std::endl;

@@ -391,8 +391,10 @@ GameplayRules rulesForPreset(RulesetPreset preset) {
     r.flightModel = remastered;
     r.wegoCombat = remastered;
     r.empireRules = true; // Schema 15: dilithium slots, programs, aftermath, minor conquest, guards (both presets).
-    // Schema 23 (EconomyRules.h): every economy flag starts off in both bases, so a ruleset built without a preset (the CLI, the tests,
-    // saves) plays as before. The picker's presets carry the flags: the Remastered preset the vanilla-order set, mods their own.
+    // Schema 23 (EconomyRules.h): the original game's intercept order, raid order and crew experience are vanilla rules, on in both bases
+    // (Simon's scope, 12 Nov 2026). Mod rules (shared morale, Protectorate HQ, dilithium everywhere, the raid bonus, upgrades, exploit fixes)
+    // come only from a preset's flags. A save written before schema 23 has no ECONOMY_RULES section and loads with them off.
+    r.interceptOrders = r.raidOrders = r.crewExperience = true;
     return r;
 }
 

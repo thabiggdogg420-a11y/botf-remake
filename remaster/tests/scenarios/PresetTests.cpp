@@ -186,9 +186,11 @@ int main() {
         CampaignSetup old;
         old.seed = 31; old.empires = 3; old.width = 16; old.height = 12; old.systems = 28;
         old.preset = RulesetPreset::Remastered;
-        const auto legacyRemastered = newCampaign(old);
+        auto legacyRemastered = newCampaign(old);
+        economy_rules::setFlagBits(legacyRemastered.rules, 0); // game() pins the pre-schema-23 formats with the economy flags cleared
         old.preset = RulesetPreset::Classic;
-        const auto legacyClassic = newCampaign(old);
+        auto legacyClassic = newCampaign(old);
+        economy_rules::setFlagBits(legacyClassic.rules, 0);
         check(fingerprint(game("remastered")) == fingerprint(legacyRemastered), "preset remastered == the pre-preset Remastered game");
         check(fingerprint(game("classic")) == fingerprint(legacyClassic), "preset classic == the pre-preset Classic game");
         check(game("remastered").presetId.empty() && serialize(game("remastered")).find("\nPACKS ") == std::string::npos, "built-ins write no PACKS section");

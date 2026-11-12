@@ -155,6 +155,13 @@ inline Academy academyAt(const Colony& c) {
         if (const auto* r = structures::record(id); r && r->bonusType == structures::Academy) {
             a.perTurn = std::max(a.perTurn, r->bonusValues[0]);
             a.cap = std::max(a.cap, r->bonusValues[1]);
+        } else if (const auto* t = structures::record(id); t && t->bonusType == structures::Training) {
+            // The original per-race academies (Starfleet Academy, Tactical College, Naval Academy, Central Command): the record's training
+            // percent sets the pace (percent / 12, at least 1); Klingon crews may train to Legendary (100), the rest to Elite (80).
+            int pct = 0;
+            for (int v : t->bonusValues) pct = std::max(pct, v);
+            a.perTurn = std::max(a.perTurn, std::max(1, pct / 12));
+            a.cap = std::max(a.cap, c.ownerId == crew::KlingonEmpire ? crew::MaxExperience : 80);
         }
     return a;
 }

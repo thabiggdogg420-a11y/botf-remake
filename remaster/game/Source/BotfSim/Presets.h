@@ -108,7 +108,7 @@ inline void checkFlags(const std::string& base, const std::vector<std::pair<std:
         const bool economyFlag = n == "structureUpgrades" || n == "autoUpgrades" || n == "noUpgrades" || n == "sharedMorale" || n == "protectorateHq" ||
             n == "allDilithium" || n == "interceptOrders" || n == "raidOrders" || n == "raidBonus" || n == "crewExperience" || n == "exploitFixes";
         if (economyFlag) {
-            v = false;
+            v = n == "interceptOrders" || n == "raidOrders" || n == "crewExperience"; // vanilla rules, on in both bases
         }
         for (const auto& o : overrides) if (o.first == name) v = o.second;
         return v;

@@ -2,6 +2,7 @@
 // lineup of race keys, Dominion and Borg play as majors, saves from schemas 14-16 load, and the default game is unchanged.
 #include "EmpireSlots.h"
 #include "Simulation.h"
+#include "EconomyRules.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -216,6 +217,7 @@ int main() {
     run("migration: schemas 14, 15, 16 and 17 load as schema 18; the new section is refused in older headers", [] {
         CampaignSetup setup; setup.seed = 31; setup.empires = 4;
         auto s = newCampaign(setup);
+        economy_rules::setFlagBits(s.rules, 0); // legacy-header scenarios pin the pre-schema-23 text: no ECONOMY_RULES section
         for (int i = 0; i < 6; ++i) advance(s);
         const auto text = serialize(s);
         // Rebuild the exact older text: schema 14 and 15 had no EMPIRE_RULES / GALAXY_SETUP content for this campaign shape only

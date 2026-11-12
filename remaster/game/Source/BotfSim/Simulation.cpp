@@ -3818,7 +3818,8 @@ std::vector<ConstructionChoice> constructionChoices(const GameState& state, int 
     }
     // Schema 21: the race structures this empire may use (Structures.h); the blocker says why one cannot be queued.
     for (const auto& rec : content::tables::buildings()) {
-        if (!rec.buildable || !structures::allowedFor(rec, colony->ownerId)) continue;
+        if (!structures::isCampaign(rec) || !structures::allowedFor(rec, colony->ownerId)) continue;
+        if (structures::isVanillaAcademy(rec) && !state.rules.crewExperience) continue;   // Not offered while crew experience is off
         std::string blocker = structures::blocker(state, *colony, rec.id);
         if (queueFull) blocker = "Construction queue is full";
         choices.push_back({Building::Structure, structures::refFor(rec.id), rec.name, rec.industryCost, structures::upkeepOf(rec), blocker});
