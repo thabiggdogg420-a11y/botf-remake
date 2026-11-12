@@ -335,7 +335,7 @@ int main() {
         auto s = warGame(15, 6);
         for (int i = 0; i < 4; ++i) advance(s);
         const auto text = serialize(s);
-        check(contains(text, "\nSTRUCTURES 1\n") && text.starts_with("BOTF_SIM 21 remaster-21\n"), "schema 21 with a section");
+        check(contains(text, "\nSTRUCTURES 1\n") && text.starts_with("BOTF_SIM " + std::to_string(SaveVersion) + " remaster-" + std::to_string(SaveVersion) + "\n"), "current schema with a section");
         check(serialize(deserialize(text)) == text && fingerprint(deserialize(text)) == fingerprint(s), "round trip");
         for (int version : {14, 15, 16, 17, 18, 20})
             rejects([&] { deserialize(withHeader(text, version)); }, "STRUCTURES under a schema-" + std::to_string(version) + " header", "older save");
@@ -364,6 +364,7 @@ int main() {
         const auto old = deserialize(withHeader(dt, 18));
         check(serialize(old) == dt, "a schema-18 default save loads and re-saves as 21");
         check(serialize(deserialize(withHeader(dt, 20))) == dt, "a schema-20 default save loads and re-saves as 21");
+        check(serialize(deserialize(withHeader(dt, 21))) == dt, "a schema-21 default save loads and re-saves as the current schema");
         auto playing = old; advance(playing);
         check(playing.turn == old.turn + 1, "and plays on");
         presets::activate(*presets::find("dominion-war"));

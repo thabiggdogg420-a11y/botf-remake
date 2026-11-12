@@ -195,6 +195,40 @@ func _prepare(s: String) -> void:
 			if tscroll:
 				tscroll.scroll_vertical = 100000   # down to the Threats panel under the preset picker
 				await _wait(3)
+		"new-ages", "new-galaxies-2380":
+			# The era picker (MOD-4): a timeline preset with a chosen start year. Ages at 2320, Galaxies at 2380 (tech 14).
+			app.view = {}
+			app.goto("new")
+			await _wait(2)
+			var epicker = app.current_screen()
+			epicker.vm.pick_preset("ages" if s == "new-ages" else "galaxies")
+			epicker.vm.era = 3 if s == "new-ages" else 5
+			epicker.refresh()
+			await _wait(4)
+		"era-research", "era-build-2240", "era-build-2380", "era-build-2320":
+			# MOD-4: a timeline campaign. era-research is Galaxies at 2380 (every field at 14); the build lists are Ages at the
+			# start named in the shot (the Starships tab of the capital, with each class's year blocker).
+			app.view = {}
+			var eopts := {"faction": 1, "seed": 424242, "ruleset": "reference", "width": 22, "height": 16, "systems": 48, "events": true, "aiAggression": true}
+			if s == "era-research":
+				eopts["preset"] = "galaxies"; eopts["era"] = 5; eopts["lineup"] = ["federation", "klingon", "romulan", "dominion", "borg"]
+			else:
+				eopts["preset"] = "ages"; eopts["era"] = {"era-build-2240": 1, "era-build-2320": 3, "era-build-2380": 5}[s]
+			app.start_campaign(eopts)
+			app.close_all_modals()
+			if s == "era-research":
+				app.goto("research")
+				await _wait(6)
+			else:
+				app.goto("system")
+				await _wait(4)
+				var esys = app.current_screen()
+				esys.tab = "ships"
+				esys.refresh()
+				# The planet globes are SubViewports that load their texture sets on first use: wait on the clock, not on frames.
+				var t_globes := Time.get_ticks_msec()
+				while Time.get_ticks_msec() - t_globes < 3000:
+					await _wait(5)
 		"threats-galaxy", "threats-assimilated":
 			# Threat drill (schema 20): actors around the capital and one Borg-held ruin; -assimilated frames the ruin.
 			app.start_drill("newThreatDrill", "Threat drill")

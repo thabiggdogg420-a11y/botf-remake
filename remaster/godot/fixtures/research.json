@@ -2,6 +2,7 @@
  "method": "research",
  "args": {},
  "result": {
+  "techCap": 10,
   "fields": [
    {
     "field": 0,

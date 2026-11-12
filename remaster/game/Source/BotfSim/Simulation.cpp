@@ -2481,7 +2481,7 @@ int grantResearch(const GameState& s, EmpireState& e, std::int64_t amount) {
     e.research += amount;
     int field = -1;
     for (int i = 0; i < ResearchFields; ++i) {
-        if (e.technologies[i].level < MaxTechLevel && (field < 0 || e.technologies[i].level < e.technologies[field].level)) field = i;
+        if (e.technologies[i].level < techCap(s) && (field < 0 || e.technologies[i].level < e.technologies[field].level)) field = i;
     }
     if (field < 0) {
         e.researchReserve = std::min(MaxBalance, e.researchReserve + amount);
@@ -2490,11 +2490,11 @@ int grantResearch(const GameState& s, EmpireState& e, std::int64_t amount) {
     int gained = 0;
     auto& tech = e.technologies[field];
     tech.progress += amount;
-    while (tech.level < MaxTechLevel && tech.progress >= researchCost(s, field, tech.level + 1)) {
+    while (tech.level < techCap(s) && tech.progress >= researchCost(s, field, tech.level + 1)) {
         tech.progress -= researchCost(s, field, ++tech.level);
         ++gained;
     }
-    if (tech.level == MaxTechLevel) { e.researchReserve += tech.progress; tech.progress = 0; }
+    if (tech.level == techCap(s)) { e.researchReserve += tech.progress; tech.progress = 0; }
     return gained;
 }
 
@@ -3057,6 +3057,7 @@ std::string constructionTechBlocker(const GameState& state, const Construction& 
         return "Expanded ship roster is off in this ruleset";
     const auto& ship = sourceShip(project.referenceId);
     if (!playableShip(ship) || !shipUsable(ship, owner)) return "Ship class is unavailable to this empire";
+    if (state.rules.eras) { const auto era = eraBlocker(state, ship.id); if (!era.empty()) return era; }   // Schema 22
     if (const auto gate = structures::shipGate(state, owner, ship.id); !gate.empty()) return gate; // Schema 21: Ketracel-White.
     for (int field = 0; field < ResearchFields; ++field) {
         if (empire(state, owner).technologies[field].level < ship.technologyRequirements[field])
@@ -3280,6 +3281,7 @@ std::string payload(const GameState& s) {
     empire_rules::writeSection(out, s); // Schema 16: optional EMPIRE_RULES section.
     structures::writeSection(out, s);   // Schema 21: optional STRUCTURES section.
     threats::writeSection(out, s);      // Schema 20: optional THREATS section.
+    if (s.rules.eras) out << "ERAS 1\n";   // Schema 22: the eras rule (ERAS.md); the pack's eras block carries the data.
     // Schema 14: per-ship orders of recorded battle rounds. Written only when some
     // round carries orders, so campaigns without them keep the schema-13 layout.
     const bool anyOrders = std::any_of(s.latestBattles.begin(), s.latestBattles.end(), [](const CombatReport& b) {
@@ -3742,19 +3744,55 @@ std::vector<StartingEra> availableStartingEras() {
 StartingEra campaignStartingEra(const GameState& state) {
     return state.startingEra;
 }
+int techCap(const GameState& state) {
+    return state.rules.eras ? std::clamp(content::eras().techCap, MaxTechLevel, HighestTechLevel) : MaxTechLevel;
+}
+int eraStartYear(StartingEra era) {
+    const auto& e = content::eras();
+    return e.years[static_cast<std::size_t>(std::clamp(static_cast<int>(era), 1, 5) - 1)];
+}
+int eraStartTech(const GameState& state) {
+    if (!state.rules.eras) return eraBaseTechLevel(state.startingEra, state.ruleset);
+    return content::eras().startTech[static_cast<std::size_t>(static_cast<int>(state.startingEra) - 1)];
+}
+int campaignYear(const GameState& state) {
+    if (!state.rules.eras) return 0;
+    return eraStartYear(state.startingEra) + state.turn / std::max(1, content::eras().turnsPerYear);
+}
+std::string eraBlocker(const GameState& state, int shipId) {
+    if (!state.rules.eras) return {};
+    const auto* cls = roster::findRosterClass(shipId);
+    const auto& e = content::eras();
+    // A roster class starts at its era tag's year; a legacy catalogue ship is on the timeline only when the pack lists a window for it
+    // (the basic utility hulls carry none and stay available in every era).
+    if (!cls && shipId >= roster::ExpandedIdBase) return {};
+    int from = cls ? e.tagYears[static_cast<std::size_t>(cls->era)] : 0, until = 0;
+    for (const auto& w : e.windows) if (w.id == shipId) { from = w.from; until = w.until; break; }
+    const int year = campaignYear(state);
+    if (year < from) return "Enters service in " + std::to_string(from);
+    if (until != 0 && year >= until) return "Retired in " + std::to_string(until);
+    return {};
+}
 const char* researchName(int field) {
     static constexpr std::array<const char*, ResearchFields> Names{"Biotech", "Computers", "Construction", "Energy", "Propulsion", "Weapons"};
     require(field >= 0 && field < ResearchFields, "Invalid research field");
     return Names[field];
 }
 int researchCost(int nextLevel) {
-    require(nextLevel >= 1 && nextLevel <= MaxTechLevel, "Invalid technology level");
+    require(nextLevel >= 1 && nextLevel <= HighestTechLevel, "Invalid technology level");
     return 100 * nextLevel * (nextLevel + 1);
 }
 int researchCost(const GameState& state, int field, int nextLevel) {
-    require(field >= 0 && field < ResearchFields && nextLevel >= 1 && nextLevel <= MaxTechLevel,
+    require(field >= 0 && field < ResearchFields && nextLevel >= 1 && nextLevel <= techCap(state),
         "Invalid research catalogue position");
     if (state.ruleset == Ruleset::Prototype) return researchCost(nextLevel);
+    if (nextLevel > MaxTechLevel) {   // Schema 22: levels 11..14 come from the pack's eras block.
+        const auto& high = content::eras().highTech;
+        require(high.size() == 24, "Research levels above 10 need a pack with an eras block");
+        const std::int64_t above = high[static_cast<std::size_t>(field * 4 + nextLevel - 11)].cost * content::balance().researchCostPercent / 100;
+        require(above <= std::numeric_limits<int>::max(), "Invalid sourced research cost");
+        return static_cast<int>(above);
+    }
     const auto& entry = referenceData::TechnologyCatalogue[static_cast<std::size_t>(field * 11 + nextLevel)];
     require(entry.field == field && entry.level == nextLevel && entry.cost >= 0 &&
         entry.cost <= std::numeric_limits<int>::max(), "Invalid sourced research cost");
@@ -3764,9 +3802,14 @@ int researchCost(const GameState& state, int field, int nextLevel) {
     return static_cast<int>(scaled);
 }
 std::string technologyName(const GameState& state, int field, int level) {
-    require(field >= 0 && field < ResearchFields && level >= 0 && level <= MaxTechLevel,
+    require(field >= 0 && field < ResearchFields && level >= 0 && level <= techCap(state),
         "Invalid technology position");
     if (state.ruleset == Ruleset::Prototype) return std::string(researchName(field)) + " level " + std::to_string(level);
+    if (level > MaxTechLevel) {
+        const auto& high = content::eras().highTech;
+        require(high.size() == 24, "Research levels above 10 need a pack with an eras block");
+        return high[static_cast<std::size_t>(field * 4 + level - 11)].name;
+    }
     const auto& entry = referenceData::TechnologyCatalogue[static_cast<std::size_t>(field * 11 + level)];
     require(entry.field == field && entry.level == level, "Invalid sourced technology name");
     return entry.name;
@@ -4170,7 +4213,7 @@ void applyCampaignEra(GameState& s, StartingEra era) {
     require(startingEraValid(era), "Invalid starting era");
     s.startingEra = era;
     const bool isRef = (s.ruleset == Ruleset::Reference);
-    const int baseTech = eraBaseTechLevel(era, s.ruleset);
+    const int baseTech = eraStartTech(s); // Schema 22: the pack's start levels under the eras rule, else the classic table.
 
     auto configureEmpire = [&](EmpireState& e) {
         if (isRef) {
@@ -4310,16 +4353,23 @@ void applyCampaignEra(GameState& s, StartingEra era) {
             f.stance = TacticalStance::Balanced;
             if (isRef) {
                 const referenceData::ShipRecord* rec = nullptr;
-                const auto pick = [&](int race, int role) {
+                const auto pickFrom = [&](const auto& catalogue, int race, int role) {
                     const referenceData::ShipRecord* best = nullptr;
-                    for (const auto& ship : referenceData::ShipCatalogue) {
+                    for (const auto& ship : catalogue) {
                         if (!playableShip(ship) || ship.raceId != race || ship.role != role) continue;
                         bool ok = true;
                         for (int req : ship.technologyRequirements) if (req > baseTech) { ok = false; break; }
                         if (!ok) continue;
+                        if (s.rules.eras && !eraBlocker(s, ship.id).empty()) continue; // Schema 22: only ships in service in the start year
                         if (!best || ship.industryCost > best->industryCost) best = &ship;
                     }
                     return best;
+                };
+                const auto pick = [&](int race, int role) {
+                    // Under the eras rule the era's own canon classes come first; the legacy catalogue fills any gap.
+                    if (s.rules.eras && s.rules.expandedRoster)
+                        if (const auto* own = pickFrom(roster::ExpandedShipRecords, race, role)) return own;
+                    return pickFrom(referenceData::ShipCatalogue, race, role);
                 };
                 // The empire's own race first, then its donor's stand-in hulls (races without legacy catalogue ships).
                 for (const int race : {raceId, donorRace(empId)}) {
@@ -4493,9 +4543,9 @@ void validate(const GameState& s) {
         require(e.researchReserve >= 0 && e.researchReserve <= MaxBalance, "Invalid research reserve");
         for (int field = 0; field < ResearchFields; ++field) {
             const auto& tech = e.technologies[field];
-            require(tech.level >= 0 && tech.level <= MaxTechLevel && tech.allocation >= 0 && tech.allocation <= 100, "Invalid technology state");
+            require(tech.level >= 0 && tech.level <= techCap(s) && tech.allocation >= 0 && tech.allocation <= 100, "Invalid technology state");
             require(s.ruleset != Ruleset::Reference || tech.level >= 1, "Reference campaign begins at technology level one");
-            require(tech.progress >= 0 && (tech.level == MaxTechLevel ? tech.progress == 0 : tech.progress < researchCost(s, field, tech.level + 1)), "Invalid research progress");
+            require(tech.progress >= 0 && (tech.level == techCap(s) ? tech.progress == 0 : tech.progress < researchCost(s, field, tech.level + 1)), "Invalid research progress");
             allocated += tech.allocation; accounted += tech.progress;
             for (int level = 1; level <= tech.level; ++level) accounted += researchCost(s, field, level);
         }
@@ -5154,11 +5204,11 @@ TurnReport advanceWithCombat(GameState& state, const std::function<void(GameStat
         }
         for (int i = 0; i < ResearchFields; ++i) {
             auto& tech = owner.technologies[i]; tech.progress += awards[i];
-            while (tech.level < MaxTechLevel && tech.progress >= researchCost(next, i, tech.level + 1)) {
+            while (tech.level < techCap(next) && tech.progress >= researchCost(next, i, tech.level + 1)) {
                 tech.progress -= researchCost(next, i, ++tech.level);
                 if (owner.id == next.playerEmpire) report.events.push_back(std::string(researchName(i)) + " advanced to level " + std::to_string(tech.level) + ". Benefits apply next turn.");
             }
-            if (tech.level == MaxTechLevel) { owner.researchReserve += tech.progress; tech.progress = 0; }
+            if (tech.level == techCap(next)) { owner.researchReserve += tech.progress; tech.progress = 0; }
         }
     };
     settleResearch(next); for (auto& owner : next.rivals) settleResearch(owner);
@@ -5410,9 +5460,11 @@ GameState deserialize(const std::string& text) {
     // from 18 only by the header and the optional EMPIRE_SLOTS section (never present in 17).
     const bool legacy16 = version == 16 && content == "remaster-16";
     const bool legacy17 = version == 17 && content == "remaster-17";
-    const bool legacy18 = version == 18 && content == "remaster-18";   // Differs from 21 only by the header and the optional THREATS and STRUCTURES sections.
-    const bool legacy20 = version == 20 && content == "remaster-20";   // Differs from 21 only by the header and the optional STRUCTURES section (never present in 20).
-    const bool current21 = version == SaveVersion && content == ContentVersion;
+    const bool legacy18 = version == 18 && content == "remaster-18";   // Differs from 22 only by the header and the optional THREATS, STRUCTURES and ERAS sections.
+    const bool legacy20 = version == 20 && content == "remaster-20";   // Differs from 22 only by the header and the optional STRUCTURES and ERAS sections.
+    const bool legacy21 = version == 21 && content == "remaster-21";   // Differs from 22 only by the header and the optional ERAS section.
+    const bool current22 = version == SaveVersion && content == ContentVersion;
+    const bool current21 = current22 || legacy21;   // The STRUCTURES section is legal from schema 21 on.
     const bool current20 = current21 || legacy20;   // The THREATS section is legal from schema 20 on.
     const bool current18 = current20 || legacy18;   // The EMPIRE_SLOTS section is legal from schema 18 on.
     const bool current17 = current18 || legacy17;   // The PACKS section is legal from schema 17 on.
@@ -5425,7 +5477,7 @@ GameState deserialize(const std::string& text) {
     require(checksumStart != std::string::npos, "Missing save checksum");
     const auto rawBody = text.substr(0, checksumStart);
     require(text.substr(checksumStart) == "CHECKSUM " + std::to_string(hashText(rawBody)) + "\n",
-        (legacy7 || legacy8 || legacy9 || legacy10 || legacy11 || legacy12 || legacy13 || legacy14 || legacy15 || legacy16 || legacy17 || legacy18) ? "Legacy save checksum mismatch" : "Save checksum mismatch");
+        (legacy7 || legacy8 || legacy9 || legacy10 || legacy11 || legacy12 || legacy13 || legacy14 || legacy15 || legacy16 || legacy17 || legacy18 || legacy20 || legacy21) ? "Legacy save checksum mismatch" : "Save checksum mismatch");
     GameState s;
     tag(in, "STATE");
     in >> s.seed >> s.rngState >> s.lastAcceptedCommand >> s.width >> s.height >> s.turn >> s.credits >> s.research;
@@ -5869,6 +5921,13 @@ GameState deserialize(const std::string& text) {
         threats::readSection(in, s);
         nextTag = readTag("Malformed save section after THREATS");
     }
+    if (nextTag == "ERAS") {   // Schema 22: the eras rule (the pack's eras block supplies the data; validate() checks it exists).
+        require(current22, "Schema 22 section in an older save");
+        int revision = 0;
+        require(static_cast<bool>(in >> revision) && revision == 1, "Unsupported ERAS revision");
+        s.rules.eras = true;
+        nextTag = readTag("Malformed save section after ERAS");
+    }
     if (nextTag == "COMBAT_ORDERS") {
         require(current, "Schema 14 section in an older save");
         parseCombatOrders(in, s);
@@ -5931,12 +5990,12 @@ GameState deserialize(const std::string& text) {
             (!s.modernEnginesActive || hasIntelOperations),
             current ? "Schema 14 save is missing a required section" : "Schema 13 save is missing a required section");
         std::string expected = payload(s);
-        if (legacy13 || legacy14 || legacy15 || legacy16 || legacy17 || legacy18 || legacy20) {
+        if (legacy13 || legacy14 || legacy15 || legacy16 || legacy17 || legacy18 || legacy20 || legacy21) {
             // Schema 13 text is the schema-14 payload of a campaign without recorded round orders; schema 14 to 17 text are
             // the schema-18 payload of a campaign without a galaxy setup / empire rules / preset packs / lineup above slot five.
             const std::string header = std::string("BOTF_SIM ") + std::to_string(SaveVersion) + ' ' + ContentVersion + '\n';
             require(expected.starts_with(header), "Malformed canonical payload header");
-            expected.replace(0, header.size(), legacy20 ? "BOTF_SIM 20 remaster-20\n" : legacy18 ? "BOTF_SIM 18 remaster-18\n" : legacy17 ? "BOTF_SIM 17 remaster-17\n" : legacy16 ? "BOTF_SIM 16 remaster-16\n" : legacy15 ? "BOTF_SIM 15 remaster-15\n" : legacy14 ? "BOTF_SIM 14 remaster-14\n" : "BOTF_SIM 13 remaster-13\n");
+            expected.replace(0, header.size(), legacy21 ? "BOTF_SIM 21 remaster-21\n" : legacy20 ? "BOTF_SIM 20 remaster-20\n" : legacy18 ? "BOTF_SIM 18 remaster-18\n" : legacy17 ? "BOTF_SIM 17 remaster-17\n" : legacy16 ? "BOTF_SIM 16 remaster-16\n" : legacy15 ? "BOTF_SIM 15 remaster-15\n" : legacy14 ? "BOTF_SIM 14 remaster-14\n" : "BOTF_SIM 13 remaster-13\n");
         }
         require(rawBody == expected, "Save is not in canonical format");
     } else if (legacy12) {

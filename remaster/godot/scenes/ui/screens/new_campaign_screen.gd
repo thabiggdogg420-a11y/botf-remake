@@ -290,7 +290,7 @@ func _rules_column() -> Control:
 	var rb := Lcars.body(rules)
 	rb.add_theme_constant_override("separation", 12)
 	rb.add_child(_choice_row("Difficulty", NewCampaignVM.DIFFICULTIES.map(func(d): return [d["id"], d["label"], d["blurb"]]), vm.difficulty, func(id): vm.difficulty = id; refresh(), "difficulty"))
-	rb.add_child(_choice_row("Starting era", vm.eras().map(func(e): return [str(e["id"]), "%s T%d" % [e["name"], int(e["level"])], "%s\nStarting technology level %d in every field." % [e["blurb"], int(e["level"])]]), str(era), func(id): era = int(id); refresh(), "era"))
+	rb.add_child(_choice_row("Starting era", vm.eras().map(func(e): return [str(e["id"]), e["label"], e["tip"]]), str(era), func(id): era = int(id); refresh(), "era"))
 	rb.add_child(_choice_row("Ruleset", [["reference", "Reference", "Reference catalogue ships and technologies, planets & terraforming, task forces, modern diplomacy and intelligence."], ["prototype", "Prototype", "The original compact prototype ruleset with generic hulls."]], ruleset, func(id): ruleset = id; refresh(), "ruleset"))
 	var tg := Lcars.hbox(18)
 	var ev := CheckBox.new()

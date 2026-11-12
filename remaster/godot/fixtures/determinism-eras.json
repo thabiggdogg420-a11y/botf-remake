@@ -1,0 +1,213 @@
+{
+ "method": "fingerprint",
+ "args": {
+  "runs": 10
+ },
+ "result": [
+  {
+   "campaign": {
+    "faction": 1,
+    "seed": 424242,
+    "ruleset": "reference",
+    "width": 22,
+    "height": 16,
+    "systems": 50,
+    "era": 1,
+    "preset": "ages"
+   },
+   "turns": 60,
+   "result": "5601294985642116084",
+   "year": 2255,
+   "techCap": 14,
+   "level": 1
+  },
+  {
+   "campaign": {
+    "faction": 1,
+    "seed": 424242,
+    "ruleset": "reference",
+    "width": 22,
+    "height": 16,
+    "systems": 50,
+    "era": 2,
+    "preset": "ages"
+   },
+   "turns": 60,
+   "result": "8266493177347299932",
+   "year": 2295,
+   "techCap": 14,
+   "level": 3
+  },
+  {
+   "campaign": {
+    "faction": 1,
+    "seed": 424242,
+    "ruleset": "reference",
+    "width": 22,
+    "height": 16,
+    "systems": 50,
+    "era": 3,
+    "preset": "ages"
+   },
+   "turns": 60,
+   "result": "54965900248155019",
+   "year": 2335,
+   "techCap": 14,
+   "level": 5
+  },
+  {
+   "campaign": {
+    "faction": 1,
+    "seed": 424242,
+    "ruleset": "reference",
+    "width": 22,
+    "height": 16,
+    "systems": 50,
+    "era": 4,
+    "preset": "ages"
+   },
+   "turns": 60,
+   "result": "16576946227258333134",
+   "year": 2365,
+   "techCap": 14,
+   "level": 8
+  },
+  {
+   "campaign": {
+    "faction": 1,
+    "seed": 424242,
+    "ruleset": "reference",
+    "width": 22,
+    "height": 16,
+    "systems": 50,
+    "era": 5,
+    "preset": "ages"
+   },
+   "turns": 60,
+   "result": "12660317921504661276",
+   "year": 2395,
+   "techCap": 14,
+   "level": 11
+  },
+  {
+   "campaign": {
+    "faction": 1,
+    "seed": 424242,
+    "ruleset": "reference",
+    "width": 22,
+    "height": 16,
+    "systems": 50,
+    "era": 1,
+    "preset": "galaxies",
+    "lineup": [
+     "federation",
+     "klingon",
+     "romulan",
+     "dominion",
+     "borg"
+    ]
+   },
+   "turns": 60,
+   "result": "504814416865536026",
+   "year": 2255,
+   "techCap": 14,
+   "level": 1
+  },
+  {
+   "campaign": {
+    "faction": 1,
+    "seed": 424242,
+    "ruleset": "reference",
+    "width": 22,
+    "height": 16,
+    "systems": 50,
+    "era": 2,
+    "preset": "galaxies",
+    "lineup": [
+     "federation",
+     "klingon",
+     "romulan",
+     "dominion",
+     "borg"
+    ]
+   },
+   "turns": 26,
+   "result": "13264828887660183749",
+   "year": 2286,
+   "techCap": 14,
+   "level": 4
+  },
+  {
+   "campaign": {
+    "faction": 1,
+    "seed": 424242,
+    "ruleset": "reference",
+    "width": 22,
+    "height": 16,
+    "systems": 50,
+    "era": 3,
+    "preset": "galaxies",
+    "lineup": [
+     "federation",
+     "klingon",
+     "romulan",
+     "dominion",
+     "borg"
+    ]
+   },
+   "turns": 60,
+   "result": "7868651342108644973",
+   "year": 2335,
+   "techCap": 14,
+   "level": 7
+  },
+  {
+   "campaign": {
+    "faction": 1,
+    "seed": 424242,
+    "ruleset": "reference",
+    "width": 22,
+    "height": 16,
+    "systems": 50,
+    "era": 4,
+    "preset": "galaxies",
+    "lineup": [
+     "federation",
+     "klingon",
+     "romulan",
+     "dominion",
+     "borg"
+    ]
+   },
+   "turns": 60,
+   "result": "14766316024837680110",
+   "year": 2365,
+   "techCap": 14,
+   "level": 10
+  },
+  {
+   "campaign": {
+    "faction": 1,
+    "seed": 424242,
+    "ruleset": "reference",
+    "width": 22,
+    "height": 16,
+    "systems": 50,
+    "era": 5,
+    "preset": "galaxies",
+    "lineup": [
+     "federation",
+     "klingon",
+     "romulan",
+     "dominion",
+     "borg"
+    ]
+   },
+   "turns": 60,
+   "result": "1541733179663110796",
+   "year": 2395,
+   "techCap": 14,
+   "level": 14
+  }
+ ]
+}

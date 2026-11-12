@@ -265,7 +265,7 @@ std::vector<int> findPath(const GameState& s, int owner, int start, int goal, co
 
 std::int64_t researchGrantFor(const GameState& s, int empireId, int field, int percent, std::int64_t floor) {
     const auto& tech = empire(s, empireId).technologies[static_cast<std::size_t>(field)];
-    if (tech.level >= MaxTechLevel) return floor;
+    if (tech.level >= techCap(s)) return floor;
     return std::max<std::int64_t>(floor, static_cast<std::int64_t>(researchCost(s, field, tech.level + 1)) * percent / 100);
 }
 
@@ -276,9 +276,9 @@ void grantResearch(GameState& s, int empireId, int field, std::int64_t amount, T
     if (amount <= 0) return;
     e.research += amount;
     auto& tech = e.technologies[static_cast<std::size_t>(field)];
-    if (tech.level >= MaxTechLevel) { e.researchReserve += amount; return; }
+    if (tech.level >= techCap(s)) { e.researchReserve += amount; return; }
     tech.progress += amount;
-    while (tech.level < MaxTechLevel && tech.progress >= researchCost(s, field, tech.level + 1)) {
+    while (tech.level < techCap(s) && tech.progress >= researchCost(s, field, tech.level + 1)) {
         tech.progress -= researchCost(s, field, ++tech.level);
         if (report && empireId == s.playerEmpire) {
             ChronicleEntry entry;
@@ -288,7 +288,7 @@ void grantResearch(GameState& s, int empireId, int field, std::int64_t amount, T
             note(*report, std::move(entry));
         }
     }
-    if (tech.level == MaxTechLevel) { e.researchReserve += tech.progress; tech.progress = 0; }
+    if (tech.level == techCap(s)) { e.researchReserve += tech.progress; tech.progress = 0; }
 }
 
 void surveyAnomalies(GameState& moving, TurnReport& report, TurnEffects& effects) {

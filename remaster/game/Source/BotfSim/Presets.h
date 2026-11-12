@@ -9,6 +9,7 @@
 #include "Threats.h"
 
 #include <algorithm>
+#include <array>
 #include <map>
 #include <optional>
 #include <string>
@@ -26,7 +27,7 @@ inline constexpr const char* StockEmpires[] = {"Federation", "Klingon", "Romulan
 inline constexpr int StockEmpireCount = 8;
 
 inline constexpr const char* FlagNames[] = {"stations", "galaxyFeatures", "curatedEvents", "alternativeVictories",
-    "expandedRoster", "flightModel", "wegoCombat", "empireRules"};
+    "expandedRoster", "flightModel", "wegoCombat", "empireRules", "eras"};
 inline constexpr const char* SizeIds[] = {"small", "medium", "large", "huge"};
 inline constexpr const char* ShapeIds[] = {"legacy", "irregular", "spiral", "ring", "elliptical"};
 inline constexpr const char* DensityIds[] = {"legacy", "none", "few", "some", "many"};
@@ -100,7 +101,7 @@ inline std::vector<std::string> stringList(const content::json::Value& v, const 
 inline void checkFlags(const std::string& base, const std::vector<std::pair<std::string, bool>>& overrides, const std::string& path) {
     const bool remastered = base == "remastered";
     auto value = [&](const char* name) {
-        bool v = remastered || std::string(name) == "stations" || std::string(name) == "empireRules";
+        bool v = (remastered && std::string(name) != "eras") || std::string(name) == "stations" || std::string(name) == "empireRules";
         for (const auto& o : overrides) if (o.first == name) v = o.second;
         return v;
     };
@@ -112,6 +113,7 @@ inline void checkFlags(const std::string& base, const std::vector<std::pair<std:
             if (value(off)) content::detail::bad(path, std::string("flag ") + off + " cannot be on under the classic base");
     }
     if (value("wegoCombat") && !value("flightModel")) content::detail::bad(path, "wegoCombat needs flightModel");
+    if (value("eras") && !value("expandedRoster")) content::detail::bad(path, "eras needs expandedRoster");
 }
 
 inline Preset parsePreset(std::string_view bytes) {
@@ -264,6 +266,24 @@ inline const std::string* overlayBytes(const std::string& id) {
     const auto& o = detail::registry().overlays;
     const auto at = o.find(id);
     return at == o.end() ? nullptr : &at->second;
+}
+
+// Schema 22: what a preset's overlay stack says about eras (docs/design/ERAS.md), for the new-game screen. Builds the stack
+// without activating it; nothing is cached because only the picker asks, once per meta call.
+struct EraSummary {
+    bool present = false;
+    int techCap = 10;
+    std::array<int, 5> years{}, startTech{};
+};
+inline EraSummary erasOf(const Preset& p) {
+    EraSummary out;
+    if (p.overlays.empty()) return out;
+    std::vector<std::string_view> bytes;
+    for (const auto& id : p.overlays) bytes.push_back(*overlayBytes(id));
+    const auto pack = content::detail::buildStack(content::embeddedBaseBundle(), content::baseChecksum(), bytes);
+    if (!pack->eras.present) return out;
+    out.present = true; out.techCap = pack->eras.techCap; out.years = pack->eras.years; out.startTech = pack->eras.startTech;
+    return out;
 }
 
 // Makes the preset's content the active pack: the base pack with its overlays. A preset without overlays leaves a plain

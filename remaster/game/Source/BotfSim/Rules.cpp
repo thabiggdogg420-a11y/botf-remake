@@ -142,6 +142,8 @@ void validate(const GameState& s) {
         require(!r.galaxyFeatures && !r.curatedEvents && !r.alternativeVictories && !r.expandedRoster && !r.flightModel && !r.wegoCombat,
             "Classic ruleset has no anomalies, curated events, alternative victories or expanded roster");
     require(!r.wegoCombat || r.flightModel, "WEGO combat needs the flight model");
+    require(!r.eras || (r.expandedRoster && s.ruleset == Ruleset::Reference && content::eras().present),
+        "The eras rule needs the expanded roster and a pack with an eras block"); // Schema 22
     require(!r.stations || s.unifiedCombat, "Stations require the unified tactical combat model");
     validateFeatures(s);
     validateStations(s);
@@ -569,7 +571,11 @@ GameState newCampaign(const CampaignSetup& setup) {
             else if (flag.first == "flightModel") rules.flightModel = flag.second;
             else if (flag.first == "wegoCombat") rules.wegoCombat = flag.second;
             else if (flag.first == "empireRules") rules.empireRules = flag.second;
+            else if (flag.first == "eras") rules.eras = flag.second;
         }
+        // Schema 22: under the eras rule the start era's tech levels, credits and home fleets come from the pack's eras block, so the
+        // era is applied again with the rule on (the call is idempotent; it draws no random numbers). Off, nothing changes.
+        if (rules.eras && setup.reference) { state.rules.eras = true; state.rules.expandedRoster = rules.expandedRoster; applyCampaignEra(state, setup.era); }
         applyGameplayRules(state, rules);
         state.presetId = content::active().stack.empty() ? std::string() : named->id;
     } else {

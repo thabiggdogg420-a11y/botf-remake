@@ -124,16 +124,16 @@ const ThreatKind AllKinds[] = {ThreatKind::BorgCube, ThreatKind::BorgSphere, Thr
 int main() {
     int passed = 0;
 
-    run("default game: threats off, no section, no actor, header 20", [] {
+    run("default game: threats off, no section, no actor, the current header", [] {
         CampaignSetup setup; setup.seed = 3;
         auto s = newCampaign(setup);
         check(s.threats == ThreatSetup{} && s.threatActors.empty() && s.assimilated.empty() && s.nextThreatId == 1, "no threat state");
         auto text = serialize(s);
-        check(text.starts_with(headerOf(SaveVersion)) && !contains(text, "THREATS"), "current schema header, no THREATS section");
+        check(text.starts_with(headerOf(SaveVersion)) && !contains(text, "THREATS"), "current header, no THREATS section");
         for (int t = 0; t < 12; ++t) advance(s);
         check(!contains(serialize(s), "THREATS") && s.threatActors.empty(), "twelve turns later still no threat state");
         for (const auto k : AllKinds) check(!threats::kindEnabled(s, static_cast<int>(k)), "no kind enabled");
-        check(ContentVersion == std::string("remaster-21") && SaveVersion == 21, "schema 21 (MOD-3 renumbered over the schema-20 THREATS section)");
+        check(ContentVersion == "remaster-" + std::to_string(SaveVersion) && SaveVersion >= 20, "schema 20 or later (22 adds eras)");
     }, passed);
 
     run("switches: monsters, Borg-only off, sphere/8472/Edo replacements, mask, frequency, Borg seated", [] {
@@ -473,7 +473,7 @@ int main() {
         for (int i = 0; i < 4; ++i) advance(legacy);
         const auto text = serialize(legacy);
         check(text.starts_with(headerOf(SaveVersion)) && !contains(text, "THREATS"), "a legacy-shaped campaign saves without the section");
-        for (int old : {14, 15, 16, 17, 18, 20}) {
+        for (int old : {14, 15, 16, 17, 18, 20, 21}) {
             const auto migrated = deserialize(withHeader(text, old));
             check(serialize(migrated) == text, "schema " + std::to_string(old) + " text migrates to the current text");
             auto playing = migrated; advance(playing);
@@ -483,7 +483,7 @@ int main() {
         auto d = newCampaign(setup);
         for (int i = 0; i < 3; ++i) advance(d);
         const auto remastered = serialize(d);
-        for (int old : {16, 17, 18}) {
+        for (int old : {16, 17, 18, 20, 21}) {
             const auto m = deserialize(withHeader(remastered, old));
             check(serialize(m) == remastered && fingerprint(m) == fingerprint(d), "a schema-" + std::to_string(old) + " header over a four-empire Remastered text migrates");
         }

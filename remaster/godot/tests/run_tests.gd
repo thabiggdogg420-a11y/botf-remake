@@ -260,6 +260,18 @@ func test_fixture_determinism() -> void:
 		check(api("fingerprint") == run.result, "threats %s: fingerprint %s == wasm %s" % [JSON.stringify(run.campaign.threats), api("fingerprint"), run.result])
 		check(int(tv.threatsSpawned) == int(run.spawned) and int(run.spawned) > 2, "threats: the native core spawned %d actors, wasm %d" % [int(tv.threatsSpawned), int(run.spawned)])
 		check(JSON.stringify(tv.threatSetup) == JSON.stringify(run.threats), "threats: the view reports the switches the game was started with")
+	# Campaign eras (schema 22): Ages and Galaxies at every start year, native against wasm, with the year, cap and start level.
+	var ex := load_fixture("determinism-eras")
+	for run in ex.result:
+		api("newCampaign", run.campaign)
+		for i in int(run.turns):
+			end_turn()
+		var ev: Dictionary = api("view")
+		var tag := "%s/%d" % [run.campaign.preset, int(run.campaign.era)]
+		check(api("fingerprint") == run.result, "eras %s: fingerprint %s == wasm %s" % [tag, api("fingerprint"), run.result])
+		check(int(ev.meta.year) == int(run.year) and int(ev.meta.techCap) == int(run.techCap) and int(ev.meta.techCap) == 14 and int(run.year) >= 2240, "eras %s: year %d and cap %d match the wasm core" % [tag, int(ev.meta.year), int(ev.meta.techCap)])
+		check(int(api("research").fields[0].level) == int(run.level), "eras %s: research level matches" % tag)
+	api("loadBaseContent")
 	# Packs and presets (schema 17): every preset's fingerprint, stack checksum and recorded preset id, native against wasm.
 	var px := load_fixture("determinism-presets")
 	for run in px.result:
@@ -367,7 +379,7 @@ func test_uncharted_view() -> void:
 
 ## The view is a read: a fixed-seed autoplay to turn 20 reaches the same state with or without the view being read every turn,
 ## and the hash is the one the core produced before the view change (recorded from the unchanged simulation sources).
-const FINGERPRINT_T20 := "12390440946089379385" # re-pinned for schema 21 (the header line is in the payload; body unchanged vs schema 20, see DOMINION.md); native and wasm agree
+const FINGERPRINT_T20 := "10661046938819612369" # re-pinned for schema 22 (the header line is in the payload; body unchanged vs schema 21, see ERAS.md); native and wasm agree
 
 func _autoplay_fingerprint(read_view: bool) -> String:
 	api("newCampaign", CAMPAIGN)

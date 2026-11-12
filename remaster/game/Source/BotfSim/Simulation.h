@@ -26,10 +26,12 @@ namespace botf {
 // two to eight majors with stable ids 1..8 (optional EMPIRE_SLOTS section, written only when an id above five is in play);
 // schema 20 adds the threat actors (Borg, Species 8472, the vanilla monsters; Threats.h, docs/design/THREAT-ACTORS.md; optional
 // THREATS section, written only when a threat switch is on or an actor or assimilated system exists);
-// schema 21 adds the race structures (Structures.h, docs/design/DOMINION.md; optional STRUCTURES section, written only while a colony holds one).
-// Schemas 4-20 still load and continue.
-inline constexpr const char* ContentVersion = "remaster-21";
-inline constexpr int SaveVersion = 21;
+// schema 21 adds the race structures (Structures.h, docs/design/DOMINION.md; optional STRUCTURES section, written only while a colony holds one);
+// schema 22 adds the campaign era (docs/design/ERAS.md): a timeline year per start era, era-gated ship classes and research levels
+// 11 to 14 (optional ERAS section, written only when the eras rule is on).
+// Schemas 4-21 still load and continue.
+inline constexpr const char* ContentVersion = "remaster-22";
+inline constexpr int SaveVersion = 22;
 // Campaign empire ids are race slots: 1 Federation, 2 Klingon, 3 Romulan, 4 Cardassian, 5 Ferengi, 6 Dominion, 7 Borg,
 // 8 Breen. A campaign seats two to eight of them (any subset); per-empire arrays are indexed by id, so they hold nine entries.
 inline constexpr int MaxMajors = 8;
@@ -74,7 +76,9 @@ enum class CommandType : int {
     SetEmergencyProgram, ResolveAftermath
 };
 enum class CampaignOutcome : int { Ongoing, Victory, Defeat };
-inline constexpr int ResearchFields = 6, MaxTechLevel = 10;
+// MaxTechLevel is the classic research cap (every game without the eras rule); HighestTechLevel is the hard ceiling the data
+// tables and saves allow. techCap(state) is the cap a campaign plays under.
+inline constexpr int ResearchFields = 6, MaxTechLevel = 10, HighestTechLevel = 14;
 enum class ResearchField : int { Biotech, Computers, Construction, Energy, Propulsion, Weapons };
 struct ResearchTrack { int level = 0; std::int64_t progress = 0; int allocation = 0; };
 struct Construction {
@@ -421,6 +425,9 @@ struct GameplayRules {
     // Schema 15: dilithium ship slots, emergency programs, invasion aftermath, minor conquest and guard ships
     // (EMPIRE-RULES.md). Saved as the optional EMPIRE_RULES section, so older saves keep it off.
     bool empireRules = false;
+    // Schema 22: campaign era (ERAS.md): a timeline year, era-gated roster classes, the pack's start tech levels and research
+    // cap (10..14). Needs expandedRoster and a pack with an eras block. Saved as the optional ERAS section.
+    bool eras = false;
     bool operator==(const GameplayRules&) const = default;
 };
 
@@ -651,6 +658,14 @@ const char* startingEraName(StartingEra era);
 inline const char* eraName(StartingEra era) { return startingEraName(era); }
 bool startingEraValid(StartingEra era);
 int eraBaseTechLevel(StartingEra era, Ruleset ruleset = Ruleset::Reference);
+// Schema 22 (ERAS.md). All of these are the classic answers when the eras rule is off.
+int techCap(const GameState& state);                  // Highest research level: 10, or the pack's cap (up to 14) under eras.
+int eraStartTech(const GameState& state);             // Tech level every field starts at for the campaign's start era.
+int campaignYear(const GameState& state);             // Timeline year: the start era's year plus turn / turnsPerYear (eras rule only; 0 otherwise).
+int eraStartYear(StartingEra era);                    // The year a start era begins (the active pack's table; 2240..2380 by default).
+// Why this roster class cannot be built yet or any more under the campaign's timeline; empty when it can (or the rule is off).
+std::string eraBlocker(const GameState& state, int shipId);
+void applyCampaignEra(GameState& state, StartingEra era);
 std::vector<StartingEra> availableStartingEras();
 StartingEra campaignStartingEra(const GameState& state);
 

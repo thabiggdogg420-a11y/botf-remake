@@ -158,7 +158,7 @@ const char* victoryConditionName(VictoryCondition condition) {
 }
 
 int scientificVictoryThreshold(const GameState& state) {
-    return std::min(MaxTechLevel, eraBaseTechLevel(state.startingEra, state.ruleset) + 3);
+    return std::min(techCap(state), eraStartTech(state) + 3);
 }
 
 const char* megaprojectName(const GameState& state) {

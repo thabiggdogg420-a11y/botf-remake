@@ -21,6 +21,15 @@ const ERA_BLURBS := {
 	5: "Supreme technology from turn one.",
 }
 
+## The same five starts under a preset with the eras rule (Ages, Galaxies): a timeline year, with era-gated ships (schema 22).
+const TIMELINE_BLURBS := {
+	1: "The Original Series age: NX-era ships retire, Constitution-class cruisers enter service in 2245.",
+	2: "The film era: refit Constitutions, the Excelsior from 2285, D7s and Romulan Birds-of-Prey.",
+	3: "The dawn of the next generation: the Challenger and Cheyenne lines enter service from 2340.",
+	4: "Deep in the next generation; the Dominion War fleet (Intrepid, Akira) arrives from 2368.",
+	5: "The war is over: Prometheus, Mogai, Negh'Tev and the Nemesis-era fleets, research to level 14.",
+}
+
 var faction := 1
 var empires := 5
 var size_id := "medium"
@@ -310,18 +319,40 @@ func options() -> Dictionary:
 	o["threats"] = threats.duplicate(true)
 	return o
 
-## Era buttons: [{id, name, level, blurb}].
+## The chosen preset's eras block ({techCap, years, startTech}), or {} when it has none (Classic, Remastered and the other presets).
+func preset_eras() -> Dictionary:
+	var d := preset_def()
+	var e = d.get("eras", {}) if not d.is_empty() else {}
+	return e if e is Dictionary else {}
+
+## Era buttons: [{id, name, level, year, blurb, label, tip}]. Under a preset with the eras rule the button shows the start year and
+## that preset's start tech level; otherwise the era name and the classic level.
 func eras() -> Array:
 	var out := []
+	var pe := preset_eras()
 	for e in meta().get("eras", []):
+		var id := int(e["id"])
 		var lvl := int(e["techLevel"] if ruleset == "reference" else e["prototypeTechLevel"])
-		out.append({"id": int(e["id"]), "name": str(e["name"]), "level": lvl, "blurb": ERA_BLURBS.get(int(e["id"]), "")})
+		var year := 0
+		var blurb: String = ERA_BLURBS.get(id, "")
+		var label := ""
+		var tip_text := ""
+		if not pe.is_empty() and ruleset == "reference":
+			lvl = int((pe["startTech"] as Array)[id - 1])
+			year = int((pe["years"] as Array)[id - 1])
+			blurb = TIMELINE_BLURBS.get(id, "")
+			label = "%d  T%d" % [year, lvl]
+			tip_text = "%s\nStarting technology level %d in every field. Research runs to level %d; ships enter service and retire on the timeline." % [blurb, lvl, int(pe["techCap"])]
+		else:
+			label = "%s T%d" % [str(e["name"]), lvl]
+			tip_text = "%s\nStarting technology level %d in every field." % [blurb, lvl]
+		out.append({"id": id, "name": str(e["name"]), "level": lvl, "year": year, "blurb": blurb, "label": label, "tip": tip_text})
 	return out
 
 func era_name() -> String:
-	for e in meta().get("eras", []):
+	for e in eras():
 		if int(e["id"]) == era:
-			return str(e["name"])
+			return ("%d start" % int(e["year"])) if int(e["year"]) > 0 else str(e["name"])
 	return ""
 
 func faction_name(id: int, fallback: String) -> String:

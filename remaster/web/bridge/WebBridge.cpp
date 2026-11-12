@@ -950,6 +950,7 @@ void writeView(Writer& w) {
     w.field("player", me); w.field("playerName", empireLabel(me));
     w.field("ruleset", s.ruleset == botf::Ruleset::Reference ? "reference" : "prototype");
     w.field("era", static_cast<int>(s.startingEra)); w.field("eraName", botf::startingEraName(s.startingEra));
+    w.field("erasRule", s.rules.eras); w.field("year", botf::campaignYear(s)); w.field("techCap", botf::techCap(s)); // Schema 22
     w.field("contentVersion", botf::ContentVersion); w.field("saveVersion", botf::SaveVersion);
     w.field("outcome", s.outcome == botf::CampaignOutcome::Victory ? "victory" : s.outcome == botf::CampaignOutcome::Defeat ? "defeat" : "ongoing");
     w.field("winner", s.winnerEmpire);
@@ -1029,7 +1030,7 @@ void writeView(Writer& w) {
         w.field("level", t.level); w.field("progress", t.progress);
         w.field("allocation", dt.allocation); w.field("committedAllocation", t.allocation);
         w.field("current", botf::technologyName(s, i, t.level));
-        if (t.level < botf::MaxTechLevel) {
+        if (t.level < botf::techCap(s)) {
             w.field("next", botf::technologyName(s, i, t.level + 1));
             w.field("cost", botf::researchCost(s, i, t.level + 1));
         } else { w.key("next").null(); w.field("cost", 0); }
@@ -1554,6 +1555,7 @@ void writeResearch(Writer& w) {
     const auto& d = draft();
     const int race = catalogueRaceOf(s.playerEmpire);
     w.beginObject();
+    w.field("techCap", botf::techCap(s)); // Schema 22: 10, or up to 14 under the eras rule
     w.key("fields").beginArray();
     for (int i = 0; i < botf::ResearchFields; ++i) {
         const auto& t = s.technologies[static_cast<std::size_t>(i)];
@@ -1564,14 +1566,16 @@ void writeResearch(Writer& w) {
         w.field("committedAllocation", t.allocation);
         w.field("current", botf::technologyName(s, i, t.level));
         w.key("levels").beginArray();
-        for (int level = 0; level <= botf::MaxTechLevel; ++level) {
+        for (int level = 0; level <= botf::techCap(s); ++level) {
             w.beginObject();
             w.field("level", level);
             w.field("name", botf::technologyName(s, i, level));
             w.field("cost", level >= 1 ? botf::researchCost(s, i, level) : 0);
-            if (s.ruleset == botf::Ruleset::Reference) {
+            if (s.ruleset == botf::Ruleset::Reference && level <= botf::MaxTechLevel) {
                 const auto& entry = botf::referenceData::TechnologyCatalogue[static_cast<std::size_t>(i * 11 + level)];
                 if (entry.field == i && entry.level == level) w.field("description", entry.description);
+            } else if (s.ruleset == botf::Ruleset::Reference) {   // Schema 22: levels 11..14 from the pack's eras block
+                w.field("description", botf::content::eras().highTech[static_cast<std::size_t>(i * 4 + level - 11)].description);
             }
             // Unlock preview from the reference catalogue: this empire's ships whose requirement in
             // this field is exactly this level, and structures keyed to this field/level.
@@ -3150,13 +3154,14 @@ void writeMeta(Writer& w) {
     w.key("eras").beginArray();
     for (auto era : botf::availableStartingEras())
         w.beginObject().field("id", static_cast<int>(era)).field("name", botf::startingEraName(era))
+            .field("year", botf::eraStartYear(era))
             .field("techLevel", botf::eraBaseTechLevel(era, botf::Ruleset::Reference))
             .field("prototypeTechLevel", botf::eraBaseTechLevel(era, botf::Ruleset::Prototype)).endObject();
     w.endArray();
     w.key("researchFields").beginArray();
     for (int i = 0; i < botf::ResearchFields; ++i) w.value(botf::researchName(i));
     w.endArray();
-    w.field("maxTechLevel", botf::MaxTechLevel);
+    w.field("maxTechLevel", botf::MaxTechLevel); w.field("highestTechLevel", botf::HighestTechLevel);
     w.key("presets"); writePresets(w);
     w.key("threatKinds"); writeThreatKinds(w);
     w.key("threatFrequencies").beginArray(); for (int i = 0; i < 4; ++i) w.value(botf::threats::frequencyName(i)); w.endArray();
@@ -3272,6 +3277,15 @@ void writePresets(Writer& w) {
         if (p->threats) { w.key("threats"); writeThreatSetup(w, *p->threats); }
         w.endObject();
         w.key("needs").beginArray(); for (const auto& n : p->needs) w.value(n); w.endArray();
+        {   // Schema 22: the start year and start tech level of each era under this preset, and its research cap.
+            const auto eras = botf::presets::erasOf(*p);
+            if (eras.present) {
+                w.key("eras").beginObject().field("techCap", eras.techCap);
+                w.key("years").beginArray(); for (int y : eras.years) w.value(y); w.endArray();
+                w.key("startTech").beginArray(); for (int t : eras.startTech) w.value(t); w.endArray();
+                w.endObject();
+            }
+        }
         w.endObject();
     }
     w.endArray();
