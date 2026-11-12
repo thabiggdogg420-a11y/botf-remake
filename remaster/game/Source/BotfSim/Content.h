@@ -746,7 +746,8 @@ inline constexpr const char* OverlaySections[] = {"technologies", "ships", "buil
 // Optional record keys (absent from the base pack's records): a patch may add them to a record that lacks them. The strict typed parse
 // after the merge still checks name, type and range, so a stray key anywhere else stays an error.
 inline bool optionalField(const std::string& key) {
-    return key == "available" || key == "featured" || key == "majorRaceId" || key == "traitEffects";
+    return key == "available" || key == "featured" || key == "majorRaceId" || key == "traitEffects" ||
+        key == "buildable" || key == "perEmpireLimit"; // Schema 23: the economy overlay makes vanilla records buildable
 }
 
 inline json::Value* member(json::Value& obj, const std::string& key) {
