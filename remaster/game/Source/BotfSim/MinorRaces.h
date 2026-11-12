@@ -19,7 +19,9 @@
 #pragma once
 
 #include "Content.h"
+#include "EmpireSlots.h"
 #include "Simulation.h"
+#include "Structures.h"
 
 #include <algorithm>
 #include <array>
@@ -155,12 +157,22 @@ inline void placeRosterMinors(GameState& s, std::uint64_t seed, StartingEra era,
     if (static_cast<int>(s.minors.size()) >= target) return;
 
     std::vector<const MinorRaceRecord*> races;
-    for (const auto& r : Roster) if (!usedRaces.count(r.id)) races.push_back(&r);
+    for (const auto& r : Roster) {
+        if (usedRaces.count(r.id) || !r.available) continue;
+        // A minor that is also a major race (the Breen) stays out while that race is seated as a major empire.
+        if (r.majorRaceId >= 0) {
+            const auto* major = &content::tables::races()[static_cast<std::size_t>(r.majorRaceId)];
+            if (major->empireId != 0 && detail::campaignEmpire(s, major->empireId)) continue;
+        }
+        races.push_back(&r);
+    }
     std::sort(races.begin(), races.end(), [&](const MinorRaceRecord* a, const MinorRaceRecord* b) {
         const auto ha = detail::mix(seed ^ 0x6d696e6f72726163ULL ^ static_cast<std::uint64_t>(a->id));
         const auto hb = detail::mix(seed ^ 0x6d696e6f72726163ULL ^ static_cast<std::uint64_t>(b->id));
         return ha != hb ? ha < hb : a->id < b->id;
     });
+    // Featured minors (a pack's Bajor for the Edo) are placed before the seeded draw reaches the rest; the seeded order holds within each group.
+    std::stable_partition(races.begin(), races.end(), [](const MinorRaceRecord* r) { return r->featured; });
     std::vector<System*> candidates;
     for (auto& sys : s.systems) candidates.push_back(&sys);
     std::sort(candidates.begin(), candidates.end(), [&](const System* a, const System* b) {
@@ -207,7 +219,7 @@ struct MemberBonuses {
 
 inline MemberBonuses memberBonuses(const GameState& s, int empireId) {
     MemberBonuses b;
-    if (empireId < 1 || empireId > 5) return b;
+    if (empireId < 1 || empireId > MaxMajors) return b;
     for (const auto& m : s.minors) {
         if (m.memberOf != empireId) continue;
         ++b.members;
@@ -222,6 +234,9 @@ inline MemberBonuses memberBonuses(const GameState& s, int empireId) {
             case JoinBonus::GroundDefense: b.groundDefensePct += r->bonusValue; break;
         }
     }
+    // MOD-3: the empire's race traits (Founders' will, Vorta commerce, Jem'Hadar troops) ride on the same totals; all zero in the base pack.
+    const auto trait = slots::traitEffects(empireId);
+    b.morale += trait.morale; b.creditsPct += trait.creditsPct; b.groundDefensePct += trait.groundDefensePct;
     b.morale = std::min(b.morale, 20);
     return b;
 }
@@ -236,7 +251,7 @@ inline int invasionDefense(const GameState& s, const Colony& target, int baseDef
     if (const auto* m = minorAt(s, target.systemId); m && managed(*m) && m->memberOf == target.ownerId) {
         if (const auto* r = raceFor(*m); r && r->temperament == Temperament::Warlike) defense += 5 + 2 * m->techLevel;
     }
-    return defense * (100 + memberBonuses(s, target.ownerId).groundDefensePct) / 100;
+    return defense * (100 + memberBonuses(s, target.ownerId).groundDefensePct + structures::colonyEffects(target).groundPct) / 100;
 }
 
 // Shapes the colony a managed minor brings when it joins: its own population and a workforce that

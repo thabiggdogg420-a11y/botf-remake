@@ -2,8 +2,8 @@
  "method": "meta",
  "args": {},
  "result": {
-  "contentVersion": "remaster-20",
-  "saveVersion": 20,
+  "contentVersion": "remaster-21",
+  "saveVersion": 21,
   "empires": [
    {
     "id": 1,
@@ -211,9 +211,10 @@
    {
     "id": "dominion-war",
     "name": "Dominion War",
-    "blurb": "The Ultimate Dominion Mod: the Dominion takes the Ferengi's place in a large, crowded galaxy at war. Dominion content is still being built; until then you play the stock empires.",
+    "blurb": "The Ultimate Dominion Mod: the Dominion takes the Ferengi's place. It plays with its own structure ladder (Vorta centres, Ketracel-White, the Founders' Sanctuary, the Changeling Shapeshifter Network), Founders and Vorta traits and the Jem'Hadar line. Bajor replaces the Edo and new minors join. Scripted war to come.",
     "rulesBase": "remastered",
     "overlays": [
+     "dominion",
      "dominion-war"
     ],
     "flags": {},
@@ -247,8 +248,6 @@
      }
     },
     "needs": [
-     "MOD-2",
-     "MOD-3",
      "MOD-8"
     ]
    },
@@ -869,6 +868,14 @@
     "industryCost": 120,
     "energyCost": 5,
     "upkeep": 2,
+    "isShip": false
+   },
+   {
+    "key": "Structure",
+    "name": "Structure",
+    "industryCost": 0,
+    "energyCost": 0,
+    "upkeep": 0,
     "isShip": false
    }
   ]

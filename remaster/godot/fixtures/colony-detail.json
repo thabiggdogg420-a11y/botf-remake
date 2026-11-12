@@ -122,6 +122,7 @@
   },
   "baseCapacity": 110,
   "maxCapacity": 220,
+  "raceStructures": [],
   "planets": [
    {
     "index": 0,

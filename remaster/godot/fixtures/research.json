@@ -3200,6 +3200,11 @@
     "product": "DilithiumRefinery",
     "name": "Dilithium refinery",
     "blocker": ""
+   },
+   {
+    "product": "Structure",
+    "name": "Structure",
+    "blocker": ""
    }
   ]
  }

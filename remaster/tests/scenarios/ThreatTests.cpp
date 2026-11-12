@@ -129,11 +129,11 @@ int main() {
         auto s = newCampaign(setup);
         check(s.threats == ThreatSetup{} && s.threatActors.empty() && s.assimilated.empty() && s.nextThreatId == 1, "no threat state");
         auto text = serialize(s);
-        check(text.starts_with(headerOf(20)) && !contains(text, "THREATS"), "schema 20 header, no THREATS section");
+        check(text.starts_with(headerOf(SaveVersion)) && !contains(text, "THREATS"), "current schema header, no THREATS section");
         for (int t = 0; t < 12; ++t) advance(s);
         check(!contains(serialize(s), "THREATS") && s.threatActors.empty(), "twelve turns later still no threat state");
         for (const auto k : AllKinds) check(!threats::kindEnabled(s, static_cast<int>(k)), "no kind enabled");
-        check(ContentVersion == std::string("remaster-20") && SaveVersion == 20, "schema 20");
+        check(ContentVersion == std::string("remaster-21") && SaveVersion == 21, "schema 21 (MOD-3 renumbered over the schema-20 THREATS section)");
     }, passed);
 
     run("switches: monsters, Borg-only off, sphere/8472/Edo replacements, mask, frequency, Borg seated", [] {
@@ -472,10 +472,10 @@ int main() {
         auto legacy = generateReferenceCampaign(5, 3);
         for (int i = 0; i < 4; ++i) advance(legacy);
         const auto text = serialize(legacy);
-        check(text.starts_with(headerOf(20)) && !contains(text, "THREATS"), "a legacy-shaped campaign saves without the section");
-        for (int old : {14, 15, 16, 17, 18}) {
+        check(text.starts_with(headerOf(SaveVersion)) && !contains(text, "THREATS"), "a legacy-shaped campaign saves without the section");
+        for (int old : {14, 15, 16, 17, 18, 20}) {
             const auto migrated = deserialize(withHeader(text, old));
-            check(serialize(migrated) == text, "schema " + std::to_string(old) + " text migrates to the schema-20 text");
+            check(serialize(migrated) == text, "schema " + std::to_string(old) + " text migrates to the current text");
             auto playing = migrated; advance(playing);
             check(playing.turn == migrated.turn + 1, "a migrated schema-" + std::to_string(old) + " campaign plays on");
         }

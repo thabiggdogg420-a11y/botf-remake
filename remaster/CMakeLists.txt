@@ -90,3 +90,5 @@ set_tests_properties(BotfEmpireRulesTests PROPERTIES TIMEOUT 900)
 # Empire slots (docs/design/EMPIRE-SLOTS.md, schema 17): lineups of two to eight majors, Dominion and Borg as majors, migration.
 botf_suite(BotfEmpireSlotsTests EmpireSlotsTests.cpp)
 set_tests_properties(BotfEmpireSlotsTests PROPERTIES TIMEOUT 900)
+botf_suite(BotfDominionTests DominionTests.cpp) # MOD-3: Dominion overlay, race structures, new minors, schema-21 STRUCTURES section
+set_tests_properties(BotfDominionTests PROPERTIES TIMEOUT 900)
