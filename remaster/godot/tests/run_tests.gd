@@ -293,8 +293,8 @@ func test_fixture_determinism() -> void:
 		check(dinfo.id == run.content.id and dinfo.checksum == run.content.checksum and dinfo.stack.size() == int(run.content.stack), "Dominion War stack %s %s == wasm %s %s" % [dinfo.id, dinfo.checksum, run.content.id, run.content.checksum])
 	api("loadBaseContent")
 	# Economy and rules mechanics (schema 23): presets carrying the economy flags, 50 turns, native against wasm.
-	var ex := load_fixture("determinism-economy")
-	for run in ex.result:
+	var exx := load_fixture("determinism-economy")
+	for run in exx.result:
 		api("newCampaign", run.campaign)
 		for i in int(run.turns):
 			end_turn()

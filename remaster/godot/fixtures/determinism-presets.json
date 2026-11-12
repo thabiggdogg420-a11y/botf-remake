@@ -80,10 +80,10 @@
     "preset": "ages"
    },
    "turns": 8,
-   "result": "16298783125999870576",
+   "result": "13929826758989155651",
    "content": {
     "id": "botf-base+ages",
-    "checksum": "a13b2f0bb2515a0d",
+    "checksum": "391a0b95c0674250",
     "stack": 1
    },
    "preset": "ages"
@@ -101,11 +101,11 @@
     "preset": "galaxies"
    },
    "turns": 8,
-   "result": "4272578540551751843",
+   "result": "5957816771933138912",
    "content": {
-    "id": "botf-base+galaxies",
-    "checksum": "cf3311ce7c050c93",
-    "stack": 1
+    "id": "botf-base+dominion+galaxies",
+    "checksum": "d256a750dde3aa89",
+    "stack": 2
    },
    "preset": "galaxies"
   },
