@@ -471,7 +471,7 @@ test('expanded ship roster: database, build options and typed weapon mounts', ()
   assert.ok(nx && nx.blocker === '', 'the tier-0 NX is buildable from the start');
   call('submit', { command: { type: 'EnqueueBuilding', systemId: v.colonies[0].systemId, building: nx.product, referenceId: nx.referenceId } });
   const c = call('newCampaign', { faction: 1, seed: 424242, era: 1, ruleset: 'reference', preset: 'classic' });
-  assert.ok(!call('colony', { systemId: c.colonies[0].systemId }).choices.some((x) => x.referenceId >= 1000));
+  assert.ok(!call('colony', { systemId: c.colonies[0].systemId }).choices.some((x) => x.referenceId >= 1000 && x.referenceId < 100000));
 });
 
 test('presets: the registry, a stacked game, a save that carries its packs, and the plain pack coming back', () => {
@@ -514,7 +514,7 @@ test('Dominion War (MOD-3): race structures in the build list and on the colony,
   const home = v.colonies[0].systemId;
   const col = call('colony', { systemId: home });
   assert.deepEqual(col.raceStructures.map((x) => x.name), ['Vorta Administrative Center', 'Ketracel-White Facility']);
-  const rung = col.choices.filter((x) => x.product === 'Structure' && x.referenceId < 1000000).filter((x) => !['Fleet Academy', 'Unity Monument', 'Protectorate Headquarters'].includes(x.name));
+  const rung = col.choices.filter((x) => x.product === 'Structure' && x.referenceId < 1000000).filter((x) => !['Fleet Academy', 'Unity Monument', 'Protectorate Headquarters', 'Central Command', 'Starfleet Academy', 'Tactical College', 'Naval Academy'].includes(x.name));
   assert.equal(rung.length, 10, 'ten Dominion structures are listed');
   assert.equal(col.choices.filter((x) => ['Fleet Academy', 'Unity Monument', 'Protectorate Headquarters'].includes(x.name)).length, 3, 'the economy overlay adds three structures');
   assert.ok(rung.every((x) => x.referenceId >= 100000 && x.isShip === false && x.effect !== undefined));
@@ -532,7 +532,7 @@ test('Dominion War (MOD-3): race structures in the build list and on the colony,
   assert.equal(call('fingerprint'), fp, 'the loaded game has the saved fingerprint');
   const fed = call('newCampaign', { ...camp, faction: 1 });
   const fedCol = call('colony', { systemId: fed.colonies[0].systemId });
-  assert.ok(!fedCol.choices.some((x) => x.product === 'Structure' && x.referenceId < 1000000 && !['Fleet Academy', 'Unity Monument', 'Protectorate Headquarters'].includes(x.name)), 'the Federation is offered no Dominion structure');
+  assert.ok(!fedCol.choices.some((x) => x.product === 'Structure' && x.referenceId < 1000000 && !['Fleet Academy', 'Unity Monument', 'Protectorate Headquarters', 'Central Command', 'Starfleet Academy', 'Tactical College', 'Naval Academy'].includes(x.name)), 'the Federation is offered no Dominion structure');
   call('newCampaign', { faction: 1, seed: 1, preset: 'remastered' });
   assert.equal(call('contentInfo').base, true, 'a built-in preset restores the base pack');
 });
@@ -540,7 +540,7 @@ test('Dominion War (MOD-3): race structures in the build list and on the colony,
 test('Economy rules (MOD-6): flags in the view, upgrade entries in the build list, fleet orders, crew experience, schema 23 save', () => {
   const classic = call('newCampaign', { faction: 1, seed: 424242, era: 1, ruleset: 'reference', preset: 'classic' });
   assert.equal(classic.meta.rules.structureUpgrades, false);
-  assert.equal(classic.meta.rules.interceptOrders, false);
+  assert.equal(classic.meta.rules.interceptOrders, true);
   assert.ok(!call('colony', { systemId: classic.colonies[0].systemId }).choices.some((x) => /^Upgrade/.test(x.name)), 'Classic lists no upgrades');
   const v = call('newCampaign', { faction: 1, seed: 424242, era: 1, ruleset: 'reference', preset: 'remastered' });
   for (const k of ['structureUpgrades', 'interceptOrders', 'raidOrders', 'crewExperience', 'exploitFixes']) assert.equal(v.meta.rules[k], true, k);
@@ -560,10 +560,33 @@ test('Economy rules (MOD-6): flags in the view, upgrade entries in the build lis
   assert.equal(bad.ok, false, 'a raid on your own colony is refused');
   for (let i = 0; i < 3; i++) endTurn();
   const save = call('save');
-  assert.ok(String(save.data).startsWith('BOTF_SIM 23 remaster-23\n') && String(save.data).includes('\nECONOMY_RULES 1 '), 'schema 23 with the section');
+  assert.ok(String(save.data).startsWith('BOTF_SIM 24 remaster-24\n') && String(save.data).includes('\nECONOMY_RULES 1 '), 'schema 24 with the economy section');
   const fp = call('fingerprint');
   call('load', { data: save.data });
   assert.equal(call('fingerprint'), fp);
+});
+
+test('Balance and AI (MOD-7): Expert, planets per star, start colonies, race star types, preset option defaults, schema 24', () => {
+  const base = { faction: 1, seed: 424242, era: 1, ruleset: 'reference', width: 22, height: 16, systems: 50 };
+  assert.equal(attempt('newCampaign', { ...base, difficulty: 'godlike' }).ok, false, 'an unknown difficulty is refused');
+  const ex = call('newCampaign', { ...base, difficulty: 'expert' });
+  assert.equal(call('meta').saveVersion, 24);
+  const crowded = call('newCampaign', { ...base, planetsMin: 6, planetsMax: 9, startSystems: 2, starTypes: true });
+  const owned = crowded.systems.filter((x) => x.owner === 1);
+  assert.ok(owned.length >= 1, 'the player has colonies');
+  const ordinary = crowded.systems.filter((x) => x.explored && x.owner === 0 && x.planets.length > 0);
+  assert.ok(ordinary.every((x) => x.planets.length >= 6 && x.planets.length <= 9), 'ordinary stars hold 6..9 planets');
+  assert.ok(crowded.systems.some((x) => x.starType !== undefined), 'a race home star carries its star type');
+  assert.equal(attempt('newCampaign', { ...base, startSystems: 9 }).ok, false, 'nine extra start systems are refused');
+  assert.equal(attempt('newCampaign', { ...base, planetsMin: 5, planetsMax: 3 }).ok, false, 'a reversed planet range is refused');
+  const presets = call('meta').presets;
+  const bop = presets.find((x) => x.id === 'balance-of-power');
+  assert.ok(bop.options.startSystems === 1 && bop.options.planetsMin === 2 && bop.options.planetsMax === 9, 'Balance of Power option defaults');
+  assert.equal(presets.find((x) => x.id === 'galaxies').options.starTypes, true);
+  const save = call('save');
+  assert.ok(String(save.data).startsWith('BOTF_SIM 24 remaster-24\n'));
+  call('load', { data: save.data });
+  assert.equal(ex.meta.playerName, 'Federation');
 });
 
 test('tactical rules 3: rounds carry the core combat event stream and ships their mounts', () => {

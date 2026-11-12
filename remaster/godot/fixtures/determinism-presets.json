@@ -17,7 +17,7 @@
     "preset": "classic"
    },
    "turns": 8,
-   "result": "12295664153458114243",
+   "result": "3401841251360468539",
    "content": {
     "id": "botf-base",
     "checksum": "4f178d941a2a4de1",
@@ -38,7 +38,7 @@
     "preset": "remastered"
    },
    "turns": 8,
-   "result": "12666412019879585389",
+   "result": "11854184274986907461",
    "content": {
     "id": "botf-base",
     "checksum": "4f178d941a2a4de1",
@@ -59,10 +59,10 @@
     "preset": "dominion-war"
    },
    "turns": 8,
-   "result": "8663712265600869621",
+   "result": "2263523159114024290",
    "content": {
     "id": "botf-base+dominion+dominion-war+economy",
-    "checksum": "1c6ae8f544738e5c",
+    "checksum": "62ade7a20577118f",
     "stack": 3
    },
    "preset": "dominion-war"
@@ -80,10 +80,10 @@
     "preset": "ages"
    },
    "turns": 8,
-   "result": "13929826758989155651",
+   "result": "11088441771090389102",
    "content": {
     "id": "botf-base+ages",
-    "checksum": "391a0b95c0674250",
+    "checksum": "9739e47011e4ef1a",
     "stack": 1
    },
    "preset": "ages"
@@ -101,10 +101,10 @@
     "preset": "galaxies"
    },
    "turns": 8,
-   "result": "5957816771933138912",
+   "result": "9331636248271339474",
    "content": {
     "id": "botf-base+dominion+galaxies",
-    "checksum": "d256a750dde3aa89",
+    "checksum": "85fc7c723a146381",
     "stack": 2
    },
    "preset": "galaxies"
@@ -122,10 +122,10 @@
     "preset": "balance-of-power"
    },
    "turns": 8,
-   "result": "2636312654976280261",
+   "result": "3343439464203870184",
    "content": {
     "id": "botf-base+balance-of-power",
-    "checksum": "9a19fb250a3482cf",
+    "checksum": "c6af97208e8ec44b",
     "stack": 1
    },
    "preset": "balance-of-power"
@@ -143,10 +143,10 @@
     "preset": "ultimate"
    },
    "turns": 8,
-   "result": "10944813574208993631",
+   "result": "14652171030061842580",
    "content": {
     "id": "botf-base+ultimate",
-    "checksum": "837b99ed2634139a",
+    "checksum": "969b012819aee49c",
     "stack": 1
    },
    "preset": "ultimate"

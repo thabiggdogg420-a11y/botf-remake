@@ -1,0 +1,143 @@
+{
+ "method": "fingerprint",
+ "args": {
+  "runs": 8
+ },
+ "result": [
+  {
+   "campaign": {
+    "faction": 1,
+    "empires": 5,
+    "seed": 20261112,
+    "era": 2,
+    "ruleset": "reference",
+    "width": 22,
+    "height": 16,
+    "systems": 50,
+    "difficulty": "expert"
+   },
+   "turns": 40,
+   "result": "8290852830275051063"
+  },
+  {
+   "campaign": {
+    "faction": 1,
+    "empires": 5,
+    "seed": 20261112,
+    "era": 2,
+    "ruleset": "reference",
+    "width": 22,
+    "height": 16,
+    "systems": 50,
+    "difficulty": "impossible"
+   },
+   "turns": 40,
+   "result": "5555681807223325523"
+  },
+  {
+   "campaign": {
+    "faction": 1,
+    "empires": 5,
+    "seed": 20261112,
+    "era": 2,
+    "ruleset": "reference",
+    "width": 22,
+    "height": 16,
+    "systems": 50,
+    "difficulty": "hard"
+   },
+   "turns": 40,
+   "result": "1777746762637083136"
+  },
+  {
+   "campaign": {
+    "faction": 1,
+    "empires": 5,
+    "seed": 20261112,
+    "era": 2,
+    "ruleset": "reference",
+    "width": 22,
+    "height": 16,
+    "systems": 50,
+    "difficulty": "simple"
+   },
+   "turns": 40,
+   "result": "16008412959025926935"
+  },
+  {
+   "campaign": {
+    "faction": 1,
+    "empires": 5,
+    "seed": 20261112,
+    "era": 2,
+    "ruleset": "reference",
+    "width": 22,
+    "height": 16,
+    "systems": 50,
+    "difficulty": "normal",
+    "startSystems": 2,
+    "planetsMin": 3,
+    "planetsMax": 8,
+    "starTypes": true
+   },
+   "turns": 40,
+   "result": "2171650556618812047"
+  },
+  {
+   "campaign": {
+    "faction": 1,
+    "empires": 5,
+    "seed": 20261112,
+    "era": 2,
+    "ruleset": "reference",
+    "width": 22,
+    "height": 16,
+    "systems": 50,
+    "preset": "balance-of-power",
+    "difficulty": "expert",
+    "startSystems": 1,
+    "planetsMin": 2,
+    "planetsMax": 9
+   },
+   "turns": 40,
+   "result": "9082399810495377663"
+  },
+  {
+   "campaign": {
+    "faction": 1,
+    "empires": 5,
+    "seed": 20261112,
+    "era": 2,
+    "ruleset": "reference",
+    "width": 22,
+    "height": 16,
+    "systems": 50,
+    "preset": "ultimate"
+   },
+   "turns": 40,
+   "result": "4596557095435644891"
+  },
+  {
+   "campaign": {
+    "faction": 1,
+    "empires": 5,
+    "seed": 20261112,
+    "era": 3,
+    "ruleset": "reference",
+    "width": 22,
+    "height": 16,
+    "systems": 50,
+    "preset": "dominion-war",
+    "lineup": [
+     "federation",
+     "klingon",
+     "romulan",
+     "cardassian",
+     "dominion"
+    ]
+   },
+   "turns": 40,
+   "result": "15131346883538355321"
+  }
+ ]
+}

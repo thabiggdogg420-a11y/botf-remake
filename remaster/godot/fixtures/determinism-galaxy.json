@@ -19,7 +19,7 @@
     "difficulty": "normal"
    },
    "turns": 10,
-   "result": "791152469673928019",
+   "result": "814859695048408795",
    "preview": 50
   },
   {
@@ -37,7 +37,7 @@
     "difficulty": "hard"
    },
    "turns": 10,
-   "result": "10685278740110385388",
+   "result": "6940618667362609937",
    "preview": 50
   },
   {
@@ -55,7 +55,7 @@
     "difficulty": "impossible"
    },
    "turns": 10,
-   "result": "14443119617074307447",
+   "result": "7775596076925519203",
    "preview": 50
   },
   {
@@ -73,7 +73,7 @@
     "difficulty": "simple"
    },
    "turns": 10,
-   "result": "13426188606409928025",
+   "result": "12338049291140335025",
    "preview": 50
   }
  ]
