@@ -577,6 +577,8 @@ func _film_shot(t: float, centroid: Vector3, spread: float) -> Dictionary:
 	var out := {"key": "film_%d_%d" % [round_index, int(_film.n)], "kind": 0, "film": typ, "subject": a.global_position,
 		"subject_size": a.length, "subject_fwd": a.global_basis.x.normalized(), "other": b.global_position if b != null else centroid,
 		"other_size": b.length if b != null else a.length, "centroid": centroid, "spread": spread}
+	if _env.has("sun_dir"):
+		out["sun_dir"] = _env.sun_dir
 	if typ == "torpedo":
 		var j: Dictionary = timeline.jobs[int(_film.job)]
 		var u := clampf((t - float(j.start)) / maxf(0.1, float(j.duration)), 0.0, 0.92)

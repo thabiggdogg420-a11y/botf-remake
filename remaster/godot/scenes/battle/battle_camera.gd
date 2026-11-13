@@ -826,6 +826,7 @@ func _cinematic_shot(_delta: float, shot: Dictionary, time: float) -> Array:
 ## moving ships. A new key is a hard cut. behind: over the shooter's shoulder toward its target; torpedo: chasing the
 ## salvo onto the target; flyby: a fixed lens ahead of the escort's path, panning as it passes.
 var _film_eye := Vector3.ZERO
+var _film_flip := false
 
 func _film_pose(shot: Dictionary, key: String, time: float) -> Array:
 	var a: Vector3 = shot.subject
@@ -861,6 +862,9 @@ func _film_pose(shot: Dictionary, key: String, time: float) -> Array:
 			if fresh or _film_eye == Vector3.ZERO:
 				var fwd: Vector3 = shot.get("subject_fwd", dir)
 				_film_eye = a + fwd * ra * 9.0 + fwd.cross(Vector3.UP).normalized() * sgn * ra * 3.5 + Vector3.UP * ra * 1.2
+				var sd0: Vector3 = shot.get("sun_dir", Vector3.ZERO)
+				if sd0 != Vector3.ZERO and (a.lerp(b, 0.15) - _film_eye).normalized().dot(sd0.normalized()) > 0.45:
+					_film_eye = a + (a - _film_eye) # not into the sun
 			eye = _film_eye
 			look = a.lerp(b, 0.15)
 			fov = 42.0
@@ -876,6 +880,14 @@ func _film_pose(shot: Dictionary, key: String, time: float) -> Array:
 			eye = mid + off.rotated(Vector3.UP, drift)
 			look = mid
 			fov = 40.0
+	# M4: never shoot into the sun (the ship washes out to a white blob against the glare): if the lens would look toward it
+	# when the shot begins, the whole shot is taken from the other side.
+	var sd: Vector3 = shot.get("sun_dir", Vector3.ZERO)
+	if sd != Vector3.ZERO and str(shot.film) != "flyby":
+		if fresh:
+			_film_flip = (look - eye).normalized().dot(sd.normalized()) > 0.45
+		if _film_flip:
+			eye = look + (look - eye)
 	eye = _clear_of_hulls(eye, look)
 	return [eye, look]
 
