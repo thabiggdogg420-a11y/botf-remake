@@ -329,3 +329,69 @@ Web (fetched or in search results; pages that returned a stub or truncated text 
 - Wikipedia LCARS and the Okudagram piece on alien adaptation (search results): https://en.wikipedia.org/wiki/LCARS , https://treknews.net/2015/07/23/ode-to-okudagram/amp/
 
 What I could not inspect: the game running (no Godot, no builds, by instruction), so everything about animation, transitions and in-game audio is from code and manifests, not seen or heard; the 3D galaxy reference strip in the other worktree (`wt-m0-galaxy3d`) and any other lane's uncommitted work; the original BOTF's own per-race skins, advisors and intro films (not retrievable online in this pass; they need a look in Simon's installed copy); the show-accurate shapes of alien consoles and insignia (from memory, flagged); the C++ core beyond targeted greps (event text templates, star names, features); web pages for ST: New Civilisations, Fleet Command, GalCiv IV, Distant Worlds 2, and several truncated or empty fetches noted above.
+
+
+## G. Round 2 (M4-TREKIFY, 13 Nov 2026)
+
+Trigger (Simon, 13 Nov 2026, v5 playtest): "it needs another Trekify round to be ran, alot of little icons or chosen shapes in some menus are generic and not trekky." Scope: the whole client except `scenes/battle/` and the battle HUD (M4-COMBAT). Everything below is drawn in code (`_draw` vector shapes on a 24 px grid and `StyleBoxFlat` shapes). Nothing was downloaded and no image asset was added.
+
+Captures (all 1920x1080): `Documents\ChatGPT\m4-trekify-captures\before\before-<look>-<shot>.png` and `...\after\after-<look>-<shot>.png`, five looks (tos, movie, tng, voy, late) by 41 shots before and 46 after. The five shots added in this round (`confirm`, `toast`, `aftermath`, `frontier`, `events-drill`) have no "before" frame: the capture tool did not have them at the start, and they show screens whose icons are covered by the same widgets as the other shots. Side-by-side sheets: `contact-tng\compare-01..16.png`, `contact-voy\compare-01..16.png` (BEFORE | AFTER, three screens per sheet), plus after-only grids `contact-tos`, `contact-movie`, `contact-late` (twelve screens per sheet).
+
+### G1. What was generic, and what replaced it
+
+| Generic item (found) | Trek replacement | Where |
+|---|---|---|
+| Plain round/dot badges and bullets | Starfleet delta bullets, octagon alert plates, rank-pip tiers | badges, events, new campaign |
+| Text glyphs standing for icons (arrow, plus, lightning, tick, cross, search, close marks) | Drawn delta arrows and `delta_right`, energy cell, lamp tick and cross, sensor sweep for search | system, research, empire, intel, palette, toast |
+| Round progress bars and ring gauges | Segmented Okudagram bars (`LcarsMeter`) and segmented arc gauges (`ring_gauge`) | every screen with a meter or ring |
+| Stock Godot checkbox, option arrow, spin arrows, slider grabber | LCARS lamp checkboxes, rocker switches, delta dropdown arrows, bar-and-notch slider grabber (theme icons rasterised at runtime) | settings, fleets, new campaign, intel, packs |
+| Generic rounded-rectangle buttons, cards and tabs | Tab-shaped (elbow-ended) buttons, asymmetric ghost, card and option boxes | all screens, via the theme |
+| Layer bar icons on the chart (plain words and dots) | Territory seal, supply spoke, course line, trade slab, sensor sweep, grid, label glyphs; legend entries drawn per meaning | galaxy |
+| Chart range rings and selection ring | Segmented rings, corner-bracket reticle, octagon chips | galaxy overlay |
+| Minor race marks (one generic dot) | Six temperament marks (`minor_mercantile`, `minor_warlike`, `minor_peaceful`, `minor_scientific`, `minor_spiritual`, `minor_xenophobic`) | new campaign, database, galaxy, diplomacy |
+| Structure and choice icons (a box for everything) | `choice_icon.glyph_for(name)` keyword table: farm, factory, lab, power, shipyard, defence and so on | system, events |
+| Sort marker on tables | Starfleet delta | empire tables |
+| Back button | Back pill with delta | new campaign, packs, saves |
+| Left rail and elbow identical in every era | TOS: boxed gold console, lamp row, colour push-button rail ("STARFLEET"). Movie: chamfered grey-blue plate, outlined flat rail ("FLEET OPS"). TNG, Voyager, Late: sweep elbow | rail and elbow |
+| Toast and modal frames | Tone icon on the toast; elbow-capped LCARS frame on toast and modal | all |
+
+Stroke weight follows the look (`UiTokens.icon_stroke()`: TOS 2.8, TNG and Voyager 2.0, Movie and Late 1.5), so TOS icons read heavier and Movie icons read thinner.
+
+### G2. Count per screen (found and fixed)
+
+Approximate count, tallied by hand from the before frames: each distinct icon, glyph or shape that was generic on that screen. Shared chrome (rail, elbow, top-bar stats, theme controls) is counted once under Chrome and is visible on every screen.
+
+| Screen (shot) | Found | Fixed | Before frame (tng) |
+|---|---|---|---|
+| Chrome: rail, elbow, top bar, toast, modal frame | 9 | 9 | `before-tng-galaxy.png` |
+| Galaxy chart (galaxy, galaxy-whole, galaxy-menu, station) | 18 | 18 | `before-tng-galaxy.png` |
+| System (system-installed, system-ships, system-structures) | 9 | 9 | `before-tng-system-ships.png` |
+| Empire (colonies, fleets, governors, members, programs, stations, templates, trade) | 11 | 11 | `before-tng-empire-colonies.png` |
+| Research | 6 | 6 | `before-tng-research.png` |
+| Diplomacy (dossier, history, ledger, news, propose) | 7 | 7 | `before-tng-diplomacy.png` |
+| Fleets | 6 | 6 | `before-tng-fleets.png` |
+| Intel | 5 | 5 | `before-tng-intel.png` |
+| Database (ships, tech, structures, races, minors) | 8 | 8 | `before-tng-db-ships.png` |
+| New campaign (new, new-preset) | 8 | 8 | `before-tng-new.png` |
+| Packs (pack editor) | 3 | 3 | `before-tng-packs.png` |
+| Saves | 3 | 3 | `before-tng-saves.png` |
+| Settings | 5 | 5 | `before-tng-settings.png` |
+| Events, briefing, end, victory, help, menu, palette | 9 | 9 | `before-tng-events.png`, `before-tng-briefing.png`, `before-tng-victory.png` |
+| Title | 2 | 2 | `before-tng-title.png` |
+| Total | 109 | 109 | |
+
+The icon set itself has 94 named icons (`UiIcon.NAMES`), covered by `scenes/ui/tests/test_trek_icons.gd`.
+
+### G3. Left generic, and why
+
+- Close, plus and minus glyphs on dialog corners: they are universal controls and the same in every LCARS reference. Kept.
+- The wheat shape for food: no canon food icon exists; the Federation replicator or a plain leaf were weaker than the current mark. Kept.
+- Torpedo and combat icons on the battle screen and battle HUD: M4-COMBAT owns `scenes/battle/`.
+- The "•" separators and the infinity sign in tooltip text: text punctuation, not icons.
+- Buttons that are already LCARS pills (END TURN, MENU, RESUME and similar): these were already on-theme.
+- The cut-off back button and bottom row on the Title, New campaign, Packs and Saves captures: this is the capture tool's scroll framing, identical in the before frames. Not a layout change.
+- Pre-existing, not touched: `test_viewmodels.gd` has 12 failures, identical with and without this round's changes (checked by stashing). It is not in the verify suite list.
+
+### G4. Proof
+
+See the lane report for commit hashes, suite counts and the `verify.ps1 -Target both` output.

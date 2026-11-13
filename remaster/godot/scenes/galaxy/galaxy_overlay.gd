@@ -168,14 +168,14 @@ func _draw_static(v: Dictionary) -> void:
 			owner_cols[owner] = Lcars.owner_color(owner)
 		if owner != 0:
 			var oc: Color = owner_cols[owner]
-			draw_arc(p, ring_r, 0, TAU, 32, Color(oc, 0.85), 2.0, true)
+			UiIcon.draw_seg_ring(self, p, ring_r, Color(oc, 0.85), 2.2, 10, 0.78)
 			if owner == app.player():
 				player_rings.append([p, ring_r + 4.0, oc])
 			var omk := Vector2(ring_r * 0.72, -ring_r * 0.72) + Vector2(7, -7)
 			Insignia.draw(self, owner, Rect2(p + omk - Vector2(8, 8), Vector2(16, 16)), Color(oc, 0.95), "small", Lcars.BG)
 		elif not charted:
 			# Uncharted: the star is on the chart, nothing else is known. A neutral dim ring marks it.
-			draw_arc(p, ring_r, 0, TAU, 32, Color(0.62, 0.72, 0.9, 0.42), 1.5, true)
+			UiIcon.draw_seg_ring(self, p, ring_r, Color(0.62, 0.72, 0.9, 0.5), 1.5, 14, 0.5)
 		var minor: Dictionary = s.get("minor", {}) if s.has("minor") else {}
 		if not minor.is_empty():
 			var mc := Lcars.owner_color(int(minor.get("memberOf", 0))) if int(minor.get("memberOf", 0)) != 0 else Color("#d8c3ff")
@@ -291,8 +291,7 @@ func _draw_static(v: Dictionary) -> void:
 		if not bool(a.get("hostile", true)):
 			tc = Lcars.GOOD
 		var tr := _band(lvl, 15.0, 16.0, 18.0)
-		draw_circle(tp, tr + 3.0, Color(Lcars.BG, 0.9))
-		draw_arc(tp, tr + 3.0, 0, TAU, 32, tc, 2.4, true)
+		UiIcon.draw_octagon(self, tp, tr + 3.0, Color(Lcars.BG, 0.9), tc, 2.4)
 		draw_arc(tp, tr + 7.0, -PI / 2.0, -PI / 2.0 + TAU * clampf(float(a["hull"]) / maxf(1.0, float(a["maxHull"])), 0.0, 1.0), 32, Color(tc, 0.55), 2.0, true)
 		Insignia.draw(self, THREAT_INSIGNIA.get(str(a["key"]), "neutral"), Rect2(tp - Vector2(tr, tr) * 0.8, Vector2(tr, tr) * 1.6), tc, "small", Lcars.BG)
 		if lvl != "galaxy":
@@ -333,10 +332,9 @@ func _draw_static(v: Dictionary) -> void:
 		var hl: float = _band(lvl, 58.0, 62.0, 74.0)
 		ShipGlyph.draw_hull(self, ShipGlyph.family_for(app.player(), ShipGlyph.class_of(f0)), base, hl, heading.angle(), oc2, true, true, 0.5)
 		if tf:
-			draw_arc(base, hl * 0.56, 0, TAU, 24, Color(oc2, 0.8), 1.5, true)
+			UiIcon.draw_seg_ring(self, base, hl * 0.56, Color(oc2, 0.85), 1.8, 8, 0.7)
 		var chip := base + Vector2(hl * 0.40, hl * 0.34)
-		draw_circle(chip, 11.0, Color(Lcars.BG, 0.88))
-		draw_arc(chip, 11.0, 0, TAU, 24, Color(oc2, 0.9), 1.2, true)
+		UiIcon.draw_octagon(self, chip, 11.0, Color(Lcars.BG, 0.88), Color(oc2, 0.9), 1.3)
 		Insignia.draw(self, app.player(), Rect2(chip - Vector2(8, 8), Vector2(16, 16)), oc2, "small", Lcars.BG)
 		if list.size() > 1:
 			var ct := "x%d" % list.size()
@@ -449,9 +447,9 @@ func _draw_anim(v: Dictionary) -> void:
 			if c.get("war", false):
 				draw_arc(c["pos"], 12, 0, TAU, 20, Color(Lcars.ALERT, 0.6 + 0.3 * sin(t * 4.0)), 2.0, true)
 			if int(c["id"]) == fid:
-				draw_arc(c["pos"], 15, 0, TAU, 24, Color.WHITE, 2.0, true)
+				UiIcon.draw_reticle(self, c["pos"], 15.0, Color.WHITE, 2.0)
 		elif c["kind"] == "fleet" and fid != 0 and (c["ids"] as Array).has(fid):
-			draw_arc(c["pos"], 16.0 + 2.0 * sin(t * 5.0), 0, TAU, 28, Color.WHITE, 2.0, true)
+			UiIcon.draw_reticle(self, c["pos"], 17.0 + 2.0 * sin(t * 5.0), Color.WHITE, 2.2)
 	# ---- Orbits and planet labels at system zoom (planets move every frame)
 	if map.zoom >= GalaxyMap.LEVEL_SYSTEM * 0.6:
 		_draw_orbits(cp)

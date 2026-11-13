@@ -29,7 +29,7 @@ func refresh() -> void:
 	var col := Lcars.vbox(12)
 	margin.add_child(col)
 	var head := Lcars.hbox(18)
-	head.add_child(Lcars.pill("Back", "ghost", _back, "", "", "Esc"))
+	head.add_child(Lcars.back_pill(_back))
 	head.add_child(Lcars.heading("Pack editor", 46))
 	var sub := Lcars.caption("Make your own pack: data, rules and powers. Shipped packs are never changed.")
 	sub.size_flags_vertical = Control.SIZE_SHRINK_CENTER

@@ -15,7 +15,7 @@ func refresh() -> void:
 	var col := Lcars.vbox(18)
 	m.add_child(col)
 	var head := Lcars.hbox(16)
-	head.add_child(Lcars.pill("Back", "ghost", func(): app.back() if not app.view.is_empty() else app.goto("title", false), "", "", "Esc"))
+	head.add_child(Lcars.back_pill(func(): app.back() if not app.view.is_empty() else app.goto("title", false)))
 	head.add_child(Lcars.heading("Saved campaigns", 44))
 	head.add_child(Lcars.spacer())
 	if not app.view.is_empty():

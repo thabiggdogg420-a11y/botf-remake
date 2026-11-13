@@ -39,7 +39,16 @@ func _rebuild() -> void:
 	for c in columns:
 		var b := Button.new()
 		b.flat = true
-		b.text = str(c["label"]).to_upper() + (("  ▲" if sort_dir > 0 else "  ▼") if c["key"] == sort_key else "")
+		b.text = str(c["label"]).to_upper() + ("     " if c["key"] == sort_key else "")
+		if c["key"] == sort_key:
+			# the sort marker is the Starfleet delta, pointing the way the list runs
+			var sd := UiIcon.make("delta_up" if sort_dir > 0 else "delta_down", 10, Lcars.accent())
+			sd.set_anchors_preset(Control.PRESET_CENTER_RIGHT)
+			sd.offset_left = -16
+			sd.offset_right = -6
+			sd.offset_top = -5
+			sd.offset_bottom = 5
+			b.add_child(sd)
 		b.alignment = HORIZONTAL_ALIGNMENT_RIGHT if c.get("num", false) else HORIZONTAL_ALIGNMENT_LEFT
 		b.add_theme_font_override("font", Lcars.font("display", 560))
 		b.add_theme_font_size_override("font_size", 14)

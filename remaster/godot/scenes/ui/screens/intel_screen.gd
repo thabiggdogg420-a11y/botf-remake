@@ -97,7 +97,7 @@ func _rival_card(r: Dictionary) -> Control:
 	var c := PanelContainer.new()
 	c.name = "Rival%d" % id
 	c.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	c.add_theme_stylebox_override("panel", Lcars.box(Color(Lcars.PANEL2, 0.92), 14, Lcars.owner_color(id) if hl else Lcars.LINE2, 2 if hl else 1, Vector4(12, 10, 12, 10)))
+	c.add_theme_stylebox_override("panel", Lcars.box_lcars(Color(Lcars.PANEL2, 0.92), 14, Lcars.owner_color(id) if hl else Lcars.LINE2, 2 if hl else 1, Vector4(12, 10, 12, 10)))
 	var v := Lcars.vbox(6)
 	c.add_child(v)
 	var h := Lcars.hbox(10)
@@ -180,7 +180,7 @@ func _reports() -> Control:
 	var list := Lcars.vbox(6)
 	for o in vm.operation_rows():
 		var p := PanelContainer.new()
-		var sb := Lcars.box(Color(Lcars.PANEL2, 0.7), 10, Lcars.tone_color(o["tone"]), 0, Vector4(14, 8, 14, 8))
+		var sb := Lcars.box_lcars(Color(Lcars.PANEL2, 0.7), 10, Lcars.tone_color(o["tone"]), 0, Vector4(14, 8, 14, 8))
 		sb.border_width_left = 5
 		p.add_theme_stylebox_override("panel", sb)
 		var h := Lcars.hbox(10)

@@ -228,7 +228,7 @@ static func _member_card(app: App, m: Dictionary, is_member: bool) -> Control:
 	card.add_child(cv)
 	var att := int(m["attitude"])
 	var h := Lcars.hbox(8)
-	h.add_child(Lcars.label("◇ " + str(m["name"]), "SubHeading", 17, Lcars.TEXT))
+	h.add_child(Lcars.marked(UiIcon.minor_name(str((m["race"] as Dictionary).get("temperament", "")) if m.get("race") is Dictionary else ""), str(m["name"]), "SubHeading", 17, Lcars.TEXT, 18))
 	h.add_child(Lcars.label(str(m.get("system", "")), "Muted", 12))
 	if m.get("race") is Dictionary:
 		h.add_child(Lcars.badge(str(m["race"]["temperament"]), "dim"))
@@ -250,10 +250,11 @@ static func _member_card(app: App, m: Dictionary, is_member: bool) -> Control:
 			["Attitude %d of %d" % [att, JOIN_LINE], att >= JOIN_LINE],
 			["Friendship signed", bool(m.get("friendship", false))],
 		]
-		var parts := []
+		var mrow := Lcars.hbox(14)
+		mrow.add_child(Lcars.label("Membership:", "", 13, Lcars.TEXT2))
 		for ck in checks:
-			parts.append(("✓ " if ck[1] else "✗ ") + str(ck[0]))
-		cv.add_child(Lcars.label("Membership: " + "   ".join(parts), "", 13, Lcars.GOOD if checks.all(func(c): return c[1]) else Lcars.TEXT2))
+			mrow.add_child(Lcars.marked("tick" if ck[1] else "cross", str(ck[0]), "", 13, Lcars.GOOD if ck[1] else Lcars.TEXT2, 13))
+		cv.add_child(mrow)
 	if m.get("race") is Dictionary:
 		var race: Dictionary = m["race"]
 		cv.add_child(Lcars.label("Join bonus: %s" % race["bonus"], "", 13, Lcars.GOOD))

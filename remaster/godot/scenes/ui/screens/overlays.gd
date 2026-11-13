@@ -101,7 +101,7 @@ static func _event_row(app: App, e: Dictionary, holder: Dictionary) -> Control:
 	b.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	b.add_theme_font_override("font", Lcars.font("ui", 440))
 	b.add_theme_font_size_override("font_size", 15)
-	var sb := Lcars.box(Color(Lcars.PANEL2, 0.7), 10, Lcars.tone_color(OverlaysVM.severity_tone(sev)), 0, Vector4(16, 7, 16, 7))
+	var sb := Lcars.box_lcars(Color(Lcars.PANEL2, 0.7), 10, Lcars.tone_color(OverlaysVM.severity_tone(sev)), 0, Vector4(16, 7, 16, 7))
 	sb.border_width_left = 5
 	b.add_theme_stylebox_override("normal", sb)
 	var due := ""
