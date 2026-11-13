@@ -148,7 +148,7 @@ func _events() -> Control:
 func _status() -> Control:
 	var p := PanelContainer.new()
 	p.name = "ChartStatus"
-	p.add_theme_stylebox_override("panel", Lcars.box(Color(Lcars.PANEL_SOLID, 0.78), UiTokens.radius(), Lcars.LINE, 1, Vector4(10, 6, 10, 6)))
+	p.add_theme_stylebox_override("panel", Lcars.box_lcars(Color(Lcars.PANEL_SOLID, 0.78), UiTokens.radius(), Lcars.LINE, 1, Vector4(10, 6, 10, 6)))
 	p.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
 	var row := Lcars.hbox(8)
 	p.add_child(row)
@@ -159,7 +159,7 @@ func _status() -> Control:
 func _layers() -> Control:
 	var p := PanelContainer.new()
 	p.name = "LayerBar"
-	p.add_theme_stylebox_override("panel", Lcars.box(Color(Lcars.PANEL_SOLID, 0.86), UiTokens.radius(), Lcars.LINE2, 1, Vector4(12, 8, 12, 8)))
+	p.add_theme_stylebox_override("panel", Lcars.box_lcars(Color(Lcars.PANEL_SOLID, 0.86), UiTokens.radius(), Lcars.LINE2, 1, Vector4(12, 8, 12, 8)))
 	p.size_flags_vertical = Control.SIZE_SHRINK_END
 	var col := Lcars.vbox(6)
 	p.add_child(col)
@@ -167,24 +167,19 @@ func _layers() -> Control:
 	row.add_child(Lcars.caption("Layers"))
 	for l in vm.layers(app.map_layers):
 		var key: String = l["key"]
-		var t := Lcars.toggle(l["label"], l["on"], func(on): layer_changed.emit(key, on), l["hint"])
+		var t := Lcars.toggle("    " + l["label"], l["on"], func(on): layer_changed.emit(key, on), l["hint"])
 		t.name = "Layer_" + key
 		t.add_theme_font_size_override("font_size", 14)
+		var li := UiIcon.make(str(l["icon"]), 15, Lcars.TEXT2)
+		li.position = Vector2(10, 8)
+		t.add_child(li)
 		row.add_child(t)
 	col.add_child(row)
 	var leg := Lcars.hbox(14)
 	leg.name = "Legend"
 	for item in vm.legend():
-		# Ships, contacts and stations are drawn on the chart as hull silhouettes and marks, so the legend shows the same marks.
-		var glyph: String = {"Your ships": "ship", "Contacts": "contact", "Station": "starbase"}.get(str(item["label"]), "")
-		if glyph != "":
-			leg.add_child(UiIcon.make(glyph, 18, _legend_color(item["color"])))
-		else:
-			var sw := Panel.new()
-			sw.add_theme_stylebox_override("panel", Lcars.box(_legend_color(item["color"]), 5, Color.TRANSPARENT, 0, Vector4.ZERO))
-			sw.custom_minimum_size = Vector2(10, 10)
-			sw.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-			leg.add_child(sw)
+		# Every legend entry is the same mark the chart draws: hulls, contacts and starbases, the anomaly swirl, the hostile delta.
+		leg.add_child(UiIcon.make(str(item.get("icon", "contact")), 18, _legend_color(item["color"])))
 		leg.add_child(Lcars.label(item["label"], "Muted", 12))
 	col.add_child(leg)
 	return p

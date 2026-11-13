@@ -77,7 +77,7 @@ func _row(u: Dictionary, active: bool) -> Control:
 	b.name = "FleetRow%d" % int(lead["id"])
 	b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	if active:
-		b.add_theme_stylebox_override("normal", Lcars.box(Color(Lcars.accent(), 0.22), 12, Lcars.accent(), 1))
+		b.add_theme_stylebox_override("normal", Lcars.box_lcars(Color(Lcars.accent(), 0.22), 12, Lcars.accent(), 1))
 	var inner := Lcars.row_inner(b, 12)
 	inner.add_child(ShipPicture.make(int(lead.get("owner", app.player())), ShipGlyph.class_of(lead), 58, "iso"))
 	var nm := Lcars.vbox(-2)

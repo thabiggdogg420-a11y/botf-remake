@@ -108,7 +108,7 @@ func _header(c: Dictionary) -> Control:
 	band.add_theme_stylebox_override("panel", sb)
 	var h := Lcars.hbox(18)
 	band.add_child(h)
-	h.add_child(_nav("◂", -1, count, "Previous colony", "Q"))
+	h.add_child(_nav("delta_left", -1, count, "Previous colony", "Q"))
 	var tb := Lcars.vbox(0)
 	tb.custom_minimum_size.x = 300
 	tb.size_flags_vertical = Control.SIZE_SHRINK_CENTER
@@ -126,14 +126,17 @@ func _header(c: Dictionary) -> Control:
 	tb.add_child(badges)
 	h.add_child(tb)
 	h.add_child(_orrery())
-	h.add_child(_nav("▸", 1, count, "Next colony", "E"))
+	h.add_child(_nav("delta_right", 1, count, "Next colony", "E"))
 	return band
 
 func _nav(glyph: String, d: int, count: int, hint: String, key: String) -> Button:
-	var b := Lcars.pill(glyph, "ghost", func(): cycle(d), "" if count > 1 else "Only one colony", hint, key)
+	var b := Lcars.pill("", "ghost", func(): cycle(d), "" if count > 1 else "Only one colony", hint, key)
 	b.custom_minimum_size = Vector2(44, 110)
 	b.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	b.add_theme_font_size_override("font_size", 22)
+	var ic := UiIcon.make(glyph, 22, Lcars.TEXT2 if count > 1 else Lcars.TEXT3)
+	ic.position = Vector2(11, 44)
+	ic.size = Vector2(22, 22)
+	b.add_child(ic)
 	return b
 
 ## Star at the left, then each planet sized by class, its numeral, class and capacity bar; hover explains it.
@@ -468,7 +471,8 @@ func _construction() -> Control:
 			n.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 			r.add_child(n)
 			r.add_child(Lcars.label("x%d" % int(s["count"]), "Mono"))
-			r.add_child(Lcars.label("⚡%d · ¢%d" % [int(s["energyCost"]), int(s["upkeep"])], "Muted"))
+			r.add_child(UiIcon.make("energy", 14, Lcars.TEXT3))
+			r.add_child(Lcars.label("%d · ¢%d" % [int(s["energyCost"]), int(s["upkeep"])], "Muted"))
 			var bld: String = s["building"]
 			var nm: String = s["name"]
 			r.add_child(Lcars.pill("Scrap", "alert", func():
@@ -498,14 +502,15 @@ func _choice(ch: Dictionary) -> Control:
 	btn.theme_type_variation = "GhostButton"
 	btn.custom_minimum_size.y = 58 if reason == "" else 82 # the reason is a third text line: room for it, so it never crowds the next row
 	btn.disabled = reason != ""
-	var sb := Lcars.box(Color(Lcars.PANEL2, 0.8), 12, Lcars.LINE2, 1, Vector4(12, 6, 12, 6))
-	btn.add_theme_stylebox_override("disabled", Lcars.box(Color(Lcars.PANEL, 0.6), 12, Lcars.LINE, 1, Vector4(12, 6, 12, 6)))
+	var sb := Lcars.box_tab(Color(Lcars.PANEL2, 0.8), 12, 3, Lcars.LINE2, 1, Vector4(12, 6, 12, 6))
+	btn.add_theme_stylebox_override("disabled", Lcars.box_tab(Color(Lcars.PANEL, 0.6), 12, 3, Lcars.LINE, 1, Vector4(12, 6, 12, 6)))
 	btn.add_theme_stylebox_override("normal", sb)
 	btn.tooltip_text = ("Unavailable: " + reason) if reason != "" else SystemVM.choice_tip(ch)
 	var row := Lcars.row_inner(btn, 12)
 	var icon := ChoiceIcon.new()
 	icon.product = str(ch["product"])
 	icon.ship = ch["isShip"]
+	icon.label_name = str(ch["name"])
 	if icon.ship:
 		icon.owner_id = app.player()
 		icon.klass = _ship_class(ch)
@@ -523,7 +528,7 @@ func _choice(ch: Dictionary) -> Control:
 		main.add_child(Lcars.label(reason, "", 12, Lcars.WARN))
 	row.add_child(main)
 	row.add_child(Lcars.label(("%dT" % int(ch["turns"])) if int(ch["turns"]) > 0 else "∞", "Mono", 15, Lcars.accent2()))
-	row.add_child(Lcars.label("+", "", 26, Lcars.accent()))
+	row.add_child(UiIcon.make("delta_right", 16, Lcars.accent()))
 	Lcars.ignore_mouse(row)
 	btn.pressed.connect(func(): vm.enqueue(ch))
 	return btn

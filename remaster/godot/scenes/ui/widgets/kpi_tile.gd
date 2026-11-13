@@ -15,11 +15,12 @@ static func make(icon: String, caption: String, value: String, delta: String = "
 	t.tooltip_text = RichTip.text(t.ex)
 	t.mouse_filter = Control.MOUSE_FILTER_STOP
 	if compact:
-		t.add_theme_stylebox_override("panel", Lcars.box(Color.TRANSPARENT, 8, Color.TRANSPARENT, 0, Vector4(4, 2, 6, 2)))
+		t.add_theme_stylebox_override("panel", Lcars.box_tab(Color.TRANSPARENT, 8, 2, Color.TRANSPARENT, 0, Vector4(4, 2, 6, 2)))
 	else:
-		var sb := Lcars.box(Color(Lcars.PANEL2, 0.75), UiTokens.radius(), Lcars.LINE, 1, Vector4(14, 10, 16, 10))
-		sb.border_width_left = 3
-		sb.border_color = Color(Lcars.tone_color(tone) if tone != "" else Lcars.accent(), 0.7)
+		# an LCARS tab: a heavy coloured cap on the left with the rounded end, the right end square
+		var sb := Lcars.box_tab(Color(Lcars.PANEL2, 0.75), UiTokens.radius(), 2, Lcars.LINE, 1, Vector4(16, 10, 16, 10))
+		sb.border_width_left = 6
+		sb.border_color = Color(Lcars.tone_color(tone) if tone != "" else Lcars.accent(), 0.85)
 		t.add_theme_stylebox_override("panel", sb)
 		t.custom_minimum_size.x = 150
 	var row := Lcars.hbox(10)
