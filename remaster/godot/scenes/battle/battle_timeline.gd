@@ -903,8 +903,6 @@ static func _fly_escort(tl: BattleTimeline, s: ShipTrack, tg: ShipTrack, my_shot
 		yaw_f += (yaw_rate - yaw_f) * minf(1.0, dt / 0.2)
 		var pitch_t := clampf(rad_to_deg(atan2(vz, maxf(speed, 0.05))), -35.0, 35.0)
 		pitch_f += (pitch_t - pitch_f) * minf(1.0, dt / 0.25)
-		if OS.get_environment("FLIGHT_DEBUG") == "2" and s.fleet_id == int(OS.get_environment("FLIGHT_ID")) and k % 5 == 0:
-			print("F5 t=%.1f pos=(%.2f,%.2f,%.2f) goal=(%.2f,%.2f,%.2f) end=(%.2f,%.2f,%.2f) spd=%.2f hd=%.0f arriving=%s mode=%s" % [t, pos.x, pos.y, pos.z, goal.x, goal.y, goal.z, end_pos.x, end_pos.y, end_pos.z, speed, heading, arriving, mode])
 		var o := k * 6
 		path[o] = pos.x
 		path[o + 1] = pos.y
@@ -916,8 +914,6 @@ static func _fly_escort(tl: BattleTimeline, s: ShipTrack, tg: ShipTrack, my_shot
 	var e_pos := end_pos - Vector3(path[(n - 1) * 6], path[(n - 1) * 6 + 1], path[(n - 1) * 6 + 2])
 	var e_head := shortest_turn(path[(n - 1) * 6 + 3], b1.facing)
 	var blend := 1.4
-	if OS.get_environment("FLIGHT_DEBUG") != "":
-		print("FLIGHT id=%d mode=%s vmax=%.2f resid=%.2f head=%.0f start->end=%.2f t_p=%.1f phase=%s" % [s.fleet_id, mode, vmax, e_pos.length(), e_head, (end_pos - Vector3(b0.x, b0.y, b0.altitude)).length(), t_p, phase])
 	for k in n:
 		var t := float(k) * dt
 		var w := smoothstep01((t - (T_end - blend)) / blend)

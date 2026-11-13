@@ -102,3 +102,25 @@ Frames in `battle-reference\ds9\die-is-cast\strip\` (never committed). `d_2052.p
 | Shot length in a battle | One shot held 5.25 s (tiles 32-53) over a fighter pass; the next 2 s and more. Space shots in this episode alternate with bridge interiors (overview_1900: 10 of 128 tiles are space). Our 1-3 s cuts are shorter than this episode's; DS9 season 6-7 fleet battles (SoA, measured before) cut faster. | DIC d_2052, overview_1900 |
 
 Not reached this pass (scanned but the colour scan picked interiors): Call to Arms, A Time to Stand, the Voyager and TNG episodes, Nemesis. The keyframe colour scanner (`bc_scan.py`, kept outside the repo) needs a better space-shot test before it is useful.
+
+## M4 combat (13 Nov 2026): what changed, measured against the clips
+
+Simon, 13 Nov 2026, after beta v5: "the combat engine is still a bit shit. the ships just fly around the screen a little aimlessley, move too fast at time, phaser beams dont get shown, torpedoes all get fired at once ... even my basic screensaver stuff looks like a better battle simulation?!" The floor is the LCARS battle screensaver (`lcars-theme\screensaver\v5`); the bar is the DS9 Dominion War battles above. Presentation only: the core, its events and the Classic fingerprint are untouched (no core change in this lane).
+
+| Complaint | What caused it | What fixed it | Where |
+|---|---|---|---|
+| Aimless | Capitals and cruisers drifted along a random direction by a random amount and swayed; escorts ran to keyframes laid round a target with no turn rate; wingmen blended onto the leader's run and back. | A flight planner. Capitals and cruisers keep the core's path plus a slow drift that follows the round's order (Engage: broadside and slide; Charge, Assault, Ram: bow on, close; Circle, Harry, Strafe, Evade: broadside and slide round; Hold: stay; Retreat or under 30% hull: stern to the enemy, make for the edge). Escorts and strike craft are flown by a steering simulation: approach, a strafing pass inside about a hull length timed on their own shots, a break away, regroup onto the core's track; Circle and Harry orbit the target, Evade jinks, Charge and Ram close straight in, Hold advances with the line. Wingmen fly a formation-follow on the leader's flown run and break to their own cells. | `battle_timeline.gd` `_choreograph`, `_fly_escort` |
+| Too fast | The escort run was timed to the round and ignored hull size: 16 cells/s peak (9.7 km/s, 100+ hull lengths a second), wingmen 20 cells/s with 500 cells/s2 jumps (teleports); capitals lurched 2-3 cells in 0.8 s at every round start and end (4.3 cells/s). | Class speed, turn rate and acceleration (below), a drift that swells with zero speed at both ends, the bow slewed at the class turn rate, docking onto the core's cell and facing with the last stretch a controlled slide, and a cap on how far a run may stray from the core's path (only what there is time to fly out and back). | `CLASS_SPEED`, `CLASS_TURN`, `CLASS_ACCEL`, `_aim_env` |
+| Phasers not shown | Beams were drawn, but the Klingon disruptor was always drawn as bolts (so the footage's red beams never appeared), at most 4 beams were held at once however big the battle, 45% of beams were cut to 0.55 s then 0.35 s, and the camera sat a few radii behind one shooter so the beams were mostly off screen or behind a hull. | Klingon capitals fire red beams (escorts keep green bolts); beams are held 0.6-1.5 s by race (Federation 0.8-1.4, Klingon and Romulan 0.6-0.9, Cardassian 1.2-1.5, polaron 0.9-1.4); the beam cap grows by one for every six ships; tracking and wide shots that frame shooter and target. | `beam_hold`, `shows_as_bolts`, `_beam_limit`, `battle_camera.gd` `_film_pose` |
+| Torpedoes all at once | A salvo was 1-2 tubes from escorts, 2-3 from cruisers and every ship launched on its own clock with nothing between ships, so clusters formed; one stagger for all. | Salvos of 4-5 from capitals and cruisers (2-3 from escorts), tubes 0.10-0.15 s apart seeded per ship, and a battle-wide gap between salvo starts (0.8 of the fire window over the salvo count, 0.05-0.25 s) so fire flows. The photon is an orange 4-point star with long thin spikes and a small halo. | `spread_tubes`, `torpedo_stagger`, `_salvo_limit`, `shaders/torpedo.gdshader` |
+
+Class table (cells a second; one cell is 592 m as drawn). The screensaver's fleet table is the reference (`Battle.cs` MakeShip: capital 125-190 m/s, cruiser 210-290, escort 470-540, fighter 700-820; turn rates in rad/s capital 0.14-0.18, cruiser up to 0.55, escort 0.9-1.1, fighter 1.4-1.8).
+
+| Class | Speed | Turn | Accel |
+|---|---|---|---|
+| Capital | 0.30 (178 m/s) | 10 deg/s | 0.10 |
+| Cruiser | 0.50 (296 m/s) | 24 deg/s | 0.22 |
+| Escort | 1.00 (592 m/s) | 60 deg/s | 0.80 |
+| Strike craft (120 m and under) | 1.25 (740 m/s) | 90 deg/s | 1.10 |
+
+Tools: `scenes/battle/tools/flight_check.gd` (per-class top speed, turn rate, hand-over to the core's poses, planner intent), `scenes/battle/tools/battle_clip.gd` (plays a sandbox battle round after round, for Godot's Movie Maker).
