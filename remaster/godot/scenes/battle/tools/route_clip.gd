@@ -1,7 +1,7 @@
 extends SceneTree
 ## Route clip (M4 combat 2; from O'Brien's v6 smoke): plays a drill battle through the game's own screens in real time for N seconds of
 ## game time (run with --write-movie --fixed-fps 30), as the packaged exe does. Prints one ROUTE line per round with its jobs.
-## args after --: <out_dir> <tactical|starbase|classic> <seconds> [start_round_skip]
+## args after --: <out_dir> <tactical|starbase|classic|fleetN> <seconds> [start_round_skip]
 ## args after --: <out_dir> <tactical|starbase> <seconds>
 var app: Node
 func wait(k := 2) -> void:
@@ -31,6 +31,9 @@ func _run() -> void:
 	await wait(6)
 	if mode == "starbase":
 		app.start_drill("newBattleDrill", "Starbase drill", {"station": true})
+	elif mode.begins_with("fleet"):
+		# fleet24: an N v N tactical drill (M4 flight stage 2 gate, the fleet battle).
+		app.start_drill("newBattleDrill", "Tactical drill", {"ships": int(mode.trim_prefix("fleet"))})
 	elif mode == "classic":
 		app.start_drill("newBattleDrill", "Tactical drill", {"rules": 2})
 	else:

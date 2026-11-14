@@ -115,6 +115,10 @@ class Config:
 	var burst_pairs_max := 4
 	var choreo := true             ## Ships fly attack runs, turn to bear and drift inside the round.
 	var death_seconds := 1.25      ## A dying ship drifts and vents this long before it breaks up.
+	# M4 flight: the continuous flight-and-doctrine sim (BattleFlight) that flies every ship and picks when each shot
+	# launches. null = the M4 combat planner (_choreograph) on the core's round poses.
+	var flight = null
+	var encounter := {}            ## The encounter the flight sim seeds from (arena size, immobile ships).
 
 
 ## Pose in the tactical plane: x, y in cells, facing in degrees (0 = +x, 90 = +y), bank = roll (+ = right wing down),
@@ -329,7 +333,7 @@ func pose_of(s: ShipTrack, t: float) -> Pose:
 ## Half-width (seconds) of the window an escort's bow turn is averaged over (see _run_turn).
 const RUN_HEADING_WINDOW := 0.5
 
-const METERS_PER_CELL := 592.0 ## A Galaxy (640 m) spans 1.08 plane cells as drawn (BattleScene CELL x SPREAD).
+const METERS_PER_CELL := 893.0 ## BattleScene CELL x SPREAD x 17.71 m: a Galaxy (640 m) spans 0.72 plane cells as drawn (stage 3: SPREAD 1.8, was 592 at 1.2).
 
 
 ## Where `s` is drawn at t: the core's flight plus its in-round choreography (attack run, drift, reactions, death).
@@ -448,7 +452,7 @@ static func _run_turn(s: ShipTrack, t: float) -> float:
 
 static func _kick_pos(s: ShipTrack, t: float, facing: float) -> Vector3:
 	var out := Vector3.ZERO
-	var e := _choreo_env(s, t)
+	var e := _choreo_env(s, t) * kick_scale(s)
 	for k in s.kicks:
 		var d := t - k.x
 		if d <= 0.0:
@@ -538,6 +542,14 @@ static func path_pose(s: ShipTrack, t: float) -> Array:
 	return out
 
 
+## M4 flight: a flown hull's reaction to a hard hit scales with its size (a capital is not shoved like an escort: the
+## full kick moved a Galaxy at 460 m/s).
+static func kick_scale(s: ShipTrack) -> float:
+	if s.path.is_empty():
+		return 1.0
+	return clampf(220.0 / maxf(s.length_meters, 1.0), 0.2, 1.0)
+
+
 ## An alive ship on its flown path, with the reactions to hard hits on top.
 func _alive_flown(s: ShipTrack, t: float) -> Pose:
 	var q := path_pose(s, t)
@@ -549,7 +561,7 @@ func _alive_flown(s: ShipTrack, t: float) -> Pose:
 	out.bank = float(q[4])
 	out.pitch = float(q[5])
 	var face := float(q[3])
-	var e := _choreo_env(s, t)
+	var e := _choreo_env(s, t) * kick_scale(s)
 	for k in s.kicks:
 		var d := t - k.x
 		if d <= 0.0:
@@ -1455,10 +1467,19 @@ static func build(events: Array, info: Array, cfg: Config = null) -> BattleTimel
 	var ram_times := {}
 	var ctx := {"torpedo_barked": false}
 	# Cinematic: each Fire / Ram event's launch and impact time (the tick clock derives them from the ticks below).
-	var sched: Dictionary = _schedule(tl, events, info_by_id, cfg) if cfg.cinematic else {}
-	if cfg.cinematic and cfg.choreo:
-		_choreograph(tl, events, sched, info_by_id, cfg)
+	var sched: Dictionary = {}
+	if cfg.cinematic and cfg.flight != null:
+		# M4 flight: the sim flies the round and launches each shot when its mount bears; the order pass keeps the core's
+		# order on every target from there.
+		var launches: Dictionary = cfg.flight.plan_round(tl, events, info_by_id, cfg, cfg.encounter)
 		tl._flown_cache.clear()
+		sched = _schedule(tl, events, info_by_id, cfg, launches)
+	else:
+		sched = _schedule(tl, events, info_by_id, cfg) if cfg.cinematic else {}
+		if cfg.cinematic and cfg.choreo:
+			_choreograph(tl, events, sched, info_by_id, cfg)
+			tl._flown_cache.clear()
+	var salvo_tubes := _torpedo_salvos(events, sched, info_by_id, cfg) if cfg.cinematic else {}
 	var add_job := func(j: Dictionary, ev: int) -> void:
 		j.event_index = ev
 		tl.jobs.append(j)
@@ -1523,7 +1544,9 @@ static func build(events: Array, info: Array, cfg: Config = null) -> BattleTimel
 				base.shield_damage = int(_num(e, "shieldDamage")); base.hull_damage = int(_num(e, "hullDamage"))
 				base.destroys_target = bool(_num(e, "destroyed", false))
 				var launch: float = sc[0] if cine else t0
-				var impact_time := t0
+				# Cinematic: the schedule's impact (the order pass keeps it distinct and in the core's order on each target); a
+				# flown launch may come before its fire tick, so the tick time is no floor for it.
+				var impact_time: float = float(sc[1]) if cine else t0
 				# Cinematic: a disruptor (beam family in the core) is drawn as a burst of bolts, as in the shows.
 				var shown := 1 if cine and family == 0 and shows_as_bolts(weapon, owner, float(info_by_id[fid].get("lengthMeters", -1.0)) if info_by_id.has(fid) else -1.0) else family
 				if shown == 0:
@@ -1593,6 +1616,7 @@ static func build(events: Array, info: Array, cfg: Config = null) -> BattleTimel
 					var tubes := n
 					if cine:
 						tubes = spread_tubes(i, n, float(info_by_id[fid].get("lengthMeters", 0.0)) if info_by_id.has(fid) else 0.0, cfg)
+						tubes = int(salvo_tubes.get(i, tubes)) # M4 flight stage 3: one salvo per ship per round (0 = folded in)
 						flight = maxf(0.3, float(sc[1]) - launch - (tubes - 1) * stagger_s)
 					for k in tubes:
 						var j := base.duplicate()
@@ -1609,6 +1633,10 @@ static func build(events: Array, info: Array, cfg: Config = null) -> BattleTimel
 						impact_time = maxf(impact_time, j.start + flight)
 						# One launch sound per tube, on its own stagger: the salvo ripples (R3.5).
 						add_sound.call(j.start, "TorpedoLaunch", keys, 3, i)
+					if tubes == 0:
+						# Folded into the ship's salvo: no torpedo of its own; its damage lands at its scheduled impact.
+						impact_time = float(sc[1])
+						tl.consumed[i] += 1
 					if cfg.player_empire > 0 and owner == cfg.player_empire and not ctx.torpedo_barked:
 						tl.barks.append({"time": launch, "detail": "torpedo", "priority": 3, "fleet_id": fid})
 						ctx.torpedo_barked = true
@@ -1866,7 +1894,7 @@ static func key_less(a: Array, b: Array) -> bool:
 ## arc and jitter; beams and bolts land a reach later, torpedoes late in their impact tick's window. Then, until
 ## stable: impacts on each ship keep the core's order with effect_gap_seconds between them (moved later, never
 ## earlier), and a ship destroyed in the round launches everything it fires before the blow that kills it.
-static func _schedule(tl: BattleTimeline, events: Array, info_by_id: Dictionary, cfg: Config) -> Dictionary:
+static func _schedule(tl: BattleTimeline, events: Array, info_by_id: Dictionary, cfg: Config, launches := {}) -> Dictionary:
 	var W := tl.window_starts
 	var out := {}
 	var together := {}     # event index -> true: launch and impact move as one (beams, bolts, rams)
@@ -1894,9 +1922,13 @@ static func _schedule(tl: BattleTimeline, events: Array, info_by_id: Dictionary,
 			var lead := minf(cfg.window_lead * ww, w0 - W[0])
 			w0 -= lead
 			ww += lead
-		var jit := unit_hash(fid * 64 + maxi(0, mount) + 1, 7001 + i)
-		var f := 0.5 * cfg.launch_span if ram else _aim_fraction(tl, fid, tgt, _mount_arc(info_by_id.get(fid, {}), mount), w0, ww, jit, cfg)
-		var launch := w0 + ww * f
+		var launch := 0.0
+		if launches.has(i):
+			launch = float(launches[i]) # M4 flight: when the sim's geometry gave the shooter its target
+		else:
+			var jit := unit_hash(fid * 64 + maxi(0, mount) + 1, 7001 + i)
+			var f := 0.5 * cfg.launch_span if ram else _aim_fraction(tl, fid, tgt, _mount_arc(info_by_id.get(fid, {}), mount), w0, ww, jit, cfg)
+			launch = w0 + ww * f
 		var impact := launch
 		if ram:
 			together[i] = true
@@ -1927,7 +1959,10 @@ static func _schedule(tl: BattleTimeline, events: Array, info_by_id: Dictionary,
 		list.sort_custom(func(a, b): return key_less(keys[a], keys[b]))
 	# M1 battlechoreo, proposal 1: every ship fires on its own clock across the round instead of the core's mount
 	# ticks. The core's order per target and the kill rule still hold through the order pass below.
-	_ship_clocks(tl, events, info_by_id, cfg, out, together)
+	if launches.is_empty():
+		_ship_clocks(tl, events, info_by_id, cfg, out, together)
+	else:
+		_flight_clocks(tl, events, info_by_id, cfg, out)
 	var gap := cfg.effect_gap_seconds
 	for _pass in 24:
 		var changed := false
@@ -1957,6 +1992,32 @@ static func _schedule(tl: BattleTimeline, events: Array, info_by_id: Dictionary,
 			changed = true
 		if not changed:
 			break
+	# The core's order has the last word: when the beam limit and the order pass have not settled (the flown rounds can
+	# keep trading delays past 24 passes), an order-only pass leaves every target's impacts distinct and in order, and
+	# every victim firing before its killing blow (a beam may then overlap the limit).
+	for _pass2 in 48:
+		var moved := false
+		for tgt in by_target:
+			var prev2 := -INF
+			for i in by_target[tgt]:
+				var lag2: float = prev2 + gap - float(out[i][1])
+				if lag2 > 1e-6:
+					out[i][1] += lag2
+					if together.has(i):
+						out[i][0] += lag2
+					moved = true
+				prev2 = out[i][1]
+		for victim in kill_of:
+			var k2: int = kill_of[victim]
+			for i in launches_by.get(victim, []):
+				var lag3: float = float(out[i][0]) + gap - float(out[k2][1])
+				if i != k2 and lag3 > 1e-6:
+					out[k2][1] += lag3
+					if together.has(k2):
+						out[k2][0] += lag3
+					moved = true
+		if not moved:
+			break
 	return out
 
 
@@ -1970,6 +2031,101 @@ static func ship_style(length_meters: float, cfg: Config = null) -> int:
 ## Tubes drawn for one core torpedo shot (coordinator, 10 Nov 2026; presentation only): escort 1-2, cruiser 2-3,
 ## capital 4-5, never fewer than the core's projectiles.
 ## Seconds between the tubes of one launcher's salvo: 0.10-0.15 s, seeded per ship (footage WotW d_4891).
+## M4 flight stage 3 (Simon, 14 Nov: "limit the maximum number of torpedoes per turn per ship"): drawn torpedoes per
+## ship per round, by ship_style (capital, cruiser, escort). Presentation only: the core's shots and damage are untouched.
+const TORPEDO_SALVO_MAX := [3, 2, 2]
+
+## One torpedo salvo per ship per round (drawn only). Each ship's torpedo shots this round are grouped by target; the
+## first shot on each target leads a sub-salvo and all the sub-salvos leave together, rippling 0.10-0.15 s apart, from
+## the ship's first launch. The ship's TORPEDO_SALVO_MAX tubes are shared over its targets (at least one each). A further
+## shot on a target already in the salvo draws no torpedo (event -> 0 tubes): it lands with that sub-salvo when no other
+## ship's impact on the target falls between (the core's order on every target is kept), else at its own impact time.
+## Mutates sched (launch, and impact for folded shots). Returns event index -> tubes drawn.
+static func _torpedo_salvos(events: Array, sched: Dictionary, info_by_id: Dictionary, cfg: Config) -> Dictionary:
+	var out := {}
+	var by_ship := {}
+	for i in sched:
+		var e: Dictionary = events[i]
+		if str(e.kind) != "Fire" or family_index(_num(e, "family", 0)) != 2:
+			continue
+		var fid := int(_num(e, "fleetId"))
+		if not by_ship.has(fid):
+			by_ship[fid] = []
+		by_ship[fid].append(i)
+	for fid in by_ship:
+		var list: Array = by_ship[fid]
+		list.sort_custom(func(a, b): return float(sched[a][0]) < float(sched[b][0]) or (float(sched[a][0]) == float(sched[b][0]) and a < b))
+		var meters := float(info_by_id.get(fid, {}).get("lengthMeters", 0.0))
+		var cap: int = TORPEDO_SALVO_MAX[ship_style(meters, cfg)] if meters > 0.0 else TORPEDO_SALVO_MAX[0]
+		var targets: Array = []
+		var lead_of := {}
+		for i in list:
+			var tgt := int(_num(events[i], "targetFleetId"))
+			if not lead_of.has(tgt):
+				lead_of[tgt] = i
+				targets.append(tgt)
+		var share := {}
+		for k in targets.size():
+			share[targets[k]] = 1
+		var spare := cap - targets.size()
+		var k2 := 0
+		while spare > 0 and not targets.is_empty():
+			share[targets[k2 % targets.size()]] += 1
+			spare -= 1
+			k2 += 1
+		var t0 := float(sched[list[0]][0])
+		var stagger := torpedo_stagger(fid, cfg)
+		var tube := 0
+		for tgt in targets:
+			var li: int = lead_of[tgt]
+			var imp := float(sched[li][1])
+			var launch := minf(t0 + tube * stagger, imp - 0.3 - (int(share[tgt]) - 1) * stagger)
+			sched[li][0] = maxf(0.0, launch)
+			out[li] = int(share[tgt])
+			tube += int(share[tgt])
+		# Further shots on a target already in the salvo draw no torpedo. They land with their sub-salvo, 0.06 s apart in the
+		# core's order around the lead's impact, when that keeps every impact on the target distinct and in the core's
+		# order; otherwise they keep their own impact times.
+		for tgt in targets:
+			var li: int = lead_of[tgt]
+			var group: Array = list.filter(func(i): return int(_num(events[i], "targetFleetId")) == tgt)
+			if group.size() < 2:
+				continue
+			for i in group:
+				if i != li:
+					out[i] = 0
+					sched[i][0] = sched[li][0]
+			group.sort_custom(func(a, b): return key_less(impact_key(events[a], a), impact_key(events[b], b)))
+			var lead_k := group.find(li)
+			var lead_imp := float(sched[li][1])
+			var want := {}
+			for k in group.size():
+				want[group[k]] = lead_imp + (k - lead_k) * 0.06
+			if _impacts_ordered(events, sched, tgt, want):
+				for i in group:
+					sched[i][1] = want[i]
+	return out
+
+
+## True when the impacts that land on `tgt` (hits, rams), with `want` (event -> impact time) in place of their scheduled
+## times, fall at distinct times in the core's order (impact_key).
+static func _impacts_ordered(events: Array, sched: Dictionary, tgt: int, want: Dictionary) -> bool:
+	var list: Array = []
+	for i in sched:
+		var e: Dictionary = events[i]
+		if int(_num(e, "targetFleetId")) != tgt:
+			continue
+		var lands := str(e.kind) == "Ram" or (str(e.kind) == "Fire" and bool(_num(e, "hit", false)) and not bool(_num(e, "intercepted", false)))
+		if not lands:
+			continue
+		list.append([float(want.get(i, sched[i][1])), impact_key(e, i)])
+	list.sort_custom(func(a, b): return a[0] < b[0])
+	for k in range(1, list.size()):
+		if not (list[k - 1][0] < list[k][0]) or not key_less(list[k - 1][1], list[k][1]):
+			return false
+	return true
+
+
 static func torpedo_stagger(fleet_id: int, cfg: Config) -> float:
 	return lerpf(0.10, 0.15, unit_hash(fleet_id, 26)) * (cfg.torpedo_stagger_seconds / 0.12)
 
@@ -2046,6 +2202,40 @@ static func _ship_clocks(tl: BattleTimeline, events: Array, info_by_id: Dictiona
 	_beam_limit(tl, events, info_by_id, cfg, out, trains, span_of)
 	tl.set_meta("trains", trains)
 	tl.set_meta("spans", span_of)
+
+
+## M4 flight: the sim already chose every launch; this keeps the battle-wide limits (beams held at once, salvo gaps) and
+## records each ship's shots for the order pass, as _ship_clocks does.
+static func _flight_clocks(tl: BattleTimeline, events: Array, info_by_id: Dictionary, cfg: Config, out: Dictionary) -> void:
+	var trains := {}
+	var span_of := {}
+	for i in out:
+		var fid := int(_num(events[i], "fleetId"))
+		if not trains.has(fid):
+			trains[fid] = []
+		trains[fid].append(i)
+		span_of[i] = float(out[i][1]) - float(out[i][0])
+	_beam_limit(tl, events, info_by_id, cfg, out, trains, span_of)
+	tl.set_meta("trains", trains)
+	tl.set_meta("spans", span_of)
+
+
+## Seconds from a Fire or Ram event's launch to the impact the core's damage lands with (before the order pass): a beam's
+## reach, a burst's flight, a torpedo spread's flight plus its stagger. Shared by _schedule and BattleFlight.
+static func shot_span(e: Dictionary, i: int, info_by_id: Dictionary, cfg: Config) -> float:
+	if e.kind == "Ram":
+		return 0.0
+	var fid := int(_num(e, "fleetId"))
+	var family := family_index(_num(e, "family", 0))
+	if family == 2:
+		var tick := clampi(int(e.tick), 0, TICKS_PER_ROUND - 1)
+		var impact_tick := clampi(int(_num(e, "impactTick", e.tick)), tick, TICKS_PER_ROUND - 1)
+		var n := maxi(1, int(_num(e, "projectiles", 1)))
+		var flight := minf(cfg.max_torpedo_flight_seconds, cfg.min_torpedo_flight_seconds + cfg.torpedo_seconds_per_tick * maxi(0, impact_tick - tick - 1))
+		return flight + (spread_tubes(i, n, float(info_by_id.get(fid, {}).get("lengthMeters", 0.0)), cfg) - 1) * torpedo_stagger(fid, cfg)
+	var owner := int(info_by_id.get(fid, {}).get("ownerId", 0))
+	var bolts := family == 1 or shows_as_bolts(str(_num(e, "weapon", "")), owner, float(info_by_id.get(fid, {}).get("lengthMeters", -1.0)))
+	return cfg.bolt_flight_seconds if bolts else cfg.beam_reach_seconds
 
 
 static func _has_torpedo(events: Array, list: Array) -> bool:

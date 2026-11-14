@@ -8,7 +8,9 @@ extends SceneTree
 var ships := 24
 var seed := 0
 var rounds := 5
+var use_flight := false
 var core: Object
+var flight := BattleFlight.new()
 
 
 func _initialize() -> void:
@@ -16,6 +18,7 @@ func _initialize() -> void:
 		if a.begins_with("--ships="): ships = int(a.split("=")[1])
 		elif a.begins_with("--seed="): seed = int(a.split("=")[1])
 		elif a.begins_with("--rounds="): rounds = int(a.split("=")[1])
+		elif a == "--flight": use_flight = true
 	_run.call_deferred()
 
 
@@ -30,6 +33,7 @@ func _run() -> void:
 	var worst := {}
 	var bad_ends := 0
 	var checked := 0
+	var prev_tl: BattleTimeline = null
 	for r in rounds:
 		if enc.get("finished", false):
 			break
@@ -40,14 +44,65 @@ func _run() -> void:
 		var cfg := BattleTimeline.Config.new()
 		cfg.cinematic = true
 		cfg.round_seconds = 8.0
+		if use_flight:
+			cfg.flight = flight
+			cfg.encounter = enc
+			if prev_tl != null:
+				flight.commit(prev_tl.end_seconds + 0.25)
 		var t0 := Time.get_ticks_usec()
 		var tl := BattleTimeline.build(enc.rounds[idx].events, info, cfg)
 		var build_ms := float(Time.get_ticks_usec() - t0) / 1000.0
+		prev_tl = tl
+		if use_flight:
+			print("FLIGHT round ", idx + 1, " ", flight.stats)
 		var intents := {}
 		for s in tl.ships:
 			var it := str(s.get("intent")) if s.get("intent") != null and str(s.get("intent")) != "" else "wing/none"
 			intents[it] = int(intents.get(it, 0)) + 1
 		print("ROUND ", idx + 1, " ships ", tl.ships.size(), " build ", "%.1f ms" % build_ms, " intents ", intents)
+		# Fire mix (stage 3): torpedoes drawn, beams held at once, shot starts per second over the round's fire span.
+		var torps := 0
+		var salvos := {}
+		var starts: Array = []
+		var beam_iv: Array = []
+		var ev_seen := {}
+		for j in tl.jobs:
+			match int(j.kind):
+				BattleTimeline.Job.TORPEDO:
+					torps += 1
+					salvos["%d" % int(j.fleet_id)] = int(salvos.get("%d" % int(j.fleet_id), 0)) + 1
+					if not ev_seen.has(j.event_index):
+						ev_seen[j.event_index] = true
+						starts.append(float(j.start))
+				BattleTimeline.Job.BEAM:
+					beam_iv.append([float(j.start), float(j.start) + float(j.duration)])
+					if not ev_seen.has(j.event_index):
+						ev_seen[j.event_index] = true
+						starts.append(float(j.start))
+				BattleTimeline.Job.PULSE:
+					if not ev_seen.has(j.event_index):
+						ev_seen[j.event_index] = true
+						starts.append(float(j.start))
+		starts.sort()
+		var span := (float(starts.back()) - float(starts[0])) if starts.size() > 1 else 1.0
+		var bmax := 0
+		var bsum := 0.0
+		var samples := 0
+		var tq := float(starts[0]) if not starts.is_empty() else 0.0
+		while not starts.is_empty() and tq <= float(starts.back()):
+			var c := 0
+			for iv in beam_iv:
+				if tq >= float(iv[0]) and tq < float(iv[1]):
+					c += 1
+			bmax = maxi(bmax, c)
+			bsum += c
+			samples += 1
+			tq += 0.1
+		var most := 0
+		for k in salvos:
+			most = maxi(most, int(salvos[k]))
+		print("FIRE round ", idx + 1, " torpedoes ", torps, " ships_firing_torps ", salvos.size(), " max_torps_one_ship ", most,
+			" shot_starts_per_s ", "%.2f" % (starts.size() / maxf(span, 0.5)), " beams_mean ", "%.2f" % (bsum / maxf(1.0, samples)), " beams_max ", bmax)
 		for s in tl.ships:
 			var cls: int = s.style if s.style >= 0 else -1
 			if cls == 2 and s.length_meters > 0.0 and s.length_meters <= 120.0:

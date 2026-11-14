@@ -680,7 +680,7 @@ func _spawn(i: int, j: Dictionary) -> void:
 				var out := (p - target.global_position).normalized()
 				_burst(p, Color(1.0, 0.5, 0.2), "debris", clampi(6 + j.hull_damage / 2, 8, 30), k * 0.8, out)
 				_burst(p, Color(0.7, 0.85, 1.0), "vent", 36, k * 0.7, out)
-				_flash_light(p, Color(1.0, 0.55, 0.2), 6.0, 600.0 * UE, 0.5)
+				_flash_light(p, Color(1.0, 0.55, 0.2), 9.0, 800.0 * UE, 0.6)
 				target.add_scorch(p, from, clampf(target.length * 0.18, 0.6, 2.2))
 				# Tactical rules 4: a hit that damages a subsystem sparks where that system sits (engines, weapons...).
 				if str(j.get("subsystem", "none")) != "none" and int(j.get("subsystem_damage", 0)) > 0 and not j.get("subsystem_destroyed", false):
@@ -695,7 +695,7 @@ func _spawn(i: int, j: Dictionary) -> void:
 					var hot := Color(0.6, 0.8, 1.0) if str(j.get("subsystem", "")) == "warpCore" else Color(1.0, 0.7, 0.3)
 					_burst(q, hot, "sparks", 60 if big else 36, k * (2.2 if big else 1.4))
 					_burst(q, Color(1.0, 0.45, 0.1), "fire_small", 24 if big else 12, k * (2.0 if big else 1.2))
-					_flash_light(q, hot, 14.0 if big else 8.0, (900.0 if big else 600.0) * UE, 0.8)
+					_flash_light(q, hot, 18.0 if big else 11.0, (1300.0 if big else 800.0) * UE, 1.0)
 					var blast := _flare(hot.lerp(Color.WHITE, 0.4), st.size * (2.4 if big else 1.6), 1.6, 1.0)
 					blast.global_position = q # was left at the world origin
 					st.nodes.append(blast)
@@ -723,7 +723,7 @@ func _spawn(i: int, j: Dictionary) -> void:
 				_burst(p0, Color(1.0, 0.5, 0.15), "fire_small", 30, k0 * 1.5)
 				_burst(p0, Color(1.0, 0.6, 0.2), "sparks", 50, k0 * 1.5)
 				_burst(p0, Color(0.7, 0.85, 1.0), "vent", 40, k0)
-				_flash_light(p0, Color(1.0, 0.6, 0.3), 6.0, s.length * 4.0, 0.6)
+				_flash_light(p0, Color(1.0, 0.6, 0.3), 11.0, s.length * 8.0, 0.9)
 			elif s != null:
 				_fireball(i, st, s.global_position, s.length)
 		Job.WARP:
@@ -752,12 +752,14 @@ func _fireball(i: int, st: Dictionary, p: Vector3, size: float) -> void:
 	add_child(ring2)
 	ring2.global_position = p
 	ring2.rotation_degrees = ring.rotation_degrees + Vector3(70.0, 35.0, 0.0)
-	st.nodes = [_flare(Color(1.0, 0.75, 0.4), size * 1.5, 2.0, 1.5), ring, ring2]
-	_burst(p, Color(1.0, 0.5, 0.15), "fireball", 160, size / 5.0)
-	_burst(p, Color(1.0, 0.7, 0.3), "sparks", 90, size / 5.0)
-	_burst(p, Color(1.0, 0.45, 0.1), "debris", 70, size / 3.0)
-	_burst(p, Color(0.35, 0.3, 0.28), "smoke", 24, size / 3.0)
-	_flash_light(p, Color(1.0, 0.65, 0.3), 7.0, size * 6.0, 1.4)
+	# M4 flight stage 2 (show footage, SoA 20:05-20:53): a capital's death fills the close frame, lights the hulls
+	# round it for a couple of seconds and throws debris well clear of the wreck.
+	st.nodes = [_flare(Color(1.0, 0.75, 0.4), size * 2.4, 3.0, 1.5), ring, ring2]
+	_burst(p, Color(1.0, 0.5, 0.15), "fireball", 200, size / 3.6)
+	_burst(p, Color(1.0, 0.7, 0.3), "sparks", 120, size / 3.6)
+	_burst(p, Color(1.0, 0.45, 0.1), "debris", 130, size / 2.4)
+	_burst(p, Color(0.35, 0.3, 0.28), "smoke", 30, size / 2.6)
+	_flash_light(p, Color(1.0, 0.65, 0.3), 16.0, size * 14.0, 2.2)
 
 
 ## Torpedo impact (docs/WEAPON-FX.md): a big spiked flash and a camera-facing shockwave ring that grows to twice the
@@ -779,7 +781,7 @@ func _torpedo_impact(st: Dictionary, j: Dictionary, target: BattleShip, p: Vecto
 	st.t_ring = ring
 	st.t_radius = target.radius()
 	st.nodes.append_array([st.t_flash, ring])
-	_flash_light(p, tc.lerp(Color.WHITE, 0.3), 5.0, target.radius() * 5.0, 0.4)
+	_flash_light(p, tc.lerp(Color.WHITE, 0.3), 9.0, target.radius() * 8.0, 0.5)
 
 
 static func rng_angle(seed: int, spread: float) -> float:
@@ -898,7 +900,7 @@ func _animate(i: int, j: Dictionary, t: float) -> void:
 			st.nodes[0].scale = Vector3(head_size * aspect, head_size, head_size)
 			var fade := 1.0 - smoothstep(0.85, 1.0, u) if j.outcome == BattleTimeline.Outcome.MISS else 1.0
 			var strike := 1.0 + 0.8 * smoothstep(0.92, 1.0, u) if j.outcome == BattleTimeline.Outcome.HIT else 1.0
-			_fxp(st.nodes[0], "torp_intensity", 1.1 * fade * strike)
+			_fxp(st.nodes[0], "torp_intensity", 1.7 * fade * strike) # stage 2: a hot core that reads against the darker sky
 			# The motion smear: TORPEDO_TAIL_HEADS head sizes long, about as wide as the core, fading fast.
 			var plen := maxf(((path[2] as Vector3) - (path[0] as Vector3)).length(), 1e-3)
 			var step := minf(0.03, head_size * TORPEDO_TAIL_HEADS / plen / 11.0)
