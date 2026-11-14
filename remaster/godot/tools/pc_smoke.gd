@@ -403,6 +403,12 @@ func _run() -> void:
 		await wait(4)
 		pcs._round()
 		await wait(150)
+		# M4: the ship lists and the orders bar fold away while a round plays; the plan phase is back when they return.
+		var guard := 0
+		while pcs.get("_playing_layout") == true and guard < 1500:
+			await wait(1)
+			guard += 1
+		await wait(20) # the plan layout fades back in
 	if foe_id != 0:
 		pcs = app.current_screen()
 		pcs._pick(foe_id)
