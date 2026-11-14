@@ -1544,7 +1544,9 @@ static func build(events: Array, info: Array, cfg: Config = null) -> BattleTimel
 				base.shield_damage = int(_num(e, "shieldDamage")); base.hull_damage = int(_num(e, "hullDamage"))
 				base.destroys_target = bool(_num(e, "destroyed", false))
 				var launch: float = sc[0] if cine else t0
-				var impact_time := t0
+				# Cinematic: the schedule's impact (the order pass keeps it distinct and in the core's order on each target); a
+				# flown launch may come before its fire tick, so the tick time is no floor for it.
+				var impact_time: float = float(sc[1]) if cine else t0
 				# Cinematic: a disruptor (beam family in the core) is drawn as a burst of bolts, as in the shows.
 				var shown := 1 if cine and family == 0 and shows_as_bolts(weapon, owner, float(info_by_id[fid].get("lengthMeters", -1.0)) if info_by_id.has(fid) else -1.0) else family
 				if shown == 0:
@@ -1990,6 +1992,32 @@ static func _schedule(tl: BattleTimeline, events: Array, info_by_id: Dictionary,
 			changed = true
 		if not changed:
 			break
+	# The core's order has the last word: when the beam limit and the order pass have not settled (the flown rounds can
+	# keep trading delays past 24 passes), an order-only pass leaves every target's impacts distinct and in order, and
+	# every victim firing before its killing blow (a beam may then overlap the limit).
+	for _pass2 in 48:
+		var moved := false
+		for tgt in by_target:
+			var prev2 := -INF
+			for i in by_target[tgt]:
+				var lag2: float = prev2 + gap - float(out[i][1])
+				if lag2 > 1e-6:
+					out[i][1] += lag2
+					if together.has(i):
+						out[i][0] += lag2
+					moved = true
+				prev2 = out[i][1]
+		for victim in kill_of:
+			var k2: int = kill_of[victim]
+			for i in launches_by.get(victim, []):
+				var lag3: float = float(out[i][0]) + gap - float(out[k2][1])
+				if i != k2 and lag3 > 1e-6:
+					out[k2][1] += lag3
+					if together.has(k2):
+						out[k2][0] += lag3
+					moved = true
+		if not moved:
+			break
 	return out
 
 
@@ -2024,13 +2052,6 @@ static func _torpedo_salvos(events: Array, sched: Dictionary, info_by_id: Dictio
 		if not by_ship.has(fid):
 			by_ship[fid] = []
 		by_ship[fid].append(i)
-	# Every scheduled impact per target, to keep the core's order when a shot is folded into an earlier sub-salvo.
-	var impacts_on := {}
-	for i in sched:
-		var tgt := int(_num(events[i], "targetFleetId"))
-		if not impacts_on.has(tgt):
-			impacts_on[tgt] = []
-		impacts_on[tgt].append([float(sched[i][1]), int(_num(events[i], "fleetId"))])
 	for fid in by_ship:
 		var list: Array = by_ship[fid]
 		list.sort_custom(func(a, b): return float(sched[a][0]) < float(sched[b][0]) or (float(sched[a][0]) == float(sched[b][0]) and a < b))
@@ -2059,26 +2080,50 @@ static func _torpedo_salvos(events: Array, sched: Dictionary, info_by_id: Dictio
 			var li: int = lead_of[tgt]
 			var imp := float(sched[li][1])
 			var launch := minf(t0 + tube * stagger, imp - 0.3 - (int(share[tgt]) - 1) * stagger)
-			launch = maxf(launch, imp - 2.5) # a target hit much later is not reached by a torpedo crawling for seconds
 			sched[li][0] = maxf(0.0, launch)
 			out[li] = int(share[tgt])
 			tube += int(share[tgt])
-		for i in list:
-			var tgt := int(_num(events[i], "targetFleetId"))
+		# Further shots on a target already in the salvo draw no torpedo. They land with their sub-salvo, 0.06 s apart in the
+		# core's order around the lead's impact, when that keeps every impact on the target distinct and in the core's
+		# order; otherwise they keep their own impact times.
+		for tgt in targets:
 			var li: int = lead_of[tgt]
-			if i == li:
+			var group: Array = list.filter(func(i): return int(_num(events[i], "targetFleetId")) == tgt)
+			if group.size() < 2:
 				continue
-			out[i] = 0
+			for i in group:
+				if i != li:
+					out[i] = 0
+					sched[i][0] = sched[li][0]
+			group.sort_custom(func(a, b): return key_less(impact_key(events[a], a), impact_key(events[b], b)))
+			var lead_k := group.find(li)
 			var lead_imp := float(sched[li][1])
-			var own := float(sched[i][1])
-			var between := false
-			for rec in impacts_on.get(tgt, []):
-				if int(rec[1]) != fid and float(rec[0]) > lead_imp and float(rec[0]) < own:
-					between = true
-			sched[i][0] = sched[li][0]
-			if not between:
-				sched[i][1] = lead_imp
+			var want := {}
+			for k in group.size():
+				want[group[k]] = lead_imp + (k - lead_k) * 0.06
+			if _impacts_ordered(events, sched, tgt, want):
+				for i in group:
+					sched[i][1] = want[i]
 	return out
+
+
+## True when the impacts that land on `tgt` (hits, rams), with `want` (event -> impact time) in place of their scheduled
+## times, fall at distinct times in the core's order (impact_key).
+static func _impacts_ordered(events: Array, sched: Dictionary, tgt: int, want: Dictionary) -> bool:
+	var list: Array = []
+	for i in sched:
+		var e: Dictionary = events[i]
+		if int(_num(e, "targetFleetId")) != tgt:
+			continue
+		var lands := str(e.kind) == "Ram" or (str(e.kind) == "Fire" and bool(_num(e, "hit", false)) and not bool(_num(e, "intercepted", false)))
+		if not lands:
+			continue
+		list.append([float(want.get(i, sched[i][1])), impact_key(e, i)])
+	list.sort_custom(func(a, b): return a[0] < b[0])
+	for k in range(1, list.size()):
+		if not (list[k - 1][0] < list[k][0]) or not key_less(list[k - 1][1], list[k][1]):
+			return false
+	return true
 
 
 static func torpedo_stagger(fleet_id: int, cfg: Config) -> float:

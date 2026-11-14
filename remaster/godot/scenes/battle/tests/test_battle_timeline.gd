@@ -460,8 +460,10 @@ func _init() -> void:
 		c.round_seconds = 8.0
 		var tl2 := BattleTimeline.build(ev, _flight_info(400.0), c)
 		var tubes := tl2.jobs.filter(func(j): return j.kind == BattleTimeline.Job.TORPEDO)
-		check(tubes.size() >= 4 and tubes.size() <= 5, "a cruiser's salvo is 4-5 tubes (%d)" % tubes.size())
-		if tubes.size() >= 3:
+		# M4 flight stage 3 (Simon, 14 Nov): a ship's one salvo a round is TORPEDO_SALVO_MAX tubes for its class.
+		var cap: int = BattleTimeline.TORPEDO_SALVO_MAX[BattleTimeline.ship_style(400.0)]
+		check(tubes.size() == cap, "a cruiser's salvo is %d tubes (%d)" % [cap, tubes.size()])
+		if tubes.size() >= 2:
 			for k in range(1, tubes.size()):
 				var gap: float = tubes[k].start - tubes[k - 1].start
 				check(gap >= 0.1 - 1e-6 and gap <= 0.15 + 1e-6, "tubes launch 0.10-0.15 s apart (%.3f)" % gap)
@@ -594,13 +596,7 @@ func _init() -> void:
 					check(is_equal_approx(p.x, float(last.x)) and is_equal_approx(p.y, float(last.y)) and absf(BattleTimeline.shortest_turn(p.facing, float(last.facing))) < 1e-4, "round %d ship %d ends on the core's pose" % [r, s.fleet_id])
 				check((s.visibility_at(tl.end_seconds + 0.01) == 0.0 and s.hide_at >= 0.0) == gone or s.starts_cloaked, "round %d ship %d gone at the end iff the core says so" % [r, s.fleet_id])
 			# Damage shown over the round adds up to the core's per-event figures.
-			var want := {}
-			for e in evs:
-				if (e.kind == "Fire" and e.get("hit", false) and not e.get("intercepted", false)) or e.kind == "Ram":
-					var tgt := int(e.targetFleetId)
-					want[tgt] = want.get(tgt, Vector2i.ZERO) + Vector2i(int(e.get("hullDamage", 0)), int(e.get("shieldDamage", 0)))
-			for tgt in want:
-				check(tl.damage_until(tgt, tl.end_seconds) == want[tgt], "round %d ship %d shown damage %s == core %s" % [r, tgt, tl.damage_until(tgt, tl.end_seconds), want[tgt]])
+			_check_damage(tl, evs, "round %d" % r)
 		# resolveOrder (rules 4 bridge) wins over the fallback order: two torpedoes arriving on one tick from different
 		# fire ticks, the later-fired one resolved first; and a ship that dies on tick 5 still fires its tick-5 beam first.
 		var ev := _flight_events() + [
@@ -628,6 +624,87 @@ func _init() -> void:
 		check(not bolt.is_empty(), "a Klingon escort's disruptor shows as bolts")
 		return true)
 
+	run("M4 flight: one torpedo salvo per ship per round; folded shots keep the core's damage sums and order exactly", func():
+		var ev := _flight_events() + [
+			{"tick": 0, "kind": "ManeuverStart", "fleetId": 3, "x": 6, "y": 2, "facing": 180, "maneuver": "Engage"},
+			{"tick": 4, "kind": "ManeuverEnd", "fleetId": 3, "x": 5, "y": 2, "facing": 180, "maneuver": "Engage"},
+			{"tick": 1, "kind": "Fire", "fleetId": 1, "targetFleetId": 2, "mountIndex": 1, "weapon": "PhotonTorpedo", "family": "torpedo", "projectiles": 1, "hit": true, "impactTick": 4, "shieldDamage": 7, "hullDamage": 3},
+			{"tick": 2, "kind": "Fire", "fleetId": 1, "targetFleetId": 2, "mountIndex": 1, "weapon": "PhotonTorpedo", "family": "torpedo", "projectiles": 2, "hit": true, "impactTick": 5, "shieldDamage": 5, "hullDamage": 11},
+			{"tick": 3, "kind": "Fire", "fleetId": 1, "targetFleetId": 2, "mountIndex": 2, "weapon": "PhotonTorpedo", "family": "torpedo", "projectiles": 1, "hit": false, "impactTick": 6, "shieldDamage": 0, "hullDamage": 0},
+			{"tick": 5, "kind": "Fire", "fleetId": 1, "targetFleetId": 2, "mountIndex": 1, "weapon": "PhotonTorpedo", "family": "torpedo", "projectiles": 1, "hit": true, "impactTick": 8, "shieldDamage": 0, "hullDamage": 17},
+			{"tick": 4, "kind": "Fire", "fleetId": 1, "targetFleetId": 3, "mountIndex": 2, "weapon": "PhotonTorpedo", "family": "torpedo", "projectiles": 1, "hit": true, "impactTick": 7, "shieldDamage": 9, "hullDamage": 2},
+			{"tick": 3, "kind": "Fire", "fleetId": 2, "targetFleetId": 1, "mountIndex": 0, "weapon": "Disruptor", "family": "beam", "projectiles": 1, "hit": true, "impactTick": 3, "shieldDamage": 4, "hullDamage": 1},
+			{"tick": 6, "kind": "Fire", "fleetId": 3, "targetFleetId": 2, "mountIndex": 0, "weapon": "PhaserArray", "family": "beam", "projectiles": 1, "hit": true, "impactTick": 6, "shieldDamage": 0, "hullDamage": 6}]
+		var info := _flight_info(400.0) + [{"fleetId": 3, "ownerId": 1, "x": 6, "y": 2, "facing": 180, "lengthMeters": 400.0, "maxShields": 10}]
+		var c := BattleTimeline.Config.new()
+		c.cinematic = true
+		c.round_seconds = 8.0
+		var tl := BattleTimeline.build(ev, info, c)
+		var cap: int = BattleTimeline.TORPEDO_SALVO_MAX[BattleTimeline.ship_style(400.0)]
+		var torps := tl.jobs.filter(func(j): return j.kind == BattleTimeline.Job.TORPEDO and j.fleet_id == 1)
+		check(torps.size() == cap, "five core torpedo shots on two targets draw one salvo of %d tubes (%d)" % [cap, torps.size()])
+		var starts: Array = torps.map(func(j): return float(j.start))
+		starts.sort()
+		check(starts.size() < 2 or float(starts.back()) - float(starts[0]) <= 0.15 * (cap - 1) + 1e-6, "the salvo leaves together (%s)" % [starts])
+		check(tl.all_consumed(), "every event consumed, folded shots included: %s" % [tl.consumed])
+		_check_order(tl, ev, "salvo")
+		_check_damage(tl, ev, "salvo")
+		# The fixture: every ship's drawn torpedoes a round stay within its class cap (one per target when it has more
+		# targets than tubes), and the core's damage still adds up.
+		for r in rounds.size():
+			var tlr := _build_cine(encounter, r)
+			var info_r := BattleTimeline.round_ship_info(encounter, r)
+			var len_of := {}
+			for inf in info_r:
+				len_of[int(inf.fleetId)] = float(inf.get("lengthMeters", 0.0))
+			var tubes := {}
+			var targets := {}
+			for j in tlr.jobs:
+				if j.kind == BattleTimeline.Job.TORPEDO:
+					tubes[j.fleet_id] = int(tubes.get(j.fleet_id, 0)) + 1
+					if not targets.has(j.fleet_id):
+						targets[j.fleet_id] = {}
+					targets[j.fleet_id][j.target_fleet_id] = true
+			for fid in tubes:
+				var m: float = len_of.get(fid, 0.0)
+				var cap_r: int = BattleTimeline.TORPEDO_SALVO_MAX[BattleTimeline.ship_style(m)] if m > 0.0 else BattleTimeline.TORPEDO_SALVO_MAX[0]
+				check(int(tubes[fid]) <= maxi(cap_r, targets[fid].size()), "round %d ship %d draws %d torpedoes (cap %d)" % [r, fid, tubes[fid], cap_r])
+			_check_damage(tlr, encounter.rounds[r].events, "round %d" % r)
+		return true)
+
+	run("M4 flight: the flown rounds are consumed, deterministic, keep the core's damage and order, end near the core's cells", func():
+		var a := _build_flown(encounter)
+		var b := _build_flown(encounter)
+		var err_sum := 0.0
+		var err_n := 0
+		var err_max := 0.0
+		for r in rounds.size():
+			var tl: BattleTimeline = a[r]
+			var evs: Array = rounds[r].events
+			check(tl.all_consumed(), "flown round %d consumed all events" % r)
+			check(var_to_str(tl.jobs) == var_to_str((b[r] as BattleTimeline).jobs), "flown round %d jobs deterministic" % r)
+			_check_order(tl, evs, "flown round %d" % r)
+			_check_damage(tl, evs, "flown round %d" % r)
+			for s in tl.ships:
+				if s.path.is_empty() or s.hide_at >= 0.0:
+					continue
+				var last := {}
+				for e in evs:
+					if int(e.get("fleetId", 0)) == s.fleet_id and e.kind == "ManeuverEnd":
+						last = e
+				if last.is_empty():
+					continue
+				var p := tl.pose_of(s, tl.end_seconds)
+				var e2 := Vector2(p.x - float(last.x), p.y - float(last.y)).length()
+				err_sum += e2
+				err_n += 1
+				err_max = maxf(err_max, e2)
+		var mean := err_sum / maxf(1.0, err_n)
+		print("    flown end-cell error: mean %.3f cells, max %.3f over %d ship-rounds" % [mean, err_max, err_n])
+		check(err_n > 0, "flown ships checked")
+		check(mean < 0.35 and err_max < 1.5, "flown ships end near the core's cells (mean %.3f, max %.3f)" % [mean, err_max])
+		return true)
+
 	print("%d passed, %d failures" % [passed, failures])
 	quit(1 if failures > 0 else 0)
 
@@ -643,7 +720,7 @@ func _check_order(tl: BattleTimeline, evs: Array, what: String) -> void:
 	for tgt in by_target:
 		var list: Array = by_target[tgt]
 		for k in range(1, list.size()):
-			check(list[k - 1].time < list[k].time, "%s ship %d: impacts at distinct times" % [what, tgt])
+			check(list[k - 1].time < list[k].time, "%s ship %d: impacts at distinct times (%d at %.4f, %d at %.4f)" % [what, tgt, list[k - 1].event_index, list[k - 1].time, list[k].event_index, list[k].time])
 			check(BattleTimeline.key_less(list[k - 1].key, list[k].key), "%s ship %d: impact %d before %d in the core's order" % [what, tgt, list[k - 1].event_index, list[k].event_index])
 	for imp in tl.impact_log:
 		if not imp.destroyed:
@@ -653,6 +730,37 @@ func _check_order(tl: BattleTimeline, evs: Array, what: String) -> void:
 		for j in tl.jobs:
 			if j.fleet_id == imp.target and j.kind in [BattleTimeline.Job.BEAM, BattleTimeline.Job.PULSE, BattleTimeline.Job.TORPEDO] and j.index == 0:
 				check(j.start < imp.time, "%s ship %d fires (%.2f) before it dies (%.2f)" % [what, imp.target, j.start, imp.time])
+
+
+## The damage shown on every ship by the round's end is the core's per-event figures, summed exactly.
+func _check_damage(tl: BattleTimeline, evs: Array, what: String) -> void:
+	var want := {}
+	for e in evs:
+		if (e.kind == "Fire" and e.get("hit", false) and not e.get("intercepted", false)) or e.kind == "Ram":
+			var tgt := int(e.targetFleetId)
+			want[tgt] = want.get(tgt, Vector2i.ZERO) + Vector2i(int(e.get("hullDamage", 0)), int(e.get("shieldDamage", 0)))
+	for tgt in want:
+		check(tl.damage_until(tgt, tl.end_seconds) == want[tgt], "%s ship %d shown damage %s == core %s" % [what, tgt, tl.damage_until(tgt, tl.end_seconds), want[tgt]])
+
+
+## Every round of the encounter flown by one BattleFlight, carried from round to round as the scene does.
+func _build_flown(encounter: Dictionary) -> Array:
+	var flight := BattleFlight.new()
+	flight.seed = BattleFlight.encounter_seed(encounter)
+	var out := []
+	var prev: BattleTimeline = null
+	for r in encounter.rounds.size():
+		if prev != null:
+			flight.commit(prev.end_seconds + BattleScene.FINISH_TAIL)
+		var cfg := BattleTimeline.Config.new()
+		cfg.player_empire = 1
+		cfg.cinematic = true
+		cfg.round_seconds = 8.0
+		cfg.flight = flight
+		cfg.encounter = encounter
+		prev = BattleTimeline.build(encounter.rounds[r].events, BattleTimeline.round_ship_info(encounter, r), cfg)
+		out.append(prev)
+	return out
 
 
 func _build_cine(encounter: Dictionary, r: int) -> BattleTimeline:

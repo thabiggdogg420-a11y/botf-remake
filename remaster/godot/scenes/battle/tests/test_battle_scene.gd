@@ -67,6 +67,7 @@ func _run() -> void:
 		if encounter.rounds[r].events.any(func(e): return e.kind == "Destroyed"):
 			check(cues.any(func(c): return c[0] == "sfx.explosion.large"), "round %d explosion cue" % r)
 	check(scene.camera != null, "camera exists")
+	_check_director(scene, encounter)
 	scene.camera.set_mode(BattleCamera.Mode.ORBIT)
 	scene.seek(2.0)
 	await process_frame
@@ -74,3 +75,50 @@ func _run() -> void:
 	await process_frame
 	print("scene tests: %d failures" % failures)
 	quit(1 if failures > 0 else 0)
+
+
+## M4 flight stage 2 (show-style camera): the shot director, driven frame by frame at 30 fps through the whole battle at
+## real speed with a short gap between rounds. Every shot but the last holds 2.5-6.5 s of real time unless its subject
+## has gone (destroyed or warped out); the first is an establisher and there are more; every other shot has a live
+## subject; consecutive cuts are at least 2.5 s apart except when a subject goes.
+func _check_director(scene: BattleScene, encounter: Dictionary) -> void:
+	scene.camera.set_mode(BattleCamera.Mode.CINEMATIC)
+	scene.playback_speed = 1.0
+	var dt := 1.0 / 30.0
+	var shots: Array = []     # [n, type, subject, start clock, end clock, subject gone at the cut]
+	var last_n := -1
+	for r in encounter.rounds.size():
+		scene.play_round(encounter, r)
+		var frames := 0
+		while scene.is_playing() and frames < 30 * 40:
+			scene._process(dt)
+			frames += 1
+			var d: Dictionary = scene._dir
+			if int(d.get("n", -1)) != last_n and str(d.get("type", "")) != "":
+				if not shots.is_empty():
+					var prev: Array = shots.back()
+					prev[4] = scene._dir_clock - dt
+					var sid := int(prev[2])
+					var gone := sid != 0 and (scene.ship_node(sid) == null or not scene.ship_node(sid).visible)
+					var tr := scene.timeline.track(sid) if sid != 0 else null
+					if tr != null and tr.hide_at >= 0.0 and scene.time >= tr.hide_at:
+						gone = true
+					prev[5] = gone
+				last_n = int(d.n)
+				shots.append([last_n, str(d.type), int(d.get("subject", 0)), scene._dir_clock, -1.0, false])
+				if str(d.type) != "establish":
+					check(int(d.get("subject", 0)) != 0 and scene.ship_node(int(d.subject)) != null, "director shot %d (%s) has a live subject" % [last_n, d.type])
+				check(str(d.type) in ["establish", "track", "push", "push_rev", "lead", "approach", "victim"], "director shot type %s" % d.type)
+		for k in 15: # the player's turn: a short gap (inside GAP_GRACE), the shot carries over
+			scene._process(dt)
+	check(shots.size() >= 4, "director made %d shots over the battle" % shots.size())
+	if shots.is_empty():
+		return
+	check(shots[0][1] == "establish", "the battle opens on an establisher (%s)" % shots[0][1])
+	check(shots.filter(func(x): return x[1] == "establish").size() >= 2, "establishers recur")
+	for k in shots.size() - 1:
+		var sh: Array = shots[k]
+		var held: float = float(sh[4]) - float(sh[3])
+		if not bool(sh[5]):
+			check(held >= 2.5 - 1e-3 and held <= 6.5, "director shot %d (%s) held %.2f s" % [sh[0], sh[1], held])
+	print("  director: %d shots, types %s" % [shots.size(), shots.map(func(x): return x[1])])
