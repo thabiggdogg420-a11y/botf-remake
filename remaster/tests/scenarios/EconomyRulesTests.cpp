@@ -175,9 +175,10 @@ int main() {
         auto& c = homeOf(s, s.playerEmpire);
         c.farms = 3; c.foodWorkers = std::min(c.foodWorkers, 20); c.upgradeSteps[0] = 3;
         const auto credits = s.credits; const auto overflow = c.overflow;
-        submit(s, makeScrapStructureCommand(s.lastAcceptedCommand + 1, c.systemId, Building::Farm));
+        const auto homeSystem = c.systemId; // submit() replaces the whole state, so `c` must not be read after it
+        submit(s, makeScrapStructureCommand(s.lastAcceptedCommand + 1, homeSystem, Building::Farm));
         const auto d = preview(s);
-        const auto& pc = *colonyAt(d, c.systemId);
+        const auto& pc = *colonyAt(d, homeSystem);
         check(pc.farms == 2 && pc.upgradeSteps[0] == 2, "scrapping a farm removes its share of the steps (3 of 3 -> 2 of 2)");
         check(d.credits == credits && pc.overflow == overflow, "no credits or industry come back");
         // Scrap down to nothing with an upgrade queued: it cannot apply.
@@ -273,7 +274,7 @@ int main() {
         const int me = s.playerEmpire, foe = otherEmpire(s);
         makeWar(s, me, foe);
         auto& home = homeOf(s, me);
-        const auto& sys = sysOf(s, home.systemId);
+        const auto sys = sysOf(s, home.systemId); // a copy: submit() replaces the whole state and would leave a reference dangling
         auto mine = warship(s, me, sys.x, sys.y);
         s.fleets.push_back(mine);
         submit(s, orderCmd(s, mine.id, 1));

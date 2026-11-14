@@ -259,9 +259,10 @@ int main() {
         auto s5 = asEmpire(5);
         auto& c5 = *ownedBy(s5, 5).front();
         c5.morale = 30; s5.credits = 5000;
-        declare(s5, c5.systemId, 5);
+        const int sid5 = c5.systemId; // declare() and advance() replace the state, so `c5` must not be read after them
+        declare(s5, sid5, 5);
         advance(s5);
-        check(colonyOf(s5, c5.systemId).program == 0 && colonyOf(s5, c5.systemId).morale >= 50, "Festival lifts morale and ends");
+        check(colonyOf(s5, sid5).program == 0 && colonyOf(s5, sid5).morale >= 50, "Festival lifts morale and ends");
     }, passed);
 
     run("programs: the AI declares its program in unrest and lifts it when calm", [&] {
@@ -282,11 +283,12 @@ int main() {
         auto s = asEmpire(4);
         auto& c = *ownedBy(s, 4).front();
         c.morale = 30; s.credits = 5000;
-        declare(s, c.systemId, 4);
+        const int sid = c.systemId; // declare() and advance() replace the state, so `c` must not be read after them
+        declare(s, sid, 4);
         advance(s);
         const auto text = serialize(s);
         const auto loaded = deserialize(text);
-        check(serialize(loaded) == text && colonyAt(loaded, c.systemId)->program == 4 && colonyAt(loaded, c.systemId)->programTurns == 9, "program survives save");
+        check(serialize(loaded) == text && colonyAt(loaded, sid)->program == 4 && colonyAt(loaded, sid)->programTurns == 9, "program survives save");
         // A pending order survives too.
         auto p = asEmpire(1);
         auto& pc = *ownedBy(p, 1).front();
