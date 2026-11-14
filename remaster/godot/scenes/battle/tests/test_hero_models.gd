@@ -117,7 +117,7 @@ func _run() -> void:
 		if mat2 != null:
 			check(mat2.get_shader_parameter("bc_tex") != null, "BC texture carried over from the glb")
 			check(mat2.get_shader_parameter("emissive_tex") != null, "emissive texture carried over")
-			check(is_equal_approx(float(mat2.get_shader_parameter("emissive_strength")), 0.75), "emissive strength from the hint")
+			check(is_equal_approx(float(mat2.get_shader_parameter("emissive_strength")), 0.75 * BattleShip.WINDOW_GAIN), "emissive strength from the hint (x WINDOW_GAIN, M4 flight stage 3)")
 			check(is_equal_approx(float(mat2.get_shader_parameter("metallic_scale")), 0.35), "metallic scale 0.35")
 			check(is_equal_approx(float(mat2.get_shader_parameter("roughness_min")), 0.32), "roughness floor 0.32")
 		check(mi2.visibility_range_end == 0.0, "single-LOD hero is never hidden")

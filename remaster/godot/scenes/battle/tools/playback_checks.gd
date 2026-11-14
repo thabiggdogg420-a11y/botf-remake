@@ -9,6 +9,9 @@ extends RefCounted
 ##   - the playback's final state is the core's: each surviving ship ends on the core's end cell, the hull damage
 ##     shown by the end of the round is hullBefore - hullAfter, and a ship is gone at the end iff the core lost it.
 
+## M4 flight: how far (cells) a flown ship may settle from the core's end cell (stage 3: up to ~1.2 after a 2.8-cell move).
+const FLOWN_END_CELLS := 1.5
+
 const MIN_TORPEDO_FLIGHT := 1.0
 const SHOTS := [BattleTimeline.Job.BEAM, BattleTimeline.Job.PULSE, BattleTimeline.Job.TORPEDO]
 
@@ -88,7 +91,11 @@ static func check_round(tl: BattleTimeline, rnd: Dictionary) -> Dictionary:
 		if not core_gone and rs.has("to"):
 			var p := tl.pose_of(s, end)
 			var to: Dictionary = rs.to
-			if not (is_equal_approx(p.x, float(to.x)) and is_equal_approx(p.y, float(to.y))):
+			# M4 flight: a flown ship (the flight sim's path) settles near its cell, not on it, and starts the next round
+			# from there; the plan view keeps the core's cell. Within FLOWN_END_CELLS of it is the core's pose as drawn.
+			var off := Vector2(p.x - float(to.x), p.y - float(to.y)).length()
+			var flown := not s.path.is_empty()
+			if (flown and off > FLOWN_END_CELLS) or (not flown and not (is_equal_approx(p.x, float(to.x)) and is_equal_approx(p.y, float(to.y)))):
 				problems.append("ship %d ends at (%.2f, %.2f), core (%s, %s)" % [s.fleet_id, p.x, p.y, to.x, to.y])
 				continue
 		final_ok += 1
