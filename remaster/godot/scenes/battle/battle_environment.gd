@@ -30,7 +30,7 @@ static func build(parent: Node3D, arena_size: Vector2, planet_class: String = "G
 	env.ambient_light_energy = 1.0
 	env.reflected_light_source = Environment.REFLECTION_SOURCE_SKY
 	env.tonemap_mode = Environment.TONE_MAPPER_ACES
-	env.tonemap_exposure = 1.0 # fill light carries the shadow side; 1.15 blew out white saucers
+	env.tonemap_exposure = 0.85 # stage 3: hulls read white beside the show (was 1.0); fill light carries the shadow side; 1.15 blew out white saucers
 	env.tonemap_white = 8.0
 	env.glow_enabled = true
 	env.glow_normalized = false
@@ -73,9 +73,9 @@ static func build(parent: Node3D, arena_size: Vector2, planet_class: String = "G
 	# R3.5: the default biases left shadow acne as black speckle over the hero hulls (title close-ups).
 	sun.shadow_bias = 0.08
 	sun.shadow_normal_bias = 2.5
-	sun.shadow_blur = 1.5
+	sun.shadow_blur = 0.6 # stage 3: hard key-light shadows (was 1.5)
 	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
-	sun.light_angular_distance = 0.6
+	sun.light_angular_distance = 0.2 # stage 3: a hard-edged key (was 0.6)
 	parent.add_child(sun)
 	sun.rotation_degrees = Vector3(-24.0, -128.0, 0.0)
 	out.sun = sun

@@ -21,7 +21,10 @@ extends RefCounted
 ## The state carries from round to round (commit), so a battle is one continuous flight: no ship stops at a round edge.
 ## Deterministic for a given encounter (seeded from it), so a replay looks the same.
 
-const M := 592.0          ## Metres a tactical cell (BattleTimeline.METERS_PER_CELL).
+const M := BattleTimeline.METERS_PER_CELL ## Metres a tactical cell as drawn.
+## Stage 3: cells grew 1.5x (SPREAD 1.8), so ships of the line cover the core's moves in metres a little faster: the
+## square root of the growth, so a capital still reads heavy (hull lengths a second up ~23%, not 50%).
+const LINE_K := 1.228
 const DT := 0.1           ## Sim step and path sample (BattleTimeline.PATH_DT).
 const TAIL := 5.5         ## Seconds simulated past the round (torpedoes and explosions play on; the path must cover them).
 const SNAP := 12          ## Floats in a state snapshot: pos 3, fwd 3, vel 3, speed, roll, in_slot.
@@ -365,6 +368,7 @@ func plan_round(tl: BattleTimeline, events: Array, info_by_id: Dictionary, cfg, 
 	var err_max := 0.0
 	var turn_max := 0.0
 	var n_err := 0
+	var worst := ""
 	var k_end := clampi(int(round(_R / DT)), 0, n_steps - 1)
 	for s: Ship in _order:
 		if s.track == null or s.dead_at >= 0.0 or s.warp_at >= 0.0:
@@ -373,12 +377,14 @@ func plan_round(tl: BattleTimeline, events: Array, info_by_id: Dictionary, cfg, 
 		var at := Vector3(s.snaps[o], s.snaps[o + 1], s.snaps[o + 2])
 		var e := Vector2(at.x - s.slot1.x, at.y - s.slot1.y).length() / M
 		err_sum += e
+		if e > err_max:
+			worst = "fid %d cls %d start_off %.2f cells" % [s.fid, s.cls, Vector2(s.snaps[0] - s.slot1.x, s.snaps[1] - s.slot1.y).length() / M]
 		err_max = maxf(err_max, e)
 		var fa := rad_to_deg(atan2(s.snaps[o + 4], s.snaps[o + 3]))
 		turn_max = maxf(turn_max, absf(BattleTimeline.shortest_turn(fa, rad_to_deg(atan2(s.face_end.y, s.face_end.x)))))
 		n_err += 1
 	stats = {"ships": _order.size(), "shots": fired, "forced": forced, "end_err_mean": err_sum / maxf(1.0, n_err),
-		"end_err_max": err_max, "end_facing_max": turn_max}
+		"end_err_max": err_max, "end_err_worst": worst, "end_facing_max": turn_max}
 	return launches
 
 
@@ -400,9 +406,9 @@ func _new_ship(tr, inf: Dictionary, es: Dictionary) -> Ship:
 		2:
 			s.max_speed = lerpf(470, 540, h1) * SMALL_SPEED; s.accel = 220; s.turn_rate = lerpf(0.9, 1.1, s.h)
 		1:
-			s.max_speed = lerpf(230, 290, h1); s.accel = 70; s.turn_rate = minf(0.55, 0.38 * (380.0 / L))
+			s.max_speed = lerpf(230, 290, h1) * LINE_K; s.accel = 70 * LINE_K; s.turn_rate = minf(0.55, 0.38 * (380.0 / L))
 		_:
-			s.max_speed = lerpf(140, 165, h1); s.accel = 30; s.turn_rate = lerpf(0.14, 0.18, s.h)
+			s.max_speed = lerpf(140, 165, h1) * LINE_K; s.accel = 30 * LINE_K; s.turn_rate = lerpf(0.14, 0.18, s.h)
 	s.orbit_sign = -1.0 if BattleTimeline.unit_hash(tr.fleet_id, 979) < 0.5 else 1.0
 	s.immobile = bool(es.get("immobile", false))
 	if s.immobile:
@@ -806,9 +812,12 @@ func _hold(s: Ship, slot: Vector3, slot_vel: Vector3, face: Vector3, dt: float) 
 	if (d > lock_out) if s.in_slot else (d > lock_in):
 		var go := slot_vel + err * 0.4
 		var gs := go.length()
-		if gs > s.max_speed:
-			go *= s.max_speed / gs
-			gs = s.max_speed
+		# Stage 3: well off its post (a big move by the core), a ship of the line may push up to 1.5x its cruise to
+		# make its cell by the round's end.
+		var top := s.max_speed * (1.0 + 0.5 * clampf((d - lock_out) / M, 0.0, 1.0)) if s.cls <= 1 else s.max_speed
+		if gs > top:
+			go *= top / gs
+			gs = top
 		s.des = go / gs if gs > 1.0 else face
 		s.want = gs
 		s.in_slot = false
@@ -901,10 +910,12 @@ func _separation(s: Ship, holding: bool) -> Vector3:
 	for o: Ship in _order:
 		if o == s or (o.dead_at >= 0.0):
 			continue
+		var dv := s.pos - o.pos
+		# Stage 3: 1.5x the room (hull-length based, so big ships keep more). Ships of one line on their posts leave
+		# it to the scene's spacing solve (BattleScene._update_spacing), which keeps the core's cells.
+		var mn := (s.radius + o.radius) * 1.8 + 120.0
 		if holding and o.in_slot and o.side == s.side:
 			continue
-		var dv := s.pos - o.pos
-		var mn := (s.radius + o.radius) * 1.2 + 60.0
 		var d2 := dv.length_squared()
 		if d2 < mn * mn and d2 > 1.0:
 			var dd := sqrt(d2)

@@ -333,7 +333,7 @@ func pose_of(s: ShipTrack, t: float) -> Pose:
 ## Half-width (seconds) of the window an escort's bow turn is averaged over (see _run_turn).
 const RUN_HEADING_WINDOW := 0.5
 
-const METERS_PER_CELL := 592.0 ## A Galaxy (640 m) spans 1.08 plane cells as drawn (BattleScene CELL x SPREAD).
+const METERS_PER_CELL := 893.0 ## BattleScene CELL x SPREAD x 17.71 m: a Galaxy (640 m) spans 0.72 plane cells as drawn (stage 3: SPREAD 1.8, was 592 at 1.2).
 
 
 ## Where `s` is drawn at t: the core's flight plus its in-round choreography (attack run, drift, reactions, death).
@@ -1479,6 +1479,7 @@ static func build(events: Array, info: Array, cfg: Config = null) -> BattleTimel
 		if cfg.cinematic and cfg.choreo:
 			_choreograph(tl, events, sched, info_by_id, cfg)
 			tl._flown_cache.clear()
+	var salvo_tubes := _torpedo_salvos(events, sched, info_by_id, cfg) if cfg.cinematic else {}
 	var add_job := func(j: Dictionary, ev: int) -> void:
 		j.event_index = ev
 		tl.jobs.append(j)
@@ -1613,6 +1614,7 @@ static func build(events: Array, info: Array, cfg: Config = null) -> BattleTimel
 					var tubes := n
 					if cine:
 						tubes = spread_tubes(i, n, float(info_by_id[fid].get("lengthMeters", 0.0)) if info_by_id.has(fid) else 0.0, cfg)
+						tubes = int(salvo_tubes.get(i, tubes)) # M4 flight stage 3: one salvo per ship per round (0 = folded in)
 						flight = maxf(0.3, float(sc[1]) - launch - (tubes - 1) * stagger_s)
 					for k in tubes:
 						var j := base.duplicate()
@@ -1629,6 +1631,10 @@ static func build(events: Array, info: Array, cfg: Config = null) -> BattleTimel
 						impact_time = maxf(impact_time, j.start + flight)
 						# One launch sound per tube, on its own stagger: the salvo ripples (R3.5).
 						add_sound.call(j.start, "TorpedoLaunch", keys, 3, i)
+					if tubes == 0:
+						# Folded into the ship's salvo: no torpedo of its own; its damage lands at its scheduled impact.
+						impact_time = float(sc[1])
+						tl.consumed[i] += 1
 					if cfg.player_empire > 0 and owner == cfg.player_empire and not ctx.torpedo_barked:
 						tl.barks.append({"time": launch, "detail": "torpedo", "priority": 3, "fleet_id": fid})
 						ctx.torpedo_barked = true
@@ -1997,6 +2003,84 @@ static func ship_style(length_meters: float, cfg: Config = null) -> int:
 ## Tubes drawn for one core torpedo shot (coordinator, 10 Nov 2026; presentation only): escort 1-2, cruiser 2-3,
 ## capital 4-5, never fewer than the core's projectiles.
 ## Seconds between the tubes of one launcher's salvo: 0.10-0.15 s, seeded per ship (footage WotW d_4891).
+## M4 flight stage 3 (Simon, 14 Nov: "limit the maximum number of torpedoes per turn per ship"): drawn torpedoes per
+## ship per round, by ship_style (capital, cruiser, escort). Presentation only: the core's shots and damage are untouched.
+const TORPEDO_SALVO_MAX := [3, 2, 2]
+
+## One torpedo salvo per ship per round (drawn only). Each ship's torpedo shots this round are grouped by target; the
+## first shot on each target leads a sub-salvo and all the sub-salvos leave together, rippling 0.10-0.15 s apart, from
+## the ship's first launch. The ship's TORPEDO_SALVO_MAX tubes are shared over its targets (at least one each). A further
+## shot on a target already in the salvo draws no torpedo (event -> 0 tubes): it lands with that sub-salvo when no other
+## ship's impact on the target falls between (the core's order on every target is kept), else at its own impact time.
+## Mutates sched (launch, and impact for folded shots). Returns event index -> tubes drawn.
+static func _torpedo_salvos(events: Array, sched: Dictionary, info_by_id: Dictionary, cfg: Config) -> Dictionary:
+	var out := {}
+	var by_ship := {}
+	for i in sched:
+		var e: Dictionary = events[i]
+		if str(e.kind) != "Fire" or family_index(_num(e, "family", 0)) != 2:
+			continue
+		var fid := int(_num(e, "fleetId"))
+		if not by_ship.has(fid):
+			by_ship[fid] = []
+		by_ship[fid].append(i)
+	# Every scheduled impact per target, to keep the core's order when a shot is folded into an earlier sub-salvo.
+	var impacts_on := {}
+	for i in sched:
+		var tgt := int(_num(events[i], "targetFleetId"))
+		if not impacts_on.has(tgt):
+			impacts_on[tgt] = []
+		impacts_on[tgt].append([float(sched[i][1]), int(_num(events[i], "fleetId"))])
+	for fid in by_ship:
+		var list: Array = by_ship[fid]
+		list.sort_custom(func(a, b): return float(sched[a][0]) < float(sched[b][0]) or (float(sched[a][0]) == float(sched[b][0]) and a < b))
+		var meters := float(info_by_id.get(fid, {}).get("lengthMeters", 0.0))
+		var cap: int = TORPEDO_SALVO_MAX[ship_style(meters, cfg)] if meters > 0.0 else TORPEDO_SALVO_MAX[0]
+		var targets: Array = []
+		var lead_of := {}
+		for i in list:
+			var tgt := int(_num(events[i], "targetFleetId"))
+			if not lead_of.has(tgt):
+				lead_of[tgt] = i
+				targets.append(tgt)
+		var share := {}
+		for k in targets.size():
+			share[targets[k]] = 1
+		var spare := cap - targets.size()
+		var k2 := 0
+		while spare > 0 and not targets.is_empty():
+			share[targets[k2 % targets.size()]] += 1
+			spare -= 1
+			k2 += 1
+		var t0 := float(sched[list[0]][0])
+		var stagger := torpedo_stagger(fid, cfg)
+		var tube := 0
+		for tgt in targets:
+			var li: int = lead_of[tgt]
+			var imp := float(sched[li][1])
+			var launch := minf(t0 + tube * stagger, imp - 0.3 - (int(share[tgt]) - 1) * stagger)
+			launch = maxf(launch, imp - 2.5) # a target hit much later is not reached by a torpedo crawling for seconds
+			sched[li][0] = maxf(0.0, launch)
+			out[li] = int(share[tgt])
+			tube += int(share[tgt])
+		for i in list:
+			var tgt := int(_num(events[i], "targetFleetId"))
+			var li: int = lead_of[tgt]
+			if i == li:
+				continue
+			out[i] = 0
+			var lead_imp := float(sched[li][1])
+			var own := float(sched[i][1])
+			var between := false
+			for rec in impacts_on.get(tgt, []):
+				if int(rec[1]) != fid and float(rec[0]) > lead_imp and float(rec[0]) < own:
+					between = true
+			sched[i][0] = sched[li][0]
+			if not between:
+				sched[i][1] = lead_imp
+	return out
+
+
 static func torpedo_stagger(fleet_id: int, cfg: Config) -> float:
 	return lerpf(0.10, 0.15, unit_hash(fleet_id, 26)) * (cfg.torpedo_stagger_seconds / 0.12)
 

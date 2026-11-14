@@ -23,7 +23,7 @@ const CELL := 28.0
 ## Presentation spread (Simon, 8 Nov 2026: "the battle should be a little more spread out"): grid positions and heights
 ## are drawn this many times further apart than a cell while hulls keep their true-scale length against CELL, so ships
 ## sit several lengths apart and the engagement range reads. Rules positions are untouched.
-const SPREAD := 1.2
+const SPREAD := 1.8 ## M4 flight stage 3 (Simon, 14 Nov: "the ships all fly a little too close to each other"): was 1.2.
 const SPACING_EASE := 2.5       ## 1/s: how fast the presentation spacing offsets relax toward a smaller target.
 const SPACING_PUSH_EASE := 5.0  ## 1/s: how fast they grow when hulls close in (12 heaved hulls up and down; R3.5).
 ## Each round's timeline starts a ship at its home height, and a wing joined at the round start puts it on station;
@@ -331,7 +331,7 @@ func _update_spacing(t: float, delta: float, poses: Dictionary) -> void:
 		var active := ship != null and p != null and track.visibility_at(t) > 0.05
 		# R3.5 (coordinator, 8 Nov: 24v24 hulls overlapped): full bounding spheres plus a 10% gap, no overlap.
 		bodies.append({"x": p.x if active else 0.0, "y": p.y if active else 0.0, "alt": p.altitude if active else 0.0,
-			"radius": 1.1 * ship.half_extents.length() / (CELL * SPREAD) if active else 0.0, "active": active})
+			"radius": 1.6 * ship.half_extents.length() / (CELL * SPREAD) if active else 0.0, "active": active})
 		tracks.append(track)
 	# The relaxation is the dearest per-frame job at 24 v 24, and the offsets only drift slowly: solve it at 20 Hz and
 	# ease every frame (a zero-length step, the first frame of a round or a seek, always solves).

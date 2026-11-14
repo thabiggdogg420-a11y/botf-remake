@@ -92,6 +92,8 @@ func setup(ship: Dictionary, assets: BattleAssets = null) -> void:
 	_center.add_child(hull)
 	_collect(hull)
 	_measure()
+	if hull.has_meta("botf_hero"):
+		_show_look(hull)
 	_build_shield()
 	_cloak_mat = ShaderMaterial.new()
 	_cloak_mat.shader = CLOAK_SHADER
@@ -237,6 +239,60 @@ static func _aabb_of(root: Node3D, xf: Transform3D) -> AABB:
 			if c is Node3D:
 				stack.append([c, t * c.transform])
 	return box
+
+
+## M4 flight stage 3 (Simon, 14 Nov; show footage): hulls read too white and flat beside the show's. Hero hulls are
+## drawn at HULL_TONE of their albedo, so the key light models them and the shadow side goes dark, with their window
+## and running-light emission at WINDOW_GAIN so the lit windows show against the darker hull; and each carries the
+## navigation lights the show's ships do (red to port, green to starboard, a white strobe aft), sized to read on screen.
+const HULL_TONE := 0.42
+const WINDOW_GAIN := 2.4
+
+func _show_look(hull: Node) -> void:
+	var done := {}
+	for mi in hull.find_children("*", "MeshInstance3D", true, false):
+		var m3 := mi as MeshInstance3D
+		if m3.mesh == null:
+			continue
+		for i in m3.mesh.get_surface_count():
+			var mat := m3.get_surface_override_material(i) as ShaderMaterial
+			if mat == null or done.has(mat):
+				continue
+			done[mat] = true
+			if mat.shader == HeroLook.HULL_SHADER:
+				var tint = mat.get_shader_parameter("tint")
+				var tv: Vector3 = tint if tint is Vector3 else Vector3.ONE
+				mat.set_shader_parameter("tint", tv * HULL_TONE)
+				var es = mat.get_shader_parameter("emissive_strength")
+				mat.set_shader_parameter("emissive_strength", (float(es) if es != null else 1.5) * WINDOW_GAIN)
+			elif mat.shader == HeroLook.PLATED_SHADER:
+				var g = mat.get_shader_parameter("color_gain")
+				mat.set_shader_parameter("color_gain", (float(g) if g != null else 1.0) * HULL_TONE)
+	var he := half_extents
+	var r := clampf(length * 0.011, 0.12, 0.45)
+	var mesh := SphereMesh.new()
+	mesh.radius = 1.0
+	mesh.height = 2.0
+	mesh.radial_segments = 8
+	mesh.rings = 4
+	var spots := [[Vector3(-he.x * 0.15, he.y * 0.1, -he.z * 0.96), Color(1.0, 0.12, 0.08), 0.5, 0.0],
+		[Vector3(-he.x * 0.15, he.y * 0.1, he.z * 0.96), Color(0.1, 1.0, 0.25), 0.5, 0.0],
+		[Vector3(-he.x * 0.92, he.y * 0.55, 0.0), Color(1.0, 1.0, 1.0), BattleTimeline.unit_hash(fleet_id, 91), 0.7]]
+	for sp in spots:
+		var light := MeshInstance3D.new()
+		light.name = "NavLight"
+		light.mesh = mesh
+		var bm := ShaderMaterial.new()
+		bm.shader = BLINK_SHADER
+		light.material_override = bm
+		light.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		light.scale = Vector3.ONE * r
+		light.position = sp[0]
+		light.set_instance_shader_parameter("light_color", sp[1])
+		light.set_instance_shader_parameter("blink_phase", sp[2])
+		light.set_instance_shader_parameter("blink_rate", sp[3])
+		model.add_child(light)
+		_meshes.append(light) # cloak, damage and visibility treat it as part of the hull
 
 
 func _measure() -> void:
