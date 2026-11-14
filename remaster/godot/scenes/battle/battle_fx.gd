@@ -453,7 +453,9 @@ func _ribbon_node(sty: Dictionary, ribbon := -1) -> MeshInstance3D:
 ## World size of `px` pixels at 1080 lines (scaled with the viewport, as the ribbon shader's floor) at point p.
 func _px_world_1080(p: Vector3, px: float) -> float:
 	var h := float(get_viewport().get_visible_rect().size.y)
-	return _px_world(p, px * h / 1080.0)
+	# M4: a battle shown in a panel (the combat screen's middle) is a short viewport; its beams, bolts and flares keep at least
+	# three quarters of their 1080-line pixel width so they stay readable when the video is scaled down.
+	return _px_world(p, px * clampf(h / 1080.0, 0.75, 2.0))
 
 
 static func _orient_beam(mi: Node3D, a: Vector3, b: Vector3, radius: float) -> void:

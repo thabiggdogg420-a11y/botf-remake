@@ -489,6 +489,42 @@ func _init() -> void:
 		check(keys.has("ship.dom.attack_ship") and keys.has("study.dom"), "a Dominion ship resolves to ship.dom.<class>: %s" % [keys])
 		return true)
 
+	run("M4 combat 2: rules 1-2 rounds (no event stream) get presentation events from the round result", func():
+		var rnd := {"index": 3, "events": [], "salvos": [
+			{"from": 1, "to": 3, "beam": 20, "torpedo": 0, "ram": false, "absorbed": false, "ambush": false},
+			{"from": 2, "to": 3, "beam": 0, "torpedo": 18, "ram": false, "absorbed": true, "ambush": false},
+			{"from": 3, "to": 1, "beam": 12, "torpedo": 0, "ram": false, "absorbed": false, "ambush": false}],
+			"ships": [
+			{"id": 1, "owner": 1, "maneuver": "Engage", "target": 3, "from": {"x": 2, "y": 2}, "to": {"x": 4, "y": 2}, "yaw": 0, "hullBefore": 50, "hullAfter": 44, "shieldBefore": 40, "shieldAfter": 30, "destroyed": false},
+			{"id": 2, "owner": 1, "maneuver": "Engage", "target": 3, "from": {"x": 2, "y": 4}, "to": {"x": 4, "y": 4}, "yaw": 0, "hullBefore": 50, "hullAfter": 50, "shieldBefore": 40, "shieldAfter": 40, "destroyed": false},
+			{"id": 3, "owner": 2, "maneuver": "Engage", "target": 1, "from": {"x": 9, "y": 3}, "to": {"x": 7, "y": 3}, "yaw": 180, "hullBefore": 30, "hullAfter": 0, "shieldBefore": 20, "shieldAfter": 0, "destroyed": true}]}
+		check(BattleSynth.needs_events(rnd), "a round with moves and no events needs them")
+		var enc := {"rounds": [rnd], "ships": []}
+		var out := BattleSynth.with_events(enc)
+		check(rnd.events.is_empty(), "the original encounter is not touched")
+		var ev: Array = out.rounds[0].events
+		check(ev.any(func(e): return e.kind == "ManeuverStart") and ev.any(func(e): return e.kind == "ManeuverEnd"), "moves become maneuver events")
+		var fires := ev.filter(func(e): return e.kind == "Fire")
+		check(fires.size() >= 3, "each salvo becomes at least one shot (%d)" % fires.size())
+		var hull_on_3 := 0
+		var shield_on_3 := 0
+		for f in fires:
+			if int(f.targetFleetId) == 3:
+				hull_on_3 += int(f.hullDamage)
+				shield_on_3 += int(f.shieldDamage)
+		check(absi(hull_on_3 - 30) <= 2 and absi(shield_on_3 - 20) <= 2, "damage on the target sums to what it lost (hull %d shields %d)" % [hull_on_3, shield_on_3])
+		check(ev.any(func(e): return e.kind == "Destroyed" and int(e.fleetId) == 3), "a destroyed ship gets a Destroyed event")
+		check(fires.any(func(e): return e.family == "torpedo") and fires.any(func(e): return e.family == "beam"), "beams and torpedoes")
+		var info := BattleTimeline.round_ship_info(out, 0)
+		var cfg := BattleTimeline.Config.new()
+		cfg.cinematic = true
+		cfg.round_seconds = 8.0
+		var tl := BattleTimeline.build(ev, info, cfg)
+		check(tl.all_consumed(), "the timeline consumes every synthesised event")
+		check(tl.jobs.any(func(j): return j.kind == BattleTimeline.Job.BEAM) and tl.jobs.any(func(j): return j.kind == BattleTimeline.Job.TORPEDO), "the round plays beams and a torpedo salvo")
+		check(not BattleSynth.needs_events(out.rounds[0]), "a round that has events is left alone")
+		return true)
+
 	run("M4 combat: class speeds, exact hand-over to the core's poses, beams held 0.6-1.5 s", func():
 		var ships_seen := 0
 		for r in rounds.size():

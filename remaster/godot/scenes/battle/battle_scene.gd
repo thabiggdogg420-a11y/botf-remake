@@ -29,6 +29,10 @@ const SPACING_PUSH_EASE := 5.0  ## 1/s: how fast they grow when hulls close in (
 ## Each round's timeline starts a ship at its home height, and a wing joined at the round start puts it on station;
 ## the pose it was last shown at eases into the new one over this long, so nothing jumps between rounds.
 const ROUND_JOIN_SECONDS := 1.5
+const IDLE_ROUND_SPEED := 10.0  ## M4: a round with no weapon fire plays at this multiple of the playback speed.
+var last_round_idle := false    ## The round last played had no weapon fire (the combat screen chains straight into the next).
+var idle_fast_forward := true
+var _fast_forward := 1.0
 const FINISH_TAIL := 0.25       ## Seconds after the last job before round_finished.
 const SPACING_SOLVE_INTERVAL := 0.05 ## Seconds between spacing solves (see _update_spacing).
 const MAX_FRAME_STEP := 0.05    ## Longest wall-clock step one frame may advance the timeline (a 20 fps floor).
@@ -103,7 +107,7 @@ func _ready() -> void:
 # ------------------------------------------------------------------------------------------------------------------
 
 func play_round(p_encounter: Dictionary, p_round_index: int) -> void:
-	encounter = p_encounter
+	encounter = BattleSynth.with_events(p_encounter) # rules 1-2 rounds have no event stream: present them from the round's result
 	round_index = p_round_index
 	BattleEnvironment.set_planet_class(_env, str(encounter.get("planetClass", ""))) # the battle system's planet
 	var rounds: Array = encounter.get("rounds", [])
@@ -129,6 +133,14 @@ func play_round(p_encounter: Dictionary, p_round_index: int) -> void:
 		if node != null:
 			i["lengthMeters"] = node.length_meters
 	timeline = BattleTimeline.build(rounds[round_index].get("events", []), info, cfg)
+	# A round of nothing but closing in (no weapon fires) is run through at speed: the player asked for a battle, and the
+	# approach is two rounds of empty space before the first torpedo (Simon, 14 Nov).
+	last_round_idle = true
+	for jb in timeline.jobs:
+		if jb.kind in [BattleTimeline.Job.BEAM, BattleTimeline.Job.PULSE, BattleTimeline.Job.TORPEDO, BattleTimeline.Job.RAM]:
+			last_round_idle = false
+			break
+	_fast_forward = IDLE_ROUND_SPEED if (last_round_idle and idle_fast_forward) else 1.0
 	var _pt2 := Time.get_ticks_usec()
 	_carry.clear()
 	for track in timeline.ships:
@@ -225,7 +237,7 @@ func _process(delta: float) -> void:
 	if timeline == null:
 		return
 	# A hitch (first-use shader compile, a model load) must slow playback, not teleport ships across the arena.
-	var dt := minf(delta, MAX_FRAME_STEP) * playback_speed
+	var dt := minf(delta, MAX_FRAME_STEP) * playback_speed * _fast_forward
 	if _playing:
 		time += dt
 		_fire_cues()
