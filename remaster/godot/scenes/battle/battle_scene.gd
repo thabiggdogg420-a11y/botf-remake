@@ -47,6 +47,12 @@ const MAX_FRAME_STEP := 0.05    ## Longest wall-clock step one frame may advance
 @export var generated_tones := true
 @export var film_cuts := true ## Cinematic camera cuts in 1-3 s shots near the action (battlechoreo, proposal 8).
 @export var formation_spread := 1.0 ## Scales the spacing offsets that keep true-scale hulls apart (0 = off).
+## M4 flight (Simon, 14 Nov 2026): ships are flown by the continuous flight-and-doctrine sim ported from the LCARS battle
+## screensaver (BattleFlight), one sim for the whole battle carried from round to round. Off = the M4 combat planner.
+@export var flight_sim := true
+var flight := BattleFlight.new()
+var _flight_key := -1
+var _flight_round := -1
 
 var encounter: Dictionary = {}
 var round_index := -1
@@ -119,6 +125,18 @@ func play_round(p_encounter: Dictionary, p_round_index: int) -> void:
 	cfg.round_seconds = round_seconds
 	cfg.cinematic = cinematic
 	cfg.player_empire = _player_empire()
+	cfg.encounter = encounter
+	if flight_sim and cinematic:
+		# One continuous flight per battle: the next round starts where this one left every ship (no stop at the edge).
+		var key := BattleFlight.encounter_seed(encounter)
+		if key == _flight_key and round_index == _flight_round + 1 and timeline != null:
+			flight.commit(timeline.end_seconds + FINISH_TAIL)
+		else:
+			flight.reset()
+			flight.seed = key
+		_flight_key = key
+		_flight_round = round_index
+		cfg.flight = flight
 	var _pt0 := Time.get_ticks_usec()
 	var info := BattleTimeline.round_ship_info(encounter, round_index)
 	_sync_ships(info)
@@ -575,20 +593,24 @@ func _film_shot(t: float, centroid: Vector3, spread: float) -> Dictionary:
 		var h := BattleTimeline.unit_hash(round_index * 977 + n, 61)
 		var length := 2.4 + 2.2 * h # M4: shots of 2.4-4.6 s (the first cut flipped every 1-3 s between unrelated ships)
 		_film = {"n": n, "from": t, "until": t + length, "round": round_index, "type": "wide"}
-		# A small battle (a duel, a 3 v 3) is all action: every cut is a shot of the fight, never a wide of empty space.
-		if n % 3 != 2 or _ships.size() <= 14:
+		# M4 flight: every third cut is the wide tactical view in the screensaver's framing, so the flown formations, the
+		# waves and the attack runs read as one battle; the others are shots of the fight.
+		if n % 3 != 2:
 			_film.merge(_pick_film(t, length, n), true)
-		if _film.type == "wide" and _ships.size() <= 14:
+		if _film.type == "wide" and n % 3 != 2 and _ships.size() <= 14:
 			# No weapon about to fire: still never a wide of empty space. Track the closest pair of opposing ships.
 			var pair := _closest_pair(t)
 			if not pair.is_empty():
 				_film.merge({"type": "behind", "subject": pair[0], "other": pair[1]}, true)
 		if _film.type == "wide":
-			_film.until = t + 1.6 + 0.8 * h
+			_film.until = t + (3.2 + 1.4 * h if n % 3 == 2 else 1.6 + 0.8 * h)
 		elif _film.type == "torpedo":
 			_film.until = minf(float(_film.until), t + 2.0) # a chase of a salvo is a beat, not four seconds of specks
 	var typ: String = _film.type
 	if typ == "wide":
+		if int(_film.n) % 3 == 2:
+			# The wide tactical view (screensaver framing), held over the director's cutaways.
+			return {"key": "wide_%d" % round_index, "kind": -1, "centroid": centroid, "spread": spread}
 		return {}
 	var a: BattleShip = _ships.get(int(_film.subject))
 	var b: BattleShip = _ships.get(int(_film.get("other", 0)))

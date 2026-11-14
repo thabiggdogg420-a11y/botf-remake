@@ -8,7 +8,9 @@ extends SceneTree
 var ships := 24
 var seed := 0
 var rounds := 5
+var use_flight := false
 var core: Object
+var flight := BattleFlight.new()
 
 
 func _initialize() -> void:
@@ -16,6 +18,7 @@ func _initialize() -> void:
 		if a.begins_with("--ships="): ships = int(a.split("=")[1])
 		elif a.begins_with("--seed="): seed = int(a.split("=")[1])
 		elif a.begins_with("--rounds="): rounds = int(a.split("=")[1])
+		elif a == "--flight": use_flight = true
 	_run.call_deferred()
 
 
@@ -30,6 +33,7 @@ func _run() -> void:
 	var worst := {}
 	var bad_ends := 0
 	var checked := 0
+	var prev_tl: BattleTimeline = null
 	for r in rounds:
 		if enc.get("finished", false):
 			break
@@ -40,9 +44,17 @@ func _run() -> void:
 		var cfg := BattleTimeline.Config.new()
 		cfg.cinematic = true
 		cfg.round_seconds = 8.0
+		if use_flight:
+			cfg.flight = flight
+			cfg.encounter = enc
+			if prev_tl != null:
+				flight.commit(prev_tl.end_seconds + 0.25)
 		var t0 := Time.get_ticks_usec()
 		var tl := BattleTimeline.build(enc.rounds[idx].events, info, cfg)
 		var build_ms := float(Time.get_ticks_usec() - t0) / 1000.0
+		prev_tl = tl
+		if use_flight:
+			print("FLIGHT round ", idx + 1, " ", flight.stats)
 		var intents := {}
 		for s in tl.ships:
 			var it := str(s.get("intent")) if s.get("intent") != null and str(s.get("intent")) != "" else "wing/none"

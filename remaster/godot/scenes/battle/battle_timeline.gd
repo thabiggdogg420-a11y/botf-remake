@@ -115,6 +115,10 @@ class Config:
 	var burst_pairs_max := 4
 	var choreo := true             ## Ships fly attack runs, turn to bear and drift inside the round.
 	var death_seconds := 1.25      ## A dying ship drifts and vents this long before it breaks up.
+	# M4 flight: the continuous flight-and-doctrine sim (BattleFlight) that flies every ship and picks when each shot
+	# launches. null = the M4 combat planner (_choreograph) on the core's round poses.
+	var flight = null
+	var encounter := {}            ## The encounter the flight sim seeds from (arena size, immobile ships).
 
 
 ## Pose in the tactical plane: x, y in cells, facing in degrees (0 = +x, 90 = +y), bank = roll (+ = right wing down),
@@ -448,7 +452,7 @@ static func _run_turn(s: ShipTrack, t: float) -> float:
 
 static func _kick_pos(s: ShipTrack, t: float, facing: float) -> Vector3:
 	var out := Vector3.ZERO
-	var e := _choreo_env(s, t)
+	var e := _choreo_env(s, t) * kick_scale(s)
 	for k in s.kicks:
 		var d := t - k.x
 		if d <= 0.0:
@@ -538,6 +542,14 @@ static func path_pose(s: ShipTrack, t: float) -> Array:
 	return out
 
 
+## M4 flight: a flown hull's reaction to a hard hit scales with its size (a capital is not shoved like an escort: the
+## full kick moved a Galaxy at 460 m/s).
+static func kick_scale(s: ShipTrack) -> float:
+	if s.path.is_empty():
+		return 1.0
+	return clampf(220.0 / maxf(s.length_meters, 1.0), 0.2, 1.0)
+
+
 ## An alive ship on its flown path, with the reactions to hard hits on top.
 func _alive_flown(s: ShipTrack, t: float) -> Pose:
 	var q := path_pose(s, t)
@@ -549,7 +561,7 @@ func _alive_flown(s: ShipTrack, t: float) -> Pose:
 	out.bank = float(q[4])
 	out.pitch = float(q[5])
 	var face := float(q[3])
-	var e := _choreo_env(s, t)
+	var e := _choreo_env(s, t) * kick_scale(s)
 	for k in s.kicks:
 		var d := t - k.x
 		if d <= 0.0:
@@ -1455,10 +1467,18 @@ static func build(events: Array, info: Array, cfg: Config = null) -> BattleTimel
 	var ram_times := {}
 	var ctx := {"torpedo_barked": false}
 	# Cinematic: each Fire / Ram event's launch and impact time (the tick clock derives them from the ticks below).
-	var sched: Dictionary = _schedule(tl, events, info_by_id, cfg) if cfg.cinematic else {}
-	if cfg.cinematic and cfg.choreo:
-		_choreograph(tl, events, sched, info_by_id, cfg)
+	var sched: Dictionary = {}
+	if cfg.cinematic and cfg.flight != null:
+		# M4 flight: the sim flies the round and launches each shot when its mount bears; the order pass keeps the core's
+		# order on every target from there.
+		var launches: Dictionary = cfg.flight.plan_round(tl, events, info_by_id, cfg, cfg.encounter)
 		tl._flown_cache.clear()
+		sched = _schedule(tl, events, info_by_id, cfg, launches)
+	else:
+		sched = _schedule(tl, events, info_by_id, cfg) if cfg.cinematic else {}
+		if cfg.cinematic and cfg.choreo:
+			_choreograph(tl, events, sched, info_by_id, cfg)
+			tl._flown_cache.clear()
 	var add_job := func(j: Dictionary, ev: int) -> void:
 		j.event_index = ev
 		tl.jobs.append(j)
@@ -1866,7 +1886,7 @@ static func key_less(a: Array, b: Array) -> bool:
 ## arc and jitter; beams and bolts land a reach later, torpedoes late in their impact tick's window. Then, until
 ## stable: impacts on each ship keep the core's order with effect_gap_seconds between them (moved later, never
 ## earlier), and a ship destroyed in the round launches everything it fires before the blow that kills it.
-static func _schedule(tl: BattleTimeline, events: Array, info_by_id: Dictionary, cfg: Config) -> Dictionary:
+static func _schedule(tl: BattleTimeline, events: Array, info_by_id: Dictionary, cfg: Config, launches := {}) -> Dictionary:
 	var W := tl.window_starts
 	var out := {}
 	var together := {}     # event index -> true: launch and impact move as one (beams, bolts, rams)
@@ -1894,9 +1914,13 @@ static func _schedule(tl: BattleTimeline, events: Array, info_by_id: Dictionary,
 			var lead := minf(cfg.window_lead * ww, w0 - W[0])
 			w0 -= lead
 			ww += lead
-		var jit := unit_hash(fid * 64 + maxi(0, mount) + 1, 7001 + i)
-		var f := 0.5 * cfg.launch_span if ram else _aim_fraction(tl, fid, tgt, _mount_arc(info_by_id.get(fid, {}), mount), w0, ww, jit, cfg)
-		var launch := w0 + ww * f
+		var launch := 0.0
+		if launches.has(i):
+			launch = float(launches[i]) # M4 flight: when the sim's geometry gave the shooter its target
+		else:
+			var jit := unit_hash(fid * 64 + maxi(0, mount) + 1, 7001 + i)
+			var f := 0.5 * cfg.launch_span if ram else _aim_fraction(tl, fid, tgt, _mount_arc(info_by_id.get(fid, {}), mount), w0, ww, jit, cfg)
+			launch = w0 + ww * f
 		var impact := launch
 		if ram:
 			together[i] = true
@@ -1927,7 +1951,10 @@ static func _schedule(tl: BattleTimeline, events: Array, info_by_id: Dictionary,
 		list.sort_custom(func(a, b): return key_less(keys[a], keys[b]))
 	# M1 battlechoreo, proposal 1: every ship fires on its own clock across the round instead of the core's mount
 	# ticks. The core's order per target and the kill rule still hold through the order pass below.
-	_ship_clocks(tl, events, info_by_id, cfg, out, together)
+	if launches.is_empty():
+		_ship_clocks(tl, events, info_by_id, cfg, out, together)
+	else:
+		_flight_clocks(tl, events, info_by_id, cfg, out)
 	var gap := cfg.effect_gap_seconds
 	for _pass in 24:
 		var changed := false
@@ -2046,6 +2073,40 @@ static func _ship_clocks(tl: BattleTimeline, events: Array, info_by_id: Dictiona
 	_beam_limit(tl, events, info_by_id, cfg, out, trains, span_of)
 	tl.set_meta("trains", trains)
 	tl.set_meta("spans", span_of)
+
+
+## M4 flight: the sim already chose every launch; this keeps the battle-wide limits (beams held at once, salvo gaps) and
+## records each ship's shots for the order pass, as _ship_clocks does.
+static func _flight_clocks(tl: BattleTimeline, events: Array, info_by_id: Dictionary, cfg: Config, out: Dictionary) -> void:
+	var trains := {}
+	var span_of := {}
+	for i in out:
+		var fid := int(_num(events[i], "fleetId"))
+		if not trains.has(fid):
+			trains[fid] = []
+		trains[fid].append(i)
+		span_of[i] = float(out[i][1]) - float(out[i][0])
+	_beam_limit(tl, events, info_by_id, cfg, out, trains, span_of)
+	tl.set_meta("trains", trains)
+	tl.set_meta("spans", span_of)
+
+
+## Seconds from a Fire or Ram event's launch to the impact the core's damage lands with (before the order pass): a beam's
+## reach, a burst's flight, a torpedo spread's flight plus its stagger. Shared by _schedule and BattleFlight.
+static func shot_span(e: Dictionary, i: int, info_by_id: Dictionary, cfg: Config) -> float:
+	if e.kind == "Ram":
+		return 0.0
+	var fid := int(_num(e, "fleetId"))
+	var family := family_index(_num(e, "family", 0))
+	if family == 2:
+		var tick := clampi(int(e.tick), 0, TICKS_PER_ROUND - 1)
+		var impact_tick := clampi(int(_num(e, "impactTick", e.tick)), tick, TICKS_PER_ROUND - 1)
+		var n := maxi(1, int(_num(e, "projectiles", 1)))
+		var flight := minf(cfg.max_torpedo_flight_seconds, cfg.min_torpedo_flight_seconds + cfg.torpedo_seconds_per_tick * maxi(0, impact_tick - tick - 1))
+		return flight + (spread_tubes(i, n, float(info_by_id.get(fid, {}).get("lengthMeters", 0.0)), cfg) - 1) * torpedo_stagger(fid, cfg)
+	var owner := int(info_by_id.get(fid, {}).get("ownerId", 0))
+	var bolts := family == 1 or shows_as_bolts(str(_num(e, "weapon", "")), owner, float(info_by_id.get(fid, {}).get("lengthMeters", -1.0)))
+	return cfg.bolt_flight_seconds if bolts else cfg.beam_reach_seconds
 
 
 static func _has_torpedo(events: Array, list: Array) -> bool:

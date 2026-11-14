@@ -433,8 +433,11 @@ func _handle_key(k: InputEventKey) -> bool:
 ##   chase:   [from, to] fleet ids of the latest exchange of fire, or [] for none.
 ##   shot:    the cinematic director's shot: {key, kind (BattleTimeline.Job, -1 = wide), subject, subject_size,
 ##            other} (positions in world units), plus centroid and spread of the battle.
+var _swing_clock := 0.0 ## Seconds filmed (the tactical swing's clock; round time restarts every round).
+
 func film(delta: float, time: float, p_bodies: Array, chase: Array, shot: Dictionary) -> void:
 	_time = time
+	_swing_clock += delta
 	bodies = p_bodies
 	# Without a host choosing them (the demo, tools), F and G still have a ship to follow.
 	if selected_id == 0 or target_id == 0:
@@ -719,8 +722,12 @@ func _fit_distance(fit: Array, aspect: float, side_sign: float) -> Array:
 		if d.length() > 1e-3:
 			fwd = d.normalized()
 	var side := fwd.cross(Vector3.UP).normalized() * side_sign
-	# Raised three-quarter view (about 40 degrees), drifting slowly round the battle.
-	var dir := (side * 0.85 - fwd * 0.4 + Vector3.UP * 0.8).normalized().rotated(Vector3.UP, _time * 0.008)
+	# M4 flight: the LCARS screensaver's framing (DESIGN-2026-10-25-round3.md, round 4): look across the battle at a low
+	# angle, about 52 degrees from straight down, swinging slowly side to side (+-14 degrees) so the parallax shows the
+	# depth of a flown battle. The swing runs on its own clock, so it carries on smoothly across round edges.
+	var swing := deg_to_rad(14.0) * sin(_swing_clock * TAU / 75.0)
+	var flat := (side * 0.92 - fwd * 0.3).normalized().rotated(Vector3.UP, swing)
+	var dir := (flat * cos(deg_to_rad(38.0)) + Vector3.UP * sin(deg_to_rad(38.0))).normalized()
 	# Fit the screen-space box of every hull to ~85% of the frame and centre it: little empty frame, no crop.
 	var th := tan(deg_to_rad(fov) * 0.5)
 	var dist := 0.0
