@@ -383,8 +383,18 @@ static func _alive_pos(s: ShipTrack, t: float) -> Vector3:
 	# M4: the drift swells and fades with zero speed at both ends (sin squared), so a capital never lurches at a round's
 	# start or end (the first cut ramped 2-3 cells in 0.8 s: 4 cells a second).
 	var u := clampf(t / s.choreo_end, 0.0, 1.0)
-	var bump := pow(sin(PI * u), 1.5) # M4: gets moving sooner than sin squared (a battlecruiser sat still for 1.5 s), still zero speed at both ends
-	return bp + s.drift * bump
+	var bump := pow(sin(PI * u), 1.5) # M4: gets moving sooner than sin squared, still zero offset at both ends
+	# A capital keeps cruising through a round boundary (a battlecruiser sat still for 1.5 s where one round ended and the
+	# next began, both drifts at zero speed): a Hermite offset that is 0 at both ends but leaves at, and arrives with, a slow
+	# cruise along the bow. The core's poses still land exactly (zero offset at 0 and at choreo_end).
+	var T := maxf(s.choreo_end, 0.5)
+	var f0 := deg_to_rad(s.pose_at(0.0).facing)
+	var f1 := deg_to_rad(s.pose_at(s.choreo_end).facing)
+	var cruise := CRUISE_CELLS_PER_SECOND if s.style == 0 else 0.5 * CRUISE_CELLS_PER_SECOND
+	var h10 := u * (1.0 - u) * (1.0 - u)
+	var h11 := u * u * (u - 1.0)
+	var cr := Vector3(cos(f0) * h10 + cos(f1) * h11, sin(f0) * h10 + sin(f1) * h11, 0.0) * (cruise * T)
+	return bp + s.drift * bump + cr
 
 
 ## Hermite through the escort's run keyframes.
@@ -601,6 +611,7 @@ static func _choreo_target(tl: BattleTimeline, s: ShipTrack, counts: Dictionary,
 ## LCARS screensaver's fleet table, Battle.cs MakeShip: capital 125-190 m/s, cruiser 210-290, escort 470-540, fighter
 ## 700-820). M4 combat: the first cut flew escorts at 4-5 cells a second, 2.5 km/s, 17 hull lengths a second.
 const CLASS_SPEED := [0.30, 0.50, 1.00, 1.25]
+const CRUISE_CELLS_PER_SECOND := 0.12   ## M4: a capital's slow cruise through a round boundary (cells a second).
 const CLASS_TURN := [10.0, 24.0, 60.0, 90.0]
 const CLASS_ACCEL := [0.10, 0.22, 0.80, 1.10]
 const STRIKE_CRAFT_METERS := 120.0
