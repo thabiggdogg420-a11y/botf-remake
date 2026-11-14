@@ -171,6 +171,8 @@ func refresh_round() -> void:
 	_root.add_child(nb)
 	old_b.queue_free()
 	_root.remove_child(old_b)
+	_bottom_box = nb
+	_set_play_layout(_playing_layout)
 	host.set_selection(ship, target)
 
 func _live(e: Dictionary) -> void:
@@ -189,19 +191,23 @@ func _live(e: Dictionary) -> void:
 	# Middle: ship lists and the battle host
 	var mid := Lcars.hbox(10)
 	mid.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	mid.add_child(_ship_list("Our ships", mine, ships, ship, false))
+	_side_l = _ship_list("Our ships", mine, ships, ship, false)
+	mid.add_child(_side_l)
 	var hc := PanelContainer.new()
 	hc.add_theme_stylebox_override("panel", Lcars.box(Color(0, 0, 0, 0.4), 16, Color(Lcars.ALERT, 0.35), 1, Vector4(2, 2, 2, 2)))
 	hc.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	hc.add_child(_battle_host())
 	mid.add_child(hc)
-	mid.add_child(_ship_list("Hostiles", foes, ships, target, true))
+	_side_r = _ship_list("Hostiles", foes, ships, target, true)
+	mid.add_child(_side_r)
 	root.add_child(mid)
 	host.load_encounter.call_deferred(e)
 	host.set_selection.call_deferred(ship, target)
 	_plan.call_deferred()
 	var bottom := _bottom(e, foe_name, last)
 	root.add_child(bottom)
+	_bottom_box = bottom
+	_set_play_layout(_playing_layout)
 	if choice and not e.get("finished", false) and int(e["round"]) == 0:
 		_encounter_choice(e, mine, foes, foe_name)
 
@@ -435,12 +441,38 @@ func _round() -> void:
 		print("ROUND_TIMING refresh_round=%d ms" % ((Time.get_ticks_usec() - _t1) / 1000))
 	var rounds: Array = _enc().get("rounds", [])
 	if host and rounds.size() > 0:
+		_set_play_layout(true)
 		host.clear_plan()
 		host.play_round.call_deferred(rounds.back(), _enc())
 		if not host.round_finished.is_connected(_plan_after_round):
 			host.round_finished.connect(_plan_after_round, CONNECT_ONE_SHOT)
 
+## While a round plays the ship lists and the orders bar fold away so the battle fills the screen (M4 combat 2: the 3D view sat
+## in a small panel between the lists and every ship was tiny); they come back for the plan phase.
+var _side_l: Control
+var _side_r: Control
+var _bottom_box: Control
+var _playing_layout := false
+var _chain := 0
+
+func _set_play_layout(on: bool) -> void:
+	_playing_layout = on
+	for n in [_side_l, _side_r, _bottom_box]:
+		if n != null and is_instance_valid(n):
+			n.visible = not on
+
 func _plan_after_round(_idx: int) -> void:
+	# A round of nothing but closing in has just run through at speed: go straight on into the next, so one Engage reaches the
+	# first shots (at most four such rounds in a row; the orders stay as given).
+	var vn: Node = host.view_node if host != null and is_instance_valid(host) else null
+	if vn != null and bool(vn.get("last_round_idle")) and not _enc().get("finished", false) and _chain < 4:
+		_chain += 1
+		if vm.maneuver != "":
+			vm.order(vm.maneuver)
+		_round.call_deferred()
+		return
+	_chain = 0
+	_set_play_layout(false)
 	_plan()
 
 func _auto() -> void:
