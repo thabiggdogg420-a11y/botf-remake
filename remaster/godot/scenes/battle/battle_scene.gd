@@ -29,7 +29,7 @@ const SPACING_PUSH_EASE := 5.0  ## 1/s: how fast they grow when hulls close in (
 ## Each round's timeline starts a ship at its home height, and a wing joined at the round start puts it on station;
 ## the pose it was last shown at eases into the new one over this long, so nothing jumps between rounds.
 const ROUND_JOIN_SECONDS := 1.5
-const FINISH_TAIL := 0.6        ## Seconds after the last job before round_finished.
+const FINISH_TAIL := 0.25       ## Seconds after the last job before round_finished.
 const SPACING_SOLVE_INTERVAL := 0.05 ## Seconds between spacing solves (see _update_spacing).
 const MAX_FRAME_STEP := 0.05    ## Longest wall-clock step one frame may advance the timeline (a 20 fps floor).
 
