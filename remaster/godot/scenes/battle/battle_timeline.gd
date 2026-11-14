@@ -34,7 +34,7 @@ const JOB_NAMES := ["beam", "pulse", "torpedo", "shield", "hull", "intercept", "
 enum Outcome { HIT, MISS, INTERCEPTED }
 
 ## Owner faction ids used by the tactical scene: 1 Federation, 2 Klingon, 3 Romulan, 4 Cardassian, 5 Ferengi.
-const FACTION_PREFIX := {1: "fed", 2: "kli", 3: "rom", 4: "car", 5: "fer"}
+const FACTION_PREFIX := {1: "fed", 2: "kli", 3: "rom", 4: "car", 5: "fer", 6: "dom", 7: "borg", 8: "breen"} # M4: Dominion, Borg and Breen hulls (ship.dom.* / ship.borg.* / ship.breen.*) resolve by class name too
 const TORPEDO_TYPES := ["SpatialTorpedo", "PhotonicTorpedo", "PhotonTorpedo", "QuantumTorpedo", "PlasmaTorpedo",
 	"TricobaltDevice", "Torpedo"]
 const WEAPON_TYPES := ["PhaseCannon", "PhaserBank", "PhaserArray", "PulsePhaser", "Disruptor", "DisruptorCannon",
@@ -1466,7 +1466,7 @@ static func build(events: Array, info: Array, cfg: Config = null) -> BattleTimel
 			"subsystem_damage": int(_num(e, "subsystemDamage")), "subsystem_destroyed": bool(_num(e, "subsystemDestroyed", false)),
 			"breach": int(_num(e, "breachDamage")), "aimed": bool(_num(e, "aimed", false))}
 		if shield_dmg > 0 or (bool(_num(e, "hit", false)) and hull_dmg <= 0):
-			var j := new_job(Job.SHIELD, time, cfg.impact_ticks * tk)
+			var j := new_job(Job.SHIELD, time, minf(cfg.impact_ticks * tk, 0.45)) # M4: a brief local flare, not a bubble
 			j.fleet_id = target; j.target_fleet_id = target; j.source_fleet_id = shooter
 			j.weapon = weapon; j.family = family; j.shield_damage = shield_dmg
 			j.color = weapon_color(weapon, shooter_owner); j.vfx_key = "vfx.impact.shield"
@@ -2005,7 +2005,7 @@ static func _ship_clocks(tl: BattleTimeline, events: Array, info_by_id: Dictiona
 		var gap := lerpf(cfg.ship_gap_min, cfg.ship_gap_max, unit_hash(fid, 11))
 		if style == 2:
 			# The pass: the escort needs time to run in, and to break away and come about before the round ends.
-			lo = maxf(A, 0.7)
+			lo = maxf(A, 0.1)
 			hi = minf(B, R * cfg.flight_to - 0.9)
 			gap = lerpf(cfg.escort_gap_min, cfg.escort_gap_max, unit_hash(fid, 11))
 		elif style == 0 and n > 2:
@@ -2019,10 +2019,12 @@ static func _ship_clocks(tl: BattleTimeline, events: Array, info_by_id: Dictiona
 		var room := maxf(0.0, hi - lo - gap * (n - 1))
 		# M4: ships open fire in turn across the round (rank by seeded hash), the first at once and the last late, so
 		# fire runs through the whole round (a random start left 2 s of dead air at the top and 3 s at the tail).
+		# A ship with torpedoes goes first: beams on a target wait for its torpedoes' impacts (the core's order), so a
+		# beam shooter first in line would leave the round's opening empty.
 		var rank := 0
-		var my_h := unit_hash(fid, 12)
+		var my_h := unit_hash(fid, 12) + (0.0 if _has_torpedo(events, trains[fid]) else 1.0)
 		for other_fid in trains:
-			if unit_hash(int(other_fid), 12) < my_h:
+			if unit_hash(int(other_fid), 12) + (0.0 if _has_torpedo(events, trains[other_fid]) else 1.0) < my_h:
 				rank += 1
 		var start := lo + room * (float(rank) / float(maxi(1, trains.size() - 1)))
 		for k in n:
@@ -2033,6 +2035,13 @@ static func _ship_clocks(tl: BattleTimeline, events: Array, info_by_id: Dictiona
 	_beam_limit(tl, events, info_by_id, cfg, out, trains, span_of)
 	tl.set_meta("trains", trains)
 	tl.set_meta("spans", span_of)
+
+
+static func _has_torpedo(events: Array, list: Array) -> bool:
+	for i in list:
+		if family_index(_num(events[i], "family", 0)) == 2:
+			return true
+	return false
 
 
 ## M4 combat: torpedo salvo starts across the battle keep a gap, so fire flows through the round instead of landing in

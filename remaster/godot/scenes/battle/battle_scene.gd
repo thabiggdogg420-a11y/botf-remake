@@ -566,6 +566,11 @@ func _film_shot(t: float, centroid: Vector3, spread: float) -> Dictionary:
 		# A small battle (a duel, a 3 v 3) is all action: every cut is a shot of the fight, never a wide of empty space.
 		if n % 3 != 2 or _ships.size() <= 14:
 			_film.merge(_pick_film(t, length, n), true)
+		if _film.type == "wide" and _ships.size() <= 14:
+			# No weapon about to fire: still never a wide of empty space. Track the closest pair of opposing ships.
+			var pair := _closest_pair(t)
+			if not pair.is_empty():
+				_film.merge({"type": "behind", "subject": pair[0], "other": pair[1]}, true)
 		if _film.type == "wide":
 			_film.until = t + 1.6 + 0.8 * h
 		elif _film.type == "torpedo":
@@ -590,6 +595,29 @@ func _film_shot(t: float, centroid: Vector3, spread: float) -> Dictionary:
 		var j: Dictionary = timeline.jobs[int(_film.job)]
 		var u := clampf((t - float(j.start)) / maxf(0.1, float(j.duration)), 0.0, 0.92)
 		out["torp"] = fx._torpedo_pos(j, u * float(j.end_fraction))
+	return out
+
+
+## The closest pair of opposing ships that are on screen at t: [fleet id, fleet id], or [].
+func _closest_pair(t: float) -> Array:
+	var best := INF
+	var out := []
+	for ida in _ships:
+		var a: BattleShip = _ships[ida]
+		var ta := timeline.track(ida)
+		if not a.visible or (ta != null and (ta.visibility_at(t) < 0.35 or (ta.hide_at >= 0.0 and t >= ta.hide_at))):
+			continue
+		for idb in _ships:
+			var b: BattleShip = _ships[idb]
+			if b.owner_id == a.owner_id or not b.visible:
+				continue
+			var tb := timeline.track(idb)
+			if tb != null and (tb.visibility_at(t) < 0.35 or (tb.hide_at >= 0.0 and t >= tb.hide_at)):
+				continue
+			var d := a.global_position.distance_to(b.global_position)
+			if d < best:
+				best = d
+				out = [ida, idb]
 	return out
 
 

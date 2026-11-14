@@ -467,6 +467,28 @@ func _init() -> void:
 				check(gap >= 0.1 - 1e-6 and gap <= 0.15 + 1e-6, "tubes launch 0.10-0.15 s apart (%.3f)" % gap)
 		return true)
 
+	run("M4 combat: shields flare briefly, fire opens within 0.5 s, Dominion hulls resolve by race", func():
+		var ev := _flight_events() + [
+			{"tick": 5, "kind": "Fire", "fleetId": 1, "targetFleetId": 2, "mountIndex": 0, "weapon": "PhaserArray", "family": "beam", "projectiles": 1, "hit": true, "impactTick": 5, "shieldDamage": 30, "hullDamage": 0},
+			{"tick": 6, "kind": "Fire", "fleetId": 2, "targetFleetId": 1, "mountIndex": 0, "weapon": "Disruptor", "family": "beam", "projectiles": 1, "hit": true, "impactTick": 6, "shieldDamage": 20, "hullDamage": 0}]
+		var c := BattleTimeline.Config.new()
+		c.cinematic = true
+		c.round_seconds = 8.0
+		var tl := BattleTimeline.build(ev, _flight_info(400.0), c)
+		var shields := tl.jobs.filter(func(j): return j.kind == BattleTimeline.Job.SHIELD)
+		check(not shields.is_empty(), "the round has shield impacts")
+		for j in shields:
+			check(j.duration <= 0.45 + 1e-9, "a shield flare is brief (%.2f s)" % j.duration)
+		var first := INF
+		for j in tl.jobs:
+			if j.kind in [BattleTimeline.Job.BEAM, BattleTimeline.Job.PULSE, BattleTimeline.Job.TORPEDO]:
+				first = minf(first, float(j.start))
+		check(first <= 0.5, "fire opens within 0.5 s (%.2f)" % first)
+		check(BattleTimeline.faction_prefix(6) == "dom" and BattleTimeline.faction_prefix(7) == "borg" and BattleTimeline.faction_prefix(8) == "breen", "Dominion, Borg and Breen prefixes")
+		var keys := BattleShip.asset_keys_for({"owner": 6, "name": "Attack Ship — Jem'Hadar"})
+		check(keys.has("ship.dom.attack_ship") and keys.has("study.dom"), "a Dominion ship resolves to ship.dom.<class>: %s" % [keys])
+		return true)
+
 	run("M4 combat: class speeds, exact hand-over to the core's poses, beams held 0.6-1.5 s", func():
 		var ships_seen := 0
 		for r in rounds.size():
