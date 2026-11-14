@@ -81,8 +81,8 @@ class Config:
 	var wing_spacing_cells := 0.55
 	# Cinematic clock (see the header). Shares are of round_seconds.
 	var cinematic := false
-	var fire_from := 0.08          ## The first fire window opens here...
-	var fire_to := 0.84            ## ...and the last closes here (torpedoes may still be in flight after it).
+	var fire_from := 0.01          ## The first fire window opens here...
+	var fire_to := 0.95            ## ...and the last closes here (torpedoes may still be in flight after it).
 	var flight_to := 0.94          ## The plotted moves are flown from 0 to here.
 	var cruise_accel := 0.22       ## Share of a flight spent speeding up, and again slowing down.
 	var launch_span := 1.0         ## Launches (and beam / bolt impacts) fall in this share of their window...
@@ -2005,8 +2005,8 @@ static func _ship_clocks(tl: BattleTimeline, events: Array, info_by_id: Dictiona
 		var gap := lerpf(cfg.ship_gap_min, cfg.ship_gap_max, unit_hash(fid, 11))
 		if style == 2:
 			# The pass: the escort needs time to run in, and to break away and come about before the round ends.
-			lo = maxf(A, 1.8)
-			hi = minf(B, R * cfg.flight_to - 2.8)
+			lo = maxf(A, 0.7)
+			hi = minf(B, R * cfg.flight_to - 0.9)
 			gap = lerpf(cfg.escort_gap_min, cfg.escort_gap_max, unit_hash(fid, 11))
 		elif style == 0 and n > 2:
 			# Sustained fire: a capital's mounts spread evenly over the whole round.
@@ -2017,7 +2017,14 @@ static func _ship_clocks(tl: BattleTimeline, events: Array, info_by_id: Dictiona
 		if n > 1:
 			gap = minf(gap, maxf(0.15, (hi - lo - 0.1) / float(n - 1)))
 		var room := maxf(0.0, hi - lo - gap * (n - 1))
-		var start := lo + room * unit_hash(fid, 12)
+		# M4: ships open fire in turn across the round (rank by seeded hash), the first at once and the last late, so
+		# fire runs through the whole round (a random start left 2 s of dead air at the top and 3 s at the tail).
+		var rank := 0
+		var my_h := unit_hash(fid, 12)
+		for other_fid in trains:
+			if unit_hash(int(other_fid), 12) < my_h:
+				rank += 1
+		var start := lo + room * (float(rank) / float(maxi(1, trains.size() - 1)))
 		for k in n:
 			var jit := (unit_hash(fid * 131 + k, 13) - 0.5) * 0.3 * gap if k > 0 else 0.0
 			out[list[k]][0] = start + k * gap + jit

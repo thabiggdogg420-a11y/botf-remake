@@ -16,6 +16,9 @@ var mine_owner := 0
 var mine_map := {}
 var names_mine := PackedStringArray()
 var names_foe := PackedStringArray()
+var assets_mine := PackedStringArray()
+var assets_foe := PackedStringArray()
+var skip_rounds := 0
 var plan_pause := 1.0
 var speed := 1.0
 var core: Object
@@ -31,6 +34,9 @@ func _initialize() -> void:
 		elif a.begins_with("--plan-pause="): plan_pause = float(a.split("=")[1])
 		elif a.begins_with("--speed="): speed = float(a.split("=")[1])
 		elif a.begins_with("--mine-owner="): mine_owner = int(a.split("=")[1])
+		elif a.begins_with("--assets-mine="): assets_mine = a.split("=")[1].split(",")
+		elif a.begins_with("--assets-foe="): assets_foe = a.split("=")[1].split(",")
+		elif a.begins_with("--skip-rounds="): skip_rounds = int(a.split("=")[1])
 		elif a.begins_with("--names-mine="): names_mine = a.split("=")[1].split(",")
 		elif a.begins_with("--names-foe="): names_foe = a.split("=")[1].split(",")
 		elif a.begins_with("--mine-map="):
@@ -55,7 +61,7 @@ func _call(method: String, args := {}) -> Variant:
 
 
 func _dress(enc: Dictionary) -> Dictionary:
-	if foe_owner <= 0 and wmap.is_empty() and mine_owner <= 0 and mine_map.is_empty() and names_mine.is_empty() and names_foe.is_empty():
+	if foe_owner <= 0 and wmap.is_empty() and mine_owner <= 0 and mine_map.is_empty() and names_mine.is_empty() and names_foe.is_empty() and assets_mine.is_empty() and assets_foe.is_empty():
 		return enc
 	enc = enc.duplicate(true)
 	var mine := -1
@@ -74,6 +80,10 @@ func _dress(enc: Dictionary) -> Dictionary:
 				s["owner"] = mine_owner
 			if not names_mine.is_empty():
 				s["name"] = names_mine[ni % names_mine.size()] + " - Cruiser"
+			if not assets_mine.is_empty():
+				s["assetKey"] = "ship." + assets_mine[ni % assets_mine.size()]
+				ni += 1
+			elif not names_mine.is_empty():
 				ni += 1
 		else:
 			foes[id] = true
@@ -81,6 +91,10 @@ func _dress(enc: Dictionary) -> Dictionary:
 				s["owner"] = foe_owner
 			if not names_foe.is_empty():
 				s["name"] = names_foe[nf % names_foe.size()] + " - Cruiser"
+			if not assets_foe.is_empty():
+				s["assetKey"] = "ship." + assets_foe[nf % assets_foe.size()]
+				nf += 1
+			elif not names_foe.is_empty():
 				nf += 1
 	for r in enc.get("rounds", []):
 		for rs in r.get("ships", []):
@@ -122,12 +136,35 @@ func _run() -> void:
 		round_n += 1
 		view.playback_speed = speed
 		view.load_encounter(_dress(enc))
+		if round_n <= skip_rounds:
+			view.skip_round()
+			while view.is_playing():
+				await process_frame
+			print("CLIP skipped round ", round_n)
+			continue
 		var tl: BattleTimeline = view.timeline
 		var counts := {}
 		for j in tl.jobs:
 			var key: String = BattleTimeline.JOB_NAMES[j.kind]
 			counts[key] = counts.get(key, 0) + 1
 		print("CLIP round ", round_n, " ships ", tl.ships.size(), " jobs ", counts, " end ", tl.end_seconds)
+		var fire := []
+		for j in tl.jobs:
+			if j.kind in [BattleTimeline.Job.BEAM, BattleTimeline.Job.PULSE, BattleTimeline.Job.TORPEDO]:
+				fire.append([float(j.start), float(j.start) + float(j.duration)])
+		fire.sort_custom(func(a, b): return a[0] < b[0])
+		var cover := 0.0
+		var gaps := []
+		for iv in fire:
+			if iv[0] - cover > 0.8:
+				gaps.append("%.1f-%.1f" % [cover, iv[0]])
+			cover = maxf(cover, iv[1])
+		gaps.append("tail %.1f-%.1f" % [cover, tl.end_seconds])
+		var firsts := []
+		for iv in fire.slice(0, 6):
+			firsts.append("%.2f" % iv[0])
+		print("CLIP round ", round_n, " first launches ", firsts)
+		print("CLIP round ", round_n, " weapon-free gaps over 0.8 s: ", gaps)
 		var frames := 0
 		while view.is_playing():
 			await process_frame

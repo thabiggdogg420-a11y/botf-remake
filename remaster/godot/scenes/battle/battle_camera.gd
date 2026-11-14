@@ -873,21 +873,35 @@ func _film_pose(shot: Dictionary, key: String, time: float) -> Array:
 			# the pair and drifting round them slowly. Distance follows the pair, so a capital never fills the frame from
 			# a few radii away (the first cut sat 3.4 radii behind the shooter).
 			var mid := (a + b) * 0.5
-			var sep := maxf(to_b.length(), (ra + rb) * 1.6)
-			var span := maxf(sep * 0.75, (ra + rb) * 2.6)
+			var sep := to_b.length()
+			# Fit the pair: the lens is far enough that both hulls (and their weapons) are whole in a 16:9 frame, no further.
+			var dist := maxf((sep * 0.5 + 1.25 * maxf(ra, rb)) / 0.6, (ra + rb) * 2.2)
 			var drift := deg_to_rad(5.0) * (time - _shot_start) * sgn
-			var off := (side * sgn - dir * 0.35) * span + Vector3.UP * span * 0.4
-			eye = mid + off.rotated(Vector3.UP, drift)
-			look = mid
+			var cap := (ra + rb) * 5.0
+			var focus := mid
+			if dist > cap:
+				# The pair is too far apart to fit: stay close on the subject (the shooter) and let the target be the
+				# bolt's destination, rather than two specks in a wide frame of nothing.
+				dist = cap
+				focus = a.lerp(b, 0.15)
+			var off := (side * sgn - dir * 0.35 + Vector3.UP * 0.4).normalized() * dist
+			eye = focus + off.rotated(Vector3.UP, drift)
+			look = focus
 			fov = 40.0
 	# M4: never shoot into the sun (the ship washes out to a white blob against the glare): if the lens would look toward it
 	# when the shot begins, the whole shot is taken from the other side.
 	var sd: Vector3 = shot.get("sun_dir", Vector3.ZERO)
-	if sd != Vector3.ZERO and str(shot.film) != "flyby":
-		if fresh:
-			_film_flip = (look - eye).normalized().dot(sd.normalized()) > 0.45
-		if _film_flip:
-			eye = look + (look - eye)
+	var pp: Vector3 = shot.get("planet_pos", Vector3.ZERO)
+	if fresh:
+		var vdir := (look - eye).normalized()
+		var mirror := look + (look - eye)
+		var into_sun := sd != Vector3.ZERO and str(shot.film) != "flyby" and vdir.dot(sd.normalized()) > 0.45
+		# The gas giant (30 degrees across) must not sit behind the pair: a hull over its disc reads as a ship flying through it.
+		var planet_in := func(e: Vector3) -> bool:
+			return pp != Vector3.ZERO and (look - e).normalized().dot((pp - e).normalized()) > 0.5
+		_film_flip = into_sun or (planet_in.call(eye) and not planet_in.call(mirror))
+	if _film_flip:
+		eye = look + (look - eye)
 	eye = _clear_of_hulls(eye, look)
 	return [eye, look]
 

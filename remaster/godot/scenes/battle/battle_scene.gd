@@ -536,13 +536,15 @@ func _update_camera(t: float, delta: float, centroid: Vector3, spread: float) ->
 		shot = {"key": "%d_%d_%d_%.2f" % [round_index, director.subject, director.other, director.since],
 			"kind": director.kind, "subject": subject.global_position, "subject_size": subject.length,
 			"other": other.global_position if other != null else centroid, "other_size": other.length if other != null else subject.length, "centroid": centroid, "spread": spread}
-	if film_cuts and (_playing or not _finished_sent) and not ((round_index == 0 and t < 3.0) or t < 1.0):
+	if film_cuts and (_playing or not _finished_sent) and not ((round_index == 0 and t < 3.0) or t < 0.25):
 		var fs := _film_shot(t, centroid, spread)
 		if not fs.is_empty():
 			shot = fs
 	# The planet vista: the establishing shot and the pull-back at the start of every third round frame the fleet against
 	# the planet, so its true size (radius 1100 beside hulls of ~10) reads on screen.
-	shot["vista"] = int(shot.get("kind", -1)) < 0 and round_index % 3 == 0 and t < 2.5 and _env.has("planet")
+	# M4: the planet vista is the first round's establishing shot only (later ones put a hull over the limb, which read as a
+	# ship flying through the gas giant).
+	shot["vista"] = int(shot.get("kind", -1)) < 0 and round_index == 0 and t < 2.5 and _env.has("planet")
 	if _env.has("planet"):
 		camera.planet_center = (_env.planet as Node3D).global_position
 		camera.planet_radius = BattleEnvironment.PLANET_RADIUS
@@ -561,10 +563,13 @@ func _film_shot(t: float, centroid: Vector3, spread: float) -> Dictionary:
 		var h := BattleTimeline.unit_hash(round_index * 977 + n, 61)
 		var length := 2.4 + 2.2 * h # M4: shots of 2.4-4.6 s (the first cut flipped every 1-3 s between unrelated ships)
 		_film = {"n": n, "from": t, "until": t + length, "round": round_index, "type": "wide"}
-		if n % 3 != 2:
+		# A small battle (a duel, a 3 v 3) is all action: every cut is a shot of the fight, never a wide of empty space.
+		if n % 3 != 2 or _ships.size() <= 14:
 			_film.merge(_pick_film(t, length, n), true)
 		if _film.type == "wide":
 			_film.until = t + 1.6 + 0.8 * h
+		elif _film.type == "torpedo":
+			_film.until = minf(float(_film.until), t + 2.0) # a chase of a salvo is a beat, not four seconds of specks
 	var typ: String = _film.type
 	if typ == "wide":
 		return {}
@@ -579,6 +584,8 @@ func _film_shot(t: float, centroid: Vector3, spread: float) -> Dictionary:
 		"other_size": b.length if b != null else a.length, "centroid": centroid, "spread": spread}
 	if _env.has("sun_dir"):
 		out["sun_dir"] = _env.sun_dir
+	if _env.has("planet"):
+		out["planet_pos"] = (_env.planet as Node3D).global_position
 	if typ == "torpedo":
 		var j: Dictionary = timeline.jobs[int(_film.job)]
 		var u := clampf((t - float(j.start)) / maxf(0.1, float(j.duration)), 0.0, 0.92)
@@ -588,7 +595,7 @@ func _film_shot(t: float, centroid: Vector3, spread: float) -> Dictionary:
 
 ## The subject of a film cut starting at t: the most watchable shot starting soon.
 func _pick_film(t: float, length: float, n: int) -> Dictionary:
-	var want: String = ["behind", "torpedo", "flyby"][n % 3] if n % 3 != 2 else "wide"
+	var want: String = ["behind", "torpedo", "flyby"][n % 3] if (n % 3 != 2 or _ships.size() <= 14) else "wide"
 	if BattleTimeline.unit_hash(round_index * 31 + n, 62) < 0.5:
 		want = "torpedo" if want == "behind" else ("flyby" if want == "torpedo" else want)
 	var best := {}
@@ -616,7 +623,11 @@ func _pick_film(t: float, length: float, n: int) -> Dictionary:
 				score += 3.0
 			_:
 				continue
-		if typ == want:
+		if typ == "flyby" and _ships.size() <= 14:
+			typ = "behind" # likewise the fixed fly-by lens: an escort across a wide frame is a speck
+		if typ == "torpedo" and _ships.size() <= 14:
+			typ = "behind" # small battle: the pair-fitted tracking shot shows salvo, shooter and target; a chase cam showed empty space
+		if typ == want or (want != "wide" and typ == "behind" and _ships.size() <= 14):
 			score += 2.0
 		if score > best_score:
 			best_score = score
