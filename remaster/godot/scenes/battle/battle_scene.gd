@@ -135,6 +135,8 @@ func play_round(p_encounter: Dictionary, p_round_index: int) -> void:
 		else:
 			flight.reset()
 			flight.seed = key
+			_dir = {"n": -1, "until": -1.0} # a new battle opens on the director's establisher
+			_dir_recent.clear()
 		_flight_key = key
 		_flight_round = round_index
 		cfg.flight = flight
@@ -677,6 +679,22 @@ func _direct_shot(t: float, delta: float, centroid: Vector3, spread: float) -> D
 		_direct_pick(t)
 	if str(_dir.get("type", "")) == "":
 		return {}
+	# The lens rides a smoothed heading and target bearing, so an escort jinking or a target crossing the bow swings the
+	# shot round over a second or so instead of whipping it.
+	var subj: BattleShip = _ships.get(int(_dir.get("subject", 0)))
+	if subj != null:
+		var fw := subj.global_basis.x
+		var fl := Vector3(fw.x, 0.0, fw.z)
+		if fl.length() > 1e-3:
+			fl = fl.normalized()
+			var cur: Vector3 = _dir.get("fwd_s", fl)
+			_dir["fwd_s"] = cur.slerp(fl, clampf(delta * 1.2, 0.0, 1.0)).normalized() if cur.dot(fl) > -0.98 else fl
+		var tb := fl if fl.length() > 0.5 else Vector3(1, 0, 0)
+		var ob: BattleShip = _ships.get(int(_dir.get("other", 0)))
+		if ob != null and ob != subj and ob.global_position.distance_to(subj.global_position) > 1e-3:
+			tb = (ob.global_position - subj.global_position).normalized()
+		var tcur: Vector3 = _dir.get("tob_s", tb)
+		_dir["tob_s"] = tcur.lerp(tb, clampf(delta * 1.5, 0.0, 1.0)).normalized() if tcur.lerp(tb, 0.5).length() > 0.05 else tb
 	var u := clampf((_dir_clock - float(_dir.from)) / maxf(0.1, float(_dir.until) - float(_dir.from)), 0.0, 1.0)
 	var e := u * u * (3.0 - 2.0 * u) # eased: the move starts and settles gently
 	var pose := _direct_pose(str(_dir.type), u, e)
@@ -690,6 +708,8 @@ func _direct_shot(t: float, delta: float, centroid: Vector3, spread: float) -> D
 func _direct_pick(t: float) -> void:
 	var n := int(_dir.n) + 1
 	var h := BattleTimeline.unit_hash(n * 131 + 7, 71)
+	_dir.erase("fwd_s")
+	_dir.erase("tob_s")
 	var prev_type := str(_dir.get("type", ""))
 	_dir = {"n": n, "from": _dir_clock, "until": _dir_clock + 3.5 + 2.0 * h, "type": "", "subject": 0, "other": 0, "sgn": 1.0}
 	var me := _player_empire()
@@ -782,7 +802,14 @@ func _direct_pick(t: float) -> void:
 	var sd: Vector3 = _env.get("sun_dir", Vector3.ZERO)
 	var best_s := 1.0
 	var best_bad := INF
-	for sg in [1.0, -1.0]:
+	var signs := [1.0, -1.0]
+	if str(_dir.type) == "push" and a != null:
+		var oth: BattleShip = _ships.get(int(_dir.get("other", 0)))
+		if oth != null and oth != a:
+			var fw0 := a.global_basis.x
+			var sd0 := Vector3(fw0.x, 0.0, fw0.z).normalized().cross(Vector3.UP)
+			signs = [-1.0 if sd0.dot(oth.global_position - a.global_position) > 0.0 else 1.0]
+	for sg in signs:
 		_dir.sgn = sg
 		_dir["eye0"] = Vector3.ZERO
 		var pose := _direct_pose(str(_dir.type), 0.0, 0.0)
@@ -852,10 +879,14 @@ func _direct_pose(typ: String, u: float, e: float) -> Array:
 	var fwd := a.global_basis.x.normalized()
 	var flat := Vector3(fwd.x, 0.0, fwd.z)
 	flat = flat.normalized() if flat.length() > 1e-3 else Vector3(1, 0, 0)
+	if _dir.has("fwd_s"):
+		flat = _dir.fwd_s
 	var side := flat.cross(Vector3.UP).normalized() * sg
 	var b: BattleShip = _ships.get(int(_dir.get("other", 0)))
 	var to_b := flat
-	if b != null and b != a and b.global_position.distance_to(p) > 1e-3:
+	if _dir.has("tob_s"):
+		to_b = _dir.tob_s
+	elif b != null and b != a and b.global_position.distance_to(p) > 1e-3:
 		to_b = (b.global_position - p).normalized()
 	match typ:
 		"track":
@@ -865,8 +896,8 @@ func _direct_pose(typ: String, u: float, e: float) -> Array:
 			return [eye, look, 40.0]
 		"push":
 			# Alongside a capital's broadside, sliding from its quarter toward its bow, the enemy beyond the hull.
-			var away := -side if side.dot(to_b) > 0.0 else side
-			var eye := p + away * L * 1.05 + Vector3.UP * L * 0.42 + flat * L * lerpf(-0.95, 0.55, e)
+			# The side away from the target (sgn is chosen so at the cut, and kept: a target crossing the bow never flips it).
+			var eye := p + side * L * 1.05 + Vector3.UP * L * 0.42 + flat * L * lerpf(-0.95, 0.55, e)
 			var look := p + to_b * L * 0.55 + flat * L * lerpf(-0.15, 0.25, e)
 			return [eye, look, 40.0]
 		"approach":
