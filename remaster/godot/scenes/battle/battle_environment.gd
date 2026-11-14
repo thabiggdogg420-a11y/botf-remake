@@ -18,11 +18,15 @@ static func build(parent: Node3D, arena_size: Vector2, planet_class: String = "G
 	var sky_mat := ShaderMaterial.new()
 	sky_mat.shader = SKY_SHADER
 	sky.sky_material = sky_mat
+	# M4 flight stage 2 (show footage, Simon 14 Nov): mostly black space with a subtle nebula, one hard key light. The
+	# nebula and the galactic band are dimmed; the fill and ambient that flattened the hulls are cut back.
+	sky_mat.set_shader_parameter("nebula_strength", 0.35)
+	sky_mat.set_shader_parameter("band_strength", 0.35)
 	sky.radiance_size = Sky.RADIANCE_SIZE_256
 	env.background_mode = Environment.BG_SKY
 	env.sky = sky
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	env.ambient_light_color = Color(0.26, 0.27, 0.33) # R3.5: dark-hulled ships (Klingon) read at tactical distance
+	env.ambient_light_color = Color(0.14, 0.145, 0.18) # stage 2: was 0.26 (R3.5, tactical distance); the close lens needs the key light to model the hull
 	env.ambient_light_energy = 1.0
 	env.reflected_light_source = Environment.REFLECTION_SOURCE_SKY
 	env.tonemap_mode = Environment.TONE_MAPPER_ACES
@@ -37,7 +41,7 @@ static func build(parent: Node3D, arena_size: Vector2, planet_class: String = "G
 	env.set_glow_level(4, 0.6)
 	env.set_glow_level(5, 0.5)
 	env.set_glow_level(6, 0.3)
-	env.glow_intensity = 0.4 # R3.5: clamped so stacked fire never whites out the frame
+	env.glow_intensity = 0.5 # R3.5: clamped so stacked fire never whites out the frame
 	env.glow_strength = 1.0
 	env.glow_bloom = 0.0
 	env.glow_blend_mode = Environment.GLOW_BLEND_MODE_SCREEN
@@ -52,7 +56,7 @@ static func build(parent: Node3D, arena_size: Vector2, planet_class: String = "G
 	env.volumetric_fog_sky_affect = 0.0
 	env.adjustment_enabled = true
 	env.adjustment_contrast = 1.06
-	env.adjustment_saturation = 1.12
+	env.adjustment_saturation = 1.0
 	CompatLook.tune(env) # web (Compatibility): glow for its range (no-op under Forward+)
 	var we := WorldEnvironment.new()
 	we.name = "WorldEnvironment"
@@ -63,7 +67,7 @@ static func build(parent: Node3D, arena_size: Vector2, planet_class: String = "G
 	var sun := DirectionalLight3D.new()
 	sun.name = "Sun"
 	sun.light_color = Color(1.0, 0.93, 0.82)
-	sun.light_energy = CompatLook.sun(3.0)
+	sun.light_energy = CompatLook.sun(4.2) # stage 2: the hard key light (was 3.0)
 	sun.shadow_enabled = DisplaySettings.shadows_enabled # Settings > Shadow quality: Off
 	sun.directional_shadow_max_distance = 320.0
 	# R3.5: the default biases left shadow acne as black speckle over the hero hulls (title close-ups).
@@ -80,14 +84,14 @@ static func build(parent: Node3D, arena_size: Vector2, planet_class: String = "G
 	var fill := DirectionalLight3D.new()
 	fill.name = "Fill"
 	fill.light_color = Color(0.75, 0.8, 1.0)
-	fill.light_energy = 0.9
+	fill.light_energy = 0.35 # stage 2: was 0.9; the shadow side goes dark as in the show, never black (ambient)
 	fill.sky_mode = DirectionalLight3D.SKY_MODE_LIGHT_ONLY
 	fill.rotation_degrees = Vector3(-35.0, 52.0, 0.0)
 	parent.add_child(fill)
 	var rim := DirectionalLight3D.new()
 	rim.name = "NebulaRim"
 	rim.light_color = Color(0.6, 0.66, 0.9)
-	rim.light_energy = 0.7
+	rim.light_energy = 0.45
 	rim.sky_mode = DirectionalLight3D.SKY_MODE_LIGHT_ONLY
 	parent.add_child(rim)
 	rim.rotation_degrees = Vector3(35.0, 40.0, 0.0)
@@ -127,6 +131,7 @@ static func build(parent: Node3D, arena_size: Vector2, planet_class: String = "G
 		fog.shape = RenderingServer.FOG_VOLUME_SHAPE_ELLIPSOID
 		var fmat := ShaderMaterial.new()
 		fmat.shader = FOG_SHADER
+		fmat.set_shader_parameter("density", 0.008) # stage 2: a subtle nebula, not a purple wash (shader default 0.02)
 		fog.material = fmat
 		fog.position = Vector3(0.0, -30.0, -arena_size.y * 0.9)
 		parent.add_child(fog)
@@ -139,7 +144,7 @@ static func build(parent: Node3D, arena_size: Vector2, planet_class: String = "G
 		fmat2.set_shader_parameter("albedo", Color(0.25, 0.35, 0.6))
 		fmat2.set_shader_parameter("emission", Color(0.03, 0.06, 0.16))
 		fmat2.set_shader_parameter("emission_b", Color(0.12, 0.04, 0.12))
-		fmat2.set_shader_parameter("density", 0.012)
+		fmat2.set_shader_parameter("density", 0.005)
 		fog2.material = fmat2
 		fog2.position = Vector3(arena_size.x * 0.3, -45.0, arena_size.y * 0.4)
 		parent.add_child(fog2)
@@ -148,9 +153,9 @@ static func build(parent: Node3D, arena_size: Vector2, planet_class: String = "G
 		# Compatibility (the web build) has no volumetric fog: the same two nebula ellipsoids as slices (CompatNebula).
 		parent.add_child(CompatNebula.create([
 			{"position": Vector3(0.0, -30.0, -arena_size.y * 0.9), "size": Vector3(arena_size.x * 2.6, 90.0, arena_size.y * 1.4),
-				"albedo": Color(0.35, 0.25, 0.55), "density": 0.02},
+				"albedo": Color(0.35, 0.25, 0.55), "density": 0.008},
 			{"position": Vector3(arena_size.x * 0.3, -45.0, arena_size.y * 0.4), "size": Vector3(arena_size.x * 1.8, 50.0, arena_size.y * 1.6),
-				"albedo": Color(0.25, 0.35, 0.6), "density": 0.012},
+				"albedo": Color(0.25, 0.35, 0.6), "density": 0.005},
 		], [sun, fill, rim], env.volumetric_fog_length))
 
 	parent.add_child(_dust(arena_size))

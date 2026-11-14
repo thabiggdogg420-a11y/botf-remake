@@ -550,6 +550,8 @@ func film(delta: float, time: float, p_bodies: Array, chase: Array, shot: Dictio
 	_snap_next = false
 	_cut = false
 	var half_life := 0.45 if mode == Mode.CINEMATIC else (0.35 if mode == Mode.CHASE else 0.22)
+	if mode == Mode.CINEMATIC and _direct:
+		half_life = 0.12 # the director's lens is already an eased move riding a moving hull: lag would drop the subject
 	var tracking := subject_radius > 0.0 or mode == Mode.CHASE or mode == Mode.CINEMATIC
 	var focus_half_life := lerpf(0.05, half_life, clampf(transition, 0.0, 1.0)) if tracking else half_life
 	var rig_shown := smoother.step(target, delta, half_life, focus_half_life)
@@ -793,6 +795,7 @@ func _shot_ok(eye: Vector3, look: Vector3, a: Vector3, ar: float, b: Vector3, br
 ## The cinematic director's framing: [eye, look]. Tactical by default; a cutaway only when the scene offers one
 ## (about 1 round in 4, or a kill) and one of the candidate angles passes _shot_ok. A bad shot is rejected, never patched.
 func _cinematic_shot(_delta: float, shot: Dictionary, time: float) -> Array:
+	_direct = false
 	var key: String = shot.get("key", "")
 	var kind: int = shot.get("kind", -1)
 	var aspect := 16.0 / 9.0
@@ -846,6 +849,8 @@ var _film_eye := Vector3.ZERO
 var _film_flip := false
 
 func _film_pose(shot: Dictionary, key: String, time: float) -> Array:
+	if str(shot.film) == "direct":
+		return _direct_pose(shot, key, time)
 	var a: Vector3 = shot.subject
 	var b: Vector3 = shot.get("other", a)
 	var ra := maxf(float(shot.get("subject_size", 10.0)) * 0.5, 3.0)
@@ -920,6 +925,37 @@ func _film_pose(shot: Dictionary, key: String, time: float) -> Array:
 	if _film_flip:
 		eye = look + (look - eye)
 	eye = _clear_of_hulls(eye, look)
+	return [eye, look]
+
+
+## M4 flight stage 2, the shot director's lens (BattleScene._direct_shot): the scene computes eye and look every frame
+## in the subject's own frame; here the eye is only kept out of other hulls (pushed straight out of each, so a ship
+## crossing close nudges the lens instead of the lens jumping back along its line of sight). Tracked tightly (_direct).
+var _direct := false
+
+func _direct_pose(shot: Dictionary, key: String, time: float) -> Array:
+	_direct = true
+	if key != _shot_key:
+		_shot_key = key
+		_shot_start = time
+		_cut = true
+		_cut_pose = []
+	var eye: Vector3 = shot.eye
+	var look: Vector3 = shot.look
+	var sid := int(shot.get("subject_id", 0))
+	for pass_i in 3:
+		var moved := false
+		for b in bodies:
+			var c: Vector3 = b.center
+			var r: float = float(b.radius) * (1.25 if int(b.id) == sid else 1.6)
+			var d := eye.distance_to(c)
+			if d < r:
+				var out := (eye - c).normalized() if d > 1e-3 else Vector3.UP
+				eye += out * (r - d)
+				moved = true
+		if not moved:
+			break
+	fov = float(shot.get("fov", 40.0))
 	return [eye, look]
 
 

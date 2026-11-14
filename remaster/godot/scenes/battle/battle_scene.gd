@@ -50,6 +50,7 @@ const MAX_FRAME_STEP := 0.05    ## Longest wall-clock step one frame may advance
 ## M4 flight (Simon, 14 Nov 2026): ships are flown by the continuous flight-and-doctrine sim ported from the LCARS battle
 ## screensaver (BattleFlight), one sim for the whole battle carried from round to round. Off = the M4 combat planner.
 @export var flight_sim := true
+@export var shot_director := true ## M4 flight stage 2: show-style held moving shots (BattleScene._direct_shot) over the old 1-3 s cuts.
 var flight := BattleFlight.new()
 var _flight_key := -1
 var _flight_round := -1
@@ -566,7 +567,13 @@ func _update_camera(t: float, delta: float, centroid: Vector3, spread: float) ->
 		shot = {"key": "%d_%d_%d_%.2f" % [round_index, director.subject, director.other, director.since],
 			"kind": director.kind, "subject": subject.global_position, "subject_size": subject.length,
 			"other": other.global_position if other != null else centroid, "other_size": other.length if other != null else subject.length, "centroid": centroid, "spread": spread}
-	if film_cuts and (_playing or not _finished_sent) and not ((round_index == 0 and t < 3.0) or t < 0.25):
+	_gap_clock = 0.0 if (_playing or not _finished_sent) else _gap_clock + delta
+	var vista_open := round_index == 0 and t < 2.5 and _env.has("planet")
+	if film_cuts and shot_director and _gap_clock < GAP_GRACE and not vista_open:
+		var ds := _direct_shot(t, delta, centroid, spread)
+		if not ds.is_empty():
+			shot = ds
+	elif film_cuts and not shot_director and (_playing or not _finished_sent) and not ((round_index == 0 and t < 3.0) or t < 0.25):
 		var fs := _film_shot(t, centroid, spread)
 		if not fs.is_empty():
 			shot = fs
@@ -630,6 +637,252 @@ func _film_shot(t: float, centroid: Vector3, spread: float) -> Dictionary:
 		var u := clampf((t - float(j.start)) / maxf(0.1, float(j.duration)), 0.0, 0.92)
 		out["torp"] = fx._torpedo_pos(j, u * float(j.end_fraction))
 	return out
+
+
+## M4 flight, stage 2 (Simon, 14 Nov: "compare it yourself to footage of show battles"): the shot director. Show battles
+## (DS9 "Sacrifice of Angels") hold one slow, eased camera move for 3-10 s close on one hull (30-60% of the frame) with
+## the fleet layered behind it, and cut rarely. Each shot here picks a subject from what the round is about to show (a
+## ship about to blow up, a torpedo or beam shooter, an escort on its run), holds a moving lens on it for 3.5-5.5 s of
+## real time and cuts only when the move has ended (or its subject has gone). Every fourth shot is a short low
+## establisher behind the player's fleet, looking across it at the enemy, so the battle reads as two fleets. Shot
+## clocks run in real time and survive the gap between rounds (GAP_GRACE), so a round boundary is not a cut.
+## The camera only frames; the core's events are drawn exactly as before.
+const GAP_GRACE := 1.2
+var _gap_clock := 0.0
+var _dir := {"n": -1, "until": -1.0}
+var _dir_clock := 0.0
+var _dir_recent: Array = []          ## the last subjects filmed, newest last
+var _dir_prev := {}                  ## fleet_id -> world position last frame (speed for the approach shot)
+var _dir_vel := {}                   ## fleet_id -> smoothed world velocity (units/s)
+
+func _direct_shot(t: float, delta: float, centroid: Vector3, spread: float) -> Dictionary:
+	_dir_clock += delta
+	for fid in _ships:
+		var sh: BattleShip = _ships[fid]
+		var p := sh.global_position
+		if _dir_prev.has(fid) and delta > 0.0:
+			var v: Vector3 = (p - _dir_prev[fid]) / delta
+			if v.length() < 200.0:
+				_dir_vel[fid] = (_dir_vel.get(fid, v) as Vector3).lerp(v, clampf(delta * 3.0, 0.0, 1.0))
+		_dir_prev[fid] = p
+	var ended := _dir_clock >= float(_dir.until)
+	if not ended and str(_dir.get("type", "")) != "establish":
+		var sid := int(_dir.get("subject", 0))
+		var a0: BattleShip = _ships.get(sid)
+		var tr0 := timeline.track(sid) if timeline != null else null
+		var hold := 1.4 if str(_dir.get("type", "")) == "victim" else 0.6
+		if a0 == null or not a0.visible or (tr0 != null and tr0.hide_at >= 0.0 and t >= tr0.hide_at + hold and _playing):
+			ended = true
+	if ended:
+		_direct_pick(t)
+	if str(_dir.get("type", "")) == "":
+		return {}
+	var u := clampf((_dir_clock - float(_dir.from)) / maxf(0.1, float(_dir.until) - float(_dir.from)), 0.0, 1.0)
+	var e := u * u * (3.0 - 2.0 * u) # eased: the move starts and settles gently
+	var pose := _direct_pose(str(_dir.type), u, e)
+	if pose.is_empty():
+		return {}
+	return {"key": "direct_%d" % int(_dir.n), "kind": 0, "film": "direct", "eye": pose[0], "look": pose[1], "fov": pose[2],
+		"subject_id": int(_dir.get("subject", 0)), "subject": pose[1], "centroid": centroid, "spread": spread}
+
+
+## The next shot: {n, from, until, type, subject, other, sgn, ...}.
+func _direct_pick(t: float) -> void:
+	var n := int(_dir.n) + 1
+	var h := BattleTimeline.unit_hash(n * 131 + 7, 71)
+	var prev_type := str(_dir.get("type", ""))
+	_dir = {"n": n, "from": _dir_clock, "until": _dir_clock + 3.5 + 2.0 * h, "type": "", "subject": 0, "other": 0, "sgn": 1.0}
+	var me := _player_empire()
+	if n == 0 or (n % 4 == 0 and prev_type != "establish"):
+		_dir.type = "establish"
+		_dir.until = _dir_clock + 2.6 + 1.0 * h
+		_dir.sgn = 1.0 if BattleTimeline.unit_hash(n, 72) < 0.5 else -1.0
+		return
+	var best := {}
+	var best_score := -INF
+	if timeline != null:
+		for k in timeline.jobs.size():
+			var j: Dictionary = timeline.jobs[k]
+			if float(j.start) > t + 3.2:
+				break
+			if float(j.start) + float(j.duration) < t + 0.2:
+				continue
+			var typ := ""
+			var subj := int(j.fleet_id)
+			var oth := int(j.target_fleet_id)
+			var score := 0.0
+			var lead := float(j.start) - t
+			match int(j.kind):
+				BattleTimeline.Job.EXPLOSION:
+					subj = int(j.target_fleet_id)
+					oth = int(j.source_fleet_id)
+					if lead < 0.5 or lead > 2.8:
+						continue
+					typ = "victim"
+					score = 5.0 - absf(lead - 1.4)
+				BattleTimeline.Job.TORPEDO, BattleTimeline.Job.BEAM, BattleTimeline.Job.PULSE:
+					if lead < -0.4:
+						continue
+					var sh: BattleShip = _ships.get(subj)
+					if sh == null:
+						continue
+					var trs := timeline.track(subj)
+					var capital := sh.length >= 22.0 or (trs != null and trs.style == 0)
+					typ = "push" if capital else "track"
+					if capital and BattleTimeline.unit_hash(n * 17 + subj, 73) < 0.35:
+						typ = "approach"
+					score = (3.0 if int(j.kind) == BattleTimeline.Job.TORPEDO else 2.5) - 0.4 * absf(lead - 0.6)
+				_:
+					continue
+			if not _ships.has(subj):
+				continue
+			var tr := timeline.track(subj)
+			if tr != null and ((tr.hide_at >= 0.0 and tr.hide_at < t + 0.3 and typ != "victim") or tr.visibility_at(t) < 0.35):
+				continue
+			if _dir_recent.has(subj):
+				score -= 2.5
+			if typ == prev_type:
+				score -= 1.0
+			var sh2: BattleShip = _ships[subj]
+			if sh2.owner_id == me:
+				score += 0.5 # the show films its heroes in the foreground
+			score += BattleTimeline.unit_hash(n * 53 + k, 74)
+			if score > best_score:
+				best_score = score
+				best = {"type": typ, "subject": subj, "other": oth}
+	if best.is_empty():
+		# Nothing about to fire (between rounds, a quiet stretch): a capital passing the lens, else any ship, never empty space.
+		var cand := -1
+		var big := -1.0
+		for fid in _ships:
+			var sh: BattleShip = _ships[fid]
+			var tr := timeline.track(fid) if timeline != null else null
+			if not sh.visible or (tr != null and (tr.visibility_at(t) < 0.35 or (tr.hide_at >= 0.0 and t >= tr.hide_at))):
+				continue
+			var sc := sh.length * (0.3 if _dir_recent.has(fid) else 1.0) * (1.0 + BattleTimeline.unit_hash(n * 7 + fid, 75))
+			if sc > big:
+				big = sc
+				cand = fid
+		if cand < 0:
+			_dir.type = "establish"
+			return
+		var pair := _closest_pair(t)
+		var other := 0
+		if pair.size() == 2:
+			other = int(pair[1]) if int(pair[0]) == cand else (int(pair[0]) if int(pair[1]) == cand else 0)
+		best = {"type": "approach" if (_ships[cand] as BattleShip).length >= 22.0 else "track", "subject": cand, "other": other}
+	_dir.merge(best, true)
+	if best.type == "victim":
+		_dir.until = maxf(float(_dir.until), _dir_clock + 3.6)
+	_dir_recent.append(int(best.subject))
+	if _dir_recent.size() > 3:
+		_dir_recent.pop_front()
+	# Pick the side of the hull that keeps the lens out of the sun and the subject unblocked.
+	var a: BattleShip = _ships.get(int(_dir.subject))
+	var sd: Vector3 = _env.get("sun_dir", Vector3.ZERO)
+	var best_s := 1.0
+	var best_bad := INF
+	for sg in [1.0, -1.0]:
+		_dir.sgn = sg
+		_dir["eye0"] = Vector3.ZERO
+		var pose := _direct_pose(str(_dir.type), 0.0, 0.0)
+		if pose.is_empty() or a == null:
+			continue
+		var eye: Vector3 = pose[0]
+		var look: Vector3 = pose[1]
+		var bad := 0.0
+		if sd != Vector3.ZERO:
+			bad += maxf(0.0, (look - eye).normalized().dot(sd.normalized()) - 0.3) * 4.0
+		for fid in _ships:
+			var o: BattleShip = _ships[fid]
+			if o == a or not o.visible:
+				continue
+			var c := o.global_position
+			var seg := a.global_position - eye
+			var w := clampf((c - eye).dot(seg) / maxf(1e-3, seg.length_squared()), 0.0, 1.0)
+			if (eye + seg * w).distance_to(c) < o.length * 0.45 and w < 0.95:
+				bad += 1.0
+		bad += BattleTimeline.unit_hash(n * 3 + int(sg > 0.0), 76) * 0.1
+		if bad < best_bad:
+			best_bad = bad
+			best_s = sg
+	_dir.sgn = best_s
+	_dir["eye0"] = Vector3.ZERO # the approach lens is planted once, from where the ship is at the cut
+
+
+## [eye, look, fov] for the current shot at progress u (eased e), or [] when the subject is gone.
+func _direct_pose(typ: String, u: float, e: float) -> Array:
+	var sg := float(_dir.get("sgn", 1.0))
+	if typ == "establish":
+		var me := _player_empire()
+		var pc := Vector3.ZERO
+		var ec := Vector3.ZERO
+		var np := 0
+		var ne := 0
+		for fid in _ships:
+			var sh: BattleShip = _ships[fid]
+			if not sh.visible:
+				continue
+			if sh.owner_id == me:
+				pc += sh.global_position
+				np += 1
+			else:
+				ec += sh.global_position
+				ne += 1
+		if np == 0 or ne == 0:
+			return []
+		pc /= float(np)
+		ec /= float(ne)
+		var rp := 0.0
+		for fid in _ships:
+			var sh: BattleShip = _ships[fid]
+			if sh.visible and sh.owner_id == me:
+				rp = maxf(rp, sh.global_position.distance_to(pc) + sh.length * 0.5)
+		var d := Vector3(ec.x - pc.x, 0.0, ec.z - pc.z)
+		d = d.normalized() if d.length() > 1e-3 else Vector3(1, 0, 0)
+		var side := d.cross(Vector3.UP).normalized()
+		var back := rp * 0.9 + 30.0
+		var eye := pc - d * back * (1.0 - 0.25 * e) + side * sg * rp * (0.45 - 0.2 * e) + Vector3.UP * (rp * 0.16 + 8.0)
+		return [eye, pc.lerp(ec, 0.6), 46.0]
+	var a: BattleShip = _ships.get(int(_dir.get("subject", 0)))
+	if a == null:
+		return []
+	var p := a.global_position
+	var L := maxf(a.length, 8.0)
+	var fwd := a.global_basis.x.normalized()
+	var flat := Vector3(fwd.x, 0.0, fwd.z)
+	flat = flat.normalized() if flat.length() > 1e-3 else Vector3(1, 0, 0)
+	var side := flat.cross(Vector3.UP).normalized() * sg
+	var b: BattleShip = _ships.get(int(_dir.get("other", 0)))
+	var to_b := flat
+	if b != null and b != a and b.global_position.distance_to(p) > 1e-3:
+		to_b = (b.global_position - p).normalized()
+	match typ:
+		"track":
+			# Behind and beside the attacker, gaining on it slightly, looking past it toward its target.
+			var eye := p - flat * L * lerpf(1.7, 1.25, e) + side * L * lerpf(0.95, 0.6, e) + Vector3.UP * L * 0.32
+			var look := p + flat.lerp(to_b, 0.45).normalized() * L * 0.9
+			return [eye, look, 40.0]
+		"push":
+			# Alongside a capital's broadside, sliding from its quarter toward its bow, the enemy beyond the hull.
+			var away := -side if side.dot(to_b) > 0.0 else side
+			var eye := p + away * L * 1.05 + Vector3.UP * L * 0.42 + flat * L * lerpf(-0.95, 0.55, e)
+			var look := p + to_b * L * 0.55 + flat * L * lerpf(-0.15, 0.25, e)
+			return [eye, look, 40.0]
+		"approach":
+			# A lens planted ahead of the capital's path, low: it comes on and slides past, the camera panning with it.
+			if (_dir.get("eye0", Vector3.ZERO) as Vector3) == Vector3.ZERO:
+				var v: Vector3 = _dir_vel.get(int(_dir.subject), Vector3.ZERO)
+				var span := float(_dir.until) - float(_dir.from)
+				var ahead := maxf(v.length() * span * 0.55, L * 0.6) + L * 1.4
+				_dir["eye0"] = p + flat * ahead + side * L * 1.1 - Vector3.UP * L * 0.18
+			return [_dir.eye0, p + flat * L * 0.2, 42.0]
+		"victim":
+			# A medium shot of the ship about to die, drifting round it, so the blast and the debris fill the frame.
+			var ang := deg_to_rad(10.0) * (u - 0.5) * 4.0 * sg
+			var off := (side * 1.0 - flat * 0.35 + Vector3.UP * 0.32).normalized().rotated(Vector3.UP, ang) * L * 2.6
+			return [p + off, p, 40.0]
+	return []
 
 
 ## The closest pair of opposing ships that are on screen at t: [fleet id, fleet id], or [].

@@ -101,6 +101,12 @@ var _Tm := 7.5
 var _centroid := {}        ## side -> Vector3
 var _enemy_c := {}         ## side -> centroid of every other side's ships
 var _side_n := {}
+## M4 flight stage 2 (show footage: a fleet advances as one body on one heading): side -> the fleet heading (radians in
+## the sim's x-y plane), turned slowly toward the enemy's centre. Ships of the line face it unless a shot needs another
+## bearing; escorts with no run hold station ahead of their post on it. _head_snaps: side -> heading per step (commit).
+const HEAD_TURN := 0.06
+var _heading := {}
+var _head_snaps := {}
 var _debug_fid := int(OS.get_environment("FLIGHT_DEBUG")) if OS.get_environment("FLIGHT_DEBUG") != "" else -1
 
 
@@ -108,6 +114,8 @@ func reset() -> void:
 	ships.clear()
 	_order.clear()
 	_waves.clear()
+	_heading.clear()
+	_head_snaps.clear()
 	_steps = 0
 
 
@@ -127,6 +135,10 @@ func commit(t: float) -> void:
 		s.speed = sn[o + 9]
 		s.roll = sn[o + 10]
 		s.in_slot = sn[o + 11] > 0.5
+	for side in _head_snaps:
+		var hs: PackedFloat32Array = _head_snaps[side]
+		if k < hs.size():
+			_heading[side] = hs[k]
 	_steps = 0
 
 
@@ -282,13 +294,24 @@ func plan_round(tl: BattleTimeline, events: Array, info_by_id: Dictionary, cfg, 
 			p.resize(n_steps * 6)
 			s.track.path = p
 	var prev_yaw := {}
+	_head_snaps.clear()
 	for k in n_steps:
 		var t := float(k) * DT
 		if k > 0:
 			_side_stats()
+			_update_heading(DT)
 			_update_waves(DT)
 			for s: Ship in _order:
 				_step(s, t, DT)
+		else:
+			_update_heading(0.0)
+		for side in _heading:
+			if not _head_snaps.has(side):
+				var hs := PackedFloat32Array()
+				hs.resize(n_steps)
+				hs.fill(float(_heading[side]))
+				_head_snaps[side] = hs
+			(_head_snaps[side] as PackedFloat32Array)[k] = float(_heading[side])
 		# Fire: each ship's next shot when its target is in that mount's arc and in range.
 		for s: Ship in _order:
 			if s.shots.is_empty() or t < s.next_fire or (s.dead_at >= 0.0 and t > s.dead_at):
@@ -407,6 +430,28 @@ func _side_stats() -> void:
 		_centroid[side] = _centroid[side] / float(_side_n[side])
 
 
+## Each side's fleet heading eases toward the enemy's centre at HEAD_TURN rad/s (dt 0: a new side starts on it).
+func _update_heading(dt: float) -> void:
+	for side in _centroid:
+		var to: Vector3 = _enemy_c.get(side, Vector3.ZERO) - _centroid[side]
+		if Vector2(to.x, to.y).length() < 1.0:
+			continue
+		var want := atan2(to.y, to.x)
+		if not _heading.has(side) or dt <= 0.0:
+			if not _heading.has(side):
+				_heading[side] = want
+			continue
+		var cur: float = _heading[side]
+		_heading[side] = cur + clampf(wrapf(want - cur, -PI, PI), -HEAD_TURN * dt, HEAD_TURN * dt)
+
+
+func _head(side: int, fallback: Vector3) -> Vector3:
+	if not _heading.has(side):
+		return fallback
+	var a: float = _heading[side]
+	return Vector3(cos(a), sin(a), 0.0)
+
+
 # ------------------------------------------------------------------------------------------------------------------
 # Fire (Battle.FireWeapons): in arc and in range
 # ------------------------------------------------------------------------------------------------------------------
@@ -512,7 +557,7 @@ func _line_face(s: Ship, t: float) -> Vector3:
 		enemy = _flat(s.fwd)
 	if s.withdraw:
 		return -enemy
-	var face := enemy
+	var face := _head(s.side, enemy)
 	var sh := _pending(s)
 	var cur := rad_to_deg(atan2(s.fwd.y, s.fwd.x))
 	# Time left to swing round to the core's end facing (plan view and orders read it).
@@ -531,6 +576,17 @@ func _line_face(s: Ship, t: float) -> Vector3:
 		return face
 	var arc: Vector2 = sh.arc
 	var close := to.length() < 1500.0
+	# Stage 2: keep station on the fleet heading while the shot already bears from it (the line advances as one body
+	# and fires from it, as the show's fleets do); turn out of line only for a shot that does not.
+	if not close and _heading.has(s.side):
+		var rel_h := absf(BattleTimeline.shortest_turn(rad_to_deg(float(_heading[s.side])), rad_to_deg(atan2(b.y, b.x))))
+		var bears := false
+		if arc.y >= 150.0:
+			bears = rel_h < 50.0 if int(sh.family) == 2 else (rel_h > 30.0 and rel_h < 150.0)
+		else:
+			bears = absf(rel_h - arc.x) <= arc.y - 4.0
+		if bears:
+			return face
 	# Each wing turns its broadside its own way (Battle.FleetSlots: Block by Post.X): the side of the formation it is on,
 	# looking at the enemy.
 	var lat := enemy.cross(s.pos - _centroid.get(s.side, s.pos)).z
@@ -597,15 +653,14 @@ func _strike(s: Ship, t: float, dt: float) -> void:
 		if not sh.is_empty() and ships.has(int(sh.tgt)):
 			_begin_run(s, int(sh.tgt))
 		else:
-			# Loiter round the post (Battle.StrikeLeader rally).
-			var to3 := slot - s.pos
-			var d := to3.length()
-			if d > 700.0:
-				_fly(s, to3 / d, s.max_speed * 0.85, dt)
-			else:
-				var n := to3 / d if d > 1.0 else s.fwd
-				var des := (Vector3(0, 0, 1).cross(n) * s.orbit_sign + n * ((d - 450.0) / 450.0)).normalized()
-				_fly(s, des, s.max_speed * 0.5, dt)
+			# Stage 2: hold station ahead of the post on the fleet heading (the screen the show's escorts fly in front of
+			# the line), where the screensaver's rally circled the post: a circling escort read as random headings.
+			var hd := _head(s.side, _flat(s.fwd))
+			var ph := s.h * 6.2832
+			var spot := slot + hd * 500.0 + Vector3(sin(t * 0.11 + ph) * 60.0, cos(t * 0.09 + ph) * 60.0, sin(t * 0.07 + ph * 2.0) * 80.0)
+			if _hold(s, spot, _slot_vel(s, t), hd, dt):
+				return
+			_fly(s, s.des, s.want, dt)
 			return
 	var tg: Ship = ships.get(s.target)
 	if tg == null or (tg.dead_at >= 0.0 and t > tg.dead_at) or s.sq_t > 14.0:
