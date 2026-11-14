@@ -130,7 +130,7 @@ static func mount_user_packs() -> int:
 const WEB_PACKS := ["planets_web.pck", "art_web.pck"]
 ## The heavy web bundles, fetched one by one in the background after the title shows (App._fetch_background):
 ## each faction's hero hulls (tools/build_ship_packs.py) and the full-resolution planet tier (tools/build_planet_hi_web.py).
-const WEB_SHIP_FACTIONS := ["fed", "kli", "rom", "car", "fer"]
+const WEB_SHIP_FACTIONS := ["fed", "kli", "rom", "car", "fer", "dom", "borg", "breen"] # M4: the Dominion, Borg and Breen packs follow the five (fetched last, in the background)
 const WEB_PLANETS_HI := "planets_hi_web.pck"
 
 static var _web_manifest: Variant = null

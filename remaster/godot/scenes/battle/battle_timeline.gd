@@ -383,8 +383,8 @@ static func _alive_pos(s: ShipTrack, t: float) -> Vector3:
 	# M4: the drift swells and fades with zero speed at both ends (sin squared), so a capital never lurches at a round's
 	# start or end (the first cut ramped 2-3 cells in 0.8 s: 4 cells a second).
 	var u := clampf(t / s.choreo_end, 0.0, 1.0)
-	var bump := sin(PI * u)
-	return bp + s.drift * (bump * bump)
+	var bump := pow(sin(PI * u), 1.5) # M4: gets moving sooner than sin squared (a battlecruiser sat still for 1.5 s), still zero speed at both ends
+	return bp + s.drift * bump
 
 
 ## Hermite through the escort's run keyframes.
