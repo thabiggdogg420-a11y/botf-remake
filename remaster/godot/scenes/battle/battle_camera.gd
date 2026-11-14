@@ -792,7 +792,17 @@ func _cinematic_shot(_delta: float, shot: Dictionary, time: float) -> Array:
 	var vsize := get_viewport().get_visible_rect().size if is_inside_tree() else Vector2.ZERO
 	if vsize.y > 0.0:
 		aspect = vsize.x / vsize.y
+	if force_vista and planet_radius > 0.0:
+		# Tools and the packaged smoke test hold the planet vista whatever the director is cutting to (M4: small battles
+		# are always film cuts, which used to return before the vista was considered).
+		if _tactical.is_empty() or time - _tactical_t > 1.0 or time < _tactical_t:
+			_tactical_t = time
+			_tactical = _tactical_pose(aspect, 1.0)
+		vista_active = true
+		fov = 48.0
+		return vista_pose(_tactical)
 	if shot.has("film"):
+		vista_active = false
 		return _film_pose(shot, key, time)
 	if key != _shot_key:
 		var was_tactical := _shot_key.begins_with("wide") or _shot_key == "" or _cut_pose.is_empty()
@@ -826,6 +836,7 @@ func _cinematic_shot(_delta: float, shot: Dictionary, time: float) -> Array:
 ## moving ships. A new key is a hard cut. behind: over the shooter's shoulder toward its target; torpedo: chasing the
 ## salvo onto the target; flyby: a fixed lens ahead of the escort's path, panning as it passes.
 var _film_eye := Vector3.ZERO
+var _film_flip := false
 
 func _film_pose(shot: Dictionary, key: String, time: float) -> Array:
 	var a: Vector3 = shot.subject
@@ -861,13 +872,46 @@ func _film_pose(shot: Dictionary, key: String, time: float) -> Array:
 			if fresh or _film_eye == Vector3.ZERO:
 				var fwd: Vector3 = shot.get("subject_fwd", dir)
 				_film_eye = a + fwd * ra * 9.0 + fwd.cross(Vector3.UP).normalized() * sgn * ra * 3.5 + Vector3.UP * ra * 1.2
+				var sd0: Vector3 = shot.get("sun_dir", Vector3.ZERO)
+				if sd0 != Vector3.ZERO and (a.lerp(b, 0.15) - _film_eye).normalized().dot(sd0.normalized()) > 0.45:
+					_film_eye = a + (a - _film_eye) # not into the sun
 			eye = _film_eye
 			look = a.lerp(b, 0.15)
 			fov = 42.0
 		_:
-			eye = a - dir * ra * 3.4 + side * sgn * ra * 1.3 + Vector3.UP * ra * 1.0
-			look = a.lerp(b, 0.65)
-			fov = 46.0
+			# M4 combat, the tracking shot: both ships in frame, seen from the side and a little above, the lens riding with
+			# the pair and drifting round them slowly. Distance follows the pair, so a capital never fills the frame from
+			# a few radii away (the first cut sat 3.4 radii behind the shooter).
+			var mid := (a + b) * 0.5
+			var sep := to_b.length()
+			# Fit the pair: the lens is far enough that both hulls (and their weapons) are whole in a 16:9 frame, no further.
+			var dist := maxf((sep * 0.5 + 1.25 * maxf(ra, rb)) / 0.6, (ra + rb) * 2.2)
+			var drift := deg_to_rad(5.0) * (time - _shot_start) * sgn
+			var cap := (ra + rb) * 5.0
+			var focus := mid
+			if dist > cap:
+				# The pair is too far apart to fit: stay close on the subject (the shooter) and let the target be the
+				# bolt's destination, rather than two specks in a wide frame of nothing.
+				dist = cap
+				focus = a.lerp(b, 0.15)
+			var off := (side * sgn - dir * 0.35 + Vector3.UP * 0.4).normalized() * dist
+			eye = focus + off.rotated(Vector3.UP, drift)
+			look = focus
+			fov = 40.0
+	# M4: never shoot into the sun (the ship washes out to a white blob against the glare): if the lens would look toward it
+	# when the shot begins, the whole shot is taken from the other side.
+	var sd: Vector3 = shot.get("sun_dir", Vector3.ZERO)
+	var pp: Vector3 = shot.get("planet_pos", Vector3.ZERO)
+	if fresh:
+		var vdir := (look - eye).normalized()
+		var mirror := look + (look - eye)
+		var into_sun := sd != Vector3.ZERO and str(shot.film) != "flyby" and vdir.dot(sd.normalized()) > 0.45
+		# The gas giant (30 degrees across) must not sit behind the pair: a hull over its disc reads as a ship flying through it.
+		var planet_in := func(e: Vector3) -> bool:
+			return pp != Vector3.ZERO and (look - e).normalized().dot((pp - e).normalized()) > 0.5
+		_film_flip = into_sun or (planet_in.call(eye) and not planet_in.call(mirror))
+	if _film_flip:
+		eye = look + (look - eye)
 	eye = _clear_of_hulls(eye, look)
 	return [eye, look]
 

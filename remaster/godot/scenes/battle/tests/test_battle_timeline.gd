@@ -460,9 +460,83 @@ func _init() -> void:
 		c.round_seconds = 8.0
 		var tl2 := BattleTimeline.build(ev, _flight_info(400.0), c)
 		var tubes := tl2.jobs.filter(func(j): return j.kind == BattleTimeline.Job.TORPEDO)
-		check(tubes.size() == 3, "a 3-tube spread")
-		if tubes.size() == 3:
-			check(tubes[1].start - tubes[0].start >= 0.1 and tubes[2].start - tubes[1].start >= 0.1, "the spread launches with a stagger")
+		check(tubes.size() >= 4 and tubes.size() <= 5, "a cruiser's salvo is 4-5 tubes (%d)" % tubes.size())
+		if tubes.size() >= 3:
+			for k in range(1, tubes.size()):
+				var gap: float = tubes[k].start - tubes[k - 1].start
+				check(gap >= 0.1 - 1e-6 and gap <= 0.15 + 1e-6, "tubes launch 0.10-0.15 s apart (%.3f)" % gap)
+		return true)
+
+	run("M4 combat: shields flare briefly, fire opens within 0.5 s, Dominion hulls resolve by race", func():
+		var ev := _flight_events() + [
+			{"tick": 5, "kind": "Fire", "fleetId": 1, "targetFleetId": 2, "mountIndex": 0, "weapon": "PhaserArray", "family": "beam", "projectiles": 1, "hit": true, "impactTick": 5, "shieldDamage": 30, "hullDamage": 0},
+			{"tick": 6, "kind": "Fire", "fleetId": 2, "targetFleetId": 1, "mountIndex": 0, "weapon": "Disruptor", "family": "beam", "projectiles": 1, "hit": true, "impactTick": 6, "shieldDamage": 20, "hullDamage": 0}]
+		var c := BattleTimeline.Config.new()
+		c.cinematic = true
+		c.round_seconds = 8.0
+		var tl := BattleTimeline.build(ev, _flight_info(400.0), c)
+		var shields := tl.jobs.filter(func(j): return j.kind == BattleTimeline.Job.SHIELD)
+		check(not shields.is_empty(), "the round has shield impacts")
+		for j in shields:
+			check(j.duration <= 0.45 + 1e-9, "a shield flare is brief (%.2f s)" % j.duration)
+		var first := INF
+		for j in tl.jobs:
+			if j.kind in [BattleTimeline.Job.BEAM, BattleTimeline.Job.PULSE, BattleTimeline.Job.TORPEDO]:
+				first = minf(first, float(j.start))
+		check(first <= 0.5, "fire opens within 0.5 s (%.2f)" % first)
+		check(BattleTimeline.faction_prefix(6) == "dom" and BattleTimeline.faction_prefix(7) == "borg" and BattleTimeline.faction_prefix(8) == "breen", "Dominion, Borg and Breen prefixes")
+		var keys := BattleShip.asset_keys_for({"owner": 6, "name": "Attack Ship — Jem'Hadar"})
+		check(keys.has("ship.dom.attack_ship") and keys.has("study.dom"), "a Dominion ship resolves to ship.dom.<class>: %s" % [keys])
+		return true)
+
+	run("M4 combat: class speeds, exact hand-over to the core's poses, beams held 0.6-1.5 s", func():
+		var ships_seen := 0
+		for r in rounds.size():
+			var tl := _build_cine(encounter, r)
+			for s in tl.ships:
+				if s.hide_at >= 0.0 or s.kill_at >= 0.0:
+					continue
+				ships_seen += 1
+				var a := tl.pose_of(s, 0.0)
+				var c0 := s.pose_at(0.0)
+				check(absf(a.x - c0.x) < 1e-3 and absf(a.y - c0.y) < 1e-3, "starts on the core's cell")
+				var b := tl.pose_of(s, tl.round_seconds)
+				var ce := s.pose_at(tl.round_seconds)
+				check(absf(b.x - ce.x) < 1e-3 and absf(b.y - ce.y) < 1e-3 and absf(BattleTimeline.shortest_turn(b.facing, ce.facing)) < 0.5, "ends on the core's cell and facing")
+				var prev := a
+				var top := 0.0
+				var t := 0.0
+				while t < tl.round_seconds:
+					t += 1.0 / 30.0
+					var p := tl.pose_of(s, t)
+					top = maxf(top, Vector3(p.x - prev.x, p.y - prev.y, p.altitude - prev.altitude).length() * 30.0)
+					prev = p
+				var limit: float = [1.0, 1.3, 2.0][maxi(0, mini(2, s.style))] if s.style >= 0 else 2.0
+				check(top <= limit, "ship %d (style %d) top speed %.2f cells/s is scale-correct (limit %.1f; was 4-16)" % [s.fleet_id, s.style, top, limit])
+			for j in tl.jobs:
+				if j.kind == BattleTimeline.Job.BEAM:
+					check(j.duration >= 0.6 - 1e-6 and j.duration <= 1.5 + 1e-6, "beam held %.2f s" % j.duration)
+		check(ships_seen > 0, "ships checked")
+		return true)
+
+	run("M4 combat: escorts fly attack runs, an order changes the flight, a crippled hull breaks off", func():
+		var ev := _flight_events() + [
+			{"tick": 6, "kind": "Fire", "fleetId": 1, "targetFleetId": 2, "mountIndex": 0, "weapon": "PhaserArray", "family": "beam", "projectiles": 1, "hit": true, "impactTick": 6, "shieldDamage": 30, "hullDamage": 0}]
+		var c := BattleTimeline.Config.new()
+		c.cinematic = true
+		c.round_seconds = 8.0
+		var tl := BattleTimeline.build(ev, _flight_info(150.0), c)
+		check(tl.track(1).style == 2 and tl.track(1).path.size() > 0, "an escort gets a flown path")
+		check(tl.track(1).intent == "attack run", "intent: %s" % tl.track(1).intent)
+		var hurt := _flight_info(150.0)
+		hurt[0]["hull"] = 5
+		hurt[0]["maxHull"] = 100
+		var tl2 := BattleTimeline.build(ev, hurt, c)
+		check(tl2.track(1).intent == "break off", "a crippled escort breaks off: %s" % tl2.track(1).intent)
+		var info3 := _flight_info(700.0)
+		var tl3 := BattleTimeline.build(ev, info3, c)
+		check(tl3.track(1).style == 0 and tl3.track(1).path.size() == 0, "a capital ship keeps the core's path with a slow drift")
+		check(BattleTimeline.shows_as_bolts("Disruptor", 2, 150.0) and not BattleTimeline.shows_as_bolts("Disruptor", 2, 700.0), "Klingon escorts fire bolts, capitals beams")
 		return true)
 
 	run("cinematic: impacts keep the core's order per ship, kills come last, final state is the core's", func():
@@ -510,8 +584,12 @@ func _init() -> void:
 			if imp.event_index == 4: t_a = imp.time
 			if imp.event_index == 5: t_b = imp.time
 		check(t_b >= 0.0 and t_a > t_b, "resolveOrder: the tick-6 torpedo (rank 2) lands before the tick-5 one (rank 3)")
-		var bolt := tl2.jobs.filter(func(j): return j.kind == BattleTimeline.Job.PULSE and j.fleet_id == 2)
-		check(not bolt.is_empty(), "a Klingon disruptor shows as bolts")
+		# M4 combat (footage WotW 4805): a Klingon cruiser's disruptor is a red beam; its small craft fire bolts (below).
+		var beam2 := tl2.jobs.filter(func(j): return j.kind == BattleTimeline.Job.BEAM and j.fleet_id == 2)
+		check(not beam2.is_empty(), "a Klingon cruiser's disruptor shows as a beam")
+		var tl2s := BattleTimeline.build(ev, _flight_info(150.0), c)
+		var bolt := tl2s.jobs.filter(func(j): return j.kind == BattleTimeline.Job.PULSE and j.fleet_id == 2)
+		check(not bolt.is_empty(), "a Klingon escort's disruptor shows as bolts")
 		return true)
 
 	print("%d passed, %d failures" % [passed, failures])

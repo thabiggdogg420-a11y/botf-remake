@@ -34,7 +34,7 @@ const JOB_NAMES := ["beam", "pulse", "torpedo", "shield", "hull", "intercept", "
 enum Outcome { HIT, MISS, INTERCEPTED }
 
 ## Owner faction ids used by the tactical scene: 1 Federation, 2 Klingon, 3 Romulan, 4 Cardassian, 5 Ferengi.
-const FACTION_PREFIX := {1: "fed", 2: "kli", 3: "rom", 4: "car", 5: "fer"}
+const FACTION_PREFIX := {1: "fed", 2: "kli", 3: "rom", 4: "car", 5: "fer", 6: "dom", 7: "borg", 8: "breen"} # M4: Dominion, Borg and Breen hulls (ship.dom.* / ship.borg.* / ship.breen.*) resolve by class name too
 const TORPEDO_TYPES := ["SpatialTorpedo", "PhotonicTorpedo", "PhotonTorpedo", "QuantumTorpedo", "PlasmaTorpedo",
 	"TricobaltDevice", "Torpedo"]
 const WEAPON_TYPES := ["PhaseCannon", "PhaserBank", "PhaserArray", "PulsePhaser", "Disruptor", "DisruptorCannon",
@@ -81,8 +81,8 @@ class Config:
 	var wing_spacing_cells := 0.55
 	# Cinematic clock (see the header). Shares are of round_seconds.
 	var cinematic := false
-	var fire_from := 0.08          ## The first fire window opens here...
-	var fire_to := 0.84            ## ...and the last closes here (torpedoes may still be in flight after it).
+	var fire_from := 0.01          ## The first fire window opens here...
+	var fire_to := 0.95            ## ...and the last closes here (torpedoes may still be in flight after it).
 	var flight_to := 0.94          ## The plotted moves are flown from 0 to here.
 	var cruise_accel := 0.22       ## Share of a flight spent speeding up, and again slowing down.
 	var launch_span := 1.0         ## Launches (and beam / bolt impacts) fall in this share of their window...
@@ -106,10 +106,10 @@ class Config:
 	var escort_gap_min := 0.3      ## Escorts fire as they strafe: their shots bunch into the pass.
 	var escort_gap_max := 0.55
 	var max_beams_at_once := 4     ## Beams held at once across the battle (footage: 1-4 in a fleet shot).
-	var beam_first_seconds := 0.55 ## A beam that cuts out and re-fires: first burst...
-	var beam_refire_gap := 0.2     ## ...dark for this long...
-	var beam_refire_seconds := 0.35 ## ...second burst (FC d_682). Damage lands once, with the first.
-	var beam_refire_share := 0.45  ## Share of beams drawn as two bursts (seeded per shot).
+	var beam_first_seconds := 0.7  ## A beam that cuts out and re-fires: first burst...
+	var beam_refire_gap := 0.15    ## ...dark for this long...
+	var beam_refire_seconds := 0.6  ## ...second burst (FC d_682). Damage lands once, with the first. Held beams are 0.6-1.5 s (Simon, 13 Nov).
+	var beam_refire_share := 0.25  ## Share of beams drawn as two bursts (seeded per shot).
 	var burst_pair_gap := 0.125    ## Pulse cannons: pairs this far apart (Tears d_2053)...
 	var burst_pairs_min := 3       ## ...3-4 pairs drawn for one core shot.
 	var burst_pairs_max := 4
@@ -180,6 +180,13 @@ class ShipTrack:
 	var kicks: Array[Vector3] = [] ## Hard hits: (time, side +-1, strength 0..1): the ship rolls and turns away.
 	var kill_at := -1.0       ## Killing blow: the ship drifts, vents and tumbles until hide_at.
 	var hull_max := 0.0
+	# M4 combat: a flown path. The flight planner steers the ship (class speed, turn rate and acceleration, an attack run
+	# on its target, a break away when hurt, the order's own manoeuvre) and records it every PATH_DT seconds; the pose is
+	# read back by cubic interpolation. Six floats a sample: x, y, altitude, facing, bank, pitch. Empty = no flown path.
+	var path := PackedFloat32Array()
+	var maneuver_last := ""   ## The round's last plotted manoeuvre name (Engage, Charge, Circle/Evade, Retreat ...).
+	var hull_frac := 1.0      ## Hull at the round's start over the ship's maximum.
+	var intent := ""          ## What the planner made of the ship this round (tools and tests read it).
 
 	## The ship's own flight (BattleTimeline.pose_of adds wing stations).
 	func pose_at(t: float) -> Pose:
@@ -280,7 +287,7 @@ func track(fleet_id: int) -> ShipTrack:
 func pose_of(s: ShipTrack, t: float) -> Pose:
 	var own := flown(s, t)
 	var lead := track(s.wing_leader) if s.wing_leader != 0 else null
-	if lead == null:
+	if lead == null or s.path.size() > 0:
 		return own
 	var w := 1.0
 	# A leader that takes its killing blow stops leading then: its wreck tumbles and is hidden later, and a wingman that copied
@@ -363,6 +370,9 @@ static func _choreo_env(s: ShipTrack, t: float) -> float:
 
 ## Plane x, plane y, altitude (cells) of the choreographed path without reactions.
 static func _alive_pos(s: ShipTrack, t: float) -> Vector3:
+	if s.path.size() > 0:
+		var q := path_pose(s, t)
+		return Vector3(q[0], q[1], q[2])
 	var b := s.pose_at(t)
 	var bp := Vector3(b.x, b.y, b.altitude)
 	var e := _choreo_env(s, t)
@@ -370,8 +380,21 @@ static func _alive_pos(s: ShipTrack, t: float) -> Vector3:
 		return bp
 	if s.style == 2 and s.run_times.size() >= 2:
 		return bp.lerp(_run_point(s, t), e)
+	# M4: the drift swells and fades with zero speed at both ends (sin squared), so a capital never lurches at a round's
+	# start or end (the first cut ramped 2-3 cells in 0.8 s: 4 cells a second).
 	var u := clampf(t / s.choreo_end, 0.0, 1.0)
-	return bp + s.drift * e * (0.75 + 0.25 * sin(TAU * u + s.sway_phase))
+	var bump := pow(sin(PI * u), 1.5) # M4: gets moving sooner than sin squared, still zero offset at both ends
+	# A capital keeps cruising through a round boundary (a battlecruiser sat still for 1.5 s where one round ended and the
+	# next began, both drifts at zero speed): a Hermite offset that is 0 at both ends but leaves at, and arrives with, a slow
+	# cruise along the bow. The core's poses still land exactly (zero offset at 0 and at choreo_end).
+	var T := maxf(s.choreo_end, 0.5)
+	var f0 := deg_to_rad(s.pose_at(0.0).facing)
+	var f1 := deg_to_rad(s.pose_at(s.choreo_end).facing)
+	var cruise := CRUISE_CELLS_PER_SECOND if s.style == 0 else 0.5 * CRUISE_CELLS_PER_SECOND
+	var h10 := u * (1.0 - u) * (1.0 - u)
+	var h11 := u * u * (u - 1.0)
+	var cr := Vector3(cos(f0) * h10 + cos(f1) * h11, sin(f0) * h10 + sin(f1) * h11, 0.0) * (cruise * T)
+	return bp + s.drift * bump + cr
 
 
 ## Hermite through the escort's run keyframes.
@@ -437,6 +460,8 @@ static func _kick_pos(s: ShipTrack, t: float, facing: float) -> Vector3:
 
 
 func _alive(s: ShipTrack, t: float) -> Pose:
+	if s.path.size() > 0:
+		return _alive_flown(s, t)
 	var p := s.pose_at(t)
 	var e := _choreo_env(s, t)
 	var q := _alive_pos(s, t) + _kick_pos(s, t, p.facing)
@@ -460,8 +485,71 @@ func _alive(s: ShipTrack, t: float) -> Pose:
 		out.bank = p.bank + clampf(-rate * 0.4, -70.0, 70.0) * wv
 		out.pitch = p.pitch + clampf(rad_to_deg(atan2(v.z, maxf(flat, 1e-3))), -35.0, 35.0) * wv
 	elif s.style >= 0:
-		face = p.facing + s.aim_turn * e + sin(t * 0.7 + s.sway_phase) * 4.0 * e
-		out.bank = p.bank + sin(t * 0.5 + s.sway_phase) * 3.0 * e
+		var ae := _aim_env(s, t)
+		var calm := smoothstep01(minf(t, s.choreo_end - t) / 1.5)
+		face = p.facing + s.aim_turn * ae + sin(t * 0.7 + s.sway_phase) * 3.0 * calm
+		out.bank = p.bank + sin(t * 0.5 + s.sway_phase) * 3.0 * calm
+	for k in s.kicks:
+		var d := t - k.x
+		if d <= 0.0:
+			continue
+		var a := exp(-d / 0.7) * smoothstep01(d / 0.15)
+		out.bank += k.y * k.z * 32.0 * a
+		face += k.y * k.z * 24.0 * (1.0 - exp(-d / 0.5)) * e
+	out.facing = wrap_degrees(face)
+	return out
+
+
+## How far the bow has slewed toward the aim by time t (0..1): it takes as long as the class turn rate needs, in and out.
+static func _aim_env(s: ShipTrack, t: float) -> float:
+	var rate: float = CLASS_TURN[clampi(s.style, 0, 3)]
+	var tt := clampf(2.0 * absf(s.aim_turn) / rate, 1.2, 0.45 * maxf(s.choreo_end, 1.0))
+	return smoothstep01(t / tt) * smoothstep01((s.choreo_end - t) / tt)
+
+
+## M4 combat: the planner's flown path at time t as [x, y, altitude, facing, bank, pitch]. Catmull-Rom through the
+## samples (twenty a second), so position and heading are smooth at any frame rate. Outside the path: the core's pose.
+const PATH_DT := 0.1
+
+static func path_pose(s: ShipTrack, t: float) -> Array:
+	var n := s.path.size() / 6
+	var f := t / PATH_DT
+	if n < 2 or f <= 0.0 or f >= float(n - 1):
+		var b := s.pose_at(t)
+		if n >= 2 and f <= 0.0:
+			return [s.path[0], s.path[1], s.path[2], s.path[3], 0.0, 0.0]
+		return [b.x, b.y, b.altitude, b.facing, 0.0, 0.0]
+	var k := int(f)
+	var u := f - float(k)
+	var i0 := maxi(k - 1, 0) * 6
+	var i1 := k * 6
+	var i2 := (k + 1) * 6
+	var i3 := mini(k + 2, n - 1) * 6
+	var out := []
+	for c in 3:
+		var p0 := s.path[i0 + c]
+		var p1 := s.path[i1 + c]
+		var p2 := s.path[i2 + c]
+		var p3 := s.path[i3 + c]
+		out.append(0.5 * ((2.0 * p1) + (-p0 + p2) * u + (2.0 * p0 - 5.0 * p1 + 4.0 * p2 - p3) * u * u + (-p0 + 3.0 * p1 - 3.0 * p2 + p3) * u * u * u))
+	out.append(wrap_degrees(s.path[i1 + 3] + shortest_turn(s.path[i1 + 3], s.path[i2 + 3]) * u))
+	out.append(lerpf(s.path[i1 + 4], s.path[i2 + 4], u))
+	out.append(lerpf(s.path[i1 + 5], s.path[i2 + 5], u))
+	return out
+
+
+## An alive ship on its flown path, with the reactions to hard hits on top.
+func _alive_flown(s: ShipTrack, t: float) -> Pose:
+	var q := path_pose(s, t)
+	var out := s.pose_at(t).copy()
+	var kp := _kick_pos(s, t, float(q[3]))
+	out.x = float(q[0]) + kp.x
+	out.y = float(q[1]) + kp.y
+	out.altitude = float(q[2]) + kp.z
+	out.bank = float(q[4])
+	out.pitch = float(q[5])
+	var face := float(q[3])
+	var e := _choreo_env(s, t)
 	for k in s.kicks:
 		var d := t - k.x
 		if d <= 0.0:
@@ -517,7 +605,29 @@ static func _choreo_target(tl: BattleTimeline, s: ShipTrack, counts: Dictionary,
 	return near
 
 
-## Sets each ship's flight style and in-round path from the round's shots (sched: event -> [launch, impact]).
+## Class speeds (cells a second), turn rates (degrees a second) and accelerations (cells a second squared), by class: 0
+## capital, 1 cruiser, 2 escort, 3 strike craft. A cell is 592 m as drawn, so a capital ship cruises at about 180 m/s and
+## turns 10 degrees a second, a cruiser at 300 m/s and 24, an escort at 590 m/s and 60, a fighter at 740 m/s and 90 (the
+## LCARS screensaver's fleet table, Battle.cs MakeShip: capital 125-190 m/s, cruiser 210-290, escort 470-540, fighter
+## 700-820). M4 combat: the first cut flew escorts at 4-5 cells a second, 2.5 km/s, 17 hull lengths a second.
+const CLASS_SPEED := [0.30, 0.50, 1.00, 1.25]
+const CRUISE_CELLS_PER_SECOND := 0.12   ## M4: a capital's slow cruise through a round boundary (cells a second).
+const CLASS_TURN := [10.0, 24.0, 60.0, 90.0]
+const CLASS_ACCEL := [0.10, 0.22, 0.80, 1.10]
+const STRIKE_CRAFT_METERS := 120.0
+const BREAK_OFF_HULL := 0.3      ## A ship under this share of its hull breaks off the fight.
+
+
+static func flight_class(s: ShipTrack) -> int:
+	if s.style == 2 and s.length_meters > 0.0 and s.length_meters <= STRIKE_CRAFT_METERS:
+		return 3
+	return maxi(0, s.style)
+
+
+## Sets each ship's flight from the round's orders, targets and shots (sched: event -> [launch, impact]), M4 combat.
+## Capitals and cruisers keep the core's path and add a purposeful drift: closing on the target, circling it, backing
+## off, holding or breaking away, with the bow slewing to a broadside at the class turn rate. Escorts and strike craft are
+## flown by _fly_escort, a steering simulation. Every ship starts and ends on the core's pose.
 static func _choreograph(tl: BattleTimeline, events: Array, sched: Dictionary, info_by_id: Dictionary, cfg: Config) -> void:
 	var T_end := cfg.flight_to * tl.round_seconds
 	var counts := {}
@@ -533,12 +643,12 @@ static func _choreograph(tl: BattleTimeline, events: Array, sched: Dictionary, i
 		shots[fid].append(float(sched[i][0]))
 	for s in tl.ships:
 		s.style = ship_style(s.length_meters, cfg)
-		if s.wing_leader != 0:
-			s.style = -1 # a wingman holds station on its leader's run
 		s.choreo_end = T_end
 		s.sway_phase = unit_hash(s.fleet_id, 41) * TAU
 		var inf: Dictionary = info_by_id.get(s.fleet_id, {})
 		s.hull_max = float(inf.get("hull", 0))
+		var mx := float(inf.get("maxHull", 0))
+		s.hull_frac = clampf(float(inf.get("hull", 0)) / mx, 0.0, 1.0) if mx > 0.0 and inf.has("hull") else 1.0
 	# Cruisers and capitals first (the escorts' runs are laid against where their targets are drawn).
 	for s in tl.ships:
 		if s.style != 0 and s.style != 1:
@@ -546,72 +656,293 @@ static func _choreograph(tl: BattleTimeline, events: Array, sched: Dictionary, i
 		var tg := _choreo_target(tl, s, counts, T_end)
 		var me := s.pose_at(0.5 * T_end)
 		var bearing := me.facing
+		var range_cells := 6.0
 		if tg != null:
 			var tp := tg.pose_at(0.5 * T_end)
 			bearing = rad_to_deg(atan2(tp.y - me.y, tp.x - me.x))
+			range_cells = Vector2(tp.x - me.x, tp.y - me.y).length()
 		var h1 := unit_hash(s.fleet_id, 42)
 		var h2 := unit_hash(s.fleet_id, 43)
-		if s.style == 1:
-			# Bring the arrays to bear: swing toward a broadside on the target and slide along the new heading.
-			var f1 := wrap_degrees(bearing - 70.0)
-			var f2 := wrap_degrees(bearing + 70.0)
-			var want := f1 if absf(shortest_turn(me.facing, f1)) < absf(shortest_turn(me.facing, f2)) else f2
-			s.aim_turn = clampf(shortest_turn(me.facing, want), -75.0, 75.0)
-			var d := 1.8 + 1.4 * h1
-			var hr := deg_to_rad(me.facing + s.aim_turn + (h2 - 0.5) * 60.0)
-			s.drift = Vector3(cos(hr) * d, sin(hr) * d, (h2 * 2.0 - 1.0) * 1.6)
+		var m := s.maneuver_last
+		var hurt := s.hull_frac < BREAK_OFF_HULL
+		var turn_cap := 75.0 if s.style == 1 else 40.0
+		var side := 1.0 if h2 < 0.5 else -1.0
+		var d := (0.6 + 0.4 * h1) if s.style == 1 else (0.35 + 0.2 * h1)
+		var drift_dir := me.facing
+		var want_face := me.facing
+		s.intent = "duel"
+		if hurt or m == "Retreat":
+			# Turn away and make for the edge: the stern to the enemy.
+			want_face = bearing + 180.0 - side * 25.0
+			drift_dir = bearing + 180.0
+			d *= 0.9
+			s.intent = "break off"
+		elif m == "Hold":
+			want_face = bearing + side * 70.0 if s.style == 1 else bearing
+			d *= 0.25
+			s.intent = "hold"
+		elif m == "Charge" or m == "Assault" or m == "Ram":
+			# Bow on, closing the range.
+			want_face = bearing
+			drift_dir = bearing
+			d *= 1.2 if range_cells > 3.0 else 0.5
+			s.intent = "close"
+		elif m.begins_with("Circle") or m == "Harry" or m == "Strafe" or m == "Flyby" or m == "Evade":
+			# Broadside and slide round the target.
+			want_face = bearing + side * 80.0
+			drift_dir = bearing + side * 90.0
+			s.intent = "circle"
 		else:
-			# A slow line: a capital eases its bow a little toward the target and creeps ahead.
-			# Footage SoA d_1186: a line ship turns slowly and holds its beams; no two hold one heading.
-			s.aim_turn = clampf(shortest_turn(me.facing, bearing) * 0.5 + (h2 - 0.5) * 50.0, -35.0, 35.0)
-			var d := 1.2 + 1.0 * h1
-			var hr := deg_to_rad(me.facing + s.aim_turn + (h1 - 0.5) * 120.0)
-			s.drift = Vector3(cos(hr) * d, sin(hr) * d, (h2 * 2.0 - 1.0) * 1.5)
-	# Escorts: an attack run timed on their own shots: approach, strafe past the target within about a hull length,
-	# break away, come about, and hand back to the core's cell and facing by choreo_end.
+			# Engage: swing to a broadside on the target and slide along it, a capital easing its bow round more slowly.
+			if s.style == 1:
+				var f1 := wrap_degrees(bearing - 70.0)
+				var f2 := wrap_degrees(bearing + 70.0)
+				want_face = f1 if absf(shortest_turn(me.facing, f1)) < absf(shortest_turn(me.facing, f2)) else f2
+				drift_dir = want_face + (h2 - 0.5) * 60.0
+			else:
+				want_face = me.facing + shortest_turn(me.facing, bearing) * 0.5 + (h2 - 0.5) * 50.0
+				drift_dir = want_face + (h1 - 0.5) * 120.0
+		s.aim_turn = clampf(shortest_turn(me.facing, want_face), -turn_cap, turn_cap)
+		# The bow can only slew at the class turn rate: what the round's time allows.
+		var lim: float = CLASS_TURN[s.style] * 2.2
+		s.aim_turn = clampf(s.aim_turn, -lim, lim)
+		var hr := deg_to_rad(drift_dir)
+		s.drift = Vector3(cos(hr) * d, sin(hr) * d, (h2 * 2.0 - 1.0) * (0.5 if s.style == 1 else 0.4))
+	# Escorts and strike craft: a flown attack run (or the order's own manoeuvre) on their target.
 	for s in tl.ships:
-		if s.style != 2:
+		if s.style != 2 or s.wing_leader != 0:
 			continue
 		var tg := _choreo_target(tl, s, counts, T_end)
 		if tg == null:
 			continue
 		var my: Array = shots.get(s.fleet_id, [])
 		my.sort()
-		var r_pass := 0.45 * T_end
-		if not my.is_empty():
-			r_pass = 0.5 * (float(my[0]) + float(my[-1])) + 0.2
-		r_pass = clampf(r_pass, 2.0, T_end - 2.6)
-		var me := s.pose_at(r_pass)
-		var g := _point_of(tl, tg, r_pass)
-		var d2 := Vector2(g.x - me.x, g.y - me.y)
-		if d2.length() < 0.3:
-			d2 = Vector2(cos(deg_to_rad(me.facing)), sin(deg_to_rad(me.facing)))
-		var dir2 := d2.normalized()
-		var side := 1.0 if unit_hash(s.fleet_id, 44) < 0.5 else -1.0
-		var up := 1.0 if unit_hash(s.fleet_id, 45) < 0.5 else -1.0
-		var dir := Vector3(dir2.x, dir2.y, 0.0)
-		var nrm := Vector3(-dir2.y, dir2.x, 0.0) * side
-		var tlen := tg.length_meters if tg.length_meters > 0.0 else 300.0
-		var pass_d := 1.25 * 0.6 * (tlen + s.length_meters) / METERS_PER_CELL + 0.15
-		var b0 := s.pose_at(0.0)
-		var b1 := s.pose_at(T_end)
-		var T := PackedFloat64Array([0.0])
-		var P: Array[Vector3] = [Vector3(b0.x, b0.y, b0.altitude)]
-		var keys := [
-			[r_pass - 1.1, -2.4, 1.4, 0.5],
-			[r_pass, 0.0, 1.0, 0.3],
-			[r_pass + 0.9, 2.4, 1.8, 0.7],
-			[r_pass + 1.9, 2.2, 3.8, 0.9]]
-		for k in keys:
-			var kt: float = k[0]
-			if kt <= T[T.size() - 1] + 0.3 or kt >= T_end - 0.3:
-				continue
-			T.append(kt)
-			P.append(_point_of(tl, tg, kt) + dir * float(k[1]) + nrm * pass_d * float(k[2]) + Vector3(0, 0, up * float(k[3])))
-		T.append(T_end)
-		P.append(Vector3(b1.x, b1.y, b1.altitude))
-		s.run_times = T
-		s.run_points = P
+		_fly_escort(tl, s, tg, my, T_end)
+	# Wingmen hold their station on the leader's flown run, then break to their own cells (formations hold and break).
+	for s in tl.ships:
+		if s.style != 2 or s.wing_leader == 0:
+			continue
+		var lead := tl.track(s.wing_leader)
+		if lead == null:
+			continue
+		_fly_escort(tl, s, lead, [], T_end, lead)
+
+
+## Steering simulation of one escort or strike craft (M4 combat): from the core's start pose to the core's end pose it
+## flies what its order says, at its class's speed, turn rate and acceleration, with no teleporting and no corner it cannot
+## turn: approach the target, a strafing pass inside about a hull length of it timed on its own shots, a break away, and
+## coming about for the next pass; Circle and Harry orbit the target, Evade jinks, Charge and Ram close straight in,
+## Retreat and a crippled hull run for the edge, Hold stays put. The last 2.4 s brake onto the core's cell and facing.
+static func _fly_escort(tl: BattleTimeline, s: ShipTrack, tg: ShipTrack, my_shots: Array, T_end: float, lead: ShipTrack = null) -> void:
+	var ci := flight_class(s)
+	var vmax: float = CLASS_SPEED[ci] * (0.9 + 0.2 * unit_hash(s.fleet_id, 46))
+	var turn_rate: float = CLASS_TURN[ci]
+	var accel: float = CLASS_ACCEL[ci]
+	var b0 := s.pose_at(0.0)
+	var b1 := s.pose_at(T_end)
+	var pos := Vector3(b0.x, b0.y, b0.altitude)
+	var end_pos := Vector3(b1.x, b1.y, b1.altitude)
+	var heading := b0.facing
+	var speed := 0.0
+	var vz := 0.0
+	var side := 1.0 if unit_hash(s.fleet_id, 44) < 0.5 else -1.0
+	var up := 1.0 if unit_hash(s.fleet_id, 45) < 0.5 else -1.0
+	var tlen := tg.length_meters if tg.length_meters > 0.0 else 300.0
+	var pass_d := 1.25 * 0.6 * (tlen + s.length_meters) / METERS_PER_CELL + 0.15
+	var m := s.maneuver_last
+	var hurt := s.hull_frac < BREAK_OFF_HULL
+	var mode := "run"
+	if lead != null:
+		mode = "follow"
+	elif hurt or m == "Retreat":
+		mode = "flee"
+	elif m == "Hold" or (my_shots.is_empty() and m != "Charge" and m != "Ram"):
+		mode = "hold" # nothing to shoot this round (or told to hold): it advances with the line instead of running at nothing
+	elif m.begins_with("Circle") or m == "Harry":
+		mode = "orbit"
+	elif m == "Evade":
+		mode = "evade"
+	elif m == "Charge" or m == "Ram":
+		mode = "charge"
+	s.intent = {"run": "attack run", "flee": "break off", "hold": "advance", "orbit": "circle", "evade": "evade", "charge": "charge", "follow": "hold formation"}[mode]
+	var t_p := 0.45 * T_end
+	if not my_shots.is_empty():
+		t_p = 0.5 * (float(my_shots[0]) + float(my_shots[-1])) + 0.2
+	t_p = clampf(t_p, 1.8, T_end - 3.0)
+	var t_arrive := T_end - 2.4
+	var n := int(ceil(T_end / PATH_DT)) + 1
+	var path := PackedFloat32Array()
+	path.resize(n * 6)
+	var orbit_r := 2.0 + 0.8 * unit_hash(s.fleet_id, 47) + 0.5 * pass_d
+	var tp0 := _point_of(tl, tg, 0.0)
+	var orbit_a := atan2(pos.y - tp0.y, pos.x - tp0.x)
+	var orbit_w := side * vmax * 0.75 / orbit_r
+	var phase := "approach"
+	var phase_t := 0.0
+	var break_dir := 0.0
+	var yaw_f := 0.0
+	var pitch_f := 0.0
+	var follow_face := heading
+	var dock_vel := Vector3.ZERO
+	var was_docking := false
+	var prev_heading := heading
+	var dt := PATH_DT
+	for k in n:
+		var t := float(k) * dt
+		var tp := _point_of(tl, tg, t)
+		var to_t := Vector3(tp.x - pos.x, tp.y - pos.y, 0.0)
+		var dist := to_t.length()
+		var dir_t := to_t / maxf(dist, 1e-4)
+		var nrm := Vector3(-dir_t.y, dir_t.x, 0.0) * side
+		var goal := end_pos
+		var want_speed := vmax
+		# Head for the core's cell in time: the last 2.4 s at the latest, earlier when it is far (the ship runs home).
+		var rem0 := (end_pos - pos).length()
+		var arriving := t >= t_arrive or (T_end - t) <= rem0 / (0.7 * vmax) + vmax / (2.0 * accel) + 0.6 + absf(shortest_turn(heading, rad_to_deg(atan2(end_pos.y - pos.y, end_pos.x - pos.x)))) / turn_rate
+		if arriving:
+			goal = end_pos
+			var rem := rem0
+			want_speed = minf(vmax * 1.4, sqrt(2.0 * accel * maxf(rem - 0.04, 0.0)) + 0.05)
+		else:
+			match mode:
+				"follow":
+					var lt := minf(t + 0.25, T_end)
+					var lp := _point_of(tl, lead, lt)
+					var lf := deg_to_rad(tl.flown(lead, lt).facing)
+					goal = Vector3(lp.x - cos(lf) * s.wing_back - sin(lf) * s.wing_side, lp.y - sin(lf) * s.wing_back + cos(lf) * s.wing_side, lp.z + s.wing_up)
+					var la := _point_of(tl, lead, maxf(t - 0.1, 0.0))
+					var lb := _point_of(tl, lead, minf(t + 0.1, T_end))
+					var lspeed := Vector2(lb.x - la.x, lb.y - la.y).length() / 0.2
+					want_speed = minf(vmax * 1.35, lspeed + (goal - pos).length() * 1.6)
+					follow_face = tl.flown(lead, t).facing
+				"hold":
+					goal = Vector3(b0.x, b0.y, b0.altitude).lerp(end_pos, clampf(t / t_arrive, 0.0, 1.0))
+					want_speed = vmax * 0.35
+				"flee":
+					goal = pos + Vector3(-dir_t.x, -dir_t.y, up * 0.2) * 6.0
+					want_speed = vmax
+				"orbit":
+					orbit_a += orbit_w * dt
+					goal = tp + Vector3(cos(orbit_a), sin(orbit_a), up * 0.25 * sin(t * 0.8)) * orbit_r
+					want_speed = vmax
+				"evade":
+					goal = tp - dir_t * (orbit_r + 1.5) + nrm * sin(t * 2.1 + s.sway_phase) * 1.4 + Vector3(0, 0, sin(t * 1.6) * 0.4)
+					want_speed = vmax * 0.9
+				"charge":
+					goal = tp
+					want_speed = vmax
+					if dist < 0.7:
+						goal = tp + dir_t * 3.0
+				_:
+					phase_t += dt
+					if phase == "approach":
+						goal = tp + nrm * pass_d * 1.0 + Vector3(0, 0, up * 0.3)
+						want_speed = vmax * 0.85
+						if (t >= t_p - 0.9 and dist < 6.0) or dist < 1.6 * pass_d + 0.8:
+							phase = "strafe"
+							phase_t = 0.0
+					elif phase == "strafe":
+						goal = tp + nrm * pass_d + dir_t * 0.6
+						want_speed = vmax
+						if dist < pass_d * 1.15 + 0.1 or phase_t > 2.2:
+							phase = "break"
+							phase_t = 0.0
+							break_dir = side
+					elif phase == "break":
+						var h := deg_to_rad(heading + break_dir * 70.0)
+						goal = pos + Vector3(cos(h), sin(h), up * 0.35) * 3.0
+						want_speed = vmax
+						if phase_t > 1.3 or dist > 4.5:
+							phase = "regroup"
+							phase_t = 0.0
+					else:
+						# Round again: back onto the core's own track (the next pass, if any, is the next round's run).
+						var bp2 := s.pose_at(minf(t + 1.0, T_end))
+						goal = Vector3(bp2.x, bp2.y, bp2.altitude)
+						want_speed = vmax * 0.7
+		# The run may stray from the core's own path only as far as there is time to fly out and back.
+		if not arriving and mode != "hold":
+			var bp := s.pose_at(t)
+			var base := Vector3(bp.x, bp.y, bp.altitude)
+			var dev := goal - base
+			var maxd := 0.35 * vmax * minf(t, T_end - t) + 0.8
+			if dev.length() > maxd:
+				goal = base + dev.normalized() * maxd
+		# Docking: inside three cells of home the last stretch is a controlled slide onto the core's cell (the core's ships have
+		# lateral thrusters too), the bow swinging round to the core's facing at the class turn rate.
+		var docking := arriving and rem0 < 3.0
+		if docking:
+			if not was_docking:
+				dock_vel = Vector3(cos(deg_to_rad(heading)) * speed, sin(deg_to_rad(heading)) * speed, vz)
+				was_docking = true
+			var dv_want := end_pos - pos
+			var rem_d := dv_want.length()
+			var vmag := minf(vmax * 1.2, sqrt(2.0 * accel * maxf(rem_d - 0.02, 0.0)) * 0.9)
+			dv_want = dv_want / maxf(rem_d, 1e-4) * vmag
+			var dv := dv_want - dock_vel
+			var lim := accel * 1.5 * dt
+			if dv.length() > lim:
+				dv = dv / dv.length() * lim
+			dock_vel += dv
+			if k > 0:
+				pos += dock_vel * dt
+			speed = Vector2(dock_vel.x, dock_vel.y).length()
+			vz = dock_vel.z
+			var want_dock := b1.facing
+			if speed > 0.4 * vmax and rem_d > 0.8 and (T_end - t) > 2.0:
+				want_dock = rad_to_deg(atan2(dock_vel.y, dock_vel.x))
+			heading = wrap_degrees(heading + clampf(shortest_turn(heading, want_dock), -turn_rate * dt, turn_rate * dt))
+		else:
+			# Steer: the heading turns at the class rate; speed follows accel; sharp turns cost speed.
+			var to_g := goal - pos
+			var flat := Vector2(to_g.x, to_g.y)
+			var want_h := rad_to_deg(atan2(to_g.y, to_g.x)) if flat.length() > 0.04 else heading
+			if mode == "follow" and not arriving and (goal - pos).length() < 0.5:
+				want_h = follow_face
+			var dh := shortest_turn(heading, want_h)
+			heading = wrap_degrees(heading + clampf(dh, -turn_rate * dt, turn_rate * dt))
+			var left := shortest_turn(heading, want_h)
+			want_speed *= 0.55 + 0.45 * maxf(0.0, cos(deg_to_rad(minf(absf(left), 120.0))))
+			speed += clampf(want_speed - speed, -accel * 1.5 * dt, accel * dt)
+			var hv := deg_to_rad(heading)
+			var vz_t := clampf((goal.z - pos.z) * 0.9, -0.5, 0.5) * (0.3 + 0.7 * clampf(speed / maxf(vmax, 1e-3), 0.0, 1.0))
+			vz += clampf(vz_t - vz, -1.2 * dt, 1.2 * dt)
+			if k > 0:
+				pos += Vector3(cos(hv) * speed, sin(hv) * speed, vz) * dt
+		var yaw_rate := shortest_turn(prev_heading, heading) / dt if k > 0 else 0.0
+		prev_heading = heading
+		yaw_f += (yaw_rate - yaw_f) * minf(1.0, dt / 0.2)
+		var pitch_t := clampf(rad_to_deg(atan2(vz, maxf(speed, 0.05))), -35.0, 35.0)
+		pitch_f += (pitch_t - pitch_f) * minf(1.0, dt / 0.25)
+		var o := k * 6
+		path[o] = pos.x
+		path[o + 1] = pos.y
+		path[o + 2] = pos.z
+		path[o + 3] = heading
+		path[o + 4] = clampf(-yaw_f * 0.45, -65.0, 65.0)
+		path[o + 5] = pitch_f
+	# Hand back exactly to the core's end pose: what the braking left over is blended out over the last 1.4 s.
+	var e_pos := end_pos - Vector3(path[(n - 1) * 6], path[(n - 1) * 6 + 1], path[(n - 1) * 6 + 2])
+	var e_head := shortest_turn(path[(n - 1) * 6 + 3], b1.facing)
+	var blend := 1.4
+	for k in n:
+		var t := float(k) * dt
+		var w := smoothstep01((t - (T_end - blend)) / blend)
+		if w <= 0.0:
+			continue
+		var o := k * 6
+		path[o] += e_pos.x * w
+		path[o + 1] += e_pos.y * w
+		path[o + 2] += e_pos.z * w
+		path[o + 3] = wrap_degrees(path[o + 3] + e_head * w)
+		var calm := 1.0 - smoothstep01((t - (T_end - 0.7)) / 0.7)
+		path[o + 4] *= calm
+		path[o + 5] *= calm
+	path[0] = b0.x
+	path[1] = b0.y
+	path[2] = b0.altitude
+	path[3] = b0.facing
+	s.path = path
 
 
 static func _point_of(tl: BattleTimeline, s: ShipTrack, t: float) -> Vector3:
@@ -1035,6 +1366,7 @@ static func build(events: Array, info: Array, cfg: Config = null) -> BattleTimel
 		var slide := int(_num(e, "value"))
 		s.slide_cells = slide
 		s.maneuver = str(_num(e, "maneuver", ""))
+		t.maneuver_last = s.maneuver
 		var d := Vector2(s.to.x - s.from.x, s.to.y - s.from.y)
 		var length := d.length()
 		var fa := deg_to_rad(s.from.facing)
@@ -1145,7 +1477,7 @@ static func build(events: Array, info: Array, cfg: Config = null) -> BattleTimel
 			"subsystem_damage": int(_num(e, "subsystemDamage")), "subsystem_destroyed": bool(_num(e, "subsystemDestroyed", false)),
 			"breach": int(_num(e, "breachDamage")), "aimed": bool(_num(e, "aimed", false))}
 		if shield_dmg > 0 or (bool(_num(e, "hit", false)) and hull_dmg <= 0):
-			var j := new_job(Job.SHIELD, time, cfg.impact_ticks * tk)
+			var j := new_job(Job.SHIELD, time, minf(cfg.impact_ticks * tk, 0.45)) # M4: a brief local flare, not a bubble
 			j.fleet_id = target; j.target_fleet_id = target; j.source_fleet_id = shooter
 			j.weapon = weapon; j.family = family; j.shield_damage = shield_dmg
 			j.color = weapon_color(weapon, shooter_owner); j.vfx_key = "vfx.impact.shield"
@@ -1193,7 +1525,7 @@ static func build(events: Array, info: Array, cfg: Config = null) -> BattleTimel
 				var launch: float = sc[0] if cine else t0
 				var impact_time := t0
 				# Cinematic: a disruptor (beam family in the core) is drawn as a burst of bolts, as in the shows.
-				var shown := 1 if cine and family == 0 and shows_as_bolts(weapon, owner) else family
+				var shown := 1 if cine and family == 0 and shows_as_bolts(weapon, owner, float(info_by_id[fid].get("lengthMeters", -1.0)) if info_by_id.has(fid) else -1.0) else family
 				if shown == 0:
 					for k in n:
 						var j := base.duplicate()
@@ -1203,7 +1535,7 @@ static func build(events: Array, info: Array, cfg: Config = null) -> BattleTimel
 							# Proposal 4: some beams cut out and re-fire a shorter second burst (drawn only; the damage
 							# lands once, with the first burst).
 							var refire := unit_hash(i * 7 + k, 21) < cfg.beam_refire_share
-							j.duration = cfg.beam_first_seconds if refire else lerpf(0.6, 0.9, unit_hash(i, 22))
+							j.duration = cfg.beam_first_seconds if refire else beam_hold(weapon, owner, unit_hash(i, 22))
 							if refire:
 								var j2 := j.duplicate()
 								j2.start = j.start + cfg.beam_first_seconds + cfg.beam_refire_gap
@@ -1255,7 +1587,7 @@ static func build(events: Array, info: Array, cfg: Config = null) -> BattleTimel
 					var stagger_s := cfg.torpedo_stagger_ticks * tk
 					if cine:
 						# Every tube of the spread flies the same time; the last lands at the scheduled impact.
-						stagger_s = cfg.torpedo_stagger_seconds
+						stagger_s = torpedo_stagger(fid, cfg)
 					# Torpedo spreads (coordinator, 10 Nov; drawn only): one core shot shows as a spread sized by the
 					# launcher's class (escort 1-2, cruiser 2-3, capital 4-5), 0.12 s apart; the damage lands with the last.
 					var tubes := n
@@ -1416,9 +1748,26 @@ static func build(events: Array, info: Array, cfg: Config = null) -> BattleTimel
 # Cinematic clock (Config.cinematic)
 # ------------------------------------------------------------------------------------------------------------------
 
+## How long a beam is held (M4 combat; Simon's 13 Nov floor and ceiling are 0.6 and 1.5 s). Footage, BATTLE-REFERENCE.md:
+## Federation phasers 0.6-1.5 s, Cardassian beams 1.4 s and more, polaron beams 0.75 s and more, Klingon beams short (0.25-0.6 s
+## measured, held to the 0.6 s floor).
+static func beam_hold(weapon: String, owner_faction: int, h: float) -> float:
+	if weapon == "PolaronBeam":
+		return lerpf(0.9, 1.4, h)
+	if owner_faction == 4:
+		return lerpf(1.2, 1.5, h)
+	if owner_faction == 2 or owner_faction == 3:
+		return lerpf(0.6, 0.9, h)
+	return lerpf(0.8, 1.4, h)
+
+
 ## Disruptors are beam family in the core; the cinematic playback draws them as bolts (Klingon and Romulan), as the
 ## shows do. Cardassian disruptors are beams on screen and stay beams.
-static func shows_as_bolts(weapon: String, owner_faction: int) -> bool:
+static func shows_as_bolts(weapon: String, owner_faction: int, length_meters := -1.0) -> bool:
+	# M4 combat, footage WotW 4805 s: Klingon capital ships (Vor'cha, K'Vort) fire red disruptor BEAMS; the Bird-of-Prey
+	# wing cannons fire green bolts. A Klingon hull over the small-ship limit draws beams, the rest bolts.
+	if owner_faction == 2 and length_meters > 260.0:
+		return false
 	return weapon == "Disruptor" and owner_faction != 4
 
 
@@ -1555,10 +1904,10 @@ static func _schedule(tl: BattleTimeline, events: Array, info_by_id: Dictionary,
 			# Flight time from the core's range (impact tick - fire tick), at a pace that reads as a torpedo run, not
 			# stretched over the core's ticks; the order pass below delays it only where the core's order demands.
 			var flight := minf(cfg.max_torpedo_flight_seconds, cfg.min_torpedo_flight_seconds + cfg.torpedo_seconds_per_tick * maxi(0, impact_tick - tick - 1))
-			impact = launch + flight + (spread_tubes(i, n, float(info_by_id.get(fid, {}).get("lengthMeters", 0.0)), cfg) - 1) * cfg.torpedo_stagger_seconds
+			impact = launch + flight + (spread_tubes(i, n, float(info_by_id.get(fid, {}).get("lengthMeters", 0.0)), cfg) - 1) * torpedo_stagger(fid, cfg)
 		else:
 			var owner := int(info_by_id.get(fid, {}).get("ownerId", 0))
-			var bolts := family == 1 or shows_as_bolts(str(_num(e, "weapon", "")), owner)
+			var bolts := family == 1 or shows_as_bolts(str(_num(e, "weapon", "")), owner, float(info_by_id.get(fid, {}).get("lengthMeters", -1.0)))
 			impact = launch + (cfg.bolt_flight_seconds if bolts else cfg.beam_reach_seconds)
 			together[i] = true
 		out[i] = [launch, impact]
@@ -1620,8 +1969,13 @@ static func ship_style(length_meters: float, cfg: Config = null) -> int:
 
 ## Tubes drawn for one core torpedo shot (coordinator, 10 Nov 2026; presentation only): escort 1-2, cruiser 2-3,
 ## capital 4-5, never fewer than the core's projectiles.
+## Seconds between the tubes of one launcher's salvo: 0.10-0.15 s, seeded per ship (footage WotW d_4891).
+static func torpedo_stagger(fleet_id: int, cfg: Config) -> float:
+	return lerpf(0.10, 0.15, unit_hash(fleet_id, 26)) * (cfg.torpedo_stagger_seconds / 0.12)
+
+
 static func spread_tubes(event_index: int, projectiles: int, length_meters: float, cfg: Config) -> int:
-	var lo_n: int = [4, 2, 1][ship_style(length_meters, cfg)]
+	var lo_n: int = [4, 4, 2][ship_style(length_meters, cfg)] # M4: salvos of 4-5 from capitals and cruisers (footage WotW d_4891), 2-3 from escorts
 	return maxi(projectiles, lo_n + (1 if unit_hash(event_index, 25) < 0.5 else 0))
 
 
@@ -1662,8 +2016,8 @@ static func _ship_clocks(tl: BattleTimeline, events: Array, info_by_id: Dictiona
 		var gap := lerpf(cfg.ship_gap_min, cfg.ship_gap_max, unit_hash(fid, 11))
 		if style == 2:
 			# The pass: the escort needs time to run in, and to break away and come about before the round ends.
-			lo = maxf(A, 1.8)
-			hi = minf(B, R * cfg.flight_to - 2.8)
+			lo = maxf(A, 0.1)
+			hi = minf(B, R * cfg.flight_to - 0.9)
 			gap = lerpf(cfg.escort_gap_min, cfg.escort_gap_max, unit_hash(fid, 11))
 		elif style == 0 and n > 2:
 			# Sustained fire: a capital's mounts spread evenly over the whole round.
@@ -1674,7 +2028,16 @@ static func _ship_clocks(tl: BattleTimeline, events: Array, info_by_id: Dictiona
 		if n > 1:
 			gap = minf(gap, maxf(0.15, (hi - lo - 0.1) / float(n - 1)))
 		var room := maxf(0.0, hi - lo - gap * (n - 1))
-		var start := lo + room * unit_hash(fid, 12)
+		# M4: ships open fire in turn across the round (rank by seeded hash), the first at once and the last late, so
+		# fire runs through the whole round (a random start left 2 s of dead air at the top and 3 s at the tail).
+		# A ship with torpedoes goes first: beams on a target wait for its torpedoes' impacts (the core's order), so a
+		# beam shooter first in line would leave the round's opening empty.
+		var rank := 0
+		var my_h := unit_hash(fid, 12) + (0.0 if _has_torpedo(events, trains[fid]) else 1.0)
+		for other_fid in trains:
+			if unit_hash(int(other_fid), 12) + (0.0 if _has_torpedo(events, trains[other_fid]) else 1.0) < my_h:
+				rank += 1
+		var start := lo + room * (float(rank) / float(maxi(1, trains.size() - 1)))
 		for k in n:
 			var jit := (unit_hash(fid * 131 + k, 13) - 0.5) * 0.3 * gap if k > 0 else 0.0
 			out[list[k]][0] = start + k * gap + jit
@@ -1685,14 +2048,44 @@ static func _ship_clocks(tl: BattleTimeline, events: Array, info_by_id: Dictiona
 	tl.set_meta("spans", span_of)
 
 
+static func _has_torpedo(events: Array, list: Array) -> bool:
+	for i in list:
+		if family_index(_num(events[i], "family", 0)) == 2:
+			return true
+	return false
+
+
+## M4 combat: torpedo salvo starts across the battle keep a gap, so fire flows through the round instead of landing in
+## clusters (Simon, 13 Nov: "torpedoes all get fired at once"). Only delays; each ship's own order is kept by the caller.
+static func _salvo_limit(tl: BattleTimeline, events: Array, cfg: Config, out: Dictionary) -> void:
+	var salvos := []
+	for i in out:
+		var e: Dictionary = events[i]
+		if e.kind == "Fire" and family_index(_num(e, "family", 0)) == 2:
+			salvos.append(i)
+	if salvos.size() < 2:
+		return
+	salvos.sort_custom(func(a, b): return float(out[a][0]) < float(out[b][0]) or (float(out[a][0]) == float(out[b][0]) and a < b))
+	var avail := maxf(1.0, tl.round_seconds * (cfg.fire_to - cfg.fire_from))
+	var gap := clampf(0.8 * avail / float(salvos.size()), 0.05, 0.25)
+	var prev := -INF
+	for i in salvos:
+		var at := maxf(float(out[i][0]), prev + gap)
+		out[i][0] = at
+		prev = at
+
+
 ## No more than max_beams_at_once beams held across the battle: a beam waits for one to end (launch and impact move
 ## together), and each ship's own shots keep their order. Only delays; run again after every order pass.
 static func _beam_limit(tl: BattleTimeline, events: Array, info_by_id: Dictionary, cfg: Config, out: Dictionary, trains: Dictionary, span_of: Dictionary) -> void:
 	var R := tl.round_seconds
+	_salvo_limit(tl, events, cfg, out)
+	# Footage: 1-4 beams in a fleet shot; a bigger battle shows more (one more for every six ships), never a whole line.
+	var beam_cap := cfg.max_beams_at_once + info_by_id.size() / 6
 	var beams := []
 	for i in out:
 		var e: Dictionary = events[i]
-		if e.kind == "Fire" and family_index(_num(e, "family", 0)) == 0 and not shows_as_bolts(str(_num(e, "weapon", "")), int(info_by_id.get(int(_num(e, "fleetId")), {}).get("ownerId", 0))):
+		if e.kind == "Fire" and family_index(_num(e, "family", 0)) == 0 and not shows_as_bolts(str(_num(e, "weapon", "")), int(info_by_id.get(int(_num(e, "fleetId")), {}).get("ownerId", 0)), float(info_by_id.get(int(_num(e, "fleetId")), {}).get("lengthMeters", -1.0))):
 			beams.append(i)
 	beams.sort_custom(func(a, b): return float(out[a][0]) < float(out[b][0]) or (float(out[a][0]) == float(out[b][0]) and a < b))
 	var live := []
@@ -1707,7 +2100,7 @@ static func _beam_limit(tl: BattleTimeline, events: Array, info_by_id: Dictionar
 				if iv[0] < s + 0.2 and iv[1] > s:
 					c += iv[2]
 					first_end = minf(first_end, iv[1])
-			if c + c_i <= cfg.max_beams_at_once or c == 0 or s > R * 0.9:
+			if c + c_i <= beam_cap or c == 0 or s > R * 0.9:
 				break
 			s = first_end + 0.02
 		out[i][0] = s
@@ -1757,7 +2150,7 @@ static func round_ship_info(encounter: Dictionary, round_index: int) -> Array:
 		for wpn in ship.get("weapons", []):
 			arcs.append(Vector2(float(wpn.get("arcCentre", 0)), float(wpn.get("arcHalfWidth", 180))) if wpn is Dictionary else Vector2(0, 180))
 		out.append({"arcs": arcs, "fleetId": fid, "ownerId": int(rs.get("owner", ship.get("owner", 0))),
-			"hull": int(rs.get("hullBefore", 0)), "shields": int(rs.get("shieldBefore", 0)), "maxShields": int(ship.get("maxShields", 0)),
+			"hull": int(rs.get("hullBefore", 0)), "maxHull": int(ship.get("maxHull", rs.get("hullBefore", 0))), "shields": int(rs.get("shieldBefore", 0)), "maxShields": int(ship.get("maxShields", 0)),
 			"startsCloaked": cloaked.has(fid) or bool(rs.get("startsCloaked", false)), "x": float(pos.x), "y": float(pos.y),
 			"facing": float(rs.get("yaw", 0)), "lengthMeters": ShipFactory.canon_length_meters(ship),
 			"elevation": ship.get("elevation") if ship.has("wego") else null})

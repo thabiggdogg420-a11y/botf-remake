@@ -40,18 +40,18 @@ void fragment() {
 		float age = hits[i].w;
 		if (age < 0.0 || age > 1.0) continue;
 		float d = acos(clamp(dot(n, normalize(hits[i].xyz)), -1.0, 1.0));
-		float fade = pow(1.0 - age, 1.6);
-		float flash = exp(-d * d / (0.03 + age * 0.12)) * (0.6 + 1.5 * exp(-age * 12.0));
-		float ring_r = 0.15 + age * 1.3;
-		float ring = exp(-pow((d - ring_r) / 0.09, 2.0)) * 0.7;
-		float lattice = hex * exp(-d * d / (0.08 + age * 0.35)) * 0.8;
-		float glow = (flash + ring + lattice) * fade + fres * 0.25 * fade;
+		float fade = pow(1.0 - age, 2.4); // M4: brief - the bright part is gone in a quarter second
+		float flash = exp(-d * d / (0.012 + age * 0.03)) * (0.6 + 1.5 * exp(-age * 12.0)); // local: about 0.4 of the hull width
+		float ring_r = 0.08 + age * 0.35;
+		float ring = exp(-pow((d - ring_r) / 0.07, 2.0)) * 0.45 * exp(-d * 2.5);
+		float lattice = hex * exp(-d * d / (0.035 + age * 0.05)) * 0.7;
+		float glow = (flash + ring + lattice) * fade + fres * 0.015 * fade;
 		if (dot(hit_facing[i].xyz, hit_facing[i].xyz) > 0.5) {
 			float c = dot(n, normalize(hit_facing[i].xyz));
 			float sector = smoothstep(0.55, 0.68, c);                    // about 50 degrees round the facing axis
 			float rim = exp(-pow((c - 0.62) / 0.035, 2.0));              // the facing's border
 			float weak = 1.0 - clamp(hit_facing[i].w, 0.0, 1.0);
-			float seg = (sector * (0.18 + 0.55 * hex) + rim * 0.9) * pow(1.0 - age, 1.2) * (0.7 + 0.6 * weak);
+			float seg = (sector * (0.02 + 0.05 * hex) + rim * 0.08) * pow(1.0 - age, 2.0) * (0.7 + 0.6 * weak); // M4: a faint partial shell, never the whole bubble
 			glow += seg;
 		}
 		col += hit_colors[i].rgb * glow;

@@ -652,7 +652,7 @@ func _spawn(i: int, j: Dictionary) -> void:
 			if target != null:
 				var from := source.global_position if source != null else target.global_position + Vector3(10, 0, 0)
 				var facing: String = j.get("facing", "")
-				target.add_shield_hit(from, j.start, j.duration * 1.8, col.lerp(Color(0.5, 0.8, 1.0), 0.45) * 0.55,
+				target.add_shield_hit(from, j.start, j.duration, col.lerp(Color(0.5, 0.8, 1.0), 0.45) * 0.55,
 					facing, target.facing_strength(facing))
 				st.point = target.shield_point(from)
 				st.size = maxf(40.0 * UE, target.radius() * 0.35)
@@ -845,9 +845,9 @@ func _animate(i: int, j: Dictionary, t: float) -> void:
 				_fxp(sp, "flare_color", Color(1.0, 0.91, 0.66))
 				_fxp(sp, "flare_intensity", env * 0.9 * share * flick if hit else 0.0)
 				if hit and target != null and t >= float(st.next_ripple):
-					target.add_shield_hit(target.global_position + (end - target.global_position) * 2.0, t, 0.6,
+					target.add_shield_hit(target.global_position + (end - target.global_position) * 2.0, t, 0.3,
 						col.lerp(SHIELD_BLUE, 0.45) * 0.55)
-					st.next_ripple = t + 0.25
+					st.next_ripple = t + 0.3
 			else:
 				# A burn on the hull with sparks spraying back off it.
 				sp.scale = Vector3.ONE * maxf(0.18 * tr * 2.0, _px_world_1080(end, 32.0))
