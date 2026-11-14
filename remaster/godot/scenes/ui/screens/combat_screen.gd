@@ -460,6 +460,12 @@ func _set_play_layout(on: bool) -> void:
 	for n in [_side_l, _side_r, _bottom_box]:
 		if n != null and is_instance_valid(n):
 			n.visible = not on
+			if not on and is_inside_tree():
+				# The plan layout fades back in instead of snapping into the middle of the view.
+				n.modulate.a = 0.0
+				create_tween().tween_property(n, "modulate:a", 1.0, 0.3)
+			else:
+				n.modulate.a = 1.0
 
 func _plan_after_round(_idx: int) -> void:
 	# A round of nothing but closing in has just run through at speed: go straight on into the next, so one Engage reaches the
