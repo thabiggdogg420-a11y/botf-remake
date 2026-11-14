@@ -761,6 +761,8 @@ func _direct_pick(t: float) -> void:
 				continue
 			if _dir_recent.has(subj):
 				score -= 2.5
+			if subj >= 2000000 and typ != "victim":
+				score -= 3.0 # a starbase is scenery to fly past, not a subject to hold on (stage 2 gate review)
 			if typ == prev_type:
 				score -= 1.0
 			var sh2: BattleShip = _ships[subj]
@@ -779,7 +781,9 @@ func _direct_pick(t: float) -> void:
 			var tr := timeline.track(fid) if timeline != null else null
 			if not sh.visible or (tr != null and (tr.visibility_at(t) < 0.35 or (tr.hide_at >= 0.0 and t >= tr.hide_at))):
 				continue
-			var sc := sh.length * (0.3 if _dir_recent.has(fid) else 1.0) * (1.0 + BattleTimeline.unit_hash(n * 7 + fid, 75))
+			var sc := minf(sh.length, 40.0) * (0.3 if _dir_recent.has(fid) else 1.0) * (1.0 + BattleTimeline.unit_hash(n * 7 + fid, 75))
+			if fid >= 2000000:
+				sc *= 0.05
 			if sc > big:
 				big = sc
 				cand = fid
@@ -790,7 +794,7 @@ func _direct_pick(t: float) -> void:
 		var other := 0
 		if pair.size() == 2:
 			other = int(pair[1]) if int(pair[0]) == cand else (int(pair[0]) if int(pair[1]) == cand else 0)
-		best = {"type": "approach" if (_ships[cand] as BattleShip).length >= 22.0 else "track", "subject": cand, "other": other}
+		best = {"type": "approach" if (_ships[cand] as BattleShip).length >= 22.0 and cand < 2000000 else "track", "subject": cand, "other": other}
 	_dir.merge(best, true)
 	if best.type == "victim":
 		_dir.until = maxf(float(_dir.until), _dir_clock + 3.6)
@@ -799,11 +803,29 @@ func _direct_pick(t: float) -> void:
 		_dir_recent.pop_front()
 	# Pick the side of the hull that keeps the lens out of the sun and the subject unblocked.
 	var a: BattleShip = _ships.get(int(_dir.subject))
-	var sd: Vector3 = _env.get("sun_dir", Vector3.ZERO)
+	var sd := _sun_toward()
+	_dir_choose_side(a, sd, n)
+	# Still looking into the sun from either side: take the same subject from the other end (the lens ahead of it,
+	# looking back), so the hull is lit from the front instead of a silhouette in the glare.
+	var pose0 := _direct_pose(str(_dir.type), 0.0, 0.0)
+	if sd != Vector3.ZERO and not pose0.is_empty() and str(_dir.type) in ["track", "approach", "push"] 			and ((pose0[1] as Vector3) - (pose0[0] as Vector3)).normalized().dot(sd) > 0.5:
+		_dir.type = "lead" if str(_dir.type) == "track" else "push_rev"
+		_dir_choose_side(a, sd, n)
+	_dir["eye0"] = Vector3.ZERO # the approach lens is planted once, from where the ship is at the cut
+
+
+## Unit vector toward the sun (a DirectionalLight shines down its -Z), or zero.
+func _sun_toward() -> Vector3:
+	var sun: DirectionalLight3D = _env.get("sun")
+	return sun.global_basis.z.normalized() if sun != null else Vector3.ZERO
+
+
+## Picks the side of the hull (sgn) that keeps the lens out of the sun and the subject unblocked.
+func _dir_choose_side(a: BattleShip, sd: Vector3, n: int) -> void:
 	var best_s := 1.0
 	var best_bad := INF
 	var signs := [1.0, -1.0]
-	if str(_dir.type) == "push" and a != null:
+	if str(_dir.type) in ["push", "push_rev"] and a != null:
 		var oth: BattleShip = _ships.get(int(_dir.get("other", 0)))
 		if oth != null and oth != a:
 			var fw0 := a.global_basis.x
@@ -834,7 +856,6 @@ func _direct_pick(t: float) -> void:
 			best_bad = bad
 			best_s = sg
 	_dir.sgn = best_s
-	_dir["eye0"] = Vector3.ZERO # the approach lens is planted once, from where the ship is at the cut
 
 
 ## [eye, look, fov] for the current shot at progress u (eased e), or [] when the subject is gone.
@@ -899,6 +920,15 @@ func _direct_pose(typ: String, u: float, e: float) -> Array:
 			# The side away from the target (sgn is chosen so at the cut, and kept: a target crossing the bow never flips it).
 			var eye := p + side * L * 1.05 + Vector3.UP * L * 0.42 + flat * L * lerpf(-0.95, 0.55, e)
 			var look := p + to_b * L * 0.55 + flat * L * lerpf(-0.15, 0.25, e)
+			return [eye, look, 40.0]
+		"lead":
+			# Ahead of the ship, falling back along it as it comes on (the lens the show uses for a ship charging in).
+			var eye := p + flat * L * lerpf(1.5, 1.1, e) + side * L * lerpf(0.9, 0.65, e) + Vector3.UP * L * 0.28
+			return [eye, p - flat * L * 0.25, 40.0]
+		"push_rev":
+			# The broadside slide the other way: from the bow quarter back toward the stern.
+			var eye := p + side * L * 1.05 + Vector3.UP * L * 0.42 + flat * L * lerpf(1.0, -0.4, e)
+			var look := p + to_b * L * 0.55 + flat * L * lerpf(0.2, -0.15, e)
 			return [eye, look, 40.0]
 		"approach":
 			# A lens planted ahead of the capital's path, low: it comes on and slides past, the camera panning with it.
