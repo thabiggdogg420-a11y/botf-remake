@@ -18,6 +18,8 @@ Full build (all private inputs stay outside git; D:\ is read only by these offli
     # 1. original BOTF banks -> LocalAssets/audio/cues.json (build_audio_cues.py, see AUDIO-PLAN)
     # 2. Trek library -> LocalAssets/audio/trek (mine_trek_audio.py: index, cue, alert, scan/cut), then the era key table
     python remaster/tools/mine_trek_audio.py cues  --trek <LocalAssets/audio/trek>
+    # 2b. weapons, hits, explosions, warp, cloak from the Bridge Commander installs on H: (M4-AUDIO; replaces those keys in trek/cues.json)
+    python remaster/tools/build_trek_fx.py --out <LocalAssets/audio/trek> --sheet <m4-audio-captures>
     # 3. ogg pack (web-safe, budgets in pack_manifest.json), then import
     python remaster/tools/pack_audio_web.py --audio <LocalAssets/audio> --out remaster/godot/scripts/audio/pack --jobs 2
     godot --headless --audio-driver Dummy --path remaster/godot --import
