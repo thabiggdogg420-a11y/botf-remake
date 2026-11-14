@@ -124,3 +124,9 @@ Class table (cells a second; one cell is 592 m as drawn). The screensaver's flee
 | Strike craft (120 m and under) | 1.25 (740 m/s) | 90 deg/s | 1.10 |
 
 Tools: `scenes/battle/tools/flight_check.gd` (per-class top speed, turn rate, hand-over to the core's poses, planner intent), `scenes/battle/tools/battle_clip.gd` (plays a sandbox battle round after round, for Godot's Movie Maker).
+
+### M4 combat, second pass (14 Nov 2026)
+- **Shields:** a hit shows a brief local flare (shader angular radius about 0.2 rad, about 0.4 of the hull width, bright part gone in under 0.25 s; job length capped at 0.45 s) with a faint partial shell. The whole-ship bubble no longer stays visible (sector glow and fresnel cut to a few percent; beam ripples 0.3 s every 0.3 s).
+- **Fire timing:** ships open fire in turn across the round by seeded rank, torpedo ships first, the first at about 0.1 s and the last late; escorts fire from 0.1 s to flight_to minus 0.9 s. A weapon-free gap over 0.8 s is now a bug (the clip tool prints them per round).
+- **Camera (battles of 14 ships or fewer):** every cut is the pair-fitted tracking shot. The torpedo-chase and fixed fly-by lenses are not used. A lull with nothing about to fire tracks the closest opposing pair. When the pair is too far apart to fit, the lens stays on the shooter. Sun and gas-giant avoidance run on every cut. A forced vista (tools, pc_smoke) holds over film cuts.
+- **Races:** tactical owner ids 6, 7 and 8 map to ship.dom.*, ship.borg.* and ship.breen.* by class name when the encounter ship carries no assetKey (roster classes carry one).
