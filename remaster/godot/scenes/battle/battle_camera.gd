@@ -792,7 +792,17 @@ func _cinematic_shot(_delta: float, shot: Dictionary, time: float) -> Array:
 	var vsize := get_viewport().get_visible_rect().size if is_inside_tree() else Vector2.ZERO
 	if vsize.y > 0.0:
 		aspect = vsize.x / vsize.y
+	if force_vista and planet_radius > 0.0:
+		# Tools and the packaged smoke test hold the planet vista whatever the director is cutting to (M4: small battles
+		# are always film cuts, which used to return before the vista was considered).
+		if _tactical.is_empty() or time - _tactical_t > 1.0 or time < _tactical_t:
+			_tactical_t = time
+			_tactical = _tactical_pose(aspect, 1.0)
+		vista_active = true
+		fov = 48.0
+		return vista_pose(_tactical)
 	if shot.has("film"):
+		vista_active = false
 		return _film_pose(shot, key, time)
 	if key != _shot_key:
 		var was_tactical := _shot_key.begins_with("wide") or _shot_key == "" or _cut_pose.is_empty()
