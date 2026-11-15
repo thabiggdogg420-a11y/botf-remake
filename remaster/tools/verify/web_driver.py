@@ -38,6 +38,7 @@ def main():
     ap.add_argument("--dir", required=True)
     ap.add_argument("--work", required=True)
     ap.add_argument("--host-sim", action="store_true")
+    ap.add_argument("--gzip-all", action="store_true")
     ap.add_argument("--throttle", default="", help="down_kbps,up_kbps,latency_ms (kilobits per second)")
     ap.add_argument("--w", type=int, default=1280)
     ap.add_argument("--h", type=int, default=720)
@@ -51,6 +52,8 @@ def main():
     sargs = [sys.executable, os.path.join(HERE, "serve_web.py"), "--dir", a.dir, "--port", "0"]
     if a.host_sim:
         sargs.append("--host-sim")
+        if a.gzip_all:
+            sargs.append("--gzip-all")
     srv = subprocess.Popen(sargs, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=dict(os.environ, SERVE_QUIET="1"))
     line = srv.stdout.readline()
     url = line.split(" at ")[1].split(" ")[0] + a.query
@@ -99,7 +102,7 @@ def main():
         n = 0
         pos = 0
         while True:
-            time.sleep(0.2)
+            pg.wait_for_timeout(200)   # pumps Playwright events (console, network); time.sleep would not
             data = open(cmdf, encoding="utf-8").read().splitlines()
             if pos >= len(data):
                 continue
@@ -117,15 +120,15 @@ def main():
                     x, y = float(f[0]), float(f[1])
                     if len(f) > 2 and f[2] == "right":
                         pg.mouse.move(x, y)
-                        time.sleep(0.1)
+                        pg.wait_for_timeout(100)
                         pg.mouse.click(x, y, button="right")
                     elif len(f) > 2 and f[2] == "double":
                         pg.mouse.move(x, y)
-                        time.sleep(0.1)
+                        pg.wait_for_timeout(100)
                         pg.mouse.dblclick(x, y)
                     else:
                         pg.mouse.move(x, y)
-                        time.sleep(0.15)
+                        pg.wait_for_timeout(150)
                         pg.mouse.click(x, y)
                     out("%d ok click" % n)
                 elif c == "move":
@@ -150,7 +153,7 @@ def main():
                     pg.mouse.wheel(0, float(rest))
                     out("%d ok wheel" % n)
                 elif c == "wait":
-                    time.sleep(float(rest))
+                    pg.wait_for_timeout(float(rest) * 1000)
                     out("%d ok wait" % n)
                 elif c == "log":
                     k = int(rest or 15)
@@ -162,7 +165,7 @@ def main():
                     hit = ""
                     while time.time() - t < secs and not hit:
                         hit = next((l for l in log if text in l), "")
-                        time.sleep(0.5)
+                        pg.wait_for_timeout(500)
                     out("%d %s waitlog %r after %.1fs: %s" % (n, "ok" if hit else "ERR", text, time.time() - t, hit[:200]))
                 elif c == "eval":
                     out("%d ok eval %s" % (n, json.dumps(pg.evaluate(rest))[:500]))

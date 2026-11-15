@@ -80,6 +80,7 @@ class HostSimHandler(http.server.SimpleHTTPRequestHandler):
     mount = "/botf/"
     throttle_kbps = 0
     GZIP_TYPES = (".wasm", ".js", ".mjs", ".json", ".html", ".css", ".svg")
+    gzip_all = False   # --gzip-all: also compress packs/ (a host or CDN that compresses everything)
 
     def translate_path(self, path):
         path = path.split("?", 1)[0].split("#", 1)[0]
@@ -106,7 +107,8 @@ class HostSimHandler(http.server.SimpleHTTPRequestHandler):
         data = open(path, "rb").read()
         self.send_response(200)
         self.send_header("Content-Type", self.guess_type(path))
-        if ext in self.GZIP_TYPES and "gzip" in self.headers.get("Accept-Encoding", ""):
+        in_packs = "/packs/" in self.path.split("?")[0]
+        if (ext in self.GZIP_TYPES or (self.gzip_all and ext == ".pck")) and (self.gzip_all or not in_packs) and "gzip" in self.headers.get("Accept-Encoding", ""):
             import gzip
             data = gzip.compress(data, 6)
             self.send_header("Content-Encoding", "gzip")
@@ -142,6 +144,7 @@ def main():
     ap.add_argument("--bind", default="127.0.0.1", help="only 127.0.0.1 or localhost is accepted")
     ap.add_argument("--host-sim", action="store_true", help="behave like a plain static host under --mount (see above)")
     ap.add_argument("--mount", default="/botf/")
+    ap.add_argument("--gzip-all", action="store_true", help="with --host-sim: gzip packs/ too (worst-case host)")
     ap.add_argument("--throttle-kbps", type=int, default=0)
     a = ap.parse_args()
     if a.bind not in ("127.0.0.1", "localhost"):
@@ -151,6 +154,7 @@ def main():
     if a.host_sim:
         HostSimHandler.mount = "/" + a.mount.strip("/") + "/"
         HostSimHandler.throttle_kbps = a.throttle_kbps
+        HostSimHandler.gzip_all = a.gzip_all
         server = http.server.ThreadingHTTPServer(("127.0.0.1", a.port), functools.partial(HostSimHandler, directory=a.dir))
         print("serving %s at http://127.0.0.1:%d%s (localhost only, host simulation: no COOP/COEP)" % (a.dir, server.server_address[1], HostSimHandler.mount), flush=True)
     else:

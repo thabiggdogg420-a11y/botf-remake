@@ -106,23 +106,23 @@ func _fetch_background() -> void:
 
 var _game_packs_started := false
 
-## Web: a campaign has started. Fetches, in the background and one at a time, the hulls of the player's empire first, then the
-## other empires in play, then the full-resolution planet tier (the galaxy and system screens swap to it when it lands).
+## Web: a campaign has started. Fetches in the background, one at a time: the hull manifests, then the hull of each ship the
+## player starts with (a few MB each), then the full-resolution planet tier (the galaxy and system screens swap to it when it
+## lands). Every other hull comes when a battle needs it (_missing_ship_packs).
 func _fetch_game_packs(v: Dictionary) -> void:
 	if not OS.has_feature("web") or _game_packs_started:
 		return
 	_game_packs_started = true
 	var player := int(v.get("meta", {}).get("player", 1))
-	var ids: Array = [player]
-	for e in v.get("empires", []):
-		var id := int(e.get("id", 0))
-		if not ids.has(id):
-			ids.append(id)
 	await AppLoader.load_manifest(self)
-	for id in ids:
-		var tok: String = BattleTimeline.faction_prefix(int(id))
-		var name := AppLoader.ship_pack_for(tok)
-		if name != "" and await AppLoader.fetch_web_pack(self, name):
+	var need: Array = []
+	for f in v.get("fleets", []):
+		if int(f.get("owner", 0)) == player:
+			_add_hull_pack(need, {"owner": player, "name": str(f.get("name", "")), "assetKey": str(f.get("assetKey", ""))})
+	if not need.is_empty() and await AppLoader.fetch_web_pack(self, AppLoader.WEB_SHIPS_BASE):
+		web_packs_changed.emit(AppLoader.WEB_SHIPS_BASE)
+	for name: String in need:
+		if await AppLoader.fetch_web_pack(self, name):
 			web_packs_changed.emit(name)
 	if await AppLoader.fetch_web_pack(self, AppLoader.WEB_PLANETS_HI):
 		PlanetTextures.reset()
@@ -140,20 +140,27 @@ func _missing_ship_packs() -> Array:
 	if not (enc is Dictionary):
 		return out
 	for sd in enc.get("ships", []):
-		if not (sd is Dictionary):
-			continue
-		for key in BattleShip.asset_keys_for(sd):
-			var parts := str(key).split(".")
-			if parts.size() < 2:
-				continue
-			var name := AppLoader.ship_pack_for(parts[1])
-			if name != "" and not AppLoader.web_pack_mounted(name) and not out.has(name):
-				out.append(name)
+		if sd is Dictionary:
+			_add_hull_pack(out, sd)
+	if not out.is_empty() and not AppLoader.web_pack_mounted(AppLoader.WEB_SHIPS_BASE):
+		out.push_front(AppLoader.WEB_SHIPS_BASE)
 	return out
+
+## Adds the hull pack of ship dictionary `sd` (owner, name, assetKey) to `out` unless mounted or already listed. The first asset
+## key with a pack is the one BattleAssets.hero() would draw, so one pack per ship is enough.
+func _add_hull_pack(out: Array, sd: Dictionary) -> void:
+	for key in BattleShip.asset_keys_for(sd):
+		var name := AppLoader.hull_pack_for(str(key))
+		if name != "":
+			if not AppLoader.web_pack_mounted(name) and not out.has(name):
+				out.append(name)
+			return
 
 var _loading_layer: Control = null
 var _loading_label: Label = null
-var _loading_bar: ProgressBar = null
+var _loading_bar: ColorRect = null
+var _loading_fill: ColorRect = null
+var _loading_total := 1.0
 var _combat_ready := false
 
 ## Web: opens the battle screen once its ship packs are in, with a modal progress panel so the player sees why it waits
@@ -169,7 +176,10 @@ func _open_combat_when_ready(remember: bool, need: Array) -> void:
 	goto("combat", remember)
 	_combat_ready = false
 
+var _loading_title := ""
+
 func _show_loading(title: String, need: Array) -> void:
+	_loading_title = title
 	if _loading_layer == null:
 		_loading_layer = ColorRect.new()
 		(_loading_layer as ColorRect).color = Color(0, 0, 0, 0.72)
@@ -182,9 +192,13 @@ func _show_loading(title: String, need: Array) -> void:
 		box.custom_minimum_size = Vector2(460, 0)
 		_loading_label = Label.new()
 		_loading_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		_loading_bar = ProgressBar.new()
-		_loading_bar.custom_minimum_size = Vector2(460, 18)
-		_loading_bar.show_percentage = false
+		_loading_bar = ColorRect.new()   # drawn by hand: the themed ProgressBar is invisible on the dark panel
+		_loading_bar.custom_minimum_size = Vector2(460, 14)
+		_loading_bar.color = Color(1, 1, 1, 0.18)
+		_loading_fill = ColorRect.new()
+		_loading_fill.color = Lcars.accent()
+		_loading_fill.size = Vector2(0, 14)
+		_loading_bar.add_child(_loading_fill)
 		box.add_child(_loading_label)
 		box.add_child(_loading_bar)
 		_loading_layer.add_child(box)
@@ -194,8 +208,8 @@ func _show_loading(title: String, need: Array) -> void:
 	for name: String in need:
 		total += AppLoader.pack_bytes(name)
 	_loading_label.text = "%s (%.0f MB)" % [title, total / 1048576.0]
-	_loading_bar.value = 0
-	_loading_bar.max_value = maxf(total, 1.0)
+	_loading_total = maxf(total, 1.0)
+	_loading_fill.size.x = 0.0
 	_loading_bar.set_meta("need", need)
 	_loading_bar.set_meta("done_before", 0)
 	set_process(true)
@@ -215,7 +229,8 @@ func _process(_delta: float) -> void:
 			done += AppLoader.pack_bytes(name)
 	if not AppLoader.progress.is_empty() and need.has(str(AppLoader.progress.get("name", ""))):
 		done += int(AppLoader.progress.get("bytes", 0))
-	_loading_bar.value = done
+	_loading_fill.size.x = _loading_bar.size.x * clampf(done / _loading_total, 0.0, 1.0)
+	_loading_label.text = "%s (%.1f of %.1f MB)" % [_loading_title, done / 1048576.0, _loading_total / 1048576.0]
 
 func _title_empire() -> int:
 	var t := current_screen()

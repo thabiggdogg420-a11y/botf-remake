@@ -130,7 +130,7 @@ static func mount_user_packs() -> int:
 const WEB_PACKS := ["planets_web.pck", "art_web.pck"]
 ## The heavy web bundles, fetched one by one in the background after the title shows (App._fetch_background):
 ## each faction's hero hulls (tools/build_ship_packs.py) and the full-resolution planet tier (tools/build_planet_hi_web.py).
-const WEB_SHIP_FACTIONS := ["fed", "kli", "rom", "car", "fer", "dom", "borg", "breen"] # M4: the Dominion, Borg and Breen packs follow the five (fetched last, in the background)
+const _OLD_WEB_SHIP_FACTIONS := ["fed", "kli", "rom", "car", "fer", "dom", "borg", "breen"] # M4: the Dominion, Borg and Breen packs follow the five (fetched last, in the background)
 const WEB_PLANETS_HI := "planets_hi_web.pck"
 ## The shared music beds (about 9 MB of ogg). Not in the main pck: the first playable load is the engine and the game alone, and
 ## the title plays a generated bed until this arrives (BotfAudioSystem.music_pack_ready swaps to the real tracks).
@@ -157,9 +157,13 @@ static func diag() -> bool:
 ## Progress of the pack being fetched right now (web): {"name", "bytes", "total"}; empty when idle. The loading overlay reads it.
 static var progress := {}
 
-## The logical ship pack that carries hull models of faction token `tok` (fed, kli, devore ...), or "" when the build has none.
-static func ship_pack_for(tok: String) -> String:
-	var name := "ships_%s_web.pck" % tok
+## The manifests every hull needs (godot-hero-manifest.json, resolved-manifest.json). Mount it before any hull pack.
+const WEB_SHIPS_BASE := "ships_base_web.pck"
+
+## The logical pack holding the hero model of asset key `key` ("ship.fed.galaxy"): hull_ship_fed_galaxy_web.pck, one pack per
+## hull so a battle fetches only the classes on screen. "" when the build has none (a procedural hull is drawn).
+static func hull_pack_for(key: String) -> String:
+	var name := "hull_%s_web.pck" % key.replace(".", "_")
 	var man: Variant = _web_manifest
 	if man is Dictionary and man.get("files", {}).has(name):
 		return name
@@ -191,6 +195,7 @@ static func _manifest(host: Node) -> Dictionary:
 	_manifest_loading = true
 	_web_manifest = {}
 	var req := HTTPRequest.new()
+	req.accept_gzip = false   # the browser already decodes a compressed body; Godot must not try to inflate it again
 	host.add_child(req)
 	var url := str(JavaScriptBridge.eval("new URL('packs/manifest.json', location.href).href"))
 	if req.request(url, PackedStringArray(["Cache-Control: no-cache"])) == OK:
@@ -242,6 +247,7 @@ static func _fetch_web_pack(host: Node, name: String) -> bool:
 		var url := str(JavaScriptBridge.eval("new URL('packs/%s', location.href).href" % file))
 		var req := HTTPRequest.new()
 		req.download_file = dest
+		req.accept_gzip = false   # a host that compresses .pck must not break the download
 		host.add_child(req)
 		var ticker := Timer.new()   # polls the download so a loading overlay can show bytes and a percentage
 		ticker.wait_time = 0.25
