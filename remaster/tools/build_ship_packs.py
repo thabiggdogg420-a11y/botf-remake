@@ -88,7 +88,7 @@ def _reencode(data, mime, max_px, quality):
     return b, new_mime
 
 
-def reduce_glb(src, dst, max_px, quality):
+def reduce_glb(src, dst, max_px, quality, normal_px=None, normal_q=95):
     """Writes a web copy of `src`: LOD meshes dropped, textures capped and re-encoded. Returns (old_bytes, new_bytes)."""
     js, binc = read_glb(src)
     nodes = js.get("nodes", [])
@@ -162,8 +162,9 @@ def reduce_glb(src, dst, max_px, quality):
         data = bytes(binc[v.get("byteOffset", 0):v.get("byteOffset", 0) + v["byteLength"]])
         if old in img_bv:
             im = js["images"][img_bv[old]]
-            q = 95 if img_bv[old] in normal_imgs else quality
-            data, im["mimeType"] = _reencode(data, im.get("mimeType", "image/png"), max_px, q)
+            is_n = img_bv[old] in normal_imgs
+            q = normal_q if is_n else quality
+            data, im["mimeType"] = _reencode(data, im.get("mimeType", "image/png"), (normal_px or max_px) if is_n else max_px, q)
         while len(out) % 8:
             out.append(0)
         v["byteOffset"] = len(out)
@@ -220,8 +221,10 @@ def main():
     ap.add_argument("--stage", default=None)
     ap.add_argument("--godot", default=os.environ.get("GODOT", r"C:\Tools\Godot\Godot_v4.5-stable_win64_console.exe"))
     ap.add_argument("--proj", default=os.path.normpath(os.path.join(HERE, "..", "godot")))
-    ap.add_argument("--web-max", type=int, default=2048)
-    ap.add_argument("--jpeg-q", type=int, default=88)
+    ap.add_argument("--web-max", type=int, default=1024, help="longest side of a web texture (F1: 1024; was 2048)")
+    ap.add_argument("--normal-max", type=int, default=512, help="longest side of a web normal map")
+    ap.add_argument("--jpeg-q", type=int, default=80)
+    ap.add_argument("--normal-q", type=int, default=88)
     a = ap.parse_args()
     ships = os.path.abspath(a.ships)
     man_path = os.path.join(ships, "godot-hero-manifest.json")
@@ -279,7 +282,7 @@ def main():
         for key, (rel, src, fac) in glbs.items():
             dst = os.path.join(stage, "web", rel)
             if newer(dst, [src] + tool_inputs):
-                reduce_glb(src, dst, a.web_max, a.jpeg_q)
+                reduce_glb(src, dst, a.web_max, a.jpeg_q, a.normal_max, a.normal_q)
             before += os.path.getsize(src)
             after += os.path.getsize(dst)
             web_files.setdefault(fac, []).append(("res://assets/ships/" + rel, dst))

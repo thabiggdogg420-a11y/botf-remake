@@ -132,12 +132,38 @@ const WEB_PACKS := ["planets_web.pck", "art_web.pck"]
 ## each faction's hero hulls (tools/build_ship_packs.py) and the full-resolution planet tier (tools/build_planet_hi_web.py).
 const WEB_SHIP_FACTIONS := ["fed", "kli", "rom", "car", "fer", "dom", "borg", "breen"] # M4: the Dominion, Borg and Breen packs follow the five (fetched last, in the background)
 const WEB_PLANETS_HI := "planets_hi_web.pck"
+## The shared music beds (about 9 MB of ogg). Not in the main pck: the first playable load is the engine and the game alone, and
+## the title plays a generated bed until this arrives (BotfAudioSystem.music_pack_ready swaps to the real tracks).
+const WEB_MUSIC := "audio_music_web.pck"
 
 static var _web_manifest: Variant = null
 static var _mounted := {}   ## logical name -> true once mounted this session
 ## Bytes fetched over the network and served from the IndexedDB cache this session (web only; for the verify report).
 static var bytes_downloaded := 0
 static var bytes_cached := 0
+
+## Progress of the pack being fetched right now (web): {"name", "bytes", "total"}; empty when idle. The loading overlay reads it.
+static var progress := {}
+
+## The logical ship pack that carries hull models of faction token `tok` (fed, kli, devore ...), or "" when the build has none.
+static func ship_pack_for(tok: String) -> String:
+	var name := "ships_%s_web.pck" % tok
+	var man: Variant = _web_manifest
+	if man is Dictionary and man.get("files", {}).has(name):
+		return name
+	return ""
+
+## Size in bytes of a logical pack from packs/manifest.json (0 when unknown).
+static func pack_bytes(name: String) -> int:
+	var man: Variant = _web_manifest
+	if not (man is Dictionary):
+		return 0
+	var f: String = str(man.get("files", {}).get(name, ""))
+	return int(man.get("bytes", {}).get(f, 0))
+
+## Web: loads packs/manifest.json now (no pack fetched). Idempotent.
+static func load_manifest(host: Node) -> Dictionary:
+	return await _manifest(host)
 
 ## True once the logical pack `name` is mounted in this session.
 static func web_pack_mounted(name: String) -> bool:
@@ -146,8 +172,11 @@ static func web_pack_mounted(name: String) -> bool:
 ## packs/manifest.json: {"files": {logical name: hashed name}, "bytes": {hashed name: size}}. Fetched once per session,
 ## never cached (the server marks it no-cache). {} when the build has none (unhashed packs, older exports).
 static func _manifest(host: Node) -> Dictionary:
+	while _manifest_loading:   # another fetch is already reading it: wait, never answer with the empty placeholder
+		await host.get_tree().process_frame
 	if _web_manifest != null:
 		return _web_manifest
+	_manifest_loading = true
 	_web_manifest = {}
 	var req := HTTPRequest.new()
 	host.add_child(req)
@@ -159,15 +188,28 @@ static func _manifest(host: Node) -> Dictionary:
 			if d is Dictionary:
 				_web_manifest = d
 	req.queue_free()
+	_manifest_loading = false
 	return _web_manifest
+
+static var _manifest_loading := false
+static var _inflight := {}   ## logical name -> true while one coroutine is fetching it
 
 ## Web only: mounts the bundle `name` (a logical name such as "audio_kli_web.pck"), from user://packs when this exact
 ## content is already there, else downloaded first. Older copies of the same bundle are removed from user://packs.
+## Safe to call from several places at once: a second call for the same pack waits for the first.
 static func fetch_web_pack(host: Node, name: String) -> bool:
 	if not OS.has_feature("web"):
 		return false
+	while _inflight.has(name):
+		await host.get_tree().process_frame
 	if _mounted.has(name):
 		return true
+	_inflight[name] = true
+	var ok: bool = await _fetch_web_pack(host, name)
+	_inflight.erase(name)
+	return ok
+
+static func _fetch_web_pack(host: Node, name: String) -> bool:
 	DirAccess.make_dir_recursive_absolute("user://packs")
 	var man: Dictionary = await _manifest(host)
 	var file: String = str(man.get("files", {}).get(name, name))
@@ -189,13 +231,24 @@ static func fetch_web_pack(host: Node, name: String) -> bool:
 		var req := HTTPRequest.new()
 		req.download_file = dest
 		host.add_child(req)
+		var ticker := Timer.new()   # polls the download so a loading overlay can show bytes and a percentage
+		ticker.wait_time = 0.25
+		ticker.timeout.connect(func(): progress = {"name": name, "bytes": req.get_downloaded_bytes(), "total": maxi(want, req.get_body_size())})
+		host.add_child(ticker)
+		ticker.start()
+		progress = {"name": name, "bytes": 0, "total": want}
 		if req.request(url) == OK:
 			var res: Array = await req.request_completed
+			ticker.queue_free()
+			progress = {}
 			ok = int(res[0]) == HTTPRequest.RESULT_SUCCESS and int(res[1]) == 200 and mount_pack(dest)
 			if ok:
 				bytes_downloaded += req.get_downloaded_bytes()
 			else:
 				push_warning("AppLoader: web pack %s not mounted (result %d, http %d)" % [file, int(res[0]), int(res[1])])
+		else:
+			ticker.queue_free()
+			progress = {}
 		req.queue_free()
 	if ok:
 		_mounted[name] = true

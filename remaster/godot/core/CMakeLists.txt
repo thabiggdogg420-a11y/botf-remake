@@ -20,7 +20,10 @@ if(EMSCRIPTEN)
     string(APPEND CMAKE_CXX_FLAGS " -fwasm-exceptions")
     string(APPEND CMAKE_SHARED_LINKER_FLAGS " -fwasm-exceptions")
 endif()
-add_subdirectory(godot-cpp EXCLUDE_FROM_ALL)
+# godot-cpp source: core/godot-cpp (fetch-godot-cpp.sh) by default, or any checkout named by -DBOTF_GODOT_CPP_DIR=
+# (build-web.ps1 keeps one shared copy outside the worktrees, so every lane builds the wasm core on its own).
+set(BOTF_GODOT_CPP_DIR "${CMAKE_CURRENT_SOURCE_DIR}/godot-cpp" CACHE PATH "godot-cpp source tree")
+add_subdirectory(${BOTF_GODOT_CPP_DIR} godot-cpp EXCLUDE_FROM_ALL)
 
 set(REMASTER ${CMAKE_CURRENT_SOURCE_DIR}/../..)
 set(BOTF_CORE_DIR ${REMASTER}/game/Source/BotfSim)

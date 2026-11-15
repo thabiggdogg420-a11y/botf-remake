@@ -11,7 +11,12 @@ a 304 with no body when the file is unchanged. A return visit therefore download
 the browser accepts gzip, the sidecar is sent with Content-Encoding: gzip. Not under packs/: Godot's web HTTPRequest fails
 (result 8, request failed) on a content-encoded body saved with download_file, so packs go out as they are.
 
-  python serve_web.py [--dir remaster/godot/build/web] [--port 8060]
+Host simulation (F1): --host-sim serves like a plain static host under a sub-path, so the build can be proven before upload:
+no COOP/COEP headers (the build needs none), no .gz sidecars, no cache headers except what the host adds, gzip on the fly for
+wasm/js/json/html (what a host with "gzip on" does), everything under /botf/ (--mount) and a 404 outside it. --throttle-kbps N
+limits the send rate per connection (a coarse remote-player link; the browser-side CDP throttle is the primary tool).
+
+  python serve_web.py [--dir remaster/godot/build/web] [--port 8060] [--host-sim [--mount /botf/]]
 Prints the URL, then serves until Ctrl+C. web_capture.py starts it on a free port (--port 0) for the browser capture.
 """
 import argparse
@@ -69,6 +74,65 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             super().log_message(fmt, *args)
 
 
+class HostSimHandler(http.server.SimpleHTTPRequestHandler):
+    """A plain static host: sub-path mount, MIME types, on-the-fly gzip for text-like types, no isolation headers."""
+    extensions_map = Handler.extensions_map
+    mount = "/botf/"
+    throttle_kbps = 0
+    GZIP_TYPES = (".wasm", ".js", ".mjs", ".json", ".html", ".css", ".svg")
+
+    def translate_path(self, path):
+        path = path.split("?", 1)[0].split("#", 1)[0]
+        if not path.startswith(self.mount):
+            return os.path.join(self.directory, "__outside_mount__")
+        return super().translate_path("/" + path[len(self.mount):])
+
+    def send_head(self):
+        path = self.translate_path(self.path)
+        if not self.path.split("?")[0].startswith(self.mount):
+            self.send_error(404, "outside the mount")
+            return None
+        if os.path.isdir(path):
+            if not self.path.split("?")[0].endswith("/"):
+                self.send_response(301)
+                self.send_header("Location", self.path.split("?")[0] + "/")
+                self.end_headers()
+                return None
+            path = os.path.join(path, "index.html")
+        if not os.path.isfile(path):
+            self.send_error(404)
+            return None
+        ext = os.path.splitext(path)[1].lower()
+        data = open(path, "rb").read()
+        self.send_response(200)
+        self.send_header("Content-Type", self.guess_type(path))
+        if ext in self.GZIP_TYPES and "gzip" in self.headers.get("Accept-Encoding", ""):
+            import gzip
+            data = gzip.compress(data, 6)
+            self.send_header("Content-Encoding", "gzip")
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Last-Modified", self.date_time_string(int(os.stat(path).st_mtime)))
+        self.end_headers()
+        import io
+        return io.BytesIO(data)
+
+    def copyfile(self, source, outputfile):
+        if self.throttle_kbps <= 0:
+            return super().copyfile(source, outputfile)
+        import time
+        chunk = 16384
+        while True:
+            b = source.read(chunk)
+            if not b:
+                break
+            outputfile.write(b)
+            time.sleep(len(b) / (self.throttle_kbps * 1024.0))
+
+    def log_message(self, fmt, *args):
+        if os.environ.get("SERVE_QUIET") != "1":
+            super().log_message(fmt, *args)
+
+
 def main():
     here = os.path.dirname(os.path.abspath(__file__))
     default_dir = os.path.normpath(os.path.join(here, "..", "..", "godot", "build", "web"))
@@ -76,13 +140,22 @@ def main():
     ap.add_argument("--dir", default=default_dir)
     ap.add_argument("--port", type=int, default=8060, help="0 picks a free port")
     ap.add_argument("--bind", default="127.0.0.1", help="only 127.0.0.1 or localhost is accepted")
+    ap.add_argument("--host-sim", action="store_true", help="behave like a plain static host under --mount (see above)")
+    ap.add_argument("--mount", default="/botf/")
+    ap.add_argument("--throttle-kbps", type=int, default=0)
     a = ap.parse_args()
     if a.bind not in ("127.0.0.1", "localhost"):
         sys.exit("refused: this server binds to localhost only (the build is private and never published)")
     if not os.path.isfile(os.path.join(a.dir, "index.html")):
         sys.exit("no index.html in %s: export the Web preset first (verify.ps1 -Target web)" % a.dir)
-    server = http.server.ThreadingHTTPServer(("127.0.0.1", a.port), functools.partial(Handler, directory=a.dir))
-    print("serving %s at http://127.0.0.1:%d/ (localhost only, COOP/COEP on)" % (a.dir, server.server_address[1]), flush=True)
+    if a.host_sim:
+        HostSimHandler.mount = "/" + a.mount.strip("/") + "/"
+        HostSimHandler.throttle_kbps = a.throttle_kbps
+        server = http.server.ThreadingHTTPServer(("127.0.0.1", a.port), functools.partial(HostSimHandler, directory=a.dir))
+        print("serving %s at http://127.0.0.1:%d%s (localhost only, host simulation: no COOP/COEP)" % (a.dir, server.server_address[1], HostSimHandler.mount), flush=True)
+    else:
+        server = http.server.ThreadingHTTPServer(("127.0.0.1", a.port), functools.partial(Handler, directory=a.dir))
+        print("serving %s at http://127.0.0.1:%d/ (localhost only, COOP/COEP on)" % (a.dir, server.server_address[1]), flush=True)
     try:
         server.serve_forever()
     except KeyboardInterrupt:

@@ -30,6 +30,18 @@ func _initialize() -> void:
 		var sz := FileAccess.get_file_as_bytes(out).size()
 		total += sz
 		print("%s: %d files, %.1f MB" % [out.get_file(), n, sz / 1048576.0])
+	# The shared music (about 9 MB of ogg) is its own web pack, fetched after the title: the main pck stays small.
+	var music := str(args[0]).path_join("shared/music")
+	if DirAccess.dir_exists_absolute(music):
+		var mout: String = str(args[1]).path_join("audio_music_web.pck")
+		var mp := PCKPacker.new()
+		if mp.pck_start(mout) != OK:
+			printerr("cannot start ", mout)
+			quit(1)
+			return
+		var mn := _walk(mp, music, "res://scripts/audio/pack/shared/music")
+		mp.flush(false)
+		print("%s: %d files, %.1f MB" % [mout.get_file(), mn, FileAccess.get_file_as_bytes(mout).size() / 1048576.0])
 	quit(0)
 
 func _walk(pk: PCKPacker, dir: String, dest: String) -> int:

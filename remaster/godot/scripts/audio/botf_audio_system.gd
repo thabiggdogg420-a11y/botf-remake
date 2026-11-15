@@ -528,6 +528,16 @@ static func attach(app: Node) -> void:
 
 
 ## Web: after an empire's audio pck is mounted, reads its cue table (the library only loaded the packs present at boot).
+## Web: the shared music pack has just been mounted. A generated bed that is playing in its place switches to the real
+## tracks at once (set_music finds the files now; before the mount they did not exist, so the key resolved to a tone).
+static func music_pack_ready() -> void:
+	if instance == null or not instance.music_key.begins_with("tone:"):
+		return
+	var ctx: String = instance.music_context
+	instance.music_context = ""
+	instance.set_music(ctx)
+
+
 static func load_empire_pack(empire: String) -> bool:
 	return instance != null and instance.library != null and instance.library.load_pack(empire)
 
