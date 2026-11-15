@@ -562,6 +562,12 @@ func _build_stars(v: Dictionary, g: Vector2i) -> void:
 		if not keep.has(sid):
 			(systems3d[sid]["node"] as Node).queue_free()
 			systems3d.erase(sid)
+	if AppLoader.diag():
+		var unch := 0
+		for s in v.get("systems", []):
+			if not AppSession.is_charted(s):
+				unch += 1
+		print("DIAG galaxy stars=%d uncharted=%d grid=%dx%d" % [systems3d.size(), unch, g.x, g.y])
 
 ## Planets of one system: built on first approach, kept afterwards. Textured from L7 sets when present.
 func _build_planets(sid: int) -> void:

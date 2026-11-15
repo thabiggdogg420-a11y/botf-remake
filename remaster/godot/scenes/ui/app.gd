@@ -97,6 +97,9 @@ func _fetch_background() -> void:
 	web_packs_changed.emit("planets_web.pck")
 	if await AppLoader.fetch_web_pack(self, AppLoader.WEB_MUSIC):
 		BotfAudioSystem.music_pack_ready()
+	if await AppLoader.fetch_web_pack(self, AppLoader.WEB_SHIP_ICONS):
+		ShipIcons.reset()
+		web_packs_changed.emit(AppLoader.WEB_SHIP_ICONS)
 	web_packs_done = true
 	print("web packs: %.1f MB downloaded, %.1f MB from cache" % [AppLoader.bytes_downloaded / 1048576.0, AppLoader.bytes_cached / 1048576.0])
 	web_packs_changed.emit("")

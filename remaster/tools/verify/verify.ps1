@@ -211,7 +211,7 @@ $iconsPck = Join-Path $userPacks 'ship_icons_desktop.pck'
 $iconsOk = $false
 $iconsDetail = 'no LocalAssets\ship_icons: icon pack missing (run build_ship_icons.py --bake)'
 if ($localAssets -and (Test-Path -LiteralPath (Join-Path $localAssets 'ship_icons'))) {
-    $ip = Start-Process -FilePath $python -ArgumentList "`"$(Join-Path $remaster 'tools\build_ship_icons.py')`" --localassets `"$localAssets`" --out `"$iconsPck`" --godot `"$godot`" --proj `"$proj`"" `
+    $ip = Start-Process -FilePath $python -ArgumentList "`"$(Join-Path $remaster 'tools\build_ship_icons.py')`" --localassets `"$localAssets`" --out `"$iconsPck`" --web-out `"$(Join-Path $webStage 'ship_icons_web.pck')`" --godot `"$godot`" --proj `"$proj`"" `
         -PassThru -WindowStyle Hidden -RedirectStandardOutput (Join-Path $logs 'pack-ship-icons.log') -RedirectStandardError (Join-Path $logs 'pack-ship-icons.err')
     $null = $ip.Handle
     try { $ip.PriorityClass = [System.Diagnostics.ProcessPriorityClass]::BelowNormal } catch {}

@@ -135,12 +135,24 @@ const WEB_PLANETS_HI := "planets_hi_web.pck"
 ## The shared music beds (about 9 MB of ogg). Not in the main pck: the first playable load is the engine and the game alone, and
 ## the title plays a generated bed until this arrives (BotfAudioSystem.music_pack_ready swaps to the real tracks).
 const WEB_MUSIC := "audio_music_web.pck"
+## The baked menu ship pictures (about 12 MB of PNG), fetched after the title; ShipIcons finds them once mounted.
+const WEB_SHIP_ICONS := "ship_icons_web.pck"
 
 static var _web_manifest: Variant = null
 static var _mounted := {}   ## logical name -> true once mounted this session
 ## Bytes fetched over the network and served from the IndexedDB cache this session (web only; for the verify report).
 static var bytes_downloaded := 0
 static var bytes_cached := 0
+
+## Diagnostics switch: BOTF_DIAG in the environment, or ?diag in the page address (web). Prints "DIAG ..." lines, nothing else changes.
+static var _diag := -1
+static func diag() -> bool:
+	if _diag < 0:
+		var on := OS.get_environment("BOTF_DIAG") != ""
+		if not on and OS.has_feature("web"):
+			on = str(JavaScriptBridge.eval("location.search")).contains("diag")
+		_diag = 1 if on else 0
+	return _diag == 1
 
 ## Progress of the pack being fetched right now (web): {"name", "bytes", "total"}; empty when idle. The loading overlay reads it.
 static var progress := {}
