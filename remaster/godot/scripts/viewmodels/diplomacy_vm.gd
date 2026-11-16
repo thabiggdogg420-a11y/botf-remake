@@ -13,6 +13,9 @@ const TREATY_EFFECTS := {
 	"Membership": "The minor joins your empire as a member world.",
 }
 
+## Major powers that can be hailed without a diplomacy row (the lineup may not include them): the card shows the race name, never "Unknown".
+const MAJOR_NAMES := {1: "Federation", 2: "Klingon Empire", 3: "Romulan Star Empire", 4: "Cardassian Union", 5: "Ferengi Alliance", 6: "Dominion", 7: "Borg Collective", 8: "Breen Confederacy"}
+
 ## Calls to arms the player refuses, by "defender:aggressor:turn"; kept for the session (static, as before).
 static var refused_calls := {}
 
@@ -194,7 +197,7 @@ func dossier() -> Dictionary:
 	var match_party := func(p: Dictionary) -> bool: return int(p["id"]) == tid and bool(p.get("minor", false)) == is_minor
 	return {
 		"is_minor": is_minor, "id": tid, "rel": rel, "minor": minor,
-		"name": rel.get("name", minor.get("name", "Unknown")),
+		"name": rel.get("name", minor.get("name", MAJOR_NAMES.get(tid, "Unknown") if not is_minor else "Unknown")),
 		"treaties": d["treaties"].filter(func(t): return match_party.call(t["counterparty"])),
 		"ended": d["treatyHistory"].filter(func(t): return match_party.call(t["counterparty"])),
 		"events": d["events"].filter(func(e): return match_party.call(e["a"]) or match_party.call(e["b"])),

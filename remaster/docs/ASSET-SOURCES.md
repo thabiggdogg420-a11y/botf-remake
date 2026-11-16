@@ -83,7 +83,7 @@ Every roster and legacy key has an entry, even with no candidate, so coverage is
 
 ## AI image models and reference inputs (race portraits, 16 Nov 2026)
 
-Local generation only, on the owner's RTX 4090 through ComfyUI (a locally installed backend). No online service, no account, no payment. One character per race, described by costume and makeup, never by an actor's name or face. No show screenshots were downloaded; the only image inputs are the game's own original stills (below). See PORTRAIT-LOOKTEST.md.
+Rounds 1-2: local generation only, on the owner's RTX 4090 through ComfyUI (a locally installed backend). No online service, no account, no payment. One character per race, described by costume and makeup, never by an actor's name or face. No show screenshots were downloaded; the only image inputs are the game's own original stills (below). See PORTRAIT-LOOKTEST.md.
 
 | Model or input | Where | File | Licence | Use here |
 |---|---|---|---|---|
@@ -93,6 +93,8 @@ Local generation only, on the owner's RTX 4090 through ComfyUI (a locally instal
 | Qwen2.5-VL 7B text encoder, fp8 scaled | [Comfy-Org/Qwen-Image_ComfyUI](https://huggingface.co/Comfy-Org/Qwen-Image_ComfyUI) | `qwen_2.5_vl_7b_fp8_scaled.safetensors` | Apache-2.0 (Qwen2.5-VL 7B) | prompt encoder |
 | Qwen-Image VAE | [Comfy-Org/Qwen-Image_ComfyUI](https://huggingface.co/Comfy-Org/Qwen-Image_ComfyUI) | `qwen_image_vae.safetensors` | Apache-2.0 (model card) | encoder and decoder |
 | Original BOTF race stills | `stbof.res` from the archive.org copy, extracted by `tools/art/extract_portraits.py` to `LocalAssets/portraits/` (160x170) | `portrait.minor.*.png` | the user's own game copy, private (clear-personal) | reference image for the 25 typical-member minor portraits; the results are derivatives and stay in `LocalAssets/portraits-remaster/`, never committed |
+
+**Round 3 (16 Nov 2026): the eight major-power portraits (Picard, Gowron, Sela, Gul Dukat, Grand Nagus Zek, Weyoun, the Borg Queen, a Breen soldier) are named-character stylised photos. Source: OpenAI image generation via Codex CLI, 16 Nov 2026** (files in `Documents/ChatGPT/portrait-codex/`, shared grade by `tools/art/portrait_post.py`). Not Qwen. The Qwen rows above describe rounds 1 and 2 (minor races still use round 2). No reference stills were used in the shipped images; reference stills fetched from Memory Alpha/Wikipedia pages for an abandoned local-edit route are kept private in `portrait-v3/ref/` and are not shipped.
 
 A model licence covers the model's use. Star Trek species, characters, uniforms and insignia remain Paramount's; the portraits are private, never distributed, like the rest of this game (the hosted browser build is the owner's recorded exception).
 
