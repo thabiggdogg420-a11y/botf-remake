@@ -11,7 +11,23 @@ var live := true      ## a slow scan line sweep (hail scenes); off under reduced
 var _tex: Texture2D
 var _t := 0.0
 
-const MAJOR_KEYS := {1: "portrait.fed", 2: "portrait.kli", 3: "portrait.rom", 4: "portrait.car", 5: "portrait.fer"}
+const MAJOR_KEYS := {1: "portrait.fed", 2: "portrait.kli", 3: "portrait.rom", 4: "portrait.car", 5: "portrait.fer", 6: "portrait.dom", 7: "portrait.borg", 8: "portrait.breen"}
+## Where the crop sits when the picture is taller than the slot: 0 = top edge, 1 = bottom edge. The portraits keep the face in the
+## upper middle of the frame, so the window is nudged a little above centre and the face clears the caption bar.
+const FOCUS_Y := 0.20
+const CAPTION_H := 26.0
+## Capture tools only: the old stretch-to-slot drawing, for before/after shots.
+static var stretch_legacy := false
+
+## The part of a `tex` of size `ts` that covers a slot of size `ds` with no stretching: {src, dst-aspect crop}.
+static func cover_src(ts: Vector2, ds: Vector2, focus_y: float = FOCUS_Y) -> Rect2:
+	var ta := ts.x / ts.y
+	var da := ds.x / ds.y
+	if ta > da:
+		var w := ts.y * da
+		return Rect2((ts.x - w) * 0.5, 0.0, w, ts.y)
+	var h := ts.x / da
+	return Rect2(0.0, (ts.y - h) * focus_y, ts.x, h)
 
 static func make(empire_: int, px: Vector2, key_: String = "", caption_: String = "") -> PortraitSlot:
 	var p := PortraitSlot.new()
@@ -47,7 +63,11 @@ func _draw() -> void:
 	bg.anti_aliasing = true
 	draw_style_box(bg, r)
 	if _tex:
-		draw_texture_rect(_tex, r.grow(-2), false)
+		var inner := r.grow(-2)
+		if stretch_legacy:
+			draw_texture_rect(_tex, inner, false)
+		else:
+			draw_texture_rect_region(_tex, inner, cover_src(_tex.get_size(), inner.size))
 	else:
 		# radial glow behind the emblem
 		var c := size / 2.0

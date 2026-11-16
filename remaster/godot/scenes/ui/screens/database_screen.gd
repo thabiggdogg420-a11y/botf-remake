@@ -162,7 +162,9 @@ func _show_detail(r: Dictionary) -> void:
 		_:
 			var col := Lcars.vbox(10)
 			if RACE_TO_EMPIRE.has(id):
-				col.add_child(PortraitSlot.make(RACE_TO_EMPIRE[id], Vector2(420, 236), "", str(r.get("title", ""))))
+				var rps := PortraitSlot.make(RACE_TO_EMPIRE[id], Vector2(400, 300), "", str(r.get("title", "")))
+				rps.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN   # keep the 4:3 slot; the column would stretch it across the panel
+				col.add_child(rps)
 			col.add_child(Lcars.para("One of the five major powers of the quadrant." if id <= 4 else "A minor race that can be befriended, courted for membership, or absorbed into an empire."))
 			var n := vm.ships_of_race(id)
 			col.add_child(Lcars.label("%d ship designs in the reference catalogue." % n, "Muted"))
@@ -266,7 +268,9 @@ func _minor_entry(id: int) -> Control:
 	var r := vm.entry("minorRaces", id, "raceId")
 	var col := Lcars.vbox(10)
 	col.name = "MinorEntry"
-	col.add_child(PortraitSlot.make(0, Vector2(420, 236), PortraitSlot.minor_key(str(r["raceName"])), str(r["raceName"])))
+	var mps := PortraitSlot.make(0, Vector2(400, 300), PortraitSlot.minor_key(str(r["raceName"])), str(r["raceName"]))
+	mps.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	col.add_child(mps)
 	col.add_child(Lcars.label(str(r["raceName"]).to_upper(), "Heading", 30))
 	col.add_child(Lcars.caption("Homeworld %s · %s" % [r["homeworld"], r["temperament"]]))
 	col.add_child(Lcars.para(str(r["description"]), Lcars.TEXT2, 15))

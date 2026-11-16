@@ -34,3 +34,14 @@ Full-size captures (all screens, crops): `Documents\ChatGPT\portrait-looktest-ca
 
 ## Pick
 See the report: photo style. Open items before any build-out: exact-uniform pass (fix with a LoRA or img2img on a reference), Klingon and Federation variety, the 35-portrait set, 3 other majors, a cover-fit PortraitSlot.
+
+## Round 2 (16 Nov 2026, Simon: "stylised photos of real characters, the most prominent per race")
+Round 1 (text-to-image only) is superseded: the model does not know the show characters, so identity must come from a reference image.
+- **Method.** Federation, Dominion, Borg, Breen have no original BOTF still (the Federation still is an unnamed officer): text-to-image, described by costume and makeup.
+  Klingon, Romulan, Cardassian, Ferengi: Qwen-Image-Edit-2511 with the game's own original still as the reference image (face, ridges, ears and hair stay), dressed as the leader
+  (`tools/art/portrait_jobs.py`, `portrait_gen.py`), then one shared grade (`portrait_post.py`). Minor races: the same edit from each race's still (`LocalAssets/portraits-remaster/`, private, uncommitted).
+- **Not done, on purpose.** No actor photos or show screenshots were downloaded as reference. Doing that would copy a real person's likeness; the game's own stills are already in the game.
+  Characters are therefore the BOTF stills dressed as the named leader (Gowron, Sela, Dukat, Zek), not their show faces. Weyoun, the Queen and the Breen are described, not matched.
+- **Starfleet delta.** No non-Federation portrait may carry it; the negative prompt and "no badges" lines enforce it, and each pick was checked by eye.
+- **PortraitSlot** now crops to cover (`cover_src`, `FOCUS_Y` 0.20), and the Database (400x300) and hail (300x225) slots are 4:3 so the caption bar stays off the face. Tests: `scenes/ui/tests/test_portrait_slot.gd`.
+- Eight powers now have portraits (`portrait.dom|borg|breen` added to `MAJOR_KEYS`).

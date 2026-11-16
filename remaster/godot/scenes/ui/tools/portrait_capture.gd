@@ -1,6 +1,6 @@
 extends SceneTree
 ## Portrait look-test capture (real GPU): the race portraits as they appear in the real screens.
-##   godot --path remaster/godot --audio-driver Dummy --resolution 1920x1080 -s res://scenes/ui/tools/portrait_capture.gd -- <out_dir> <tag> [<variant_dir>]
+##   godot --path remaster/godot --audio-driver Dummy --resolution 1920x1080 -s res://scenes/ui/tools/portrait_capture.gd -- <out_dir> <tag> [<variant_dir> [majors|minors|all [legacy]]]
 ## Writes <out_dir>/<tag>-<screen>-<race>.png (full 1920x1080) and <tag>-<screen>-<race>-crop.png (the portrait slot, 2x),
 ## for the Federation (1), Klingon (2) and Cardassian (4):
 ##   new   the race-select card (76x62) with that power picked
@@ -21,9 +21,12 @@ func _initialize() -> void:
 	var a := Array(OS.get_cmdline_user_args())
 	out_dir = a[0]
 	tag = a[1]
+	if a.size() > 3:
+		a_what = a[3]
+	PortraitSlot.stretch_legacy = a.size() > 4 and a[4] == "legacy"
 	## a[2] (optional): a folder of <key>.png variants. They go straight into AppLoader's art cache, which wins over the
 	## portraits in the shared user://packs/art_desktop.pck (that pack must stay untouched: other lanes use it).
-	if a.size() > 2:
+	if a.size() > 2 and DirAccess.dir_exists_absolute(a[2]):
 		for f in DirAccess.get_files_at(a[2]):
 			if f.ends_with(".png"):
 				var img := Image.load_from_file(a[2].path_join(f))
@@ -64,7 +67,19 @@ func _campaign(player: int) -> void:
 
 func _run() -> void:
 	await _wait(6)
-	for id in [1, 2, 4]:
+	var what := "majors" if a_what == "" else a_what
+	if what != "minors":
+		await _majors()
+	if what != "majors":
+		await _minors()
+	quit(0)
+
+var a_what := ""
+
+## Majors 1..8 (Federation, Klingon, Romulan, Cardassian, Ferengi, Dominion, Borg, Breen): race card, hail panel, Database entry, Empire banner.
+func _majors() -> void:
+	var race_of := {1: 1, 2: 3, 3: 4, 4: 0, 5: 2, 6: 35, 7: 36, 8: 37}
+	for id in range(1, 9):
 		app.view = {}
 		app.goto("new")
 		await _wait(6)
@@ -76,28 +91,22 @@ func _run() -> void:
 			if (n as PortraitSlot).empire == id:
 				ps = n
 		await _save("new-%d" % id, ps)
-	for id in [1, 2, 4]:
-		var race: int = {1: 1, 2: 3, 4: 0}[id]
+	for id in range(1, 9):
 		app.goto("database")
 		await _wait(6)
 		var ds = app.current_screen()
 		ds.tab = "races"
-		ds.selected = race
+		ds.selected = race_of[id]
 		ds.refresh()
 		await _wait(6)
 		await _save("db-%d" % id, _slot(ds))
-	# Player = Federation: hail the Klingons and Cardassians, and the Empire banner. Player = Klingon: hail the Federation.
-	for pair in [[1, [2, 4]], [2, [1]]]:
+	# Player = Federation: hail 2..8 and the Empire banner. Player = Klingon: hail the Federation and the banner.
+	for pair in [[1, [2, 3, 4, 5, 6, 7, 8]], [2, [1]]]:
 		_campaign(pair[0])
 		await _wait(6)
-		if pair[0] == 1:
-			app.goto("empire")
-			await _wait(8)
-			await _save("empire-1", _slot(app.current_screen()))
-		else:
-			app.goto("empire")
-			await _wait(8)
-			await _save("empire-2", _slot(app.current_screen()))
+		app.goto("empire")
+		await _wait(8)
+		await _save("empire-%d" % pair[0], _slot(app.current_screen()))
 		for t in pair[1]:
 			app.goto("diplomacy")
 			await _wait(6)
@@ -106,4 +115,18 @@ func _run() -> void:
 			d.refresh()
 			await _wait(8)
 			await _save("hail-%d" % t, _slot(d))
-	quit(0)
+
+## Every minor race in Database > Minor races (the 420x236 slot).
+func _minors() -> void:
+	app.goto("database")
+	await _wait(6)
+	var ds = app.current_screen()
+	ds.tab = "minors"
+	ds.refresh()
+	await _wait(6)
+	var rows: Array = ds.vm.rows()
+	for r in rows:
+		ds.selected = int(r["id"])
+		ds.refresh()
+		await _wait(5)
+		await _save("minor-%s" % str(r["title"]).to_lower().replace(" ", "").replace("'", "").replace("-", ""), _slot(ds))
