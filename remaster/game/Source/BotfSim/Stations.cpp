@@ -583,7 +583,10 @@ void planRivalStations(GameState& next) {
         int have = stationsOwnedOrBuilding(next, owner);
         std::set<int> claimed;
         int idleTransports = 0;
-        if ((!war || starbases) && have < desired && totalStationsAndBuilds(next) < StationLimit) {
+        // Rivalry update (16 Nov 2026): on the modern engines nearly every rival is at war from turn 30, so a war no longer stops a rival
+        // from raising its first outpost (it would otherwise never fortify, nor reach the starbase upgrade). Further ones wait for peace.
+        const bool fortifyAtWar = starbases || (have == 0 && next.campaignExpansionEnabled && next.modernEnginesActive);
+        if ((!war || fortifyAtWar) && have < desired && totalStationsAndBuilds(next) < StationLimit) {
             for (auto& f : next.fleets) {
                 if (have >= desired) break;
                 if (f.ownerId != owner || f.shipClass != Building::Transport || f.buildingOutpost || f.hull <= 0 ||

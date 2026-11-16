@@ -1285,11 +1285,13 @@ int main() {
         run("aggressive rival declares war only after contact and threshold", [] {
             // Lane B: war is personality/situation driven (trust, strength, cool-downs), not
             // unconditional. A distrustful Klingon neighbour escalates once the early peace ends.
+            // Rivalry update (16 Nov 2026): early peace runs to turn 30 and each personality adds its patience (Klingon: only the pair's seeded 0..8).
             auto s = botf::generateCampaign(1999); s.turn = 24;
             s.majorRelations[0].contact = true;
             s.majorRelations[0].trust = 20;
-            botf::advance(s);
-            check(s.majorRelations[0].atWar, "Klingon rival did not escalate after contact");
+            for (int i = 0; i < 5; ++i) { botf::advance(s); check(!s.majorRelations[0].atWar, "Klingon rival declared war inside the early peace"); }
+            for (int i = 0; i < 12 && !s.majorRelations[0].atWar; ++i) botf::advance(s);
+            check(s.majorRelations[0].atWar && s.turn >= 30 && s.turn <= 42, "Klingon rival did not escalate after contact");
             auto cooled = botf::generateCampaign(1999); cooled.turn = 40;
             cooled.majorRelations[0].contact = true; cooled.majorRelations[0].trust = 20;
             cooled.majorRelations[0].warStartTurn = 35; // Peace signed five turns ago
@@ -2349,7 +2351,7 @@ int main() {
             // Without the treaty the same situation escalates, and the engine records the war.
             s2.diplomacyEngineState.activeTreaties.clear();
             s2.majorRelations[0].tradeTreaty = false;
-            s2.turn = 30; s2.diplomacyEngineState.currentTurn = 30;
+            s2.turn = 45; s2.diplomacyEngineState.currentTurn = 45;
             botf::advance(s2);
             check(s2.majorRelations[0].atWar, "AI declared war once no treaty bound it");
             check(botf::activeTreaties(s2, 2).empty(), "AI war declaration left treaties active");

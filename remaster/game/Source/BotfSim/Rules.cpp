@@ -374,6 +374,7 @@ void carryOver(GameState& next, GameState& moving, const TurnEffects& effects, T
 }
 
 void finishTurn(const GameState& before, GameState& next, TurnReport& report) {
+    resolveMegaprojectLosses(next, report); // A colony can fall or secede after carryOver ran (more wars since the rivalry update): its megaproject goes with it.
     if (next.rules.stations) completeStationUpgrades(next, report);
     if (next.rules.galaxyFeatures) {
         expireFeatures(next, report);

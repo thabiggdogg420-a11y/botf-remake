@@ -105,11 +105,13 @@ otherwise rejects it.
 neighbour. An AI opens at most one new front per turn, and does so only if `aiAggressionEnabled`
 is set. A candidate is ruled out in any of these cases:
 
-- The turn is before 25 (early-game peace).
+- The turn is before 30 plus the personality's patience (Klingon, Dominion, Borg 0; Cardassian 5; Romulan 12; Ferengi 20; each
+  plus a seeded 0..8 per pair). Early-game peace is turn 30 (rivalry update, 16 Nov 2026; it was 25).
 - Fewer than 20 turns have passed since the last war/peace transition between the pair (the
   cool-down). The transition turn is `warStartTurn`, which now also records the turn peace was
   signed, or the engine's `lastWarTurn`/`lastPeaceTurn`.
-- The AI is already fighting its maximum number of wars.
+- The AI is already fighting its maximum number of wars (Klingon 3, Romulan 2, Cardassian 2, Dominion 3, Borg 3, others 1; one
+  extra front against the human is always open), or the human already faces its quota of AI wars: 1, 2 from turn 40, 3 from turn 80.
 - A non-aggression pact or stronger, or a timed Peace treaty, is in force. The exception is a
   treacherous personality that is overwhelmingly stronger and distrustful (see §1).
 - The personality's aggression is 0 (the Federation). It only declares war with at least 10
@@ -120,7 +122,8 @@ Otherwise the AI computes this score:
 ```
 score = aggression + (50 - trust) + 6*min(grievances, 10) + min(15, 5*targetBetrayals)
       + (ratio >= 100% ? min(30, (ratio-100)/5) : -min(40, (100-ratio)/2))
-      + (aggression >= 20 ? min(15, (turn-25)/5) : 0)      // restlessness
+      + (aggression >= 20 ? min(30, turn-25) : 0)          // restlessness (was min(15, (turn-25)/5))
+      + rivalry pressure (0..50, section 3.5)
       - (trade pact ? 10 (Ferengi 20) : 0) ± 5
 ```
 
@@ -163,6 +166,40 @@ betrayal. It has these effects:
 - **Weariness.** After 10 turns of war, trust below 30 recovers by +1 every 2 turns.
 - **Legacy peace.** Legacy peace offers still use the legacy acceptance rule. In modern campaigns
   they also create a 25-turn Peace treaty through the engine. That treaty binds honourable AIs.
+
+### 3.5 Rivalry (16 Nov 2026, playtest "no war")
+
+A friend played 40 minutes of the browser build and met only non-aggression pacts. Cause: an AI signed a pact the moment its
+desire passed the threshold, a pact binds every honourable personality, and the war score had no reason to rise (no friction, a
+slow restlessness ramp, AIs that kept one or two ships). The rivalry layer applies to modern campaigns only.
+
+- **Rivalry pressure** (`rivalryBreakdown`, 0..50, from the AI's point of view), each part weighted by personality
+  (`rivalryProfileFor`: territorial / expansionist / opportunist / profit):
+  - friction: 4 per pair of its colony and the other's colony within 5 sectors (max 20), 3 per foreign ship within 3 sectors of
+    its colonies (max 9);
+  - expansion: 3 per colony the other holds beyond its own (max 12);
+  - opportunity: +12 if the other's fleet is under half its own, +8 if the other is at war with a third power;
+  - profit: +10 if the other holds 300+ more credits and has no trade pact with it.
+  Weights (%): Klingon 100/80/40/0, Romulan 80/80/100/0, Cardassian 100/150/40/0, Ferengi 40/40/0/100, Dominion 100/100/60/0,
+  Borg 100/100/0/0, Federation none.
+- **Pacts are vetoed by the war score.** The treaty planner and the proposal evaluator read the same `hostilityScore` the war
+  assessment uses. At or above the personality's pact ceiling (Federation 100, Ferengi 55, Romulan 45, Klingon and Cardassian 40,
+  Dominion 35, Borg 20) the AI offers no non-aggression pact, friendship, affiliation or alliance and refuses the player's
+  (penalty = score above the ceiling + 15). Trade pacts are not vetoed. A weak AI or one that trusts the player still signs, so
+  pacts remain possible, just not with everyone. The Ferengi sign a non-aggression pact only after ten turns of trade.
+- **Relations sour.** Every second turn (fourth inside a plain non-aggression pact) an AI with pressure of 10 or more loses 1 trust
+  with that neighbour (2 at 25 or more), to a floor of 10; every tenth turn at 25 or more it adds a grievance, and the player is
+  told why ("... is uneasy about your ships and colonies on its border. Relations are cooling."). Affiliation and alliance are spared.
+- **Standing fleets.** Klingon, Dominion and Borg keep min(5, 2 + turn/25) destroyers in peacetime, Cardassian min(4, 1 + turn/30),
+  Romulan min(3, 1 + turn/40), others 1; at war an AI keeps 3. These now rank ahead of its upgrade ladder in the build order.
+- **Personalities.** Dominion aggression 45 (was 35) and Borg 40 (was 5): hostile by default. Klingon is ready from turn 30, the
+  Ferengi are mercenaries (friendly while the trade is good, war only against a weak, rich neighbour).
+- **Wars no longer starve the rival.** With nearly every AI at war from turn 30, two things that used to need peace now run at war on the
+  modern engines: outposts (a war used to stop them, so no rival ever fortified) and construction research (15% of a war budget, so
+  starbases can still be commissioned). The standing fleet applies in peacetime only; the old build order stands at war.
+- **Restlessness** is scaled by relative power: full at 60% of the target's fleet, half from 40%, none below, and halved again above trust 50 (none above 70), so a hopelessly
+  outmatched AI still sits still.
+- Proof: `tests/scenarios/AiWarFoodTests.cpp`, first war on a player who accepts every pact, 10 seeds per shipped preset.
 
 ## 4. Treaty consequences (modern campaigns)
 

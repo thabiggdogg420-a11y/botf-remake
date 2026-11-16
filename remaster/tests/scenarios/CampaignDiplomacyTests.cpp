@@ -149,7 +149,7 @@ int main() {
             auto s = botf::generateReferenceCampaign(41);
             s.eventsEnabled = false;
             meetEveryone(s);
-            jumpToTurn(s, 30);
+            jumpToTurn(s, 45); // Early peace runs to turn 30, plus the Klingons' seeded 0..8 turns of patience (16 Nov 2026 rivalry update)
             relation(s, 1, 2).trust = 10;
             auto report = botf::advance(s);
             check(relation(s, 1, 2).atWar, "A distrustful Klingon neighbour declares war");

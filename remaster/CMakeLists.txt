@@ -103,5 +103,7 @@ set_tests_properties(BotfDominionTests PROPERTIES TIMEOUT 900)
 botf_suite(BotfEraTests EraTests.cpp)
 set_tests_properties(BotfEraTests PROPERTIES TIMEOUT 1800)
 # Scenarios and extras (docs/design/SCENARIOS.md, schema 25): scenario format, secession, flagships, vendetta, 50-turn soaks.
+botf_suite(BotfAiWarFoodTests AiWarFoodTests.cpp) # PLAYTEST-FEEDBACK 16 Nov 2026: AI rivalry (first war by turn 60 per preset and seed) and the early food trap (industry floor)
+set_tests_properties(BotfAiWarFoodTests PROPERTIES TIMEOUT 1800)
 botf_suite(BotfScenarioTests ScenarioTests.cpp)
 set_tests_properties(BotfScenarioTests PROPERTIES TIMEOUT 1800)
