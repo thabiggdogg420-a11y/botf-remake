@@ -73,7 +73,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("web")
     ap.add_argument("--first-budget-mb", type=float, default=25)
-    ap.add_argument("--total-budget-mb", type=float, default=400)
+    ap.add_argument("--total-budget-mb", type=float, default=0, help="0 = no total budget (Simon, 16 Nov 2026: quality first)")
     a = ap.parse_args()
     packs = os.path.join(a.web, "packs")
     os.makedirs(packs, exist_ok=True)
@@ -133,8 +133,8 @@ def main():
     for f, r, t, b in rows:
         print("  %-48s %8.1f MB  gzip %8.1f MB  brotli %8.1f MB" % (f, r / mb, t / mb, b / mb))
     print("first playable load: %.1f MB raw, %.1f MB gzip, %.1f MB brotli (budget %.0f MB)" % (first_raw / mb, first_tx / mb, first_br / mb, a.first_budget_mb))
-    print("total with every pack: %.1f MB raw, %.1f MB transferred (budget %.0f MB)" % ((first_raw + pack_raw) / mb, (first_tx + pack_tx) / mb, a.total_budget_mb))
-    ok = first_tx / mb <= a.first_budget_mb and (first_tx + pack_tx) / mb <= a.total_budget_mb
+    print("total with every pack: %.1f MB raw, %.1f MB transferred (%s)" % ((first_raw + pack_raw) / mb, (first_tx + pack_tx) / mb, ("budget %.0f MB" % a.total_budget_mb) if a.total_budget_mb > 0 else "no total budget"))
+    ok = first_tx / mb <= a.first_budget_mb and (a.total_budget_mb <= 0 or (first_tx + pack_tx) / mb <= a.total_budget_mb)
     sys.exit(0 if ok else 1)
 
 

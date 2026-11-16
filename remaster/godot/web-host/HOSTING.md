@@ -51,18 +51,22 @@ plus the game's own `index.pck`. The wasm files compress to a quarter of their s
 - `.htaccess`, `nginx.conf.example`, this file: host notes, not needed by the game.
 
 ## Download sizes (measured at release; see `sizes.json`)
-Measured on the 16 Nov 2026 build (0.1.394), served gzip-compressed (brotli is about 20% smaller again):
+There is no total-download budget (Simon, 16 Nov 2026: quality first). Measured on the 16 Nov 2026 build, served gzip-compressed:
 
-| What | Raw | Transferred (gzip) |
+| What | Raw | Transferred |
 |---|---|---|
-| First playable load (engine, core, main pack, title) | 57.6 MB | 17.7 MB (13.7 MB brotli) |
-| In a new campaign's galaxy (cumulative, includes the first load) | n/a | 68 MB (measured through a gzip-on-the-fly host) |
-| Every pack in the game (what "Preload whole game" downloads) | 382.8 MB | 342.9 MB |
+| First playable load (engine, core, main pack, title) | 57.6 MB | 17.7 MB gzip (13.7 MB brotli) |
+| Starting a campaign (planets, portraits, the chosen empire's audio, hulls on demand) | n/a | about 86 MB cumulative |
+| Every pack in the game (what "Preload whole game" downloads; the button shows 762 MB) | 819 MB | 779 MB |
+
+Ship textures are 2048 px (normal maps too, JPEG q90/92), the planets 2048 px WebP. A battle holds about 3 GB of textures in graphics
+memory on an RTX 4090 (the earlier 1024 px build held 0.85 GB); a small integrated GPU may struggle. Lower it by rebuilding with
+`build_ship_packs.py --web-max 1024 --normal-max 1024`.
 
 The default path is lazy: a player downloads the first load, then only the packs a game needs (a hull is fetched the first time a
-battle needs it, about 1-3 MB each). Packs are kept in the browser's storage (IndexedDB), so a second visit downloads nothing that is
+battle needs it, about 2-6 MB each). Packs are kept in the browser's storage (IndexedDB), so a second visit downloads nothing that is
 already there. "Preload whole game" (title screen and Settings) fetches the rest in one go; the page shows the exact size first.
-Cold first load under a 20 Mbps, 40 ms browser throttle: the game core is running after about 12 s.
+Cold first load under a 10 Mbps, 60 ms browser throttle: the game core is running after about 20 s, a campaign galaxy about 40 s after launch.
 
 Not tested here: the shipped `.htaccess` (Apache) and `nginx.conf.example`. The game downloads packs with the browser's `fetch()`, so
 a host or CDN that compresses on the fly is fine; do not add rules that rewrite or redirect `/packs/`.
