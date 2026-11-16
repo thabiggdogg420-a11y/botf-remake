@@ -2,9 +2,9 @@
 
 For Simon to listen to. Sources: `docs/AUDIO-LISTEN-SHEET.md` (auto-check column has every row). Method: whisper large-v3 transcript against the line in the sheet, plus signal checks. It cannot hear music under an effect, so a `pass` on an effect row means no words, not silent, not cut, nothing more.
 
-Totals for the 245 untested rows: 182 pass, 48 doubtful, 15 fail.
+Totals for the 245 untested rows: 186 pass, 44 doubtful, 15 fail (4 TOS ack clips trimmed and re-heard as pass on 17 Nov).
 
-13 of the 15 fails are in no cue, so they cost nothing today; the 2 wired ones are the two TOS "Yes, sir." clips (one audio file, used by the Federation and Klingon ack cues).
+13 of the 15 fails are in no cue, so they cost nothing today; the 2 wired ones were the two TOS "in a moment" clips, now dropped from the cues.
 
 ## Fail (listen first, probably remove or re-cut)
 
@@ -21,8 +21,8 @@ Totals for the 245 untested rows: 182 pass, 48 doubtful, 15 fail.
 - `tng/impact/impact_s05e01_2320.wav` dialogue over the effect: 'defeat how where are the Romulans'. Cue: not in any cue.
 - `tng/launch/launch_s03e26_4190.wav` dialogue over the effect: 'Worf, Klingon species.'; starts mid-sound (first 100 ms already loud): start clipped. Cue: not in any cue.
 - `tng/launch/launch_s03e26_4223.wav` dialogue over the effect: 'primitive arti-'. Cue: not in any cue.
-- `tos/voice/fed_ack_s01e14_2226.wav` says "Yes, sir."; wrong words: heard 'in a moment.' (padded 'In a moment', prompted 'In a moment, yes'). Cue: vo.combat.ack.fed.tos.
-- `tos/voice/kli_ack_s01e14_2226.wav` says "Yes, sir."; wrong words: heard 'in a moment.' (padded 'In a moment', prompted 'In a moment, yes'). Cue: vo.combat.ack.kli.tos.
+- `tos/voice/fed_ack_s01e14_2226.wav` says "Yes, sir."; wrong words: heard 'in a moment.' (padded 'In a moment', prompted 'In a moment, yes'). Cue: vo.combat.ack.fed.tos. Dropped from the cue 17 Nov 2026.
+- `tos/voice/kli_ack_s01e14_2226.wav` says "Yes, sir."; wrong words: heard 'in a moment.' (padded 'In a moment', prompted 'In a moment, yes'). Cue: vo.combat.ack.kli.tos. Dropped from the cue 17 Nov 2026.
 
 ## Doubtful voice lines
 
@@ -36,8 +36,6 @@ Totals for the 245 untested rows: 182 pass, 48 doubtful, 15 fail.
 - `tng/voice/fed_fire_s02e16_2261.wav` says "Fire."; heard 'Bye.' (padded 'Bye.'); matches the line only when whisper is told what to expect. Cue: vo.combat.phaser.fed.tng.
 - `tng/voice/kli_fire_s02e16_1605.wav` says "Fire."; heard 'Bye.' (padded 'Forty-five.'); matches the line only when whisper is told what to expect; first 20 ms at full level: start may be clipped. Cue: vo.combat.phaser.kli.tng.
 - `tng/voice/kli_fire_s02e16_2261.wav` says "Fire."; heard 'Bye.' (padded 'Bye.'); matches the line only when whisper is told what to expect. Cue: vo.combat.phaser.kli.tng.
-- `tos/voice/fed_ack_s01e08_1618.wav` says "Acknowledged."; extra words 'stand by' around the line (heard 'Stand by. Acknowledged.'): other voice or a name. Cue: vo.combat.ack.fed.tos.
-- `tos/voice/fed_ack_s01e19_1848.wav` says "Yes, sir."; extra words 'case' around the line (heard 'case. Yes, sir.'): other voice or a name. Cue: vo.combat.ack.fed.tos.
 - `tos/voice/fed_all_stop_s01e16_1470.wav` says "Cease fire."; first 20 ms at full level: start may be clipped; dry only -2 dB: music or effects under the line; line is 'Cease fire.', class is all stop. Cue: vo.combat.allstop.fed.tos.
 - `tos/voice/fed_battle_stations_s01e10_1019.wav` says "Battle stations."; heard 'yourself' (padded 'Yourself'); matches the line only when whisper is told what to expect. Cue: vo.combat.encounter.fed.tos.
 - `tos/voice/fed_battle_stations_s01e10_909.wav` says "Battle stations."; extra words 'alert' around the line (heard 'Alert! Battle stations!'): other voice or a name. Cue: vo.combat.encounter.fed.tos.
@@ -45,8 +43,6 @@ Totals for the 245 untested rows: 182 pass, 48 doubtful, 15 fail.
 - `tos/voice/fed_engage_s01e04_2748.wav` says "Engage."; heard 'and get' (padded 'And get.'); matches the line only when whisper is told what to expect; ends loud: end may be clipped. Cue: vo.combat.engage.fed.tos.
 - `tos/voice/fed_engage_s01e12_2703.wav` says "Engage."; heard 'Thank you.' (padded 'I'm gay.'); matches the line only when whisper is told what to expect. Cue: vo.combat.engage.fed.tos.
 - `tos/voice/fed_fire_s01e21_1048.wav` says "Fire."; extra words 'whitefield' around the line (heard 'Whitefield, fire.'): other voice or a name; first 20 ms at full level: start may be clipped. Cue: vo.combat.phaser.fed.tos.
-- `tos/voice/kli_ack_s01e19_1848.wav` says "Yes, sir."; extra words 'case' around the line (heard 'case. Yes, sir.'): other voice or a name. Cue: vo.combat.ack.kli.tos.
-- `tos/voice/kli_ack_s01e23_2185.wav` says "Yes, sir."; extra words 'clear' around the line (heard 'Clear? Yes, sir.'): other voice or a name. Cue: vo.combat.ack.kli.tos.
 - `tos/voice/kli_fire_s01e21_1048.wav` says "Fire."; extra words 'whitefield' around the line (heard 'Whitefield, fire.'): other voice or a name; first 20 ms at full level: start may be clipped. Cue: vo.combat.phaser.kli.tos.
 - `voy/voice/fed_ack_s01e09_2038.wav` says "Aye, Captain."; heard 'I kept it.' (padded 'Yeah, I kept it and'); matches the line only when whisper is told what to expect. Cue: vo.combat.ack.fed.voy.
 - `voy/voice/fed_all_stop_s02e02_1388.wav` says "All stop."; heard 'I'll stop.' (padded 'I'll stop'); matches the line only when whisper is told what to expect. Cue: vo.combat.allstop.fed.voy.

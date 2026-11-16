@@ -39,9 +39,9 @@ Tick column: `[ ]` untested. Auto-check column (17 Nov 2026, Barclay): `pass`, `
 
 | ok | clip | source episode | time | length | notes | auto-check |
 |---|---|---|---|---|---|---|
-| [ ] | `LocalAssets/audio/trek/tos/voice/fed_ack_s01e08_1618.wav` | S1E08- Miri.mkv | 26:58.8 | 1.6 s | "Acknowledged."; dry +37 dB | doubtful: extra words 'stand by' around the line (heard 'Stand by. Acknowledged.'): other voice or a name |
-| [ ] | `LocalAssets/audio/trek/tos/voice/fed_ack_s01e14_2226.wav` | S1E14- Balance of Terror.mkv | 37:06.8 | 1.1 s | "Yes, sir."; dry +38 dB | fail: wrong words: heard 'in a moment.' (padded 'In a moment', prompted 'In a moment, yes') |
-| [ ] | `LocalAssets/audio/trek/tos/voice/fed_ack_s01e19_1848.wav` | S1E19- Tomorrow Is Yesterday.mkv | 30:47.9 | 1.6 s | "Yes, sir."; dry +37 dB | doubtful: extra words 'case' around the line (heard 'case. Yes, sir.'): other voice or a name |
+| [ ] | `LocalAssets/audio/trek/tos/voice/fed_ack_s01e08_1618.wav` | S1E08- Miri.mkv | 26:58.8 | 1.6 s | "Acknowledged."; dry +37 dB | pass: leading extra words trimmed 17 Nov 2026, re-heard as the line |
+| [ ] | `LocalAssets/audio/trek/tos/voice/fed_ack_s01e14_2226.wav` | S1E14- Balance of Terror.mkv | 37:06.8 | 1.1 s | "Yes, sir."; dry +38 dB | fail: wrong words: heard 'in a moment.' (padded 'In a moment', prompted 'In a moment, yes'); removed from the TOS ack cues 17 Nov 2026 |
+| [ ] | `LocalAssets/audio/trek/tos/voice/fed_ack_s01e19_1848.wav` | S1E19- Tomorrow Is Yesterday.mkv | 30:47.9 | 1.6 s | "Yes, sir."; dry +37 dB | pass: leading extra words trimmed 17 Nov 2026, re-heard as the line |
 
 ### voice fed.all_stop
 
@@ -100,9 +100,9 @@ Tick column: `[ ]` untested. Auto-check column (17 Nov 2026, Barclay): `pass`, `
 
 | ok | clip | source episode | time | length | notes | auto-check |
 |---|---|---|---|---|---|---|
-| [ ] | `LocalAssets/audio/trek/tos/voice/kli_ack_s01e14_2226.wav` | S1E14- Balance of Terror.mkv | 37:06.8 | 1.1 s | "Yes, sir."; dry +38 dB | fail: wrong words: heard 'in a moment.' (padded 'In a moment', prompted 'In a moment, yes') |
-| [ ] | `LocalAssets/audio/trek/tos/voice/kli_ack_s01e19_1848.wav` | S1E19- Tomorrow Is Yesterday.mkv | 30:47.9 | 1.6 s | "Yes, sir."; dry +37 dB | doubtful: extra words 'case' around the line (heard 'case. Yes, sir.'): other voice or a name |
-| [ ] | `LocalAssets/audio/trek/tos/voice/kli_ack_s01e23_2185.wav` | S1E23- A Taste of Armageddon.mkv | 36:25.8 | 1.8 s | "Yes, sir."; dry +37 dB | doubtful: extra words 'clear' around the line (heard 'Clear? Yes, sir.'): other voice or a name |
+| [ ] | `LocalAssets/audio/trek/tos/voice/kli_ack_s01e14_2226.wav` | S1E14- Balance of Terror.mkv | 37:06.8 | 1.1 s | "Yes, sir."; dry +38 dB | fail: wrong words: heard 'in a moment.' (padded 'In a moment', prompted 'In a moment, yes'); removed from the TOS ack cues 17 Nov 2026 |
+| [ ] | `LocalAssets/audio/trek/tos/voice/kli_ack_s01e19_1848.wav` | S1E19- Tomorrow Is Yesterday.mkv | 30:47.9 | 1.6 s | "Yes, sir."; dry +37 dB | pass: leading extra words trimmed 17 Nov 2026, re-heard as the line |
+| [ ] | `LocalAssets/audio/trek/tos/voice/kli_ack_s01e23_2185.wav` | S1E23- A Taste of Armageddon.mkv | 36:25.8 | 1.8 s | "Yes, sir."; dry +37 dB | pass: leading extra words trimmed 17 Nov 2026, re-heard as the line |
 
 ### voice kli.fire
 
