@@ -299,7 +299,7 @@ func _hail(name_: String, tid: int, is_minor: bool, rel: Dictionary, minor: Dict
 	var v := Lcars.vbox(6)
 	p.add_child(v)
 	var key := PortraitSlot.minor_key(name_) if is_minor else ""
-	var ps := PortraitSlot.make(0 if is_minor else tid, Vector2(300, 170), key, name_)
+	var ps := PortraitSlot.make(0 if is_minor else tid, Vector2(300, 225), key, name_)
 	ps.name = "Portrait"
 	v.add_child(ps)
 	var row := Lcars.hbox(6)

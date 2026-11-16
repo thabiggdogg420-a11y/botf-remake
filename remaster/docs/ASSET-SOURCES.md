@@ -81,6 +81,23 @@ Every roster and legacy key has an entry, even with no candidate, so coverage is
 | BlendSwap | [blendswap.com](https://blendswap.com) | per uploader | uploader-declared CC | candidates (unclear) |
 | Sketchfab | [sketchfab.com](https://sketchfab.com/tags/star-trek) | per uploader | uploader-declared CC, verified through the public API | main HD/game-ready candidate pool |
 
+## AI image models and reference inputs (race portraits, 16 Nov 2026)
+
+Rounds 1-2: local generation only, on the owner's RTX 4090 through ComfyUI (a locally installed backend). No online service, no account, no payment. One character per race, described by costume and makeup, never by an actor's name or face. No show screenshots were downloaded; the only image inputs are the game's own original stills (below). See PORTRAIT-LOOKTEST.md.
+
+| Model or input | Where | File | Licence | Use here |
+|---|---|---|---|---|
+| Qwen-Image-2512 (Alibaba Qwen team) | [Qwen/Qwen-Image-2512](https://huggingface.co/Qwen/Qwen-Image-2512), ComfyUI repack [Comfy-Org/Qwen-Image_ComfyUI](https://huggingface.co/Comfy-Org/Qwen-Image_ComfyUI) | `split_files/diffusion_models/qwen_image_2512_fp8_e4m3fn.safetensors` (20.4 GB) | Apache-2.0 (model card) | text-to-image: the eight major-power portraits and the named minor-race characters |
+| Qwen-Image-Edit-2511 (Alibaba Qwen team) | [Qwen/Qwen-Image-Edit-2511](https://huggingface.co/Qwen/Qwen-Image-Edit-2511) | `qwen_image_edit_2511_fp8mixed.safetensors` | Apache-2.0 (model card) | image edit with a reference: restyles the game's own minor-race stills into the shared treatment |
+| Qwen-Image-Edit-2511-Lightning 4-step LoRA (lightx2v) | [lightx2v/Qwen-Image-Edit-2511-Lightning](https://huggingface.co/lightx2v/Qwen-Image-Edit-2511-Lightning) | `Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors` | Apache-2.0 (model card) | speeds the edit model to 4 steps |
+| Qwen2.5-VL 7B text encoder, fp8 scaled | [Comfy-Org/Qwen-Image_ComfyUI](https://huggingface.co/Comfy-Org/Qwen-Image_ComfyUI) | `qwen_2.5_vl_7b_fp8_scaled.safetensors` | Apache-2.0 (Qwen2.5-VL 7B) | prompt encoder |
+| Qwen-Image VAE | [Comfy-Org/Qwen-Image_ComfyUI](https://huggingface.co/Comfy-Org/Qwen-Image_ComfyUI) | `qwen_image_vae.safetensors` | Apache-2.0 (model card) | encoder and decoder |
+| Original BOTF race stills | `stbof.res` from the archive.org copy, extracted by `tools/art/extract_portraits.py` to `LocalAssets/portraits/` (160x170) | `portrait.minor.*.png` | the user's own game copy, private (clear-personal) | reference image for the 25 typical-member minor portraits; the results are derivatives and stay in `LocalAssets/portraits-remaster/`, never committed |
+
+**Round 3 (16 Nov 2026): the eight major-power portraits (Picard, Gowron, Tomalak, Gul Dukat, Grand Nagus Zek, Weyoun, the Borg Queen, a Breen soldier) are named-character stylised photos. Source: OpenAI image generation via Codex CLI from Memory Alpha reference stills, 16 Nov 2026.** The reference stills are private reference only and are not shipped; the generated results are the shipped files (originals in `Documents/ChatGPT/portrait-codex/`, shared grade and crop by `tools/art/portrait_post.py`, installed gitignored and packed into art_desktop.pck / art_web.pck by `tools/build_ship_packs.py --portraits`). Not Qwen. The Qwen rows above describe rounds 1 and 2 (minor races still use round 2). Reference stills are kept private in `portrait-v3/ref/`.
+
+A model licence covers the model's use. Star Trek species, characters, uniforms and insignia remain Paramount's; the portraits are private, never distributed, like the rest of this game (the hosted browser build is the owner's recorded exception).
+
 ## Generated art (in the repo)
 
 Art generated for the game itself (not third-party files). Committed to the repo, so unlike the manifest candidates these ship in the build.
