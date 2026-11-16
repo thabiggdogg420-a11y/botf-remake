@@ -80,7 +80,7 @@ func _pane_tab(id: String, text: String) -> Button:
 
 func _race_list() -> Control:
 	var contacted := vm.contacted()
-	var f := Lcars.frame("Known powers", "%d contacted" % (contacted.size() + d["minors"].size()), "primary", "diplomacy")
+	var f := Lcars.frame("Known powers", "%d" % (contacted.size() + d["minors"].size()), "primary", "diplomacy")
 	f.custom_minimum_size.x = 440
 	var b := Lcars.body(f)
 	var list := Lcars.vbox(4)
@@ -94,21 +94,25 @@ func _race_list() -> Control:
 		var t := Lcars.vbox(-2)
 		t.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		t.add_child(Lcars.label(str(e["name"]), "", 15, Lcars.TEXT if e.get("contact", false) else Lcars.TEXT3))
-		t.add_child(Lcars.label(DiplomacyVM.status(e), "Muted", 12))
 		h.add_child(t)
+		btn.tooltip_text = DiplomacyVM.status(e)
 		if e.get("contact", false) and not e.get("eliminated", false):
 			h.add_child(Lcars.meter(e.get("trust", 0), 100, Lcars.ALERT if e.get("atWar", false) else Lcars.GOOD, 4, 70))
 		if e.get("eliminated", false):
-			h.add_child(Lcars.badge("OUT", "dim"))
+			h.add_child(Lcars.icon("cross", 20, Lcars.TEXT3))
 		elif e.get("atWar", false):
-			h.add_child(Lcars.badge("WAR", "alert"))
+			h.add_child(Lcars.icon("war", 22, Lcars.ALERT))
 		elif e.get("allied", false):
-			h.add_child(Lcars.badge("ALLY", "good"))
+			h.add_child(Lcars.icon("treaty", 22, Lcars.GOOD))
+		elif e.get("contact", false):
+			h.add_child(Lcars.icon("peace", 22, Lcars.GOOD))
+		else:
+			h.add_child(Lcars.icon("unexplored", 20, Lcars.TEXT3))
 		Lcars.ignore_mouse(h)
 		btn.pressed.connect(func(): vm.select(false, id); refresh())
 		list.add_child(btn)
 	if d["minors"].size() > 0:
-		list.add_child(Lcars.caption("Minor races"))
+		list.add_child(Pic.tipped(Lcars.icon("minor", 22, Color("#d8c3ff")), "Minor races"))
 	for mi in d["minors"]:
 		var sid := int(mi["systemId"])
 		var btn2 := Lcars.row_button(vm.is_selected(true, sid))
@@ -117,8 +121,8 @@ func _race_list() -> Control:
 		var t2 := Lcars.vbox(-2)
 		t2.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		t2.add_child(Lcars.label(str(mi["name"]), "", 15, Lcars.TEXT))
-		t2.add_child(Lcars.label(vm.minor_status(mi), "Muted", 12))
 		h2.add_child(t2)
+		btn2.tooltip_text = vm.minor_status(mi)
 		h2.add_child(Lcars.meter(mi["attitude"], 100, Lcars.GOOD, 4, 70))
 		Lcars.ignore_mouse(h2)
 		btn2.pressed.connect(func(): vm.select(true, sid); refresh())
@@ -132,15 +136,14 @@ func _race_list() -> Control:
 	var sv := Lcars.vbox(6)
 	st2.add_child(sv)
 	var rep := Lcars.hbox(8)
-	rep.add_child(Lcars.caption("Reputation"))
 	var standing := vm.standing()
 	var betr: int = standing["betrayals"]
-	rep.add_child(Lcars.badge(("%d treaty betrayal%s (last turn %d)" % [betr, "" if betr == 1 else "s", int(standing["last"])]) if betr > 0 else "No betrayals", "alert" if betr > 0 else "good"))
+	rep.add_child(Pic.num("treaty", "%d" % betr, ("%d treaty betrayal%s (last turn %d)" % [betr, "" if betr == 1 else "s", int(standing["last"])]) if betr > 0 else "Reputation: no betrayals", Lcars.ALERT if betr > 0 else Lcars.GOOD, 22, 16, Lcars.ALERT if betr > 0 else Lcars.GOOD))
 	sv.add_child(rep)
 	var vic: Dictionary = standing["bloc"]
 	if not vic.is_empty():
 		var br := Lcars.hbox(8)
-		br.add_child(Lcars.caption("Bloc"))
+		br.add_child(Pic.tipped(Lcars.icon("diplomacy", 20, Lcars.accent()), "Bloc"))
 		br.add_child(Lcars.meter(vic["bloc"], max(1, int(vic["galaxy"])), Lcars.GOOD if vic.get("achieved", false) else Lcars.accent(), 6))
 		br.add_child(Lcars.label("%d%%" % int(round(100.0 * float(vic["bloc"]) / max(1, int(vic["galaxy"])))), "Mono"))
 		br.tooltip_text = "Your bloc holds %d of %d population. A strict majority with at least one ally or member minor is a diplomatic victory." % [int(vic["bloc"]), int(vic["galaxy"])]
@@ -152,7 +155,7 @@ func _race_list() -> Control:
 # ---------------------------------------------------------------------------------------------
 func _inbox(incoming: Array) -> Control:
 	var v := app.view
-	var f := Lcars.frame("Incoming", "%d awaiting your answer" % vm.inbox_count(), "secondary")
+	var f := Lcars.frame("Incoming", "%d" % vm.inbox_count(), "secondary")
 	f.name = "Inbox"
 	var list := Lcars.vbox(10)
 	var lock := _lock()
@@ -171,22 +174,21 @@ func _inbox(incoming: Array) -> Control:
 		th.add_child(Lcars.badge(dl[0], dl[1]))
 		col.add_child(th)
 		var terms := ("%s · %s tone" % [p["duration"], str(p["tone"]).to_lower()]) if p["kind"] == "treaty" else "%s tone" % str(p["tone"]).to_lower()
-		col.add_child(Lcars.label(terms, "Muted", 13))
+		th.tooltip_text = terms
+		th.mouse_filter = Control.MOUSE_FILTER_PASS
 		var cons := consequences(p)
-		col.add_child(Lcars.para("Accept: " + cons[0], Lcars.GOOD, 13))
-		col.add_child(Lcars.para("Reject: " + cons[1], Lcars.ALERT, 13))
 		h.add_child(col)
 		var acts := Lcars.vbox(6)
 		var drafted := vm.drafted_response(pid)
 		if not drafted.is_empty():
-			acts.add_child(Lcars.badge("Response ordered", "good"))
+			acts.add_child(Pic.tipped(Lcars.icon("tick", 24, Lcars.GOOD), "Response ordered"))
 			var did := int(drafted["id"])
 			acts.add_child(Lcars.pill("Undo", "ghost", func(): app.cancel_orders([did], "Response withdrawn."), lock))
 		else:
-			var a := Lcars.pill("Accept", "good", func(): vm.respond(pid, true), lock)
+			var a := Lcars.pill("Accept", "good", func(): vm.respond(pid, true), lock, str(cons[0]))
 			a.name = "Accept%d" % pid
 			acts.add_child(a)
-			var r := Lcars.pill("Reject", "alert", func(): vm.respond(pid, false), lock)
+			var r := Lcars.pill("Reject", "alert", func(): vm.respond(pid, false), lock, str(cons[1]))
 			r.name = "Reject%d" % pid
 			acts.add_child(r)
 		h.add_child(acts)
@@ -209,31 +211,32 @@ func _call_card(c: Dictionary) -> Control:
 	var col := Lcars.vbox(4)
 	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var th := Lcars.hbox(8)
-	th.add_child(Lcars.label("%s · call to arms against %s" % [c["defenderName"], c["aggressorName"]], "SubHeading", 19, Lcars.TEXT))
+	th.add_child(Lcars.label("%s · vs %s" % [c["defenderName"], c["aggressorName"]], "SubHeading", 19, Lcars.TEXT))
+	th.add_child(Pic.tipped(Lcars.icon("war", 22, Lcars.ALERT), "Call to arms against %s" % c["aggressorName"]))
 	if c.get("honored", false):
-		th.add_child(Lcars.badge("honoured - at war", "good"))
+		th.add_child(Pic.tipped(Lcars.icon("tick", 22, Lcars.GOOD), "Honoured - at war"))
 	else:
-		th.add_child(Lcars.badge("declare war by turn %d · %d left" % [int(c["dueTurn"]), max(0, int(c["dueTurn"]) - int(d["turn"]))], deadline(int(d["turn"]), int(c["dueTurn"]))[1]))
+		th.add_child(Pic.num("clock", "%d" % max(0, int(c["dueTurn"]) - int(d["turn"])), "Declare war by turn %d" % int(c["dueTurn"]), Lcars.WARN, 18, 14))
 	col.add_child(th)
-	col.add_child(Lcars.para("Honour: we declare war on the %s; +10 trust with the %s.%s" % [c["aggressorName"], c["defenderName"], " Our treaty with the aggressor makes this a betrayal." if c.get("boundByTreaty", false) else ""], Lcars.GOOD, 13))
-	col.add_child(Lcars.para("Refuse: at the deadline the %s lose 20 trust in us and gain 2 grievances; below 40 trust they dissolve the alliance." % c["defenderName"], Lcars.ALERT, 13))
+	var honour_tip := "Honour: we declare war on the %s; +10 trust with the %s.%s" % [c["aggressorName"], c["defenderName"], " Our treaty with the aggressor makes this a betrayal." if c.get("boundByTreaty", false) else ""]
+	var refuse_tip := "Refuse: at the deadline the %s lose 20 trust in us and gain 2 grievances; below 40 trust they dissolve the alliance." % c["defenderName"]
 	if refused and not c.get("honored", false):
-		col.add_child(Lcars.para("You will let this call lapse. The consequences apply on turn %d." % int(c["dueTurn"]), Lcars.WARN, 13))
+		col.add_child(Pic.num("clock", "%d" % int(c["dueTurn"]), "You will let this call lapse. The consequences apply on turn %d." % int(c["dueTurn"]), Lcars.WARN, 18, 14))
 	h.add_child(col)
 	var acts := Lcars.vbox(6)
 	var aggressor := int(c["aggressor"])
 	if not c.get("honored", false):
 		if not war.is_empty():
-			acts.add_child(Lcars.badge("War declaration ordered", "alert"))
+			acts.add_child(Pic.tipped(Lcars.icon("war", 24, Lcars.ALERT), "War declaration ordered"))
 			var wid := int(war["id"])
 			acts.add_child(Lcars.pill("Refuse instead", "ghost", func(): vm.refuse_instead(c, wid); refresh(), lock))
 		elif refused:
 			acts.add_child(Lcars.pill("Reconsider", "ghost", func(): vm.set_refused(c, false); refresh()))
 		else:
-			var hb := Lcars.pill("Honour", "alert", func(): app.confirm("Declare war on the %s?" % c["aggressorName"], DiplomacyVM.honour_body(c), "Declare war", func(): vm.honour(c)), lock if lock != "" else str(c.get("honorBlocker", "")))
+			var hb := Lcars.pill("Honour", "alert", func(): app.confirm("Declare war on the %s?" % c["aggressorName"], DiplomacyVM.honour_body(c), "Declare war", func(): vm.honour(c)), lock if lock != "" else str(c.get("honorBlocker", "")), honour_tip)
 			hb.name = "Honor%d" % aggressor
 			acts.add_child(hb)
-			acts.add_child(Lcars.pill("Refuse", "ghost", func(): vm.set_refused(c, true); refresh()))
+			acts.add_child(Lcars.pill("Refuse", "ghost", func(): vm.set_refused(c, true); refresh(), "", refuse_tip))
 	h.add_child(acts)
 	return card
 
@@ -251,16 +254,20 @@ func _event_row(e: Dictionary, both: bool) -> Control:
 	return h
 
 func _ledger() -> Control:
-	var f := Lcars.frame("Treaty ledger", "in force and ended", "tertiary")
+	var f := Lcars.frame("Treaty ledger", "", "tertiary", "treaty")
 	var b := Lcars.body(f)
-	b.add_child(Lcars.caption("In force"))
+	b.add_child(Pic.tipped(Lcars.icon("tick", 22, Lcars.GOOD), "In force"))
 	if d["treaties"].is_empty():
-		b.add_child(Lcars.label("No treaties in force.", "Muted"))
+		b.add_child(Pic.num("cross", "", "No treaties in force.", Lcars.TEXT3, 20))
 	for t in d["treaties"]:
-		b.add_child(Lcars.para("%s with %s · since turn %d · %s" % [t["typeName"], t["counterparty"]["name"], int(t["startTurn"]), ("%d turns left" % int(t["turnsRemaining"])) if int(t["turnsRemaining"]) >= 0 else "indefinite"], Lcars.TEXT, 14))
-	b.add_child(Lcars.caption("Ended"))
+		var tr := Lcars.hbox(10)
+		tr.add_child(Lcars.icon("treaty", 20, Lcars.GOOD))
+		tr.add_child(Lcars.label("%s · %s" % [t["typeName"], t["counterparty"]["name"]], "", 14))
+		tr.add_child(Pic.num("clock", ("%d" % int(t["turnsRemaining"])) if int(t["turnsRemaining"]) >= 0 else "-", "Turns left (- is indefinite). Since turn %d." % int(t["startTurn"]), Lcars.accent2(), 16, 13))
+		b.add_child(tr)
+	b.add_child(Pic.tipped(Lcars.icon("cross", 22, Lcars.TEXT3), "Ended"))
 	if d["treatyHistory"].is_empty():
-		b.add_child(Lcars.label("No ended treaties yet.", "Muted"))
+		b.add_child(Pic.num("cross", "", "No ended treaties yet.", Lcars.TEXT3, 20))
 	for t in d["treatyHistory"]:
 		var h := Lcars.hbox(8)
 		h.add_child(Lcars.label("%s with %s · from turn %d" % [t["typeName"], t["counterparty"]["name"], int(t["startTurn"])], "", 14))
@@ -270,14 +277,14 @@ func _ledger() -> Control:
 	return f
 
 func _news() -> Control:
-	var f := Lcars.frame("Galactic news", "between the powers we know", "tertiary")
+	var f := Lcars.frame("Galactic news", "", "tertiary", "events")
 	var b := Lcars.body(f)
-	b.add_child(Lcars.para("Every empire remembers betrayals, refused calls to arms and wars. These events shape who trusts whom.", Lcars.TEXT3, 13))
+	f.tooltip_text = "Every empire remembers betrayals, refused calls to arms and wars. These events shape who trusts whom."
 	var list := Lcars.vbox(4)
 	for e in d["news"]:
 		list.add_child(_event_row(e, true))
 	if d["news"].is_empty():
-		list.add_child(Lcars.label("No news yet.", "Muted"))
+		list.add_child(Pic.num("cross", "", "No news yet.", Lcars.TEXT3, 20))
 	b.add_child(Lcars.scroll(list))
 	return f
 
@@ -323,7 +330,8 @@ func _dossier() -> Control:
 	var treaties: Array = ds["treaties"]
 	var ended: Array = ds["ended"]
 	var events: Array = ds["events"]
-	var f := Lcars.frame(name_, "Minor race" if is_minor else ("Major power · %s temperament" % rel["personality"] if rel.has("personality") else "Major power"), "primary")
+	var f := Lcars.frame(name_, "", "primary")
+	f.tooltip_text = "Minor race" if is_minor else ("Major power · %s temperament" % rel["personality"] if rel.has("personality") else "Major power")
 	f.name = "Dossier"
 	var b := Lcars.body(f)
 	var tabs := Lcars.hbox(6)
@@ -340,9 +348,9 @@ func _dossier() -> Control:
 	var badges := HFlowContainer.new()
 	if not rel.is_empty():
 		if rel.get("eliminated", false):
-			badges.add_child(Lcars.badge("Eliminated - no colonies remain", "dim"))
+			badges.add_child(Lcars.badge("Eliminated", "dim"))
 		elif rel.get("atWar", false):
-			badges.add_child(Lcars.badge("At war since turn %d" % int(rel.get("warStartTurn", 0)), "alert"))
+			badges.add_child(Lcars.badge("At war", "alert"))
 		else:
 			badges.add_child(Lcars.badge("At peace", "good"))
 		if rel.get("allied", false):
@@ -364,12 +372,13 @@ func _dossier() -> Control:
 		var tr := Lcars.hbox(14)
 		var val := int(rel.get("trust", minor.get("attitude", 0)))
 		var mem: Dictionary = rel.get("memory", {})
-		tr.add_child(RingGauge.make(96, val, 100, Lcars.ALERT if rel.get("atWar", false) else (Lcars.GOOD if val >= 50 else Lcars.WARN), str(val), "RELATIONS" if is_minor else "TRUST",
+		tr.add_child(RingGauge.make(96, val, 100, Lcars.ALERT if rel.get("atWar", false) else (Lcars.GOOD if val >= 50 else Lcars.WARN), str(val), "",
 			{"title": "Relations" if is_minor else "Trust", "value": "%d of 100" % val, "parts": [["Their grievances", str(int(mem.get("theirGrievances", 0))), "alert"], ["Our grievances", str(int(mem.get("ourGrievances", 0))), ""], ["Their betrayals", str(int(mem.get("theirBetrayals", 0))), "alert"]] if not is_minor else [],
 				"effect": "Gifts, kept treaties and shared enemies raise it; demands, broken treaties and border incursions lower it. Proposals need enough of it to be accepted."}))
 		var tl := Lcars.vbox(2)
 		tl.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		tl.add_child(Lcars.caption("Relations" if is_minor else "Trust"))
+		tl.tooltip_text = "Relations" if is_minor else "Trust"
+		tl.mouse_filter = Control.MOUSE_FILTER_PASS
 		tl.add_child(Lcars.label("Warm" if val >= 70 else ("Cordial" if val >= 50 else ("Cool" if val >= 30 else "Hostile")), "", 26, Lcars.TEXT))
 		tr.add_child(tl)
 		hm.add_child(tr)
@@ -392,15 +401,17 @@ func _dossier() -> Control:
 		_:
 			if rel.get("memory") is Dictionary:
 				var mem: Dictionary = rel["memory"]
-				var g := Lcars.grid(5)
-				g.add_theme_constant_override("h_separation", 34)
-				g.add_child(Lcars.stat("Their grievances", mem.get("theirGrievances", 0), "alert" if int(mem.get("theirGrievances", 0)) > 0 else "", "Grievances they hold against us. Each weighs -3 on our proposals and fuels war plans."))
-				g.add_child(Lcars.stat("Our grievances", mem.get("ourGrievances", 0)))
-				g.add_child(Lcars.stat("Their betrayals", mem.get("theirBetrayals", 0), "alert" if int(mem.get("theirBetrayals", 0)) > 0 else ""))
-				g.add_child(Lcars.stat("Refused proposals", mem.get("ourRefusedProposals", 0)))
+				var g := Lcars.hbox(24)
+				var tg1 := int(mem.get("theirGrievances", 0))
+				var tb1 := int(mem.get("theirBetrayals", 0))
+				g.add_child(Pic.num("threat", "%d" % tg1, "Their grievances: held against us. Each weighs -3 on our proposals and fuels war plans.", Lcars.ALERT if tg1 > 0 else Lcars.TEXT2, 24, 18, Lcars.ALERT if tg1 > 0 else Lcars.TEXT3))
+				g.add_child(Pic.num("alert", "%d" % int(mem.get("ourGrievances", 0)), "Our grievances against them", Lcars.TEXT2, 24, 18, Lcars.WARN))
+				g.add_child(Pic.num("treaty", "%d" % tb1, "Their betrayals of treaties", Lcars.ALERT if tb1 > 0 else Lcars.TEXT2, 24, 18, Lcars.ALERT if tb1 > 0 else Lcars.TEXT3))
+				g.add_child(Pic.num("cross", "%d" % int(mem.get("ourRefusedProposals", 0)), "Proposals of ours they refused", Lcars.TEXT2, 24, 18, Lcars.TEXT3))
 				var lw := int(mem.get("lastWarTurn", -1))
 				var lp := int(mem.get("lastPeaceTurn", -1))
-				g.add_child(Lcars.stat("Last war / peace", "%s / %s" % [("T%d" % lw) if lw >= 0 else "-", ("T%d" % lp) if lp >= 0 else "-"]))
+				g.add_child(Pic.num("war", ("T%d" % lw) if lw >= 0 else "-", "Last war", Lcars.TEXT2, 22, 16, Lcars.ALERT))
+				g.add_child(Pic.num("peace", ("T%d" % lp) if lp >= 0 else "-", "Last peace", Lcars.TEXT2, 22, 16, Lcars.GOOD))
 				body.add_child(g)
 			if minor.get("race") is Dictionary:
 				var race: Dictionary = minor["race"]
@@ -428,20 +439,20 @@ func _dossier() -> Control:
 			if not dz.is_empty():
 				body.add_child(Lcars.para("Intelligence (turn %d): %d known colonies, about ¢%s in reserve." % [int(dz["turn"]), int(dz["knownColonies"]), Lcars.fmt(dz["estimatedCredits"])]))
 			elif not is_minor:
-				body.add_child(Lcars.para("No intelligence dossier yet - run espionage from the Intel screen.", Lcars.TEXT3, 13))
-			body.add_child(Lcars.caption("Proposals"))
+				body.add_child(Pic.num("intel", "-", "No intelligence dossier yet - run espionage from the Intel screen.", Lcars.TEXT3, 22, 16, Lcars.TEXT3))
 			var props: Array = ds["proposals"]
-			if props.is_empty():
-				body.add_child(Lcars.label("No proposals in progress.", "Muted"))
 			for p in props:
 				body.add_child(Lcars.label("%s: %s · due turn %d · %s" % ["From them" if p.get("incoming", false) else "From you", proposal_title(p), int(p["dueTurn"]), p["status"]], "", 14))
 			for line in vm.offer_lines(tid):
 				body.add_child(Lcars.label(line, "", 14))
-			body.add_child(Lcars.caption("Treaties"))
-			if treaties.is_empty():
-				body.add_child(Lcars.label("No treaties in force.", "Muted"))
 			for t in treaties:
-				body.add_child(Lcars.para("%s since turn %d · %s - %s" % [t["typeName"], int(t["startTurn"]), ("%d turns remaining" % int(t["turnsRemaining"])) if int(t["turnsRemaining"]) >= 0 else "indefinite", TREATY_EFFECTS.get(t["type"], "")], Lcars.TEXT2, 13))
+				var trw := Lcars.hbox(10)
+				trw.add_child(Lcars.icon("treaty", 22, Lcars.GOOD))
+				trw.add_child(Lcars.label(str(t["typeName"]), "", 14))
+				trw.add_child(Pic.num("clock", ("%d" % int(t["turnsRemaining"])) if int(t["turnsRemaining"]) >= 0 else "-", "Turns remaining (- is indefinite). Since turn %d." % int(t["startTurn"]), Lcars.accent2(), 16, 13))
+				trw.tooltip_text = str(TREATY_EFFECTS.get(t["type"], ""))
+				trw.mouse_filter = Control.MOUSE_FILTER_PASS
+				body.add_child(trw)
 	b.add_child(Lcars.scroll(body))
 	return f
 

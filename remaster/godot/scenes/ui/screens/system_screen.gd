@@ -115,7 +115,7 @@ func _header(c: Dictionary) -> Control:
 	var nm := Lcars.label(str(c["name"]).to_upper(), "", 58, Lcars.accent())
 	nm.add_theme_font_override("font", Lcars.font("display", 700))
 	tb.add_child(nm)
-	tb.add_child(Lcars.caption("Colony %d of %d · %s" % [int(pos[0]) + 1, count, _sector()]))
+	tb.add_child(Lcars.caption("%d/%d · %s" % [int(pos[0]) + 1, count, _sector()]))
 	var badges := Lcars.hbox(6)
 	var gov := str(c["governor"]["workforce"])
 	badges.add_child(Lcars.badge(TrekText.term(app.player(), "governor", "Governor") + " " + ("manual" if gov == "Manual" else gov), "secondary" if gov != "Manual" else "dim"))
@@ -164,7 +164,7 @@ func _orrery() -> Control:
 		lab.alignment = BoxContainer.ALIGNMENT_CENTER
 		lab.add_child(Lcars.label(nm.substr(sp + 1) if sp > 0 else nm, "", 18, Lcars.TEXT))
 		lab.get_child(0).add_theme_font_override("font", Lcars.font("display", 600))
-		lab.add_child(Lcars.label("Gas giant" if cls == "GasGiant" else ("Belt" if cls == "Asteroids" else "Class " + cls), "Caption"))
+		lab.add_child(Lcars.label("GG" if cls == "GasGiant" else ("Belt" if cls == "Asteroids" else cls), "Caption"))
 		col.add_child(lab)
 		if int(p["maxCapacity"]) > 0:
 			var bar := Lcars.meter(p["capacity"], max(1, int(p["maxCapacity"])), Lcars.GOOD, 4)
@@ -180,7 +180,7 @@ func _orrery() -> Control:
 
 func _sector() -> String:
 	var sy := app.find_by_id("systems", vm.sid())
-	return ("sector %s" % vm.place(int(sy["x"]), int(sy["y"]))) if not sy.is_empty() else "your space"
+	return vm.place(int(sy["x"]), int(sy["y"])) if not sy.is_empty() else "-"
 
 ## The KPI row of the colony, each explained (SystemVM.kpis).
 func _kpis() -> Control:
@@ -204,85 +204,77 @@ class StarGlow extends Control:
 		draw_circle(c, 18.0, Color(1.0, 0.93, 0.75))
 		draw_circle(c, 12.0, Color(1, 1, 1))
 
+## Workforce as people (docs: playtest 16 Nov, "easier to navigate because of pictures"): a row of figures per sector, a figure is
+## `unit` workers; the number beside it is what the sector makes. The core's forecast sits beside the ring.
 func _workforce(c: Dictionary) -> Control:
-	var f := Lcars.frame("Workforce", "%d unassigned" % vm.unassigned(), "primary", "population")
+	var f := Lcars.frame("Workforce", "", "primary", "population")
 	f.name = "Workforce"
 	var b := Lcars.body(f)
 	var w: Dictionary = c["workers"]
 	var top := Lcars.hbox(16)
-	var ring := RingGauge.make(108, 0, 1, Lcars.accent(), str(int(c["population"])), "WORKERS",
+	var ring := RingGauge.make(108, 0, 1, Lcars.accent(), str(int(c["population"])), "",
 		{"title": "Workforce", "value": "%d citizens" % int(c["population"]), "parts": [["Food", str(int(w["food"])), "good"], ["Industry", str(int(w["industry"])), "secondary"], ["Research", str(int(w["research"])), "info"], ["Unassigned", str(int(w.get("unassigned", 0))), "warn"]],
-			"effect": "Drag a slider to move workers; the core forecasts the result before you apply it."})
+			"effect": "Click the people in a row to move workers; the core forecasts the result before you apply it."})
 	ring.segments = [[int(w["food"]), Lcars.GOOD], [int(w["industry"]), Lcars.accent2()], [int(w["research"]), Lcars.INFO], [int(w.get("unassigned", 0)), Lcars.WARN]]
 	top.add_child(ring)
-	var right := Lcars.vbox(8)
+	var right := Lcars.vbox(10)
 	right.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	right.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	top.add_child(right)
 	b.add_child(top)
 	var acts := Lcars.hbox(8)
 	acts.add_child(Lcars.pill("Balance", "ghost", func(): if not vm.auto_balance(false): _update_forecast(), _locked(), "Feed the colony, then split industry and research"))
 	acts.add_child(Lcars.pill("Industry", "ghost", func(): if not vm.auto_balance(true): _update_forecast(), _locked(), "Feed the colony, then maximise industry"))
 	right.add_child(acts)
-	var legend := Lcars.hbox(14)
-	for lg in [["Food", Lcars.GOOD], ["Industry", Lcars.accent2()], ["Research", Lcars.INFO], ["Idle", Lcars.WARN]]:
-		var it := Lcars.hbox(5)
-		var dot := ColorRect.new()
-		dot.color = lg[1]
-		dot.custom_minimum_size = Vector2(10, 10)
-		dot.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		it.add_child(dot)
-		it.add_child(Lcars.label(lg[0], "Muted", 13))
-		legend.add_child(it)
-	right.add_child(legend)
+	_forecast = Lcars.hbox(16)
+	_forecast.name = "Forecast"
+	right.add_child(_forecast)
 	var limits: Dictionary = detail["capacityLimits"]
 	_sliders.clear()
 	_wf_out.clear()
 	for fd in FIELDS:
 		var key: String = fd["key"]
-		var row := Lcars.vbox(2)
-		var head := Lcars.hbox(8)
-		head.add_child(Lcars.label(str(fd["label"]).to_upper(), "SubHeading", 18, Lcars.TEXT))
-		head.add_child(Lcars.label("%d %s" % [int(c["structures"][fd["structure"]]), fd["structure"]], "Muted", 13))
-		head.add_child(Lcars.spacer())
-		var out := Lcars.label("", "Mono", 14)
+		var col := Pic.tint(key)
+		var row := Lcars.hbox(10)
+		var lead := Lcars.hbox(8)
+		lead.custom_minimum_size.x = 112
+		lead.add_child(UiIcon.make(key, 30, col))
+		var lt := Lcars.vbox(0)
+		lt.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		lt.add_child(Lcars.label(str(fd["label"]), "SubHeading", 16, Lcars.TEXT))
+		lt.add_child(Lcars.label("x%d" % int(c["structures"][fd["structure"]]), "Mono", 12, Lcars.TEXT3))
+		lead.add_child(lt)
+		Pic.tipped(lead, "%d %s" % [int(c["structures"][fd["structure"]]), fd["structure"]])
+		row.add_child(lead)
+		var ppl := PeopleRow.make(int(draft[key]), int(limits[key]), col, _locked() == "", "%s workers (up to %d jobs)" % [fd["label"], int(limits[key])])
+		ppl.name = "wf_" + key
+		var cnt := Lcars.label("%d/%d" % [int(draft[key]), int(limits[key])], "Mono", 12, Lcars.TEXT3)
+		cnt.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		ppl.changed.connect(func(val): _on_people(key, val, cnt))
+		ppl.released.connect(func(): apply_workers())
+		_sliders[key] = ppl
+		row.add_child(ppl)
+		var res := Lcars.vbox(0)
+		res.custom_minimum_size.x = 92
+		res.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		var out := Lcars.label("", "Mono", 17)
+		out.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 		_wf_out[key] = out
-		head.add_child(out)
-		row.add_child(head)
-		var ctl := Lcars.hbox(10)
-		var sl := HSlider.new()
-		sl.name = "wf_" + key
-		sl.max_value = max(1, int(limits[key]))
-		sl.step = 1
-		sl.value = int(draft[key])
-		sl.editable = _locked() == "" and int(limits[key]) > 0
-		sl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		sl.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		sl.tooltip_text = "%s workers (up to %d jobs)" % [fd["label"], int(limits[key])]
-		var cnt := Lcars.label("%d/%d" % [int(draft[key]), int(limits[key])], "Mono", 14)
-		cnt.custom_minimum_size.x = 64
-		sl.value_changed.connect(func(val): _on_slider(key, int(val), cnt))
-		sl.drag_ended.connect(func(_changed): apply_workers())
-		_sliders[key] = sl
-		ctl.add_child(sl)
-		ctl.add_child(cnt)
-		row.add_child(ctl)
+		res.add_child(out)
+		res.add_child(cnt)
+		row.add_child(res)
 		b.add_child(row)
-	_forecast = Lcars.hbox(16)
-	_forecast.name = "Forecast"
-	b.add_child(_forecast)
 	_update_forecast()
-	if not app.view["meta"].get("populationEnabled", true):
-		b.add_child(Lcars.para("Population is fixed in this ruleset.", Lcars.TEXT3, 13))
 	return f
 
-func _on_slider(key: String, value: int, cnt: Label) -> void:
+func _on_people(key: String, value: int, cnt: Label) -> void:
 	var v := vm.set_workers(key, value)
 	if int(_sliders[key].value) != v:
 		_sliders[key].set_value_no_signal(v)
 	cnt.text = "%d/%d" % [v, int(detail["capacityLimits"][key])]
 	_update_forecast()
 
-## Shows the core's forecast for the drafted staffing.
+## Shows the core's forecast for the drafted staffing: icons and numbers, the words in the tooltips.
 func _update_forecast() -> void:
 	if _forecast == null or not is_instance_valid(_forecast):
 		return
@@ -298,16 +290,21 @@ func _update_forecast() -> void:
 		var nxt := int(eco.get(key, 0))
 		var l: Label = _wf_out.get(key)
 		if l:
-			l.text = "%d%s%s" % [nxt, (" (%s)" % Lcars.signed(nxt - now)) if nxt != now else "", (" / %d needed" % pop) if key == "food" else ""]
-			l.add_theme_color_override("font_color", Lcars.GOOD if nxt > now else (Lcars.ALERT if nxt < now else Lcars.TEXT2))
+			l.text = "%d%s%s" % [nxt, (" (%s)" % Lcars.signed(nxt - now)) if nxt != now else "", (" / %d" % pop) if key == "food" else ""]
+			l.add_theme_color_override("font_color", Lcars.GOOD if nxt > now else (Lcars.ALERT if nxt < now else Lcars.TEXT))
+			l.tooltip_text = ("%s per turn. Food: %d made for %d people." % [fd["label"], nxt, pop]) if key == "food" else "%s per turn." % fd["label"]
+			l.mouse_filter = Control.MOUSE_FILTER_PASS
 	if vm.preview_error() != "":
 		_forecast.add_child(Lcars.label(vm.preview_error(), "", 14, Lcars.ALERT))
 		return
-	_forecast.add_child(Lcars.stat("Growth", SystemVM.forecast_growth_text(growth), "alert" if int(growth.get("max", 0)) < 0 else "good", "Population change next turn with this staffing (core population forecast)."))
-	_forecast.add_child(Lcars.stat("Food", Lcars.signed(int(eco["food"]) - pop), "alert" if int(eco["food"]) < pop else "good"))
-	_forecast.add_child(Lcars.stat("Credits", Lcars.signed(eco["net"])))
+	var g_ok := int(growth.get("max", 0)) >= 0
+	_forecast.add_child(Pic.num("growth", SystemVM.forecast_growth_text(growth), "Population change next turn with this staffing (core population forecast).", Lcars.GOOD if g_ok else Lcars.ALERT, 20, 17))
+	_forecast.add_child(Pic.num("food", Lcars.signed(int(eco["food"]) - pop), "Food surplus (+) or shortfall (-) next turn.", Lcars.GOOD if int(eco["food"]) >= pop else Lcars.ALERT, 20, 17))
+	_forecast.add_child(Pic.num("credits", Lcars.signed(eco["net"]), "Credits per turn after upkeep.", null, 20, 17))
 	var idle := vm.unassigned()
-	_forecast.add_child(Lcars.stat("Idle", idle, "warn" if idle > 0 else ""))
+	_forecast.add_child(Pic.num("population", str(idle), "Idle citizens with no job.", Lcars.WARN if idle > 0 else Lcars.TEXT3, 20, 17, Lcars.WARN if idle > 0 else Lcars.TEXT3))
+	if not app.view["meta"].get("populationEnabled", true):
+		_forecast.add_child(Pic.num("lock", "", "Population is fixed in this ruleset.", null, 18, 13, Lcars.TEXT3))
 	if vm.draft_dirty():
 		var ap := Lcars.pill("Apply", "primary", func(): apply_workers(), _locked())
 		ap.name = "ApplyWorkers"
@@ -318,57 +315,69 @@ func apply_workers() -> void:
 	if not vm.apply_workers():
 		_update_forecast()
 
+const GOV_ICONS := {"Manual": "settings", "Balanced": "colony", "Growth": "growth", "Research": "research", "Manufacturing": "industry"}
+
+## The colonial administrator: a row of mode icons for the workforce and one for the queue; the chosen mode's name beside them and
+## the governor's reasoning in the tooltip.
 func _governor(c: Dictionary) -> Control:
 	var g: Dictionary = c["governor"]
-	var f := Lcars.frame(TrekText.term(app.player(), "governor", "Governor"), "automation", "secondary", "settings")
+	var f := Lcars.frame(TrekText.term(app.player(), "governor", "Governor"), "", "secondary", "settings")
 	var b := Lcars.body(f)
 	for which in ["workforce", "queue"]:
-		var row := Lcars.hbox(4)
-		var l := Lcars.caption("Workforce" if which == "workforce" else "Queue")
-		l.custom_minimum_size.x = 84
-		Lcars.tip(l, "Automatically assigns citizens each turn." if which == "workforce" else "Queues construction whenever the build queue runs empty.")
-		row.add_child(l)
+		var row := Lcars.hbox(6)
+		var why := str(g.get("workforceExplanation" if which == "workforce" else "queueExplanation", ""))
+		var lead := UiIcon.make("population" if which == "workforce" else "build", 26, Lcars.accent2())
+		Pic.tipped(lead, ("Automatically assigns citizens each turn." if which == "workforce" else "Queues construction whenever the build queue runs empty.") + ("\n" + why if why != "" and g[which] != "Manual" else ""))
+		lead.custom_minimum_size.x = 38
+		row.add_child(lead)
 		for o in app.meta.get("governors", []):
 			var key: String = o["key"]
 			var w: String = which
-			var t := Lcars.toggle(o["name"], g[which] == key, func(_on): vm.set_governor(w, key))
-			t.add_theme_font_size_override("font_size", 14)
+			var gart := Pic.governor_art(key)
+			var t: Button = Pic.picture_toggle(gart, g[which] == key, func(_on): vm.set_governor(w, key), str(o["name"])) if gart != null else Pic.icon_toggle(GOV_ICONS.get(key, "settings"), g[which] == key, func(_on): vm.set_governor(w, key), str(o["name"]), 22.0, Vector2(52, 52))
 			t.disabled = _locked() != ""
 			row.add_child(t)
+		row.add_child(Lcars.label(str(g[which]), "Muted", 14))
 		b.add_child(row)
 	if g.get("override", false) and g["workforce"] != "Manual":
-		var r := Lcars.hbox(8)
-		r.add_child(Lcars.para("Manual staffing is overriding the governor.", Lcars.WARN, 13))
-		r.add_child(Lcars.pill("Resume governor", "primary", func(): vm.resume_governor()))
-		b.add_child(r)
+		b.add_child(Lcars.pill("Resume governor", "primary", func(): vm.resume_governor(), "", "Manual staffing is overriding the governor."))
 	if str(g.get("warning", "")) != "":
-		b.add_child(Lcars.para(str(g["warning"]), Lcars.WARN, 13))
-	if g["workforce"] != "Manual" and str(g.get("workforceExplanation", "")) != "":
-		b.add_child(Lcars.para(str(g["workforceExplanation"]), Lcars.TEXT3, 13))
-	if g["queue"] != "Manual" and str(g.get("queueExplanation", "")) != "":
-		b.add_child(Lcars.para(str(g["queueExplanation"]), Lcars.TEXT3, 13))
+		b.add_child(Pic.tipped(Lcars.marked("warn", "Governor warning", "", 13, Lcars.WARN, 16), str(g["warning"])))
 	return f
 
+## Power as a meter and the plant pictures with a count, not a sentence.
 func _energy(c: Dictionary) -> Control:
 	var e: Dictionary = c["economy"]
 	var s: Dictionary = c["structures"]
-	var f := Lcars.frame("Energy & shipyard", "", "tertiary", "energy")
+	var f := Lcars.frame("Energy", "", "tertiary", "energy")
 	var b := Lcars.body(f)
 	var r := Lcars.hbox(8)
-	r.add_child(Lcars.label("Power", "Muted", 13))
+	r.add_child(UiIcon.make("energy", 22, Pic.tint("energy")))
 	r.add_child(Lcars.meter(e["energyUsed"], max(1, int(e["energyAvailable"])), Lcars.ALERT if int(e["energyUsed"]) > int(e["energyAvailable"]) else Lcars.accent2(), 8))
-	r.add_child(Lcars.label("%d/%d" % [int(e["energyUsed"]), int(e["energyAvailable"])], "Mono", 13))
+	r.add_child(Lcars.label("%d/%d" % [int(e["energyUsed"]), int(e["energyAvailable"])], "Mono", 14))
+	Pic.tipped(r, "Power in use / produced")
 	b.add_child(r)
-	var lines := "%d power plant%s%s · %s" % [int(s["powerPlants"]), "" if int(s["powerPlants"]) == 1 else "s", (" · %d fusion" % int(s["fusionPlants"])) if int(s["fusionPlants"]) > 0 else "",
-		("%d factories, %d labs idle" % [int(e["inactiveFactories"]), int(e["inactiveLabs"])]) if int(e["inactiveFactories"]) + int(e["inactiveLabs"]) > 0 else "All structures powered"]
-	b.add_child(Lcars.para(lines, Lcars.TEXT2, 13))
-	var sy := Lcars.hbox(8)
-	var st := "No shipyard"
-	if int(s["shipyards"]) > 0:
-		st = "Shipyard powered - builds ships and extends range" if e.get("shipyardPowered", false) else "Shipyard offline"
-	var sl := Lcars.para(st, Lcars.TEXT2, 13)
-	sl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	sy.add_child(sl)
+	var sy := Lcars.hbox(14)
+	for st in [["Power plant", "powerPlants", "Power plants"], ["Fusion plant", "fusionPlants", "Fusion plants"], ["Shipyard", "shipyards", "Shipyard"], ["Defense battery", "defenseBatteries", "Defense batteries"]]:
+		var n := int(s.get(st[1], 0))
+		if n <= 0:
+			continue
+		var h := Lcars.hbox(4)
+		h.add_child(Pic.structure(st[0], 34))
+		h.add_child(Lcars.label("x%d" % n, "Mono", 15))
+		var tip: String = "%d %s" % [n, st[2]]
+		if st[1] == "shipyards":
+			var up: bool = e.get("shipyardPowered", false)
+			h.add_child(UiIcon.make("tick" if up else "cross", 16, Lcars.GOOD if up else Lcars.ALERT))
+			tip = "Shipyard powered - builds ships and extends range" if up else "Shipyard offline"
+		Pic.tipped(h, tip)
+		sy.add_child(h)
+	var dead := int(e["inactiveFactories"]) + int(e["inactiveLabs"])
+	if dead > 0:
+		sy.add_child(Pic.num("warn", "%d" % dead, "%d factories and %d labs stand idle without power." % [int(e["inactiveFactories"]), int(e["inactiveLabs"])], Lcars.WARN, 20, 16, Lcars.WARN))
+	else:
+		sy.add_child(Pic.tipped(UiIcon.make("tick", 18, Lcars.GOOD), "All structures powered"))
+	sy.add_child(Lcars.spacer())
 	if int(s["shipyards"]) > 0:
 		sy.add_child(Lcars.pill("Switch %s" % ("off" if c.get("shipyardEnabled", false) else "on"), "ghost", func(): vm.toggle_shipyard(), vm.shipyard_block()))
 	b.add_child(sy)
@@ -379,17 +388,29 @@ func _dilithium(c: Dictionary) -> Control:
 	var lines := SystemVM.dilithium_lines(vm.dilithium(), str(detail.get("queueBlocker", "")))
 	if lines.is_empty():
 		return null
-	var f := Lcars.frame("Dilithium", "ship slots", "secondary", "energy")
+	var f := Lcars.frame("Dilithium", "", "secondary", "energy")
 	f.name = "DilithiumPanel"
 	var b := Lcars.body(f)
 	var d := vm.dilithium()
 	var r := Lcars.hbox(8)
-	r.add_child(Lcars.label("Slots", "Muted", 13))
+	r.add_child(Pic.tipped(Pic.structure("Dilithium refinery", 34), "Ship slots in use"))
 	r.add_child(Lcars.meter(int(d["slotsUsed"]), max(1, int(d["slots"])), Lcars.WARN if int(d["slotsUsed"]) >= int(d["slots"]) else Lcars.accent2(), 8))
 	r.add_child(Lcars.label("%d/%d" % [int(d["slotsUsed"]), int(d["slots"])], "Mono", 13))
 	b.add_child(r)
+	var tips := []
 	for ln in lines:
-		b.add_child(Lcars.para(str(ln["text"]), Lcars.tone_color(str(ln["tone"])) if str(ln["tone"]) != "" else Lcars.TEXT2, 13))
+		tips.append(str(ln["text"]))
+	r.tooltip_text = "\n".join(tips)
+	r.mouse_filter = Control.MOUSE_FILTER_PASS
+	var mk := Lcars.hbox(10)
+	var ok: bool = bool(d["refinery"]) and bool(d["refineryPowered"])
+	mk.add_child(Pic.tipped(Lcars.icon("tick" if ok else ("info" if bool(d["deposit"]) else "cross"), 22, Lcars.GOOD if ok else (Lcars.INFO if bool(d["deposit"]) else Lcars.TEXT3)), str(lines[0]["text"])))
+	mk.add_child(Pic.num("energy", "%d" % int(d["empirePowered"]), "Powered refineries of %d in the empire" % int(d["empireRefineries"]), null, 20, 15))
+	if int(d.get("klingonBonusPercent", 0)) > 0:
+		mk.add_child(Pic.num("speed", "+%d%%" % int(d["klingonBonusPercent"]), "Klingon yard bonus: ships here build faster.", Lcars.GOOD, 20, 15))
+	if str(detail.get("queueBlocker", "")).find("slots") >= 0 or str(detail.get("queueBlocker", "")).find("refinery") >= 0:
+		mk.add_child(Pic.tipped(Lcars.icon("warn", 20, Lcars.WARN), str(detail["queueBlocker"])))
+	b.add_child(mk)
 	return f
 
 ## Schema 23: structure upgrade tiers, the Protectorate and shared morale at this colony. Null when none of those rules is on.
@@ -403,7 +424,7 @@ func _economy_rules() -> Control:
 	var show_pro: bool = bool(er.get("subjugated", false)) or int(er.get("sharedMorale", 0)) > 0
 	if not show_up and not show_pro:
 		return null
-	var f := Lcars.frame("Upgrades and order", "economy", "secondary", "energy")
+	var f := Lcars.frame("Upgrades", "", "secondary", "build")
 	f.name = "EconomyPanel"
 	var b := Lcars.body(f)
 	if show_up:
@@ -411,16 +432,26 @@ func _economy_rules() -> Control:
 			if int(u["units"]) <= 0:
 				continue
 			var row := Lcars.hbox(8)
-			row.add_child(Lcars.label(str(u["kind"]).capitalize(), "Muted", 13))
+			var uk: String = {"farms": "Farm", "factories": "Factory", "laboratories": "Laboratory"}.get(str(u["kind"]), str(u["kind"]))
+			row.add_child(Pic.structure(uk, 30))
 			row.add_child(Lcars.meter(int(u["steps"]), max(1, int(u["units"]) * 3), Lcars.accent2(), 8))
-			row.add_child(Lcars.label("tier %d of %d (+%d%%)" % [int(u["tier"]), int(u["available"]), int(u["percent"])], "Mono", 13))
+			row.add_child(Lcars.label("%d/%d" % [int(u["tier"]), int(u["available"])], "Mono", 14))
+			row.add_child(Pic.num("growth", "+%d%%" % int(u["percent"]), "Tier %d of %d: +%d%% output. A tier needs the matching science at level 2, 4 and 6." % [int(u["tier"]), int(u["available"]), int(u["percent"])], Lcars.GOOD, 16, 13))
 			b.add_child(row)
-		b.add_child(Lcars.para("Upgrades are in the build list. A tier needs the matching science at level 2, 4 and 6." if not rules.get("noUpgrades", false) else "This game plays without structure upgrades.", Lcars.TEXT3, 13))
+		if rules.get("noUpgrades", false):
+			b.add_child(Pic.num("lock", "", "This game plays without structure upgrades.", Lcars.TEXT3, 20))
 	if bool(er.get("subjugated", false)):
 		var hq: bool = bool(er.get("hasHq", false))
-		b.add_child(Lcars.para("Subjugated world. " + ("A Protectorate HQ holds order here (+%d morale) and %d credits a turn come in as tribute." % [int(er["moraleBonus"]), int(er["tribute"])] if hq else "Without a Protectorate Headquarters in a subjugated world it is restless (%d morale)." % int(er["moraleBonus"])), Lcars.GOOD if hq else Lcars.WARN, 13))
+		var sj := Lcars.hbox(12)
+		sj.add_child(Lcars.icon("war", 22, Lcars.GOOD if hq else Lcars.WARN))
+		sj.add_child(Pic.num("morale", "%+d" % int(er["moraleBonus"]), "Morale from the Protectorate", Lcars.GOOD if hq else Lcars.WARN, 20, 15))
+		if hq:
+			sj.add_child(Pic.num("credits", "%d" % int(er["tribute"]), "Tribute per turn", Lcars.GOOD, 20, 15))
+		sj.tooltip_text = ("Subjugated world. A Protectorate HQ holds order here (+%d morale) and %d credits a turn come in as tribute." % [int(er["moraleBonus"]), int(er["tribute"])]) if hq else ("Subjugated world. Without a Protectorate Headquarters in a subjugated world it is restless (%d morale)." % int(er["moraleBonus"]))
+		sj.mouse_filter = Control.MOUSE_FILTER_PASS
+		b.add_child(sj)
 	if int(er.get("sharedMorale", 0)) > 0:
-		b.add_child(Lcars.para("Shared morale: +%d from the empire's Unity Monument." % int(er["sharedMorale"]), Lcars.GOOD, 13))
+		b.add_child(Pic.num("morale", "+%d" % int(er["sharedMorale"]), "Shared morale from the empire's Unity Monument.", Lcars.GOOD, 22, 16))
 	return f
 
 ## The race's emergency program for this colony (schema 15). Null when the rules are off.
@@ -428,18 +459,20 @@ func _program(c: Dictionary) -> Control:
 	var p := vm.program()
 	if p.is_empty():
 		return null
-	var f := Lcars.frame("Emergency program", str(p["name"]), "tertiary", "morale")
+	var f := Lcars.frame("Emergency program", "", "tertiary", "morale")
 	f.name = "ProgramPanel"
 	var b := Lcars.body(f)
 	var active := int(p["activeId"]) != 0
-	b.add_child(Lcars.para(SystemVM.program_status(p), Lcars.WARN if active else Lcars.TEXT2, 13))
-	b.add_child(Lcars.para(str(p["effect"]), Lcars.TEXT3, 13))
-	var row := Lcars.hbox(8)
-	row.add_child(Lcars.label("Morale %d" % int(c["morale"]), "Mono", 13))
+	var row := Lcars.hbox(10)
+	row.tooltip_text = "%s\n%s" % [SystemVM.program_status(p), str(p["effect"])]
+	row.mouse_filter = Control.MOUSE_FILTER_PASS
+	row.add_child(Pic.num("morale", "%d" % int(c["morale"]), "Morale", null, 22, 17))
+	row.add_child(Pic.num("alert" if active else "info", str(p["name"]), SystemVM.program_status(p), Lcars.WARN if active else Lcars.TEXT2, 20, 14, Lcars.WARN if active else Lcars.TEXT2))
+	row.add_child(Lcars.spacer())
 	if active:
 		row.add_child(Lcars.pill("Lift %s" % p["activeName"], "ghost", func(): vm.cancel_program(), _locked(), "Ends the program at turn end"))
 	else:
-		row.add_child(Lcars.pill("Declare %s" % p["name"], "primary", func(): vm.start_program(), vm.program_block(), "Quells unrest at the price shown"))
+		row.add_child(Lcars.pill("Declare", "primary", func(): vm.start_program(), vm.program_block(), "Declare %s. %s" % [p["name"], str(p["effect"])]))
 	b.add_child(row)
 	return f
 
@@ -452,27 +485,28 @@ func _construction() -> Control:
 		var id: String = t[0]
 		tabs.add_child(Lcars.toggle(t[1], tab == id, func(_on): tab = id; refresh()))
 	b.add_child(tabs)
-	var list := Lcars.vbox(6)
+	var list: Control = Lcars.vbox(6)
 	if tab == "installed":
-		# MOD-3: race structures the pack adds (the Dominion ladder); they have no scrap order yet, so they show as a read-only row with what they do.
+		# MOD-3: race structures the pack adds (the Dominion ladder); they have no scrap order yet, so they show as a read-only row.
 		for rs in detail.get("raceStructures", []):
 			var rr := Lcars.hbox(10)
 			rr.name = "RaceStructure_%d" % int(rs["id"])
+			rr.add_child(Pic.structure(str(rs["name"]), 36))
 			var rn := Lcars.label(str(rs["name"]), "", 15)
 			rn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-			rn.tooltip_text = str(rs.get("description", ""))
 			rr.add_child(rn)
-			rr.add_child(Lcars.label(str(rs.get("effect", "")), "Muted"))
-			rr.add_child(Lcars.label("¢%d" % int(rs["upkeep"]), "Muted"))
+			rr.add_child(Pic.num("credits", "%d" % int(rs["upkeep"]), "Upkeep per turn"))
+			Pic.tipped(rr, "%s\n%s" % [str(rs.get("description", "")), str(rs.get("effect", ""))])
 			list.add_child(rr)
 		for s in detail.get("scrap", []):
 			var r := Lcars.hbox(10)
+			r.add_child(Pic.structure(str(s["name"]), 36))
 			var n := Lcars.label(str(s["name"]), "", 15)
 			n.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 			r.add_child(n)
-			r.add_child(Lcars.label("x%d" % int(s["count"]), "Mono"))
-			r.add_child(UiIcon.make("energy", 14, Lcars.TEXT3))
-			r.add_child(Lcars.label("%d · ¢%d" % [int(s["energyCost"]), int(s["upkeep"])], "Muted"))
+			r.add_child(Lcars.label("x%d" % int(s["count"]), "Mono", 16))
+			r.add_child(Pic.num("energy", "%d" % int(s["energyCost"]), "Energy it uses"))
+			r.add_child(Pic.num("credits", "%d" % int(s["upkeep"]), "Upkeep per turn"))
 			var bld: String = s["building"]
 			var nm: String = s["name"]
 			r.add_child(Lcars.pill("Scrap", "alert", func():
@@ -482,9 +516,16 @@ func _construction() -> Control:
 	else:
 		var src := vm.choices(tab == "ships")
 		if src.is_empty():
-			list.add_child(Lcars.empty_note("No starships available - build and power a shipyard." if tab == "ships" else "Nothing can be built here right now."))
-		for ch in src:
-			list.add_child(_choice(ch))
+			list.add_child(Pic.num("lock", "", "No starships available - build and power a shipyard." if tab == "ships" else "Nothing can be built here right now.", Lcars.TEXT3, 28))
+		else:
+			var grid := Lcars.grid(2 if tab == "ships" else 3)
+			grid.add_theme_constant_override("h_separation", 8)
+			grid.add_theme_constant_override("v_separation", 8)
+			for ch in src:
+				var tile := _choice(ch)
+				tile.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+				grid.add_child(tile)
+			list = grid
 	b.add_child(Lcars.scroll(list))
 	return f
 
@@ -495,76 +536,134 @@ func _ship_class(ch: Dictionary) -> String:
 			return str(sh["designClass"])
 	return ShipGlyph.class_of({"name": str(ch.get("name", ""))})
 
+## One choice as a picture tile: the structure (or the ship) large, its name, and its numbers beside icons. What it does, and
+## why it cannot be built yet, are in the tooltip; a locked tile shows the tech field and level it waits for.
 func _choice(ch: Dictionary) -> Control:
 	var reason := vm.choice_block(ch)
+	var is_ship: bool = ch["isShip"]
 	var btn := Button.new()
 	btn.name = "Choice_%s_%d" % [ch["product"], int(ch["referenceId"])]
 	btn.theme_type_variation = "GhostButton"
-	btn.custom_minimum_size.y = 58 if reason == "" else 82 # the reason is a third text line: room for it, so it never crowds the next row
+	btn.custom_minimum_size = Vector2(150, 222 if is_ship else ((178 if ChoiceIcon.art(str(ch["name"])) != null else 150) + (22 if reason != "" else 0)))
 	btn.disabled = reason != ""
-	var sb := Lcars.box_tab(Color(Lcars.PANEL2, 0.8), 12, 3, Lcars.LINE2, 1, Vector4(12, 6, 12, 6))
-	btn.add_theme_stylebox_override("disabled", Lcars.box_tab(Color(Lcars.PANEL, 0.6), 12, 3, Lcars.LINE, 1, Vector4(12, 6, 12, 6)))
-	btn.add_theme_stylebox_override("normal", sb)
-	btn.tooltip_text = ("Unavailable: " + reason) if reason != "" else SystemVM.choice_tip(ch)
-	var row := Lcars.row_inner(btn, 12)
-	var icon := ChoiceIcon.new()
-	icon.product = str(ch["product"])
-	icon.ship = ch["isShip"]
-	icon.label_name = str(ch["name"])
-	if icon.ship:
-		icon.owner_id = app.player()
-		icon.klass = _ship_class(ch)
-	icon.custom_minimum_size = Vector2(34, 34)
-	icon.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	row.add_child(icon)
-	var main := Lcars.vbox(0)
-	main.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	main.alignment = BoxContainer.ALIGNMENT_CENTER
-	var nm := Lcars.label(str(ch["name"]), "", 15, Lcars.TEXT if reason == "" else Lcars.TEXT3)
-	nm.add_theme_font_override("font", Lcars.font("ui", 560))
-	main.add_child(nm)
-	main.add_child(Lcars.label(SystemVM.choice_meta(ch), "Muted", 12))
+	btn.add_theme_stylebox_override("normal", Pic.tile_box())
+	btn.add_theme_stylebox_override("hover", Pic.tile_box(true))
+	btn.add_theme_stylebox_override("pressed", Pic.tile_box(true))
+	btn.add_theme_stylebox_override("disabled", Lcars.box_tab(Color(Lcars.PANEL, 0.6), 14, 4, Lcars.LINE, 1, Vector4(8, 8, 8, 8)))
+	btn.tooltip_text = ("Unavailable: " + reason + "\n" if reason != "" else "") + SystemVM.choice_tip(ch)
+	var col := Lcars.vbox(4)
+	col.set_anchors_preset(Control.PRESET_FULL_RECT)
+	col.offset_left = 6
+	col.offset_right = -6
+	col.offset_top = 6
+	col.offset_bottom = -6
+	col.alignment = BoxContainer.ALIGNMENT_CENTER
+	btn.add_child(col)
+	var nm := str(ch["name"])
+	var title := nm
+	var sub := ""
+	if is_ship:
+		var cls := _ship_class(ch)
+		var pic := ShipPicture.make(app.player(), cls, 118, "iso", Lcars.accent())
+		pic.plate = true
+		pic.custom_minimum_size = Vector2(0, 112)
+		pic.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		col.add_child(pic)
+		var sp := nm.find(" — ")
+		if sp > 0:
+			title = nm.substr(0, sp)
+			sub = nm.substr(sp + 3)
+	else:
+		var ic := Pic.structure(nm, 62)
+		if ChoiceIcon.art(nm) != null:
+			ic.custom_minimum_size = Vector2(0, 100) # the illustration fills the top of the tile
+			ic.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			ic.clip_contents = true
+		else:
+			ic.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+		col.add_child(ic)
+	var tl := Lcars.label(title, "", 15, Lcars.TEXT if reason == "" else Lcars.TEXT3)
+	tl.add_theme_font_override("font", Lcars.font("ui", 560))
+	tl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	tl.clip_text = true
+	tl.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	col.add_child(tl)
+	if sub != "":
+		var sl := Lcars.label(sub, "Muted", 12)
+		sl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		sl.clip_text = true
+		sl.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+		col.add_child(sl)
+	if is_ship and ch.has("hull"):
+		var st := Lcars.hbox(10)
+		st.alignment = BoxContainer.ALIGNMENT_CENTER
+		st.add_child(Pic.num("attack", "%d" % int(ch["attack"]), "Attack", null, 16, 13))
+		st.add_child(Pic.num("shield", "%d" % int(ch["shields"]), "Shields", null, 16, 13))
+		st.add_child(Pic.num("hull", "%d" % int(ch["hull"]), "Hull", null, 16, 13))
+		col.add_child(st)
+	var nums := Lcars.hbox(10)
+	nums.alignment = BoxContainer.ALIGNMENT_CENTER
+	nums.add_child(Pic.num("industry", Lcars.fmt(ch["cost"]), "Industry cost", null, 16, 13))
+	if int(ch["upkeep"]) > 0:
+		nums.add_child(Pic.num("credits", "%d" % int(ch["upkeep"]), "Upkeep per turn", null, 16, 13))
+	nums.add_child(Pic.num("clock", ("%d" % int(ch["turns"])) if int(ch["turns"]) > 0 else "-", "Turns to build at the colony's industry", Lcars.accent2(), 16, 13))
+	col.add_child(nums)
 	if reason != "":
-		main.add_child(Lcars.label(reason, "", 12, Lcars.WARN))
-	row.add_child(main)
-	row.add_child(Lcars.label(("%dT" % int(ch["turns"])) if int(ch["turns"]) > 0 else "∞", "Mono", 15, Lcars.accent2()))
-	row.add_child(UiIcon.make("delta_right", 16, Lcars.accent()))
-	Lcars.ignore_mouse(row)
+		var rq := Pic.requirement(reason)
+		var lk := Lcars.hbox(4)
+		lk.alignment = BoxContainer.ALIGNMENT_CENTER
+		lk.add_child(UiIcon.make("lock", 15, Lcars.WARN))
+		if rq[0] != "lock":
+			lk.add_child(UiIcon.make(rq[0], 15, Lcars.WARN))
+			lk.add_child(Lcars.label(rq[1], "Mono", 13, Lcars.WARN))
+		col.add_child(lk)
+	Lcars.ignore_mouse(col)
 	btn.pressed.connect(func(): vm.enqueue(ch))
 	return btn
 
+## The build queue: a picture of each item, a bar and the turns, with the order buttons as icons.
 func _queue(c: Dictionary) -> Control:
 	var q := vm.queue()
-	var f := Lcars.frame("Build queue", "%d item%s" % [q.size(), "" if q.size() == 1 else "s"], "secondary", "industry")
+	var f := Lcars.frame("Build queue", "", "secondary", "industry")
 	f.name = "BuildQueue"
 	var b := Lcars.body(f)
 	if str(detail.get("queueBlocker", "")) != "":
-		b.add_child(Lcars.para(str(detail["queueBlocker"]), Lcars.WARN, 13))
+		b.add_child(Pic.tipped(Lcars.marked("warn", "Blocked", "", 13, Lcars.WARN, 16), str(detail["queueBlocker"])))
 	if q.is_empty():
-		b.add_child(Lcars.empty_note("The queue is empty. Choose a structure or starship to build."))
+		var es := Lcars.hbox(8)
+		for k in 3:
+			es.add_child(Pic.empty_slot(48, "The queue is empty. Choose a structure or starship to build."))
+		b.add_child(es)
 	var lock := _locked()
 	for i in q.size():
 		var it: Dictionary = q[i]
 		var card := Lcars.card()
-		var col := Lcars.vbox(3)
+		var col := Lcars.vbox(4)
 		card.add_child(col)
-		var h := Lcars.hbox(8)
+		var h := Lcars.hbox(10)
 		h.add_child(Lcars.label(str(i + 1), "Mono", 16, Lcars.accent() if i == 0 else Lcars.TEXT3))
 		var pl := str(it.get("product", "")).to_lower()
 		if bool(it.get("isShip", false)) or pl.begins_with("ship") or pl.begins_with("starship"):
-			h.add_child(ShipPicture.make(app.player(), _ship_class({"name": str(it["name"]), "referenceId": int(it.get("referenceId", -1))}), 30, "top", Lcars.accent()))
+			var sp := ShipPicture.make(app.player(), _ship_class({"name": str(it["name"]), "referenceId": int(it.get("referenceId", -1))}), 56, "iso", Lcars.accent())
+			sp.plate = true
+			h.add_child(sp)
+		else:
+			h.add_child(Pic.structure(str(it["name"]), 48))
+		var mid := Lcars.vbox(3)
+		mid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		mid.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		var n := Lcars.label(str(it["name"]), "", 15, Lcars.TEXT)
-		n.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		h.add_child(n)
-		var eta := Lcars.label(("%dT" % int(it["eta"])) if int(it["eta"]) > 0 else "-", "Mono", 15, Lcars.accent2())
-		Lcars.tip(eta, "Estimated completion in %d turns at %d industry/turn." % [int(it["eta"]), int(c["economy"]["industry"])] if int(it["eta"]) > 0 else "No industry: this item makes no progress.")
+		n.clip_text = true
+		n.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+		mid.add_child(n)
+		mid.add_child(Lcars.meter(it["work"], it["cost"], Lcars.accent() if i == 0 else Lcars.accent2(), 6))
+		mid.add_child(Pic.num("industry", "%s/%s" % [Lcars.fmt(it["work"]), Lcars.fmt(it["cost"])], "Industry invested / needed", Lcars.TEXT3, 14, 12))
+		h.add_child(mid)
+		var eta := Pic.num("clock", ("%d" % int(it["eta"])) if int(it["eta"]) > 0 else "-", "Estimated completion in %d turns at %d industry/turn." % [int(it["eta"]), int(c["economy"]["industry"])] if int(it["eta"]) > 0 else "No industry: this item makes no progress.", Lcars.accent2(), 20, 17)
 		h.add_child(eta)
 		col.add_child(h)
-		col.add_child(Lcars.meter(it["work"], it["cost"], Lcars.accent() if i == 0 else Lcars.accent2(), 4))
-		var foot := Lcars.hbox(4)
-		var w := Lcars.label("%s / %s" % [Lcars.fmt(it["work"]), Lcars.fmt(it["cost"])], "Mono", 12)
-		w.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		foot.add_child(w)
+		var foot := Lcars.hbox(2)
+		foot.alignment = BoxContainer.ALIGNMENT_END
 		var idx := i
 		var pinned: bool = it.get("pinned", false)
 		foot.add_child(Lcars.icon_button("◆" if pinned else "◇", "Unpin" if pinned else "Pin (protect from governor changes)", lock, func(): vm.set_pin(idx, not pinned)))
@@ -577,34 +676,33 @@ func _queue(c: Dictionary) -> Control:
 	var pending_buy := vm.pending_buy()
 	var buy := Lcars.hbox(8)
 	if not pending_buy.is_empty():
-		buy.add_child(Lcars.para("Purchase ordered - completes at turn end.", Lcars.GOOD, 14))
+		buy.add_child(Pic.num("tick", "Ordered", "Purchase ordered - completes at turn end.", Lcars.GOOD, 20, 14, Lcars.GOOD))
+		buy.add_child(Lcars.spacer())
 		var pid := int(pending_buy["id"])
 		buy.add_child(Lcars.pill("Cancel", "ghost", func(): vm.cancel([pid], "Purchase cancelled.")))
 	else:
-		var bl := Lcars.label("Buy current item  ¢%s" % Lcars.fmt(detail.get("rushCost", 0)), "", 14)
+		var bl := Pic.num("credits", Lcars.fmt(detail.get("rushCost", 0)), "Buying finishes the current item at turn end. Treasury %s." % Lcars.fmt(app.view["empire"].get("draftCredits", 0)), null, 22, 17)
 		bl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		Lcars.tip(bl, "Buying finishes the current item at turn end. Treasury %s." % Lcars.fmt(app.view["empire"].get("draftCredits", 0)))
 		buy.add_child(bl)
 		var bb := Lcars.pill("Buy", "secondary", func(): vm.buy(), vm.buy_block())
 		bb.name = "Buy"
 		buy.add_child(bb)
 	b.add_child(buy)
-	var sm := Lcars.hbox(6)
-	sm.add_child(Lcars.badge("%d ind/turn" % int(c["economy"]["industry"]), "primary"))
+	var sm := Lcars.hbox(14)
+	sm.add_child(Pic.num("industry", "%d" % int(c["economy"]["industry"]), "Industry per turn goes into the first item.", null, 20, 16))
 	if int(detail.get("overflow", 0)) > 0:
-		sm.add_child(Lcars.badge("+%d carried" % int(detail["overflow"]), "good"))
+		sm.add_child(Pic.num("plus", "%d" % int(detail["overflow"]), "Industry carried over from the last item.", Lcars.GOOD, 18, 15, Lcars.GOOD))
 	b.add_child(sm)
 	return f
 
+## Templates: a strip of the queued pictures per template. The sentence that explains them is the name box's tooltip.
 func _templates() -> Control:
 	var temps: Array = app.view.get("templates", [])
-	var f := Lcars.frame("Build templates", "%d saved" % temps.size(), "tertiary", "chronicle")
+	var f := Lcars.frame("Build templates", "", "tertiary", "chronicle")
 	f.name = "Templates"
 	var b := Lcars.body(f)
 	var items := vm.queue_items()
 	var lock := _locked()
-	if temps.is_empty():
-		b.add_child(Lcars.para("Save this colony's queue as a template, then apply it anywhere. The default template is applied to every new colony with an empty queue.", Lcars.TEXT3, 13))
 	for t in temps:
 		var tid := int(t["id"])
 		var tname: String = t["name"]
@@ -616,7 +714,10 @@ func _templates() -> Control:
 		if t.get("isDefault", false):
 			h.add_child(Lcars.badge("default", "good"))
 		col.add_child(h)
-		col.add_child(Lcars.para(" · ".join(t["items"].map(func(i): return i["name"])), Lcars.TEXT3, 12))
+		var strip := Lcars.hbox(4)
+		for ti in t["items"]:
+			strip.add_child(Pic.tipped(Pic.structure(str(ti["name"]), 30), str(ti["name"])))
+		col.add_child(strip)
 		var acts := Lcars.hbox(4)
 		acts.add_child(Lcars.pill("Apply", "secondary", func(): vm.apply_template(tid, tname), vm.template_block(tid), "Append these items to this colony's queue"))
 		var is_def: bool = t.get("isDefault", false)
@@ -632,6 +733,7 @@ func _templates() -> Control:
 	le.text = vm.template_name
 	le.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	le.name = "TemplateName"
+	le.tooltip_text = "Save this colony's queue as a template, then apply it anywhere. The default template is applied to every new colony with an empty queue."
 	nr.add_child(le)
 	var save := Lcars.pill("Save queue", "secondary", func():
 		var n := le.text.strip_edges()
@@ -641,30 +743,39 @@ func _templates() -> Control:
 		vm.define_template(0, n, "Template “%s” saved." % n), vm.save_block(), "Save the %d queued items as a template" % items.size())
 	nr.add_child(save)
 	b.add_child(nr)
-	if str(detail.get("queueExplanation", "")) != "":
-		b.add_child(Lcars.para(str(detail["queueExplanation"]), Lcars.TEXT3, 12))
 	return f
 
+## The scientific-victory project: its cost in icons; the rules sentence is the tooltip.
 func _megaproject() -> Control:
 	var m := vm.megaproject()
 	if m.is_empty():
 		return null
-	var f := Lcars.frame(str(m["name"]), "scientific victory", "good", "victory")
+	var f := Lcars.frame(str(m["name"]), "", "good", "victory")
 	f.name = "Megaproject"
 	var b := Lcars.body(f)
 	var lock := _locked()
 	var elsewhere: bool = m.has("systemId") and not m.get("here", false)
 	var nm: String = m["name"]
+	var rules := "Completing the %s wins a scientific victory. It costs ¢%s up front, then absorbs up to %d industry per turn from this colony (%s in all)." % [m["name"], Lcars.fmt(m["credits"]), int(m["workPerTurn"]), Lcars.fmt(m["cost"])]
 	if m.get("here", false) or elsewhere:
-		b.add_child(Lcars.para("%s: %s / %s industry, up to %d per turn." % ["Under construction here" if m.get("here", false) else "Under construction at %s" % m.get("system", ""), Lcars.fmt(m.get("work", 0)), Lcars.fmt(m["cost"]), int(m["workPerTurn"])]))
+		var hd := Lcars.hbox(10)
+		hd.add_child(Pic.num("industry", "%s/%s" % [Lcars.fmt(m.get("work", 0)), Lcars.fmt(m["cost"])], "Industry invested / needed. Up to %d per turn." % int(m["workPerTurn"]), null, 22, 16))
+		if elsewhere:
+			hd.add_child(Pic.num("system", str(m.get("system", "")), "Under construction at %s" % m.get("system", ""), null, 20, 14))
+		b.add_child(hd)
 		b.add_child(Lcars.meter(m.get("work", 0), m["cost"], Lcars.GOOD, 7))
 		b.add_child(Lcars.pill("Abandon", "alert", func(): app.confirm("Abandon the %s?" % nm, "All work is lost and the credits are not refunded.", "Abandon", func(): vm.cancel_megaproject(nm)), lock if lock != "" else str(m.get("cancelBlocker", ""))))
 	else:
-		b.add_child(Lcars.para("Completing the %s wins a scientific victory. It costs ¢%s up front, then absorbs up to %d industry per turn from this colony (%s in all)." % [m["name"], Lcars.fmt(m["credits"]), int(m["workPerTurn"]), Lcars.fmt(m["cost"])], Lcars.TEXT2, 13))
+		var cost := Lcars.hbox(16)
+		cost.add_child(Pic.num("credits", Lcars.fmt(m["credits"]), "Credits up front", null, 22, 17))
+		cost.add_child(Pic.num("industry", "%d/t" % int(m["workPerTurn"]), "Industry taken per turn from this colony", null, 22, 17))
+		cost.add_child(Pic.num("victory", Lcars.fmt(m["cost"]), "Industry in all", null, 22, 17))
+		Pic.tipped(cost, rules)
+		b.add_child(cost)
 		var acts := Lcars.hbox(6)
 		acts.add_child(Lcars.pill("Begin here", "good", func(): vm.start_megaproject(nm), lock if lock != "" else str(m.get("startBlocker", ""))))
 		acts.add_child(Lcars.pill("Victory progress", "ghost", func(): app.open_overlay("victory")))
-		b.add_child(acts)
 		if str(m.get("startBlocker", "")) != "":
-			b.add_child(Lcars.para(str(m["startBlocker"]), Lcars.WARN, 12))
+			acts.add_child(Pic.num("lock", "", str(m["startBlocker"]), null, 18, 13, Lcars.WARN))
+		b.add_child(acts)
 	return f

@@ -320,10 +320,25 @@ func _build_inspector() -> void:
 	if cell >= 0:
 		_inspector_body.add_child(_sector_card(cell, fleet.is_empty() and contact.is_empty()))
 	else:
-		var e := Lcars.vbox(8)
-		e.add_child(Lcars.heading("Star chart", 26))
-		e.add_child(Lcars.para("Select a system or ship. Right-click a sector for orders; with a ship selected, right-click open space to set course."))
-		e.add_child(Lcars.label("Drag pan · Right-drag orbit · Wheel zoom\nWASD pan · Q/E rotate · PgUp/PgDn tilt\nDouble-click fly to · F fit · H home\nTab next ship · Enter end turn", "Mono", 13))
+		var e := Lcars.vbox(10)
+		var hh := Lcars.hbox(10)
+		hh.add_child(Lcars.icon("galaxy", 30, Lcars.accent()))
+		hh.add_child(Lcars.heading("Star chart", 26))
+		e.add_child(hh)
+		e.add_child(Pic.tipped(Lcars.marked("orders", "RMB", "Mono", 15, Lcars.TEXT, 24), "Select a system or ship. Right-click a sector for orders; with a ship selected, right-click open space to set course."))
+		# Controls as key chips: the mouse and keys, each with its icon; what they do is the tooltip.
+		var keys := [["quadrant", "Drag", "Drag to pan"], ["galaxy", "R-drag", "Right-drag to orbit"], ["search", "Wheel", "Wheel to zoom"], ["delta_up", "WASD", "WASD pan"], ["turn", "Q E", "Q and E rotate"],
+			["up", "PgUp PgDn", "PgUp and PgDn tilt"], ["eye", "F", "F fits the whole chart"], ["colony", "H", "H goes home"], ["fleet", "Tab", "Tab selects the next ship"], ["delta_right", "Enter", "Enter ends the turn"]]
+		var kf := HFlowContainer.new()
+		kf.add_theme_constant_override("h_separation", 10)
+		kf.add_theme_constant_override("v_separation", 8)
+		for k in keys:
+			var kc := Lcars.hbox(4)
+			kc.add_child(UiIcon.make(k[0], 18, Lcars.accent2()))
+			kc.add_child(Lcars.label(k[1], "Mono", 13, Lcars.TEXT2))
+			Pic.tipped(kc, k[2])
+			kf.add_child(kc)
+		e.add_child(kf)
 		_inspector_body.add_child(e)
 
 func _card_head(empire: int, title: String, sub: String) -> HBoxContainer:
@@ -332,23 +347,31 @@ func _card_head(empire: int, title: String, sub: String) -> HBoxContainer:
 	var t := Lcars.vbox(0)
 	var tl := Lcars.label(title.to_upper(), "SubHeading", 21, Lcars.TEXT)
 	tl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	tl.custom_minimum_size.x = 300
+	tl.custom_minimum_size.x = 150
 	t.add_child(tl)
 	t.add_child(Lcars.caption(sub))
 	h.add_child(t)
 	return h
 
+## A meter led by its icon (hull, shield): the numbers sit beside it, the word is the tooltip.
 func _bar_row(label: String, value: float, max_value: float, color: Color) -> HBoxContainer:
 	var r := Lcars.hbox(8)
-	var l := Lcars.label(label, "Muted", 13)
-	l.custom_minimum_size.x = 56
-	r.add_child(l)
-	r.add_child(Lcars.meter(value, max_value, color, 7))
+	var ic := UiIcon.make("hull" if label == "Hull" else "shield", 20, color)
+	r.add_child(Pic.tipped(ic, label))
+	r.add_child(Lcars.meter(value, max_value, color, 8))
 	var n := Lcars.label("%d/%d" % [value, max_value], "Mono", 13)
-	n.custom_minimum_size.x = 80
+	n.custom_minimum_size.x = 72
 	n.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	r.add_child(n)
 	return r
+
+## The ship's own picture on a plate: the baked icon when there is one, else its hull family silhouette.
+func _ship_pic(owner_id: int, klass: String, w: float, h: float) -> Control:
+	var pic := ShipPicture.make(owner_id, klass, h, "iso", Lcars.owner_color(owner_id))
+	pic.plate = true
+	pic.custom_minimum_size = Vector2(w, h)
+	pic.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	return pic
 
 func _unit_card(fleet: Dictionary) -> Control:
 	var v := app.view
@@ -364,8 +387,6 @@ func _unit_card(fleet: Dictionary) -> Control:
 		for f in v["fleets"]:
 			if tf["fleetIds"].has(f["id"]) or tf["fleetIds"].has(int(f["id"])):
 				members.append(f)
-	col.add_child(_card_head(app.player(), str(tf["name"]) if not tf.is_empty() else str(fleet["name"]),
-		("Task force · %d ships" % members.size()) if not tf.is_empty() else "%s%s · #%d" % [(str(fleet["designClass"]) + " class · ") if fleet.get("designClass", "") != "" else "", fleet["className"], int(fleet["id"])]))
 	var hull := 0
 	var mh := 0
 	var sh := 0
@@ -377,35 +398,49 @@ func _unit_card(fleet: Dictionary) -> Control:
 		sh += int(m["shields"])
 		ms += int(m["maxShields"])
 		upkeep += int(m.get("maintenance", 0))
-	col.add_child(_bar_row("Hull", hull, mh, Color("#8fd18a")))
-	col.add_child(_bar_row("Shields", sh, ms, Lcars.SHIELD))
-	var g := Lcars.grid(4)
-	g.add_child(Lcars.stat("Attack", Lcars.fmt(tf.get("attack", fleet["attack"])), "", "Combined strategic attack rating."))
-	g.add_child(Lcars.stat("Speed", "%d/t" % int(tf.get("speed", fleet["speed"])), "", "Sectors moved per turn."))
-	g.add_child(Lcars.stat("Range", fleet.get("range", 0), "", "Base supply range in sectors from a powered shipyard."))
-	g.add_child(Lcars.stat("Upkeep", upkeep, "warn", "Credits deducted every turn for maintenance."))
+	var klass := str(fleet.get("designClass", "")) if str(fleet.get("designClass", "")) != "" else str(fleet.get("className", ""))
+	var top := Lcars.hbox(12)
+	top.add_child(_ship_pic(app.player(), klass, 132, 100))
+	var tv := Lcars.vbox(6)
+	tv.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	tv.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	var head := _card_head(app.player(), str(tf["name"]) if not tf.is_empty() else str(fleet["name"]),
+		("x%d" % members.size()) if not tf.is_empty() else "%s · #%d" % [klass, int(fleet["id"])])
+	head.tooltip_text = ("Task force of %d ships" % members.size()) if not tf.is_empty() else "%s%s" % [(str(fleet["designClass"]) + " class · ") if fleet.get("designClass", "") != "" else "", fleet["className"]]
+	tv.add_child(head)
+	tv.add_child(_bar_row("Hull", hull, mh, Color("#8fd18a")))
+	tv.add_child(_bar_row("Shields", sh, ms, Lcars.SHIELD))
+	top.add_child(tv)
+	col.add_child(top)
+	var g := Lcars.hbox(18)
+	g.add_child(Pic.num("attack", Lcars.fmt(tf.get("attack", fleet["attack"])), "Attack: combined strategic attack rating.", null, 22, 18))
+	g.add_child(Pic.num("speed", "%d" % int(tf.get("speed", fleet["speed"])), "Speed: sectors moved per turn.", null, 22, 18))
+	g.add_child(Pic.num("range", "%d" % int(fleet.get("range", 0)), "Range: base supply range in sectors from a powered shipyard.", null, 22, 18))
+	g.add_child(Pic.num("credits", "%d" % upkeep, "Upkeep: credits deducted every turn for maintenance.", Lcars.WARN if upkeep > 0 else Lcars.TEXT3, 22, 18))
 	col.add_child(g)
 	var ol := Lcars.hbox(8)
-	ol.add_child(Lcars.caption("Orders"))
-	var ot := Lcars.para(GalaxyOrders.order_text(app, fleet), Lcars.TEXT, 14)
+	ol.add_child(UiIcon.make("orders", 20, Lcars.accent2()))
+	var ot := Lcars.label(GalaxyOrders.order_text(app, fleet), "", 14, Lcars.TEXT)
+	ot.clip_text = true
+	ot.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	ot.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	ol.add_child(ot)
 	if int(fleet.get("eta", 0)) > 0:
-		ol.add_child(Lcars.badge("%dT" % int(fleet["eta"]), "secondary"))
+		ol.add_child(Pic.num("clock", "%d" % int(fleet["eta"]), "Turns to arrive", Lcars.accent2(), 18, 15))
 	col.add_child(ol)
 	if fleet.get("routeBlocked", false):
-		col.add_child(Lcars.para("Course leaves supply range - the unit will wait.", Lcars.WARN, 13))
+		col.add_child(Pic.tipped(Lcars.marked("warn", "Out of supply", "", 13, Lcars.WARN, 16), "Course leaves supply range - the unit will wait."))
 	var lock := "Finish the battle in progress first" if v.get("session", {}).get("active", false) else ""
 	if v["meta"].get("advancedRules", false):
 		var sr := Lcars.hbox(4)
-		sr.add_child(Lcars.caption("Stance"))
 		var cur: String = tf.get("stance", fleet.get("stance", "Balanced"))
+		var icons := {"Balanced": "fleet", "Aggressive": "attack", "Defensive": "shield", "Withdraw": "delta_left"}
 		for s in ["Balanced", "Aggressive", "Defensive", "Withdraw"]:
 			var st: String = s
-			var b := Lcars.toggle(s, cur == s, func(_on): _set_stance(fleet, tf, st), "How this unit behaves when battle is joined.")
-			b.add_theme_font_size_override("font_size", 13)
+			var b := Pic.icon_toggle(icons[s], cur == s, func(_on): _set_stance(fleet, tf, st), "%s: how this unit behaves when battle is joined." % s, 20, Vector2(46, 34))
 			b.disabled = lock != ""
 			sr.add_child(b)
+		sr.add_child(Lcars.label(cur, "Muted", 14))
 		col.add_child(sr)
 	for a in GalaxyOrders.cell_actions(app, int(fleet["y"]) * app.width() + int(fleet["x"])):
 		if a["group"] != "orders":
@@ -414,13 +449,14 @@ func _unit_card(fleet: Dictionary) -> Control:
 		p.name = "Action_" + str(a["id"])
 		col.add_child(p)
 	if not tf.is_empty():
+		var mr := Lcars.hbox(6)
 		for m in members:
-			var r := Lcars.hbox(6)
-			var l := Lcars.label("%s #%d" % [m["name"], int(m["id"])], "", 13)
-			l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-			r.add_child(l)
-			r.add_child(Lcars.meter(m["hull"], m["maxHull"], Color("#8fd18a"), 4, 90))
-			col.add_child(r)
+			var mk := str(m.get("designClass", "")) if str(m.get("designClass", "")) != "" else str(m.get("className", ""))
+			var mc := Lcars.vbox(2)
+			mc.add_child(Pic.tipped(_ship_pic(app.player(), mk, 70, 46), "%s #%d" % [m["name"], int(m["id"])]))
+			mc.add_child(Lcars.meter(m["hull"], m["maxHull"], Color("#8fd18a"), 4, 70))
+			mr.add_child(mc)
+		col.add_child(mr)
 		var tid := int(tf["id"])
 		var tname: String = tf["name"]
 		col.add_child(Lcars.pill("Split task force", "tertiary", func(): app.issue({"type": "DisbandTaskForce", "taskForceId": tid}, [], "%s disbanded." % tname), lock))
@@ -430,7 +466,7 @@ func _unit_card(fleet: Dictionary) -> Control:
 			if int(f["x"]) == int(fleet["x"]) and int(f["y"]) == int(fleet["y"]) and int(f.get("taskForceId", 0)) == 0 and int(f["id"]) != int(fleet["id"]):
 				here.append(f)
 		if here.size() > 0:
-			col.add_child(Lcars.caption("Form task force with ships here"))
+			col.add_child(Pic.tipped(Lcars.marked("fleets", "Task force", "Caption", 0, Lcars.TEXT2, 16), "Form a task force with the ships here: mark them, then press the button."))
 			for f in here.slice(0, 8):
 				var cb := CheckBox.new()
 				cb.text = "%s #%d" % [f["name"], int(f["id"])]
@@ -461,18 +497,23 @@ func _contact_card(c: Dictionary) -> Control:
 	card.name = "ContactCard"
 	var col := Lcars.vbox(8)
 	card.add_child(col)
-	var h := _card_head(int(c["owner"]), str(c["name"]), "%s · %s · #%d" % [c["ownerName"], c["className"], int(c["id"])])
-	h.add_child(Lcars.badge("At war" if c.get("atWar", false) else "At peace", "alert" if c.get("atWar", false) else "dim"))
-	col.add_child(h)
-	col.add_child(_bar_row("Hull", c["hull"], c["maxHull"], Color("#8fd18a")))
-	col.add_child(_bar_row("Shields", c["shields"], c["maxShields"], Lcars.SHIELD))
-	var g := Lcars.grid(2)
-	g.add_child(Lcars.stat("Attack", Lcars.fmt(c["attack"])))
-	g.add_child(Lcars.stat("Sector", "%d.%d" % [int(c["x"]), int(c["y"])]))
-	col.add_child(g)
-	col.add_child(Lcars.para(("Select one of your warships, then right-click this sector to attack." if c.get("atWar", false) else "Declare war in Diplomacy before engaging.") + " Contacts are only tracked inside your sensor range.", Lcars.TEXT3, 13))
+	var war: bool = c.get("atWar", false)
+	var top := Lcars.hbox(12)
+	top.add_child(_ship_pic(int(c["owner"]), str(c.get("className", "")), 132, 100))
+	var tv := Lcars.vbox(6)
+	tv.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	tv.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	var h := _card_head(int(c["owner"]), str(c["name"]), "%s · #%d" % [c["ownerName"], int(c["id"])])
+	h.add_child(Pic.tipped(Lcars.icon("war" if war else "peace", 24, Lcars.ALERT if war else Lcars.GOOD), ("At war with " if war else "At peace with ") + str(c["ownerName"]) + (". Select one of your warships, then right-click this sector to attack." if war else ". Declare war in Diplomacy before engaging.") + " Contacts are only tracked inside your sensor range."))
+	tv.add_child(h)
+	tv.add_child(_bar_row("Hull", c["hull"], c["maxHull"], Color("#8fd18a")))
+	tv.add_child(_bar_row("Shields", c["shields"], c["maxShields"], Lcars.SHIELD))
+	top.add_child(tv)
+	col.add_child(top)
+	col.add_child(Pic.num("attack", Lcars.fmt(c["attack"]), "Attack", null, 22, 18))
 	return card
 
+## The sector card: a picture of what is here. Numbers sit beside icons; the sentences that used to fill it are tooltips.
 func _sector_card(cell: int, primary: bool) -> Control:
 	var v := app.view
 	var w := app.width()
@@ -486,18 +527,22 @@ func _sector_card(cell: int, primary: bool) -> Control:
 	var col := Lcars.vbox(8)
 	card.add_child(col)
 	var owner := int(s.get("owner", 0)) if not s.is_empty() else 0
-	var sub := "Sector %d.%d · %s" % [x, y, "in sensor range" if fog == "2" else ("surveyed" if fog == "1" else "unexplored")]
-	if owner != 0:
-		sub += " · " + ("your colony" if owner == app.player() else app.empire_name(owner))
-	elif not s.is_empty() and s.has("minor"):
+	var sub := "%d.%d" % [x, y]
+	if owner != 0 and owner != app.player():
+		sub += " · " + app.empire_name(owner)
+	elif owner == 0 and not s.is_empty() and s.has("minor"):
 		sub += " · " + str(s["minor"]["name"])
-	elif not s.is_empty():
+	elif owner == 0 and not s.is_empty():
 		sub += " · unclaimed"
 	elif not uc.is_empty():
-		sub += " · uncharted star"
-	col.add_child(_card_head(owner, str(s["name"]) if not s.is_empty() else (str(uc["name"]) if not uc.is_empty() else ("Uncharted space" if fog == "0" else "Open space")), sub))
+		sub += " · uncharted"
+	elif fog == "0":
+		sub += " · unexplored"
+	var head := _card_head(owner, str(s["name"]) if not s.is_empty() else (str(uc["name"]) if not uc.is_empty() else ("Uncharted space" if fog == "0" else "Open space")), sub)
+	head.tooltip_text = "Sector %d.%d · %s" % [x, y, "in sensor range" if fog == "2" else ("surveyed" if fog == "1" else "unexplored")]
+	col.add_child(head)
 	if not uc.is_empty():
-		var up := Lcars.para("Uncharted. A star shows here on the chart, but nothing is known of it until a ship or a sensor reaches it. Send a ship to chart it: select one of yours and right-click this star.", Lcars.TEXT2, 13)
+		var up := Pic.tipped(Lcars.marked("unexplored", "Uncharted star", "", 14, Lcars.TEXT2, 18), "A star shows here on the chart, but nothing is known of it until a ship or a sensor reaches it. Send a ship to chart it: select one of yours and right-click this star.")
 		up.name = "UnchartedNote"
 		col.add_child(up)
 	for f in _features_at(cell):
@@ -509,17 +554,15 @@ func _sector_card(cell: int, primary: bool) -> Control:
 		fh.add_child(Lcars.label(str(f["name"]).to_upper(), "SubHeading", 17, Color(0.55, 0.85, 1.0)))
 		if not f.get("passable", true):
 			fh.add_child(Lcars.badge("impassable", "alert"))
-		fh.add_child(Lcars.badge("surveyed" if f.get("surveyed", false) else "unsurveyed", "good" if f.get("surveyed", false) else "dim"))
+		fh.add_child(Pic.tipped(Lcars.icon("tick" if f.get("surveyed", false) else "unexplored", 18, Lcars.GOOD if f.get("surveyed", false) else Lcars.TEXT3), "Surveyed" if f.get("surveyed", false) else "Not surveyed yet. Survey reward: %s." % f.get("surveyReward", "")))
 		fv.add_child(fh)
-		fv.add_child(Lcars.para(str(f["effect"]), Lcars.TEXT2, 13))
+		fc.tooltip_text = str(f["effect"])
 		if f["type"] == "Wormhole":
 			if f.has("exit"):
 				var ex: Dictionary = f["exit"]
 				fv.add_child(Lcars.pill("Show exit %d.%d" % [int(ex["x"]), int(ex["y"])], "ghost", func(): focus_cell(int(ex["x"]), int(ex["y"]))))
 			else:
-				fv.add_child(Lcars.para("The exit is uncharted - survey or explore it to use the link.", Lcars.TEXT3, 12))
-		if not f.get("surveyed", false):
-			fv.add_child(Lcars.para("Survey reward: %s." % f.get("surveyReward", ""), Lcars.TEXT3, 12))
+				fv.add_child(Pic.tipped(Lcars.marked("unexplored", "Exit uncharted", "Muted", 12, Lcars.TEXT3, 14), "The exit is uncharted - survey or explore it to use the link."))
 		col.add_child(fc)
 	for st in v.get("stations", []):
 		if int(st["x"]) == x and int(st["y"]) == y:
@@ -529,77 +572,114 @@ func _sector_card(cell: int, primary: bool) -> Control:
 		colony = app.find_by_id("colonies", int(s["id"]), "systemId")
 	if not colony.is_empty():
 		var eco: Dictionary = colony["economy"]
-		var g := Lcars.grid(4)
-		g.add_child(Lcars.stat("Pop", "%d/%d" % [int(colony["population"]), int(colony["capacity"])], "", "Population; the system currently supports %d." % int(colony["capacity"])))
-		g.add_child(Lcars.stat("Food", Lcars.signed(int(eco["food"]) - int(colony["population"])), "alert" if int(eco.get("foodDeficit", 0)) > 0 else "good", "Farms produce %d food for %d people." % [int(eco["food"]), int(colony["population"])]))
-		g.add_child(Lcars.stat("Industry", eco["industry"], "", "Industry per turn, invested in the first build-queue item."))
-		g.add_child(Lcars.stat("Credits", Lcars.signed(eco["net"]), "alert" if int(eco["net"]) < 0 else "", "Income %d - structure upkeep %d." % [int(eco["income"]), int(eco["upkeep"])]))
+		var g := Lcars.hbox(14)
+		g.add_child(Pic.num("population", "%d/%d" % [int(colony["population"]), int(colony["capacity"])], "Population; the system currently supports %d." % int(colony["capacity"]), null, 22, 16))
+		g.add_child(Pic.num("food", Lcars.signed(int(eco["food"]) - int(colony["population"])), "Farms produce %d food for %d people." % [int(eco["food"]), int(colony["population"])], Lcars.ALERT if int(eco.get("foodDeficit", 0)) > 0 else Lcars.GOOD, 22, 16))
+		g.add_child(Pic.num("industry", "%d" % int(eco["industry"]), "Industry per turn, invested in the first build-queue item.", null, 22, 16))
+		g.add_child(Pic.num("credits", Lcars.signed(eco["net"]), "Income %d - structure upkeep %d." % [int(eco["income"]), int(eco["upkeep"])], Lcars.ALERT if int(eco["net"]) < 0 else null, 22, 16))
 		col.add_child(g)
 		if colony.has("building") and colony["building"] is Dictionary:
 			var b: Dictionary = colony["building"]
 			var br := Lcars.hbox(8)
-			br.add_child(Lcars.label("Building " + str(b["name"]), "", 14))
-			br.add_child(Lcars.meter(b["work"], b["cost"], Color(0, 0, 0, 0), 5))
-			br.add_child(Lcars.badge(("%dT" % int(b["eta"])) if int(b["eta"]) > 0 else "-", "secondary"))
+			br.add_child(Pic.tipped(Pic.structure(str(b["name"]), 34), "Building " + str(b["name"])))
+			var bm := Lcars.meter(b["work"], b["cost"], Pic.tint("industry"), 8)
+			bm.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+			br.add_child(bm)
+			br.add_child(Pic.num("clock", ("%d" % int(b["eta"])) if int(b["eta"]) > 0 else "-", "Turns until it is built", Lcars.accent2(), 18, 15))
 			col.add_child(br)
 		else:
-			col.add_child(Lcars.para("Nothing under construction", Lcars.WARN, 13))
+			col.add_child(Pic.tipped(Lcars.marked("warn", "Queue idle", "", 14, Lcars.WARN, 18), "Nothing under construction"))
 		if str(colony.get("queueBlocker", "")) != "":
-			col.add_child(Lcars.para(str(colony["queueBlocker"]), Lcars.WARN, 13))
+			col.add_child(Pic.tipped(Lcars.marked("warn", "Blocked", "", 13, Lcars.WARN, 16), str(colony["queueBlocker"])))
 		var sid := int(s["id"])
 		var mb := Lcars.pill("Manage system", "primary", func(): app.select_system(sid); app.goto("system"), "", "", "F2")
 		mb.name = "OpenSystem"
 		col.add_child(mb)
 	if not s.is_empty() and s.get("planets", []).size() > 0:
+		var pr := HFlowContainer.new()
+		pr.add_theme_constant_override("h_separation", 12)
+		pr.add_theme_constant_override("v_separation", 6)
 		for p in s["planets"]:
-			var pr := Lcars.hbox(8)
-			pr.add_child(PlanetDot.make(str(p["class"]), 12))
-			var pn := Lcars.label(str(p["name"]), "", 14)
-			pn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-			pr.add_child(pn)
-			pr.add_child(Lcars.label("Gas giant" if p["class"] == "GasGiant" else ("Asteroids" if p["class"] == "Asteroids" else "Class " + str(p["class"])), "Muted", 13))
-			pr.add_child(Lcars.label(("%d/%d" % [int(p["capacity"]), int(p["maxCapacity"])]) if int(p["maxCapacity"]) > 0 else "-", "Mono", 13))
-			pr.tooltip_text = "%s\nCapacity now %d, up to %d when terraformed." % [p["className"], int(p["capacity"]), int(p["maxCapacity"])]
-			pr.mouse_filter = Control.MOUSE_FILTER_PASS
-			col.add_child(pr)
-		col.add_child(Lcars.label("Capacity %d · max %d" % [int(s["capacity"]), int(s["maxCapacity"])], "Muted", 13))
-	elif s.is_empty():
-		col.add_child(Lcars.para("Send a scout to survey this region." if fog == "0" else "No star system in this sector.", Lcars.TEXT3, 13))
+			var pc := Lcars.vbox(2)
+			var dot := PlanetDot.make(str(p["class"]), 30)
+			dot.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+			pc.add_child(dot)
+			var cap := Lcars.label(("%d/%d" % [int(p["capacity"]), int(p["maxCapacity"])]) if int(p["maxCapacity"]) > 0 else "-", "Mono", 12, Lcars.TEXT2)
+			cap.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			pc.add_child(cap)
+			pc.tooltip_text = "%s - %s\nCapacity now %d, up to %d when terraformed." % [p["name"], p["className"], int(p["capacity"]), int(p["maxCapacity"])]
+			pc.mouse_filter = Control.MOUSE_FILTER_PASS
+			pr.add_child(pc)
+		col.add_child(pr)
+		col.add_child(Pic.num("population", "%d/%d" % [int(s["capacity"]), int(s["maxCapacity"])], "Capacity %d now, up to %d when terraformed." % [int(s["capacity"]), int(s["maxCapacity"])], Lcars.TEXT2, 18, 14))
 	if not s.is_empty() and s.has("minor"):
 		var m: Dictionary = s["minor"]
 		if m.get("unknown", false):
-			col.add_child(Lcars.para("An inhabited world. Make contact to learn more.", Color("#d8c3ff"), 13))
+			col.add_child(Pic.tipped(Lcars.marked("minor", "Inhabited world", "", 14, Color("#d8c3ff"), 18), "An inhabited world. Make contact to learn more."))
 		else:
-			col.add_child(Lcars.marked(UiIcon.minor_name(str(m.get("temperament", ""))), "%s" % m["name"], "", 13, Color("#d8c3ff"), 14))
-			var txt := ("member of " + app.empire_name(int(m["memberOf"]))) if int(m.get("memberOf", 0)) != 0 else "independent"
+			var mr := Lcars.hbox(12)
+			mr.add_child(Lcars.marked(UiIcon.minor_name(str(m.get("temperament", ""))), "%s" % m["name"], "", 14, Color("#d8c3ff"), 18))
 			if m.has("attitude"):
-				txt += " · relations %d" % int(m["attitude"])
+				mr.add_child(Pic.num("diplomacy", "%d" % int(m["attitude"]), "Relations", Color("#d8c3ff"), 18, 14))
+			if m.has("techLevel"):
+				mr.add_child(Pic.num("research", "%d" % int(m["techLevel"]), "Tech level", Color("#d8c3ff"), 18, 14))
+			var txt := ("Member of " + app.empire_name(int(m["memberOf"]))) if int(m.get("memberOf", 0)) != 0 else "Independent"
 			if m.has("temperament"):
-				txt += "\n%s%s%s" % [m["temperament"], (" · tech %d" % int(m["techLevel"])) if m.has("techLevel") else "", (" · members give " + str(m["bonus"])) if m.has("bonus") else ""]
-			col.add_child(Lcars.para(txt, Color("#d8c3ff"), 13))
+				txt += " · " + str(m["temperament"])
+			if m.has("bonus"):
+				txt += "\nMembers give " + str(m["bonus"])
+			mr.tooltip_text = txt
+			mr.mouse_filter = Control.MOUSE_FILTER_PASS
+			col.add_child(mr)
 			if m.has("guard"):
-				var g: Dictionary = m["guard"]
-				col.add_child(Lcars.para("Guard ship: %s · hull %d/%d · shields %d/%d · attack %d" % [g["name"], int(g["hull"]), int(g["maxHull"]), int(g["shields"]), int(g["maxShields"]), int(g["attack"])], Lcars.ALERT, 13))
-	var units := Lcars.vbox(3)
+				var gd: Dictionary = m["guard"]
+				var gr := Lcars.hbox(8)
+				gr.add_child(Lcars.icon("threat", 18, Lcars.ALERT))
+				gr.add_child(Pic.num("attack", "%d" % int(gd["attack"]), "Guard ship %s attack" % gd["name"], null, 18, 14))
+				gr.add_child(Pic.num("hull", "%d/%d" % [int(gd["hull"]), int(gd["maxHull"])], "Hull", null, 18, 14))
+				gr.add_child(Pic.num("shield", "%d/%d" % [int(gd["shields"]), int(gd["maxShields"])], "Shields", null, 18, 14))
+				gr.tooltip_text = "Guard ship: " + str(gd["name"])
+				gr.mouse_filter = Control.MOUSE_FILTER_PASS
+				col.add_child(gr)
+	var units := HFlowContainer.new()
+	units.add_theme_constant_override("h_separation", 6)
+	units.add_theme_constant_override("v_separation", 6)
+	var sel_id := int(app.selection.get("fleetId", 0))
 	for f in v.get("fleets", []):
 		if int(f["x"]) == x and int(f["y"]) == y:
 			var fid := int(f["id"])
-			var b2 := Lcars.pill("%s%s%s" % [f["name"], "  · TF" if int(f.get("taskForceId", 0)) != 0 else "", "  · ordered" if f.get("hasOrders", false) else ""], "ghost", func(): app.select_fleet(fid))
-			b2.alignment = HORIZONTAL_ALIGNMENT_LEFT
-			units.add_child(b2)
+			var fk := str(f.get("designClass", "")) if str(f.get("designClass", "")) != "" else str(f.get("className", ""))
+			units.add_child(_unit_button(app.player(), fk, "%s%s%s" % [f["name"], " (task force)" if int(f.get("taskForceId", 0)) != 0 else "", ", orders given" if f.get("hasOrders", false) else ""], fid == sel_id, f.get("hasOrders", false), func(): app.select_fleet(fid)))
 	for c in v.get("contacts", []):
 		if int(c["x"]) == x and int(c["y"]) == y:
 			var cid := int(c["id"])
-			var b3 := Lcars.pill("%s%s" % [c["name"], "  · hostile" if c.get("atWar", false) else ""], "ghost", func(): app.select_fleet(cid))
-			b3.alignment = HORIZONTAL_ALIGNMENT_LEFT
-			b3.add_theme_color_override("font_color", Lcars.owner_color(int(c["owner"])))
-			units.add_child(b3)
+			units.add_child(_unit_button(int(c["owner"]), str(c.get("className", "")), "%s%s" % [c["name"], " (hostile)" if c.get("atWar", false) else ""], cid == sel_id, false, func(): app.select_fleet(cid)))
 	if units.get_child_count() > 0:
-		col.add_child(Lcars.caption("Units"))
 		col.add_child(units)
-	if colony.is_empty() and (not s.is_empty() or units.get_child_count() > 0):
-		col.add_child(Lcars.para("Right-click the sector for available orders.", Lcars.TEXT3, 13))
 	return card
+
+## A ship as a button with just its picture; the name is the tooltip.
+func _unit_button(owner_id: int, klass: String, tip: String, selected: bool, ordered: bool, on: Callable) -> Button:
+	var b := Button.new()
+	b.theme_type_variation = "GhostButton"
+	b.custom_minimum_size = Vector2(84, 62)
+	b.tooltip_text = tip
+	if selected:
+		b.add_theme_stylebox_override("normal", Lcars.box_tab(Color(Lcars.accent(), 0.2), 12, 3, Lcars.accent(), 1, Vector4(4, 4, 4, 4)))
+	var pic := ShipPicture.make(owner_id, klass, 50, "iso", Lcars.owner_color(owner_id))
+	pic.set_anchors_preset(Control.PRESET_FULL_RECT)
+	pic.offset_left = 6
+	pic.offset_right = -6
+	pic.offset_top = 4
+	pic.offset_bottom = -4
+	b.add_child(pic)
+	if ordered:
+		var tk := UiIcon.make("tick", 14, Lcars.GOOD)
+		tk.position = Vector2(66, 4)
+		tk.size = Vector2(14, 14)
+		b.add_child(tk)
+	b.pressed.connect(on)
+	return b
 
 func _station_card(st: Dictionary) -> Control:
 	var c := PanelContainer.new()
@@ -613,15 +693,17 @@ func _station_card(st: Dictionary) -> Control:
 	col.add_child(h)
 	col.add_child(_bar_row("Hull", st["hull"], st["maxHull"], Color("#8fd18a")))
 	col.add_child(_bar_row("Shields", st["shields"], st["maxShields"], Lcars.SHIELD))
-	var g := Lcars.grid(4)
-	g.add_child(Lcars.stat("Attack", int(st["beam"]) + int(st["torpedo"]), "", "Beams %d · torpedoes %d. Fights whenever an enemy at war enters its sector." % [int(st["beam"]), int(st["torpedo"])]))
-	g.add_child(Lcars.stat("Supply", st["supplyRadius"], "", "Sectors within this radius count as supplied for your ships."))
-	g.add_child(Lcars.stat("Sensors", st["sensorRadius"]))
-	g.add_child(Lcars.stat("Upkeep", st["upkeep"], "warn"))
+	var g := Lcars.hbox(14)
+	g.add_child(Pic.num("attack", "%d" % (int(st["beam"]) + int(st["torpedo"])), "Attack: beams %d · torpedoes %d. Fights whenever an enemy at war enters its sector." % [int(st["beam"]), int(st["torpedo"])], null, 20, 15))
+	g.add_child(Pic.num("supply", "%d" % int(st["supplyRadius"]), "Supply radius: sectors within it count as supplied for your ships.", null, 20, 15))
+	g.add_child(Pic.num("sensor", "%d" % int(st["sensorRadius"]), "Sensor radius", null, 20, 15))
+	g.add_child(Pic.num("credits", "%d" % int(st["upkeep"]), "Upkeep per turn", Lcars.WARN, 20, 15))
 	col.add_child(g)
 	if st.has("upgrade"):
-		col.add_child(Lcars.caption("Starbase upgrade · funded by " + str(st["upgrade"]["funding"])))
-		col.add_child(Lcars.meter(st["upgrade"]["work"], st["upgrade"]["cost"], Lcars.GOOD, 6))
+		var ur := Lcars.hbox(8)
+		ur.add_child(Pic.tipped(Lcars.icon("starbase", 20, Lcars.GOOD), "Starbase upgrade, funded by " + str(st["upgrade"]["funding"])))
+		ur.add_child(Lcars.meter(st["upgrade"]["work"], st["upgrade"]["cost"], Lcars.GOOD, 6))
+		col.add_child(ur)
 	return c
 
 class PlanetDot extends Control:

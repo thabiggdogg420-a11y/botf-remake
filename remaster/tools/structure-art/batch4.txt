@@ -1,0 +1,13 @@
+central_command|A grim fortified military command citadel on a planet surface: a massive angular dark-armoured fortress with a glowing red-amber command spire, searchlights, defensive towers
+naval_academy|A naval officer academy campus beside a harbour of drydocks: stately buildings with a central tower, several small warships moored in a bay, evening light
+tactical_college|A tactical warfare college: a severe fortress-like campus with a holographic battle-map dome glowing red and gold on its roof, training ground with small combat craft overhead
+changeling_shapeshifter_network|A mysterious golden liquid-metal sanctuary: a vast shimmering sea of molten gold shapes flowing into spires and domes on an alien dark world, soft amber glow
+cloning_vats|A Dominion cloning facility: a vast hall of tall glowing green-yellow vats in rows seen through huge windows, dark purple-grey angular architecture, eerie light
+dominion_foundry|A Dominion industrial foundry: dark purple-grey angular smelter towers with molten orange channels, heavy organic-looking pipes, red-violet sky
+founders_sanctuary|The Founders' sanctuary: a calm domed grotto of glowing gold liquid ripples inside a dark crystalline cathedral on a hidden planet, serene amber light
+genetic_research_station|A Dominion genetic research station: dark angular laboratory with glowing green double-helix holograms and sample tanks, purple-grey architecture, eerie green light
+jem_hadar_barracks|A Dominion Jem'Hadar barracks: a huge dark angular military complex with rows of lit bunker bays and landing pads, small Jem'Hadar attack ships parked, red and violet light
+ketracel_white_facility|A Dominion ketracel-white production facility: dark angular refinery with glowing white-blue liquid tanks and pipes, cold white light against purple-grey architecture
+vorta_administrative_center|A Dominion Vorta administrative centre: a sleek dark-purple tiered bureaucratic tower with many lit windows and a Dominion-style crest-shaped roof, calm violet lighting
+vorta_commerce_bureau|A Dominion trade bureau: a dark angular market hall with glowing cargo containers and trade ships docking, gold and violet lights
+vorta_intelligence_directorate|A Dominion intelligence directorate: a dark windowless angular tower bristling with sensor dishes and antennas, one glowing violet eye-like lens, cold surveillance lights
