@@ -51,7 +51,21 @@ plus the game's own `index.pck`. The wasm files compress to a quarter of their s
 - `.htaccess`, `nginx.conf.example`, this file: host notes, not needed by the game.
 
 ## Download sizes (measured at release; see `sizes.json`)
-SIZES_PLACEHOLDER
+Measured on the 16 Nov 2026 build (0.1.394), served gzip-compressed (brotli is about 20% smaller again):
+
+| What | Raw | Transferred (gzip) |
+|---|---|---|
+| First playable load (engine, core, main pack, title) | 57.6 MB | 17.7 MB (13.7 MB brotli) |
+| In a new campaign's galaxy (cumulative, includes the first load) | n/a | 68 MB (measured through a gzip-on-the-fly host) |
+| Every pack in the game (what "Preload whole game" downloads) | 382.8 MB | 342.9 MB |
+
+The default path is lazy: a player downloads the first load, then only the packs a game needs (a hull is fetched the first time a
+battle needs it, about 1-3 MB each). Packs are kept in the browser's storage (IndexedDB), so a second visit downloads nothing that is
+already there. "Preload whole game" (title screen and Settings) fetches the rest in one go; the page shows the exact size first.
+Cold first load under a 20 Mbps, 40 ms browser throttle: the game core is running after about 12 s.
+
+Not tested here: the shipped `.htaccess` (Apache) and `nginx.conf.example`. The game downloads packs with the browser's `fetch()`, so
+a host or CDN that compresses on the fly is fine; do not add rules that rewrite or redirect `/packs/`.
 
 ## Quick check after uploading
 Open the address in Chrome, press F12, Network tab: `index.wasm` and `index.side.wasm` must show type `wasm` and a

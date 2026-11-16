@@ -244,10 +244,7 @@ static func preload_all(host: Node) -> void:
 	preload_current = ""
 	preload_running = false
 	if _unsynced > 0:
-		for n in all_packs():
-			if is_cached(n):
-				_flush_sync("user://packs/" + str(_web_manifest.get("files", {}).get(n, "")))
-				break
+		await _flush_sync(host)
 
 ## Progress of the pack being fetched right now (web): {"name", "bytes", "total"}; empty when idle. The loading overlay reads it.
 static var progress := {}
@@ -400,17 +397,32 @@ static func _download_pack(host: Node, url: String, dest: String, name: String, 
 	# A preload writes hundreds of packs: it flushes once at the end and every 48 MB (_flush_sync), not after each one.
 	_unsynced += maxi(have, 0)
 	if not preload_running or _unsynced >= 48 * 1048576:
-		_flush_sync(dest)
+		await _flush_sync(host)
 	return true
 
 static var _unsynced := 0
 
-## Opens and closes a file for writing so the engine syncs the file system to IndexedDB (what makes the packs survive the visit).
-static func _flush_sync(path: String) -> void:
+## Saves the in-memory file system to IndexedDB and waits until it is done (what makes the packs survive the visit). Godot's own
+## save-on-close skips a request that arrives while an earlier save is still running, so a long preload lost its last packs; this
+## calls the file system's syncfs directly and waits for its callback. Falls back to the open/close nudge when it is not reachable.
+static func _flush_sync(host: Node) -> void:
 	_unsynced = 0
-	var touch := FileAccess.open(path, FileAccess.READ_WRITE)
-	if touch != null:
-		touch.close()
+	var id := "s%d" % Time.get_ticks_usec()
+	var ok := bool(JavaScriptBridge.eval("(function(){try{var fs=engine.rtenv.FS;if(!fs||!fs.syncfs)return false;(window.__botfSync=window.__botfSync||{})['" + id + "']=false;fs.syncfs(false,function(e){window.__botfSync['" + id + "']=e?String(e):true;});return true;}catch(e){return false;}})()"))
+	if not ok:
+		var touch := FileAccess.open("user://packs/manifest.cache.json", FileAccess.READ_WRITE)
+		if touch != null:
+			touch.close()
+		return
+	var tree := host.get_tree()
+	for i in 1200:   # up to 5 minutes
+		await tree.create_timer(0.25).timeout
+		var st := str(JavaScriptBridge.eval("String(window.__botfSync['" + id + "'])"))
+		if st != "false":
+			if st != "true":
+				push_warning("AppLoader: saving packs to the browser store failed: " + st)
+			break
+	JavaScriptBridge.eval("delete window.__botfSync['" + id + "']")
 
 ## Web only: the chosen empire's audio (voice, sfx, music, about 12 MB) on top of the `shared` audio that ships in the main pck.
 ## Call it once when a campaign picks its empire (fed kli rom car fer), then BotfAudioLibrary.load_pack(empire).

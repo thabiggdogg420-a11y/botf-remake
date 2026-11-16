@@ -38,7 +38,7 @@ def main():
             for channel in ("chrome", "msedge", None):
                 try:
                     browser = p.chromium.launch(channel=channel, headless=True,
-                                                args=["--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader",
+                                                args=["--use-angle=d3d11", "--enable-gpu",
                                                       "--ignore-gpu-blocklist", "--autoplay-policy=no-user-gesture-required"])
                     report["browser"] = channel or "playwright-chromium"
                     break

@@ -105,6 +105,8 @@ func refresh() -> void:
 		pre.offset_right = -20
 		pre.offset_top = 18
 		add_child(pre)
+	# A short window (a 720 px browser tab) with a Continue button: lift the column so the last row clears the footer.
+	root.position.y = clampf(root.position.y, 8.0, maxf(8.0, size.y - 64.0 - root.get_combined_minimum_size().y))
 	var foot := Lcars.hbox(40)
 	foot.position = Vector2(size.x * 0.09, size.y - 48)
 	foot.add_child(Lcars.label(vm.footer(), "Mono", 13, Lcars.TEXT3))

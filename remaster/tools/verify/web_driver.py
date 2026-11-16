@@ -33,6 +33,21 @@ import time
 HERE = os.path.dirname(os.path.abspath(__file__))
 
 
+def lower_priority(browser):
+    """Browser process tree to BelowNormal (the PC is shared with a person). Best effort."""
+    try:
+        import psutil
+        pid = browser._impl_obj._connection._transport._proc.pid   # the launched chrome
+        root = psutil.Process(pid)
+        for pr in [root] + root.children(recursive=True):
+            try:
+                pr.nice(psutil.BELOW_NORMAL_PRIORITY_CLASS)
+            except Exception:
+                pass
+    except Exception as e:
+        print("lower_priority skipped:", e)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--dir", required=True)
@@ -43,6 +58,7 @@ def main():
     ap.add_argument("--w", type=int, default=1280)
     ap.add_argument("--h", type=int, default=720)
     ap.add_argument("--channel", default="chrome")
+    ap.add_argument("--swiftshader", action="store_true", help="software rendering instead of the real GPU")
     ap.add_argument("--query", default="")
     ap.add_argument("--env", action="append", default=[], help="K=V environment variable for the game (GODOT_CONFIG.env), e.g. BOTF_CUE_TRACE=1")
     ap.add_argument("--args", default="", help="game command-line arguments, space separated, e.g. '-s res://x.gd -- a b' (GODOT_CONFIG.args)")
@@ -68,9 +84,12 @@ def main():
             f.write(s + "\n")
 
     with sync_playwright() as p:
+        # Real GPU by default (D3D11 through ANGLE): software rendering loads the CPU and is not a fair look at the frames.
+        # --swiftshader falls back to the software renderer (CI machines with no GPU).
+        gl = ["--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader"] if a.swiftshader else              ["--use-angle=d3d11", "--enable-gpu", "--ignore-gpu-blocklist"]
         browser = p.chromium.launch(channel=a.channel if a.channel != "chromium" else None, headless=True,
-                                    args=["--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader",
-                                          "--ignore-gpu-blocklist", "--autoplay-policy=no-user-gesture-required", "--mute-audio"])
+                                    args=gl + ["--autoplay-policy=no-user-gesture-required", "--mute-audio"])
+        lower_priority(browser)
 
         def open_ctx():
             ctx = browser.new_context(viewport={"width": a.w, "height": a.h})
@@ -92,7 +111,8 @@ def main():
                     route.fulfill(response=resp, body=body)
                 ctx.route("**/index.html*", patch)
                 ctx.route("**/", patch)
-            pg.on("console", lambda m: log.append(m.text))
+            t_open = time.time()   # console lines carry seconds since the page was opened: load-time evidence
+            pg.on("console", lambda m: log.append("[%6.1fs] %s" % (time.time() - t_open, m.text)))
             pg.on("pageerror", lambda e: log.append("PAGEERR " + str(e)))
             net["bytes"] = 0
             net["files"] = 0
@@ -208,7 +228,7 @@ def main():
                     out("%d ERR unknown %s" % (n, c))
             except Exception as e:  # keep the session alive
                 out("%d ERR %s %s" % (n, c, str(e).splitlines()[0][:200]))
-        browser.close()
+        browser.close()   # Chrome ends with the run
     srv.terminate()
 
 

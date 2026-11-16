@@ -11,3 +11,17 @@ func _ready() -> void:
 		get_tree().quit()
 		return
 	add_child(load("res://scenes/ui/app.tscn").instantiate())
+	if AppLoader.diag():
+		var t := Timer.new()
+		t.wait_time = 5.0
+		t.autostart = true
+		t.timeout.connect(func() -> void:
+			var ri := RenderingServer
+			print("DIAG gpu tex=%.0f MB buf=%.0f MB video=%.0f MB draw=%d objs=%d nodes=%d" % [
+				ri.get_rendering_info(RenderingServer.RENDERING_INFO_TEXTURE_MEM_USED) / 1048576.0,
+				ri.get_rendering_info(RenderingServer.RENDERING_INFO_BUFFER_MEM_USED) / 1048576.0,
+				ri.get_rendering_info(RenderingServer.RENDERING_INFO_VIDEO_MEM_USED) / 1048576.0,
+				ri.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_DRAW_CALLS_IN_FRAME),
+				ri.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_OBJECTS_IN_FRAME),
+				get_tree().get_node_count()]))
+		add_child(t)

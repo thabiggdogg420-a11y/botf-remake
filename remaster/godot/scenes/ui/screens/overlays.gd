@@ -410,7 +410,7 @@ static func menu(app: App) -> Control:
 ## Quit to title from a campaign, after a confirm (unsaved progress since the last save is lost).
 static func confirm_quit_to_title(app: App) -> Control:
 	return app.confirm("Quit to title", "Leave this campaign and return to the title screen? Progress since your last save will be lost.",
-		"Quit to title", func(): app.view = {}; app.goto("title", false))
+		"Quit to title", func(): app.view = {}; app._apply_theme(1); app.goto("title", false))   # back to the Federation palette: a Klingon or Mirror campaign left its colours on the title and new-campaign screens
 
 ## Quits the program, after a confirm. App.quit_hook (tests) replaces the real quit.
 static func confirm_quit_game(app: App) -> Control:

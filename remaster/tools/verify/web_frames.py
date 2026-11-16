@@ -22,7 +22,7 @@ def main():
         b = None
         for ch in ("chrome", "msedge", None):
             try:
-                b = p.chromium.launch(channel=ch, headless=True, args=["--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--ignore-gpu-blocklist"])
+                b = p.chromium.launch(channel=ch, headless=True, args=["--use-angle=d3d11", "--enable-gpu", "--ignore-gpu-blocklist"])
                 break
             except Exception as e:
                 rep["errors"].append("launch %s: %s" % (ch, str(e).splitlines()[0]))
