@@ -81,6 +81,18 @@ Every roster and legacy key has an entry, even with no candidate, so coverage is
 | BlendSwap | [blendswap.com](https://blendswap.com) | per uploader | uploader-declared CC | candidates (unclear) |
 | Sketchfab | [sketchfab.com](https://sketchfab.com/tags/star-trek) | per uploader | uploader-declared CC, verified through the public API | main HD/game-ready candidate pool |
 
+## AI image models (portrait look test, 16 Nov 2026)
+
+Local generation only, on the owner's RTX 4090 through ComfyUI (a locally installed backend). No online service, no account, no payment. Prompts describe invented characters; no real actor, and no original BOTF portrait, is used as an input. See PORTRAIT-LOOKTEST.md.
+
+| Model | Where | File | Licence | Use here |
+|---|---|---|---|---|
+| Qwen-Image-2512 (Alibaba Qwen team) | [Qwen/Qwen-Image-2512](https://huggingface.co/Qwen/Qwen-Image-2512), ComfyUI repack [Comfy-Org/Qwen-Image_ComfyUI](https://huggingface.co/Comfy-Org/Qwen-Image_ComfyUI) | `split_files/diffusion_models/qwen_image_2512_fp8_e4m3fn.safetensors` (20.4 GB) | Apache-2.0 (per the model card) | text-to-image for both portrait looks (photoreal and painted) |
+| Qwen2.5-VL 7B text encoder, fp8 scaled | [Comfy-Org/Qwen-Image_ComfyUI](https://huggingface.co/Comfy-Org/Qwen-Image_ComfyUI) | `qwen_2.5_vl_7b_fp8_scaled.safetensors` | Apache-2.0 (Qwen2.5-VL 7B) | prompt encoder (already on the PC) |
+| Qwen-Image VAE | [Comfy-Org/Qwen-Image_ComfyUI](https://huggingface.co/Comfy-Org/Qwen-Image_ComfyUI) | `qwen_image_vae.safetensors` | Apache-2.0 (model card) | decoder (already on the PC) |
+
+A model licence covers the model's use. Star Trek species, uniforms and insignia remain Paramount's; the portraits are private, never distributed, like the rest of this game.
+
 ## All candidates
 
 ### `study.fed` Federation procedural fleet study (original project art)
