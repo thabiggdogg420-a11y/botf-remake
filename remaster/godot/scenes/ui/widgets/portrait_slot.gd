@@ -47,7 +47,18 @@ func has_art() -> bool:
 
 func _ready() -> void:
 	_tex = AppLoader.art(key, "portrait")
+	if _tex == null and not AppLoader.art_events.packs_mounted.is_connected(_on_packs_mounted):
+		AppLoader.art_events.packs_mounted.connect(_on_packs_mounted)
 	set_process(live and not UiTokens.reduced_motion)
+
+## An asset pack mounted: ask again for the portrait and swap the emblem for it.
+func _on_packs_mounted(_path: String = "") -> void:
+	if _tex != null:
+		return
+	_tex = AppLoader.art(key, "portrait")
+	if _tex != null:
+		AppLoader.art_events.packs_mounted.disconnect(_on_packs_mounted)
+		queue_redraw()
 
 func _process(delta: float) -> void:
 	_t = fmod(_t + delta * 0.25, 1.0)

@@ -25,4 +25,31 @@ func _initialize() -> void:
 	check(tall.size.x == 160.0, "the old 160x170 stills are cropped, not squashed, in the 420x236 slot")
 	for id in range(1, 9):
 		check(PortraitSlot.MAJOR_KEYS.has(id) and str(PortraitSlot.MAJOR_KEYS[id]).begins_with("portrait."), "power %d has a portrait key" % id)
+	await _late_pack_test()
 	quit(1 if failures > 0 else 0)
+
+## Cold web visit: the card is drawn before art_web.pck mounts. A slot built with no art must show the portrait once the pack mounts.
+func _late_pack_test() -> void:
+	var key := "portrait.test.latepack"
+	var slot := PortraitSlot.make(1, Vector2(300, 170), key)
+	root.add_child(slot)
+	await process_frame   # the root is busy during _initialize; the slot enters the tree (and runs _ready) next frame
+	check(not slot.has_art(), "late pack: no art yet, the slot shows the emblem")
+	check(AppLoader.art(key, "portrait") == null, "late pack: a missing picture is not cached as null")
+	var dir := OS.get_temp_dir().path_join("botf_latepack_test")
+	DirAccess.make_dir_recursive_absolute(dir)
+	var png := dir.path_join("t.png")
+	var img := Image.create(8, 8, false, Image.FORMAT_RGBA8)
+	img.fill(Color.RED)
+	img.save_png(png)
+	DirAccess.make_dir_recursive_absolute("user://packs")
+	var pck := "user://packs/art_latepack_test.pck"
+	var packer := PCKPacker.new()
+	packer.pck_start(pck)
+	packer.add_file("res://art/portrait/%s.png" % key, png)
+	packer.flush()
+	check(AppLoader.mount_pack(pck), "late pack: the pack mounts")
+	check(slot.has_art(), "late pack: the slot swapped the emblem for the portrait after the mount signal")
+	check(AppLoader.art(key, "portrait") != null, "late pack: AppLoader.art now serves the picture")
+	slot.queue_free()
+	DirAccess.remove_absolute(pck)

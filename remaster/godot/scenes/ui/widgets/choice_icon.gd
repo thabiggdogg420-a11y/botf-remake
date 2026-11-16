@@ -32,7 +32,10 @@ static func art(structure_name: String) -> Texture2D:
 	var key := ShipIcons.slug(structure_name)
 	if not _art.has(key):
 		var path := "res://assets/structures/%s.png" % key
-		_art[key] = AppLoader.resource(path) as Texture2D if AppLoader.exists(path) else null
+		var t: Texture2D = AppLoader.resource(path) as Texture2D if AppLoader.exists(path) else null
+		if t == null:
+			return null   # not cached: a pack mounted later may hold it
+		_art[key] = t
 	return _art[key]
 
 ## Draws `tex` filling `r`, cropped to the box's aspect from the centre (never stretched).
@@ -49,6 +52,10 @@ static func glyph_for(structure_name: String) -> String:
 			if n.contains(kw):
 				return row[1]
 	return "build"
+
+func _ready() -> void:
+	if not ship and art(label_name) == null:
+		AppLoader.art_events.packs_mounted.connect(func(_p): queue_redraw())
 
 func _draw() -> void:
 	if not ship:
