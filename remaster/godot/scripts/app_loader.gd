@@ -24,7 +24,16 @@ static func _check(path: String) -> bool:
 
 ## Mounts an extra resource pack (a web-fetchable asset bundle already in user:// or res://).
 static func mount_pack(path: String) -> bool:
-	return _check(path) and ProjectSettings.load_resource_pack(path)
+	var ok := _check(path) and ProjectSettings.load_resource_pack(path)
+	if ok:
+		art_events.packs_mounted.emit(path)
+	return ok
+
+## Art widgets (PortraitSlot, PlanetOrb, ChoiceIcon) connect to `AppLoader.art_events.packs_mounted` and re-request their
+## picture when a pack lands: the web build mounts art_web.pck after the first screens are drawn (cold first visit).
+class ArtEvents extends Object:
+	signal packs_mounted(path: String)
+static var art_events := ArtEvents.new()
 
 static func exists(path: String) -> bool:
 	if not _check(path):
@@ -64,7 +73,8 @@ static func art(key: String, category: String) -> Texture2D:
 				img.generate_mipmaps()
 				tex = ImageTexture.create_from_image(img)
 				break
-	_art_cache[ck] = tex
+	if tex != null:   # a missing picture is never cached: the pack that holds it may mount later
+		_art_cache[ck] = tex
 	return tex
 
 ## A res:// or user:// text file ("" when missing). Content packs are read this way and handed to the core (loadContent).

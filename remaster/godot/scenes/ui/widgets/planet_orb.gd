@@ -66,7 +66,20 @@ func _ready() -> void:
 	_spin = float(seed_id % 11) / 11.0
 	m.set_shader_parameter("spin", _spin)
 	material = m
+	if not tex is Texture2D and not AppLoader.art_events.packs_mounted.is_connected(_on_packs_mounted):
+		AppLoader.art_events.packs_mounted.connect(_on_packs_mounted)
 	set_process(animate and not UiTokens.reduced_motion)
+
+## An asset pack mounted: the 2D orb picks up its albedo if it has just arrived.
+func _on_packs_mounted(_path: String = "") -> void:
+	var m := material as ShaderMaterial
+	if m == null:
+		return
+	var tex := AppLoader.art(ART_KEYS.get(cls, ""), "planet")
+	if tex is Texture2D:
+		m.set_shader_parameter("albedo", tex)
+		m.set_shader_parameter("use_tex", true)
+		AppLoader.art_events.packs_mounted.disconnect(_on_packs_mounted)
 
 ## The photoreal planet (art wave 2): the L7 texture set on a real sphere in a small transparent SubViewport, lit from the
 ## upper left like the battle sun, with cloud shell and atmosphere rim (PlanetBody). Needs a class with a set; otherwise
