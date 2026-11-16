@@ -154,6 +154,96 @@ static func diag() -> bool:
 		_diag = 1 if on else 0
 	return _diag == 1
 
+# ---- Preload the whole game (F1, Simon 16 Nov: a button to preload the whole game) ----------------------------------
+## Every pack in packs/manifest.json, in the order a player needs them: manifests, portraits, planets, music, ship pictures,
+## voices, the full planet tier, then every hull. Each pack lands in user:// (IndexedDB), so it survives the tab and the visit.
+static var preload_running := false
+static var preload_cancel := false
+static var preload_error := ""
+static var preload_current := ""
+
+static func _pack_rank(n: String) -> int:
+	if n == WEB_SHIPS_BASE:
+		return 0
+	if n.begins_with("art_"):
+		return 1
+	if n.begins_with("planets_web"):
+		return 2
+	if n == WEB_MUSIC:
+		return 3
+	if n == WEB_SHIP_ICONS:
+		return 4
+	if n.begins_with("audio_"):
+		return 5
+	if n.begins_with("planets_hi"):
+		return 6
+	return 7
+
+## Logical names of every pack in the build, in preload order ([] until the manifest is loaded).
+static func all_packs() -> Array:
+	var names: Array = []
+	var man: Variant = _web_manifest
+	if man is Dictionary:
+		for k in man.get("files", {}):
+			names.append(str(k))
+	names.sort_custom(func(a, b): return _pack_rank(a) < _pack_rank(b) or (_pack_rank(a) == _pack_rank(b) and a < b))
+	return names
+
+static func total_bytes() -> int:
+	var t := 0
+	for n in all_packs():
+		t += pack_bytes(n)
+	return t
+
+## True when this exact pack content is already on the device (mounted this session or complete in user://packs).
+static func is_cached(name: String) -> bool:
+	if _mounted.has(name):
+		return true
+	var man: Variant = _web_manifest
+	if not (man is Dictionary):
+		return false
+	var file := str(man.get("files", {}).get(name, ""))
+	if file == "" or not FileAccess.file_exists("user://packs/" + file):
+		return false
+	var f := FileAccess.open("user://packs/" + file, FileAccess.READ)
+	return f != null and f.get_length() == int(man.get("bytes", {}).get(file, -1))
+
+static func cached_bytes() -> int:
+	var t := 0
+	for n in all_packs():
+		if is_cached(n):
+			t += pack_bytes(n)
+	return t
+
+static func fully_cached() -> bool:
+	var names := all_packs()
+	if names.is_empty():
+		return false
+	for n in names:
+		if not is_cached(n):
+			return false
+	return true
+
+## Downloads (or finds cached) and mounts every pack. Resumes where it stopped: finished packs are not fetched again.
+## preload_cancel = true stops after the pack in flight. A failed pack sets preload_error and stops.
+static func preload_all(host: Node) -> void:
+	if preload_running or not OS.has_feature("web"):
+		return
+	preload_running = true
+	preload_cancel = false
+	preload_error = ""
+	await _manifest(host)
+	JavaScriptBridge.eval("(navigator.storage && navigator.storage.persist) ? navigator.storage.persist() : false")   # ask the browser not to evict it
+	for n in all_packs():
+		if preload_cancel:
+			break
+		preload_current = n
+		if not await fetch_web_pack(host, n):
+			preload_error = n
+			break
+	preload_current = ""
+	preload_running = false
+
 ## Progress of the pack being fetched right now (web): {"name", "bytes", "total"}; empty when idle. The loading overlay reads it.
 static var progress := {}
 
@@ -204,6 +294,11 @@ static func _manifest(host: Node) -> Dictionary:
 			var d = JSON.parse_string((res[3] as PackedByteArray).get_string_from_utf8())
 			if d is Dictionary:
 				_web_manifest = d
+				write_json("user://packs/manifest.cache.json", d)   # a preloaded game starts with no network at all
+	if _web_manifest.is_empty():
+		var cached: Variant = json("user://packs/manifest.cache.json")
+		if cached is Dictionary:
+			_web_manifest = cached
 	req.queue_free()
 	_manifest_loading = false
 	return _web_manifest

@@ -473,6 +473,9 @@ static func settings(app: App) -> Control:
 	BotfAudioMix.fill_defaults(s)
 	for bus in BotfAudioCues.BUSES:
 		root.add_child(_volume_row(app, s, bus))
+	if OS.has_feature("web"):
+		root.add_child(Lcars.caption("Offline play"))
+		root.add_child(PreloadWidget.make(app))
 	var acts := Lcars.hbox(8)
 	acts.add_child(Lcars.pill("Reset to defaults", "ghost", func():
 		app.settings = {"uiScale": 1.0, "colorblind": false, "reducedMotion": false, "autosave": true, "confirmEndTurn": false, "showGrid": true, "uiEra": "tng"}

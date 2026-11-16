@@ -96,6 +96,14 @@ func refresh() -> void:
 			b2.add_child(ic)
 			b2.text = "        " + b2.text
 	Motion.stagger(menu)
+	if OS.has_feature("web"):
+		# Web only: the optional whole-game preload, top right, clear of the menu column and the fleet scene.
+		var pre := PreloadWidget.make(app)
+		pre.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+		pre.offset_left = -340
+		pre.offset_right = -20
+		pre.offset_top = 18
+		add_child(pre)
 	var foot := Lcars.hbox(40)
 	foot.position = Vector2(size.x * 0.09, size.y - 48)
 	foot.add_child(Lcars.label(vm.footer(), "Mono", 13, Lcars.TEXT3))
