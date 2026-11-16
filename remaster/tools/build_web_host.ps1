@@ -9,11 +9,13 @@
   3. copies the export to <Out> (default godot\build\botf-web-host) without build leftovers (.import files) and adds
      HOSTING.md, .htaccess and nginx.conf.example from godot\web-host.
   -SkipBuild assembles from an export that is already in godot\build\web.
-  Nothing is uploaded. The folder uses relative paths only and runs from any sub-path (https://site/botf/).
+  -Release also mirrors the folder to Documents\ChatGPT\BOTF-Web-Latest (the one folder ChatGPT uploads to
+  Free4allhub.com/botfremaster) with VERSION.txt and UPDATE-SITE.md. Nothing is uploaded. The folder uses relative paths only and runs from any sub-path (https://site/botf/).
 #>
 param(
     [string]$Out,
-    [switch]$SkipBuild
+    [switch]$SkipBuild,
+    [switch]$Release
 )
 $ErrorActionPreference = 'Stop'
 $remaster = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
@@ -35,10 +37,22 @@ if (Test-Path -LiteralPath $Out) { Remove-Item -LiteralPath $Out -Recurse -Force
 New-Item -ItemType Directory -Force -Path $Out | Out-Null
 & robocopy $src $Out /E /XF '*.import' 'serve_web.py' 'play-in-browser.bat' /NFL /NDL /NJH /NJS /NP | Out-Null
 if ($LASTEXITCODE -ge 8) { throw "robocopy failed ($LASTEXITCODE)" }
-foreach ($f in 'HOSTING.md', '.htaccess', 'nginx.conf.example') {
+foreach ($f in 'HOSTING.md', '.htaccess', 'nginx.conf.example', 'UPDATE-SITE.md') {
     Copy-Item -LiteralPath (Join-Path $proj "web-host\$f") -Destination (Join-Path $Out $f) -Force
 }
 $sz = Get-Content -LiteralPath (Join-Path $Out 'sizes.json') -Raw | ConvertFrom-Json
 $all = Get-ChildItem -LiteralPath $Out -Recurse -File
 Write-Host ("host folder: {0}  ({1} files, {2:N0} MB on disk including .gz/.br sidecars)" -f $Out, $all.Count, (($all | Measure-Object Length -Sum).Sum / 1MB))
 Write-Host ("first playable load: {0} MB raw, {1} MB gzip, {2} MB brotli; every pack: {3} MB gzip-served" -f $sz.first_load_raw_mb, $sz.first_load_transfer_mb, $sz.first_load_brotli_mb, $sz.total_transfer_mb)
+
+$sha = (& git -C $remaster rev-parse --short HEAD).Trim()
+$pv = Join-Path $proj 'build\VERSION.txt'
+$vtxt = if (Test-Path -LiteralPath $pv) { (Get-Content -LiteralPath $pv -TotalCount 1).Trim() } else { 'BOTF Remastered (version unknown)' }
+Set-Content -LiteralPath (Join-Path $Out 'VERSION.txt') -Encoding utf8 -Value ("{0}`nbrowser build from commit {1}, {2}" -f $vtxt, $sha, (Get-Date -Format 'yyyy-MM-dd HH:mm'))
+if ($Release) {
+    $latest = Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'ChatGPT\BOTF-Web-Latest'
+    New-Item -ItemType Directory -Force -Path $latest | Out-Null
+    & robocopy $Out $latest /MIR /NFL /NDL /NJH /NJS /NP | Out-Null
+    if ($LASTEXITCODE -ge 8) { throw "robocopy to BOTF-Web-Latest failed ($LASTEXITCODE)" }
+    Write-Host "release folder ready for upload: $latest  (build $vtxt, commit $sha)"
+}
