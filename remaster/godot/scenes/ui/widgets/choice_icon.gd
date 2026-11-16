@@ -32,7 +32,7 @@ static func art(structure_name: String) -> Texture2D:
 	var key := ShipIcons.slug(structure_name)
 	if not _art.has(key):
 		var path := "res://assets/structures/%s.png" % key
-		_art[key] = load(path) as Texture2D if ResourceLoader.exists(path) else null
+		_art[key] = AppLoader.resource(path) as Texture2D if AppLoader.exists(path) else null
 	return _art[key]
 
 ## Draws `tex` filling `r`, cropped to the box's aspect from the centre (never stretched).

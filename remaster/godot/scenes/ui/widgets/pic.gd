@@ -89,7 +89,7 @@ static func empty_slot(px: float = 42.0, tip: String = "") -> Control:
 ## The governor-mode illustration (res://assets/governors/governor_<mode>.png), null for a mode without one (Manual).
 static func governor_art(mode: String) -> Texture2D:
 	var path := "res://assets/governors/governor_%s.png" % mode.to_lower()
-	return load(path) as Texture2D if ResourceLoader.exists(path) else null
+	return AppLoader.resource(path) as Texture2D if AppLoader.exists(path) else null
 
 ## A toggle whose face is a picture: lit when on, dimmed when off.
 static func picture_toggle(tex: Texture2D, on: bool, on_toggle: Callable, tip: String, box_px: Vector2 = Vector2(52, 52)) -> Button:

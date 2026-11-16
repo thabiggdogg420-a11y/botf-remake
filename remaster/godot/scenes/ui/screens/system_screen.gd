@@ -388,17 +388,29 @@ func _dilithium(c: Dictionary) -> Control:
 	var lines := SystemVM.dilithium_lines(vm.dilithium(), str(detail.get("queueBlocker", "")))
 	if lines.is_empty():
 		return null
-	var f := Lcars.frame("Dilithium", "ship slots", "secondary", "energy")
+	var f := Lcars.frame("Dilithium", "", "secondary", "energy")
 	f.name = "DilithiumPanel"
 	var b := Lcars.body(f)
 	var d := vm.dilithium()
 	var r := Lcars.hbox(8)
-	r.add_child(Lcars.label("Slots", "Muted", 13))
+	r.add_child(Pic.tipped(Pic.structure("Dilithium refinery", 34), "Ship slots in use"))
 	r.add_child(Lcars.meter(int(d["slotsUsed"]), max(1, int(d["slots"])), Lcars.WARN if int(d["slotsUsed"]) >= int(d["slots"]) else Lcars.accent2(), 8))
 	r.add_child(Lcars.label("%d/%d" % [int(d["slotsUsed"]), int(d["slots"])], "Mono", 13))
 	b.add_child(r)
+	var tips := []
 	for ln in lines:
-		b.add_child(Lcars.para(str(ln["text"]), Lcars.tone_color(str(ln["tone"])) if str(ln["tone"]) != "" else Lcars.TEXT2, 13))
+		tips.append(str(ln["text"]))
+	r.tooltip_text = "\n".join(tips)
+	r.mouse_filter = Control.MOUSE_FILTER_PASS
+	var mk := Lcars.hbox(10)
+	var ok: bool = bool(d["refinery"]) and bool(d["refineryPowered"])
+	mk.add_child(Pic.tipped(Lcars.icon("tick" if ok else ("info" if bool(d["deposit"]) else "cross"), 22, Lcars.GOOD if ok else (Lcars.INFO if bool(d["deposit"]) else Lcars.TEXT3)), str(lines[0]["text"])))
+	mk.add_child(Pic.num("energy", "%d" % int(d["empirePowered"]), "Powered refineries of %d in the empire" % int(d["empireRefineries"]), null, 20, 15))
+	if int(d.get("klingonBonusPercent", 0)) > 0:
+		mk.add_child(Pic.num("speed", "+%d%%" % int(d["klingonBonusPercent"]), "Klingon yard bonus: ships here build faster.", Lcars.GOOD, 20, 15))
+	if str(detail.get("queueBlocker", "")).find("slots") >= 0 or str(detail.get("queueBlocker", "")).find("refinery") >= 0:
+		mk.add_child(Pic.tipped(Lcars.icon("warn", 20, Lcars.WARN), str(detail["queueBlocker"])))
+	b.add_child(mk)
 	return f
 
 ## Schema 23: structure upgrade tiers, the Protectorate and shared morale at this colony. Null when none of those rules is on.
@@ -412,7 +424,7 @@ func _economy_rules() -> Control:
 	var show_pro: bool = bool(er.get("subjugated", false)) or int(er.get("sharedMorale", 0)) > 0
 	if not show_up and not show_pro:
 		return null
-	var f := Lcars.frame("Upgrades and order", "economy", "secondary", "energy")
+	var f := Lcars.frame("Upgrades", "", "secondary", "build")
 	f.name = "EconomyPanel"
 	var b := Lcars.body(f)
 	if show_up:
@@ -420,16 +432,26 @@ func _economy_rules() -> Control:
 			if int(u["units"]) <= 0:
 				continue
 			var row := Lcars.hbox(8)
-			row.add_child(Lcars.label(str(u["kind"]).capitalize(), "Muted", 13))
+			var uk: String = {"farms": "Farm", "factories": "Factory", "laboratories": "Laboratory"}.get(str(u["kind"]), str(u["kind"]))
+			row.add_child(Pic.structure(uk, 30))
 			row.add_child(Lcars.meter(int(u["steps"]), max(1, int(u["units"]) * 3), Lcars.accent2(), 8))
-			row.add_child(Lcars.label("tier %d of %d (+%d%%)" % [int(u["tier"]), int(u["available"]), int(u["percent"])], "Mono", 13))
+			row.add_child(Lcars.label("%d/%d" % [int(u["tier"]), int(u["available"])], "Mono", 14))
+			row.add_child(Pic.num("growth", "+%d%%" % int(u["percent"]), "Tier %d of %d: +%d%% output. A tier needs the matching science at level 2, 4 and 6." % [int(u["tier"]), int(u["available"]), int(u["percent"])], Lcars.GOOD, 16, 13))
 			b.add_child(row)
-		b.add_child(Lcars.para("Upgrades are in the build list. A tier needs the matching science at level 2, 4 and 6." if not rules.get("noUpgrades", false) else "This game plays without structure upgrades.", Lcars.TEXT3, 13))
+		if rules.get("noUpgrades", false):
+			b.add_child(Pic.num("lock", "", "This game plays without structure upgrades.", Lcars.TEXT3, 20))
 	if bool(er.get("subjugated", false)):
 		var hq: bool = bool(er.get("hasHq", false))
-		b.add_child(Lcars.para("Subjugated world. " + ("A Protectorate HQ holds order here (+%d morale) and %d credits a turn come in as tribute." % [int(er["moraleBonus"]), int(er["tribute"])] if hq else "Without a Protectorate Headquarters in a subjugated world it is restless (%d morale)." % int(er["moraleBonus"])), Lcars.GOOD if hq else Lcars.WARN, 13))
+		var sj := Lcars.hbox(12)
+		sj.add_child(Lcars.icon("war", 22, Lcars.GOOD if hq else Lcars.WARN))
+		sj.add_child(Pic.num("morale", "%+d" % int(er["moraleBonus"]), "Morale from the Protectorate", Lcars.GOOD if hq else Lcars.WARN, 20, 15))
+		if hq:
+			sj.add_child(Pic.num("credits", "%d" % int(er["tribute"]), "Tribute per turn", Lcars.GOOD, 20, 15))
+		sj.tooltip_text = ("Subjugated world. A Protectorate HQ holds order here (+%d morale) and %d credits a turn come in as tribute." % [int(er["moraleBonus"]), int(er["tribute"])]) if hq else ("Subjugated world. Without a Protectorate Headquarters in a subjugated world it is restless (%d morale)." % int(er["moraleBonus"]))
+		sj.mouse_filter = Control.MOUSE_FILTER_PASS
+		b.add_child(sj)
 	if int(er.get("sharedMorale", 0)) > 0:
-		b.add_child(Lcars.para("Shared morale: +%d from the empire's Unity Monument." % int(er["sharedMorale"]), Lcars.GOOD, 13))
+		b.add_child(Pic.num("morale", "+%d" % int(er["sharedMorale"]), "Shared morale from the empire's Unity Monument.", Lcars.GOOD, 22, 16))
 	return f
 
 ## The race's emergency program for this colony (schema 15). Null when the rules are off.
@@ -437,18 +459,20 @@ func _program(c: Dictionary) -> Control:
 	var p := vm.program()
 	if p.is_empty():
 		return null
-	var f := Lcars.frame("Emergency program", str(p["name"]), "tertiary", "morale")
+	var f := Lcars.frame("Emergency program", "", "tertiary", "morale")
 	f.name = "ProgramPanel"
 	var b := Lcars.body(f)
 	var active := int(p["activeId"]) != 0
-	b.add_child(Lcars.para(SystemVM.program_status(p), Lcars.WARN if active else Lcars.TEXT2, 13))
-	b.add_child(Lcars.para(str(p["effect"]), Lcars.TEXT3, 13))
-	var row := Lcars.hbox(8)
-	row.add_child(Lcars.label("Morale %d" % int(c["morale"]), "Mono", 13))
+	var row := Lcars.hbox(10)
+	row.tooltip_text = "%s\n%s" % [SystemVM.program_status(p), str(p["effect"])]
+	row.mouse_filter = Control.MOUSE_FILTER_PASS
+	row.add_child(Pic.num("morale", "%d" % int(c["morale"]), "Morale", null, 22, 17))
+	row.add_child(Pic.num("alert" if active else "info", str(p["name"]), SystemVM.program_status(p), Lcars.WARN if active else Lcars.TEXT2, 20, 14, Lcars.WARN if active else Lcars.TEXT2))
+	row.add_child(Lcars.spacer())
 	if active:
 		row.add_child(Lcars.pill("Lift %s" % p["activeName"], "ghost", func(): vm.cancel_program(), _locked(), "Ends the program at turn end"))
 	else:
-		row.add_child(Lcars.pill("Declare %s" % p["name"], "primary", func(): vm.start_program(), vm.program_block(), "Quells unrest at the price shown"))
+		row.add_child(Lcars.pill("Declare", "primary", func(): vm.start_program(), vm.program_block(), "Declare %s. %s" % [p["name"], str(p["effect"])]))
 	b.add_child(row)
 	return f
 

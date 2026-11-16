@@ -87,7 +87,7 @@ Art generated for the game itself (not third-party files). Committed to the repo
 
 | Set | Where | Source | Date | Terms | Scaling |
 |---|---|---|---|---|---|
-| Structure illustrations (13 files) | `remaster/godot/assets/structures/` | OpenAI image generation via Codex CLI | 2026-11-16 | Generated for this private project; output used under OpenAI's terms for generated images. Depicts Star Trek-style designs, so it follows the project policy: private, plus the BOTF Remastered browser build for Simon's friends (Simon, 16 Nov 2026). | 384x384 PNG via godot/tools/scale_art.gd |
+| Structure illustrations (26 files) | `remaster/godot/assets/structures/` | OpenAI image generation via Codex CLI | 2026-11-16 | Generated for this private project; output used under OpenAI's terms for generated images. Depicts Star Trek-style designs, so it follows the project policy: private, plus the BOTF Remastered browser build for Simon's friends (Simon, 16 Nov 2026). | 384x384 PNG via godot/tools/scale_art.gd |
 | Governor-mode icons (4 files) | `remaster/godot/assets/governors/` | OpenAI image generation via Codex CLI | 2026-11-16 | As above. | 192x192 PNG via godot/tools/scale_art.gd |
 
 Prompt pattern: Structure illustrations: Small cinematic Star Trek concept-art render of the structure, dark background, no text; one prompt per structure (tools in Documents/ChatGPT/structure-art, gen.sh); Governor-mode icons: Small cinematic Star Trek concept-art emblem per colonial-governor mode (balanced, growth, manufacturing, research), dark background, no text

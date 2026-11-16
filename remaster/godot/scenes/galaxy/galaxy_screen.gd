@@ -320,10 +320,25 @@ func _build_inspector() -> void:
 	if cell >= 0:
 		_inspector_body.add_child(_sector_card(cell, fleet.is_empty() and contact.is_empty()))
 	else:
-		var e := Lcars.vbox(8)
-		e.add_child(Lcars.heading("Star chart", 26))
-		e.add_child(Lcars.para("Select a system or ship. Right-click a sector for orders; with a ship selected, right-click open space to set course."))
-		e.add_child(Lcars.label("Drag pan · Right-drag orbit · Wheel zoom\nWASD pan · Q/E rotate · PgUp/PgDn tilt\nDouble-click fly to · F fit · H home\nTab next ship · Enter end turn", "Mono", 13))
+		var e := Lcars.vbox(10)
+		var hh := Lcars.hbox(10)
+		hh.add_child(Lcars.icon("galaxy", 30, Lcars.accent()))
+		hh.add_child(Lcars.heading("Star chart", 26))
+		e.add_child(hh)
+		e.add_child(Pic.tipped(Lcars.marked("orders", "RMB", "Mono", 15, Lcars.TEXT, 24), "Select a system or ship. Right-click a sector for orders; with a ship selected, right-click open space to set course."))
+		# Controls as key chips: the mouse and keys, each with its icon; what they do is the tooltip.
+		var keys := [["quadrant", "Drag", "Drag to pan"], ["galaxy", "R-drag", "Right-drag to orbit"], ["search", "Wheel", "Wheel to zoom"], ["delta_up", "WASD", "WASD pan"], ["turn", "Q E", "Q and E rotate"],
+			["up", "PgUp PgDn", "PgUp and PgDn tilt"], ["eye", "F", "F fits the whole chart"], ["colony", "H", "H goes home"], ["fleet", "Tab", "Tab selects the next ship"], ["delta_right", "Enter", "Enter ends the turn"]]
+		var kf := HFlowContainer.new()
+		kf.add_theme_constant_override("h_separation", 10)
+		kf.add_theme_constant_override("v_separation", 8)
+		for k in keys:
+			var kc := Lcars.hbox(4)
+			kc.add_child(UiIcon.make(k[0], 18, Lcars.accent2()))
+			kc.add_child(Lcars.label(k[1], "Mono", 13, Lcars.TEXT2))
+			Pic.tipped(kc, k[2])
+			kf.add_child(kc)
+		e.add_child(kf)
 		_inspector_body.add_child(e)
 
 func _card_head(empire: int, title: String, sub: String) -> HBoxContainer:

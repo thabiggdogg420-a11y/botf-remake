@@ -90,6 +90,44 @@ func _run(shots: Array) -> void:
 					scr.tab = "structures"
 					scr.refresh()
 				await _wait_ms(3500) # the planet globes are SubViewports that load their textures on first use
+			"research", "empire", "fleets", "diplomacy", "intel":
+				app.goto(s)
+				await _wait_ms(1500)
+			"galaxy-help":
+				app.goto("galaxy")
+				await _wait(4)
+				app.session.selection = {"cell": -1, "systemId": 0, "fleetId": 0, "taskForceId": 0}
+				app.current_screen().refresh()
+				await _wait_ms(1000)
+			"colony-low":
+				app.goto("system")
+				await _wait(4)
+				var lsc := app.current_screen()
+				lsc.tab = "structures"
+				lsc.refresh()
+				await _wait_ms(2500)
+				for sc in lsc.find_children("*", "ScrollContainer", true, false):
+					(sc as ScrollContainer).scroll_vertical = 100000
+				await _wait(6)
+			"allnames":
+				for fac in [1, 2, 3, 4, 5, 6, 7, 8]:
+					app.view = {}
+					var eo := {"faction": fac, "seed": 424242, "ruleset": "reference", "width": 22, "height": 16, "systems": 48, "preset": "galaxies", "era": 5, "lineup": ["federation", "klingon", "romulan", "cardassian", "ferengi", "dominion", "borg", "breen"], "events": true, "aiAggression": true}
+					app.start_campaign(eo)
+					app.close_all_modals()
+					app.goto("system")
+					await _wait(4)
+					var asc := app.current_screen()
+					if asc.has_method("refresh") and asc.vm.system_id() != 0:
+						for tb in ["structures", "installed"]:
+							asc.tab = tb
+							asc.refresh()
+							for ch in asc.vm.choices(false):
+								print("ALLN ", fac, " | ", ch["name"])
+						for rs in asc.detail.get("raceStructures", []):
+							print("ALLN ", fac, " | RACE ", rs["name"])
+					else:
+						print("ALLN ", fac, " | no colony")
 			"names":
 				app.goto("system")
 				await _wait(4)
