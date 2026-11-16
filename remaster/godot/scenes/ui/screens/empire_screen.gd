@@ -51,7 +51,7 @@ func refresh() -> void:
 	dash.add_child(con)
 	root.add_child(dash)
 	Motion.stagger(dash)
-	var f := Lcars.frame("Registry · " + vm.tab_title(), "click a row to open it" if tab in ["colonies", "fleets"] else "", "primary", "database")
+	var f := Lcars.frame("Registry · " + vm.tab_title(), "", "primary", "database")
 	f.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	var b := Lcars.body(f)
 	b.add_child(Lcars.tab_bar(vm.tab_labels(), tab, func(id): tab = id; refresh()))
@@ -131,7 +131,10 @@ func _banner(v: Dictionary) -> Control:
 		if int(fc["id"]) == app.player():
 			motto = str(fc["motto"])
 	tb.add_child(Lcars.label(motto, "", 16, Lcars.TEXT2))
-	tb.add_child(Lcars.caption(vm.subtitle()))
+	var sub := Lcars.hbox(14)
+	for k in [["turn", str(int(v["meta"].get("turn", 0))), "Turn"], ["colony", str(vm.colony_cards().size()), "Colonies"], ["ship", str(v["fleets"].size()), "Ships"], ["contact", str(vm.contacts().filter(func(r): return r["met"]).size()), "Contacts"]]:
+		sub.add_child(Pic.num(k[0], k[1], k[2], Lcars.TEXT2, 20, 16, Lcars.accent2()))
+	tb.add_child(sub)
 	h.add_child(tb)
 	h.add_child(Lcars.spacer())
 	var right := Lcars.vbox(8)
@@ -148,7 +151,7 @@ func _banner(v: Dictionary) -> Control:
 ## Colony cards: planet sphere, population ring, outputs and what it is building. Click opens the colony.
 func _colonies_panel() -> Control:
 	var cards := vm.colony_cards()
-	var f := Lcars.frame("Colonies", "%d worlds" % cards.size(), "primary", "colony")
+	var f := Lcars.frame("Colonies", "%d" % cards.size(), "primary", "colony")
 	f.name = "ColonyCards"
 	var flow := HFlowContainer.new()
 	flow.add_theme_constant_override("h_separation", 10)
@@ -170,10 +173,15 @@ func _colonies_panel() -> Control:
 			outs.add_child(UiIcon.make(o[0], 14, o[2]))
 			outs.add_child(Lcars.label(o[1], "Mono", 13, Lcars.TEXT2))
 		col.add_child(outs)
-		var st := ("Building %s · %dT" % [cc["building"], cc["eta"]]) if cc["building"] != "" else "Queue idle"
-		col.add_child(Lcars.label(st, "", 12, Lcars.TEXT3 if cc["building"] != "" else Lcars.WARN))
+		if cc["building"] != "":
+			var bh := Lcars.hbox(6)
+			bh.add_child(Pic.structure(str(cc["building"]), 26))
+			bh.add_child(Pic.num("clock", "%d" % int(cc["eta"]), "Building %s" % cc["building"], Lcars.accent2(), 16, 13))
+			col.add_child(bh)
+		else:
+			col.add_child(Pic.num("warn", "", "Queue idle", Lcars.WARN, 20, 13, Lcars.WARN))
 		row.add_child(col)
-		row.add_child(RingGauge.make(58, cc["pop"], max(1, cc["cap"]), Lcars.GOOD if not cc["short"] else Lcars.ALERT, str(cc["pop"]), "POP"))
+		row.add_child(RingGauge.make(58, cc["pop"], max(1, cc["cap"]), Lcars.GOOD if not cc["short"] else Lcars.ALERT, str(cc["pop"]), ""))
 		Lcars.ignore_mouse(row)
 		var sid: int = cc["id"]
 		b.pressed.connect(func(): app.select_system(sid); app.goto("system"))
@@ -185,13 +193,13 @@ func _colonies_panel() -> Control:
 func _economy_panel() -> Control:
 	var f := Lcars.frame("Economy & fleet", "", "secondary", "credits")
 	var b := Lcars.body(f)
-	b.add_child(Lcars.caption("Income per turn"))
+	b.add_child(Pic.tipped(Lcars.icon("credits", 22, Pic.tint("credits")), "Income per turn"))
 	var parts := vm.income_parts().map(func(p): return [p[0], p[1], Lcars.tone_color(p[2])])
 	b.add_child(SegmentBar.make(parts, {"title": "Income per turn", "parts": parts.map(func(p): return [p[0], Fmt.signed(p[1]), "alert" if p[1] < 0 else "good"]), "effect": "Colony income net of structure upkeep, plus trade, less ship upkeep."}))
 	var row := Lcars.hbox(14)
 	var roles := vm.fleet_roles()
 	var palette := [Lcars.accent(), Lcars.accent2(), Lcars.INFO, Lcars.GOOD, Lcars.WARN, Lcars.accent3()]
-	var ring := RingGauge.make(104, 0, 1, Lcars.accent(), str(app.view["fleets"].size()), "SHIPS", {"title": "Ships by role", "parts": roles.map(func(r): return [r[0], str(r[1])])})
+	var ring := RingGauge.make(104, 0, 1, Lcars.accent(), str(app.view["fleets"].size()), "", {"title": "Ships by role", "parts": roles.map(func(r): return [r[0], str(r[1])])})
 	var segs := []
 	for n in roles.size():
 		segs.append([roles[n][1], palette[n % palette.size()]])
@@ -201,12 +209,10 @@ func _economy_panel() -> Control:
 	leg.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	for n in mini(roles.size(), 5):
 		var it := Lcars.hbox(6)
-		var dot := ColorRect.new()
-		dot.color = palette[n % palette.size()]
-		dot.custom_minimum_size = Vector2(10, 10)
-		dot.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		it.add_child(dot)
-		it.add_child(Lcars.label("%s  %d" % [roles[n][0], roles[n][1]], "", 13, Lcars.TEXT2))
+		var rn := str(roles[n][0]).to_lower()
+		var rico := "colony" if rn.contains("colony") else ("population" if rn.contains("transport") or rn.contains("troop") else ("sensor" if rn.contains("scout") or rn.contains("science") else ("starbase" if rn.contains("station") or rn.contains("base") else ("attack" if rn.contains("destroyer") or rn.contains("cruiser") or rn.contains("battle") or rn.contains("frigate") else "ship"))))
+		it.add_child(Pic.tipped(Lcars.icon(rico, 26, palette[n % palette.size()]), str(roles[n][0])))
+		it.add_child(Lcars.label("%d" % int(roles[n][1]), "Mono", 15, palette[n % palette.size()]))
 		leg.add_child(it)
 	row.add_child(leg)
 	b.add_child(row)
@@ -230,7 +236,8 @@ func _contacts_panel() -> Control:
 			var tm := Lcars.meter(r["trust"], 100, Lcars.tone_color(r["tone"]), 4, 50)
 			tm.size_flags_horizontal = Control.SIZE_SHRINK_END
 			row.add_child(tm)
-		row.add_child(Lcars.badge(r["status"], r["tone"]))
+		var stc := Lcars.icon("war" if "war" in str(r["status"]).to_lower() else ("peace" if r["met"] else "unexplored"), 20, Lcars.tone_color(r["tone"]))
+		row.add_child(stc)
 		Lcars.ignore_mouse(row)
 		b.pressed.connect(func(): app.goto("diplomacy"))
 		col.add_child(b)
@@ -243,8 +250,8 @@ func _members(v: Dictionary) -> Control:
 	row.theme_type_variation = "Inset"
 	var h := Lcars.hbox(12)
 	row.add_child(h)
-	var l := Lcars.caption("Member worlds")
-	l.tooltip_text = "Minor races that joined your empire. Each adds its join bonus to every colony."
+	var l := Lcars.icon("minor", 24, Color("#d8c3ff"))
+	l.tooltip_text = "Member worlds: minor races that joined your empire. Each adds its join bonus to every colony."
 	l.mouse_filter = Control.MOUSE_FILTER_PASS
 	h.add_child(l)
 	if int(b.get("members", 0)) > 0:
@@ -255,11 +262,12 @@ func _members(v: Dictionary) -> Control:
 			bd.tooltip_text = str(mm["bonus"])
 			h.add_child(bd)
 	else:
-		h.add_child(Lcars.label("None yet - befriend minor races in Diplomacy and invite them to join for their bonuses.", "Muted", 14))
+		h.add_child(Pic.num("plus", "", "None yet - befriend minor races in Diplomacy and invite them to join for their bonuses.", Lcars.TEXT3, 22, 14, Lcars.TEXT3))
 	h.add_child(Lcars.spacer())
 	var sc := vm.station_counts()
 	var sb: int = sc["starbases"]
 	var op: int = sc["outposts"]
 	if sb + op > 0:
-		h.add_child(Lcars.label("%d starbases · %d outposts" % [sb, op], "Mono", 13))
+		h.add_child(Pic.num("starbase", "%d" % sb, "Starbases", Lcars.TEXT2, 20, 14))
+		h.add_child(Pic.num("supply", "%d" % op, "Outposts", Lcars.TEXT2, 20, 14))
 	return row

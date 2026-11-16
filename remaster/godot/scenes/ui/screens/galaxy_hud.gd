@@ -164,23 +164,19 @@ func _layers() -> Control:
 	var col := Lcars.vbox(6)
 	p.add_child(col)
 	var row := Lcars.hbox(4)
-	row.add_child(Lcars.caption("Layers"))
+	row.add_child(Lcars.icon("labels", 18, Lcars.TEXT3))
 	for l in vm.layers(app.map_layers):
 		var key: String = l["key"]
-		var t := Lcars.toggle("    " + l["label"], l["on"], func(on): layer_changed.emit(key, on), l["hint"])
+		var t := Pic.icon_toggle(str(l["icon"]), l["on"], func(on): layer_changed.emit(key, on), "%s: %s" % [l["label"], l["hint"]], 20, Vector2(44, 36))
 		t.name = "Layer_" + key
-		t.add_theme_font_size_override("font_size", 14)
-		var li := UiIcon.make(str(l["icon"]), 15, Lcars.TEXT2)
-		li.position = Vector2(10, 8)
-		t.add_child(li)
 		row.add_child(t)
 	col.add_child(row)
-	var leg := Lcars.hbox(14)
+	var leg := Lcars.hbox(12)
 	leg.name = "Legend"
 	for item in vm.legend():
 		# Every legend entry is the same mark the chart draws: hulls, contacts and starbases, the anomaly swirl, the hostile delta.
-		leg.add_child(UiIcon.make(str(item.get("icon", "contact")), 18, _legend_color(item["color"])))
-		leg.add_child(Lcars.label(item["label"], "Muted", 12))
+		# The mark is the legend; hover names it.
+		leg.add_child(Pic.tipped(UiIcon.make(str(item.get("icon", "contact")), 20, _legend_color(item["color"])), str(item["label"])))
 	col.add_child(leg)
 	return p
 

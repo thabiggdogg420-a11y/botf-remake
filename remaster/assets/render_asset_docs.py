@@ -136,10 +136,12 @@ def sources_doc():
     w("| Qwen-Image VAE | [Comfy-Org/Qwen-Image_ComfyUI](https://huggingface.co/Comfy-Org/Qwen-Image_ComfyUI) | `qwen_image_vae.safetensors` | Apache-2.0 (model card) | encoder and decoder |")
     w("| Original BOTF race stills | `stbof.res` from the archive.org copy, extracted by `tools/art/extract_portraits.py` to `LocalAssets/portraits/` (160x170) | `portrait.minor.*.png` | the user's own game copy, private (clear-personal) | reference image for the 25 typical-member minor portraits; the results are derivatives and stay in `LocalAssets/portraits-remaster/`, never committed |")
     w("")
-    w("**Round 3 (16 Nov 2026): the eight major-power portraits (Picard, Gowron, Sela, Gul Dukat, Grand Nagus Zek, Weyoun, the Borg Queen, a Breen soldier) are named-character stylised photos. Source: OpenAI image generation via Codex CLI, 16 Nov 2026** (files in `Documents/ChatGPT/portrait-codex/`, shared grade by `tools/art/portrait_post.py`). Not Qwen. The Qwen rows above describe rounds 1 and 2 (minor races still use round 2). No reference stills were used in the shipped images; reference stills fetched from Memory Alpha/Wikipedia pages for an abandoned local-edit route are kept private in `portrait-v3/ref/` and are not shipped.")
+    w("**Round 3 (16 Nov 2026): the eight major-power portraits (Picard, Gowron, Tomalak, Gul Dukat, Grand Nagus Zek, Weyoun, the Borg Queen, a Breen soldier) are named-character stylised photos. Source: OpenAI image generation via Codex CLI from Memory Alpha reference stills, 16 Nov 2026.** The reference stills are private reference only and are not shipped; the generated results are the shipped files (originals in `Documents/ChatGPT/portrait-codex/`, shared grade and crop by `tools/art/portrait_post.py`, installed gitignored and packed into art_desktop.pck / art_web.pck by `tools/build_ship_packs.py --portraits`). Not Qwen. The Qwen rows above describe rounds 1 and 2 (minor races still use round 2). Reference stills are kept private in `portrait-v3/ref/`.")
     w("")
     w("A model licence covers the model's use. Star Trek species, characters, uniforms and insignia remain Paramount's; the portraits are private, never distributed, like the rest of this game (the hosted browser build is the owner's recorded exception).")
     w("")
+    for ln in generated_section():
+        w(ln)
     w("## All candidates")
     w("")
     for k, v in A.items():
@@ -158,6 +160,17 @@ def sources_doc():
                                                        "{:,}".format(c["faceCount"]) if c.get("faceCount") else ""))
         w("")
     return "\n".join(out) + "\n"
+
+
+def generated_section():
+    """Art generated for the game (generated-art.json): committed, so listed apart from the local-only candidates."""
+    G = json.load(open(os.path.join(HERE, "generated-art.json"), encoding="utf-8"))
+    out = ["## Generated art (in the repo)", "", G["note"], "", "| Set | Where | Source | Date | Terms | Scaling |", "|---|---|---|---|---|---|"]
+    for g in G["sets"]:
+        n = len([f for f in os.listdir(os.path.join(os.path.dirname(ROOT), g["path"])) if f.endswith(".png")]) if os.path.isdir(os.path.join(os.path.dirname(ROOT), g["path"])) else 0
+        out.append("| %s (%d files) | `%s` | %s | %s | %s | %s |" % (cell(g["name"]), n, g["path"], cell(g["source"]), g["date"], cell(g["terms"]), cell(g["scaled"])))
+    out += ["", "Prompt pattern: " + "; ".join("%s: %s" % (g["name"], cell(g["prompt"])) for g in G["sets"]), ""]
+    return out
 
 
 def credits_block():

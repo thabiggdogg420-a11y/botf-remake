@@ -94,9 +94,20 @@ Rounds 1-2: local generation only, on the owner's RTX 4090 through ComfyUI (a lo
 | Qwen-Image VAE | [Comfy-Org/Qwen-Image_ComfyUI](https://huggingface.co/Comfy-Org/Qwen-Image_ComfyUI) | `qwen_image_vae.safetensors` | Apache-2.0 (model card) | encoder and decoder |
 | Original BOTF race stills | `stbof.res` from the archive.org copy, extracted by `tools/art/extract_portraits.py` to `LocalAssets/portraits/` (160x170) | `portrait.minor.*.png` | the user's own game copy, private (clear-personal) | reference image for the 25 typical-member minor portraits; the results are derivatives and stay in `LocalAssets/portraits-remaster/`, never committed |
 
-**Round 3 (16 Nov 2026): the eight major-power portraits (Picard, Gowron, Sela, Gul Dukat, Grand Nagus Zek, Weyoun, the Borg Queen, a Breen soldier) are named-character stylised photos. Source: OpenAI image generation via Codex CLI, 16 Nov 2026** (files in `Documents/ChatGPT/portrait-codex/`, shared grade by `tools/art/portrait_post.py`). Not Qwen. The Qwen rows above describe rounds 1 and 2 (minor races still use round 2). No reference stills were used in the shipped images; reference stills fetched from Memory Alpha/Wikipedia pages for an abandoned local-edit route are kept private in `portrait-v3/ref/` and are not shipped.
+**Round 3 (16 Nov 2026): the eight major-power portraits (Picard, Gowron, Tomalak, Gul Dukat, Grand Nagus Zek, Weyoun, the Borg Queen, a Breen soldier) are named-character stylised photos. Source: OpenAI image generation via Codex CLI from Memory Alpha reference stills, 16 Nov 2026.** The reference stills are private reference only and are not shipped; the generated results are the shipped files (originals in `Documents/ChatGPT/portrait-codex/`, shared grade and crop by `tools/art/portrait_post.py`, installed gitignored and packed into art_desktop.pck / art_web.pck by `tools/build_ship_packs.py --portraits`). Not Qwen. The Qwen rows above describe rounds 1 and 2 (minor races still use round 2). Reference stills are kept private in `portrait-v3/ref/`.
 
 A model licence covers the model's use. Star Trek species, characters, uniforms and insignia remain Paramount's; the portraits are private, never distributed, like the rest of this game (the hosted browser build is the owner's recorded exception).
+
+## Generated art (in the repo)
+
+Art generated for the game itself (not third-party files). Committed to the repo, so unlike the manifest candidates these ship in the build.
+
+| Set | Where | Source | Date | Terms | Scaling |
+|---|---|---|---|---|---|
+| Structure illustrations (26 files) | `remaster/godot/assets/structures/` | OpenAI image generation via Codex CLI | 2026-11-16 | Generated for this private project; output used under OpenAI's terms for generated images. Depicts Star Trek-style designs, so it follows the project policy: private, plus the BOTF Remastered browser build for Simon's friends (Simon, 16 Nov 2026). | 384x384 PNG via godot/tools/scale_art.gd |
+| Governor-mode icons (4 files) | `remaster/godot/assets/governors/` | OpenAI image generation via Codex CLI | 2026-11-16 | As above. | 192x192 PNG via godot/tools/scale_art.gd |
+
+Prompt pattern: Structure illustrations: Small cinematic Star Trek concept-art render of the structure, dark background, no text; one prompt per structure (tools in Documents/ChatGPT/structure-art, gen.sh); Governor-mode icons: Small cinematic Star Trek concept-art emblem per colonial-governor mode (balanced, growth, manufacturing, research), dark background, no text
 
 ## All candidates
 
