@@ -243,6 +243,11 @@ static func preload_all(host: Node) -> void:
 			break
 	preload_current = ""
 	preload_running = false
+	if _unsynced > 0:
+		for n in all_packs():
+			if is_cached(n):
+				_flush_sync("user://packs/" + str(_web_manifest.get("files", {}).get(n, "")))
+				break
 
 ## Progress of the pack being fetched right now (web): {"name", "bytes", "total"}; empty when idle. The loading overlay reads it.
 static var progress := {}
@@ -392,10 +397,20 @@ static func _download_pack(host: Node, url: String, dest: String, name: String, 
 		remove(dest)
 		return false
 	# Writing through the engine's own file API is what makes it save the new file to IndexedDB (copyToFS alone does not).
-	var touch := FileAccess.open(dest, FileAccess.READ_WRITE)
+	# A preload writes hundreds of packs: it flushes once at the end and every 48 MB (_flush_sync), not after each one.
+	_unsynced += maxi(have, 0)
+	if not preload_running or _unsynced >= 48 * 1048576:
+		_flush_sync(dest)
+	return true
+
+static var _unsynced := 0
+
+## Opens and closes a file for writing so the engine syncs the file system to IndexedDB (what makes the packs survive the visit).
+static func _flush_sync(path: String) -> void:
+	_unsynced = 0
+	var touch := FileAccess.open(path, FileAccess.READ_WRITE)
 	if touch != null:
 		touch.close()
-	return true
 
 ## Web only: the chosen empire's audio (voice, sfx, music, about 12 MB) on top of the `shared` audio that ships in the main pck.
 ## Call it once when a campaign picks its empire (fed kli rom car fer), then BotfAudioLibrary.load_pack(empire).

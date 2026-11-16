@@ -400,8 +400,7 @@ static func menu(app: App) -> Control:
 			["Load campaign", "secondary", func(): app.close_modal(); app.goto("saves")],
 			["Settings", "tertiary", func(): app.close_modal(); app.open_overlay("settings")],
 			["Keyboard help", "tertiary", func(): app.close_modal(); app.open_overlay("help")],
-			["Quit to title", "alert", func(): app.close_modal(); confirm_quit_to_title(app)],
-			["Quit game", "ghost", func(): app.close_modal(); confirm_quit_game(app)]]:
+			["Quit to title", "alert", func(): app.close_modal(); confirm_quit_to_title(app)]] 			+ ([] if OS.has_feature("web") else [["Quit game", "ghost", func(): app.close_modal(); confirm_quit_game(app)]]):
 		var b := Lcars.pill(item[0], item[1], item[2])
 		b.name = str(item[0]).replace(" ", "")
 		b.custom_minimum_size.y = 42

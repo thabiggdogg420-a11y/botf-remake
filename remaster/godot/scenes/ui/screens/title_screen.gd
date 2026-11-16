@@ -83,7 +83,8 @@ func refresh() -> void:
 	row3.add_child(_wide(Lcars.pill("Settings", "ghost", func(): app.open_overlay("settings"))))
 	var quit := _wide(Lcars.pill("Quit", "ghost", func(): Overlays.confirm_quit_game(app), "", "Close the game", "Alt+F4"))
 	quit.name = "Quit"
-	row3.add_child(quit)
+	if not OS.has_feature("web"):   # a browser tab is closed by the browser: Quit would only freeze the canvas
+		row3.add_child(quit)
 	menu.add_child(row3)
 	for b2 in menu.get_children():
 		if b2 is Button:
