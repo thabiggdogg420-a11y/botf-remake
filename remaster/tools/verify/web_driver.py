@@ -44,6 +44,8 @@ def main():
     ap.add_argument("--h", type=int, default=720)
     ap.add_argument("--channel", default="chrome")
     ap.add_argument("--query", default="")
+    ap.add_argument("--env", action="append", default=[], help="K=V environment variable for the game (GODOT_CONFIG.env), e.g. BOTF_CUE_TRACE=1")
+    ap.add_argument("--args", default="", help="game command-line arguments, space separated, e.g. '-s res://x.gd -- a b' (GODOT_CONFIG.args)")
     a = ap.parse_args()
     os.makedirs(a.work, exist_ok=True)
     cmdf, outf = os.path.join(a.work, "cmd.txt"), os.path.join(a.work, "out.txt")
@@ -73,6 +75,23 @@ def main():
         def open_ctx():
             ctx = browser.new_context(viewport={"width": a.w, "height": a.h})
             pg = ctx.new_page()
+            if a.env or a.args:
+                import re as _re
+
+                def patch(route):
+                    resp = route.fetch()
+                    body = resp.text()
+                    cfg = {}
+                    m = _re.search(r"const GODOT_CONFIG = (\{.*?\});", body, _re.S)
+                    if m:
+                        cfg = json.loads(m.group(1))
+                        cfg["env"] = dict(kv.split("=", 1) for kv in a.env)
+                        if a.args:
+                            cfg["args"] = a.args.split(" ")
+                        body = body[:m.start(1)] + json.dumps(cfg) + body[m.end(1):]
+                    route.fulfill(response=resp, body=body)
+                ctx.route("**/index.html*", patch)
+                ctx.route("**/", patch)
             pg.on("console", lambda m: log.append(m.text))
             pg.on("pageerror", lambda e: log.append("PAGEERR " + str(e)))
             net["bytes"] = 0

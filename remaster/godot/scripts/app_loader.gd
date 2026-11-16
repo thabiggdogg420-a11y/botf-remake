@@ -340,29 +340,13 @@ static func _fetch_web_pack(host: Node, name: String) -> bool:
 		ok = mount_pack(dest)
 	else:
 		var url := str(JavaScriptBridge.eval("new URL('packs/%s', location.href).href" % file))
-		var req := HTTPRequest.new()
-		req.download_file = dest
-		req.accept_gzip = false   # a host that compresses .pck must not break the download
-		host.add_child(req)
-		var ticker := Timer.new()   # polls the download so a loading overlay can show bytes and a percentage
-		ticker.wait_time = 0.25
-		ticker.timeout.connect(func(): progress = {"name": name, "bytes": req.get_downloaded_bytes(), "total": maxi(want, req.get_body_size())})
-		host.add_child(ticker)
-		ticker.start()
-		progress = {"name": name, "bytes": 0, "total": want}
-		if req.request(url) == OK:
-			var res: Array = await req.request_completed
-			ticker.queue_free()
-			progress = {}
-			ok = int(res[0]) == HTTPRequest.RESULT_SUCCESS and int(res[1]) == 200 and mount_pack(dest)
+		ok = await _download_pack(host, url, dest, name, want)
+		if ok:
+			ok = mount_pack(dest)
 			if ok:
-				bytes_downloaded += req.get_downloaded_bytes()
+				bytes_downloaded += maxi(want, 0)
 			else:
-				push_warning("AppLoader: web pack %s not mounted (result %d, http %d)" % [file, int(res[0]), int(res[1])])
-		else:
-			ticker.queue_free()
-			progress = {}
-		req.queue_free()
+				push_warning("AppLoader: web pack %s downloaded but not mounted" % file)
 	if ok:
 		_mounted[name] = true
 		var stem := name.get_basename() + "."
@@ -370,6 +354,48 @@ static func _fetch_web_pack(host: Node, name: String) -> bool:
 			if f != file and (f == name or f.begins_with(stem)):
 				remove("user://packs/" + f)
 	return ok
+
+## Downloads one pack with the browser's own fetch() and writes it into the game's file system (engine.copyToFS), instead of
+## Godot's HTTPRequest. fetch() undoes any Content-Encoding a host or CDN adds (gzip, brotli) before the bytes reach us, which
+## HTTPRequest.download_file cannot do on the web (it hangs on a compressed body: seen with a host that gzips everything), and
+## it reports progress for the loading bar. Returns true when `want` bytes (the manifest's size) are in `dest`.
+static func _download_pack(host: Node, url: String, dest: String, name: String, want: int) -> bool:
+	var id := "d%d" % Time.get_ticks_usec()
+	var path := ProjectSettings.globalize_path(dest)
+	var js := "(function(){var s={done:false,ok:false,bytes:0,err:''};(window.__botfDl=window.__botfDl||{})['" + id + "']=s;" \
+		+ "fetch(" + JSON.stringify(url) + ").then(function(r){if(!r.ok)throw new Error('http '+r.status);var rd=r.body.getReader();var ch=[];" \
+		+ "var pump=function(){return rd.read().then(function(x){if(x.done)return;ch.push(x.value);s.bytes+=x.value.length;return pump();});};" \
+		+ "return pump().then(function(){var b=new Uint8Array(s.bytes);var o=0;for(var i=0;i<ch.length;i++){b.set(ch[i],o);o+=ch[i].length;}ch=null;return b;});})" \
+		+ ".then(function(b){engine.copyToFS(" + JSON.stringify(path) + ",b.buffer);s.ok=true;s.done=true;})" \
+		+ ".catch(function(e){s.err=String(e);s.done=true;});})();"
+	progress = {"name": name, "bytes": 0, "total": want}
+	JavaScriptBridge.eval(js)
+	var tree := host.get_tree()
+	var st: Dictionary = {}
+	while true:
+		await tree.create_timer(0.25).timeout
+		var parsed: Variant = JSON.parse_string(str(JavaScriptBridge.eval("JSON.stringify(window.__botfDl['" + id + "'])")))
+		st = parsed if parsed is Dictionary else {}
+		progress = {"name": name, "bytes": int(st.get("bytes", 0)), "total": want}
+		if bool(st.get("done", true)):
+			break
+	JavaScriptBridge.eval("delete window.__botfDl['" + id + "']")
+	progress = {}
+	if not bool(st.get("ok", false)):
+		push_warning("AppLoader: download of %s failed: %s" % [name, str(st.get("err", "no state"))])
+		return false
+	var f := FileAccess.open(dest, FileAccess.READ)
+	var have := f.get_length() if f != null else -1
+	f = null
+	if want > 0 and have != want:
+		push_warning("AppLoader: %s is %d bytes, the manifest says %d" % [name, have, want])
+		remove(dest)
+		return false
+	# Writing through the engine's own file API is what makes it save the new file to IndexedDB (copyToFS alone does not).
+	var touch := FileAccess.open(dest, FileAccess.READ_WRITE)
+	if touch != null:
+		touch.close()
+	return true
 
 ## Web only: the chosen empire's audio (voice, sfx, music, about 12 MB) on top of the `shared` audio that ships in the main pck.
 ## Call it once when a campaign picks its empire (fed kli rom car fer), then BotfAudioLibrary.load_pack(empire).
