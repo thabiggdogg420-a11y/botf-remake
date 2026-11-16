@@ -661,10 +661,72 @@ void planAiWarDeclarations(GameState& s, int ownerId);
 std::vector<int> taskForcePath(const GameState& s, const TaskForce& tf, int x, int y); // With route(), below.
 void applyDiplomacyOps(GameState& next, const diplomacy::TurnResolutionDelta& delta, TurnReport* report, bool skipWarState);
 
+// Rivalry (PLAYTEST-FEEDBACK 16 Nov 2026, "no war"): what the map gives `self` to quarrel with `other` about. Border friction (its
+// colonies near the other's colonies, the other's ships near its colonies), expansion (the other holds more colonies), opportunity
+// (the other is much weaker or already fighting a third power) and profit (a rich neighbour with no trade pact), each weighted by the
+// personality (diplomacy::rivalryProfileFor). Integer only; read by the war planner, the treaty planner and the proposal evaluator.
+struct RivalryBreakdown {
+    int friction = 0, expansion = 0, opportunity = 0, profit = 0;
+    int total() const { return std::min(50, friction + expansion + opportunity + profit); }
+};
+RivalryBreakdown rivalryBreakdown(const GameState& s, int self, int other) {
+    RivalryBreakdown out;
+    if (!s.campaignExpansionEnabled || !s.modernEnginesActive || self == other) return out;
+    const auto prof = diplomacy::rivalryProfileFor(diplomacy::personalityForEmpire(self));
+    const auto at = [&](int systemId) {
+        const auto it = std::find_if(s.systems.begin(), s.systems.end(), [&](const System& x) { return x.id == systemId; });
+        return it == s.systems.end() ? std::pair<int, int>{-1000, -1000} : std::pair<int, int>{it->x, it->y};
+    };
+    const auto reach = [](std::pair<int, int> a, int x, int y) { return std::max(std::abs(a.first - x), std::abs(a.second - y)); };
+    std::vector<std::pair<int, int>> mine, theirs;
+    for (const auto& c : s.colonies) {
+        if (c.ownerId == self) mine.push_back(at(c.systemId));
+        else if (c.ownerId == other) theirs.push_back(at(c.systemId));
+    }
+    int pairs = 0, ships = 0;
+    for (const auto& a : mine) for (const auto& b : theirs) if (reach(a, b.first, b.second) <= 5) ++pairs;
+    std::int64_t selfPower = 0, otherPower = 0;
+    for (const auto& f : s.fleets) {
+        if (f.hull <= 0) continue;
+        if (f.ownerId == self) selfPower += fleetAttack(f) * 10 + f.hull;
+        else if (f.ownerId == other) {
+            otherPower += fleetAttack(f) * 10 + f.hull;
+            if (std::any_of(mine.begin(), mine.end(), [&](const auto& a) { return reach(a, f.x, f.y) <= 3; })) ++ships;
+        }
+    }
+    out.friction = (std::min(20, 4 * pairs) + std::min(9, 3 * ships)) * prof.territorial / 100;
+    if (theirs.size() > mine.size()) out.expansion = std::min<int>(12, 3 * static_cast<int>(theirs.size() - mine.size())) * prof.expansionist / 100;
+    int opportunity = 0;
+    if (otherPower * 2 < selfPower) opportunity += 12;
+    for (const auto& r : s.majorRelations) {
+        if (!r.atWar || (r.first != other && r.second != other)) continue;
+        const int third = r.first == other ? r.second : r.first;
+        if (third != self && !empireEliminatedInternal(s, third)) { opportunity += 8; break; }
+    }
+    out.opportunity = opportunity * prof.opportunist / 100;
+    const auto* rel = majorRelation(s, self, other);
+    const bool trade = (rel && rel->tradeTreaty) ||
+        s.diplomacyEngineState.hasActiveTreaty(diplomacy::ParticipantId::major(self), diplomacy::ParticipantId::major(other), diplomacy::TreatyType::Trade);
+    if (!trade && empire(s, other).credits > empire(s, self).credits + 300) out.profit = 10 * prof.profit / 100;
+    return out;
+}
+const char* rivalryCause(const RivalryBreakdown& b) {
+    if (b.friction >= b.expansion && b.friction >= b.opportunity && b.friction >= b.profit) return "is uneasy about your ships and colonies on its border";
+    if (b.expansion >= b.opportunity && b.expansion >= b.profit) return "resents how far your colonies have spread";
+    if (b.opportunity >= b.profit) return "sees a chance in your weakness";
+    return "eyes your treasury";
+}
+
 class CampaignDiplomacyContext : public diplomacy::DiplomacyContext {
 public:
     const GameState& state;
     explicit CampaignDiplomacyContext(const GameState& s) : state(s) {}
+
+    bool rivalryEnabled() const override { return modernDiplomacy(state); }
+    int rivalryPressure(diplomacy::ParticipantId a, diplomacy::ParticipantId b) const override {
+        if (a.isMinor || b.isMinor || a == b || !campaignEmpire(state, a.id) || !campaignEmpire(state, b.id)) return 0;
+        return rivalryBreakdown(state, a.id, b.id).total();
+    }
 
     bool hasContact(diplomacy::ParticipantId a, diplomacy::ParticipantId b) const override {
         if (a == b) return true;
@@ -1408,6 +1470,18 @@ bool queueMilitaryShip(GameState& s, Colony& colony, Building role) {
     return true;
 }
 
+// Destroyers a power wants under arms in peacetime (modern campaigns). Warlike personalities keep a standing fleet that grows with the
+// calendar; the Federation and the Ferengi keep a token patrol. Without it every AI sat at one or two ships and no one feared anyone.
+int standingFleetWanted(const GameState& s, int empireId) {
+    switch (diplomacy::personalityForEmpire(empireId)) {
+        case diplomacy::MajorPersonality::Klingon: case diplomacy::MajorPersonality::Dominion: case diplomacy::MajorPersonality::Borg:
+            return std::min(5, 2 + s.turn / 25);
+        case diplomacy::MajorPersonality::Cardassian: return std::min(4, 1 + s.turn / 30);
+        case diplomacy::MajorPersonality::Romulan: return std::min(3, 1 + s.turn / 40);
+        default: return 1;
+    }
+}
+
 void planRivals(GameState& s) {
     for (auto& owner : s.rivals) {
         // Personality- and situation-driven war decisions (treaties, cool-downs,
@@ -1421,7 +1495,7 @@ void planRivals(GameState& s) {
         scenarios::planFlagships(s, owner.id);         // Schema 25: AI commissions a flagship when the pack has them
         const int focus = (s.turn / 20 + owner.id) % ResearchFields;
         for (int field = 0; field < ResearchFields; ++field)
-            owner.technologies[field].allocation = atWar ? (field == 4 || field == 5 ? 40 : 5) : (field == focus ? 50 : 10);
+            owner.technologies[field].allocation = atWar ? (field == 4 || field == 5 ? 35 : field == 2 ? 15 : 5) : (field == focus ? 50 : 10); // At war the rivals still research construction (outposts, starbases): modern rivals are at war most of the game
         for (const auto& m : s.minors) {
             if (!m.contact[owner.id] || m.memberOf != 0 || std::any_of(s.diplomacy.begin(), s.diplomacy.end(), [&](const DiplomaticOffer& o) {
                 return o.empireId == owner.id && o.systemId == m.systemId;
@@ -1481,6 +1555,8 @@ void planRivals(GameState& s) {
             else if (s.campaignExpansionEnabled && c.factories < 2 && c.factories < MaxBuildings)
                 c.queue.push_back(Building::Factory);
             else if (c.shipyards == 0) c.queue.push_back(Building::Shipyard);
+            else if (modernDiplomacy(s) && s.aiAggressionEnabled && !atWar && s.turn >= 20 && destroyers < standingFleetWanted(s, owner.id) && s.fleets.size() < 256 && s.nextFleetId <= 1000000 &&
+                queueMilitaryShip(s, c, Building::Destroyer)) ++destroyers; // Rivalry: a warlike power keeps a standing fleet in peacetime, ahead of its upgrade ladder (at war the old order stands)
             else if (empire_rules::aiWantsRefinery(s, owner.id, c)) c.queue.push_back(Building::DilithiumRefinery);
             else if (const int rung = structures::aiNext(s, c, economy(s, c).industry); rung >= 0) c.queue.emplace_back(Building::Structure, 0, structures::refFor(rung));
             else if (const int academy = structures::aiAcademy(s, c, economy(s, c).industry); academy >= 0) c.queue.emplace_back(Building::Structure, 0, structures::refFor(academy)); // Schema 24: the AI trains crews
@@ -2110,8 +2186,17 @@ void planAiWarDeclarations(GameState& s, int ownerId) {
         else if (r.contact) candidates.push_back(other);
     }
     std::sort(candidates.begin(), candidates.end());
+    // Rivalry: nobody piles on. The human faces one AI war in the early game, two from turn 40, three from turn 80; the rest wait their turn.
+    int warsOnHuman = 0;
+    if (modern) for (const auto& r : s.majorRelations)
+        if (r.atWar && (r.first == s.playerEmpire || r.second == s.playerEmpire)) {
+            const int foe = r.first == s.playerEmpire ? r.second : r.first;
+            if (foe != ownerId && !empireEliminatedInternal(s, foe)) ++warsOnHuman;
+        }
+    const bool humanFull = modern && warsOnHuman >= 1 + s.turn / 40;
     int best = 0, bestScore = 0;
     for (int other : candidates) {
+        if (humanFull && other == s.playerEmpire) continue;
         const CampaignDiplomacyContext ctx(s);
         const auto* rel = majorRelation(s, ownerId, other);
         if (!rel) continue;
@@ -2132,12 +2217,13 @@ void planAiWarDeclarations(GameState& s, int ownerId) {
             in.targetBetrayals = ds.betrayals(other);
         }
         in.turnsSinceTransition = s.turn - lastTransition;
-        in.activeWars = activeWars;
+        in.activeWars = std::max(0, activeWars - (other == s.playerEmpire && modern ? 1 : 0)); // Rivalry: one front against the human is always open to it
         in.aggressorPower = ctx.militaryPower(diplomacy::ParticipantId::major(ownerId));
         if (ownerId != s.playerEmpire) in.aggressorPower = in.aggressorPower * difficultyProfile(s.galaxy.difficulty).aiWarConfidencePct / 100;
         in.targetPower = blocMilitaryPower(s, ctx, other, ownerId);
         in.trust = rel->trust;
         in.tradePact = rel->tradeTreaty;
+        in.pressure = modern ? rivalryBreakdown(s, ownerId, other).total() : 0;
         in.seed = s.seed ^ (0x9E3779B97F4A7C15ULL * static_cast<std::uint64_t>(ownerId));
         const auto verdict = diplomacy::assessWarDeclaration(in);
         if (verdict.declare && (best == 0 || verdict.score > bestScore)) {
@@ -2256,6 +2342,24 @@ void applyTreatyConsequences(GameState& next, TurnReport& report) {
                                   diplomacy::profileFor(diplomacy::personalityForEmpire(rel.second)).trustBaseline) / 2;
             if (rel.trust < baseline) ++rel.trust;
             else if (rel.trust > baseline) --rel.trust;
+        }
+        // Rivalry: border friction, expansion, weakness and profit sour a relation (an AI's view of its neighbour; the player has none).
+        // Without a pact the slide is steady and breeds grievances; inside a plain non-aggression pact it is slower; friends are spared.
+        if (rank <= 1) {
+            for (int side = 0; side < 2; ++side) {
+                const int ai = side == 0 ? rel.first : rel.second, other = side == 0 ? rel.second : rel.first;
+                if (ai == next.playerEmpire) continue;
+                const auto cause = rivalryBreakdown(next, ai, other);
+                const int pressure = cause.total();
+                if (pressure < 10) continue;
+                const int period = rank == 0 ? 2 : 4;
+                if (next.turn % period == 0) rel.trust = std::max(10, rel.trust - (pressure >= 25 ? 2 : 1));
+                if (rank == 0 && next.turn % 10 == 0 && pressure >= 25) {
+                    next.diplomacyEngineState.addGrievance(ai, other, 1);
+                    if (other == next.playerEmpire)
+                        report.events.push_back("Diplomacy: " + std::string(empireName(ai)) + " " + rivalryCause(cause) + ". Relations are cooling.");
+                }
+            }
         }
         if (rank >= 3) {
             // Shared sensors/exploration: both empires learn each other's charted sectors.
@@ -6759,18 +6863,34 @@ void evaluateWorkforceGovernor(const GameState& state, Colony& c) {
     int indAssigned = 0;
     int resAssigned = 0;
 
+    // Industry floor (PLAYTEST-FEEDBACK 16 Nov 2026, "entire workforce into food"): once the colony is fed, a quarter of its citizens
+    // (a fifth under Research) stay on powered factories whatever the priority, so a governed colony can always build. The Growth
+    // priority used to fill every farm before it gave industry a single worker; with pop growing two a turn that left industry at zero
+    // and the colony's queue frozen for good.
+    if (c.workforcePriority == GovernorPriority::Growth || c.workforcePriority == GovernorPriority::Research) {
+        const int percent = c.workforcePriority == GovernorPriority::Growth ? 25 : 20;
+        const int floorWorkers = std::min({maxFactories, remainingPop, (c.population * percent + 99) / 100});
+        indAssigned += floorWorkers;
+        remainingPop -= floorWorkers;
+    }
+
     if (c.workforcePriority == GovernorPriority::Growth) {
-        int extraFood = std::min(remainingPop, maxFarms - foodAssigned);
+        // Surplus food speeds growth, but only a quarter of the population's worth: the rest of the farms stay open for later.
+        int extraFood = std::min({remainingPop, maxFarms - foodAssigned, std::max(1, c.population / 4)});
         foodAssigned += extraFood;
         remainingPop -= extraFood;
 
-        int extraInd = std::min(remainingPop, maxFactories);
+        int extraInd = std::min(remainingPop, maxFactories - indAssigned);
         indAssigned += extraInd;
         remainingPop -= extraInd;
 
         int extraRes = std::min(remainingPop, maxLabs);
         resAssigned += extraRes;
         remainingPop -= extraRes;
+
+        int spareFood = std::min(remainingPop, maxFarms - foodAssigned); // Anyone left over farms rather than idles.
+        foodAssigned += spareFood;
+        remainingPop -= spareFood;
     } else if (c.workforcePriority == GovernorPriority::Manufacturing) {
         int extraInd = std::min(remainingPop, maxFactories);
         indAssigned += extraInd;
@@ -6788,7 +6908,7 @@ void evaluateWorkforceGovernor(const GameState& state, Colony& c) {
         resAssigned += extraRes;
         remainingPop -= extraRes;
 
-        int extraInd = std::min(remainingPop, maxFactories);
+        int extraInd = std::min(remainingPop, maxFactories - indAssigned);
         indAssigned += extraInd;
         remainingPop -= extraInd;
 
@@ -6857,7 +6977,9 @@ void evaluateQueueGovernor(const GameState& state, Colony& c) {
     std::string reasonCategory;
 
     // 1. Critical bottleneck: Food shortage
-    if (maxFoodYield < c.population || c.farms * 10 < c.population) {
+    // Farms are built to feed the colony with a fifth to spare, not to seat every citizen at a farm (the old test, farms * 10 < population,
+    // kept ordering farms until the whole population could farm, and with the Growth governor it did).
+    if (maxFoodYield < c.population + c.population / 5) {
         chosen = isLegal(Building::Farm);
         if (chosen) reasonCategory = "critical food deficit";
     }

@@ -479,6 +479,11 @@ public:
     virtual std::vector<int> majorEmpires() const { return {}; }
     // Turns since the current war between a and b began (0 when at peace or unknown).
     virtual int warDurationTurns(ParticipantId, ParticipantId) const { return 0; }
+    // Rivalry (PLAYTEST-FEEDBACK 16 Nov 2026, "no war"). Campaigns on the modern engines answer true: border friction, expansion and
+    // opportunity then raise `rivalryPressure` (0..50, from `self`'s point of view), and an AI that is leaning towards war with a
+    // neighbour will neither offer nor accept a cooperation treaty with it. Standalone harnesses keep the old rules (false, 0).
+    virtual bool rivalryEnabled() const { return false; }
+    virtual int rivalryPressure(ParticipantId, ParticipantId) const { return 0; }
 };
 
 // Default in-memory context for standalone execution and tests
@@ -1117,6 +1122,75 @@ inline int countSharedEnemies(const DiplomacyContext& ctx, ParticipantId a, Part
     return shared;
 }
 
+struct PersonalityProfile {
+    int aggression;          // War appetite added to every war score
+    int maxWars;             // Will not open another front beyond this many wars
+    int minWarTurns;         // Fights at least this long before seeking peace
+    int trustBaseline;       // Peacetime trust drifts toward this value (modern rules)
+    int napDesire;           // Desire needed before proposing a non-aggression pact
+    int friendshipDesire;
+    int affiliationDesire;
+    int allianceDesire;
+    int tradeDesire;
+    bool treacherous;        // May break a treaty when overwhelmingly stronger
+    bool demandsTribute;     // Extorts much weaker neighbours
+    bool givesGifts;         // Sends goodwill gifts to improve relations
+    int pactCeiling;         // Rivalry: at this war score or above the AI neither offers nor accepts a cooperation treaty
+};
+
+inline PersonalityProfile profileFor(MajorPersonality personality) {
+    switch (personality) {
+        case MajorPersonality::Federation: return {0, 1, 3, 60, 45, 55, 65, 75, 45, false, false, true, 100};
+        case MajorPersonality::Klingon:    return {45, 3, 15, 40, 60, 65, 75, 80, 60, false, true, false, 40};
+        case MajorPersonality::Romulan:    return {25, 2, 10, 35, 55, 70, 85, 95, 55, true, false, false, 45};
+        case MajorPersonality::Cardassian: return {40, 2, 12, 40, 55, 65, 75, 85, 50, true, true, false, 40};
+        case MajorPersonality::Ferengi:    return {10, 1, 4, 50, 50, 60, 70, 85, 30, false, false, false, 55};
+        case MajorPersonality::Dominion:   return {45, 3, 12, 35, 50, 65, 80, 90, 50, true, true, false, 35};
+        case MajorPersonality::Borg:       return {40, 3, 15, 40, 70, 80, 95, 99, 40, false, true, false, 20};
+        default: return {0, 1, 3, 50, 50, 60, 70, 80, 45, false, false, false, 100};
+    }
+}
+
+// How a personality turns the map into war pressure (percent weights; see rivalryPressure in Simulation.cpp).
+struct RivalryProfile {
+    int territorial;   // Border friction: its colonies near the other's colonies and ships
+    int expansionist;  // Resentment of a neighbour that holds more colonies than it does
+    int opportunist;   // Smells weakness: a neighbour much weaker than itself, or already at war with a third power
+    int profit;        // Mercenary: a rich neighbour it has no trade pact with
+    int patience;      // Turns beyond the early-game peace before it will open a war (plus a seeded 0..8 per pair)
+};
+
+inline RivalryProfile rivalryProfileFor(MajorPersonality personality) {
+    switch (personality) {
+        case MajorPersonality::Federation: return {0, 0, 0, 0, 0};
+        case MajorPersonality::Klingon:    return {100, 80, 40, 0, 0};     // Honour is won at the border
+        case MajorPersonality::Romulan:    return {80, 80, 100, 0, 12};     // Opportunist: waits for the weak or the distracted
+        case MajorPersonality::Cardassian: return {100, 150, 40, 0, 5};    // Expansionist: resents every colony that is not its own
+        case MajorPersonality::Ferengi:    return {40, 40, 0, 100, 20};     // Mercenary: friendly while the profit is
+        case MajorPersonality::Dominion:   return {100, 100, 60, 0, 0};    // Hostile: everything near it is its to order
+        case MajorPersonality::Borg:       return {100, 100, 0, 0, 0};     // Hostile: everything near it is to be assimilated
+        default: return {40, 40, 0, 0, 10};
+    }
+}
+
+// The pure war score (variance excluded): personality, trust, relative power, grievances, betrayals, restlessness,
+// trade ties and rivalry pressure. assessWarDeclaration adds the variance; the treaty planner and the proposal
+// evaluator read the same number, so an AI that is about to fight will not sign a pact.
+inline int hostilityScore(const PersonalityProfile& prof, int currentTurn, int trust, int64_t ratioPercent, int grievances,
+                          int targetBetrayals, bool tradePact, bool ferengi, int pressure) {
+    int score = prof.aggression + (50 - trust) + 6 * std::min(grievances, 10) + std::min(15, 5 * targetBetrayals);
+    if (ratioPercent >= 100) score += static_cast<int>(std::min<int64_t>(30, (ratioPercent - 100) / 5));
+    else score -= static_cast<int>(std::min<int64_t>(40, (100 - ratioPercent) / 2));
+    if (prof.aggression >= 20) {
+        // Restlessness: an idle warlord looks for a war, but not one it cannot win (full at 60% of the target's power, half from 40%).
+        const int restless = std::min(30, std::max(0, currentTurn - 25));
+        const int fromPower = ratioPercent >= 60 ? restless : ratioPercent >= 40 ? restless / 2 : 0;
+        score += trust <= 50 ? fromPower : trust <= 70 ? fromPower / 2 : 0; // ...nor one against a neighbour it trusts
+    }
+    if (tradePact) score -= ferengi ? 20 : 10;
+    return score + pressure;
+}
+
 inline AiDecisionResult evaluateAiProposal(
     const DiplomacyState& state,
     const DiplomacyContext& ctx,
@@ -1236,6 +1310,20 @@ inline AiDecisionResult evaluateAiProposal(
         }
     }
 
+    // 6b. Rivalry: an AI that is leaning towards war with the proposer will not bind its hands (modern campaigns only).
+    if (cooperative && !p.target.isMinor && !p.proposer.isMinor && ctx.rivalryEnabled()) {
+        const PersonalityProfile prof = profileFor(personality);
+        const int hostility = hostilityScore(prof, state.currentTurn, ctx.trust(p.target, p.proposer),
+            powerRatioPercent(targetMil, proposerMil), state.grievances(p.target.id, p.proposer.id), state.betrayals(p.proposer.id),
+            state.hasActiveTreaty(p.target, p.proposer, TreatyType::Trade), personality == MajorPersonality::Ferengi,
+            ctx.rivalryPressure(p.target, p.proposer));
+        if (hostility >= prof.pactCeiling) {
+            const int penalty = hostility - prof.pactCeiling + 15;
+            score -= penalty;
+            expl << "- Wants a war, not a pact (-" << penalty << ") ";
+        }
+    }
+
     // 7. Treaty Type Demands & Personalities
     const PersonalityThresholds th = thresholdsFor(personality);
     switch (p.treatyType) {
@@ -1301,34 +1389,6 @@ inline AiDecisionResult evaluateAiProposal(
 // AI War & Alliance Decisions (pure functions; campaign supplies the facts)
 // -----------------------------------------------------------------------------
 
-struct PersonalityProfile {
-    int aggression;          // War appetite added to every war score
-    int maxWars;             // Will not open another front beyond this many wars
-    int minWarTurns;         // Fights at least this long before seeking peace
-    int trustBaseline;       // Peacetime trust drifts toward this value (modern rules)
-    int napDesire;           // Desire needed before proposing a non-aggression pact
-    int friendshipDesire;
-    int affiliationDesire;
-    int allianceDesire;
-    int tradeDesire;
-    bool treacherous;        // May break a treaty when overwhelmingly stronger
-    bool demandsTribute;     // Extorts much weaker neighbours
-    bool givesGifts;         // Sends goodwill gifts to improve relations
-};
-
-inline PersonalityProfile profileFor(MajorPersonality personality) {
-    switch (personality) {
-        case MajorPersonality::Federation: return {0, 1, 3, 60, 45, 55, 65, 75, 45, false, false, true};
-        case MajorPersonality::Klingon:    return {45, 2, 15, 40, 60, 65, 75, 80, 60, false, true, false};
-        case MajorPersonality::Romulan:    return {25, 1, 10, 35, 55, 70, 85, 95, 55, true, false, false};
-        case MajorPersonality::Cardassian: return {40, 1, 12, 40, 55, 65, 75, 85, 50, true, true, false};
-        case MajorPersonality::Ferengi:    return {10, 1, 4, 50, 50, 60, 70, 85, 30, false, false, false};
-        case MajorPersonality::Dominion:   return {35, 1, 12, 35, 50, 65, 80, 90, 50, true, true, false};
-        case MajorPersonality::Borg:       return {5, 2, 15, 40, 70, 80, 95, 99, 40, false, true, false};
-        default: return {0, 1, 3, 50, 50, 60, 70, 80, 45, false, false, false};
-    }
-}
-
 // Mild cultural affinities between the five majors (symmetric), added to desire.
 inline int personalityAffinity(MajorPersonality a, MajorPersonality b) {
     auto key = [](MajorPersonality x, MajorPersonality y) {
@@ -1371,6 +1431,7 @@ struct WarAssessmentInput {
     bool tradePact = false;
     int grievances = 0;              // Aggressor's grievances against the target
     int targetBetrayals = 0;
+    int pressure = 0;                // Rivalry pressure (border friction, expansion, opportunity), 0..50
     uint64_t seed = 0;
 };
 
@@ -1383,7 +1444,7 @@ struct WarAssessment {
 };
 
 inline constexpr int WarCooldownTurns = 20;  // No re-declaration within this many turns of peace
-inline constexpr int EarlyPeaceTurns = 25;   // No AI-initiated wars before this campaign turn
+inline constexpr int EarlyPeaceTurns = 30;   // No AI-initiated wars before this campaign turn
 
 inline WarAssessment assessWarDeclaration(const WarAssessmentInput& in) {
     WarAssessment out;
@@ -1391,7 +1452,11 @@ inline WarAssessment assessWarDeclaration(const WarAssessmentInput& in) {
     std::ostringstream why;
     why << personalityName(in.personality) << " war assessment vs " << in.targetId << ": ";
 
-    if (in.currentTurn < EarlyPeaceTurns) {
+    // Early-game peace, then each personality's patience: the Klingons and the Borg are ready at once, the Cardassians a little later,
+    // the Romulans bide their time and the Ferengi wait for a profit. A seeded 0..8 turns spreads one empire's wars between its neighbours.
+    const int patience = rivalryProfileFor(in.personality).patience +
+        2 * std::abs(deterministicVariance(in.seed, 0, static_cast<uint64_t>(in.aggressorId) * 131ULL + static_cast<uint64_t>(in.targetId) * 7919ULL, 4));
+    if (in.currentTurn < EarlyPeaceTurns + patience) {
         out.rationale = why.str() + "early-game peace";
         return out;
     }
@@ -1419,11 +1484,8 @@ inline WarAssessment assessWarDeclaration(const WarAssessmentInput& in) {
         return out;
     }
 
-    int score = prof.aggression + (50 - in.trust) + 6 * std::min(in.grievances, 10) + std::min(15, 5 * in.targetBetrayals);
-    if (ratio >= 100) score += static_cast<int>(std::min<int64_t>(30, (ratio - 100) / 5));
-    else score -= static_cast<int>(std::min<int64_t>(40, (100 - ratio) / 2));
-    if (prof.aggression >= 20) score += std::min(15, std::max(0, (in.currentTurn - EarlyPeaceTurns) / 5));
-    if (in.tradePact) score -= (in.personality == MajorPersonality::Ferengi) ? 20 : 10;
+    int score = hostilityScore(prof, in.currentTurn, in.trust, ratio, in.grievances, in.targetBetrayals, in.tradePact,
+                               in.personality == MajorPersonality::Ferengi, in.pressure);
     score += deterministicVariance(in.seed, in.currentTurn,
         static_cast<uint64_t>(in.aggressorId) * 131ULL + static_cast<uint64_t>(in.targetId) * 7919ULL, 5);
 
@@ -1431,7 +1493,7 @@ inline WarAssessment assessWarDeclaration(const WarAssessmentInput& in) {
     out.threshold = 60;
     out.declare = score >= out.threshold;
     why << "score " << score << " vs " << out.threshold << " (power " << ratio << "%, trust " << in.trust
-        << ", grievances " << in.grievances << ")";
+        << ", grievances " << in.grievances << ", pressure " << in.pressure << ")";
     out.rationale = why.str();
     if (!out.declare) out.breaksTreaty = false;
     return out;
@@ -1484,6 +1546,12 @@ inline int diplomaticDesire(const DiplomacyState& state, const DiplomacyContext&
     desire -= 10 * std::min(3, state.betrayals(other.id));
     if (comparePower(ctx.militaryPower(other), ctx.militaryPower(self), 2) > 0) desire += 10; // Fear buys pacts
     return desire;
+}
+
+inline int tradePactAge(const DiplomacyState& state, ParticipantId a, ParticipantId b) {
+    for (const auto& t : state.activeTreaties)
+        if (t.status == TreatyStatus::Active && t.involvesBoth(a, b) && t.type == TreatyType::Trade) return state.currentTurn - t.startTurn;
+    return 0;
 }
 
 inline int activeTreatyAge(const DiplomacyState& state, ParticipantId a, ParticipantId b, int rank) {
@@ -1565,23 +1633,30 @@ inline std::vector<AiDiplomaticIntent> planAiDiplomacy(
             const int rank = state.highestTreatyRank(self, other);
             const bool hasTrade = state.hasActiveTreaty(self, other, TreatyType::Trade);
             const int shared = countSharedEnemies(ctx, self, other);
+            // Rivalry: leaning towards war, the AI keeps its hands free (no new or deeper cooperation treaty).
+            const bool warMinded = ctx.rivalryEnabled() &&
+                hostilityScore(prof, state.currentTurn, trust, ratio, state.grievances(selfId, otherId), state.betrayals(otherId), hasTrade,
+                               selfP == MajorPersonality::Ferengi, ctx.rivalryPressure(self, other)) >= prof.pactCeiling;
+            // Mercenary: the Ferengi sign a non-aggression pact only with a customer, a trade partner of ten turns' standing.
+            const bool customer = selfP != MajorPersonality::Ferengi || !ctx.rivalryEnabled() ||
+                                  (hasTrade && tradePactAge(state, self, other) >= 10);
 
             // Profit first: Ferengi open with trade.
             if (!hasTrade && selfP == MajorPersonality::Ferengi && desire >= prof.tradeDesire) {
                 intent.treatyType = TreatyType::Trade;
                 intent.rationale = "profitable trade";
-            } else if (rank == 0 && desire >= prof.napDesire) {
+            } else if (rank == 0 && !warMinded && customer && desire >= prof.napDesire) {
                 intent.treatyType = TreatyType::NonAggression;
                 intent.rationale = "secure the border";
-            } else if (rank == 1 && activeTreatyAge(state, self, other, 1) >= 5 && desire >= prof.friendshipDesire) {
+            } else if (rank == 1 && !warMinded && activeTreatyAge(state, self, other, 1) >= 5 && desire >= prof.friendshipDesire) {
                 intent.treatyType = TreatyType::Friendship;
                 intent.duration = TreatyDuration::Indefinite;
                 intent.rationale = "deepen a proven pact";
-            } else if (rank == 2 && activeTreatyAge(state, self, other, 2) >= 8 && desire >= prof.affiliationDesire) {
+            } else if (rank == 2 && !warMinded && activeTreatyAge(state, self, other, 2) >= 8 && desire >= prof.affiliationDesire) {
                 intent.treatyType = TreatyType::Affiliation;
                 intent.duration = TreatyDuration::Indefinite;
                 intent.rationale = "share sensors and exploration";
-            } else if (rank == 3 && activeTreatyAge(state, self, other, 3) >= 10 && desire >= prof.allianceDesire &&
+            } else if (rank == 3 && !warMinded && activeTreatyAge(state, self, other, 3) >= 10 && desire >= prof.allianceDesire &&
                        (shared > 0 || selfP == MajorPersonality::Federation)) {
                 intent.treatyType = TreatyType::Alliance;
                 intent.duration = TreatyDuration::Indefinite;

@@ -699,6 +699,8 @@ int main() {
     run("MINOR_RACES save section: round trip, optional on load, strict validation", [] {
         auto s = fresh(1999, 5, true, botf::RulesetPreset::Remastered);
         for (int t = 0; t < 12; ++t) botf::advance(s);
+        // The rivals now queue standing-fleet ships early; a save older than the roster cannot hold an expanded-roster hull, so drop ship projects.
+        for (auto& c : s.colonies) std::erase_if(c.queue, [](const auto& p) { return p.referenceId >= 0 && p.product != botf::Building::Structure; });
         const auto text = botf::serialize(s);
         check(text.find("\nMINOR_RACES " + std::to_string(s.minors.size()) + "\n") != std::string::npos, "section written");
         const auto loaded = botf::deserialize(text);

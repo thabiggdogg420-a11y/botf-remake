@@ -1522,7 +1522,7 @@ void testWarAssessmentRules() {
     in.seed = 42;
     DIPLOMACY_ASSERT(assessWarDeclaration(in).declare, "A distrustful Klingon goes to war");
     auto early = in; early.currentTurn = 20;
-    DIPLOMACY_ASSERT(!assessWarDeclaration(early).declare, "No AI wars before turn 25");
+    DIPLOMACY_ASSERT(!assessWarDeclaration(early).declare, "No AI wars in the early-game peace (before turn 30)");
     auto cooled = in; cooled.turnsSinceTransition = 5;
     DIPLOMACY_ASSERT(!assessWarDeclaration(cooled).declare, "Cool-down after peace");
     auto bound = in; bound.treatyRank = 1; bound.aggressorPower = 10000; bound.trust = 0;
@@ -1536,7 +1536,7 @@ void testWarAssessmentRules() {
     DIPLOMACY_ASSERT(!assessWarDeclaration(weak).declare, "Hopelessly outmatched empires do not declare");
     auto federation = in; federation.personality = MajorPersonality::Federation; federation.trust = 0;
     DIPLOMACY_ASSERT(!assessWarDeclaration(federation).declare, "The Federation does not start wars without grievances");
-    auto busy = in; busy.activeWars = 2;
+    auto busy = in; busy.activeWars = profileFor(MajorPersonality::Klingon).maxWars;
     DIPLOMACY_ASSERT(!assessWarDeclaration(busy).declare, "No new fronts beyond the personality limit");
     auto friendly = in; friendly.trust = 60;
     DIPLOMACY_ASSERT(!assessWarDeclaration(friendly).declare, "Trusted neighbours are left alone");
