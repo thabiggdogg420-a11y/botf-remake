@@ -18,6 +18,9 @@ signal cell_context(cell: int, screen_pos: Vector2)
 signal hover_changed(cell: int, screen_pos: Vector2)
 
 const CELL := 84.0
+const COMPAT_DISC_STRENGTH := 5.0
+const COMPAT_FOG_OPACITY := 0.4
+const COMPAT_STAR_SATURATION := 1.6
 const FOV := 40.0
 const ZOOM_MIN := 0.1
 const ZOOM_MAX := 40.0
@@ -167,6 +170,8 @@ func _field_mesh(name_: String, mode: int, priority: int) -> MeshInstance3D:
 	var m := ShaderMaterial.new()
 	m.shader = load("res://scenes/galaxy/shaders/field3d.gdshader")
 	m.set_shader_parameter("mode", mode)
+	if mode == 1 and PlanetTextures.compat():
+		m.set_shader_parameter("opacity", COMPAT_FOG_OPACITY)   # lets the dust show through the unexplored sheet, as on Forward+
 	m.render_priority = priority
 	mi.material_override = m
 	_root3d.add_child(mi)
@@ -503,8 +508,19 @@ func _build_disc(g: Vector2i) -> void:
 	var m := ShaderMaterial.new()
 	m.shader = load("res://scenes/galaxy/shaders/galaxy_disc.gdshader")
 	m.set_shader_parameter("cells", Vector2(g))
+	# Compatibility (the web build) blends 8-bit sRGB, so the faint additive dust that Forward+ accumulates in HDR floats all but
+	# vanishes: the disc is drawn stronger there (F1 web parity, compared frame for frame with the desktop).
+	m.set_shader_parameter("strength", COMPAT_DISC_STRENGTH if PlanetTextures.compat() else 1.0)
 	m.render_priority = -5
 	_disc.material_override = m
+
+## Star colour for the impostor. Compatibility has no HDR to roll the overexposed core off, so every star clips toward white:
+## the colour is pushed away from grey there to keep the red, orange, yellow and blue stars readable (F1 web parity).
+func _star_tint(c: Color) -> Color:
+	if not PlanetTextures.compat():
+		return c
+	var l := c.r * 0.3 + c.g * 0.59 + c.b * 0.11
+	return Color(clampf(l + (c.r - l) * COMPAT_STAR_SATURATION, 0.0, 1.0), clampf(l + (c.g - l) * COMPAT_STAR_SATURATION, 0.0, 1.0), clampf(l + (c.b - l) * COMPAT_STAR_SATURATION, 0.0, 1.0))
 
 func _build_stars(v: Dictionary, g: Vector2i) -> void:
 	var keep := {}
@@ -535,7 +551,7 @@ func _build_stars(v: Dictionary, g: Vector2i) -> void:
 		imp.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		var im := ShaderMaterial.new()
 		im.shader = load("res://scenes/galaxy/shaders/star_impostor.gdshader")
-		im.set_shader_parameter("star_color", st["color"])
+		im.set_shader_parameter("star_color", _star_tint(st["color"]))
 		im.set_shader_parameter("sphere_radius", st["radius"])
 		im.set_shader_parameter("spike", st["spike"])
 		im.set_shader_parameter("twinkle_seed", float(sid))
@@ -562,6 +578,12 @@ func _build_stars(v: Dictionary, g: Vector2i) -> void:
 		if not keep.has(sid):
 			(systems3d[sid]["node"] as Node).queue_free()
 			systems3d.erase(sid)
+	if AppLoader.diag():
+		var unch := 0
+		for s in v.get("systems", []):
+			if not AppSession.is_charted(s):
+				unch += 1
+		print("DIAG galaxy stars=%d uncharted=%d grid=%dx%d" % [systems3d.size(), unch, g.x, g.y])
 
 ## Planets of one system: built on first approach, kept afterwards. Textured from L7 sets when present.
 func _build_planets(sid: int) -> void:

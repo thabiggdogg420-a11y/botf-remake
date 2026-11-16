@@ -1,0 +1,30 @@
+# BOTF Remastered web build: nginx. Put this location block in the server block of your site; adjust the alias path.
+# The folder is served at https://example.com/botf/ and needs no COOP/COEP headers.
+
+types {
+    application/wasm  wasm;
+    application/octet-stream pck;
+    text/javascript   js;
+    application/json  json;
+}
+
+location /botf/ {
+    alias /var/www/botf/;
+    index index.html;
+
+    # Serve the precompressed sidecars when they exist (ngx_http_gzip_static_module is in most builds;
+    # brotli_static needs the ngx_brotli module: delete that line if it is not installed).
+    gzip_static on;
+    brotli_static on;
+    gzip_vary on;
+
+    # No on-the-fly compression for the packs: Godot's downloader cannot take a content-encoded body.
+    location ~* \.pck$ {
+        gzip off;
+        add_header Cache-Control "public, max-age=31536000, immutable";
+    }
+    # Index files change per release: revalidate.
+    location ~* /(index\..*|manifest\.json|sizes\.json)$ {
+        add_header Cache-Control "no-cache";
+    }
+}

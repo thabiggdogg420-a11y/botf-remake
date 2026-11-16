@@ -53,6 +53,7 @@ def main():
     ap.add_argument("--bake", action="store_true")
     ap.add_argument("--localassets")
     ap.add_argument("--out")
+    ap.add_argument("--web-out", help="also write ship_icons_web.pck here: the same names, PNGs re-saved optimised (F1 web budget)")
     ap.add_argument("--filter", default="")
     ap.add_argument("--chunk", type=int, default=16, help="classes per Godot launch when baking")
     ap.add_argument("--godot", default=os.environ.get("GODOT", r"C:\Tools\Godot\Godot_v4.5-stable_win64_console.exe"))
@@ -100,6 +101,26 @@ def main():
     if r.returncode != 0 or not os.path.isfile(out):
         sys.exit("pack failed:\n%s\n%s" % (r.stdout[-2000:], r.stderr[-2000:]))
     print("%s %.1f MB (%d icons)" % (os.path.basename(out), os.path.getsize(out) / 1048576.0, len(pngs)))
+    if a.web_out:
+        from PIL import Image
+        wout = os.path.abspath(a.web_out)
+        os.makedirs(os.path.dirname(wout), exist_ok=True)
+        with tempfile.TemporaryDirectory() as td:
+            lst = os.path.join(td, "list.txt")
+            marker = os.path.join(td, "_pack.txt")
+            open(marker, "w").write("ship_icons_web %d icons\n" % len(pngs))
+            with open(lst, "w", encoding="utf-8") as f:
+                f.write("res://assets/ship_icons/_pack.txt|%s\n" % marker.replace(chr(92), "/"))
+                for p in pngs:
+                    dst = os.path.join(td, p)
+                    im = Image.open(os.path.join(icons, p))
+                    im.save(dst, "PNG", optimize=True, compress_level=9)
+                    f.write("res://assets/ship_icons/%s|%s\n" % (p, dst.replace(chr(92), "/")))
+            r = subprocess.run([a.godot, "--headless", "--audio-driver", "Dummy", "--path", a.proj, "-s", "res://tools/pack_list.gd", "--", lst, wout],
+                               capture_output=True, text=True, creationflags=LOW)
+        if r.returncode != 0 or not os.path.isfile(wout):
+            sys.exit("web pack failed:\n%s\n%s" % (r.stdout[-2000:], r.stderr[-2000:]))
+        print("%s %.1f MB (%d icons)" % (os.path.basename(wout), os.path.getsize(wout) / 1048576.0, len(pngs)))
 
 
 if __name__ == "__main__":

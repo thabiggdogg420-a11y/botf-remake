@@ -83,7 +83,8 @@ func refresh() -> void:
 	row3.add_child(_wide(Lcars.pill("Settings", "ghost", func(): app.open_overlay("settings"))))
 	var quit := _wide(Lcars.pill("Quit", "ghost", func(): Overlays.confirm_quit_game(app), "", "Close the game", "Alt+F4"))
 	quit.name = "Quit"
-	row3.add_child(quit)
+	if not OS.has_feature("web"):   # a browser tab is closed by the browser: Quit would only freeze the canvas
+		row3.add_child(quit)
 	menu.add_child(row3)
 	for b2 in menu.get_children():
 		if b2 is Button:
@@ -96,6 +97,16 @@ func refresh() -> void:
 			b2.add_child(ic)
 			b2.text = "        " + b2.text
 	Motion.stagger(menu)
+	if OS.has_feature("web"):
+		# Web only: the optional whole-game preload, top right, clear of the menu column and the fleet scene.
+		var pre := PreloadWidget.make(app)
+		pre.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+		pre.offset_left = -340
+		pre.offset_right = -20
+		pre.offset_top = 18
+		add_child(pre)
+	# A short window (a 720 px browser tab) with a Continue button: lift the column so the last row clears the footer.
+	root.position.y = clampf(root.position.y, 8.0, maxf(8.0, size.y - 64.0 - root.get_combined_minimum_size().y))
 	var foot := Lcars.hbox(40)
 	foot.position = Vector2(size.x * 0.09, size.y - 48)
 	foot.add_child(Lcars.label(vm.footer(), "Mono", 13, Lcars.TEXT3))

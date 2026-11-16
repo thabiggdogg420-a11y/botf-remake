@@ -88,7 +88,7 @@ def _reencode(data, mime, max_px, quality):
     return b, new_mime
 
 
-def reduce_glb(src, dst, max_px, quality):
+def reduce_glb(src, dst, max_px, quality, normal_px=None, normal_q=95):
     """Writes a web copy of `src`: LOD meshes dropped, textures capped and re-encoded. Returns (old_bytes, new_bytes)."""
     js, binc = read_glb(src)
     nodes = js.get("nodes", [])
@@ -162,8 +162,9 @@ def reduce_glb(src, dst, max_px, quality):
         data = bytes(binc[v.get("byteOffset", 0):v.get("byteOffset", 0) + v["byteLength"]])
         if old in img_bv:
             im = js["images"][img_bv[old]]
-            q = 95 if img_bv[old] in normal_imgs else quality
-            data, im["mimeType"] = _reencode(data, im.get("mimeType", "image/png"), max_px, q)
+            is_n = img_bv[old] in normal_imgs
+            q = normal_q if is_n else quality
+            data, im["mimeType"] = _reencode(data, im.get("mimeType", "image/png"), (normal_px or max_px) if is_n else max_px, q)
         while len(out) % 8:
             out.append(0)
         v["byteOffset"] = len(out)
@@ -220,8 +221,10 @@ def main():
     ap.add_argument("--stage", default=None)
     ap.add_argument("--godot", default=os.environ.get("GODOT", r"C:\Tools\Godot\Godot_v4.5-stable_win64_console.exe"))
     ap.add_argument("--proj", default=os.path.normpath(os.path.join(HERE, "..", "godot")))
-    ap.add_argument("--web-max", type=int, default=2048)
-    ap.add_argument("--jpeg-q", type=int, default=88)
+    ap.add_argument("--web-max", type=int, default=2048, help="longest side of a web texture (16 Nov: back to 2048, no total-download budget)")
+    ap.add_argument("--normal-max", type=int, default=2048, help="longest side of a web normal map")
+    ap.add_argument("--jpeg-q", type=int, default=90)
+    ap.add_argument("--normal-q", type=int, default=92)
     a = ap.parse_args()
     ships = os.path.abspath(a.ships)
     man_path = os.path.join(ships, "godot-hero-manifest.json")
@@ -279,22 +282,30 @@ def main():
         for key, (rel, src, fac) in glbs.items():
             dst = os.path.join(stage, "web", rel)
             if newer(dst, [src] + tool_inputs):
-                reduce_glb(src, dst, a.web_max, a.jpeg_q)
+                reduce_glb(src, dst, a.web_max, a.jpeg_q, a.normal_max, a.normal_q)
             before += os.path.getsize(src)
             after += os.path.getsize(dst)
-            web_files.setdefault(fac, []).append(("res://assets/ships/" + rel, dst))
+            web_files[key] = [("res://assets/ships/" + rel, dst)]
         print("web glbs: %.1f MB -> %.1f MB" % (before / 1048576.0, after / 1048576.0))
+        # F1: one pack per hull (hull_<key with dots as underscores>_web.pck) plus ships_base_web.pck with the manifests, so a
+        # battle downloads only the classes on screen (a few MB each) and not a whole faction (up to 90 MB). Faction packs of
+        # the earlier builds are removed so nothing stale is copied into the export.
+        for old in os.listdir(a.web):
+            if old.startswith("ships_") and old.endswith("_web.pck") and old != "ships_base_web.pck":
+                os.remove(os.path.join(a.web, old))
         total = 0
-        for fac in FACTIONS + sorted(set(web_files) - set(FACTIONS)):
-            if fac not in web_files:
-                continue
-            out = os.path.join(a.web, "ships_%s_web.pck" % fac)
-            entries = base_entries + web_files[fac]
+        base_out = os.path.join(a.web, "ships_base_web.pck")
+        if newer(base_out, [d for _r, d in base_entries] + tool_inputs):
+            pack(a.godot, a.proj, base_entries, base_out)
+        total += os.path.getsize(base_out)
+        print("%s %.2f MB (manifests)" % (os.path.basename(base_out), os.path.getsize(base_out) / 1048576.0))
+        for key in sorted(web_files):
+            out = os.path.join(a.web, "hull_%s_web.pck" % key.replace(".", "_"))
+            entries = web_files[key]
             if newer(out, [d for _r, d in entries] + tool_inputs):
                 pack(a.godot, a.proj, entries, out)
             total += os.path.getsize(out)
-            print("%s %.1f MB (%d glbs)" % (os.path.basename(out), os.path.getsize(out) / 1048576.0, len(web_files[fac])))
-        print("web ship packs total %.1f MB" % (total / 1048576.0))
+        print("web hull packs: %d, total with manifests %.1f MB" % (len(web_files), total / 1048576.0))
 
 
 if __name__ == "__main__":

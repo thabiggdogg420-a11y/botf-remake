@@ -400,8 +400,7 @@ static func menu(app: App) -> Control:
 			["Load campaign", "secondary", func(): app.close_modal(); app.goto("saves")],
 			["Settings", "tertiary", func(): app.close_modal(); app.open_overlay("settings")],
 			["Keyboard help", "tertiary", func(): app.close_modal(); app.open_overlay("help")],
-			["Quit to title", "alert", func(): app.close_modal(); confirm_quit_to_title(app)],
-			["Quit game", "ghost", func(): app.close_modal(); confirm_quit_game(app)]]:
+			["Quit to title", "alert", func(): app.close_modal(); confirm_quit_to_title(app)]] 			+ ([] if OS.has_feature("web") else [["Quit game", "ghost", func(): app.close_modal(); confirm_quit_game(app)]]):
 		var b := Lcars.pill(item[0], item[1], item[2])
 		b.name = str(item[0]).replace(" ", "")
 		b.custom_minimum_size.y = 42
@@ -411,7 +410,7 @@ static func menu(app: App) -> Control:
 ## Quit to title from a campaign, after a confirm (unsaved progress since the last save is lost).
 static func confirm_quit_to_title(app: App) -> Control:
 	return app.confirm("Quit to title", "Leave this campaign and return to the title screen? Progress since your last save will be lost.",
-		"Quit to title", func(): app.view = {}; app.goto("title", false))
+		"Quit to title", func(): app.view = {}; app._apply_theme(1); app.goto("title", false))   # back to the Federation palette: a Klingon or Mirror campaign left its colours on the title and new-campaign screens
 
 ## Quits the program, after a confirm. App.quit_hook (tests) replaces the real quit.
 static func confirm_quit_game(app: App) -> Control:
@@ -473,6 +472,9 @@ static func settings(app: App) -> Control:
 	BotfAudioMix.fill_defaults(s)
 	for bus in BotfAudioCues.BUSES:
 		root.add_child(_volume_row(app, s, bus))
+	if OS.has_feature("web"):
+		root.add_child(Lcars.caption("Offline play"))
+		root.add_child(PreloadWidget.make(app))
 	var acts := Lcars.hbox(8)
 	acts.add_child(Lcars.pill("Reset to defaults", "ghost", func():
 		app.settings = {"uiScale": 1.0, "colorblind": false, "reducedMotion": false, "autosave": true, "confirmEndTurn": false, "showGrid": true, "uiEra": "tng"}

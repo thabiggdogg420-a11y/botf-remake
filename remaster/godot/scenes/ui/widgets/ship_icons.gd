@@ -51,9 +51,17 @@ static func dirs() -> PackedStringArray:
 static func folder() -> String:
 	if _dir_done:
 		return _dir
+	if OS.has_feature("web"):
+		# The web build reads the icons from ship_icons_web.pck, fetched after the title (AppLoader.WEB_SHIP_ICONS). Until it
+		# is mounted the answer is "none" and is not remembered, so the pictures appear as soon as the pack lands.
+		if AppLoader.exists(PACK_DIR + "/_pack.txt"):
+			_dir_done = true
+			_dir = PACK_DIR
+			return _dir
+		return ""
 	_dir_done = true
 	_dir = ""
-	if OS.has_feature("web") or OS.get_environment("BOTF_SHIP_ICONS").to_lower() == "none":
+	if OS.get_environment("BOTF_SHIP_ICONS").to_lower() == "none":
 		return _dir
 	if OS.get_environment("BOTF_SHIP_ICONS") == "" and AppLoader.exists(PACK_DIR + "/_pack.txt"):
 		_dir = PACK_DIR

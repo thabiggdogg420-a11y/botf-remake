@@ -23,12 +23,11 @@ func _run() -> void:
 		# The web build fetches a faction's hulls from its pack (the game does this in the background after the title).
 		var host := Node.new()
 		get_root().add_child(host)
-		var seen := {}
+		await AppLoader.fetch_web_pack(host, AppLoader.WEB_SHIPS_BASE)
 		for ki in range(1, args.size()):
-			var f := str(args[ki]).split(".")[1]
-			if not seen.has(f):
-				seen[f] = true
-				await AppLoader.fetch_web_pack(host, "ships_%s_web.pck" % f)
+			var hp := AppLoader.hull_pack_for(str(args[ki]).get_slice(":", 0))
+			if hp != "":
+				await AppLoader.fetch_web_pack(host, hp)
 		BattleAssets.shared()
 	var code := 0
 	for ki in range(1, args.size()):

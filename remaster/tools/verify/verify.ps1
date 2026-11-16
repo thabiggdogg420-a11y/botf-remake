@@ -198,8 +198,8 @@ if ($localAssets -and (Test-Path -LiteralPath (Join-Path $localAssets 'ships\god
     $null = $hp.Handle
     try { $hp.PriorityClass = [System.Diagnostics.ProcessPriorityClass]::BelowNormal } catch {}
     if (-not $hp.WaitForExit(3600 * 1000)) { try { Stop-Process -Id $hp.Id -Force } catch {} }
-    $webShips = @(Get-ChildItem -LiteralPath $webStage -Filter 'ships_*_web.pck' -ErrorAction SilentlyContinue)
-    $shipsOk = (Test-Path -LiteralPath $shipsDesk) -and $webShips.Count -ge 5 -and (Test-Path -LiteralPath (Join-Path $webStage 'planets_hi_web.pck'))
+    $webShips = @(Get-ChildItem -LiteralPath $webStage -Filter 'hull_*_web.pck' -ErrorAction SilentlyContinue)
+    $shipsOk = (Test-Path -LiteralPath $shipsDesk) -and $webShips.Count -ge 50 -and (Test-Path -LiteralPath (Join-Path $webStage 'planets_hi_web.pck'))
     $shipDetail = 'ships_desktop.pck {0:N0} MB; web: {1} faction packs {2:N1} MB, planets_hi_web.pck {3:N1} MB' -f ((Get-Item -LiteralPath $shipsDesk -ErrorAction SilentlyContinue).Length / 1MB), $webShips.Count, (($webShips | Measure-Object Length -Sum).Sum / 1MB), ((Get-Item -LiteralPath (Join-Path $webStage 'planets_hi_web.pck') -ErrorAction SilentlyContinue).Length / 1MB)
 }
 Add-Result 'ship-packs' $(if ($shipsOk) { 'ok' } else { 'FAIL' }) $shipDetail
@@ -211,7 +211,7 @@ $iconsPck = Join-Path $userPacks 'ship_icons_desktop.pck'
 $iconsOk = $false
 $iconsDetail = 'no LocalAssets\ship_icons: icon pack missing (run build_ship_icons.py --bake)'
 if ($localAssets -and (Test-Path -LiteralPath (Join-Path $localAssets 'ship_icons'))) {
-    $ip = Start-Process -FilePath $python -ArgumentList "`"$(Join-Path $remaster 'tools\build_ship_icons.py')`" --localassets `"$localAssets`" --out `"$iconsPck`" --godot `"$godot`" --proj `"$proj`"" `
+    $ip = Start-Process -FilePath $python -ArgumentList "`"$(Join-Path $remaster 'tools\build_ship_icons.py')`" --localassets `"$localAssets`" --out `"$iconsPck`" --web-out `"$(Join-Path $webStage 'ship_icons_web.pck')`" --godot `"$godot`" --proj `"$proj`"" `
         -PassThru -WindowStyle Hidden -RedirectStandardOutput (Join-Path $logs 'pack-ship-icons.log') -RedirectStandardError (Join-Path $logs 'pack-ship-icons.err')
     $null = $ip.Handle
     try { $ip.PriorityClass = [System.Diagnostics.ProcessPriorityClass]::BelowNormal } catch {}
@@ -507,7 +507,7 @@ if (-not $SkipExport) {
         $hx = $LASTEXITCODE
         $ho | Set-Content -LiteralPath (Join-Path $logs 'web-sizes.log')
         $pk = @(Get-ChildItem -LiteralPath $webPacks -Filter '*.pck' -ErrorAction SilentlyContinue)
-        $kinds = @('planets_web', 'planets_hi_web', 'ships_fed_web', 'audio_fed_web') | Where-Object { $k = $_; -not ($pk | Where-Object { $_.Name -like "$k.*.pck" }) }
+        $kinds = @('planets_web', 'planets_hi_web', 'ships_base_web', 'hull_ship_fed_galaxy_web', 'audio_fed_web', 'audio_music_web', 'ship_icons_web') | Where-Object { $k = $_; -not ($pk | Where-Object { $_.Name -like "$k.*.pck" }) }
         $sz = ($ho -split "`n" | Where-Object { $_ -match '^(first playable|total with)' } | ForEach-Object { $_.Trim() }) -join '; '
         Add-Result 'web-packs' $(if ($hx -eq 0 -and -not $kinds) { 'ok' } else { 'FAIL' }) ("$($pk.Count) hashed packs; $sz" + $(if ($kinds) { "; missing: $($kinds -join ', ')" } else { '' }))
     }

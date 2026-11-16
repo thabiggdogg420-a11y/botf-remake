@@ -130,14 +130,148 @@ static func mount_user_packs() -> int:
 const WEB_PACKS := ["planets_web.pck", "art_web.pck"]
 ## The heavy web bundles, fetched one by one in the background after the title shows (App._fetch_background):
 ## each faction's hero hulls (tools/build_ship_packs.py) and the full-resolution planet tier (tools/build_planet_hi_web.py).
-const WEB_SHIP_FACTIONS := ["fed", "kli", "rom", "car", "fer", "dom", "borg", "breen"] # M4: the Dominion, Borg and Breen packs follow the five (fetched last, in the background)
+const _OLD_WEB_SHIP_FACTIONS := ["fed", "kli", "rom", "car", "fer", "dom", "borg", "breen"] # M4: the Dominion, Borg and Breen packs follow the five (fetched last, in the background)
 const WEB_PLANETS_HI := "planets_hi_web.pck"
+## The shared music beds (about 9 MB of ogg). Not in the main pck: the first playable load is the engine and the game alone, and
+## the title plays a generated bed until this arrives (BotfAudioSystem.music_pack_ready swaps to the real tracks).
+const WEB_MUSIC := "audio_music_web.pck"
+## The baked menu ship pictures (about 12 MB of PNG), fetched after the title; ShipIcons finds them once mounted.
+const WEB_SHIP_ICONS := "ship_icons_web.pck"
 
 static var _web_manifest: Variant = null
 static var _mounted := {}   ## logical name -> true once mounted this session
 ## Bytes fetched over the network and served from the IndexedDB cache this session (web only; for the verify report).
 static var bytes_downloaded := 0
 static var bytes_cached := 0
+
+## Diagnostics switch: BOTF_DIAG in the environment, or ?diag in the page address (web). Prints "DIAG ..." lines, nothing else changes.
+static var _diag := -1
+static func diag() -> bool:
+	if _diag < 0:
+		var on := OS.get_environment("BOTF_DIAG") != ""
+		if not on and OS.has_feature("web"):
+			on = str(JavaScriptBridge.eval("location.search")).contains("diag")
+		_diag = 1 if on else 0
+	return _diag == 1
+
+# ---- Preload the whole game (F1, Simon 16 Nov: a button to preload the whole game) ----------------------------------
+## Every pack in packs/manifest.json, in the order a player needs them: manifests, portraits, planets, music, ship pictures,
+## voices, the full planet tier, then every hull. Each pack lands in user:// (IndexedDB), so it survives the tab and the visit.
+static var preload_running := false
+static var preload_cancel := false
+static var preload_error := ""
+static var preload_current := ""
+
+static func _pack_rank(n: String) -> int:
+	if n == WEB_SHIPS_BASE:
+		return 0
+	if n.begins_with("art_"):
+		return 1
+	if n.begins_with("planets_web"):
+		return 2
+	if n == WEB_MUSIC:
+		return 3
+	if n == WEB_SHIP_ICONS:
+		return 4
+	if n.begins_with("audio_"):
+		return 5
+	if n.begins_with("planets_hi"):
+		return 6
+	return 7
+
+## Logical names of every pack in the build, in preload order ([] until the manifest is loaded).
+static func all_packs() -> Array:
+	var names: Array = []
+	var man: Variant = _web_manifest
+	if man is Dictionary:
+		for k in man.get("files", {}):
+			names.append(str(k))
+	names.sort_custom(func(a, b): return _pack_rank(a) < _pack_rank(b) or (_pack_rank(a) == _pack_rank(b) and a < b))
+	return names
+
+static func total_bytes() -> int:
+	var t := 0
+	for n in all_packs():
+		t += pack_bytes(n)
+	return t
+
+## True when this exact pack content is already on the device (mounted this session or complete in user://packs).
+static func is_cached(name: String) -> bool:
+	if _mounted.has(name):
+		return true
+	var man: Variant = _web_manifest
+	if not (man is Dictionary):
+		return false
+	var file := str(man.get("files", {}).get(name, ""))
+	if file == "" or not FileAccess.file_exists("user://packs/" + file):
+		return false
+	var f := FileAccess.open("user://packs/" + file, FileAccess.READ)
+	return f != null and f.get_length() == int(man.get("bytes", {}).get(file, -1))
+
+static func cached_bytes() -> int:
+	var t := 0
+	for n in all_packs():
+		if is_cached(n):
+			t += pack_bytes(n)
+	return t
+
+static func fully_cached() -> bool:
+	var names := all_packs()
+	if names.is_empty():
+		return false
+	for n in names:
+		if not is_cached(n):
+			return false
+	return true
+
+## Downloads (or finds cached) and mounts every pack. Resumes where it stopped: finished packs are not fetched again.
+## preload_cancel = true stops after the pack in flight. A failed pack sets preload_error and stops.
+static func preload_all(host: Node) -> void:
+	if preload_running or not OS.has_feature("web"):
+		return
+	preload_running = true
+	preload_cancel = false
+	preload_error = ""
+	await _manifest(host)
+	JavaScriptBridge.eval("(navigator.storage && navigator.storage.persist) ? navigator.storage.persist() : false")   # ask the browser not to evict it
+	for n in all_packs():
+		if preload_cancel:
+			break
+		preload_current = n
+		if not await fetch_web_pack(host, n):
+			preload_error = n
+			break
+	preload_current = ""
+	preload_running = false
+	if _unsynced > 0:
+		await _flush_sync(host)
+
+## Progress of the pack being fetched right now (web): {"name", "bytes", "total"}; empty when idle. The loading overlay reads it.
+static var progress := {}
+
+## The manifests every hull needs (godot-hero-manifest.json, resolved-manifest.json). Mount it before any hull pack.
+const WEB_SHIPS_BASE := "ships_base_web.pck"
+
+## The logical pack holding the hero model of asset key `key` ("ship.fed.galaxy"): hull_ship_fed_galaxy_web.pck, one pack per
+## hull so a battle fetches only the classes on screen. "" when the build has none (a procedural hull is drawn).
+static func hull_pack_for(key: String) -> String:
+	var name := "hull_%s_web.pck" % key.replace(".", "_")
+	var man: Variant = _web_manifest
+	if man is Dictionary and man.get("files", {}).has(name):
+		return name
+	return ""
+
+## Size in bytes of a logical pack from packs/manifest.json (0 when unknown).
+static func pack_bytes(name: String) -> int:
+	var man: Variant = _web_manifest
+	if not (man is Dictionary):
+		return 0
+	var f: String = str(man.get("files", {}).get(name, ""))
+	return int(man.get("bytes", {}).get(f, 0))
+
+## Web: loads packs/manifest.json now (no pack fetched). Idempotent.
+static func load_manifest(host: Node) -> Dictionary:
+	return await _manifest(host)
 
 ## True once the logical pack `name` is mounted in this session.
 static func web_pack_mounted(name: String) -> bool:
@@ -146,10 +280,14 @@ static func web_pack_mounted(name: String) -> bool:
 ## packs/manifest.json: {"files": {logical name: hashed name}, "bytes": {hashed name: size}}. Fetched once per session,
 ## never cached (the server marks it no-cache). {} when the build has none (unhashed packs, older exports).
 static func _manifest(host: Node) -> Dictionary:
+	while _manifest_loading:   # another fetch is already reading it: wait, never answer with the empty placeholder
+		await host.get_tree().process_frame
 	if _web_manifest != null:
 		return _web_manifest
+	_manifest_loading = true
 	_web_manifest = {}
 	var req := HTTPRequest.new()
+	req.accept_gzip = false   # the browser already decodes a compressed body; Godot must not try to inflate it again
 	host.add_child(req)
 	var url := str(JavaScriptBridge.eval("new URL('packs/manifest.json', location.href).href"))
 	if req.request(url, PackedStringArray(["Cache-Control: no-cache"])) == OK:
@@ -158,16 +296,34 @@ static func _manifest(host: Node) -> Dictionary:
 			var d = JSON.parse_string((res[3] as PackedByteArray).get_string_from_utf8())
 			if d is Dictionary:
 				_web_manifest = d
+				write_json("user://packs/manifest.cache.json", d)   # a preloaded game starts with no network at all
+	if _web_manifest.is_empty():
+		var cached: Variant = json("user://packs/manifest.cache.json")
+		if cached is Dictionary:
+			_web_manifest = cached
 	req.queue_free()
+	_manifest_loading = false
 	return _web_manifest
+
+static var _manifest_loading := false
+static var _inflight := {}   ## logical name -> true while one coroutine is fetching it
 
 ## Web only: mounts the bundle `name` (a logical name such as "audio_kli_web.pck"), from user://packs when this exact
 ## content is already there, else downloaded first. Older copies of the same bundle are removed from user://packs.
+## Safe to call from several places at once: a second call for the same pack waits for the first.
 static func fetch_web_pack(host: Node, name: String) -> bool:
 	if not OS.has_feature("web"):
 		return false
+	while _inflight.has(name):
+		await host.get_tree().process_frame
 	if _mounted.has(name):
 		return true
+	_inflight[name] = true
+	var ok: bool = await _fetch_web_pack(host, name)
+	_inflight.erase(name)
+	return ok
+
+static func _fetch_web_pack(host: Node, name: String) -> bool:
 	DirAccess.make_dir_recursive_absolute("user://packs")
 	var man: Dictionary = await _manifest(host)
 	var file: String = str(man.get("files", {}).get(name, name))
@@ -186,17 +342,13 @@ static func fetch_web_pack(host: Node, name: String) -> bool:
 		ok = mount_pack(dest)
 	else:
 		var url := str(JavaScriptBridge.eval("new URL('packs/%s', location.href).href" % file))
-		var req := HTTPRequest.new()
-		req.download_file = dest
-		host.add_child(req)
-		if req.request(url) == OK:
-			var res: Array = await req.request_completed
-			ok = int(res[0]) == HTTPRequest.RESULT_SUCCESS and int(res[1]) == 200 and mount_pack(dest)
+		ok = await _download_pack(host, url, dest, name, want)
+		if ok:
+			ok = mount_pack(dest)
 			if ok:
-				bytes_downloaded += req.get_downloaded_bytes()
+				bytes_downloaded += maxi(want, 0)
 			else:
-				push_warning("AppLoader: web pack %s not mounted (result %d, http %d)" % [file, int(res[0]), int(res[1])])
-		req.queue_free()
+				push_warning("AppLoader: web pack %s downloaded but not mounted" % file)
 	if ok:
 		_mounted[name] = true
 		var stem := name.get_basename() + "."
@@ -204,6 +356,73 @@ static func fetch_web_pack(host: Node, name: String) -> bool:
 			if f != file and (f == name or f.begins_with(stem)):
 				remove("user://packs/" + f)
 	return ok
+
+## Downloads one pack with the browser's own fetch() and writes it into the game's file system (engine.copyToFS), instead of
+## Godot's HTTPRequest. fetch() undoes any Content-Encoding a host or CDN adds (gzip, brotli) before the bytes reach us, which
+## HTTPRequest.download_file cannot do on the web (it hangs on a compressed body: seen with a host that gzips everything), and
+## it reports progress for the loading bar. Returns true when `want` bytes (the manifest's size) are in `dest`.
+static func _download_pack(host: Node, url: String, dest: String, name: String, want: int) -> bool:
+	var id := "d%d" % Time.get_ticks_usec()
+	var path := ProjectSettings.globalize_path(dest)
+	var js := "(function(){var s={done:false,ok:false,bytes:0,err:''};(window.__botfDl=window.__botfDl||{})['" + id + "']=s;" \
+		+ "fetch(" + JSON.stringify(url) + ").then(function(r){if(!r.ok)throw new Error('http '+r.status);var rd=r.body.getReader();var ch=[];" \
+		+ "var pump=function(){return rd.read().then(function(x){if(x.done)return;ch.push(x.value);s.bytes+=x.value.length;return pump();});};" \
+		+ "return pump().then(function(){var b=new Uint8Array(s.bytes);var o=0;for(var i=0;i<ch.length;i++){b.set(ch[i],o);o+=ch[i].length;}ch=null;return b;});})" \
+		+ ".then(function(b){engine.copyToFS(" + JSON.stringify(path) + ",b.buffer);s.ok=true;s.done=true;})" \
+		+ ".catch(function(e){s.err=String(e);s.done=true;});})();"
+	progress = {"name": name, "bytes": 0, "total": want}
+	JavaScriptBridge.eval(js)
+	var tree := host.get_tree()
+	var st: Dictionary = {}
+	while true:
+		await tree.create_timer(0.25).timeout
+		var parsed: Variant = JSON.parse_string(str(JavaScriptBridge.eval("JSON.stringify(window.__botfDl['" + id + "'])")))
+		st = parsed if parsed is Dictionary else {}
+		progress = {"name": name, "bytes": int(st.get("bytes", 0)), "total": want}
+		if bool(st.get("done", true)):
+			break
+	JavaScriptBridge.eval("delete window.__botfDl['" + id + "']")
+	progress = {}
+	if not bool(st.get("ok", false)):
+		push_warning("AppLoader: download of %s failed: %s" % [name, str(st.get("err", "no state"))])
+		return false
+	var f := FileAccess.open(dest, FileAccess.READ)
+	var have := f.get_length() if f != null else -1
+	f = null
+	if want > 0 and have != want:
+		push_warning("AppLoader: %s is %d bytes, the manifest says %d" % [name, have, want])
+		remove(dest)
+		return false
+	# Writing through the engine's own file API is what makes it save the new file to IndexedDB (copyToFS alone does not).
+	# A preload writes hundreds of packs: it flushes once at the end and every 48 MB (_flush_sync), not after each one.
+	_unsynced += maxi(have, 0)
+	if not preload_running or _unsynced >= 48 * 1048576:
+		await _flush_sync(host)
+	return true
+
+static var _unsynced := 0
+
+## Saves the in-memory file system to IndexedDB and waits until it is done (what makes the packs survive the visit). Godot's own
+## save-on-close skips a request that arrives while an earlier save is still running, so a long preload lost its last packs; this
+## calls the file system's syncfs directly and waits for its callback. Falls back to the open/close nudge when it is not reachable.
+static func _flush_sync(host: Node) -> void:
+	_unsynced = 0
+	var id := "s%d" % Time.get_ticks_usec()
+	var ok := bool(JavaScriptBridge.eval("(function(){try{var fs=engine.rtenv.FS;if(!fs||!fs.syncfs)return false;(window.__botfSync=window.__botfSync||{})['" + id + "']=false;fs.syncfs(false,function(e){window.__botfSync['" + id + "']=e?String(e):true;});return true;}catch(e){return false;}})()"))
+	if not ok:
+		var touch := FileAccess.open("user://packs/manifest.cache.json", FileAccess.READ_WRITE)
+		if touch != null:
+			touch.close()
+		return
+	var tree := host.get_tree()
+	for i in 1200:   # up to 5 minutes
+		await tree.create_timer(0.25).timeout
+		var st := str(JavaScriptBridge.eval("String(window.__botfSync['" + id + "'])"))
+		if st != "false":
+			if st != "true":
+				push_warning("AppLoader: saving packs to the browser store failed: " + st)
+			break
+	JavaScriptBridge.eval("delete window.__botfSync['" + id + "']")
 
 ## Web only: the chosen empire's audio (voice, sfx, music, about 12 MB) on top of the `shared` audio that ships in the main pck.
 ## Call it once when a campaign picks its empire (fed kli rom car fer), then BotfAudioLibrary.load_pack(empire).

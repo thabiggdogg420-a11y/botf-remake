@@ -82,10 +82,12 @@ func _ready() -> void:
 	if OS.has_feature("web"):
 		_fetch_background.call_deferred()
 
-## Web only, after the title is up (the first playable load is the engine and the main pck alone): fetches the bundles in
-## the order the player needs them, each from the IndexedDB cache when it is already there. The small planet tier and the
-## default empire's audio, then the hero hulls one faction at a time (the title's empire first, so its fleet swaps to the
-## real models), then the full-resolution planet tier. `web_packs_done` is set and emitted at the end.
+## Web only, after the title is up (the first playable load is the engine and the game's own pck alone). Only the small
+## bundles come now: the planet tier, the portraits and the shared music (about 15 MB together). Hero hulls, empire audio and
+## the full-resolution planets are lazy (F1 download budget): the hulls of the empires in a campaign start downloading in the
+## background when it begins (_fetch_game_packs), any other faction's hulls are fetched when a battle needs them
+## (_missing_ship_packs), and the big planet tier waits for the first galaxy. A pack already in the player's IndexedDB cache
+## is mounted with no request. `web_packs_done` is set and emitted when the title's bundles are in.
 signal web_packs_changed(name: String)
 var web_packs_done := false
 
@@ -93,23 +95,142 @@ func _fetch_background() -> void:
 	await AppLoader.fetch_web_packs(self)
 	PlanetTextures.reset()
 	web_packs_changed.emit("planets_web.pck")
-	await _fetch_empire_audio(1)
-	var order: Array = AppLoader.WEB_SHIP_FACTIONS.duplicate()
-	var title_fac: String = _EMPIRE_TOKENS.get(_title_empire(), "fed")
-	order.erase(title_fac)
-	order.push_front(title_fac)
-	for fac: String in order:
-		var name := "ships_%s_web.pck" % fac
-		if await AppLoader.fetch_web_pack(self, name):
-			web_packs_changed.emit(name)
-			if fac == title_fac and screen == "title" and current_screen().has_method("refresh_fleet"):
-				current_screen().refresh_fleet()
-	if await AppLoader.fetch_web_pack(self, AppLoader.WEB_PLANETS_HI):
-		PlanetTextures.reset()
-		web_packs_changed.emit(AppLoader.WEB_PLANETS_HI)
+	if await AppLoader.fetch_web_pack(self, AppLoader.WEB_MUSIC):
+		BotfAudioSystem.music_pack_ready()
+	if await AppLoader.fetch_web_pack(self, AppLoader.WEB_SHIP_ICONS):
+		ShipIcons.reset()
+		web_packs_changed.emit(AppLoader.WEB_SHIP_ICONS)
 	web_packs_done = true
 	print("web packs: %.1f MB downloaded, %.1f MB from cache" % [AppLoader.bytes_downloaded / 1048576.0, AppLoader.bytes_cached / 1048576.0])
 	web_packs_changed.emit("")
+
+var _game_packs_started := false
+
+## Web: a campaign has started. Fetches in the background, one at a time: the hull manifests, then the hull of each ship the
+## player starts with (a few MB each), then the full-resolution planet tier (the galaxy and system screens swap to it when it
+## lands). Every other hull comes when a battle needs it (_missing_ship_packs).
+func _fetch_game_packs(v: Dictionary) -> void:
+	if not OS.has_feature("web") or _game_packs_started:
+		return
+	_game_packs_started = true
+	var player := int(v.get("meta", {}).get("player", 1))
+	await AppLoader.load_manifest(self)
+	var need: Array = []
+	for f in v.get("fleets", []):
+		if int(f.get("owner", 0)) == player:
+			_add_hull_pack(need, {"owner": player, "name": str(f.get("name", "")), "assetKey": str(f.get("assetKey", ""))})
+	if not need.is_empty() and await AppLoader.fetch_web_pack(self, AppLoader.WEB_SHIPS_BASE):
+		web_packs_changed.emit(AppLoader.WEB_SHIPS_BASE)
+	for name: String in need:
+		if await AppLoader.fetch_web_pack(self, name):
+			web_packs_changed.emit(name)
+	if await AppLoader.fetch_web_pack(self, AppLoader.WEB_PLANETS_HI):
+		PlanetTextures.reset()
+		web_packs_changed.emit(AppLoader.WEB_PLANETS_HI)
+	print("web packs: %.1f MB downloaded, %.1f MB from cache" % [AppLoader.bytes_downloaded / 1048576.0, AppLoader.bytes_cached / 1048576.0])
+	web_packs_changed.emit("")
+
+## Web: the ship packs the open encounter needs that are not mounted yet (logical names). Faction tokens come from the ships'
+## asset keys (ship.<faction>.<class>, study.<faction>), so a minor race's or a threat's hulls are found too.
+func _missing_ship_packs() -> Array:
+	var out: Array = []
+	if not OS.has_feature("web"):
+		return out
+	var enc: Variant = session.encounter
+	if not (enc is Dictionary):
+		return out
+	for sd in enc.get("ships", []):
+		if sd is Dictionary:
+			_add_hull_pack(out, sd)
+	if not out.is_empty() and not AppLoader.web_pack_mounted(AppLoader.WEB_SHIPS_BASE):
+		out.push_front(AppLoader.WEB_SHIPS_BASE)
+	return out
+
+## Adds the hull pack of ship dictionary `sd` (owner, name, assetKey) to `out` unless mounted or already listed. The first asset
+## key with a pack is the one BattleAssets.hero() would draw, so one pack per ship is enough.
+func _add_hull_pack(out: Array, sd: Dictionary) -> void:
+	for key in BattleShip.asset_keys_for(sd):
+		var name := AppLoader.hull_pack_for(str(key))
+		if name != "":
+			if not AppLoader.web_pack_mounted(name) and not out.has(name):
+				out.append(name)
+			return
+
+var _loading_layer: Control = null
+var _loading_label: Label = null
+var _loading_bar: ColorRect = null
+var _loading_fill: ColorRect = null
+var _loading_total := 1.0
+var _combat_ready := false
+
+## Web: opens the battle screen once its ship packs are in, with a modal progress panel so the player sees why it waits
+## (the hulls are the only big files a battle can need). A failed download still opens the battle: those hulls are drawn
+## as plain procedural ones.
+func _open_combat_when_ready(remember: bool, need: Array) -> void:
+	_show_loading("Loading ship models", need)
+	for name: String in need:
+		await AppLoader.fetch_web_pack(self, name)
+		web_packs_changed.emit(name)
+	_hide_loading()
+	_combat_ready = true
+	goto("combat", remember)
+	_combat_ready = false
+
+var _loading_title := ""
+
+func _show_loading(title: String, need: Array) -> void:
+	_loading_title = title
+	if _loading_layer == null:
+		_loading_layer = ColorRect.new()
+		(_loading_layer as ColorRect).color = Color(0, 0, 0, 0.72)
+		_loading_layer.set_anchors_preset(Control.PRESET_FULL_RECT)
+		_loading_layer.mouse_filter = Control.MOUSE_FILTER_STOP
+		var box := VBoxContainer.new()
+		box.set_anchors_preset(Control.PRESET_CENTER)
+		box.grow_horizontal = Control.GROW_DIRECTION_BOTH
+		box.grow_vertical = Control.GROW_DIRECTION_BOTH
+		box.custom_minimum_size = Vector2(460, 0)
+		_loading_label = Label.new()
+		_loading_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		_loading_bar = ColorRect.new()   # drawn by hand: the themed ProgressBar is invisible on the dark panel
+		_loading_bar.custom_minimum_size = Vector2(460, 14)
+		_loading_bar.color = Color(1, 1, 1, 0.18)
+		_loading_fill = ColorRect.new()
+		_loading_fill.color = Lcars.accent()
+		_loading_fill.size = Vector2(0, 14)
+		_loading_bar.add_child(_loading_fill)
+		box.add_child(_loading_label)
+		box.add_child(_loading_bar)
+		_loading_layer.add_child(box)
+		add_child(_loading_layer)
+	_loading_layer.visible = true
+	var total := 0
+	for name: String in need:
+		total += AppLoader.pack_bytes(name)
+	_loading_label.text = "%s (%.0f MB)" % [title, total / 1048576.0]
+	_loading_total = maxf(total, 1.0)
+	_loading_fill.size.x = 0.0
+	_loading_bar.set_meta("need", need)
+	_loading_bar.set_meta("done_before", 0)
+	set_process(true)
+
+func _hide_loading() -> void:
+	if _loading_layer != null:
+		_loading_layer.visible = false
+
+func _process(_delta: float) -> void:
+	if _loading_layer == null or not _loading_layer.visible:
+		set_process(false)
+		return
+	var need: Array = _loading_bar.get_meta("need", [])
+	var done := 0
+	for name: String in need:
+		if AppLoader.web_pack_mounted(name):
+			done += AppLoader.pack_bytes(name)
+	if not AppLoader.progress.is_empty() and need.has(str(AppLoader.progress.get("name", ""))):
+		done += int(AppLoader.progress.get("bytes", 0))
+	_loading_fill.size.x = _loading_bar.size.x * clampf(done / _loading_total, 0.0, 1.0)
+	_loading_label.text = "%s (%.1f of %.1f MB)" % [_loading_title, done / 1048576.0, _loading_total / 1048576.0]
 
 func _title_empire() -> int:
 	var t := current_screen()
@@ -389,6 +510,11 @@ func _notification(what: int) -> void:
 func goto(id: String, remember: bool = true) -> void:
 	if id == screen and _current:
 		return
+	if id == "combat" and not _combat_ready:
+		var need := _missing_ship_packs()   # web only: hulls of a faction not downloaded yet
+		if not need.is_empty():
+			_open_combat_when_ready(remember, need)
+			return
 	if id == "system" and not view.is_empty():
 		var cols: Array = view.get("colonies", [])
 		var ok := false
@@ -514,6 +640,7 @@ func _enter_game(v: Dictionary, name_: String) -> void:
 	_theme_empire = -1
 	_apply_theme(int(v["meta"]["player"]))
 	_fetch_empire_audio(int(v["meta"]["player"]))   # web: not awaited, the campaign starts while the pack downloads
+	_fetch_game_packs(v)   # web: the empires' hulls in the background (not awaited)
 	session.enter(v)
 	screen = ""
 	goto("galaxy", false)
