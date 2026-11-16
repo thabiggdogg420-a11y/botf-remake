@@ -93,7 +93,7 @@ func _briefing_events() -> void:
 	var events := [
 		["research", "Warp 3 researched", "research_complete"],
 		["construction", "Shipyard built", "construction_complete"],
-		["colonization", "Colony founded", "colony_founded"],
+		["colonization", "Colony founded at Vega. Production begins next turn.", "colony_founded"],
 		["stations", "Outpost built", "outpost_built"],
 		["events", "Plasma storm", "galactic_event"],
 		["diplomacy", "Klingon declare war", "war_declared"],

@@ -244,7 +244,12 @@ static func turn_cues(briefing: Dictionary, player_name := "", empires: Array = 
 		match cat:
 			"research": _add(out, seen, "research_complete")
 			"construction": _add(out, seen, "construction_complete")
-			"colonization": _add(out, seen, "colony_founded")
+			"colonization":
+				# The colonization category also carries population growth/decline, terraforming and food shortages
+				# at any system (Sol included). "This system is now Federation territory" is the colony-founded
+				# line, so only the core's own "Colony founded at <system>" report (the player's colony) plays it.
+				if low.begins_with("colony founded at "):
+					_add(out, seen, "colony_founded")
 			"stations": _add(out, seen, "outpost_built")
 			"events": _add(out, seen, "galactic_event", "", str(e.get("eventId", "")) if int(e.get("eventId", 0)) > 0 else "")
 			"diplomacy":

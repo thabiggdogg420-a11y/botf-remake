@@ -98,6 +98,21 @@ func _turn_cues() -> void:
 	check(v[0].cue == "victory", "victory outranks the rest")
 	check(BotfAudioCues.turn_cues({"outcome": "defeat", "events": []})[0].cue == "defeat", "defeat cue")
 	check(BotfAudioCues.turn_cues({"events": []}).size() == 1, "a quiet turn: only turn_start")
+	# "This system is now Federation territory" (vo.advisor.colony.fed) is the colony-founded line only. Simon, 16 Nov
+	# playtest: it played for any "colonization"-category event (growth at Sol, food shortage, terraforming).
+	var quiet := ["turn_start"]
+	for txt in ["System 3 population grew to 12.", "Terraforming of Sol completed.", "Sol is short of food.",
+			"System 3 population fell to 4."]:
+		var qn: Array = BotfAudioCues.turn_cues({"events": [{"category": "colonization", "severity": "warn", "text": txt}]}, "Federation", empires, 1).map(func(c): return c.cue)
+		check(qn == quiet, "colonization event '%s' does not play the colony-founded line (%s)" % [txt, qn])
+	var founded: Array = BotfAudioCues.turn_cues({"events": [{"category": "colonization", "severity": "info",
+		"text": "Colony founded at Vega. Production begins next turn."}]}, "Federation", empires, 1).map(func(c): return c.cue)
+	check(founded.has("colony_founded"), "a founded colony still plays the colony line")
+	# A non-Federation player never gets the Federation line, whatever the cue.
+	for fac in ["kli", "rom", "car", "fer"]:
+		for k in BotfAudioCues.cue_for("colony_founded", fac).voice:
+			check(not str(k).ends_with(".fed"), "%s colony cue never resolves a Federation key (%s)" % [fac, k])
+	check(BotfAudioCues.cue_for("colony_founded", "").voice.is_empty(), "no faction: no colony voice line")
 
 
 func _scheduler() -> void:
