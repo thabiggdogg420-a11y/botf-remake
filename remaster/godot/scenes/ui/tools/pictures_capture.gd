@@ -90,6 +90,14 @@ func _run(shots: Array) -> void:
 					scr.tab = "structures"
 					scr.refresh()
 				await _wait_ms(3500) # the planet globes are SubViewports that load their textures on first use
+			"names":
+				app.goto("system")
+				await _wait(4)
+				var nsc := app.current_screen()
+				nsc.tab = "structures"
+				nsc.refresh()
+				for ch in nsc.vm.choices(false):
+					print("STRUCT ", ch["name"], " | ", ch.get("effect", ""), " | ", ch.get("description", ""))
 			"galaxy-fleet":
 				app.goto("galaxy")
 				await _wait(4)

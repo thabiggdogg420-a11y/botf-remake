@@ -333,7 +333,8 @@ func _governor(c: Dictionary) -> Control:
 		for o in app.meta.get("governors", []):
 			var key: String = o["key"]
 			var w: String = which
-			var t := Pic.icon_toggle(GOV_ICONS.get(key, "settings"), g[which] == key, func(_on): vm.set_governor(w, key), str(o["name"]))
+			var gart := Pic.governor_art(key)
+			var t: Button = Pic.picture_toggle(gart, g[which] == key, func(_on): vm.set_governor(w, key), str(o["name"])) if gart != null else Pic.icon_toggle(GOV_ICONS.get(key, "settings"), g[which] == key, func(_on): vm.set_governor(w, key), str(o["name"]), 22.0, Vector2(52, 52))
 			t.disabled = _locked() != ""
 			row.add_child(t)
 		row.add_child(Lcars.label(str(g[which]), "Muted", 14))
@@ -519,7 +520,7 @@ func _choice(ch: Dictionary) -> Control:
 	var btn := Button.new()
 	btn.name = "Choice_%s_%d" % [ch["product"], int(ch["referenceId"])]
 	btn.theme_type_variation = "GhostButton"
-	btn.custom_minimum_size = Vector2(150, 222 if is_ship else 150)
+	btn.custom_minimum_size = Vector2(150, 222 if is_ship else ((178 if ChoiceIcon.art(str(ch["name"])) != null else 150) + (22 if reason != "" else 0)))
 	btn.disabled = reason != ""
 	btn.add_theme_stylebox_override("normal", Pic.tile_box())
 	btn.add_theme_stylebox_override("hover", Pic.tile_box(true))
@@ -550,7 +551,12 @@ func _choice(ch: Dictionary) -> Control:
 			sub = nm.substr(sp + 3)
 	else:
 		var ic := Pic.structure(nm, 62)
-		ic.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+		if ChoiceIcon.art(nm) != null:
+			ic.custom_minimum_size = Vector2(0, 100) # the illustration fills the top of the tile
+			ic.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			ic.clip_contents = true
+		else:
+			ic.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 		col.add_child(ic)
 	var tl := Lcars.label(title, "", 15, Lcars.TEXT if reason == "" else Lcars.TEXT3)
 	tl.add_theme_font_override("font", Lcars.font("ui", 560))

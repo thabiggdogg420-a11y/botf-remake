@@ -1,0 +1,4 @@
+governor_balanced|A balanced colony emblem: a Starfleet delta insignia floating exactly level between two equal glowing orbs, one green and one amber, above a small planet, symmetrical composition
+governor_growth|A thriving young colony: a glowing green seedling sprouting from a planet surface with rings of warm city lights spreading outward around it, hopeful sunrise glow
+governor_manufacturing|A Federation manufacturing emblem: a large glowing amber gear and a replicator beam assembling a starship hull plate above an industrial platform, sparks of light
+governor_research|A Federation research emblem: a glowing blue holographic atom and star chart rotating above a science console with a tricorder, cyan and violet light

@@ -1,0 +1,12 @@
+factory|A Federation industrial fabrication complex on a planet surface: tall glowing amber forge towers, assembly gantries, conveyor bridges and a big central hall lit orange from within
+laboratory|A Federation scientific laboratory complex on a planet surface: a domed research building with antenna array and blue holographic glow in its windows, small satellite pods
+power_plant|A Federation planetary power plant: a tall cylindrical reactor tower with a bright amber glowing core, thick energy conduits running to a substation, on a rocky plain
+fusion_plant|A Federation fusion power station: a large ring-shaped fusion reactor torus with bright blue-white plasma inside it, standing on a platform on a planet surface, heavy support pylons
+research_institute|A large Federation research institute campus: several tall glass and white spire towers around a plaza, a big dish array behind, soft indigo and cyan lighting, planet surface at twilight
+shipyard|A Federation orbital shipyard in orbit above a blue planet: a huge open skeletal drydock gantry with a half-built starship saucer section inside it, work lights glowing
+defense_battery|A Federation planetary defence battery on a rocky ridge: heavy phaser turret emplacements firing a thin cyan beam skyward under a faint shimmering cyan shield dome
+dilithium_refinery|A Federation dilithium refinery on a barren planet surface: processing towers and pipes around a cluster of glowing pink-red dilithium crystals, refinery lights, steam
+starfleet_academy|The Starfleet Academy campus: elegant white buildings with a tall central tower on a green hilltop beside a bay at sunset, a bridge in the distance, a few small starships flying overhead
+upgrade_farms|An advanced Federation hydroponic farm: tall multi-tier vertical growing towers glowing green-white with nutrient light, a ring of glass tubes, on a planet surface at night
+upgrade_factories|An advanced automated Federation matter-replicator factory: glowing cyan replicator arrays and robotic arms inside a vast open industrial hall seen from outside through huge windows, blue light
+upgrade_laboratories|An advanced Federation laboratory: a crystalline glass pyramid structure with floating holographic spheres and data rings above it, violet and cyan light, on a planet surface

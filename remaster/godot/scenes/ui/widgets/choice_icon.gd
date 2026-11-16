@@ -24,6 +24,24 @@ const KEYWORDS := [
 	[["academy", "barracks", "troop", "training", "garrison", "ground"], "population"],
 ]
 
+static var _art := {}
+
+## The structure's own illustration (res://assets/structures/<slug>.png, AI-generated concept art, see docs/ASSET-SOURCES.md), or
+## null when there is none yet: the tile then falls back to the family glyph on a plate.
+static func art(structure_name: String) -> Texture2D:
+	var key := ShipIcons.slug(structure_name)
+	if not _art.has(key):
+		var path := "res://assets/structures/%s.png" % key
+		_art[key] = load(path) as Texture2D if ResourceLoader.exists(path) else null
+	return _art[key]
+
+## Draws `tex` filling `r`, cropped to the box's aspect from the centre (never stretched).
+static func draw_cover(ci: CanvasItem, tex: Texture2D, r: Rect2) -> void:
+	var ts := tex.get_size()
+	var k := maxf(r.size.x / ts.x, r.size.y / ts.y)
+	var src_size := r.size / k
+	ci.draw_texture_rect_region(tex, r, Rect2((ts - src_size) / 2.0, src_size))
+
 static func glyph_for(structure_name: String) -> String:
 	var n := structure_name.to_lower()
 	for row in KEYWORDS:
@@ -33,6 +51,12 @@ static func glyph_for(structure_name: String) -> String:
 	return "build"
 
 func _draw() -> void:
+	if not ship:
+		var tex := art(label_name)
+		if tex != null:
+			draw_cover(self, tex, Rect2(Vector2.ZERO, size))
+			draw_rect(Rect2(Vector2.ZERO, size), Color(Pic.tint(glyph_for(label_name)), 0.5), false, 1.5)
+			return
 	var c := size / 2.0
 	var a := Lcars.accent() if ship else Pic.tint(glyph_for(label_name))
 	# the plate: an LCARS tab, round on the left and square on the right

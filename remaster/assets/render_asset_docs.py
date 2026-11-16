@@ -123,6 +123,8 @@ def sources_doc():
     w("| BlendSwap | [blendswap.com](https://blendswap.com) | per uploader | uploader-declared CC | candidates (unclear) |")
     w("| Sketchfab | [sketchfab.com](https://sketchfab.com/tags/star-trek) | per uploader | uploader-declared CC, verified through the public API | main HD/game-ready candidate pool |")
     w("")
+    for ln in generated_section():
+        w(ln)
     w("## All candidates")
     w("")
     for k, v in A.items():
@@ -141,6 +143,17 @@ def sources_doc():
                                                        "{:,}".format(c["faceCount"]) if c.get("faceCount") else ""))
         w("")
     return "\n".join(out) + "\n"
+
+
+def generated_section():
+    """Art generated for the game (generated-art.json): committed, so listed apart from the local-only candidates."""
+    G = json.load(open(os.path.join(HERE, "generated-art.json"), encoding="utf-8"))
+    out = ["## Generated art (in the repo)", "", G["note"], "", "| Set | Where | Source | Date | Terms | Scaling |", "|---|---|---|---|---|---|"]
+    for g in G["sets"]:
+        n = len([f for f in os.listdir(os.path.join(os.path.dirname(ROOT), g["path"])) if f.endswith(".png")]) if os.path.isdir(os.path.join(os.path.dirname(ROOT), g["path"])) else 0
+        out.append("| %s (%d files) | `%s` | %s | %s | %s | %s |" % (cell(g["name"]), n, g["path"], cell(g["source"]), g["date"], cell(g["terms"]), cell(g["scaled"])))
+    out += ["", "Prompt pattern: " + "; ".join("%s: %s" % (g["name"], cell(g["prompt"])) for g in G["sets"]), ""]
+    return out
 
 
 def credits_block():

@@ -85,3 +85,26 @@ static func empty_slot(px: float = 42.0, tip: String = "") -> Control:
 	cc.add_child(UiIcon.make("plus", px * 0.4, Lcars.TEXT3))
 	p.add_child(cc)
 	return tipped(p, tip)
+
+## The governor-mode illustration (res://assets/governors/governor_<mode>.png), null for a mode without one (Manual).
+static func governor_art(mode: String) -> Texture2D:
+	var path := "res://assets/governors/governor_%s.png" % mode.to_lower()
+	return load(path) as Texture2D if ResourceLoader.exists(path) else null
+
+## A toggle whose face is a picture: lit when on, dimmed when off.
+static func picture_toggle(tex: Texture2D, on: bool, on_toggle: Callable, tip: String, box_px: Vector2 = Vector2(52, 52)) -> Button:
+	var b := Lcars.toggle("", on, on_toggle, tip)
+	b.custom_minimum_size = box_px
+	var tr := TextureRect.new()
+	tr.texture = tex
+	tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	tr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	tr.set_anchors_preset(Control.PRESET_FULL_RECT)
+	tr.offset_left = 3
+	tr.offset_top = 3
+	tr.offset_right = -3
+	tr.offset_bottom = -3
+	tr.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	tr.modulate = Color.WHITE if on else Color(1, 1, 1, 0.5)
+	b.add_child(tr)
+	return b
