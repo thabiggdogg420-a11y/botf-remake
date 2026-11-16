@@ -21,8 +21,13 @@ def grade(im, seed=7):
     a = a + np.random.default_rng(seed).normal(0.0, 0.006, a.shape).astype(np.float32)
     return Image.fromarray((np.clip(a, 0, 1) * 255 + 0.5).astype(np.uint8))
 
+def square_to_slot(im):
+    """Round 3 (Codex square 1254x1254 sources): resize to 1024x1024, keep the top 1024x768 (heads sit high), then the shared grade."""
+    return grade(im.convert("RGB").resize((1024, 1024), Image.LANCZOS).crop((0, 0, 1024, 768)))
+
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("src", nargs="?"); ap.add_argument("dst", nargs="?")
+    ap.add_argument("--square", action="store_true", help="src is a square Codex image: 4:3 top crop first (round 3 majors)")
     a = ap.parse_args()
-    grade(Image.open(a.src)).save(a.dst)
+    (square_to_slot if a.square else grade)(Image.open(a.src)).save(a.dst)
