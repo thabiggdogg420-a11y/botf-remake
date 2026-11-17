@@ -138,6 +138,7 @@ func _run() -> void:
 			if not cur.is_empty():
 				_finish_round(cur)
 				cur = {}
+				await wait(20) # the bar and rail fade back in over 0.25 s
 				_log("F2 BETWEEN chrome_visible=%s" % _chrome_visible())
 			if rounds >= max_rounds:
 				break

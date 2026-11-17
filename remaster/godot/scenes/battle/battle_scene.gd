@@ -633,7 +633,7 @@ func _update_camera(t: float, delta: float, centroid: Vector3, spread: float) ->
 
 
 const EMPTY_FRAC := 0.035   ## F2: a hull under 3.5% of the frame's height does not read as a ship
-const EMPTY_GRACE := 0.5    ## F2: seconds of no readable hull before the camera is pulled onto the nearest fight
+const EMPTY_GRACE := 0.25   ## F2: seconds of no readable hull before the camera is pulled onto the nearest fight
 var _empty_clock := 0.0
 var _rescue_until := -1.0
 var _rescue_n := 0
