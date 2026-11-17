@@ -20,8 +20,8 @@
      "frequency": "frequent"
     }
    },
-   "turns": 80,
-   "result": "2989749596086597899",
+   "turns": 64,
+   "result": "5821153240126935392",
    "threats": {
     "monsters": true,
     "borg": true,
@@ -54,7 +54,7 @@
     }
    },
    "turns": 50,
-   "result": "3916755776155756167",
+   "result": "10136905115409147359",
    "threats": {
     "monsters": true,
     "borg": true,
@@ -89,8 +89,8 @@
      "frequency": "normal"
     }
    },
-   "turns": 37,
-   "result": "7238839915732988942",
+   "turns": 70,
+   "result": "12755092975266416527",
    "threats": {
     "monsters": true,
     "borg": true,
@@ -101,7 +101,7 @@
     "sparesAi": false,
     "disabled": []
    },
-   "spawned": 5
+   "spawned": 8
   }
  ]
 }
