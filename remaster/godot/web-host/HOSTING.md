@@ -65,23 +65,27 @@ quota covers both, and a full quota only means a pack is fetched again.
 - `.htaccess`, `nginx.conf.example`, this file: host notes, not needed by the game.
 
 ## Download sizes (measured at release; see `sizes.json`)
-There is no total-download budget (Simon, 16 Nov 2026: quality first). Measured on the 16 Nov 2026 build, served gzip-compressed:
+There is no total-download budget (Simon, 16 Nov 2026: quality first). Measured on the 17 Nov 2026 build (0.1.430), served gzip-compressed:
 
 | What | Raw | Transferred |
 |---|---|---|
-| First playable load (engine, core, main pack, title) | 57.6 MB | 17.7 MB gzip (13.7 MB brotli) |
-| Starting a campaign (planets, portraits, the chosen empire's audio, hulls on demand) | n/a | about 86 MB cumulative |
-| Every pack in the game (what "Preload whole game" downloads; the button shows 762 MB) | 819 MB | 779 MB |
+| First playable load (engine, core, main pack, title) | 58.8 MB | 18.8 MB gzip (14.8 MB brotli) |
+| Every pack in the game (what "Preload whole game" downloads; the button shows 386 MB) | 445 MB | 405 MB |
 
-Hull textures are 1024 px (`build_ship_packs.py --web-max 1024`, set in verify.ps1 on 17 Nov 2026 so friends with small GPUs do not lose the
-WebGL context; JPEG q90/92). Normal maps stay at 2048 px (`--normal-max`) and the planets are 2048 px WebP. The earlier all-2048 build held
-about 3 GB of textures in graphics memory in a battle on an RTX 4090 and the all-1024 build 0.85 GB; if a small GPU still struggles, add
-`--normal-max 1024` in verify.ps1.
+17 Nov compression pass (same build, before and after): all packs 621.0 MiB -> 386.4 MiB (-37.8 %). Hull textures are WebP via
+`EXT_texture_webp` (colour q88, normal maps q95; `build_ship_packs.py --web-format jpeg` restores the JPEG route): the 135 hull packs went
+448.4 MiB -> 256.7 MiB. The web portraits are WebP q94 (`art_web.pck` 48.8 MiB -> 5.8 MiB). On an 8-hull sample (compared with the resized originals) WebP q85 colour textures came within 0.004 SSIM of the old
+JPEG q90 (0.965 vs 0.969) at 47 % of the bytes (q88 ships), and WebP q95 normal maps have a mean angular error of 0.58 degrees (old JPEG q92: 0.42) at 47 % of the bytes.
+The structure and governor pictures import lossy (q0.9) so the main pck stays under the 25 MB first-load budget. Audio is unchanged: the voices and
+effects are already 32 kHz mono Vorbis q2-q3 and the music is stereo q3; going lower is audible, and the audio is 16 % of the packs.
+Hull textures are 1024 px (`--web-max 1024`); normal maps stay at 2048 px (`--normal-max`) and the planets are 2048 px WebP.
 
 The default path is lazy: a player downloads the first load, then only the packs a game needs (a hull is fetched the first time a
 battle needs it, about 2-6 MB each). Packs are kept in the browser's storage (IndexedDB), so a second visit downloads nothing that is
 already there. "Preload whole game" (title screen and Settings) fetches the rest in one go; the page shows the exact size first.
-Cold first load under a 10 Mbps, 60 ms browser throttle: the game core is running after about 20 s, a campaign galaxy about 40 s after launch.
+Cold first load under a 10 Mbps, 60 ms browser throttle: the game core is running after about 20 s, a campaign galaxy about 40 s after launch (measured 16 Nov, before the 17 Nov compression pass).
+
+Background fetching (17 Nov): once the title bundles are in, the game fetches the next packs one at a time while the player is on the title, new-campaign or galaxy screens (never during a battle load, a campaign-start fetch or a preload): on the title `ships_base` and `planets_hi`; once a campaign runs the player's empire audio and every hull of the player's empire, then the rival empires' hulls (`App._idle_prefetch`, `AppLoader.idle_queue`). The preload button stays for the rest (minor-race and monster hulls, the other empires' audio).
 
 Not tested here: the shipped `.htaccess` (Apache) and `nginx.conf.example`. The game downloads packs with the browser's `fetch()`, so
 a host or CDN that compresses on the fly is fine; do not add rules that rewrite or redirect `/packs/`.
