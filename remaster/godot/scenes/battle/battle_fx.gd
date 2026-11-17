@@ -696,7 +696,7 @@ func _spawn(i: int, j: Dictionary) -> void:
 				st.point = p
 				st.size = maxf(50.0 * UE, target.radius() * 0.4)
 				st.nodes = [_flare(Color(1.0, 0.6, 0.25), st.size, 1.4, 1.0)]
-				var n: int = clampi(10 + j.hull_damage, 16, 70)
+				var n: int = clampi(6 + j.hull_damage / 2, 8, 30) # F2: fewer streaks (SoA hull hits are fire, not a spray)
 				var k := maxf(1.5, target.radius() * 0.1)
 				_burst(p, Color(1.0, 0.55, 0.15), "sparks", n, k, (from - p).normalized())
 				_burst(p, Color(1.0, 0.4, 0.1), "fire_small", 12, k)
@@ -744,9 +744,11 @@ func _spawn(i: int, j: Dictionary) -> void:
 				st.size = s.length
 				st.boomed = false
 				st.next_vent = j.start + 0.3
-				st.nodes = [_flare(Color(1.0, 0.6, 0.25), s.length * 0.6, 1.4, 1.0)]
-				_burst(p0, Color(1.0, 0.5, 0.15), "fire_small", 30, k0 * 1.5)
-				_burst(p0, Color(1.0, 0.6, 0.2), "sparks", 50, k0 * 1.5)
+				# F2 side-by-side (SoA 1160 1.4-1.9 s): the killing blow is an orange fire burst, not a white flash with a
+				# radial spray of white streaks.
+				st.nodes = [_flare(Color(1.0, 0.5, 0.18), s.length * 0.5, 0.8, 0.6)]
+				_burst(p0, Color(1.0, 0.45, 0.12), "fire_small", 60, k0 * 1.8)
+				_burst(p0, Color(1.0, 0.55, 0.2), "sparks", 14, k0 * 1.2)
 				_burst(p0, Color(0.7, 0.85, 1.0), "vent", 40, k0)
 				_flash_light(p0, Color(1.0, 0.6, 0.3), 11.0, s.length * 8.0, 0.9)
 			elif s != null:
