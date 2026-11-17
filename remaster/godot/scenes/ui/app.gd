@@ -323,6 +323,9 @@ func _warm_battle() -> void:
 	sv.size = Vector2i(256, 144)
 	sv.own_world_3d = true
 	sv.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+	# F2: the battle host's own viewport settings (anti-aliasing, render scale), so the pipelines compiled here are the
+	# ones the battle draws with (a different MSAA mode compiled them again on the first battle frame: 90-100 ms).
+	DisplaySettings.apply_viewport(sv, settings)
 	add_child(sv)
 	var view := packed.instantiate()
 	sv.add_child(view)
@@ -334,8 +337,10 @@ func _warm_battle() -> void:
 		view.fx.prewarm()
 	# Ship shaders (hero hull, plating, hull, shield, cloak, blink): a sphere each, in front of the warm-up camera, so
 	# their pipelines compile now and not when the first hull of a battle is drawn.
+	var warm_meshes: Array = []
 	for sh in [HeroLook.HULL_SHADER, HeroLook.PLATED_SHADER, BattleShip.HULL_SHADER, BattleShip.SHIELD_SHADER, BattleShip.CLOAK_SHADER, BattleShip.BLINK_SHADER]:
 		var mi := MeshInstance3D.new()
+		warm_meshes.append(mi)
 		mi.mesh = SphereMesh.new()
 		var mat := ShaderMaterial.new()
 		mat.shader = sh
@@ -347,7 +352,54 @@ func _warm_battle() -> void:
 	BattleShip.puff_texture()
 	for _i in 6:
 		await tree.process_frame
+	# F2: keep the warmed view for the first battle (BattleHost takes it): instancing a fresh one when the battle opened
+	# cost 50-60 ms on that frame, and its first draw compiled pipelines again.
+	for mi in warm_meshes:
+		if is_instance_valid(mi):
+			mi.queue_free()
+	await tree.process_frame
+	if is_instance_valid(view) and _spare_battle_view == null:
+		sv.remove_child(view)
+		_spare_battle_view = view
+	elif is_instance_valid(view):
+		view.queue_free()
+	# F2: rasterise the UI fonts' glyphs at the sizes the screens use, one font a frame, in the same off-screen viewport:
+	# the battle screen's first draw rendered them (60-70 ms on the frame it opened).
+	if not _glyphs_warmed:
+		_glyphs_warmed = true
+		var canvas := Control.new()
+		canvas.size = Vector2(sv.size)
+		sv.add_child(canvas)
+		var text := ""
+		for c in range(32, 127):
+			text += char(c)
+		text += "●◇▸▲▼✓✗✕→·—"
+		for f: Font in Lcars._fonts.values():
+			if f == null:
+				continue
+			var cb := func():
+				for px in [10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 24, 26, 28, 30]:
+					canvas.draw_string(f, Vector2(0, 40), text, HORIZONTAL_ALIGNMENT_LEFT, -1, px)
+			canvas.draw.connect(cb)
+			canvas.queue_redraw()
+			await tree.process_frame
+			await tree.process_frame
+			canvas.draw.disconnect(cb)
 	sv.queue_free()
+
+static var _glyphs_warmed := false
+
+static var _spare_battle_view: Node = null
+
+## The warmed, never played battle view, once (null when there is none): BattleHost mounts it instead of a new instance.
+static func take_spare_battle_view() -> Node:
+	var v := _spare_battle_view
+	_spare_battle_view = null
+	if v != null and not is_instance_valid(v):
+		return null
+	if v != null:
+		_warmed_battle = false # the next idle stretch on the galaxy warms another for the next battle
+	return v
 
 # ---------------------------------------------------------------------------------------------
 # Layers and chrome
@@ -596,6 +648,7 @@ func goto(id: String, remember: bool = true) -> void:
 	var path := AppRoutes.script_for(id)
 	if path == "":
 		return
+	var _tg := Time.get_ticks_usec()
 	var s: Control = (AppLoader.resource(path) as GDScript).new()
 	s.name = "Screen_" + id
 	s.set("app", self)
@@ -603,11 +656,15 @@ func goto(id: String, remember: bool = true) -> void:
 	_stage.add_child(s)
 	_place_current()
 	_background.visible = id != "galaxy"
+	if id == "galaxy" and not _warmed_battle:
+		_warm_battle.call_deferred() # F2: a spare battle view for the next battle
 	_build_chrome()
 	if s.has_method("refresh"):
 		s.refresh()
 	Motion.enter(s, 0, "screen")
 	screen_changed.emit(id)
+	if OS.get_environment("ROUND_TIMING") != "":
+		print("ROUND_TIMING goto %s frame %d: %d ms" % [id, Engine.get_process_frames(), (Time.get_ticks_usec() - _tg) / 1000])
 
 func _place_current() -> void:
 	var r := stage_rect()
@@ -754,7 +811,12 @@ func end_turn() -> String:
 		refresh()
 		_current = leaving
 		session.fetch_encounter()
-		goto("combat")
+		if DisplayServer.get_name() != "headless":
+			# F2: the battle screen is built on the frame after the core's end of turn (both on one frame were the
+			# battle-open hitch); the galaxy stays on screen, unchanged, for that one frame.
+			_open_combat_next_frame.call_deferred()
+		else:
+			goto("combat")
 		get_tree().create_timer(0.25).timeout.connect(BotfAudioSystem.on_battle_joined) # off the frame that opens the screen
 		get_tree().create_timer(0.3).timeout.connect(func(): toast("Battle joined. Issue maneuvers or let the tactical AI command.", "warn"))
 		return "battle"
@@ -772,6 +834,11 @@ func end_turn() -> String:
 	elif briefing is Dictionary:
 		open_overlay("briefing")
 	return "complete"
+
+func _open_combat_next_frame() -> void:
+	await get_tree().process_frame
+	if screen != "combat" and not encounter.is_empty():
+		goto("combat")
 
 # ---------------------------------------------------------------------------------------------
 # Saves and settings

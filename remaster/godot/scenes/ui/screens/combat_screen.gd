@@ -51,11 +51,15 @@ func refresh() -> void:
 		host.get_parent().remove_child(host)
 	for c in get_children():
 		c.queue_free()
+	var _t0 := Time.get_ticks_usec()
 	vm.ensure_encounter()
+	var _t1 := Time.get_ticks_usec()
 	if vm.live() and not _enc().is_empty():
 		_live(_enc())
 	else:
 		_archive()
+	if OS.get_environment("ROUND_TIMING") != "":
+		print("ROUND_TIMING combat refresh: encounter=%d build=%d ms" % [(_t1 - _t0) / 1000, (Time.get_ticks_usec() - _t1) / 1000])
 	if host and is_instance_valid(host) and not host.is_inside_tree():
 		host.queue_free()
 		host = null
@@ -80,6 +84,7 @@ func _unhandled_key_input(event: InputEvent) -> void:
 
 # ---------------------------------------------------------------------------------------------
 var _root: Control = null
+var _first_build := true
 var _cards := {} ## ship id -> card of the live layout
 
 func _header(e: Dictionary, mine: Array, foes: Array, foe_name: String, last: Dictionary) -> Control:
@@ -175,8 +180,24 @@ func refresh_round() -> void:
 	_set_play_layout(_playing_layout)
 	host.set_selection(ship, target)
 
+func _stage_bottom(root: Control, ph: Control, e: Dictionary, foe_name: String, last: Dictionary) -> void:
+	for _i in 3:
+		await get_tree().process_frame
+	if not is_instance_valid(ph) or not ph.is_inside_tree() or _bottom_box != ph:
+		return
+	var bottom := _bottom(e, foe_name, last)
+	root.add_child(bottom)
+	root.move_child(bottom, ph.get_index())
+	root.remove_child(ph)
+	ph.queue_free()
+	_bottom_box = bottom
+	_set_play_layout(_playing_layout)
+
 func _live(e: Dictionary) -> void:
 	_cards.clear()
+	# F2: the first build of a battle's screen (the frame it opens) stages its cards and orders over the next frames.
+	_stage_cards = _first_build and DisplayServer.get_name() != "headless"
+	_first_build = false
 	var sd_ := vm.sides()
 	var ships: Array = sd_["ships"]
 	var mine: Array = sd_["mine"]
@@ -204,9 +225,17 @@ func _live(e: Dictionary) -> void:
 	host.load_encounter.call_deferred(e)
 	host.set_selection.call_deferred(ship, target)
 	_plan.call_deferred()
-	var bottom := _bottom(e, foe_name, last)
-	root.add_child(bottom)
-	_bottom_box = bottom
+	if _stage_cards:
+		var ph := Control.new()
+		ph.custom_minimum_size.y = 250
+		root.add_child(ph)
+		_bottom_box = ph
+		_stage_bottom.call_deferred(root, ph, e, foe_name, last)
+	else:
+		var bottom := _bottom(e, foe_name, last)
+		root.add_child(bottom)
+		_bottom_box = bottom
+	_stage_cards = false
 	_set_play_layout(_playing_layout)
 	if choice and not e.get("finished", false) and int(e["round"]) == 0:
 		_encounter_choice(e, mine, foes, foe_name)
@@ -230,12 +259,31 @@ func _ship_list(title: String, ships: Array, all: Array, sel: int, hostile: bool
 	var f := Lcars.frame(title, "", "alert" if hostile else "primary", "alert" if hostile else "ship")
 	f.custom_minimum_size.x = 330
 	var list := Lcars.vbox(6)
+	if _stage_cards:
+		_fill_list_staged.call_deferred(list, ships, all, sel, hostile)
+	else:
+		for s in ships:
+			var cd := _ship_card(s, all, sel, hostile)
+			_cards[int(s["id"])] = cd
+			list.add_child(cd)
+	Lcars.body(f).add_child(Lcars.scroll(list))
+	return f
+
+## F2: on the frame the battle opens, the ship cards (pictures, gauges, text) are built two a frame after it, so the
+## screen's first frame carries only the header, the view and the frames (the cards were most of the open hitch).
+var _stage_cards := false
+func _fill_list_staged(list: Control, ships: Array, all: Array, sel: int, hostile: bool) -> void:
+	var n := 0
 	for s in ships:
+		if n % 2 == 0:
+			await get_tree().process_frame
+		n += 1
+		if not is_instance_valid(list) or not list.is_inside_tree():
+			return
 		var cd := _ship_card(s, all, sel, hostile)
 		_cards[int(s["id"])] = cd
 		list.add_child(cd)
-	Lcars.body(f).add_child(Lcars.scroll(list))
-	return f
+		Motion.enter(cd, 0, "panel")
 
 func _ship_card(s: Dictionary, all: Array, sel: int, hostile: bool) -> Control:
 	var id := int(s["id"])
@@ -433,19 +481,52 @@ func order(maneuver: String) -> void:
 	refresh()
 
 func _round() -> void:
+	var _t0 := Time.get_ticks_usec()
 	if not vm.resolve(false):
+		return
+	var rounds: Array = _enc().get("rounds", [])
+	var timing := OS.get_environment("ROUND_TIMING") != ""
+	if timing:
+		print("ROUND_TIMING resolve=%d ms" % ((Time.get_ticks_usec() - _t0) / 1000))
+	if not (host and is_instance_valid(host) and host.is_inside_tree() and rounds.size() > 0 and _ui_ready()):
+		refresh_round() # rebuilds the layout when the panels cannot be updated in place
+		if host and rounds.size() > 0:
+			_set_play_layout(true)
+			host.clear_plan()
+			host.play_round.call_deferred(rounds.back(), _enc())
+			if not host.round_finished.is_connected(_plan_after_round):
+				host.round_finished.connect(_plan_after_round, CONNECT_ONE_SHOT)
+		return
+	# F2: the core's resolve, the round's playback build and the (folded away) panels' refresh each get their own frame;
+	# together on one frame they were the 55-90 ms hitch at the start of every round.
+	_set_play_layout(true)
+	host.clear_plan()
+	if not host.round_finished.is_connected(_plan_after_round):
+		host.round_finished.connect(_plan_after_round, CONNECT_ONE_SHOT)
+	await get_tree().process_frame
+	if not is_inside_tree() or host == null or not is_instance_valid(host):
+		return
+	host.play_round(rounds.back(), _enc())
+	await get_tree().process_frame
+	if not is_inside_tree():
 		return
 	var _t1 := Time.get_ticks_usec()
 	refresh_round()
-	if OS.get_environment("ROUND_TIMING") != "":
+	if timing:
 		print("ROUND_TIMING refresh_round=%d ms" % ((Time.get_ticks_usec() - _t1) / 1000))
-	var rounds: Array = _enc().get("rounds", [])
-	if host and rounds.size() > 0:
-		_set_play_layout(true)
-		host.clear_plan()
-		host.play_round.call_deferred(rounds.back(), _enc())
-		if not host.round_finished.is_connected(_plan_after_round):
-			host.round_finished.connect(_plan_after_round, CONNECT_ONE_SHOT)
+
+## True when refresh_round can update the panels in place (no full rebuild, which re-parents the battle view).
+func _ui_ready() -> bool:
+	var e := _enc()
+	if _root == null or not is_instance_valid(_root) or not _root.is_inside_tree() or e.is_empty() or e.get("finished", false) or choice:
+		return false
+	var ships: Array = e.get("ships", [])
+	if _cards.size() != ships.size():
+		return false
+	for sd in ships:
+		if not _cards.has(int(sd["id"])) or not is_instance_valid(_cards[int(sd["id"])]):
+			return false
+	return true
 
 ## While a round plays the ship lists and the orders bar fold away so the battle fills the screen (M4 combat 2: the 3D view sat
 ## in a small panel between the lists and every ship was tiny); they come back for the plan phase.

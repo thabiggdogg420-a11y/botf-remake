@@ -52,6 +52,9 @@ const MAX_FRAME_STEP := 0.05    ## Longest wall-clock step one frame may advance
 @export var flight_sim := true
 @export var shot_director := true ## M4 flight stage 2: show-style held moving shots (BattleScene._direct_shot) over the old 1-3 s cuts.
 var flight := BattleFlight.new()
+var threaded_build := false  ## F2: build each round's timeline on a worker thread (the game's battle host turns it on)
+var _build_token := 0
+var _building := false
 var _flight_key := -1
 var _flight_round := -1
 
@@ -153,7 +156,26 @@ func play_round(p_encounter: Dictionary, p_round_index: int) -> void:
 		var node: BattleShip = _ships.get(int(i.fleetId))
 		if node != null:
 			i["lengthMeters"] = node.length_meters
-	timeline = BattleTimeline.build(rounds[round_index].get("events", []), info, cfg)
+	var evs: Array = rounds[round_index].get("events", [])
+	if threaded_build and AppLoader.threads():
+		# F2: the round's playback (flight sim and schedule) is built on a worker thread over a few frames: on the main
+		# thread it cost 20-35 ms at 4v5 and more at 24v24, on the first frame of every round. The view holds the last
+		# pose meanwhile (the previous round has finished, so nothing moves).
+		var token := _build_token + 1
+		_build_token = token
+		_playing = false
+		var holder := {}
+		_building = true
+		var task := WorkerThreadPool.add_task(func(): holder.tl = BattleTimeline.build(evs, info, cfg), false, "botf round build")
+		while not WorkerThreadPool.is_task_completed(task):
+			await get_tree().process_frame
+		WorkerThreadPool.wait_for_task_completion(task)
+		if token != _build_token or not is_inside_tree():
+			return # a newer round (or the end of the battle) took over
+		_building = false
+		timeline = holder.tl
+	else:
+		timeline = BattleTimeline.build(evs, info, cfg)
 	# A round of nothing but closing in (no weapon fires) is run through at speed: the player asked for a battle, and the
 	# approach is two rounds of empty space before the first torpedo (Simon, 14 Nov).
 	last_round_idle = true
@@ -255,7 +277,7 @@ static func pose_basis(facing: float, pitch: float, bank: float) -> Basis:
 # ------------------------------------------------------------------------------------------------------------------
 
 func _process(delta: float) -> void:
-	if timeline == null:
+	if timeline == null or _building:
 		return
 	# A hitch (first-use shader compile, a model load) must slow playback, not teleport ships across the arena.
 	var dt := minf(delta, MAX_FRAME_STEP) * playback_speed * _fast_forward
@@ -289,6 +311,8 @@ func _sync_ships(info: Array) -> void:
 		by_id[int(s.id)] = s
 	for fid in present:
 		if not _ships.has(fid):
+			if OS.get_environment("ROUND_TIMING") != "":
+				print("ROUND_TIMING sync builds ship %d (round %d)" % [fid, round_index])
 			var ship := BattleShip.new()
 			add_child(ship)
 			ship.setup(by_id.get(fid, {"id": fid, "owner": _owner_from_info(info, fid)}), assets)
