@@ -250,6 +250,7 @@ func _prepare(s: String) -> void:
 			await _wait(4)
 			app.close_all_modals()
 			for n in 2:
+				await _hulls_ready()
 				app._current._round()
 				await _wait(4)
 			await _wait(int(_env("SHOT_BATTLE_FRAMES")) if _env("SHOT_BATTLE_FRAMES") != "" else 150)
@@ -302,8 +303,10 @@ func _prepare(s: String) -> void:
 			await _wait(4)
 			app.close_all_modals() # the deferred "Enemy contact" choice; Take command
 			for n in (1 if s == "battle-r1" else 3):
+				await _hulls_ready()
 				app._current._round()
 				await _wait(4)
+			await _hulls_ready()
 			await _wait(int(_env("SHOT_BATTLE_FRAMES")) if _env("SHOT_BATTLE_FRAMES") != "" else 150)
 		"battle-overview", "battle-chase", "battle-ship", "battle-target", "battle-topdown", "battle-cinematic", "battle-free", "battle-closeup":
 			# The battle camera modes on the starbase drill after round 2 (BattleCamera; the mode bar shows the mode).
@@ -313,8 +316,10 @@ func _prepare(s: String) -> void:
 				await _wait(4)
 				app.close_all_modals()
 				for n in 2:
+					await _hulls_ready()
 					app._current._round()
 					await _wait(4)
+			await _hulls_ready()
 			var cam: BattleCamera = app._current.host.view_node.camera
 			var mode: int = {"battle-overview": 0, "battle-chase": 1, "battle-ship": 2, "battle-target": 3, "battle-topdown": 4,
 				"battle-cinematic": 5, "battle-free": 0, "battle-closeup": 0}[s]
@@ -398,6 +403,7 @@ func _prepare(s: String) -> void:
 								break
 					if kt >= 0.0 or app.encounter.get("finished", false):
 						break
+					await _hulls_ready()
 					app._current._round()
 					await _wait(6)
 				print("KILL at ", kt)
@@ -416,12 +422,14 @@ func _prepare(s: String) -> void:
 							worst = int(sd["id"])
 					if worst != 0 or app.encounter.get("finished", false):
 						break
+					await _hulls_ready()
 					app._current._round()
 					await _wait(6)
 				print("DAMAGE ship ", worst)
 				if worst != 0:
 					# One more round so the replay starts from the damaged hull (fires show from hullBefore).
 					if not app.encounter.get("finished", false):
+						await _hulls_ready()
 						app._current._round()
 						await _wait(6)
 					cam = view.camera
@@ -552,6 +560,7 @@ func _volley_drill(campaign := false) -> void:
 	for r in 8:
 		if app.encounter.get("finished", false):
 			break
+		await _hulls_ready()
 		app._current._round()
 		await _wait(4)
 		if view.timeline == null:
@@ -641,3 +650,12 @@ func _force_contact() -> void:
 		var r: Dictionary = app.core.invoke("submit", {"command": {"type": "MoveFleet", "fleetId": int(f.get("id", 0)), "targetX": best.x, "targetY": best.y}, "cancelIds": []})
 		if not r.get("ok", false) and _env("SHOT_FXDEBUG") != "":
 			print("move refused: ", r.get("error", ""))
+
+
+## F2: a round asked for before the hero hulls have parsed waits for them (BattleView._pending_round); the shots wait too.
+func _hulls_ready() -> void:
+	for i in 900:
+		var vn: Node = app._current.host.view_node if app._current != null and app._current.get("host") != null else null
+		if vn != null and not BattleAssets.loading() and (vn.get("_pending_round") == null or (vn._pending_round as Dictionary).is_empty()) and (vn.get("_stage") == null or (vn._stage as Dictionary).is_empty()):
+			return
+		await _wait(1)
