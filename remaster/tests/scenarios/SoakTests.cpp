@@ -16,6 +16,7 @@
 //
 // BOTF_SOAK_SCALE=N (environment) multiplies the seed count and adds turns for
 // longer local soaks; the default keeps CI time modest.
+#define _CRT_SECURE_NO_WARNINGS   // std::getenv: BOTF_SOAK_* knobs (MSVC C4996 under /W4 /WX)
 #include "CampaignSession.h"
 
 #include <algorithm>
