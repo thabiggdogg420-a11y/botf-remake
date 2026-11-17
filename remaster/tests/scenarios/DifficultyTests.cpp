@@ -3,6 +3,7 @@
 // between the rows is how the AI plays (income, industry, research, treasury, war confidence, spy readiness, and from Hard the AI policy).
 // A rival "wins" a trial when its strength score beats the baseline empire's. The table is printed and the order is checked.
 // BOTF_SOAK_SCALE=N (environment) multiplies the seed count.
+#define _CRT_SECURE_NO_WARNINGS   // std::getenv (MSVC C4996 under /W4 /WX)
 #include "Content.h"
 #include "Simulation.h"
 
