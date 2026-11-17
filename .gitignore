@@ -22,3 +22,8 @@ setup/staging/
 /scratch_milestone_manifest.xml
 # Agent worktrees used during orchestrated development
 /.claude/worktrees/
+
+# Local tool and agent scratch (never commit)
+/.codex-remote-attachments/
+/.playwright-mcp/
+/artifacts/
