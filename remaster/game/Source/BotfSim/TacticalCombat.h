@@ -2134,6 +2134,16 @@ inline roster::WeaponType ownerBeamType(int ownerId) {
 inline roster::WeaponType ownerTorpedoType(int ownerId) {
     return ownerId == 3 ? roster::WeaponType::PlasmaTorpedo : roster::WeaponType::PhotonTorpedo;
 }
+// Battle-start deployment (Simon, 18 Nov 2026): the two lines face each other DeployGap cells apart, on rows 3/5/7, so
+// every ship starts within beam range (Chebyshev distance at most max(DeployGap, 4) <= weaponMaxRange(Beam)) of every
+// enemy. Weapon ranges themselves are unchanged.
+inline constexpr int DeployGap = 3;
+inline int deployColumn(bool firstSide, int arenaWidth) {
+    const int left = (arenaWidth - 1 - DeployGap) / 2;
+    return firstSide ? left : left + DeployGap;
+}
+inline int deployRow(int index) { return 3 + (index % 3) * 2; }
+
 inline void equipFlight(Ship& s, int firstOwner) {
     s.facing = s.ownerId == firstOwner ? 0 : 180;
     s.velocity = s.immobile ? 0 : s.speed;
@@ -2411,15 +2421,12 @@ inline Encounter constructEncounter(const GameState& state,
             else s.speed = 1;
         }
 
-        // Deterministic deployment positioning
+        // Deterministic deployment positioning (Simon, 18 Nov 2026: the fleets deploy inside beam range, so phasers and
+        // disruptors fire from round 1; weapon ranges are unchanged). See deployColumn / deployRow.
         if (f->ownerId == firstOwner) {
-            s.position.x = 1;
-            s.position.y = 2 + (side1Index * 2) % (enc.arenaHeight - 4);
-            side1Index++;
+            s.position = {deployColumn(true, enc.arenaWidth), deployRow(side1Index++)};
         } else {
-            s.position.x = enc.arenaWidth - 2;
-            s.position.y = 2 + (side2Index * 2) % (enc.arenaHeight - 4);
-            side2Index++;
+            s.position = {deployColumn(false, enc.arenaWidth), deployRow(side2Index++)};
         }
 
         s.isAlive = (s.hull > 0);

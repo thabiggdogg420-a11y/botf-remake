@@ -575,6 +575,8 @@ func _emitter(mat: StandardMaterial3D, at: Vector3, amount: int, life: float, di
 	return e
 
 
+## F2 follow-up (18 Nov): the emitters are world-space, so a moving burning ship drew a long trailing plume; SoA burns
+## sit on the hull. Fire and smoke lifetimes are short (0.4-1.1 s) so the burn stays local to the hull.
 func _build_damage_fx() -> void:
 	var L := maxf(length, 2.0)
 	var fire_mat := BattleShip._particle_mat(BattleShip.flame_flipbook(), true, true)
@@ -593,8 +595,8 @@ func _build_damage_fx() -> void:
 		var r := RandomNumberGenerator.new()
 		r.seed = hash([name, k])
 		var at := Vector3(r.randf_range(-0.4, 0.35) * half_extents.x, half_extents.y * 1.05, r.randf_range(-0.5, 0.5) * half_extents.z)
-		var fire := _emitter(fire_mat, at, 18, 0.7, Vector3.UP, 20.0, Vector2(L * 0.04, L * 0.09), Vector2(L * 0.16, L * 0.26), fire_ramp, true)
-		var smoke := _emitter(smoke_mat, at, 26, 2.4, Vector3.UP, 30.0, Vector2(L * 0.05, L * 0.1), Vector2(L * 0.14, L * 0.3), smoke_ramp, false)
+		var fire := _emitter(fire_mat, at, 14, 0.4, Vector3.UP, 20.0, Vector2(L * 0.04, L * 0.09), Vector2(L * 0.16, L * 0.26), fire_ramp, true)
+		var smoke := _emitter(smoke_mat, at, 14, 0.9, Vector3.UP, 30.0, Vector2(L * 0.05, L * 0.1), Vector2(L * 0.14, L * 0.3), smoke_ramp, false)
 		smoke.scale_amount_curve = _grow_curve()
 		_damage_fx.append([fire, smoke])
 	var vat := Vector3(-0.1 * half_extents.x, half_extents.y * 0.6, half_extents.z * 1.02)
@@ -691,7 +693,7 @@ func _build_system_fx(key: String) -> Array:
 		"engines":
 			var at := Vector3(-hx.x * 0.95, 0.0, 0.0)
 			out.append(_emitter(spark_mat, at, 36, 0.5, Vector3(-1, 0.2, 0).normalized(), 50.0, Vector2(L * 0.1, L * 0.3), Vector2(L * 0.008, L * 0.02), spark_ramp, false))
-			var smoke := _emitter(smoke_mat, at, 24, 2.6, Vector3(-1, 0.1, 0).normalized(), 20.0, Vector2(L * 0.05, L * 0.12), Vector2(L * 0.1, L * 0.25), smoke_ramp, false)
+			var smoke := _emitter(smoke_mat, at, 14, 1.0, Vector3(-1, 0.1, 0).normalized(), 20.0, Vector2(L * 0.05, L * 0.12), Vector2(L * 0.1, L * 0.25), smoke_ramp, false)
 			smoke.scale_amount_curve = _grow_curve()
 			out.append(smoke)
 		"warpCore":
@@ -701,8 +703,8 @@ func _build_system_fx(key: String) -> Array:
 			out.append(gas)
 		"breach":
 			var at := Vector3(-hx.x * 0.2, -hx.y * 0.4, 0.0)
-			out.append(_emitter(fire_mat, at, 30, 0.8, Vector3.UP, 45.0, Vector2(L * 0.05, L * 0.12), Vector2(L * 0.2, L * 0.34), fire_ramp, true))
-			var smoke := _emitter(smoke_mat, at, 30, 3.0, Vector3.UP, 35.0, Vector2(L * 0.05, L * 0.12), Vector2(L * 0.2, L * 0.4), smoke_ramp, false)
+			out.append(_emitter(fire_mat, at, 24, 0.45, Vector3.UP, 45.0, Vector2(L * 0.05, L * 0.12), Vector2(L * 0.2, L * 0.34), fire_ramp, true))
+			var smoke := _emitter(smoke_mat, at, 16, 1.1, Vector3.UP, 35.0, Vector2(L * 0.05, L * 0.12), Vector2(L * 0.2, L * 0.4), smoke_ramp, false)
 			smoke.scale_amount_curve = _grow_curve()
 			out.append(smoke)
 	return out

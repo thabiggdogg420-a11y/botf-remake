@@ -407,8 +407,8 @@ tactical::Encounter constructStationEncounter(GameState& state, const std::vecto
     ship->immobile = true;
     int firstOwner = station.ownerId;
     for (const auto& s : encounter.ships) firstOwner = std::min(firstOwner, s.ownerId);
-    ship->position.x = station.ownerId == firstOwner ? 1 : encounter.arenaWidth - 2;
-    ship->position.y = encounter.arenaHeight / 2;
+    ship->position.x = tactical::deployColumn(station.ownerId == firstOwner, encounter.arenaWidth); // inside beam range (18 Nov ruling)
+    ship->position.y = tactical::deployRow(1);
     if (encounter.wegoRules()) { tactical::splitShieldFacings(*ship); ship->elevation = 0; } // Rules 4: facings follow the station's own shields; an immobile platform sits on layer 0
     if (encounter.flightRules()) tactical::equipFlight(*ship, firstOwner); // Rules 3: immobile platform, all-round mounts
     encounter.standingOrders[proxy.id] = tactical::Order{proxy.id, 0, tactical::TacticalManeuver::Hold};
