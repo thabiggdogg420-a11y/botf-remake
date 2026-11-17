@@ -7,8 +7,9 @@ diplomacy, intel, database), Starbase drill battle with hail (truce) and rounds,
 Preload whole game (762 MB, survives a reload, a new game and a battle then fetch nothing).
 
 ## Gaps and risks
-- **GPU memory in battle.** Hull textures are 2048 px, no download budget: a battle holds about 3 GB of textures on the 4090. A
-  small GPU may drop the context. Lowering: `build_ship_packs.py --web-max 1024 --normal-max 1024` (0.85 GB). Decision for the lead.
+- **GPU memory in battle.** Hull textures are 1024 px in the browser build (lead decision, 17 Nov 2026: `build_ship_packs.py --web-max 1024`,
+  passed by verify.ps1) so a small GPU keeps its WebGL context; the earlier all-2048 build held about 3 GB of textures on the 4090. Normal maps
+  are still 2048 px (`--normal-max`); lowering them too (`--normal-max 1024`, all-1024 was 0.85 GB) is the next step if a small GPU still drops.
 - **WebGL context loss** was seen twice under software rendering (SwiftShader) after about 85 s, never on the real GPU. The page now
   shows a "reload, Continue picks up your autosave" overlay instead of a black screen (`export_presets.cfg` head_include). Engine
   cannot recover a lost context itself.
