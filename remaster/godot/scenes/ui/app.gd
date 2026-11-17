@@ -103,6 +103,62 @@ func _fetch_background() -> void:
 	web_packs_done = true
 	print("web packs: %.1f MB downloaded, %.1f MB from cache" % [AppLoader.bytes_downloaded / 1048576.0, AppLoader.bytes_cached / 1048576.0])
 	web_packs_changed.emit("")
+	_warm_service_worker()
+	_idle_prefetch()
+
+## Web: tells the service worker (web-host/sw.js) the title is up, so it caches the engine files for the next visit.
+func _warm_service_worker() -> void:
+	if OS.has_feature("web"):
+		JavaScriptBridge.eval("(function(){var c=navigator.serviceWorker&&navigator.serviceWorker.controller;if(c)c.postMessage({type:'warm'});})()")
+
+# ---- Idle prefetch (F1 audit, 17 Nov): while the player is on the title or the galaxy, the next packs come down quietly ----
+const _IDLE_SCREENS := ["title", "new", "galaxy"]
+var _idle_running := false
+var _idle_failed := {}
+var _game_packs_busy := false
+var idle_fetched: Array = []   ## logical names the idle prefetch has brought in this session (for the verify report)
+
+## True when nothing else wants the connection: a calm screen, no battle or preload download running, no campaign-start fetch.
+func _idle_ok() -> bool:
+	return _IDLE_SCREENS.has(screen) and (_loading_layer == null or not _loading_layer.visible) and not AppLoader.preload_running and not _game_packs_busy
+
+## One pack at a time, only while `_idle_ok`. Leaves the preload button as the way to take everything else. Ends when the
+## queue is empty and a campaign is running (the title keeps waiting: the empire is not known there).
+func _idle_prefetch() -> void:
+	if not OS.has_feature("web") or _idle_running:
+		return
+	_idle_running = true
+	await AppLoader.load_manifest(self)
+	while true:
+		var tok := ""
+		var others: Array = []
+		if not view.is_empty():
+			tok = str(_EMPIRE_TOKENS.get(int(view.get("meta", {}).get("player", 0)), ""))
+		for k in _EMPIRE_TOKENS:
+			if _EMPIRE_TOKENS[k] != tok:
+				others.append(_EMPIRE_TOKENS[k])
+		var next := ""
+		for n: String in AppLoader.idle_queue(tok, others):
+			if not _idle_failed.has(n):
+				next = n
+				break
+		if next == "":
+			if not view.is_empty():
+				break
+			await get_tree().create_timer(2.0).timeout
+			continue
+		if not _idle_ok():
+			await get_tree().create_timer(1.0).timeout
+			continue
+		if await AppLoader.fetch_web_pack(self, next):
+			idle_fetched.append(next)
+			if next == AppLoader.WEB_PLANETS_HI:
+				PlanetTextures.reset()
+			web_packs_changed.emit(next)
+		else:
+			_idle_failed[next] = true
+	_idle_running = false
+	print("idle prefetch done: %d packs (%.1f MB downloaded, %.1f MB from cache so far)" % [idle_fetched.size(), AppLoader.bytes_downloaded / 1048576.0, AppLoader.bytes_cached / 1048576.0])
 
 var _game_packs_started := false
 
@@ -113,6 +169,7 @@ func _fetch_game_packs(v: Dictionary) -> void:
 	if not OS.has_feature("web") or _game_packs_started:
 		return
 	_game_packs_started = true
+	_game_packs_busy = true
 	var player := int(v.get("meta", {}).get("player", 1))
 	await AppLoader.load_manifest(self)
 	var need: Array = []
@@ -127,6 +184,7 @@ func _fetch_game_packs(v: Dictionary) -> void:
 	if await AppLoader.fetch_web_pack(self, AppLoader.WEB_PLANETS_HI):
 		PlanetTextures.reset()
 		web_packs_changed.emit(AppLoader.WEB_PLANETS_HI)
+	_game_packs_busy = false
 	print("web packs: %.1f MB downloaded, %.1f MB from cache" % [AppLoader.bytes_downloaded / 1048576.0, AppLoader.bytes_cached / 1048576.0])
 	web_packs_changed.emit("")
 

@@ -41,6 +41,20 @@ plus the game's own `index.pck`. The wasm files compress to a quarter of their s
 - `index.*`, `packs/manifest.json`, `sizes.json`: `Cache-Control: no-cache` (revalidate every visit; a 304 costs nothing). A new
   release replaces these and the packs whose hash changed; delete the old hashed packs after the upload if you wish.
 
+
+## Service worker (17 Nov 2026)
+`sw.js` sits beside `index.html` and `index.html` registers it (relative path, so any sub-path works; it needs HTTPS or localhost,
+and the host must serve `sw.js` as JavaScript with no redirect). It keeps what the player has already downloaded, whatever cache
+headers the host sends:
+- every `packs/*.<12 hex>.pck` is cached forever on first fetch (the hash is the content, so it never goes stale);
+- the engine files are cached in a bucket named for the build id, which `hash_web_packs.py` writes into `index.html`
+  (`<meta name="botf-build">`) and `packs/manifest.json`; `index.html` and `manifest.json` always go to the network first;
+- on a new upload the page carries a new build id, the old bucket is deleted and every cached pack the new manifest no longer lists
+  is dropped, so nothing from an old build is ever served with a new page.
+It adds nothing to the host: no headers, no rules. If the browser blocks it, the game runs as before from the network and IndexedDB.
+The packs are held twice when fetched this session (the game's own IndexedDB copy and the worker's cache); the browser's storage
+quota covers both, and a full quota only means a pack is fetched again.
+
 ## Files
 - `index.html`, `index.js`, `index.wasm`, `index.side.wasm`, `index.pck`, `index.audio*.js`, `index.png`, `index.icon.png`,
   `index.apple-touch-icon.png`: the engine and the game.

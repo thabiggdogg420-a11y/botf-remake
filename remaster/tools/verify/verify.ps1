@@ -263,6 +263,7 @@ try {
             @('empire-rules-vm', 'res://scripts/viewmodels/tests/test_empire_rules_vm.gd'),
             @('pack-editor-vm', 'res://scripts/viewmodels/tests/test_pack_editor_vm.gd'),
             @('ui', 'res://scenes/ui/tests/test_campaign_ui.gd'),
+            @('idle-prefetch', 'res://scenes/ui/tests/test_idle_prefetch.gd'),
             @('trek-icons', 'res://scenes/ui/tests/test_trek_icons.gd'),
             @('trek-text', 'res://scenes/ui/tests/test_trek_text.gd'),
             @('battle-timeline', 'res://scenes/battle/tests/test_battle_timeline.gd'),

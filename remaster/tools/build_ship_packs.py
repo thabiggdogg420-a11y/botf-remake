@@ -11,7 +11,7 @@ user://packs; BattleAssets then finds the heroes in res:// with no LocalAssets f
 
 Web: one pack per faction, ships_<fac>_web.pck (fed, kli, rom, car, fer), each with the manifests and that faction's glbs,
 reduced for download: the decimated LOD1..3 meshes are dropped (HeroLook.min_lod_ratio = 1.0 hides them anyway, so the frame
-is the same), and embedded textures are capped at --web-max px and re-encoded as JPEG (normal maps at a higher quality;
+is the same), and embedded textures are capped at --web-max px and re-encoded as WebP via EXT_texture_webp (q88, normal maps q95; --web-format jpeg for the old JPEG route;
 images with alpha stay PNG). The web client fetches them in the background after the title (AppLoader.fetch_background).
 
 Each output is rebuilt only when an input is newer. Prints one line per pack with its size. Exit 0 when every pack exists.
@@ -28,6 +28,9 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 FACTIONS = ["fed", "kli", "rom", "car", "fer"]
 LOD_RE = re.compile(r"_LOD\d+$")
+WEBP_Q = 88
+WEBP_NORMAL_Q = 95
+PORTRAIT_WEBP_Q = 94
 
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -63,7 +66,8 @@ def write_glb(path, js, binc):
             f.write(binc)
 
 
-def _reencode(data, mime, max_px, quality):
+def _reencode(data, mime, max_px, quality, webp=False):
+    """Caps the image at max_px and re-encodes it: WebP (EXT_texture_webp) when `webp`, else JPEG. Alpha images stay PNG."""
     from PIL import Image
     im = Image.open(io.BytesIO(data))
     im.load()
@@ -80,15 +84,19 @@ def _reencode(data, mime, max_px, quality):
     else:
         if im.mode not in ("RGB", "L"):
             im = im.convert("RGB")
-        im.save(out, "JPEG", quality=quality, subsampling=0 if quality >= 92 else 2, optimize=True)
-        new_mime = "image/jpeg"
+        if webp:
+            im.save(out, "WEBP", quality=quality, method=6)
+            new_mime = "image/webp"
+        else:
+            im.save(out, "JPEG", quality=quality, subsampling=0 if quality >= 92 else 2, optimize=True)
+            new_mime = "image/jpeg"
     b = out.getvalue()
     if not resized and len(b) >= len(data):
         return data, mime
     return b, new_mime
 
 
-def reduce_glb(src, dst, max_px, quality, normal_px=None, normal_q=95):
+def reduce_glb(src, dst, max_px, quality, normal_px=None, normal_q=95, webp=False):
     """Writes a web copy of `src`: LOD meshes dropped, textures capped and re-encoded. Returns (old_bytes, new_bytes)."""
     js, binc = read_glb(src)
     nodes = js.get("nodes", [])
@@ -164,7 +172,7 @@ def reduce_glb(src, dst, max_px, quality, normal_px=None, normal_q=95):
             im = js["images"][img_bv[old]]
             is_n = img_bv[old] in normal_imgs
             q = normal_q if is_n else quality
-            data, im["mimeType"] = _reencode(data, im.get("mimeType", "image/png"), (normal_px or max_px) if is_n else max_px, q)
+            data, im["mimeType"] = _reencode(data, im.get("mimeType", "image/png"), (normal_px or max_px) if is_n else max_px, q, webp)
         while len(out) % 8:
             out.append(0)
         v["byteOffset"] = len(out)
@@ -185,6 +193,16 @@ def reduce_glb(src, dst, max_px, quality, normal_px=None, normal_q=95):
         if "bufferView" in im:
             im["bufferView"] = bv_map[im["bufferView"]]
     js["buffers"] = [{"byteLength": len(out)}]
+    if any(im.get("mimeType") == "image/webp" for im in js.get("images", [])):
+        # EXT_texture_webp: a texture whose image is WebP names it in the extension (Godot's glTF importer reads it).
+        for t in js.get("textures", []):
+            src_i = t.get("source")
+            if src_i is not None and js["images"][src_i].get("mimeType") == "image/webp":
+                t.setdefault("extensions", {})["EXT_texture_webp"] = {"source": src_i}
+                del t["source"]
+        used = js.setdefault("extensionsUsed", [])
+        if "EXT_texture_webp" not in used:
+            used.append("EXT_texture_webp")
     os.makedirs(os.path.dirname(dst), exist_ok=True)
     write_glb(dst, js, bytes(out))
     return os.path.getsize(src), os.path.getsize(dst)
@@ -225,6 +243,10 @@ def main():
     ap.add_argument("--normal-max", type=int, default=2048, help="longest side of a web normal map")
     ap.add_argument("--jpeg-q", type=int, default=90)
     ap.add_argument("--normal-q", type=int, default=92)
+    ap.add_argument("--web-format", choices=["webp", "jpeg"], default="webp", help="web texture encoding: WebP via EXT_texture_webp (17 Nov, smaller at the same look) or JPEG")
+    ap.add_argument("--webp-q", type=int, default=WEBP_Q, help="WebP quality for colour textures")
+    ap.add_argument("--normal-webp-q", type=int, default=WEBP_NORMAL_Q, help="WebP quality for normal maps")
+    ap.add_argument("--portrait-webp-q", type=int, default=PORTRAIT_WEBP_Q, help="WebP quality for the portraits in art_web.pck (the desktop pack keeps the PNGs)")
     a = ap.parse_args()
     ships = os.path.abspath(a.ships)
     man_path = os.path.join(ships, "godot-hero-manifest.json")
@@ -262,12 +284,27 @@ def main():
     if a.portraits and os.path.isdir(a.portraits):
         pics = [(("res://art/portrait/" + f), os.path.join(a.portraits, f)) for f in sorted(os.listdir(a.portraits))
                 if f.startswith("portrait.") and f.endswith(".png")]
-        outs = ([os.path.join(os.path.dirname(os.path.abspath(a.desktop)), "art_desktop.pck")] if a.desktop else []) +                ([os.path.join(a.web, "art_web.pck")] if a.web else [])
-        for out in outs:
+        # The desktop pack keeps the PNGs as they are; the web pack carries WebP at --portrait-webp-q (AppLoader.art looks for
+        # webp first), which is a fraction of the size and is the first big file a cold visit downloads.
+        web_pics = []
+        if a.web and a.web_format == "webp":
+            from PIL import Image
+            wstage = os.path.join(stage, "portraits-web")
+            os.makedirs(wstage, exist_ok=True)
+            for res, disk in pics:
+                dst = os.path.join(wstage, os.path.splitext(os.path.basename(disk))[0] + ".webp")
+                if newer(dst, [disk] + tool_inputs):
+                    im = Image.open(disk)
+                    im.load()
+                    im = im.convert("RGBA" if im.mode in ("RGBA", "LA", "P") and "A" in im.getbands() else "RGB")
+                    im.save(dst, "WEBP", quality=a.portrait_webp_q, method=6)
+                web_pics.append((os.path.splitext(res)[0] + ".webp", dst))
+        outs = ([(os.path.join(os.path.dirname(os.path.abspath(a.desktop)), "art_desktop.pck"), pics)] if a.desktop else []) +                ([(os.path.join(a.web, "art_web.pck"), web_pics or pics)] if a.web else [])
+        for out, plist in outs:
             os.makedirs(os.path.dirname(out), exist_ok=True)
-            if pics and newer(out, [d for _r, d in pics] + tool_inputs):
-                pack(a.godot, a.proj, pics, out)
-            print("%s %.1f MB (%d portraits)" % (os.path.basename(out), os.path.getsize(out) / 1048576.0, len(pics)))
+            if plist and newer(out, [d for _r, d in plist] + tool_inputs):
+                pack(a.godot, a.proj, plist, out)
+            print("%s %.1f MB (%d portraits)" % (os.path.basename(out), os.path.getsize(out) / 1048576.0, len(plist)))
 
     if a.desktop:
         entries = base_entries + [("res://assets/ships/" + rel, src) for rel, src, _f in glbs.values()]
@@ -282,7 +319,7 @@ def main():
         for key, (rel, src, fac) in glbs.items():
             dst = os.path.join(stage, "web", rel)
             if newer(dst, [src] + tool_inputs):
-                reduce_glb(src, dst, a.web_max, a.jpeg_q, a.normal_max, a.normal_q)
+                reduce_glb(src, dst, a.web_max, a.webp_q if a.web_format == "webp" else a.jpeg_q, a.normal_max, a.normal_webp_q if a.web_format == "webp" else a.normal_q, a.web_format == "webp")
             before += os.path.getsize(src)
             after += os.path.getsize(dst)
             web_files[key] = [("res://assets/ships/" + rel, dst)]

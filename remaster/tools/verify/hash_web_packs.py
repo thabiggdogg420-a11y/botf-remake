@@ -12,7 +12,10 @@
    every browser; any static host can do the same.
    A .br sidecar (brotli q11, needs `pip install brotli`) is written the same way; a host that can serve precompressed brotli
    sends the smaller one (HOSTING.md).
-3. sizes.json and the printout give the first playable load (the engine, the main pck, the page: what has to arrive
+3. A build id (12 hex of the sha256 over the engine files) goes into index.html as <meta name="botf-build"> and into
+   packs/manifest.json ("build"), and web-host/sw.js is copied beside index.html. The service worker keys its engine cache on
+   that id, so a new build never serves the old build's engine files (web-host/sw.js, HOSTING.md "Service worker").
+4. sizes.json and the printout give the first playable load (the engine, the main pck, the page: what has to arrive
    before the title shows) and the total (every pack), both raw and as transferred. Exit 1 when a budget is exceeded.
 """
 import argparse
@@ -69,6 +72,42 @@ def sidecar(path):
     return os.path.getsize(gz)
 
 
+ENGINE_HASHED = ["index.js", "index.wasm", "index.side.wasm", "index.pck", "index.audio.worklet.js", "index.audio.position.worklet.js"]
+
+
+def stamp_build(web):
+    """Writes the build id into index.html (idempotent) and copies sw.js beside it. Returns the id ('' when index.html is missing)."""
+    idx = os.path.join(web, "index.html")
+    if not os.path.isfile(idx):
+        return ""
+    h = hashlib.sha256()
+    names = ENGINE_HASHED + sorted(f for f in os.listdir(web) if f.endswith(".wasm") and f.startswith("lib"))
+    for f in names:
+        p = os.path.join(web, f)
+        if os.path.isfile(p):
+            h.update(f.encode())
+            with open(p, "rb") as fh:
+                for b in iter(lambda: fh.read(8 << 20), b""):
+                    h.update(b)
+    bid = h.hexdigest()[:12]
+    html = open(idx, encoding="utf-8").read()
+    html = re.sub(r'<meta name="botf-build"[^>]*>\s*', "", html)
+    tag = '<meta name="botf-build" content="%s">' % bid
+    if "</head>" in html:
+        html = html.replace("</head>", tag + "\n</head>", 1)
+    else:
+        html = tag + html
+    open(idx, "w", encoding="utf-8", newline="").write(html)
+    for old in (idx + ".gz", idx + ".br"):   # the sidecars were made from the page without the id
+        if os.path.isfile(old):
+            os.remove(old)
+    sw = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "godot", "web-host", "sw.js")
+    if os.path.isfile(sw):
+        with open(sw, "rb") as src, open(os.path.join(web, "sw.js"), "wb") as dst:
+            dst.write(src.read())
+    return bid
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("web")
@@ -77,6 +116,7 @@ def main():
     a = ap.parse_args()
     packs = os.path.join(a.web, "packs")
     os.makedirs(packs, exist_ok=True)
+    build_id = stamp_build(a.web)
     files, sizes = {}, {}
     for f in sorted(os.listdir(packs)):
         p = os.path.join(packs, f)
@@ -100,7 +140,7 @@ def main():
             stem = f[:-17]
             files[stem + ".pck"] = f
             sizes[f] = os.path.getsize(os.path.join(packs, f))
-    json.dump({"files": files, "bytes": sizes}, open(os.path.join(packs, "manifest.json"), "w"), indent=1)
+    json.dump({"build": build_id, "files": files, "bytes": sizes}, open(os.path.join(packs, "manifest.json"), "w"), indent=1)
 
     gdext = [f for f in os.listdir(a.web) if f.endswith(".wasm") and f.startswith("lib")]
     first_raw = first_tx = first_br = 0

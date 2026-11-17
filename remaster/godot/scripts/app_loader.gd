@@ -256,6 +256,36 @@ static func preload_all(host: Node) -> void:
 	if _unsynced > 0:
 		await _flush_sync(host)
 
+## Idle prefetch (F1 audit, 17 Nov): the packs to fetch quietly while the player sits on the title or the galaxy, in the order they
+## will be wanted. Pure over the manifest and the mounted set, so a headless test can drive it. `player_tok` is the empire token
+## of the running campaign ("fed", "kli", ...) or "" on the title; `others` are the rival empires' tokens. Packs already mounted
+## this session are left out. The shared hull manifests and the big planet tier come first (every campaign needs them), then the
+## player's empire audio and every hull of the player's empire, then the rivals' hulls. Everything else is the preload button's.
+static func idle_queue(player_tok: String, others: Array) -> Array:
+	var out: Array = []
+	var have := {}
+	for n in all_packs():
+		have[n] = true
+	var add_pack := func(n: String) -> void:
+		if have.has(n) and not _mounted.has(n) and not out.has(n):
+			out.append(n)
+	add_pack.call(WEB_SHIPS_BASE)
+	add_pack.call(WEB_PLANETS_HI)
+	if player_tok != "":
+		add_pack.call("audio_%s_web.pck" % player_tok)
+	var toks: Array = []
+	if player_tok != "":
+		toks.append(player_tok)
+	for t in others:
+		if not toks.has(str(t)):
+			toks.append(str(t))
+	for t in toks:
+		var prefix := "hull_ship_%s_" % t
+		for n in all_packs():
+			if n.begins_with(prefix):
+				add_pack.call(n)
+	return out
+
 ## Progress of the pack being fetched right now (web): {"name", "bytes", "total"}; empty when idle. The loading overlay reads it.
 static var progress := {}
 
