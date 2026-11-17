@@ -29,9 +29,17 @@ static func governors(app: App, vm: EmpireVM = null) -> Control:
 		all.add_child(l)
 		for o in opts:
 			var key: String = o["key"]
-			var b := Lcars.pill(str(o["name"]), "ghost", func():
+			var apply_all := func():
 				var n := vm.set_all_governors(w, key)
-				app.toast("All %d colonies: %s governor %s." % [n, w, key], "good"), lock, "Apply to all %d colonies" % app.view["colonies"].size())
+				app.toast("All %d colonies: %s governor %s." % [n, w, key], "good")
+			var tip_all := "%s: apply to all %d colonies" % [str(o["name"]), app.view["colonies"].size()]
+			# F2: the governor's picture (as on the colony panel), not a text pill.
+			var art := Pic.governor_art(key)
+			var b: Button = Pic.picture_toggle(art, false, func(_on): pass, tip_all) if art != null else Lcars.pill(str(o["name"]), "ghost", apply_all, lock, tip_all)
+			if art != null:
+				b.toggle_mode = false
+				b.pressed.connect(apply_all)
+				b.disabled = lock != ""
 			b.name = "All_%s_%s" % [w, key]
 			all.add_child(b)
 	col.add_child(all)
@@ -51,8 +59,10 @@ static func governors(app: App, vm: EmpireVM = null) -> Control:
 			row.add_child(cap)
 			for o in opts:
 				var key2: String = o["key"]
-				var t := Lcars.toggle(str(o["name"]), str(g[w2]) == key2, func(_on):
-					vm.set_governor(sid, key2 if w2 == "workforce" else str(g["workforce"]), key2 if w2 == "queue" else str(g["queue"])))
+				var pick := func(_on):
+					vm.set_governor(sid, key2 if w2 == "workforce" else str(g["workforce"]), key2 if w2 == "queue" else str(g["queue"]))
+				var gart := Pic.governor_art(key2)
+				var t: Button = Pic.picture_toggle(gart, str(g[w2]) == key2, pick, str(o["name"]), Vector2(44, 44)) if gart != null else Lcars.toggle(str(o["name"]), str(g[w2]) == key2, pick)
 				t.add_theme_font_size_override("font_size", 13)
 				t.disabled = lock != ""
 				t.name = "Gov_%s_%d_%s" % [w2, sid, key2]

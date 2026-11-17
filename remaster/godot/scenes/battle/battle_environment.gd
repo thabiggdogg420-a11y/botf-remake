@@ -41,7 +41,7 @@ static func build(parent: Node3D, arena_size: Vector2, planet_class: String = "G
 	env.set_glow_level(4, 0.6)
 	env.set_glow_level(5, 0.5)
 	env.set_glow_level(6, 0.3)
-	env.glow_intensity = 0.5 # R3.5: clamped so stacked fire never whites out the frame
+	env.glow_intensity = 0.4 # F2: capped lower (no bloom wash on a close kill); R3.5: clamped so stacked fire never whites out the frame
 	env.glow_strength = 1.0
 	env.glow_bloom = 0.0
 	env.glow_blend_mode = Environment.GLOW_BLEND_MODE_SCREEN

@@ -44,10 +44,17 @@ func _mount_next_frame() -> void:
 
 
 func _mount() -> void:
-	var packed: PackedScene = AppLoader.resource(BATTLE_SCENE)
-	attach(packed.instantiate())
+	var t0 := Time.get_ticks_usec()
+	var spare: Node = App.take_spare_battle_view() if App.i != null else null
+	if spare == null:
+		var packed: PackedScene = AppLoader.resource(BATTLE_SCENE)
+		spare = packed.instantiate()
+	attach(spare)
+	var t1 := Time.get_ticks_usec()
 	if not _last_encounter.is_empty():
 		load_encounter(_last_encounter) # the screen asked before the view existed
+	if OS.get_environment("ROUND_TIMING") != "":
+		print("ROUND_TIMING mount frame %d: attach=%d load=%d ms" % [Engine.get_process_frames(), (t1 - t0) / 1000, (Time.get_ticks_usec() - t1) / 1000])
 
 
 ## Mounts a battle view (Control, or a Node3D which is wrapped in a SubViewport).
@@ -68,6 +75,8 @@ func attach(node: Node) -> void:
 			(node as Control).set_anchors_preset(Control.PRESET_FULL_RECT)
 		add_child(node)
 	view_node = node
+	if "threaded_build" in node:
+		node.threaded_build = true # F2: round playback built off the main thread (no hitch at the start of a round)
 	if node.has_signal("ship_picked"):
 		node.connect("ship_picked", func(id): ship_picked.emit(id))
 	if node.has_signal("subsystem_picked"):

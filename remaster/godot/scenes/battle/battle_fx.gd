@@ -292,6 +292,7 @@ func update(t: float) -> void:
 			_despawn(i)
 		if _active.has(i):
 			_animate(i, j, t)
+	_cap_flares()
 
 
 ## Seconds a job draws before its start: the phaser charge.
@@ -363,7 +364,30 @@ func _flare(color: Color, size: float, intensity := 1.0, spikes := 0.0) -> MeshI
 	_fxp(mi, "flare_color", color)
 	_fxp(mi, "flare_intensity", intensity)
 	_fxp(mi, "flare_spikes", spikes)
+	_flares.append(mi)
 	return mi
+
+
+## F2 glare cap: no flare (hit flash, fireball, launch flash) draws wider than this share of the frame's height, so a
+## close kill or stacked hits never wash the screen white (footage: a capital's fireball fills a close shot, never the
+## whole frame with glare).
+const FLARE_MAX_SCREEN := 0.32
+var _flares: Array = []
+
+func _cap_flares() -> void:
+	var cam := get_viewport().get_camera_3d()
+	if cam == null:
+		return
+	var h := float(get_viewport().get_visible_rect().size.y)
+	var keep: Array = []
+	for n in _flares:
+		if not is_instance_valid(n) or not n.is_inside_tree():
+			continue
+		keep.append(n)
+		var cap := _px_world(n.global_position, FLARE_MAX_SCREEN * h)
+		if cap > 0.0 and n.scale.x > cap:
+			n.scale = Vector3.ONE * cap
+	_flares = keep
 
 
 ## The look of one shot (docs/WEAPON-FX.md, DS9 Dominion War era). kind is the job kind (BEAM, PULSE, TORPEDO);
@@ -387,7 +411,8 @@ static func weapon_style(weapon: String, owner: int, kind: int, color: Color) ->
 		# Footage: SoA 1160 s / 782 s (Excelsior, Galaxy): pale gold with a white core; WotW 4916 s (station): amber.
 		# Battlechoreo compare 01: ours read wider and brighter than the show's thin gold line.
 		st.merge({"ribbon": 0, "core": Color.html("FFF4D8"), "body": Color.html("E8B850"), "glow": Color.html("A8640F"),
-			"charge": kind == Job.BEAM, "width": BEAM_WIDTH * 0.7, "min_px": BEAM_MIN_PX * 0.6}, true)
+			# F2 side-by-side (SoA 784, 1162): the show's phaser is a thin line, 1-3 px across a fleet shot; ours read as a bar.
+			"charge": kind == Job.BEAM, "width": BEAM_WIDTH * 0.5, "min_px": BEAM_MIN_PX * 0.4}, true)
 		if owner == 5:
 			st.merge({"body": Color.html("FFC21E"), "glow": Color.html("FF9A0A")}, true)
 	elif weapon == "PolaronBeam":
@@ -671,7 +696,7 @@ func _spawn(i: int, j: Dictionary) -> void:
 				st.point = p
 				st.size = maxf(50.0 * UE, target.radius() * 0.4)
 				st.nodes = [_flare(Color(1.0, 0.6, 0.25), st.size, 1.4, 1.0)]
-				var n: int = clampi(10 + j.hull_damage, 16, 70)
+				var n: int = clampi(6 + j.hull_damage / 2, 8, 30) # F2: fewer streaks (SoA hull hits are fire, not a spray)
 				var k := maxf(1.5, target.radius() * 0.1)
 				_burst(p, Color(1.0, 0.55, 0.15), "sparks", n, k, (from - p).normalized())
 				_burst(p, Color(1.0, 0.4, 0.1), "fire_small", 12, k)
@@ -719,9 +744,11 @@ func _spawn(i: int, j: Dictionary) -> void:
 				st.size = s.length
 				st.boomed = false
 				st.next_vent = j.start + 0.3
-				st.nodes = [_flare(Color(1.0, 0.6, 0.25), s.length * 0.6, 1.4, 1.0)]
-				_burst(p0, Color(1.0, 0.5, 0.15), "fire_small", 30, k0 * 1.5)
-				_burst(p0, Color(1.0, 0.6, 0.2), "sparks", 50, k0 * 1.5)
+				# F2 side-by-side (SoA 1160 1.4-1.9 s): the killing blow is an orange fire burst, not a white flash with a
+				# radial spray of white streaks.
+				st.nodes = [_flare(Color(1.0, 0.5, 0.18), s.length * 0.5, 0.8, 0.6)]
+				_burst(p0, Color(1.0, 0.45, 0.12), "fire_small", 60, k0 * 1.8)
+				_burst(p0, Color(1.0, 0.55, 0.2), "sparks", 14, k0 * 1.2)
 				_burst(p0, Color(0.7, 0.85, 1.0), "vent", 40, k0)
 				_flash_light(p0, Color(1.0, 0.6, 0.3), 11.0, s.length * 8.0, 0.9)
 			elif s != null:
@@ -755,8 +782,9 @@ func _fireball(i: int, st: Dictionary, p: Vector3, size: float) -> void:
 	# M4 flight stage 2 (show footage, SoA 20:05-20:53): a capital's death fills the close frame, lights the hulls
 	# round it for a couple of seconds and throws debris well clear of the wreck.
 	st.nodes = [_flare(Color(1.0, 0.75, 0.4), size * 2.4, 3.0, 1.5), ring, ring2]
-	_burst(p, Color(1.0, 0.5, 0.15), "fireball", 200, size / 3.6)
-	_burst(p, Color(1.0, 0.7, 0.3), "sparks", 120, size / 3.6)
+	# F2 side-by-side (SoA 1160 1.5-2.9 s): a billowing orange fireball that holds, not a white spark spray.
+	_burst(p, Color(1.0, 0.48, 0.12), "fireball", 280, size / 3.0)
+	_burst(p, Color(1.0, 0.6, 0.25), "sparks", 45, size / 3.6)
 	_burst(p, Color(1.0, 0.45, 0.1), "debris", 130, size / 2.4)
 	_burst(p, Color(0.35, 0.3, 0.28), "smoke", 30, size / 2.6)
 	_flash_light(p, Color(1.0, 0.65, 0.3), 16.0, size * 14.0, 2.2)
@@ -1020,7 +1048,7 @@ func _animate(i: int, j: Dictionary, t: float) -> void:
 func _flash_light(p: Vector3, color: Color, energy: float, light_range: float, seconds: float) -> void:
 	var l := OmniLight3D.new()
 	l.light_color = color
-	l.light_energy = energy
+	l.light_energy = minf(energy, 9.0) # F2: a kill or breach light no longer blows the hulls round it out to white
 	l.omni_range = light_range
 	l.omni_attenuation = 1.5
 	l.shadow_enabled = false

@@ -47,20 +47,48 @@ func load_encounter(e: Dictionary) -> void:
 
 func _process(delta: float) -> void:
 	super._process(delta)
+	if not _pending_round.is_empty():
+		# F2: a round asked for while the hulls were still parsing starts once they have landed and are built.
+		if not BattleAssets.loading() and _stage.is_empty() and _pending_deploy.is_empty():
+			var pr := _pending_round
+			_pending_round = {}
+			_play_index(pr.e, int(pr.idx), str(pr.key))
 	if not _pending_deploy.is_empty() and not BattleAssets.loading():
 		var e := _pending_deploy
 		_pending_deploy = {}
 		_show_deployment(e)
-	if not _stage.is_empty():
-		_stage.n = mini(int(_stage.n) + DEPLOY_PER_FRAME, _stage.ships.size())
-		_deploy_rows(_stage.e, _stage.ships.slice(0, _stage.n))
+	elif not _stage.is_empty():
+		# F2: the hulls are built a couple a frame (hidden), and the deployment is posed once, when the last is built
+		# (posing every step rebuilt the deployment timeline each frame: 28-34 ms frames while a fleet arrived).
+		var n0 := int(_stage.n)
+		_stage.n = mini(n0 + DEPLOY_PER_FRAME, _stage.ships.size())
+		_build_hulls(_stage.ships.slice(n0, _stage.n))
 		if int(_stage.n) >= _stage.ships.size():
+			var st := _stage
 			_stage = {}
+			_deploy_rows(st.e, st.ships)
+
+
+var _pending_round := {}   ## F2: {e, idx, key} of a round asked for before the hulls were ready
+
+
+## Builds the ship nodes for deployment rows without posing them (BattleScene._sync_ships builds the rest).
+func _build_hulls(rows: Array) -> void:
+	var by_id := {}
+	for s in _stage.e.get("ships", []):
+		by_id[int(s.id)] = s
+	for r in rows:
+		var fid := int(r.get("id", 0))
+		if _ships.has(fid):
+			continue
+		var ship := BattleShip.new()
+		ship.visible = false
+		add_child(ship)
+		ship.setup(by_id.get(fid, {"id": fid, "owner": int(r.get("owner", 0))}), assets)
+		_ships[fid] = ship
 
 
 func play_round(r: Variant, e: Variant = null) -> void:
-	_pending_deploy = {} # a round that starts first deploys the fleets itself
-	_stage = {}
 	# BattleScene-style call: play_round(encounter, index).
 	if r is Dictionary and (e is int or e is float):
 		super.play_round(r, int(e))
@@ -78,6 +106,11 @@ func play_round(r: Variant, e: Variant = null) -> void:
 
 func _play_index(e: Dictionary, idx: int, key: String) -> void:
 	if key == _encounter_key and idx == round_index:
+		return
+	if BattleAssets.loading() or not _stage.is_empty() or not _pending_deploy.is_empty():
+		# F2: the hulls are still parsing or being built: building the rest on this frame cost 320-470 ms (the first-open
+		# hitch). The round waits for them (a second or two at most on a cold first battle) and then plays in full.
+		_pending_round = {"e": e, "idx": idx, "key": key}
 		return
 	_encounter_key = key
 	super.play_round(e, idx)
@@ -132,5 +165,8 @@ func _show_deployment(e: Dictionary) -> void:
 func _deploy_rows(e: Dictionary, ships: Array) -> void:
 	var staged := e.duplicate()
 	staged["rounds"] = [{"index": 0, "events": [], "ships": ships}]
+	var _t0 := Time.get_ticks_usec()
 	super.play_round(staged, 0)
+	if OS.get_environment("ROUND_TIMING") != "":
+		print("ROUND_TIMING deploy %d rows %d ms" % [ships.size(), (Time.get_ticks_usec() - _t0) / 1000])
 	round_index = -1 # the real round 1 must still start playback

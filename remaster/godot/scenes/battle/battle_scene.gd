@@ -52,6 +52,10 @@ const MAX_FRAME_STEP := 0.05    ## Longest wall-clock step one frame may advance
 @export var flight_sim := true
 @export var shot_director := true ## M4 flight stage 2: show-style held moving shots (BattleScene._direct_shot) over the old 1-3 s cuts.
 var flight := BattleFlight.new()
+var threaded_build := false  ## F2: build each round's timeline on a worker thread (the game's battle host turns it on)
+var _build_token := 0
+var _building := false
+var _build_task := -1
 var _flight_key := -1
 var _flight_round := -1
 
@@ -153,7 +157,37 @@ func play_round(p_encounter: Dictionary, p_round_index: int) -> void:
 		var node: BattleShip = _ships.get(int(i.fleetId))
 		if node != null:
 			i["lengthMeters"] = node.length_meters
-	timeline = BattleTimeline.build(rounds[round_index].get("events", []), info, cfg)
+	var evs: Array = rounds[round_index].get("events", [])
+	if _build_task >= 0:
+		# A build still running for a superseded round shares the flight sim: let it finish first (two at once raced).
+		WorkerThreadPool.wait_for_task_completion(_build_task)
+		_build_task = -1
+	if threaded_build and AppLoader.threads() and DisplayServer.get_name() != "headless":
+		# F2: the round's playback (flight sim and schedule) is built on a worker thread over a few frames: on the main
+		# thread it cost 20-35 ms at 4v5 and more at 24v24, on the first frame of every round. The view holds the last
+		# pose meanwhile (the previous round has finished, so nothing moves).
+		var token := _build_token + 1
+		_build_token = token
+		_playing = false
+		var holder := {}
+		_building = true
+		var task := WorkerThreadPool.add_task(func(): holder.tl = BattleTimeline.build(evs, info, cfg), false, "botf round build")
+		_build_task = task
+		while token == _build_token and not WorkerThreadPool.is_task_completed(task):
+			await get_tree().process_frame
+		if token != _build_token:
+			return # superseded: the newer round waited for this build and collected it
+		if _build_task == task:
+			WorkerThreadPool.wait_for_task_completion(task)
+			_build_task = -1
+		if token != _build_token or not is_inside_tree():
+			return # a newer round (or the end of the battle) took over
+		_building = false
+		timeline = holder.tl
+	else:
+		_build_token += 1 # any threaded build still waiting is superseded
+		_building = false
+		timeline = BattleTimeline.build(evs, info, cfg)
 	# A round of nothing but closing in (no weapon fires) is run through at speed: the player asked for a battle, and the
 	# approach is two rounds of empty space before the first torpedo (Simon, 14 Nov).
 	last_round_idle = true
@@ -184,6 +218,8 @@ func play_round(p_encounter: Dictionary, p_round_index: int) -> void:
 	clear_plan()
 	director.reset()
 	time = 0.0
+	_rescue_until = -1.0
+	_empty_clock = 0.0
 	_sound_i = 0
 	_bark_i = 0
 	_playing = true
@@ -255,7 +291,7 @@ static func pose_basis(facing: float, pitch: float, bank: float) -> Basis:
 # ------------------------------------------------------------------------------------------------------------------
 
 func _process(delta: float) -> void:
-	if timeline == null:
+	if timeline == null or _building:
 		return
 	# A hitch (first-use shader compile, a model load) must slow playback, not teleport ships across the arena.
 	var dt := minf(delta, MAX_FRAME_STEP) * playback_speed * _fast_forward
@@ -289,6 +325,8 @@ func _sync_ships(info: Array) -> void:
 		by_id[int(s.id)] = s
 	for fid in present:
 		if not _ships.has(fid):
+			if OS.get_environment("ROUND_TIMING") != "":
+				print("ROUND_TIMING sync builds ship %d (round %d)" % [fid, round_index])
 			var ship := BattleShip.new()
 			add_child(ship)
 			ship.setup(by_id.get(fid, {"id": fid, "owner": _owner_from_info(info, fid)}), assets)
@@ -587,7 +625,45 @@ func _update_camera(t: float, delta: float, centroid: Vector3, spread: float) ->
 	if _env.has("planet"):
 		camera.planet_center = (_env.planet as Node3D).global_position
 		camera.planet_radius = BattleEnvironment.PLANET_RADIUS
+	# F2: never hold on empty space. When no hull has read on screen (largest under EMPTY_FRAC of the frame's height)
+	# for EMPTY_GRACE seconds, whatever shot is running gives way to a tracking shot on the closest pair of opposing ships.
+	if film_cuts and _playing and int(shot.get("kind", -1)) >= -1 and not bool(shot.get("vista", false)):
+		_empty_clock = _empty_clock + delta if _largest_on_screen(bodies) < EMPTY_FRAC else 0.0
+		if _empty_clock > EMPTY_GRACE or _rescue_until > t:
+			var pair := _closest_pair(t)
+			var a: BattleShip = _ships.get(int(pair[0])) if not pair.is_empty() else null
+			var b: BattleShip = _ships.get(int(pair[1])) if not pair.is_empty() else null
+			if a != null:
+				if _rescue_until <= t:
+					_rescue_until = t + 2.5
+					_rescue_n += 1
+				_empty_clock = 0.0
+				shot = {"key": "rescue_%d_%d" % [round_index, _rescue_n], "kind": 0, "film": "behind", "subject": a.global_position,
+					"subject_size": a.length, "subject_fwd": a.global_basis.x.normalized(), "other": b.global_position if b != null else centroid,
+					"other_size": b.length if b != null else a.length, "centroid": centroid, "spread": spread}
 	camera.film(delta, t, bodies, chase, shot)
+
+
+const EMPTY_FRAC := 0.035   ## F2: a hull under 3.5% of the frame's height does not read as a ship
+const EMPTY_GRACE := 0.25   ## F2: seconds of no readable hull before the camera is pulled onto the nearest fight
+var _empty_clock := 0.0
+var _rescue_until := -1.0
+var _rescue_n := 0
+
+## Height on screen (share of the frame) of the largest ship the camera sees.
+func _largest_on_screen(bodies: Array) -> float:
+	var cam := camera as Camera3D
+	if cam == null:
+		return 1.0
+	var best := 0.0
+	for bd in bodies:
+		var c: Vector3 = bd.center
+		if not cam.is_position_in_frustum(c):
+			continue
+		var dist := maxf(0.1, (c - cam.global_position).dot(-cam.global_basis.z))
+		var frac := float(bd.radius) * 2.0 / (dist * 2.0 * tan(deg_to_rad(cam.fov) * 0.5))
+		best = maxf(best, frac)
+	return best
 
 
 ## Battlechoreo, proposal 8 (camera language, footage: 1-3 s cuts near the action, brief wide shots): the film cut at
