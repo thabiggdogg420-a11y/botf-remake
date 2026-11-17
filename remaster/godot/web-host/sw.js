@@ -141,7 +141,18 @@ self.addEventListener('fetch', (e) => {
 self.addEventListener('message', (e) => {
   if (!e.data || e.data.type !== 'warm') return;
   e.waitUntil((async () => {
-    const id = await currentBuild();
+    let id = await currentBuild();
+    if (!id) {   // first visit: the page was loaded before this worker existed, so it never saw index.html. Read the build id now.
+      try {
+        const page = new URL('index.html', SCOPE).href;
+        const r = await fetch(page, { cache: 'no-cache' });
+        if (r.ok) {
+          id = buildOf(await r.clone().text());
+          await setBuild(id);
+          if (id) await putSafe(ENGINE_PREFIX + id, page, r);
+        }
+      } catch (_) { /* offline: nothing to warm */ }
+    }
     if (!id) return;
     const c = await caches.open(ENGINE_PREFIX + id);
     for (const f of ENGINE_FILES) {

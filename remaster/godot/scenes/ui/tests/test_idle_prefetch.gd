@@ -21,10 +21,10 @@ func _initialize() -> void:
 	AppLoader._mounted.clear()
 
 	var title := AppLoader.idle_queue("", ["fed", "kli", "rom"])
-	check(title.size() == 2 + 4, "title: the shared packs, then every rival hull (%d)" % title.size())
+	check(title.size() == 2, "title: only the shared packs (%d)" % title.size())
 	check(title[0] == "ships_base_web.pck" and title[1] == "planets_hi_web.pck", "title: hull manifests, then the planet tier")
 	check(not title.has("audio_fed_web.pck"), "title: no empire audio before an empire is chosen")
-	check(not title.has("hull_ship_borg_cube_web.pck"), "title: the Borg are not an empire token here, so not queued")
+	check(not title.any(func(n): return n.begins_with("hull_")), "title: no hulls before an empire is chosen")
 
 	var fed := AppLoader.idle_queue("fed", ["kli", "rom"])
 	check(fed[0] == "ships_base_web.pck" and fed[1] == "planets_hi_web.pck" and fed[2] == "audio_fed_web.pck", "galaxy: shared packs, then the player's audio")

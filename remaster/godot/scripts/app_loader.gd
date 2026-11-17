@@ -260,7 +260,8 @@ static func preload_all(host: Node) -> void:
 ## will be wanted. Pure over the manifest and the mounted set, so a headless test can drive it. `player_tok` is the empire token
 ## of the running campaign ("fed", "kli", ...) or "" on the title; `others` are the rival empires' tokens. Packs already mounted
 ## this session are left out. The shared hull manifests and the big planet tier come first (every campaign needs them), then the
-## player's empire audio and every hull of the player's empire, then the rivals' hulls. Everything else is the preload button's.
+## player's empire audio and every hull of the player's empire, then the rivals' hulls. On the title (`player_tok` empty) only the
+## shared packs are queued. Everything else is the preload button's.
 static func idle_queue(player_tok: String, others: Array) -> Array:
 	var out: Array = []
 	var have := {}
@@ -271,11 +272,10 @@ static func idle_queue(player_tok: String, others: Array) -> Array:
 			out.append(n)
 	add_pack.call(WEB_SHIPS_BASE)
 	add_pack.call(WEB_PLANETS_HI)
-	if player_tok != "":
-		add_pack.call("audio_%s_web.pck" % player_tok)
-	var toks: Array = []
-	if player_tok != "":
-		toks.append(player_tok)
+	if player_tok == "":
+		return out   # the title: nobody has chosen an empire yet, so only what every campaign needs
+	add_pack.call("audio_%s_web.pck" % player_tok)
+	var toks: Array = [player_tok]
 	for t in others:
 		if not toks.has(str(t)):
 			toks.append(str(t))
@@ -436,11 +436,18 @@ static func _download_pack(host: Node, url: String, dest: String, name: String, 
 	# Writing through the engine's own file API is what makes it save the new file to IndexedDB (copyToFS alone does not).
 	# A preload writes hundreds of packs: it flushes once at the end and every 48 MB (_flush_sync), not after each one.
 	_unsynced += maxi(have, 0)
-	if not preload_running or _unsynced >= 48 * 1048576:
+	if not (preload_running or batch_sync) or _unsynced >= 48 * 1048576:
 		await _flush_sync(host)
 	return true
 
 static var _unsynced := 0
+## True while a long background run (the idle prefetch) fetches packs: it flushes to IndexedDB every 48 MB and at its end, like the preload.
+static var batch_sync := false
+
+## Saves what has been fetched but not yet flushed (end of a background run).
+static func flush_pending(host: Node) -> void:
+	if _unsynced > 0:
+		await _flush_sync(host)
 
 ## Saves the in-memory file system to IndexedDB and waits until it is done (what makes the packs survive the visit). Godot's own
 ## save-on-close skips a request that arrives while an earlier save is still running, so a long preload lost its last packs; this

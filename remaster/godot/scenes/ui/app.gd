@@ -128,6 +128,7 @@ func _idle_prefetch() -> void:
 	if not OS.has_feature("web") or _idle_running:
 		return
 	_idle_running = true
+	AppLoader.batch_sync = true
 	await AppLoader.load_manifest(self)
 	while true:
 		var tok := ""
@@ -157,6 +158,8 @@ func _idle_prefetch() -> void:
 			web_packs_changed.emit(next)
 		else:
 			_idle_failed[next] = true
+	AppLoader.batch_sync = false
+	await AppLoader.flush_pending(self)
 	_idle_running = false
 	print("idle prefetch done: %d packs (%.1f MB downloaded, %.1f MB from cache so far)" % [idle_fetched.size(), AppLoader.bytes_downloaded / 1048576.0, AppLoader.bytes_cached / 1048576.0])
 
