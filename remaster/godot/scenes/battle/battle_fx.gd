@@ -780,8 +780,9 @@ func _fireball(i: int, st: Dictionary, p: Vector3, size: float) -> void:
 	# M4 flight stage 2 (show footage, SoA 20:05-20:53): a capital's death fills the close frame, lights the hulls
 	# round it for a couple of seconds and throws debris well clear of the wreck.
 	st.nodes = [_flare(Color(1.0, 0.75, 0.4), size * 2.4, 3.0, 1.5), ring, ring2]
-	_burst(p, Color(1.0, 0.5, 0.15), "fireball", 200, size / 3.6)
-	_burst(p, Color(1.0, 0.7, 0.3), "sparks", 120, size / 3.6)
+	# F2 side-by-side (SoA 1160 1.5-2.9 s): a billowing orange fireball that holds, not a white spark spray.
+	_burst(p, Color(1.0, 0.48, 0.12), "fireball", 280, size / 3.0)
+	_burst(p, Color(1.0, 0.6, 0.25), "sparks", 45, size / 3.6)
 	_burst(p, Color(1.0, 0.45, 0.1), "debris", 130, size / 2.4)
 	_burst(p, Color(0.35, 0.3, 0.28), "smoke", 30, size / 2.6)
 	_flash_light(p, Color(1.0, 0.65, 0.3), 16.0, size * 14.0, 2.2)

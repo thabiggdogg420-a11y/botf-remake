@@ -634,6 +634,9 @@ func chrome_folded() -> bool:
 	return _chrome_folded
 
 func _exit_tree() -> void:
+	if _spare_battle_view != null and is_instance_valid(_spare_battle_view):
+		_spare_battle_view.free() # F2: the warmed view lives outside the tree; free it before the engine shuts down
+	_spare_battle_view = null
 	BattleAssets.wait_for_loads() # a hull still converting on a worker thread hangs the process at exit
 
 func _notification(what: int) -> void:
