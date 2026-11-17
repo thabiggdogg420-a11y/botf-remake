@@ -55,6 +55,7 @@ var flight := BattleFlight.new()
 var threaded_build := false  ## F2: build each round's timeline on a worker thread (the game's battle host turns it on)
 var _build_token := 0
 var _building := false
+var _build_task := -1
 var _flight_key := -1
 var _flight_round := -1
 
@@ -157,7 +158,11 @@ func play_round(p_encounter: Dictionary, p_round_index: int) -> void:
 		if node != null:
 			i["lengthMeters"] = node.length_meters
 	var evs: Array = rounds[round_index].get("events", [])
-	if threaded_build and AppLoader.threads():
+	if _build_task >= 0:
+		# A build still running for a superseded round shares the flight sim: let it finish first (two at once raced).
+		WorkerThreadPool.wait_for_task_completion(_build_task)
+		_build_task = -1
+	if threaded_build and AppLoader.threads() and DisplayServer.get_name() != "headless":
 		# F2: the round's playback (flight sim and schedule) is built on a worker thread over a few frames: on the main
 		# thread it cost 20-35 ms at 4v5 and more at 24v24, on the first frame of every round. The view holds the last
 		# pose meanwhile (the previous round has finished, so nothing moves).
@@ -167,14 +172,21 @@ func play_round(p_encounter: Dictionary, p_round_index: int) -> void:
 		var holder := {}
 		_building = true
 		var task := WorkerThreadPool.add_task(func(): holder.tl = BattleTimeline.build(evs, info, cfg), false, "botf round build")
-		while not WorkerThreadPool.is_task_completed(task):
+		_build_task = task
+		while token == _build_token and not WorkerThreadPool.is_task_completed(task):
 			await get_tree().process_frame
-		WorkerThreadPool.wait_for_task_completion(task)
+		if token != _build_token:
+			return # superseded: the newer round waited for this build and collected it
+		if _build_task == task:
+			WorkerThreadPool.wait_for_task_completion(task)
+			_build_task = -1
 		if token != _build_token or not is_inside_tree():
 			return # a newer round (or the end of the battle) took over
 		_building = false
 		timeline = holder.tl
 	else:
+		_build_token += 1 # any threaded build still waiting is superseded
+		_building = false
 		timeline = BattleTimeline.build(evs, info, cfg)
 	# A round of nothing but closing in (no weapon fires) is run through at speed: the player asked for a battle, and the
 	# approach is two rounds of empty space before the first torpedo (Simon, 14 Nov).
