@@ -292,6 +292,7 @@ func update(t: float) -> void:
 			_despawn(i)
 		if _active.has(i):
 			_animate(i, j, t)
+	_cap_flares()
 
 
 ## Seconds a job draws before its start: the phaser charge.
@@ -363,7 +364,30 @@ func _flare(color: Color, size: float, intensity := 1.0, spikes := 0.0) -> MeshI
 	_fxp(mi, "flare_color", color)
 	_fxp(mi, "flare_intensity", intensity)
 	_fxp(mi, "flare_spikes", spikes)
+	_flares.append(mi)
 	return mi
+
+
+## F2 glare cap: no flare (hit flash, fireball, launch flash) draws wider than this share of the frame's height, so a
+## close kill or stacked hits never wash the screen white (footage: a capital's fireball fills a close shot, never the
+## whole frame with glare).
+const FLARE_MAX_SCREEN := 0.32
+var _flares: Array = []
+
+func _cap_flares() -> void:
+	var cam := get_viewport().get_camera_3d()
+	if cam == null:
+		return
+	var h := float(get_viewport().get_visible_rect().size.y)
+	var keep: Array = []
+	for n in _flares:
+		if not is_instance_valid(n) or not n.is_inside_tree():
+			continue
+		keep.append(n)
+		var cap := _px_world(n.global_position, FLARE_MAX_SCREEN * h)
+		if cap > 0.0 and n.scale.x > cap:
+			n.scale = Vector3.ONE * cap
+	_flares = keep
 
 
 ## The look of one shot (docs/WEAPON-FX.md, DS9 Dominion War era). kind is the job kind (BEAM, PULSE, TORPEDO);
@@ -387,7 +411,8 @@ static func weapon_style(weapon: String, owner: int, kind: int, color: Color) ->
 		# Footage: SoA 1160 s / 782 s (Excelsior, Galaxy): pale gold with a white core; WotW 4916 s (station): amber.
 		# Battlechoreo compare 01: ours read wider and brighter than the show's thin gold line.
 		st.merge({"ribbon": 0, "core": Color.html("FFF4D8"), "body": Color.html("E8B850"), "glow": Color.html("A8640F"),
-			"charge": kind == Job.BEAM, "width": BEAM_WIDTH * 0.7, "min_px": BEAM_MIN_PX * 0.6}, true)
+			# F2 side-by-side (SoA 784, 1162): the show's phaser is a thin line, 1-3 px across a fleet shot; ours read as a bar.
+			"charge": kind == Job.BEAM, "width": BEAM_WIDTH * 0.5, "min_px": BEAM_MIN_PX * 0.4}, true)
 		if owner == 5:
 			st.merge({"body": Color.html("FFC21E"), "glow": Color.html("FF9A0A")}, true)
 	elif weapon == "PolaronBeam":
@@ -1020,7 +1045,7 @@ func _animate(i: int, j: Dictionary, t: float) -> void:
 func _flash_light(p: Vector3, color: Color, energy: float, light_range: float, seconds: float) -> void:
 	var l := OmniLight3D.new()
 	l.light_color = color
-	l.light_energy = energy
+	l.light_energy = minf(energy, 9.0) # F2: a kill or breach light no longer blows the hulls round it out to white
 	l.omni_range = light_range
 	l.omni_attenuation = 1.5
 	l.shadow_enabled = false

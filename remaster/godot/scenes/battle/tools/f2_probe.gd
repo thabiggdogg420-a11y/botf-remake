@@ -53,10 +53,13 @@ func _ships_in_view(vn: Node) -> int:
 	var cam: Camera3D = vn.get_viewport().get_camera_3d()
 	if cam == null:
 		return -1
+	# Ships that read: inside the view and at least 3.5% of the frame's height (a speck is empty space).
 	var n := 0
 	for s in vn._ships.values():
 		if is_instance_valid(s) and s.visible and cam.is_position_in_frustum(s.global_position):
-			n += 1
+			var dist := maxf(0.1, (s.global_position - cam.global_position).dot(-cam.global_basis.z))
+			if vn.camera.hull_radius(s) * 2.0 / (dist * 2.0 * tan(deg_to_rad(cam.fov) * 0.5)) >= 0.035:
+				n += 1
 	return n
 
 func _run() -> void:

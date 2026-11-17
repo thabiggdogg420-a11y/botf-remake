@@ -604,9 +604,34 @@ func _top_stat(cap: String, value: String, tone: String, tip: String) -> Control
 
 ## Area available to in-game screens (right of the rail, below the top bar).
 func stage_rect() -> Rect2:
-	if view.is_empty() or AppRoutes.is_bare(screen):
+	if view.is_empty() or AppRoutes.is_bare(screen) or _chrome_folded:
 		return Rect2(Vector2.ZERO, size)
 	return Rect2(Vector2(RAIL_W + 14, TOP_H + 4), size - Vector2(RAIL_W + 14, TOP_H + 4))
+
+## F2: while a battle round plays the top bar and the rail fold away and the battle fills the window; they come back
+## for the plan phase (and whenever the screen changes).
+var _chrome_folded := false
+var _chrome_tween: Tween
+
+func set_chrome_folded(on: bool) -> void:
+	if on == _chrome_folded or _chrome == null:
+		return
+	_chrome_folded = on
+	if _chrome_tween != null and _chrome_tween.is_valid():
+		_chrome_tween.kill()
+	if _current:
+		_place_current()
+	if on:
+		_chrome_tween = create_tween()
+		_chrome_tween.tween_property(_chrome, "modulate:a", 0.0, 0.2)
+		_chrome_tween.tween_callback(func(): _chrome.visible = not _chrome_folded)
+	else:
+		_chrome.visible = true
+		_chrome_tween = create_tween()
+		_chrome_tween.tween_property(_chrome, "modulate:a", 1.0, 0.25)
+
+func chrome_folded() -> bool:
+	return _chrome_folded
 
 func _exit_tree() -> void:
 	BattleAssets.wait_for_loads() # a hull still converting on a worker thread hangs the process at exit
@@ -641,6 +666,10 @@ func goto(id: String, remember: bool = true) -> void:
 		if history.size() > 12:
 			history.pop_front()
 	screen = id
+	if _chrome_folded:
+		_chrome_folded = false
+		_chrome.visible = true
+		_chrome.modulate.a = 1.0
 	close_all_modals()
 	if _current:
 		_current.queue_free()

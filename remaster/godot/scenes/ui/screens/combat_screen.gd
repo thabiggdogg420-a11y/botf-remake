@@ -538,6 +538,8 @@ var _chain := 0
 
 func _set_play_layout(on: bool) -> void:
 	_playing_layout = on
+	if app != null and app.has_method("set_chrome_folded") and is_inside_tree():
+		app.set_chrome_folded(on) # F2: the top bar and rail fold away too while the round plays
 	for n in [_side_l, _side_r, _bottom_box]:
 		if n != null and is_instance_valid(n):
 			n.visible = not on

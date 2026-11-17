@@ -206,6 +206,8 @@ func play_round(p_encounter: Dictionary, p_round_index: int) -> void:
 	clear_plan()
 	director.reset()
 	time = 0.0
+	_rescue_until = -1.0
+	_empty_clock = 0.0
 	_sound_i = 0
 	_bark_i = 0
 	_playing = true
@@ -611,7 +613,45 @@ func _update_camera(t: float, delta: float, centroid: Vector3, spread: float) ->
 	if _env.has("planet"):
 		camera.planet_center = (_env.planet as Node3D).global_position
 		camera.planet_radius = BattleEnvironment.PLANET_RADIUS
+	# F2: never hold on empty space. When no hull has read on screen (largest under EMPTY_FRAC of the frame's height)
+	# for EMPTY_GRACE seconds, whatever shot is running gives way to a tracking shot on the closest pair of opposing ships.
+	if film_cuts and _playing and int(shot.get("kind", -1)) >= -1 and not bool(shot.get("vista", false)):
+		_empty_clock = _empty_clock + delta if _largest_on_screen(bodies) < EMPTY_FRAC else 0.0
+		if _empty_clock > EMPTY_GRACE or _rescue_until > t:
+			var pair := _closest_pair(t)
+			var a: BattleShip = _ships.get(int(pair[0])) if not pair.is_empty() else null
+			var b: BattleShip = _ships.get(int(pair[1])) if not pair.is_empty() else null
+			if a != null:
+				if _rescue_until <= t:
+					_rescue_until = t + 2.5
+					_rescue_n += 1
+				_empty_clock = 0.0
+				shot = {"key": "rescue_%d_%d" % [round_index, _rescue_n], "kind": 0, "film": "behind", "subject": a.global_position,
+					"subject_size": a.length, "subject_fwd": a.global_basis.x.normalized(), "other": b.global_position if b != null else centroid,
+					"other_size": b.length if b != null else a.length, "centroid": centroid, "spread": spread}
 	camera.film(delta, t, bodies, chase, shot)
+
+
+const EMPTY_FRAC := 0.035   ## F2: a hull under 3.5% of the frame's height does not read as a ship
+const EMPTY_GRACE := 0.5    ## F2: seconds of no readable hull before the camera is pulled onto the nearest fight
+var _empty_clock := 0.0
+var _rescue_until := -1.0
+var _rescue_n := 0
+
+## Height on screen (share of the frame) of the largest ship the camera sees.
+func _largest_on_screen(bodies: Array) -> float:
+	var cam := camera as Camera3D
+	if cam == null:
+		return 1.0
+	var best := 0.0
+	for bd in bodies:
+		var c: Vector3 = bd.center
+		if not cam.is_position_in_frustum(c):
+			continue
+		var dist := maxf(0.1, (c - cam.global_position).dot(-cam.global_basis.z))
+		var frac := float(bd.radius) * 2.0 / (dist * 2.0 * tan(deg_to_rad(cam.fov) * 0.5))
+		best = maxf(best, frac)
+	return best
 
 
 ## Battlechoreo, proposal 8 (camera language, footage: 1-3 s cuts near the action, brief wide shots): the film cut at
