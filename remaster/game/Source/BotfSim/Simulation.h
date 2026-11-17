@@ -915,6 +915,10 @@ Command makePrioritizeLastConstructionCommand(std::uint64_t id, int systemId);
 Command makeRemoveConstructionCommand(std::uint64_t id, int systemId, int queueIndex);
 Command makeMoveConstructionCommand(std::uint64_t id, int systemId, int queueIndex, int destinationIndex);
 
+// Industry floor of the workforce governor (PLAYTEST-FEEDBACK 16 Nov 2026): once a colony is fed, this share of its citizens stays on
+// powered factories under the Growth / Research priorities. Capped by powered factories x 10 and by the citizens left after food.
+inline constexpr int GrowthIndustryFloorPercent = 25;
+inline constexpr int ResearchIndustryFloorPercent = 20;
 void evaluateWorkforceGovernor(const GameState& state, Colony& colony);
 void evaluateQueueGovernor(const GameState& state, Colony& colony);
 

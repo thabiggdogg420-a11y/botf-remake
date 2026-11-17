@@ -2,7 +2,7 @@ extends SceneTree
 ## Picture-led UI look test (16 Nov 2026): the three screens a new player uses most, with a word count of what is on screen.
 ##   godot --path remaster/godot --audio-driver Dummy --resolution 1920x1080 -s res://scenes/ui/tools/pictures_capture.gd -- <out_dir> [shot ...]
 ## Shots: colony (system screen, workforce + structures), build (structures with a queue of four), build-ships (starships tab),
-## galaxy-fleet (a ship selected), galaxy-system (our colony's sector selected), galaxy-contact (not used when no contact is near).
+## governors (Empire screen, Governors tab), galaxy-fleet (a ship selected), galaxy-system (our colony's sector selected), galaxy-contact (not used when no contact is near).
 ## Prints "WORDS <shot>: <words> (<numbers> numbers)" counting visible Label/Button/RichTextLabel/LineEdit text under the screen:
 ## a word is a token with two or more letters, a number a token with a digit and fewer (1T, 240, +80). Tooltips are not counted.
 
@@ -93,6 +93,13 @@ func _run(shots: Array) -> void:
 			"research", "empire", "fleets", "diplomacy", "intel":
 				app.goto(s)
 				await _wait_ms(1500)
+			"governors":
+				app.goto("empire")
+				await _wait(4)
+				var gsc := app.current_screen()
+				gsc.tab = "governors"
+				gsc.refresh()
+				await _wait_ms(2000)
 			"galaxy-help":
 				app.goto("galaxy")
 				await _wait(4)

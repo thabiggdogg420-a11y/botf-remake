@@ -188,7 +188,7 @@ $shipsDesk = Join-Path $userPacks 'ships_desktop.pck'
 $shipsOk = $false
 $shipDetail = 'no LocalAssets\ships: hero ship packs missing'
 if ($localAssets -and (Test-Path -LiteralPath (Join-Path $localAssets 'ships\godot-hero-manifest.json'))) {
-    $sp = Start-Process -FilePath $python -ArgumentList "`"$(Join-Path $remaster 'tools\build_ship_packs.py')`" --ships `"$(Join-Path $localAssets 'ships')`" --portraits `"$(Join-Path $localAssets 'portraits')`" --desktop `"$shipsDesk`" --web `"$webStage`" --godot `"$godot`" --proj `"$proj`"" `
+    $sp = Start-Process -FilePath $python -ArgumentList "`"$(Join-Path $remaster 'tools\build_ship_packs.py')`" --ships `"$(Join-Path $localAssets 'ships')`" --portraits `"$(Join-Path $localAssets 'portraits')`" --desktop `"$shipsDesk`" --web `"$webStage`" --godot `"$godot`" --proj `"$proj`" --web-max 1024" `
         -PassThru -WindowStyle Hidden -RedirectStandardOutput (Join-Path $logs 'pack-ships.log') -RedirectStandardError (Join-Path $logs 'pack-ships.err')
     $null = $sp.Handle
     try { $sp.PriorityClass = [System.Diagnostics.ProcessPriorityClass]::BelowNormal } catch {}

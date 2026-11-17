@@ -419,6 +419,32 @@ func _app_hooks() -> void:
 	sys.clock_override = 240.0
 	sys._poll_app()
 	check(sys.recent.any(func(r): return r.cue == "red_alert"), "a new contact sounds the red alert")
+	# F1 audit: the rail's Colony button and the Quit to title confirm are not silent. Switching screens plays the open cue (it takes
+	# the click's place that frame); pressing the button of the screen already open, and the confirm, play the plain click.
+	app.goto("galaxy", false)
+	await frames()
+	var colony_btn := app.find_child("Rail_system", true, false) as Button
+	check(colony_btn != null, "the rail has its Colony (system) button")
+	sys.clock_override = 300.0
+	sys.recent.clear()
+	colony_btn.pressed.emit()
+	await frames()
+	check(sys.recent.size() == 1 and sys.recent[0].cue == "ui_open" and sys.recent[0].bus == "Interface", "the Colony nav button plays the screen-open cue (%s)" % [sys.recent.map(func(r): return r.cue)])
+	colony_btn = app.find_child("Rail_system", true, false) as Button
+	sys.clock_override = 310.0
+	sys.recent.clear()
+	colony_btn.pressed.emit()
+	await frames()
+	check(sys.recent.size() == 1 and sys.recent[0].cue == "ui_click", "the Colony button on its own screen plays the click (%s)" % [sys.recent.map(func(r): return r.cue)])
+	Overlays.confirm_quit_to_title(app)
+	await frames()
+	var quit_ok := app.find_child("ConfirmButton", true, false) as Button
+	check(quit_ok != null, "Quit to title opens a confirm")
+	sys.clock_override = 320.0
+	sys.recent.clear()
+	quit_ok.pressed.emit()
+	await frames()
+	check(app.screen == "title" and sys.recent.any(func(r): return r.cue == "ui_click"), "the Quit to title confirm plays the click (%s)" % [sys.recent.map(func(r): return r.cue)])
 	app.queue_free()
 	await frames()
 

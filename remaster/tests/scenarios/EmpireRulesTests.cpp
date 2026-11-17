@@ -344,7 +344,6 @@ int main() {
 
     run("aftermath: Exterminate cuts the population, resettles it and costs standing", [&] {
         auto [s, sid] = conquer(1, 2, 124);
-        s.colonies.size();
         // Give the world some population first so the cut is visible, then choose.
         colonyOf(s, sid).population = 40; colonyOf(s, sid).foodWorkers = 20; colonyOf(s, sid).industryWorkers = 10; colonyOf(s, sid).researchWorkers = 10;
         int trustBefore = 0;

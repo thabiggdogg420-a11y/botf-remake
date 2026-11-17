@@ -59,9 +59,10 @@ There is no total-download budget (Simon, 16 Nov 2026: quality first). Measured 
 | Starting a campaign (planets, portraits, the chosen empire's audio, hulls on demand) | n/a | about 86 MB cumulative |
 | Every pack in the game (what "Preload whole game" downloads; the button shows 762 MB) | 819 MB | 779 MB |
 
-Ship textures are 2048 px (normal maps too, JPEG q90/92), the planets 2048 px WebP. A battle holds about 3 GB of textures in graphics
-memory on an RTX 4090 (the earlier 1024 px build held 0.85 GB); a small integrated GPU may struggle. Lower it by rebuilding with
-`build_ship_packs.py --web-max 1024 --normal-max 1024`.
+Hull textures are 1024 px (`build_ship_packs.py --web-max 1024`, set in verify.ps1 on 17 Nov 2026 so friends with small GPUs do not lose the
+WebGL context; JPEG q90/92). Normal maps stay at 2048 px (`--normal-max`) and the planets are 2048 px WebP. The earlier all-2048 build held
+about 3 GB of textures in graphics memory in a battle on an RTX 4090 and the all-1024 build 0.85 GB; if a small GPU still struggles, add
+`--normal-max 1024` in verify.ps1.
 
 The default path is lazy: a player downloads the first load, then only the packs a game needs (a hull is fetched the first time a
 battle needs it, about 2-6 MB each). Packs are kept in the browser's storage (IndexedDB), so a second visit downloads nothing that is

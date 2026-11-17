@@ -3,7 +3,7 @@
 are build outputs only: never committed, never published).
 
   python remaster/tools/build_ship_packs.py --ships <LocalAssets/ships> --desktop <out/ships_desktop.pck> --web <out_dir>
-      [--stage <dir>] [--godot <console exe>] [--proj remaster/godot] [--web-max 2048] [--jpeg-q 88]
+      [--stage <dir>] [--godot <console exe>] [--proj remaster/godot] [--web-max 1024] [--jpeg-q 88]
 
 Desktop: ships_desktop.pck holds every hero glb exactly as the dev run reads it, plus godot-hero-manifest.json and a path-free
 copy of resolved-manifest.json (class lengths), all under res://assets/ships/. AppLoader mounts it from <exe dir>/packs or
@@ -221,7 +221,7 @@ def main():
     ap.add_argument("--stage", default=None)
     ap.add_argument("--godot", default=os.environ.get("GODOT", r"C:\Tools\Godot\Godot_v4.5-stable_win64_console.exe"))
     ap.add_argument("--proj", default=os.path.normpath(os.path.join(HERE, "..", "godot")))
-    ap.add_argument("--web-max", type=int, default=2048, help="longest side of a web texture (16 Nov: back to 2048, no total-download budget)")
+    ap.add_argument("--web-max", type=int, default=1024, help="longest side of a web texture (17 Nov: 1024 for the browser build, small GPUs lose the WebGL context at 2048; verify.ps1 also passes it)")
     ap.add_argument("--normal-max", type=int, default=2048, help="longest side of a web normal map")
     ap.add_argument("--jpeg-q", type=int, default=90)
     ap.add_argument("--normal-q", type=int, default=92)
