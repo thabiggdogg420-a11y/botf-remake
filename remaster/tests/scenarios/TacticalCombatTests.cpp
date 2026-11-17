@@ -1,5 +1,7 @@
 #include "TacticalCombat.h"
 #include "Simulation.h"
+#include "Presets.h"
+#include "Content.h"
 
 #include <algorithm>
 #include <functional>
@@ -131,8 +133,9 @@ void testEncounterConstructionValidation() {
     // Deterministic canonical sorting puts owner 1 on left, owner 2 on right
     CHECK(enc.ships[0].ownerId == 1 && enc.ships[0].fleetId == 1001);
     CHECK(enc.ships[1].ownerId == 2 && enc.ships[1].fleetId == 1002);
-    CHECK(enc.ships[0].position.x == 1);
-    CHECK(enc.ships[1].position.x == enc.arenaWidth - 2);
+    // Simon, 18 Nov 2026: the fleets deploy inside beam range (left line x=6, right line x=9 on a 16-wide arena).
+    CHECK(enc.ships[0].position.x == deployColumn(true, enc.arenaWidth) && enc.ships[0].position.x == 6);
+    CHECK(enc.ships[1].position.x == deployColumn(false, enc.arenaWidth) && enc.ships[1].position.x == 9);
 
     std::cout << "  PASS: construction validation verified." << std::endl;
 }
@@ -1929,6 +1932,67 @@ void testWegoCampaignEncounterAndSaves() {
     CHECK(report.rounds.size() == first.rounds.size());
 }
 
+
+// Simon, 18 Nov 2026 (botf-rulings.md): fleets deploy inside beam range, so phasers and disruptors fire from round 1.
+// Every shipped preset (rules 2, 3 and 4 families), several seeds: two warring fleets meet in a sector; every ship starts
+// within beam range of every enemy, and round 1 carries at least one beam shot. Weapon ranges are unchanged.
+void testBeamsFireInRoundOne() {
+    std::cout << "Testing: fleets deploy inside beam range and beams fire in round 1 (every preset, several seeds)..." << std::endl;
+    int cases = 0;
+    for (const auto* preset : presets::all()) {
+        for (std::uint64_t seed : {3ULL, 7ULL, 31ULL, 4242ULL, 19990528ULL}) {
+            CampaignSetup setup;
+            setup.seed = seed; setup.empires = 3; setup.width = 16; setup.height = 12; setup.systems = 28;
+            setup.presetId = preset->id;
+            setup.threats = ThreatSetup{};
+            GameState state = newCampaign(setup);
+            ensureAtWar(state, 1, 2);
+            std::vector<int> ids;
+            for (int owner : {1, 2}) {
+                int added = 0;
+                const auto pool = state.fleets;
+                for (const auto& f : pool) {
+                    if (f.ownerId != owner || f.hull <= 0 || fleetAttack(f) <= 0) continue;
+                    if (f.shipClass == Building::Transport || f.shipClass == Building::ColonyShip) continue;
+                    Fleet copy = f;
+                    copy.id = 50000 + owner * 100 + added;
+                    copy.x = 2; copy.y = 2; copy.retreat = false; copy.attackTarget = 0;
+                    state.fleets.push_back(copy);
+                    ids.push_back(copy.id);
+                    if (++added == 3) break;
+                }
+                CHECK(added > 0);
+                // A stock destroyer per side as well: some presets open with scouts whose 1-point beam rounds to 0 damage
+                // at range 2 (the damage model, not the range, decides that).
+                Fleet line = state.fleets.back();
+                line.id = 50000 + owner * 100 + 50; line.ownerId = owner; line.referenceShipId = -1;
+                line.shipClass = Building::Destroyer; line.hull = 60; line.shields = 0;
+                state.fleets.push_back(line);
+                ids.push_back(line.id);
+            }
+            Encounter enc = constructEncounter(state, ids, seed * 2654435761ULL + 1);
+            for (const auto& a : enc.ships) for (const auto& b : enc.ships) {
+                if (a.ownerId == b.ownerId) continue;
+                const int d = std::max(std::abs(a.position.x - b.position.x), std::abs(a.position.y - b.position.y));
+                CHECK(d <= weaponMaxRange(roster::WeaponFamily::Beam));
+            }
+            const RoundResult r = enc.resolveRound();
+            int beams = 0;
+            for (const auto& sv : r.salvos) if (!sv.ram && sv.beamDamage > 0) ++beams;
+            for (const auto& ev : r.events)
+                if (ev.kind == CombatEventKind::Fire && ev.weaponFamily == static_cast<int>(roster::WeaponFamily::Beam)) ++beams;
+            if (beams == 0) {
+                std::string why = " rules=" + std::to_string(static_cast<int>(enc.rulesVersion)) + " salvos=" + std::to_string(r.salvos.size()) + " events=" + std::to_string(r.events.size());
+                for (const auto& sh : enc.ships) why += " [o" + std::to_string(sh.ownerId) + " b" + std::to_string(sh.beamAttack) + " t" + std::to_string(sh.torpedoAttack) + " c" + std::to_string(sh.isCloaked) + " @" + std::to_string(sh.position.x) + "," + std::to_string(sh.position.y) + "]";
+                for (const auto& sv : r.salvos) why += " {" + std::to_string(sv.attackerFleetId) + ">" + std::to_string(sv.defenderFleetId) + " b" + std::to_string(sv.beamDamage) + " t" + std::to_string(sv.torpedoDamage) + "}";
+                throw std::runtime_error("no beam shot in round 1: preset " + preset->id + " seed " + std::to_string(seed) + why);
+            }
+            ++cases;
+        }
+    }
+    content::installBase();
+    std::cout << "  PASS: beam shots in round 1 across " << cases << " preset/seed battles." << std::endl;
+}
 } // namespace botf::tactical::tests
 
 int main() {
@@ -1936,6 +2000,7 @@ int main() {
     using namespace botf::tactical::tests;
     const std::vector<std::pair<const char*, std::function<void()>>> suites{
         {"encounter construction validation", testEncounterConstructionValidation},
+        {"18 Nov ruling: fleets deploy inside beam range, beams fire in round 1", testBeamsFireInRoundOne},
         {"shield damage absorption", testShieldDamageAbsorption},
         {"focus fire", testFocusFire},
         {"core maneuvers", testAllManeuvers},

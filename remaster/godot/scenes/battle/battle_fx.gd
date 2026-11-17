@@ -1081,6 +1081,14 @@ func _particle_material(kind: String, color: Color) -> Array:
 	mesh.size = Vector2(1, 1)
 	var align := false
 	var hdr := func(c: Color, m: float, a: float) -> Color: return Color(c.r * m, c.g * m, c.b * m, a)
+	if _web and kind in ["fireball", "fire_small", "debris"]:
+		# F2 follow-up (18 Nov): the web build (Compatibility, no HDR) clamps every channel above 1, so the 3-5x hot core
+		# of a fire ramp turned (1, 1, 1) and 280 added particles read as a white puff. On the web the core keeps its hue
+		# (no multiplier above 1, pulled toward the burst's orange) and each particle adds less, so kills and hull hits
+		# read as orange fire as they do on the desktop build.
+		hdr = func(c: Color, m: float, a: float) -> Color:
+			var h := c.lerp(color, 0.55) * minf(m, 1.0)
+			return Color(h.r, h.g, h.b, a * 0.55)
 	match kind:
 		"sparks", "sparks_small":
 			pm.initial_velocity_min = 6.0 if kind == "sparks" else 3.0

@@ -20,8 +20,8 @@
   "hail": {
    "atWar": true,
    "trust": 25,
-   "ourStrength": 3266,
-   "theirStrength": 1402,
+   "ourStrength": 3124,
+   "theirStrength": 1296,
    "accepts": true
   },
   "ships": [
@@ -37,15 +37,15 @@
     "hull": 19,
     "maxHull": 19,
     "initialHull": 19,
-    "shields": 110,
+    "shields": 96,
     "maxShields": 110,
     "initialShields": 110,
     "beam": 2,
     "torpedo": 1,
     "speed": 1,
     "position": {
-     "x": 3,
-     "y": 2
+     "x": 7,
+     "y": 3
     },
     "weapons": [
      {
@@ -83,11 +83,11 @@
     "group": "Scout",
     "immobile": false,
     "disengaging": false,
-    "facing": 0,
+    "facing": 45,
     "elevation": 0,
     "wego": {
      "facings": [
-      27,
+      13,
       17,
       19,
       19,
@@ -136,17 +136,17 @@
     "shipClass": "ColonyShip",
     "referenceShipId": 22,
     "hidden": false,
-    "hull": 55,
+    "hull": 0,
     "maxHull": 55,
     "initialHull": 55,
-    "shields": 70,
+    "shields": 55,
     "maxShields": 70,
     "initialShields": 70,
     "beam": 1,
     "torpedo": 0,
     "speed": 1,
     "position": {
-     "x": 3,
+     "x": 7,
      "y": 4
     },
     "weapons": [
@@ -163,8 +163,8 @@
       "attack": 1
      }
     ],
-    "alive": true,
-    "active": true,
+    "alive": false,
+    "active": false,
     "retreated": false,
     "canRetreat": true,
     "canCloak": false,
@@ -173,16 +173,16 @@
     "group": "Support",
     "immobile": false,
     "disengaging": false,
-    "facing": 0,
+    "facing": 315,
     "elevation": 1,
     "wego": {
      "facings": [
       17,
       11,
       12,
-      12,
+      6,
       9,
-      9
+      0
      ],
      "maxFacings": [
       17,
@@ -197,7 +197,7 @@
       "engines": 100,
       "shields": 100,
       "sensors": 100,
-      "warpCore": 100
+      "warpCore": 2
      },
      "experience": 25,
      "crew": "Regular",
@@ -209,13 +209,7 @@
     "maneuver": "Engage",
     "target": 0,
     "ordered": false,
-    "subsystem": "none",
-    "next": {
-     "maneuver": "Engage",
-     "target": 0,
-     "subsystem": "none",
-     "source": "standing"
-    }
+    "subsystem": "none"
    },
    {
     "id": 5,
@@ -236,7 +230,7 @@
     "torpedo": 2,
     "speed": 1,
     "position": {
-     "x": 3,
+     "x": 7,
      "y": 6
     },
     "weapons": [
@@ -275,7 +269,7 @@
     "group": "Fast Attack",
     "immobile": false,
     "disengaging": false,
-    "facing": 0,
+    "facing": 315,
     "elevation": -1,
     "wego": {
      "facings": [
@@ -338,8 +332,8 @@
     "torpedo": 6,
     "speed": 1,
     "position": {
-     "x": 3,
-     "y": 6
+     "x": 7,
+     "y": 3
     },
     "weapons": [
      {
@@ -377,7 +371,7 @@
     "group": "Fast Attack",
     "immobile": false,
     "disengaging": false,
-    "facing": 0,
+    "facing": 45,
     "elevation": 0,
     "wego": {
      "facings": [
@@ -440,8 +434,8 @@
     "torpedo": 11,
     "speed": 1,
     "position": {
-     "x": 3,
-     "y": 2
+     "x": 7,
+     "y": 4
     },
     "weapons": [
      {
@@ -506,8 +500,8 @@
       "warpCore": 100
      },
      "experience": 25,
-     "crew": "Regular",
-     "crewLevel": 1,
+     "crew": "Veteran",
+     "crewLevel": 2,
      "elevation": 1,
      "coreBreached": false,
      "canWarp": true
@@ -542,8 +536,8 @@
     "torpedo": 20,
     "speed": 1,
     "position": {
-     "x": 1,
-     "y": 6
+     "x": 6,
+     "y": 5
     },
     "weapons": [
      {
@@ -637,18 +631,18 @@
     "shipClass": "Scout",
     "referenceShipId": 75,
     "hidden": false,
-    "hull": 15,
+    "hull": 0,
     "maxHull": 15,
     "initialHull": 15,
-    "shields": 80,
+    "shields": 39,
     "maxShields": 80,
     "initialShields": 80,
     "beam": 2,
     "torpedo": 1,
     "speed": 1,
     "position": {
-     "x": 12,
-     "y": 2
+     "x": 8,
+     "y": 4
     },
     "weapons": [
      {
@@ -676,8 +670,8 @@
       "attack": 1
      }
     ],
-    "alive": true,
-    "active": true,
+    "alive": false,
+    "active": false,
     "retreated": false,
     "canRetreat": false,
     "canCloak": true,
@@ -686,15 +680,15 @@
     "group": "Scout",
     "immobile": false,
     "disengaging": false,
-    "facing": 180,
+    "facing": 225,
     "elevation": 0,
     "wego": {
      "facings": [
-      20,
+      0,
       12,
       14,
-      14,
-      10,
+      3,
+      0,
       10
      ],
      "maxFacings": [
@@ -706,10 +700,10 @@
       10
      ],
      "subsystems": {
-      "weapons": 100,
+      "weapons": 38,
       "engines": 100,
       "shields": 100,
-      "sensors": 100,
+      "sensors": 67,
       "warpCore": 100
      },
      "experience": 25,
@@ -718,12 +712,6 @@
      "elevation": 0,
      "coreBreached": false,
      "canWarp": false
-    },
-    "next": {
-     "maneuver": "Engage",
-     "target": 2,
-     "subsystem": "none",
-     "source": "ai"
     }
    },
    {
@@ -738,15 +726,15 @@
     "hull": 45,
     "maxHull": 45,
     "initialHull": 45,
-    "shields": 140,
+    "shields": 138,
     "maxShields": 140,
     "initialShields": 140,
     "beam": 5,
     "torpedo": 4,
     "speed": 1,
     "position": {
-     "x": 12,
-     "y": 4
+     "x": 8,
+     "y": 5
     },
     "weapons": [
      {
@@ -784,7 +772,7 @@
     "group": "Fast Attack",
     "immobile": false,
     "disengaging": false,
-    "facing": 180,
+    "facing": 225,
     "elevation": 1,
     "wego": {
      "facings": [
@@ -793,7 +781,7 @@
       25,
       25,
       18,
-      18
+      16
      ],
      "maxFacings": [
       32,
@@ -819,7 +807,7 @@
     },
     "next": {
      "maneuver": "Engage",
-     "target": 2,
+     "target": 1,
      "subsystem": "none",
      "source": "ai"
     }
@@ -843,8 +831,8 @@
     "torpedo": 8,
     "speed": 1,
     "position": {
-     "x": 12,
-     "y": 6
+     "x": 8,
+     "y": 5
     },
     "weapons": [
      {
@@ -882,7 +870,7 @@
     "group": "Fast Attack",
     "immobile": false,
     "disengaging": false,
-    "facing": 180,
+    "facing": 225,
     "elevation": -1,
     "wego": {
      "facings": [
@@ -909,15 +897,15 @@
       "warpCore": 100
      },
      "experience": 25,
-     "crew": "Regular",
-     "crewLevel": 1,
+     "crew": "Veteran",
+     "crewLevel": 2,
      "elevation": -1,
      "coreBreached": false,
      "canWarp": false
     },
     "next": {
      "maneuver": "Engage",
-     "target": 2,
+     "target": 1,
      "subsystem": "none",
      "source": "ai"
     }
@@ -941,8 +929,8 @@
     "torpedo": 21,
     "speed": 1,
     "position": {
-     "x": 12,
-     "y": 8
+     "x": 8,
+     "y": 4
     },
     "weapons": [
      {
@@ -980,7 +968,7 @@
     "group": "Fast Attack",
     "immobile": false,
     "disengaging": false,
-    "facing": 180,
+    "facing": 225,
     "elevation": 0,
     "wego": {
      "facings": [
@@ -1015,7 +1003,7 @@
     },
     "next": {
      "maneuver": "Engage",
-     "target": 2,
+     "target": 1,
      "subsystem": "none",
      "source": "ai"
     }
@@ -1039,16 +1027,16 @@
       "torpedo": 0,
       "taken": 0,
       "from": {
-       "x": 1,
-       "y": 2
+       "x": 6,
+       "y": 3
       },
       "via": {
-       "x": 1,
-       "y": 2
+       "x": 6,
+       "y": 3
       },
       "to": {
-       "x": 2,
-       "y": 2
+       "x": 7,
+       "y": 3
       },
       "maneuver": "Engage",
       "target": 0,
@@ -1065,33 +1053,33 @@
       "id": 2,
       "owner": 1,
       "hullBefore": 55,
-      "hullAfter": 55,
+      "hullAfter": 0,
       "shieldBefore": 70,
-      "shieldAfter": 70,
-      "beam": 0,
+      "shieldAfter": 55,
+      "beam": 1,
       "torpedo": 0,
-      "taken": 0,
+      "taken": 70,
       "from": {
-       "x": 1,
-       "y": 4
+       "x": 6,
+       "y": 5
       },
       "via": {
-       "x": 1,
-       "y": 4
+       "x": 6,
+       "y": 5
       },
       "to": {
-       "x": 2,
+       "x": 7,
        "y": 4
       },
       "maneuver": "Engage",
       "target": 0,
-      "destroyed": false,
+      "destroyed": true,
       "retreated": false,
       "decloaked": false,
       "hailed": false,
       "ai": false,
       "disengaging": false,
-      "yaw": 0,
+      "yaw": 315,
       "subsystem": "none"
      },
      {
@@ -1101,53 +1089,20 @@
       "hullAfter": 62,
       "shieldBefore": 220,
       "shieldAfter": 220,
-      "beam": 0,
+      "beam": 2,
       "torpedo": 0,
       "taken": 0,
       "from": {
-       "x": 1,
-       "y": 6
-      },
-      "via": {
-       "x": 1,
-       "y": 6
-      },
-      "to": {
-       "x": 2,
-       "y": 6
-      },
-      "maneuver": "Engage",
-      "target": 0,
-      "destroyed": false,
-      "retreated": false,
-      "decloaked": false,
-      "hailed": false,
-      "ai": false,
-      "disengaging": false,
-      "yaw": 0,
-      "subsystem": "none"
-     },
-     {
-      "id": 6,
-      "owner": 1,
-      "hullBefore": 153,
-      "hullAfter": 153,
-      "shieldBefore": 410,
-      "shieldAfter": 410,
-      "beam": 0,
-      "torpedo": 0,
-      "taken": 0,
-      "from": {
-       "x": 1,
-       "y": 8
-      },
-      "via": {
-       "x": 1,
-       "y": 8
-      },
-      "to": {
-       "x": 2,
+       "x": 6,
        "y": 7
+      },
+      "via": {
+       "x": 6,
+       "y": 7
+      },
+      "to": {
+       "x": 7,
+       "y": 6
       },
       "maneuver": "Engage",
       "target": 0,
@@ -1161,26 +1116,26 @@
       "subsystem": "none"
      },
      {
-      "id": 7,
+      "id": 6,
       "owner": 1,
-      "hullBefore": 208,
-      "hullAfter": 208,
-      "shieldBefore": 600,
-      "shieldAfter": 600,
-      "beam": 0,
+      "hullBefore": 153,
+      "hullAfter": 153,
+      "shieldBefore": 410,
+      "shieldAfter": 410,
+      "beam": 9,
       "torpedo": 0,
       "taken": 0,
       "from": {
-       "x": 1,
-       "y": 2
+       "x": 6,
+       "y": 3
       },
       "via": {
-       "x": 1,
-       "y": 2
+       "x": 6,
+       "y": 3
       },
       "to": {
-       "x": 2,
-       "y": 2
+       "x": 7,
+       "y": 3
       },
       "maneuver": "Engage",
       "target": 0,
@@ -1194,26 +1149,59 @@
       "subsystem": "none"
      },
      {
+      "id": 7,
+      "owner": 1,
+      "hullBefore": 208,
+      "hullAfter": 208,
+      "shieldBefore": 600,
+      "shieldAfter": 600,
+      "beam": 0,
+      "torpedo": 0,
+      "taken": 0,
+      "from": {
+       "x": 6,
+       "y": 5
+      },
+      "via": {
+       "x": 6,
+       "y": 5
+      },
+      "to": {
+       "x": 7,
+       "y": 4
+      },
+      "maneuver": "Engage",
+      "target": 0,
+      "destroyed": false,
+      "retreated": false,
+      "decloaked": false,
+      "hailed": false,
+      "ai": false,
+      "disengaging": false,
+      "yaw": 315,
+      "subsystem": "none"
+     },
+     {
       "id": 2000001,
       "owner": 1,
       "hullBefore": 282,
       "hullAfter": 282,
       "shieldBefore": 780,
       "shieldAfter": 780,
-      "beam": 0,
+      "beam": 20,
       "torpedo": 0,
       "taken": 0,
       "from": {
-       "x": 1,
-       "y": 6
+       "x": 6,
+       "y": 5
       },
       "via": {
-       "x": 1,
-       "y": 6
+       "x": 6,
+       "y": 5
       },
       "to": {
-       "x": 1,
-       "y": 6
+       "x": 6,
+       "y": 5
       },
       "maneuver": "Engage",
       "target": 0,
@@ -1230,23 +1218,23 @@
       "id": 3,
       "owner": 2,
       "hullBefore": 15,
-      "hullAfter": 15,
+      "hullAfter": 11,
       "shieldBefore": 80,
-      "shieldAfter": 80,
-      "beam": 0,
+      "shieldAfter": 48,
+      "beam": 1,
       "torpedo": 0,
-      "taken": 0,
+      "taken": 36,
       "from": {
-       "x": 14,
-       "y": 2
+       "x": 9,
+       "y": 3
       },
       "via": {
-       "x": 14,
-       "y": 2
+       "x": 9,
+       "y": 3
       },
       "to": {
-       "x": 13,
-       "y": 2
+       "x": 8,
+       "y": 4
       },
       "maneuver": "Engage",
       "target": 2,
@@ -1256,7 +1244,7 @@
       "hailed": false,
       "ai": true,
       "disengaging": false,
-      "yaw": 180,
+      "yaw": 135,
       "subsystem": "none"
      },
      {
@@ -1265,21 +1253,21 @@
       "hullBefore": 45,
       "hullAfter": 45,
       "shieldBefore": 140,
-      "shieldAfter": 140,
-      "beam": 0,
+      "shieldAfter": 138,
+      "beam": 5,
       "torpedo": 0,
-      "taken": 0,
+      "taken": 2,
       "from": {
-       "x": 14,
-       "y": 4
+       "x": 9,
+       "y": 5
       },
       "via": {
-       "x": 14,
-       "y": 4
+       "x": 9,
+       "y": 5
       },
       "to": {
-       "x": 13,
-       "y": 4
+       "x": 8,
+       "y": 5
       },
       "maneuver": "Engage",
       "target": 2,
@@ -1299,19 +1287,19 @@
       "hullAfter": 140,
       "shieldBefore": 340,
       "shieldAfter": 340,
-      "beam": 0,
-      "torpedo": 0,
+      "beam": 13,
+      "torpedo": 10,
       "taken": 0,
       "from": {
-       "x": 14,
-       "y": 6
+       "x": 9,
+       "y": 7
       },
       "via": {
-       "x": 14,
-       "y": 6
+       "x": 9,
+       "y": 7
       },
       "to": {
-       "x": 13,
+       "x": 8,
        "y": 6
       },
       "maneuver": "Engage",
@@ -1322,7 +1310,7 @@
       "hailed": false,
       "ai": true,
       "disengaging": false,
-      "yaw": 180,
+      "yaw": 225,
       "subsystem": "none"
      },
      {
@@ -1332,20 +1320,20 @@
       "hullAfter": 100,
       "shieldBefore": 260,
       "shieldAfter": 260,
-      "beam": 0,
+      "beam": 48,
       "torpedo": 0,
       "taken": 0,
       "from": {
-       "x": 14,
-       "y": 8
+       "x": 9,
+       "y": 3
       },
       "via": {
-       "x": 14,
-       "y": 8
+       "x": 9,
+       "y": 3
       },
       "to": {
-       "x": 13,
-       "y": 8
+       "x": 8,
+       "y": 4
       },
       "maneuver": "Engage",
       "target": 2,
@@ -1355,7 +1343,7 @@
       "hailed": false,
       "ai": true,
       "disengaging": false,
-      "yaw": 180,
+      "yaw": 135,
       "subsystem": "none"
      }
     ],
@@ -1387,16 +1375,16 @@
        17,
        11,
        12,
-       12,
+       6,
        9,
-       9
+       0
       ],
       "subsystems": {
        "weapons": 100,
        "engines": 100,
        "shields": 100,
        "sensors": 100,
-       "warpCore": 100
+       "warpCore": 2
       },
       "crew": "Regular",
       "crewLevel": 1,
@@ -1489,15 +1477,15 @@
      {
       "id": 3,
       "facings": [
-       20,
+       0,
        12,
        14,
-       14,
-       10,
+       3,
+       9,
        10
       ],
       "subsystems": {
-       "weapons": 100,
+       "weapons": 74,
        "engines": 100,
        "shields": 100,
        "sensors": 100,
@@ -1515,7 +1503,7 @@
        25,
        25,
        18,
-       18
+       16
       ],
       "subsystems": {
        "weapons": 100,
@@ -1545,8 +1533,8 @@
        "sensors": 100,
        "warpCore": 100
       },
-      "crew": "Regular",
-      "crewLevel": 1,
+      "crew": "Veteran",
+      "crewLevel": 2,
       "coreBreached": false
      },
      {
@@ -1571,8 +1559,83 @@
       "coreBreached": false
      }
     ],
-    "salvos": [],
-    "lost": [],
+    "salvos": [
+     {
+      "from": 2,
+      "to": 3,
+      "beam": 1,
+      "torpedo": 0,
+      "absorbed": true,
+      "ram": false,
+      "ambush": false
+     },
+     {
+      "from": 5,
+      "to": 8,
+      "beam": 2,
+      "torpedo": 0,
+      "absorbed": true,
+      "ram": false,
+      "ambush": false
+     },
+     {
+      "from": 6,
+      "to": 3,
+      "beam": 9,
+      "torpedo": 0,
+      "absorbed": true,
+      "ram": false,
+      "ambush": false
+     },
+     {
+      "from": 2000001,
+      "to": 3,
+      "beam": 20,
+      "torpedo": 0,
+      "absorbed": false,
+      "ram": false,
+      "ambush": false
+     },
+     {
+      "from": 3,
+      "to": 2,
+      "beam": 1,
+      "torpedo": 0,
+      "absorbed": true,
+      "ram": false,
+      "ambush": true
+     },
+     {
+      "from": 8,
+      "to": 2,
+      "beam": 5,
+      "torpedo": 0,
+      "absorbed": true,
+      "ram": false,
+      "ambush": true
+     },
+     {
+      "from": 9,
+      "to": 2,
+      "beam": 13,
+      "torpedo": 10,
+      "absorbed": false,
+      "ram": false,
+      "ambush": true
+     },
+     {
+      "from": 10,
+      "to": 2,
+      "beam": 48,
+      "torpedo": 0,
+      "absorbed": false,
+      "ram": false,
+      "ambush": true
+     }
+    ],
+    "lost": [
+     2
+    ],
     "retreatedIds": [],
     "events": [
      {
@@ -1580,8 +1643,8 @@
       "kind": "Cloak",
       "fleetId": 3,
       "targetFleetId": 0,
-      "x": 14,
-      "y": 2,
+      "x": 9,
+      "y": 3,
       "facing": 180
      },
      {
@@ -1589,8 +1652,8 @@
       "kind": "Cloak",
       "fleetId": 8,
       "targetFleetId": 0,
-      "x": 14,
-      "y": 4,
+      "x": 9,
+      "y": 5,
       "facing": 180
      },
      {
@@ -1598,8 +1661,8 @@
       "kind": "Cloak",
       "fleetId": 9,
       "targetFleetId": 0,
-      "x": 14,
-      "y": 6,
+      "x": 9,
+      "y": 7,
       "facing": 180
      },
      {
@@ -1607,8 +1670,8 @@
       "kind": "Cloak",
       "fleetId": 10,
       "targetFleetId": 0,
-      "x": 14,
-      "y": 8,
+      "x": 9,
+      "y": 3,
       "facing": 180
      },
      {
@@ -1616,8 +1679,8 @@
       "kind": "ManeuverStart",
       "fleetId": 1,
       "targetFleetId": 0,
-      "x": 1,
-      "y": 2,
+      "x": 6,
+      "y": 3,
       "facing": 0,
       "maneuver": "Engage",
       "value": 0
@@ -1627,8 +1690,8 @@
       "kind": "ManeuverStart",
       "fleetId": 2,
       "targetFleetId": 0,
-      "x": 1,
-      "y": 4,
+      "x": 6,
+      "y": 5,
       "facing": 0,
       "maneuver": "Engage",
       "value": 0
@@ -1638,8 +1701,8 @@
       "kind": "ManeuverStart",
       "fleetId": 5,
       "targetFleetId": 0,
-      "x": 1,
-      "y": 6,
+      "x": 6,
+      "y": 7,
       "facing": 0,
       "maneuver": "Engage",
       "value": 0
@@ -1649,8 +1712,8 @@
       "kind": "ManeuverStart",
       "fleetId": 6,
       "targetFleetId": 0,
-      "x": 1,
-      "y": 8,
+      "x": 6,
+      "y": 3,
       "facing": 0,
       "maneuver": "Engage",
       "value": 0
@@ -1660,8 +1723,8 @@
       "kind": "ManeuverStart",
       "fleetId": 7,
       "targetFleetId": 0,
-      "x": 1,
-      "y": 2,
+      "x": 6,
+      "y": 5,
       "facing": 0,
       "maneuver": "Engage",
       "value": 0
@@ -1671,8 +1734,8 @@
       "kind": "ManeuverStart",
       "fleetId": 2000001,
       "targetFleetId": 0,
-      "x": 1,
-      "y": 6,
+      "x": 6,
+      "y": 5,
       "facing": 0,
       "maneuver": "Engage",
       "value": 0
@@ -1682,8 +1745,8 @@
       "kind": "ManeuverStart",
       "fleetId": 3,
       "targetFleetId": 0,
-      "x": 14,
-      "y": 2,
+      "x": 9,
+      "y": 3,
       "facing": 180,
       "maneuver": "Engage",
       "value": 0
@@ -1693,8 +1756,8 @@
       "kind": "ManeuverStart",
       "fleetId": 8,
       "targetFleetId": 0,
-      "x": 14,
-      "y": 4,
+      "x": 9,
+      "y": 5,
       "facing": 180,
       "maneuver": "Engage",
       "value": 0
@@ -1704,8 +1767,8 @@
       "kind": "ManeuverStart",
       "fleetId": 9,
       "targetFleetId": 0,
-      "x": 14,
-      "y": 6,
+      "x": 9,
+      "y": 7,
       "facing": 180,
       "maneuver": "Engage",
       "value": 0
@@ -1715,8 +1778,8 @@
       "kind": "ManeuverStart",
       "fleetId": 10,
       "targetFleetId": 0,
-      "x": 14,
-      "y": 8,
+      "x": 9,
+      "y": 3,
       "facing": 180,
       "maneuver": "Engage",
       "value": 0
@@ -1726,8 +1789,8 @@
       "kind": "ManeuverEnd",
       "fleetId": 1,
       "targetFleetId": 0,
-      "x": 2,
-      "y": 2,
+      "x": 7,
+      "y": 3,
       "facing": 0,
       "maneuver": "Engage",
       "value": 0
@@ -1737,30 +1800,8 @@
       "kind": "ManeuverEnd",
       "fleetId": 2,
       "targetFleetId": 0,
-      "x": 2,
+      "x": 7,
       "y": 4,
-      "facing": 0,
-      "maneuver": "Engage",
-      "value": 0
-     },
-     {
-      "tick": 4,
-      "kind": "ManeuverEnd",
-      "fleetId": 5,
-      "targetFleetId": 0,
-      "x": 2,
-      "y": 6,
-      "facing": 0,
-      "maneuver": "Engage",
-      "value": 0
-     },
-     {
-      "tick": 4,
-      "kind": "ManeuverEnd",
-      "fleetId": 6,
-      "targetFleetId": 0,
-      "x": 2,
-      "y": 7,
       "facing": 315,
       "maneuver": "Engage",
       "value": 0
@@ -1768,11 +1809,33 @@
      {
       "tick": 4,
       "kind": "ManeuverEnd",
+      "fleetId": 5,
+      "targetFleetId": 0,
+      "x": 7,
+      "y": 6,
+      "facing": 315,
+      "maneuver": "Engage",
+      "value": 0
+     },
+     {
+      "tick": 4,
+      "kind": "ManeuverEnd",
+      "fleetId": 6,
+      "targetFleetId": 0,
+      "x": 7,
+      "y": 3,
+      "facing": 0,
+      "maneuver": "Engage",
+      "value": 0
+     },
+     {
+      "tick": 4,
+      "kind": "ManeuverEnd",
       "fleetId": 7,
       "targetFleetId": 0,
-      "x": 2,
-      "y": 2,
-      "facing": 0,
+      "x": 7,
+      "y": 4,
+      "facing": 315,
       "maneuver": "Engage",
       "value": 0
      },
@@ -1781,8 +1844,8 @@
       "kind": "ManeuverEnd",
       "fleetId": 2000001,
       "targetFleetId": 0,
-      "x": 1,
-      "y": 6,
+      "x": 6,
+      "y": 5,
       "facing": 0,
       "maneuver": "Engage",
       "value": 0
@@ -1792,9 +1855,9 @@
       "kind": "ManeuverEnd",
       "fleetId": 3,
       "targetFleetId": 0,
-      "x": 13,
-      "y": 2,
-      "facing": 180,
+      "x": 8,
+      "y": 4,
+      "facing": 135,
       "maneuver": "Engage",
       "value": 0
      },
@@ -1803,8 +1866,8 @@
       "kind": "ManeuverEnd",
       "fleetId": 8,
       "targetFleetId": 0,
-      "x": 13,
-      "y": 4,
+      "x": 8,
+      "y": 5,
       "facing": 180,
       "maneuver": "Engage",
       "value": 0
@@ -1814,9 +1877,9 @@
       "kind": "ManeuverEnd",
       "fleetId": 9,
       "targetFleetId": 0,
-      "x": 13,
+      "x": 8,
       "y": 6,
-      "facing": 180,
+      "facing": 225,
       "maneuver": "Engage",
       "value": 0
      },
@@ -1825,9 +1888,9 @@
       "kind": "ManeuverEnd",
       "fleetId": 10,
       "targetFleetId": 0,
-      "x": 13,
-      "y": 8,
-      "facing": 180,
+      "x": 8,
+      "y": 4,
+      "facing": 135,
       "maneuver": "Engage",
       "value": 0
      },
@@ -1836,17 +1899,17 @@
       "kind": "Decloak",
       "fleetId": 3,
       "targetFleetId": 0,
-      "x": 13,
-      "y": 2,
-      "facing": 180
+      "x": 8,
+      "y": 4,
+      "facing": 135
      },
      {
       "tick": 4,
       "kind": "Decloak",
       "fleetId": 8,
       "targetFleetId": 0,
-      "x": 13,
-      "y": 4,
+      "x": 8,
+      "y": 5,
       "facing": 180
      },
      {
@@ -1854,18 +1917,475 @@
       "kind": "Decloak",
       "fleetId": 9,
       "targetFleetId": 0,
-      "x": 13,
+      "x": 8,
       "y": 6,
-      "facing": 180
+      "facing": 225
      },
      {
       "tick": 4,
       "kind": "Decloak",
       "fleetId": 10,
       "targetFleetId": 0,
-      "x": 13,
-      "y": 8,
+      "x": 8,
+      "y": 4,
+      "facing": 135
+     },
+     {
+      "tick": 5,
+      "kind": "Fire",
+      "fleetId": 1,
+      "targetFleetId": 3,
+      "mountIndex": 0,
+      "weapon": "PhaserArray",
+      "key": "weapon.PhaserArray",
+      "family": "beam",
+      "projectiles": 2,
+      "hit": false,
+      "intercepted": false,
+      "impactTick": 5,
+      "shieldDamage": 0,
+      "hullDamage": 0,
+      "destroyed": false,
+      "hitChance": 82,
+      "shieldFacing": "none",
+      "subsystem": "none",
+      "aimed": false,
+      "subsystemDamage": 0,
+      "subsystemDestroyed": false,
+      "breachDamage": 0,
+      "resolveOrder": 0,
+      "x": 7,
+      "y": 3,
+      "facing": 0
+     },
+     {
+      "tick": 5,
+      "kind": "Fire",
+      "fleetId": 2,
+      "targetFleetId": 3,
+      "mountIndex": 0,
+      "weapon": "PhaserArray",
+      "key": "weapon.PhaserArray",
+      "family": "beam",
+      "projectiles": 2,
+      "hit": true,
+      "intercepted": false,
+      "impactTick": 5,
+      "shieldDamage": 1,
+      "hullDamage": 0,
+      "destroyed": false,
+      "hitChance": 82,
+      "shieldFacing": "dorsal",
+      "subsystem": "none",
+      "aimed": false,
+      "subsystemDamage": 0,
+      "subsystemDestroyed": false,
+      "breachDamage": 0,
+      "resolveOrder": 1,
+      "x": 7,
+      "y": 4,
+      "facing": 315
+     },
+     {
+      "tick": 5,
+      "kind": "Fire",
+      "fleetId": 5,
+      "targetFleetId": 8,
+      "mountIndex": 0,
+      "weapon": "PhaserArray",
+      "key": "weapon.PhaserArray",
+      "family": "beam",
+      "projectiles": 2,
+      "hit": true,
+      "intercepted": false,
+      "impactTick": 5,
+      "shieldDamage": 2,
+      "hullDamage": 0,
+      "destroyed": false,
+      "hitChance": 92,
+      "shieldFacing": "ventral",
+      "subsystem": "none",
+      "aimed": false,
+      "subsystemDamage": 0,
+      "subsystemDestroyed": false,
+      "breachDamage": 0,
+      "resolveOrder": 2,
+      "x": 7,
+      "y": 6,
+      "facing": 315
+     },
+     {
+      "tick": 5,
+      "kind": "Fire",
+      "fleetId": 6,
+      "targetFleetId": 3,
+      "mountIndex": 0,
+      "weapon": "PhaserArray",
+      "key": "weapon.PhaserArray",
+      "family": "beam",
+      "projectiles": 2,
+      "hit": true,
+      "intercepted": false,
+      "impactTick": 5,
+      "shieldDamage": 11,
+      "hullDamage": 0,
+      "destroyed": false,
+      "hitChance": 82,
+      "shieldFacing": "starboard",
+      "subsystem": "none",
+      "aimed": false,
+      "subsystemDamage": 0,
+      "subsystemDestroyed": false,
+      "breachDamage": 0,
+      "resolveOrder": 3,
+      "x": 7,
+      "y": 3,
+      "facing": 0
+     },
+     {
+      "tick": 5,
+      "kind": "Fire",
+      "fleetId": 7,
+      "targetFleetId": 3,
+      "mountIndex": 0,
+      "weapon": "PhaserArray",
+      "key": "weapon.PhaserArray",
+      "family": "beam",
+      "projectiles": 2,
+      "hit": false,
+      "intercepted": false,
+      "impactTick": 5,
+      "shieldDamage": 0,
+      "hullDamage": 0,
+      "destroyed": false,
+      "hitChance": 82,
+      "shieldFacing": "none",
+      "subsystem": "none",
+      "aimed": false,
+      "subsystemDamage": 0,
+      "subsystemDestroyed": false,
+      "breachDamage": 0,
+      "resolveOrder": 4,
+      "x": 7,
+      "y": 4,
+      "facing": 315
+     },
+     {
+      "tick": 5,
+      "kind": "Fire",
+      "fleetId": 2000001,
+      "targetFleetId": 3,
+      "mountIndex": 0,
+      "weapon": "PhaserArray",
+      "key": "weapon.PhaserArray",
+      "family": "beam",
+      "projectiles": 2,
+      "hit": true,
+      "intercepted": false,
+      "impactTick": 5,
+      "shieldDamage": 20,
+      "hullDamage": 4,
+      "destroyed": false,
+      "hitChance": 77,
+      "shieldFacing": "fore",
+      "subsystem": "weapons",
+      "aimed": false,
+      "subsystemDamage": 26,
+      "subsystemDestroyed": false,
+      "breachDamage": 0,
+      "resolveOrder": 5,
+      "x": 6,
+      "y": 5,
+      "facing": 0
+     },
+     {
+      "tick": 5,
+      "kind": "Fire",
+      "fleetId": 3,
+      "targetFleetId": 2,
+      "mountIndex": 0,
+      "weapon": "Disruptor",
+      "key": "weapon.Disruptor",
+      "family": "beam",
+      "projectiles": 2,
+      "hit": true,
+      "intercepted": false,
+      "impactTick": 5,
+      "shieldDamage": 1,
+      "hullDamage": 0,
+      "destroyed": false,
+      "hitChance": 92,
+      "shieldFacing": "ventral",
+      "subsystem": "none",
+      "aimed": false,
+      "subsystemDamage": 0,
+      "subsystemDestroyed": false,
+      "breachDamage": 0,
+      "resolveOrder": 6,
+      "x": 8,
+      "y": 4,
+      "facing": 135
+     },
+     {
+      "tick": 5,
+      "kind": "Fire",
+      "fleetId": 8,
+      "targetFleetId": 2,
+      "mountIndex": 0,
+      "weapon": "Disruptor",
+      "key": "weapon.Disruptor",
+      "family": "beam",
+      "projectiles": 2,
+      "hit": true,
+      "intercepted": false,
+      "impactTick": 5,
+      "shieldDamage": 6,
+      "hullDamage": 0,
+      "destroyed": false,
+      "hitChance": 92,
+      "shieldFacing": "starboard",
+      "subsystem": "none",
+      "aimed": false,
+      "subsystemDamage": 0,
+      "subsystemDestroyed": false,
+      "breachDamage": 0,
+      "resolveOrder": 7,
+      "x": 8,
+      "y": 5,
       "facing": 180
+     },
+     {
+      "tick": 5,
+      "kind": "Fire",
+      "fleetId": 9,
+      "targetFleetId": 2,
+      "mountIndex": 0,
+      "weapon": "Disruptor",
+      "key": "weapon.Disruptor",
+      "family": "beam",
+      "projectiles": 2,
+      "hit": true,
+      "intercepted": false,
+      "impactTick": 5,
+      "shieldDamage": 8,
+      "hullDamage": 6,
+      "destroyed": false,
+      "hitChance": 87,
+      "shieldFacing": "ventral",
+      "subsystem": "warpCore",
+      "aimed": false,
+      "subsystemDamage": 10,
+      "subsystemDestroyed": false,
+      "breachDamage": 0,
+      "resolveOrder": 8,
+      "x": 8,
+      "y": 6,
+      "facing": 225
+     },
+     {
+      "tick": 5,
+      "kind": "Fire",
+      "fleetId": 10,
+      "targetFleetId": 2,
+      "mountIndex": 0,
+      "weapon": "Disruptor",
+      "key": "weapon.Disruptor",
+      "family": "beam",
+      "projectiles": 2,
+      "hit": true,
+      "intercepted": false,
+      "impactTick": 5,
+      "shieldDamage": 0,
+      "hullDamage": 48,
+      "destroyed": false,
+      "hitChance": 92,
+      "shieldFacing": "ventral",
+      "subsystem": "warpCore",
+      "aimed": false,
+      "subsystemDamage": 87,
+      "subsystemDestroyed": false,
+      "breachDamage": 0,
+      "resolveOrder": 9,
+      "x": 8,
+      "y": 4,
+      "facing": 135
+     },
+     {
+      "tick": 6,
+      "kind": "Fire",
+      "fleetId": 6,
+      "targetFleetId": 3,
+      "mountIndex": 1,
+      "weapon": "PhotonTorpedo",
+      "key": "weapon.PhotonTorpedo",
+      "family": "torpedo",
+      "projectiles": 1,
+      "hit": false,
+      "intercepted": false,
+      "impactTick": 8,
+      "shieldDamage": 0,
+      "hullDamage": 0,
+      "destroyed": false,
+      "hitChance": 60,
+      "shieldFacing": "none",
+      "subsystem": "none",
+      "aimed": false,
+      "subsystemDamage": 0,
+      "subsystemDestroyed": false,
+      "breachDamage": 0,
+      "resolveOrder": 10,
+      "x": 7,
+      "y": 3,
+      "facing": 0
+     },
+     {
+      "tick": 6,
+      "kind": "Fire",
+      "fleetId": 7,
+      "targetFleetId": 3,
+      "mountIndex": 1,
+      "weapon": "PhotonTorpedo",
+      "key": "weapon.PhotonTorpedo",
+      "family": "torpedo",
+      "projectiles": 1,
+      "hit": false,
+      "intercepted": false,
+      "impactTick": 8,
+      "shieldDamage": 0,
+      "hullDamage": 0,
+      "destroyed": false,
+      "hitChance": 60,
+      "shieldFacing": "none",
+      "subsystem": "none",
+      "aimed": false,
+      "subsystemDamage": 0,
+      "subsystemDestroyed": false,
+      "breachDamage": 0,
+      "resolveOrder": 11,
+      "x": 7,
+      "y": 4,
+      "facing": 315
+     },
+     {
+      "tick": 6,
+      "kind": "Fire",
+      "fleetId": 2000001,
+      "targetFleetId": 3,
+      "mountIndex": 1,
+      "weapon": "PhotonTorpedo",
+      "key": "weapon.PhotonTorpedo",
+      "family": "torpedo",
+      "projectiles": 1,
+      "hit": false,
+      "intercepted": false,
+      "impactTick": 8,
+      "shieldDamage": 0,
+      "hullDamage": 0,
+      "destroyed": false,
+      "hitChance": 75,
+      "shieldFacing": "none",
+      "subsystem": "none",
+      "aimed": false,
+      "subsystemDamage": 0,
+      "subsystemDestroyed": false,
+      "breachDamage": 0,
+      "resolveOrder": 12,
+      "x": 6,
+      "y": 5,
+      "facing": 0
+     },
+     {
+      "tick": 6,
+      "kind": "Fire",
+      "fleetId": 8,
+      "targetFleetId": 2,
+      "mountIndex": 1,
+      "weapon": "PhotonTorpedo",
+      "key": "weapon.PhotonTorpedo",
+      "family": "torpedo",
+      "projectiles": 1,
+      "hit": false,
+      "intercepted": false,
+      "impactTick": 8,
+      "shieldDamage": 0,
+      "hullDamage": 0,
+      "destroyed": false,
+      "hitChance": 70,
+      "shieldFacing": "none",
+      "subsystem": "none",
+      "aimed": false,
+      "subsystemDamage": 0,
+      "subsystemDestroyed": false,
+      "breachDamage": 0,
+      "resolveOrder": 13,
+      "x": 8,
+      "y": 5,
+      "facing": 180
+     },
+     {
+      "tick": 6,
+      "kind": "Fire",
+      "fleetId": 9,
+      "targetFleetId": 2,
+      "mountIndex": 1,
+      "weapon": "PhotonTorpedo",
+      "key": "weapon.PhotonTorpedo",
+      "family": "torpedo",
+      "projectiles": 1,
+      "hit": true,
+      "intercepted": false,
+      "impactTick": 8,
+      "shieldDamage": 0,
+      "hullDamage": 1,
+      "destroyed": true,
+      "hitChance": 85,
+      "shieldFacing": "ventral",
+      "subsystem": "warpCore",
+      "aimed": false,
+      "subsystemDamage": 1,
+      "subsystemDestroyed": false,
+      "breachDamage": 0,
+      "resolveOrder": 14,
+      "x": 8,
+      "y": 6,
+      "facing": 225
+     },
+     {
+      "tick": 6,
+      "kind": "Fire",
+      "fleetId": 10,
+      "targetFleetId": 2,
+      "mountIndex": 1,
+      "weapon": "PhotonTorpedo",
+      "key": "weapon.PhotonTorpedo",
+      "family": "torpedo",
+      "projectiles": 1,
+      "hit": false,
+      "intercepted": false,
+      "impactTick": 8,
+      "shieldDamage": 0,
+      "hullDamage": 0,
+      "destroyed": false,
+      "hitChance": 70,
+      "shieldFacing": "none",
+      "subsystem": "none",
+      "aimed": false,
+      "subsystemDamage": 0,
+      "subsystemDestroyed": false,
+      "breachDamage": 0,
+      "resolveOrder": 15,
+      "x": 8,
+      "y": 4,
+      "facing": 135
+     },
+     {
+      "tick": 8,
+      "kind": "Destroyed",
+      "fleetId": 2,
+      "targetFleetId": 0,
+      "x": 7,
+      "y": 4,
+      "facing": 315
      }
     ]
    },
@@ -1881,21 +2401,21 @@
       "hullBefore": 19,
       "hullAfter": 19,
       "shieldBefore": 110,
-      "shieldAfter": 110,
-      "beam": 0,
+      "shieldAfter": 96,
+      "beam": 1,
       "torpedo": 0,
-      "taken": 0,
+      "taken": 14,
       "from": {
-       "x": 2,
-       "y": 2
+       "x": 7,
+       "y": 3
       },
       "via": {
-       "x": 2,
-       "y": 2
+       "x": 7,
+       "y": 3
       },
       "to": {
-       "x": 3,
-       "y": 2
+       "x": 7,
+       "y": 3
       },
       "maneuver": "Engage",
       "target": 0,
@@ -1905,29 +2425,29 @@
       "hailed": false,
       "ai": false,
       "disengaging": false,
-      "yaw": 0,
+      "yaw": 45,
       "subsystem": "none"
      },
      {
       "id": 2,
       "owner": 1,
-      "hullBefore": 55,
-      "hullAfter": 55,
-      "shieldBefore": 70,
-      "shieldAfter": 70,
+      "hullBefore": 0,
+      "hullAfter": 0,
+      "shieldBefore": 55,
+      "shieldAfter": 55,
       "beam": 0,
       "torpedo": 0,
       "taken": 0,
       "from": {
-       "x": 2,
+       "x": 7,
        "y": 4
       },
       "via": {
-       "x": 2,
-       "y": 4
+       "x": 0,
+       "y": 0
       },
       "to": {
-       "x": 3,
+       "x": 7,
        "y": 4
       },
       "maneuver": "Engage",
@@ -1948,19 +2468,19 @@
       "hullAfter": 62,
       "shieldBefore": 220,
       "shieldAfter": 220,
-      "beam": 0,
+      "beam": 2,
       "torpedo": 0,
       "taken": 0,
       "from": {
-       "x": 2,
+       "x": 7,
        "y": 6
       },
       "via": {
-       "x": 2,
+       "x": 7,
        "y": 6
       },
       "to": {
-       "x": 3,
+       "x": 7,
        "y": 6
       },
       "maneuver": "Engage",
@@ -1971,7 +2491,7 @@
       "hailed": false,
       "ai": false,
       "disengaging": false,
-      "yaw": 0,
+      "yaw": 315,
       "subsystem": "none"
      },
      {
@@ -1981,20 +2501,20 @@
       "hullAfter": 153,
       "shieldBefore": 410,
       "shieldAfter": 410,
-      "beam": 0,
+      "beam": 9,
       "torpedo": 0,
       "taken": 0,
       "from": {
-       "x": 2,
-       "y": 7
+       "x": 7,
+       "y": 3
       },
       "via": {
-       "x": 2,
-       "y": 7
+       "x": 7,
+       "y": 3
       },
       "to": {
-       "x": 3,
-       "y": 6
+       "x": 7,
+       "y": 3
       },
       "maneuver": "Engage",
       "target": 0,
@@ -2004,7 +2524,7 @@
       "hailed": false,
       "ai": false,
       "disengaging": false,
-      "yaw": 0,
+      "yaw": 45,
       "subsystem": "none"
      },
      {
@@ -2014,20 +2534,20 @@
       "hullAfter": 208,
       "shieldBefore": 600,
       "shieldAfter": 600,
-      "beam": 0,
+      "beam": 19,
       "torpedo": 0,
       "taken": 0,
       "from": {
-       "x": 2,
-       "y": 2
+       "x": 7,
+       "y": 4
       },
       "via": {
-       "x": 2,
-       "y": 2
+       "x": 7,
+       "y": 4
       },
       "to": {
-       "x": 3,
-       "y": 2
+       "x": 7,
+       "y": 4
       },
       "maneuver": "Engage",
       "target": 0,
@@ -2051,16 +2571,16 @@
       "torpedo": 0,
       "taken": 0,
       "from": {
-       "x": 1,
-       "y": 6
+       "x": 6,
+       "y": 5
       },
       "via": {
-       "x": 1,
-       "y": 6
+       "x": 6,
+       "y": 5
       },
       "to": {
-       "x": 1,
-       "y": 6
+       "x": 6,
+       "y": 5
       },
       "maneuver": "Engage",
       "target": 0,
@@ -2076,34 +2596,34 @@
      {
       "id": 3,
       "owner": 2,
-      "hullBefore": 15,
-      "hullAfter": 15,
-      "shieldBefore": 80,
-      "shieldAfter": 80,
-      "beam": 0,
+      "hullBefore": 11,
+      "hullAfter": 0,
+      "shieldBefore": 48,
+      "shieldAfter": 39,
+      "beam": 1,
       "torpedo": 0,
-      "taken": 0,
+      "taken": 24,
       "from": {
-       "x": 13,
-       "y": 2
+       "x": 8,
+       "y": 4
       },
       "via": {
-       "x": 13,
-       "y": 2
+       "x": 8,
+       "y": 4
       },
       "to": {
-       "x": 12,
-       "y": 2
+       "x": 8,
+       "y": 4
       },
       "maneuver": "Engage",
-      "target": 2,
-      "destroyed": false,
+      "target": 1,
+      "destroyed": true,
       "retreated": false,
       "decloaked": false,
       "hailed": false,
       "ai": true,
       "disengaging": false,
-      "yaw": 180,
+      "yaw": 225,
       "subsystem": "none"
      },
      {
@@ -2111,32 +2631,32 @@
       "owner": 2,
       "hullBefore": 45,
       "hullAfter": 45,
-      "shieldBefore": 140,
-      "shieldAfter": 140,
-      "beam": 0,
-      "torpedo": 0,
-      "taken": 0,
+      "shieldBefore": 138,
+      "shieldAfter": 138,
+      "beam": 4,
+      "torpedo": 3,
+      "taken": 2,
       "from": {
-       "x": 13,
-       "y": 4
+       "x": 8,
+       "y": 5
       },
       "via": {
-       "x": 13,
-       "y": 4
+       "x": 8,
+       "y": 5
       },
       "to": {
-       "x": 12,
-       "y": 4
+       "x": 8,
+       "y": 5
       },
       "maneuver": "Engage",
-      "target": 2,
+      "target": 1,
       "destroyed": false,
       "retreated": false,
       "decloaked": false,
       "hailed": false,
       "ai": true,
       "disengaging": false,
-      "yaw": 180,
+      "yaw": 225,
       "subsystem": "none"
      },
      {
@@ -2147,29 +2667,29 @@
       "shieldBefore": 340,
       "shieldAfter": 340,
       "beam": 0,
-      "torpedo": 0,
+      "torpedo": 8,
       "taken": 0,
       "from": {
-       "x": 13,
+       "x": 8,
        "y": 6
       },
       "via": {
-       "x": 13,
+       "x": 8,
        "y": 6
       },
       "to": {
-       "x": 12,
-       "y": 6
+       "x": 8,
+       "y": 5
       },
       "maneuver": "Engage",
-      "target": 2,
+      "target": 1,
       "destroyed": false,
       "retreated": false,
       "decloaked": false,
       "hailed": false,
       "ai": true,
       "disengaging": false,
-      "yaw": 180,
+      "yaw": 225,
       "subsystem": "none"
      },
      {
@@ -2183,26 +2703,26 @@
       "torpedo": 0,
       "taken": 0,
       "from": {
-       "x": 13,
-       "y": 8
+       "x": 8,
+       "y": 4
       },
       "via": {
-       "x": 13,
-       "y": 8
+       "x": 8,
+       "y": 4
       },
       "to": {
-       "x": 12,
-       "y": 8
+       "x": 8,
+       "y": 4
       },
       "maneuver": "Engage",
-      "target": 2,
+      "target": 1,
       "destroyed": false,
       "retreated": false,
       "decloaked": false,
       "hailed": false,
       "ai": true,
       "disengaging": false,
-      "yaw": 180,
+      "yaw": 225,
       "subsystem": "none"
      }
     ],
@@ -2210,7 +2730,7 @@
      {
       "id": 1,
       "facings": [
-       27,
+       13,
        17,
        19,
        19,
@@ -2234,16 +2754,16 @@
        17,
        11,
        12,
-       12,
+       6,
        9,
-       9
+       0
       ],
       "subsystems": {
        "weapons": 100,
        "engines": 100,
        "shields": 100,
        "sensors": 100,
-       "warpCore": 100
+       "warpCore": 2
       },
       "crew": "Regular",
       "crewLevel": 1,
@@ -2308,8 +2828,8 @@
        "sensors": 100,
        "warpCore": 100
       },
-      "crew": "Regular",
-      "crewLevel": 1,
+      "crew": "Veteran",
+      "crewLevel": 2,
       "coreBreached": false
      },
      {
@@ -2336,18 +2856,18 @@
      {
       "id": 3,
       "facings": [
-       20,
+       0,
        12,
        14,
-       14,
-       10,
+       3,
+       0,
        10
       ],
       "subsystems": {
-       "weapons": 100,
+       "weapons": 38,
        "engines": 100,
        "shields": 100,
-       "sensors": 100,
+       "sensors": 67,
        "warpCore": 100
       },
       "crew": "Regular",
@@ -2362,7 +2882,7 @@
        25,
        25,
        18,
-       18
+       16
       ],
       "subsystems": {
        "weapons": 100,
@@ -2392,8 +2912,8 @@
        "sensors": 100,
        "warpCore": 100
       },
-      "crew": "Regular",
-      "crewLevel": 1,
+      "crew": "Veteran",
+      "crewLevel": 2,
       "coreBreached": false
      },
      {
@@ -2418,8 +2938,74 @@
       "coreBreached": false
      }
     ],
-    "salvos": [],
-    "lost": [],
+    "salvos": [
+     {
+      "from": 1,
+      "to": 3,
+      "beam": 1,
+      "torpedo": 0,
+      "absorbed": true,
+      "ram": false,
+      "ambush": false
+     },
+     {
+      "from": 5,
+      "to": 8,
+      "beam": 2,
+      "torpedo": 0,
+      "absorbed": true,
+      "ram": false,
+      "ambush": false
+     },
+     {
+      "from": 6,
+      "to": 3,
+      "beam": 9,
+      "torpedo": 0,
+      "absorbed": false,
+      "ram": false,
+      "ambush": false
+     },
+     {
+      "from": 7,
+      "to": 3,
+      "beam": 19,
+      "torpedo": 0,
+      "absorbed": false,
+      "ram": false,
+      "ambush": false
+     },
+     {
+      "from": 3,
+      "to": 1,
+      "beam": 1,
+      "torpedo": 0,
+      "absorbed": true,
+      "ram": false,
+      "ambush": false
+     },
+     {
+      "from": 8,
+      "to": 1,
+      "beam": 4,
+      "torpedo": 3,
+      "absorbed": true,
+      "ram": false,
+      "ambush": false
+     },
+     {
+      "from": 9,
+      "to": 1,
+      "beam": 0,
+      "torpedo": 8,
+      "absorbed": true,
+      "ram": false,
+      "ambush": false
+     }
+    ],
+    "lost": [
+     3
+    ],
     "retreatedIds": [],
     "events": [
      {
@@ -2427,19 +3013,8 @@
       "kind": "ManeuverStart",
       "fleetId": 1,
       "targetFleetId": 0,
-      "x": 2,
-      "y": 2,
-      "facing": 0,
-      "maneuver": "Engage",
-      "value": 0
-     },
-     {
-      "tick": 0,
-      "kind": "ManeuverStart",
-      "fleetId": 2,
-      "targetFleetId": 0,
-      "x": 2,
-      "y": 4,
+      "x": 7,
+      "y": 3,
       "facing": 0,
       "maneuver": "Engage",
       "value": 0
@@ -2449,9 +3024,9 @@
       "kind": "ManeuverStart",
       "fleetId": 5,
       "targetFleetId": 0,
-      "x": 2,
+      "x": 7,
       "y": 6,
-      "facing": 0,
+      "facing": 315,
       "maneuver": "Engage",
       "value": 0
      },
@@ -2460,9 +3035,9 @@
       "kind": "ManeuverStart",
       "fleetId": 6,
       "targetFleetId": 0,
-      "x": 2,
-      "y": 7,
-      "facing": 315,
+      "x": 7,
+      "y": 3,
+      "facing": 0,
       "maneuver": "Engage",
       "value": 0
      },
@@ -2471,9 +3046,9 @@
       "kind": "ManeuverStart",
       "fleetId": 7,
       "targetFleetId": 0,
-      "x": 2,
-      "y": 2,
-      "facing": 0,
+      "x": 7,
+      "y": 4,
+      "facing": 315,
       "maneuver": "Engage",
       "value": 0
      },
@@ -2482,8 +3057,8 @@
       "kind": "ManeuverStart",
       "fleetId": 2000001,
       "targetFleetId": 0,
-      "x": 1,
-      "y": 6,
+      "x": 6,
+      "y": 5,
       "facing": 0,
       "maneuver": "Engage",
       "value": 0
@@ -2493,9 +3068,9 @@
       "kind": "ManeuverStart",
       "fleetId": 3,
       "targetFleetId": 0,
-      "x": 13,
-      "y": 2,
-      "facing": 180,
+      "x": 8,
+      "y": 4,
+      "facing": 135,
       "maneuver": "Engage",
       "value": 0
      },
@@ -2504,8 +3079,8 @@
       "kind": "ManeuverStart",
       "fleetId": 8,
       "targetFleetId": 0,
-      "x": 13,
-      "y": 4,
+      "x": 8,
+      "y": 5,
       "facing": 180,
       "maneuver": "Engage",
       "value": 0
@@ -2515,9 +3090,9 @@
       "kind": "ManeuverStart",
       "fleetId": 9,
       "targetFleetId": 0,
-      "x": 13,
+      "x": 8,
       "y": 6,
-      "facing": 180,
+      "facing": 225,
       "maneuver": "Engage",
       "value": 0
      },
@@ -2526,9 +3101,9 @@
       "kind": "ManeuverStart",
       "fleetId": 10,
       "targetFleetId": 0,
-      "x": 13,
-      "y": 8,
-      "facing": 180,
+      "x": 8,
+      "y": 4,
+      "facing": 135,
       "maneuver": "Engage",
       "value": 0
      },
@@ -2537,20 +3112,9 @@
       "kind": "ManeuverEnd",
       "fleetId": 1,
       "targetFleetId": 0,
-      "x": 3,
-      "y": 2,
-      "facing": 0,
-      "maneuver": "Engage",
-      "value": 0
-     },
-     {
-      "tick": 4,
-      "kind": "ManeuverEnd",
-      "fleetId": 2,
-      "targetFleetId": 0,
-      "x": 3,
-      "y": 4,
-      "facing": 0,
+      "x": 7,
+      "y": 3,
+      "facing": 45,
       "maneuver": "Engage",
       "value": 0
      },
@@ -2559,9 +3123,9 @@
       "kind": "ManeuverEnd",
       "fleetId": 5,
       "targetFleetId": 0,
-      "x": 3,
+      "x": 7,
       "y": 6,
-      "facing": 0,
+      "facing": 315,
       "maneuver": "Engage",
       "value": 0
      },
@@ -2570,9 +3134,9 @@
       "kind": "ManeuverEnd",
       "fleetId": 6,
       "targetFleetId": 0,
-      "x": 3,
-      "y": 6,
-      "facing": 0,
+      "x": 7,
+      "y": 3,
+      "facing": 45,
       "maneuver": "Engage",
       "value": 0
      },
@@ -2581,8 +3145,8 @@
       "kind": "ManeuverEnd",
       "fleetId": 7,
       "targetFleetId": 0,
-      "x": 3,
-      "y": 2,
+      "x": 7,
+      "y": 4,
       "facing": 0,
       "maneuver": "Engage",
       "value": 0
@@ -2592,8 +3156,8 @@
       "kind": "ManeuverEnd",
       "fleetId": 2000001,
       "targetFleetId": 0,
-      "x": 1,
-      "y": 6,
+      "x": 6,
+      "y": 5,
       "facing": 0,
       "maneuver": "Engage",
       "value": 0
@@ -2603,9 +3167,9 @@
       "kind": "ManeuverEnd",
       "fleetId": 3,
       "targetFleetId": 0,
-      "x": 12,
-      "y": 2,
-      "facing": 180,
+      "x": 8,
+      "y": 4,
+      "facing": 225,
       "maneuver": "Engage",
       "value": 0
      },
@@ -2614,9 +3178,9 @@
       "kind": "ManeuverEnd",
       "fleetId": 8,
       "targetFleetId": 0,
-      "x": 12,
-      "y": 4,
-      "facing": 180,
+      "x": 8,
+      "y": 5,
+      "facing": 225,
       "maneuver": "Engage",
       "value": 0
      },
@@ -2625,9 +3189,9 @@
       "kind": "ManeuverEnd",
       "fleetId": 9,
       "targetFleetId": 0,
-      "x": 12,
-      "y": 6,
-      "facing": 180,
+      "x": 8,
+      "y": 5,
+      "facing": 225,
       "maneuver": "Engage",
       "value": 0
      },
@@ -2636,11 +3200,440 @@
       "kind": "ManeuverEnd",
       "fleetId": 10,
       "targetFleetId": 0,
-      "x": 12,
-      "y": 8,
-      "facing": 180,
+      "x": 8,
+      "y": 4,
+      "facing": 225,
       "maneuver": "Engage",
       "value": 0
+     },
+     {
+      "tick": 5,
+      "kind": "Fire",
+      "fleetId": 1,
+      "targetFleetId": 3,
+      "mountIndex": 0,
+      "weapon": "PhaserArray",
+      "key": "weapon.PhaserArray",
+      "family": "beam",
+      "projectiles": 2,
+      "hit": true,
+      "intercepted": false,
+      "impactTick": 5,
+      "shieldDamage": 1,
+      "hullDamage": 0,
+      "destroyed": false,
+      "hitChance": 82,
+      "shieldFacing": "fore",
+      "subsystem": "none",
+      "aimed": false,
+      "subsystemDamage": 0,
+      "subsystemDestroyed": false,
+      "breachDamage": 0,
+      "resolveOrder": 0,
+      "x": 7,
+      "y": 3,
+      "facing": 45
+     },
+     {
+      "tick": 5,
+      "kind": "Fire",
+      "fleetId": 5,
+      "targetFleetId": 8,
+      "mountIndex": 0,
+      "weapon": "PhaserArray",
+      "key": "weapon.PhaserArray",
+      "family": "beam",
+      "projectiles": 2,
+      "hit": true,
+      "intercepted": false,
+      "impactTick": 5,
+      "shieldDamage": 2,
+      "hullDamage": 0,
+      "destroyed": false,
+      "hitChance": 92,
+      "shieldFacing": "ventral",
+      "subsystem": "none",
+      "aimed": false,
+      "subsystemDamage": 0,
+      "subsystemDestroyed": false,
+      "breachDamage": 0,
+      "resolveOrder": 1,
+      "x": 7,
+      "y": 6,
+      "facing": 315
+     },
+     {
+      "tick": 5,
+      "kind": "Fire",
+      "fleetId": 6,
+      "targetFleetId": 3,
+      "mountIndex": 0,
+      "weapon": "PhaserArray",
+      "key": "weapon.PhaserArray",
+      "family": "beam",
+      "projectiles": 2,
+      "hit": true,
+      "intercepted": false,
+      "impactTick": 5,
+      "shieldDamage": 3,
+      "hullDamage": 6,
+      "destroyed": false,
+      "hitChance": 82,
+      "shieldFacing": "fore",
+      "subsystem": "weapons",
+      "aimed": false,
+      "subsystemDamage": 40,
+      "subsystemDestroyed": false,
+      "breachDamage": 0,
+      "resolveOrder": 2,
+      "x": 7,
+      "y": 3,
+      "facing": 45
+     },
+     {
+      "tick": 5,
+      "kind": "Fire",
+      "fleetId": 7,
+      "targetFleetId": 3,
+      "mountIndex": 0,
+      "weapon": "PhaserArray",
+      "key": "weapon.PhaserArray",
+      "family": "beam",
+      "projectiles": 2,
+      "hit": true,
+      "intercepted": false,
+      "impactTick": 5,
+      "shieldDamage": 9,
+      "hullDamage": 5,
+      "destroyed": true,
+      "hitChance": 82,
+      "shieldFacing": "dorsal",
+      "subsystem": "sensors",
+      "aimed": false,
+      "subsystemDamage": 33,
+      "subsystemDestroyed": false,
+      "breachDamage": 0,
+      "resolveOrder": 3,
+      "x": 7,
+      "y": 4,
+      "facing": 0
+     },
+     {
+      "tick": 5,
+      "kind": "Fire",
+      "fleetId": 2000001,
+      "targetFleetId": 3,
+      "mountIndex": 0,
+      "weapon": "PhaserArray",
+      "key": "weapon.PhaserArray",
+      "family": "beam",
+      "projectiles": 2,
+      "hit": false,
+      "intercepted": false,
+      "impactTick": 5,
+      "shieldDamage": 0,
+      "hullDamage": 0,
+      "destroyed": false,
+      "hitChance": 77,
+      "shieldFacing": "none",
+      "subsystem": "none",
+      "aimed": false,
+      "subsystemDamage": 0,
+      "subsystemDestroyed": false,
+      "breachDamage": 0,
+      "resolveOrder": 4,
+      "x": 6,
+      "y": 5,
+      "facing": 0
+     },
+     {
+      "tick": 5,
+      "kind": "Fire",
+      "fleetId": 3,
+      "targetFleetId": 1,
+      "mountIndex": 0,
+      "weapon": "Disruptor",
+      "key": "weapon.Disruptor",
+      "family": "beam",
+      "projectiles": 2,
+      "hit": true,
+      "intercepted": false,
+      "impactTick": 5,
+      "shieldDamage": 1,
+      "hullDamage": 0,
+      "destroyed": false,
+      "hitChance": 82,
+      "shieldFacing": "fore",
+      "subsystem": "none",
+      "aimed": false,
+      "subsystemDamage": 0,
+      "subsystemDestroyed": false,
+      "breachDamage": 0,
+      "resolveOrder": 5,
+      "x": 8,
+      "y": 4,
+      "facing": 225
+     },
+     {
+      "tick": 5,
+      "kind": "Fire",
+      "fleetId": 8,
+      "targetFleetId": 1,
+      "mountIndex": 0,
+      "weapon": "Disruptor",
+      "key": "weapon.Disruptor",
+      "family": "beam",
+      "projectiles": 2,
+      "hit": true,
+      "intercepted": false,
+      "impactTick": 5,
+      "shieldDamage": 5,
+      "hullDamage": 0,
+      "destroyed": false,
+      "hitChance": 77,
+      "shieldFacing": "fore",
+      "subsystem": "none",
+      "aimed": false,
+      "subsystemDamage": 0,
+      "subsystemDestroyed": false,
+      "breachDamage": 0,
+      "resolveOrder": 6,
+      "x": 8,
+      "y": 5,
+      "facing": 225
+     },
+     {
+      "tick": 5,
+      "kind": "Fire",
+      "fleetId": 9,
+      "targetFleetId": 1,
+      "mountIndex": 0,
+      "weapon": "Disruptor",
+      "key": "weapon.Disruptor",
+      "family": "beam",
+      "projectiles": 2,
+      "hit": false,
+      "intercepted": false,
+      "impactTick": 5,
+      "shieldDamage": 0,
+      "hullDamage": 0,
+      "destroyed": false,
+      "hitChance": 82,
+      "shieldFacing": "none",
+      "subsystem": "none",
+      "aimed": false,
+      "subsystemDamage": 0,
+      "subsystemDestroyed": false,
+      "breachDamage": 0,
+      "resolveOrder": 7,
+      "x": 8,
+      "y": 5,
+      "facing": 225
+     },
+     {
+      "tick": 5,
+      "kind": "Fire",
+      "fleetId": 10,
+      "targetFleetId": 1,
+      "mountIndex": 0,
+      "weapon": "Disruptor",
+      "key": "weapon.Disruptor",
+      "family": "beam",
+      "projectiles": 2,
+      "hit": false,
+      "intercepted": false,
+      "impactTick": 5,
+      "shieldDamage": 0,
+      "hullDamage": 0,
+      "destroyed": false,
+      "hitChance": 82,
+      "shieldFacing": "none",
+      "subsystem": "none",
+      "aimed": false,
+      "subsystemDamage": 0,
+      "subsystemDestroyed": false,
+      "breachDamage": 0,
+      "resolveOrder": 8,
+      "x": 8,
+      "y": 4,
+      "facing": 225
+     },
+     {
+      "tick": 5,
+      "kind": "Destroyed",
+      "fleetId": 3,
+      "targetFleetId": 0,
+      "x": 8,
+      "y": 4,
+      "facing": 225
+     },
+     {
+      "tick": 6,
+      "kind": "Fire",
+      "fleetId": 6,
+      "targetFleetId": 3,
+      "mountIndex": 1,
+      "weapon": "PhotonTorpedo",
+      "key": "weapon.PhotonTorpedo",
+      "family": "torpedo",
+      "projectiles": 1,
+      "hit": false,
+      "intercepted": false,
+      "impactTick": 8,
+      "shieldDamage": 0,
+      "hullDamage": 0,
+      "destroyed": false,
+      "hitChance": 60,
+      "shieldFacing": "none",
+      "subsystem": "none",
+      "aimed": false,
+      "subsystemDamage": 0,
+      "subsystemDestroyed": false,
+      "breachDamage": 0,
+      "resolveOrder": 9,
+      "x": 7,
+      "y": 3,
+      "facing": 45
+     },
+     {
+      "tick": 6,
+      "kind": "Fire",
+      "fleetId": 7,
+      "targetFleetId": 3,
+      "mountIndex": 1,
+      "weapon": "PhotonTorpedo",
+      "key": "weapon.PhotonTorpedo",
+      "family": "torpedo",
+      "projectiles": 1,
+      "hit": false,
+      "intercepted": false,
+      "impactTick": 8,
+      "shieldDamage": 0,
+      "hullDamage": 0,
+      "destroyed": false,
+      "hitChance": 60,
+      "shieldFacing": "none",
+      "subsystem": "none",
+      "aimed": false,
+      "subsystemDamage": 0,
+      "subsystemDestroyed": false,
+      "breachDamage": 0,
+      "resolveOrder": 10,
+      "x": 7,
+      "y": 4,
+      "facing": 0
+     },
+     {
+      "tick": 6,
+      "kind": "Fire",
+      "fleetId": 2000001,
+      "targetFleetId": 3,
+      "mountIndex": 1,
+      "weapon": "PhotonTorpedo",
+      "key": "weapon.PhotonTorpedo",
+      "family": "torpedo",
+      "projectiles": 1,
+      "hit": false,
+      "intercepted": false,
+      "impactTick": 8,
+      "shieldDamage": 0,
+      "hullDamage": 0,
+      "destroyed": false,
+      "hitChance": 75,
+      "shieldFacing": "none",
+      "subsystem": "none",
+      "aimed": false,
+      "subsystemDamage": 0,
+      "subsystemDestroyed": false,
+      "breachDamage": 0,
+      "resolveOrder": 11,
+      "x": 6,
+      "y": 5,
+      "facing": 0
+     },
+     {
+      "tick": 6,
+      "kind": "Fire",
+      "fleetId": 8,
+      "targetFleetId": 1,
+      "mountIndex": 1,
+      "weapon": "PhotonTorpedo",
+      "key": "weapon.PhotonTorpedo",
+      "family": "torpedo",
+      "projectiles": 1,
+      "hit": true,
+      "intercepted": false,
+      "impactTick": 8,
+      "shieldDamage": 2,
+      "hullDamage": 0,
+      "destroyed": false,
+      "hitChance": 75,
+      "shieldFacing": "fore",
+      "subsystem": "none",
+      "aimed": false,
+      "subsystemDamage": 0,
+      "subsystemDestroyed": false,
+      "breachDamage": 0,
+      "resolveOrder": 12,
+      "x": 8,
+      "y": 5,
+      "facing": 225
+     },
+     {
+      "tick": 6,
+      "kind": "Fire",
+      "fleetId": 9,
+      "targetFleetId": 1,
+      "mountIndex": 1,
+      "weapon": "PhotonTorpedo",
+      "key": "weapon.PhotonTorpedo",
+      "family": "torpedo",
+      "projectiles": 1,
+      "hit": true,
+      "intercepted": false,
+      "impactTick": 8,
+      "shieldDamage": 6,
+      "hullDamage": 0,
+      "destroyed": false,
+      "hitChance": 80,
+      "shieldFacing": "fore",
+      "subsystem": "none",
+      "aimed": false,
+      "subsystemDamage": 0,
+      "subsystemDestroyed": false,
+      "breachDamage": 0,
+      "resolveOrder": 13,
+      "x": 8,
+      "y": 5,
+      "facing": 225
+     },
+     {
+      "tick": 6,
+      "kind": "Fire",
+      "fleetId": 10,
+      "targetFleetId": 1,
+      "mountIndex": 1,
+      "weapon": "PhotonTorpedo",
+      "key": "weapon.PhotonTorpedo",
+      "family": "torpedo",
+      "projectiles": 1,
+      "hit": false,
+      "intercepted": false,
+      "impactTick": 8,
+      "shieldDamage": 0,
+      "hullDamage": 0,
+      "destroyed": false,
+      "hitChance": 60,
+      "shieldFacing": "none",
+      "subsystem": "none",
+      "aimed": false,
+      "subsystemDamage": 0,
+      "subsystemDestroyed": false,
+      "breachDamage": 0,
+      "resolveOrder": 14,
+      "x": 8,
+      "y": 4,
+      "facing": 225
      }
     ]
    }
