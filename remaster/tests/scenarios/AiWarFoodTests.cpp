@@ -143,6 +143,71 @@ FoodRun playFood(const std::string& presetId, std::uint64_t seed, int turns, Gov
     return out;
 }
 
+// Governor floors, pinned (F1 audit): Growth keeps 25% of the population on industry, Research keeps 20%. The floor is capped by what the
+// colony can actually do: powered factories x 10 workers, and the citizens left once the food workers are placed. Where either cap is
+// lower, the cap is what the test asserts. Returns the number of failures.
+int checkGovernorFloors() {
+    int failed = 0, cases = 0;
+    auto s = newCampaign(browserDefault("remastered", 500));
+    Colony home;
+    bool found = false;
+    for (const auto& c : s.colonies) if (c.ownerId == s.playerEmpire && !found) { home = c; found = true; }
+    if (!found) throw std::runtime_error("no player colony");
+    struct Case { GovernorPriority g; int percent; };
+    for (const Case k : {Case{GovernorPriority::Growth, 25}, Case{GovernorPriority::Research, 20}}) {
+        // The floor only binds when the food workers leave less than half the citizens free (the Growth surplus would otherwise take a
+        // quarter of them first), so the sweep runs farm counts from starved to ample at several populations.
+        for (int pop : {10, 20, 30, 40, 60, 80, 100}) {
+            for (int farms : {1, 2, 3, 4, 5, 6, 8, 10, 50}) for (int factories : {0, 1, 2, 3, 50}) {
+                Colony c = home;
+                c.population = pop; c.farms = farms; c.factories = factories; c.laboratories = 50; c.energy = 100000;
+                c.workforcePriority = k.g; c.workforceManualOverride = false;
+                evaluateWorkforceGovernor(s, c);
+                // The food workers the colony needs (the same scan the governor does) and the powered-factory cap.
+                int needed = 0;
+                while (needed < pop && needed < c.farms * 10) {
+                    Colony t = c; t.foodWorkers = needed; t.industryWorkers = 0; t.researchWorkers = 0;
+                    if (economy(s, t).food >= pop) break;
+                    ++needed;
+                }
+                const int maxFactories = factories * 10;   // energy is ample, so every factory is powered
+                const int percentFloor = (pop * k.percent + 99) / 100;
+                const int expected = std::min({maxFactories, pop - needed, percentFloor});
+                ++cases;
+                const bool ok = c.industryWorkers >= expected && c.industryWorkers <= maxFactories && c.foodWorkers >= needed
+                             && c.foodWorkers + c.industryWorkers + c.researchWorkers <= pop;
+                if (!ok) {
+                    std::cout << "FAIL floor " << governorPriorityName(k.g) << " pop " << pop << " farms " << farms << " factories " << factories << ": industry " << c.industryWorkers
+                              << " (floor " << expected << ", needed food " << needed << ", cap " << maxFactories << ")" << std::endl;
+                    ++failed;
+                }
+                // A factory-limited colony sits exactly on the documented cap, never above it.
+                if (factories > 0 && maxFactories < percentFloor && pop - needed >= maxFactories && c.industryWorkers != maxFactories) {
+                    std::cout << "FAIL floor " << governorPriorityName(k.g) << " pop " << pop << " farms " << farms << " factories " << factories << ": factory cap " << maxFactories << " not reached, industry " << c.industryWorkers << std::endl;
+                    ++failed;
+                }
+            }
+        }
+    }
+    // The constants the governor reads are the documented figures. At today's economy (two food per farm worker, so food takes half the
+    // citizens and the Growth surplus a quarter) the Growth floor equals what the surplus rule leaves, so the sweep above cannot see it
+    // move on its own; the constant is pinned here and the Research floor is pinned by behaviour as well.
+    ++cases;
+    if (GrowthIndustryFloorPercent != 25 || ResearchIndustryFloorPercent != 20) {
+        std::cout << "FAIL floor constants: Growth " << GrowthIndustryFloorPercent << "% (want 25), Research " << ResearchIndustryFloorPercent << "% (want 20)" << std::endl; ++failed;
+    }
+    // The documented percentages themselves, where nothing limits them: 100 citizens, 50 factories, ample farms and labs.
+    for (const Case k : {Case{GovernorPriority::Growth, 25}, Case{GovernorPriority::Research, 20}}) {
+        Colony c = home;
+        c.population = 100; c.farms = 50; c.factories = 50; c.laboratories = 50; c.energy = 100000; c.workforcePriority = k.g; c.workforceManualOverride = false;
+        evaluateWorkforceGovernor(s, c);
+        ++cases;
+        if (c.industryWorkers < k.percent) { std::cout << "FAIL floor " << governorPriorityName(k.g) << ": " << c.industryWorkers << " industry workers of 100, below " << k.percent << "%" << std::endl; ++failed; }
+    }
+    std::cout << "GOVERNOR FLOORS (Growth 25%, Research 20%, capped by powered factories x10 and citizens after food): " << cases << " cases, " << failed << " failed" << std::endl;
+    return failed;
+}
+
 // Diagnostic: `AiWarFoodTests probe <preset> <seedIndex>` prints every AI's standing towards the player every 5 turns.
 void probe(const std::string& presetId, int k) {
     auto s = newCampaign(browserDefault(presetId, 500 + 37ULL * static_cast<std::uint64_t>(k)));
@@ -204,6 +269,7 @@ int main(int argc, char** argv) {
                 if (early > 0) { std::cout << "FAIL " << id << ": a war before turn 30" << std::endl; ++failed; }
             }
         }
+        if (mode == "all" || mode == "food" || mode == "floor") failed += checkGovernorFloors();
         if (mode == "all" || mode == "food") {
             std::cout << "GOVERNORS, first 100 turns: lowest industry workers on the player's colonies (turn), pop start->end, first 3 seeds" << std::endl;
             for (const auto& id : ids) {

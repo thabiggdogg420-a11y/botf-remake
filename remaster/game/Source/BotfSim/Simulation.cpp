@@ -6868,7 +6868,7 @@ void evaluateWorkforceGovernor(const GameState& state, Colony& c) {
     // priority used to fill every farm before it gave industry a single worker; with pop growing two a turn that left industry at zero
     // and the colony's queue frozen for good.
     if (c.workforcePriority == GovernorPriority::Growth || c.workforcePriority == GovernorPriority::Research) {
-        const int percent = c.workforcePriority == GovernorPriority::Growth ? 25 : 20;
+        const int percent = c.workforcePriority == GovernorPriority::Growth ? GrowthIndustryFloorPercent : ResearchIndustryFloorPercent;
         const int floorWorkers = std::min({maxFactories, remainingPop, (c.population * percent + 99) / 100});
         indAssigned += floorWorkers;
         remainingPop -= floorWorkers;
