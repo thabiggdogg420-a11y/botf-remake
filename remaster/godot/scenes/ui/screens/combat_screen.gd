@@ -127,7 +127,7 @@ func _bottom(e: Dictionary, foe_name: String, last: Dictionary) -> Control:
 	logf.custom_minimum_size.x = 560
 	var lb := Lcars.vbox(2)
 	if last.is_empty():
-		lb.add_child(Lcars.para("Ships deploy at opposite edges of the arena. Dashed lines show what each ship will do next round.", Lcars.TEXT3, 13))
+		lb.add_child(Lcars.para("The fleets deploy facing each other inside phaser range. Dashed lines show what each ship will do next round.", Lcars.TEXT3, 13))
 	for line in round_log(e, last):
 		lb.add_child(Lcars.para(line[1], Lcars.tone_color(line[0]), 13))
 	Lcars.body(logf).add_child(Lcars.scroll(lb))
