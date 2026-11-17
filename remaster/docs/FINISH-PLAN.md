@@ -28,3 +28,10 @@ Each phase ends in a packaged beta Simon plays. At most 2 lanes at once. Barclay
 
 ## Machine rules (unchanged)
 One heavy job at a time (`Documents\ChatGPT\.botf-heavy.lock`), BelowNormal priority, `--audio-driver Dummy`, stall watch on every running lane, full suite once per job at the end.
+
+## F2 status (17 Nov, Barclay)
+- Built, awaiting the lead's frame review and Simon's verdict. Proof: `Documents\ChatGPT\f2-captures` (frame-time probe before/after, SoA strips, packaged 1v1 clip). Probe: `scenes/battle/tools/f2_probe.gd`.
+- Hitches: the round-1 stall (hulls built on the round's first frame, 335-470 ms) is gone (the round waits for the hulls); round starts 55-90 ms -> under 34 ms (timeline built on a worker thread, resolve / playback / panels on separate frames). Battle open: worst frame 135-150 ms -> 80-95 ms; what remains is the combat screen's first layout.
+- Beams draw in every round the core fires one. Rounds 1-3 of a drill have no beam shots in the core (beam range 4 cells, torpedo 7; the fleets deploy further apart): a rules question for Simon.
+- Camera: a tracking shot replaces any shot that shows no readable hull for 0.25 s. Glare: flares capped at 32% of the frame height, glow 0.4, flash lights capped. Top bar and rail fold away during rounds.
+- SoA side-by-side fixes: thinner phasers, kill fireball and hull hits as orange fire instead of white streaks.
