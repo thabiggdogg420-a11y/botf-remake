@@ -26,4 +26,4 @@ import/use_multiple_threads=false
 
 [rendering]
 renderer/rendering_method="forward_plus"
-renderer/rendering_method.web="gl_compatibility"
+renderer/rendering_method.web="forward_plus"
