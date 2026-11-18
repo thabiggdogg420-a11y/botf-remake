@@ -7,7 +7,7 @@ import os
 import sys
 from PIL import Image, ImageDraw
 
-INTERNAL = {"battle-volley", "battle-closeup", "battle-volley-close", "battle-campaign"}
+INTERNAL = {"battle-volley", "battle-closeup", "battle-volley-close", "battle-campaign", "battle-kill", "battle-burning", "system3d"}
 
 
 def main():

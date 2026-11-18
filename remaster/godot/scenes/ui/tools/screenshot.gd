@@ -96,8 +96,12 @@ func _run() -> void:
 		await _wait(10)
 		_report_fps(s)
 		var img := root.get_viewport().get_texture().get_image()
-		if (s == "battle-closeup" or (s.begins_with("battle-volley") or s.begins_with("battle-strip") or s == "battle-campaign")) and app._current != null and app._current.get("host") != null and app._current.host.view_node != null:
+		if (s == "battle-closeup" or s == "battle-kill" or s == "battle-burning" or (s.begins_with("battle-volley") or s.begins_with("battle-strip") or s == "battle-campaign")) and app._current != null and app._current.get("host") != null and app._current.host.view_node != null:
 			img = app._current.host.view_node.get_viewport().get_texture().get_image() # the 3D view alone, no panels
+		if s == "system3d":
+			var sv3: SystemView3D = app.current_screen().find_child("SystemView3D", true, false)
+			if sv3:
+				img = sv3.viewport.get_texture().get_image()
 		# Committed screenshots are kept small: 960x540.
 		if _env("SHOT_FULL") == "":
 			img.resize(960, 540, Image.INTERPOLATE_LANCZOS)
@@ -449,6 +453,76 @@ func _prepare(s: String) -> void:
 				im.resize(640, 360, Image.INTERPOLATE_LANCZOS)
 				im.save_png("%s/ui-%s-%02d.png" % [out_dir, s, k])
 			print("STRIP ", s, " t ", snappedf(t0, 0.01), " .. ", snappedf(view.time, 0.01), " mode ", cam.mode, " director ", view.director.kind, " subj ", view.director.subject, " playing ", view.is_playing())
+		"system", "system3d":
+			# The system screen; system3d saves its 3D view alone, closed on the colony world. Orbits held still so the
+			# desktop and web frames match.
+			_campaign()
+			app.goto("system")
+			await _wait(30)
+			var sv: SystemView3D = app.current_screen().find_child("SystemView3D", true, false)
+			if sv:
+				sv.spin = false
+				if s == "system3d" and sv.home_index >= 0:
+					var home: Node3D = sv._bodies[sv.home_index]
+					sv.camera.global_position = home.global_position + Vector3(0.35, 0.45, 1.25)
+					sv.camera.look_at(home.global_position, Vector3.UP)
+			await _wait(60)
+		"hail":
+			# The hail scene with the first rival power (diplomacy -> hail).
+			_campaign()
+			app.goto("diplomacy")
+			await _wait(6)
+			var ds := app.current_screen()
+			var tid := 2
+			for e in app.view.get("empires", []):
+				if int(e.get("empire", 0)) != app.player():
+					tid = int(e["empire"])
+					break
+			ds.vm.select(false, tid)
+			ds.refresh()
+			await _wait(20)
+			ds.open_hail(app.empire_name(tid), tid, false, "At peace")
+			await _wait(90)
+		"battle-kill", "battle-burning":
+			# One held frame of the starbase drill: battle-kill 0.75 s into the first kill's fireball, battle-burning
+			# following the worst-hit ship (below half hull) with its fires. Saved from the 3D view alone.
+			app.start_drill("newBattleDrill", "Starbase drill", {"station": true})
+			app.end_turn()
+			await _wait(4)
+			app.close_all_modals()
+			var view: Node = app._current.host.view_node
+			var at := -1.0
+			var worst := 0
+			for r in 12:
+				if app.encounter.get("finished", false):
+					break
+				await _hulls_ready()
+				app._current._round()
+				await _wait(6)
+				if s == "battle-kill" and view.timeline != null:
+					for j in view.timeline.jobs:
+						if j.kind == BattleTimeline.Job.EXPLOSION:
+							at = j.start + 0.75
+							break
+				if s == "battle-burning":
+					for sd in app.encounter.get("ships", []):
+						var f := float(sd.get("hull", 1)) / maxf(1.0, float(sd.get("maxHull", 1)))
+						if sd.get("alive", false) and not sd.get("station", false) and f < 0.5:
+							worst = int(sd["id"])
+							break
+					if worst != 0:
+						view.camera.follow_fleet(worst)
+						at = maxf(0.0, view.timeline.round_seconds * 0.5) if view.timeline != null else 1.0
+				if at >= 0.0:
+					break
+			print("HELD ", s, " at ", at, " ship ", worst)
+			await _hulls_ready()
+			view.playback_speed = 1.0
+			view.seek(maxf(0.0, at - 0.6))
+			while view.time < at:
+				await _wait(1)
+			view.playback_speed = 0.0
+			await _wait(20)
 		"galaxy-open":
 			app.view = {}
 			_campaign()
