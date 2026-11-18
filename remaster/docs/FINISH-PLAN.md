@@ -29,6 +29,14 @@ Each phase ends in a packaged beta Simon plays. At most 2 lanes at once. Barclay
 ## Machine rules (unchanged)
 One heavy job at a time (`Documents\ChatGPT\.botf-heavy.lock`), BelowNormal priority, `--audio-driver Dummy`, stall watch on every running lane, full suite once per job at the end.
 
+## F3 status (18 Nov, Barclay)
+- Built, awaiting the lead's frame review and Simon's verdict. Frames: `remaster\captures\2026-11-18\f3-exe` (packaged exe) and `f3-web` (browser build); capture tool `scenes/ui/tools/f3_capture.gd`.
+- 3D system view (`widgets/system_view_3d.gd`): the system screen's hero band shows the star, every planet on an orbit (L7 textures through PlanetBody, else the procedural globe), belts, and the colony world's structures (surface works by kind, shipyard ring dock, defence platforms), with LCARS labels and a structure legend. Both renderers.
+- Hail scenes (`widgets/hail_viewscreen.gd`, `hail_bust.gd`, `hail_lines.gd`): the dossier and a hail modal show the leader on a viewscreen. Vector silhouette busts for all eight powers, the Terran Empire and the Mirror twins (10 Nov call 2). Where the private portrait pack has a picture (16 Nov portraits ruling) the picture shows instead; Mirror games always get the bust (Picard is not the Terran Emperor). Short in-house greeting per power and standing.
+- Voice acknowledgements on campaign unit orders (move, colonise, terraform, retreat, invade...) through the existing ack groups; `scripts/audio/audio_doubtful.gd` blocks every fail/doubtful clip of AUDIO-DOUBTFUL.md and the listen sheet, even from an older audio pack.
+- Advisor and first-run tutorial (`scenes/ui/advisor.gd`, `widgets/advisor_panel.gd`): eight steps teach the turn loop, then one hint at a time from the end-turn check, each with one action button. Presentation only: every action is an order the screens already give, dry-run first. Done-gate test `test_f3_people.gd`: a new campaign reaches turn 10 pressing only the advisor button (52 presses, 2 colonies, 9 systems charted).
+- Open: food shortfalls recur every turn on the growth colony and the advisor's Balance does not cure them (the planet's farm limit, not a rule change); the advisor card sits over the lower left of the system screen (it folds).
+
 ## F2 status (17 Nov, Barclay)
 - Built, awaiting the lead's frame review and Simon's verdict. Proof: `Documents\ChatGPT\f2-captures` (frame-time probe before/after, SoA strips, packaged 1v1 clip). Probe: `scenes/battle/tools/f2_probe.gd`.
 - Hitches: the round-1 stall (hulls built on the round's first frame, 335-470 ms) is gone (the round waits for the hulls); round starts 55-90 ms -> under 34 ms (timeline built on a worker thread, resolve / playback / panels on separate frames). Battle open: worst frame 135-150 ms -> 80-95 ms; what remains is the combat screen's first layout.
