@@ -550,11 +550,16 @@ func _m1_ui() -> void:
 	var ds := app.current_screen()
 	var contacted: Array = app.view["empires"].filter(func(e): return e.get("contact", false))
 	if contacted.size() > 0:
-		check(find(ds, "HailPanel") != null and find(ds, "Portrait") is PortraitSlot, "diplomacy shows the hail panel with a portrait slot")
+		check(find(ds, "HailPanel") != null and (find(ds, "Portrait") is HailViewscreen or find(ds, "Portrait") is PortraitSlot), "diplomacy shows the hail panel with the leader's viewscreen")
 		var hb := find(ds, "Hail") as Button
 		if hb:
-			hb.pressed.emit()
+			hb.pressed.emit()   # F3: Hail opens the hail scene; its Negotiate button opens negotiation
 			await frames()
+			var neg := find(app, "HailNegotiate") as Button
+			check(find(app, "HailScene") != null and neg != null, "Hail opens the hail scene")
+			if neg:
+				neg.pressed.emit()
+				await frames()
 			check(app.current_screen().vm.dossier_tab == "propose", "Hail opens negotiation")
 	# Era setting
 	var before := str(app.settings.get("uiEra", "tng"))

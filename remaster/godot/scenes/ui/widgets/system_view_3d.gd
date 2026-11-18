@@ -155,7 +155,7 @@ func _build() -> void:
 		mi.mesh = ps
 		mi.position = _orbit_pos(orbit_r, float(pivot.get_meta("angle")))
 		var m := ShaderMaterial.new()
-		m.shader = load("res://scenes/galaxy/shaders/planet_globe.gdshader")
+		m.shader = AppLoader.resource("res://scenes/galaxy/shaders/planet_globe.gdshader")
 		GalaxyMap._planet_look(m, cls)
 		m.set_shader_parameter("seed", float(seed_ * 7 + i))
 		m.set_shader_parameter("star_pos", Vector3.ZERO)
