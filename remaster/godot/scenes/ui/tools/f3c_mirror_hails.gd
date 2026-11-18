@@ -1,6 +1,6 @@
 extends SceneTree
-## Mirror Universe hail frames (18 Nov, the three new Mirror portraits): a Mirror game as the Mirror Romulans, then the hail
-## scene of the Terran Empire, the Mirror Klingons and the Mirror Cardassians, one frame each. Prints "HAIL <name> picture|bust keys [...]".
+## Mirror Universe hail frames (18 Nov, the three new Mirror portraits): Mirror games as the Mirror Klingons and as the Terrans,
+## the hail scene of the Terran Empire, the Mirror Klingons and the Mirror Cardassians, one frame each. Prints "HAIL <name> picture|bust keys [...]".
 ##   BOTFRemastered.exe --audio-driver Dummy --resolution 1920x1080 -s res://scenes/ui/tools/f3c_mirror_hails.gd -- <out_dir>
 ##   web: web_driver.py --args "-s res://scenes/ui/tools/f3c_mirror_hails.gd" ; each frame prints "WEBSHOT <name>" and holds 4 s.
 
@@ -41,27 +41,31 @@ func _run() -> void:
 	AppSaves.load_settings(saved)
 	await _wait(6)
 	app.settings["tutorial"] = -1
-	app.goto("new")
-	app.close_all_modals()
-	await _wait(4)
-	var nc := app.current_screen()
-	if not nc.vm.pick_scenario("mirror-universe"):
-		print("FAIL no Mirror Universe scenario")
-		quit(1)
-		return
-	nc.faction = 3
-	nc.start()
-	await _wait_ms(2500)
-	app.goto("diplomacy")
-	await _wait(6)
-	var ds := app.current_screen()
-	for it in [[1, "terran"], [2, "mirror-klingon"], [4, "mirror-cardassian"]]:
-		ds.open_hail(app.empire_name(int(it[0])), int(it[0]), false, "At war")
-		await _wait_ms(1200)
-		var hv: HailViewscreen = app.find_child("HailViewscreen", true, false) as HailViewscreen
-		print("HAIL ", app.empire_name(int(it[0])), " ", ("bust" if hv == null or hv.shows_bust() else "picture"), " keys ", hv.portrait_keys() if hv else [])
-		await _shot("mirror-hail-" + str(it[1]))
+	# The Mirror lineup is Terran (1), Mirror Klingon (2) and Mirror Cardassian (4); a power cannot hail itself, so the Klingons
+	# take the Terran and Cardassian hails and a second game as the Terrans takes the Klingon hail.
+	for game in [[2, [[1, "terran"], [4, "mirror-cardassian"]]], [1, [[2, "mirror-klingon"]]]]:
+		app.goto("new")
 		app.close_all_modals()
 		await _wait(4)
+		var nc := app.current_screen()
+		if not nc.vm.pick_scenario("mirror-universe"):
+			print("FAIL no Mirror Universe scenario")
+			quit(1)
+			return
+		nc.faction = int(game[0])
+		nc.start()
+		await _wait_ms(2500)
+		app.close_all_modals()
+		app.goto("diplomacy")
+		await _wait(6)
+		var ds := app.current_screen()
+		for it in game[1]:
+			ds.open_hail(app.empire_name(int(it[0])), int(it[0]), false, "At war")
+			await _wait_ms(1200)
+			var hv: HailViewscreen = app.find_child("HailViewscreen", true, false) as HailViewscreen
+			print("HAIL ", app.empire_name(int(it[0])), " ", ("bust" if hv == null or hv.shows_bust() else "picture"), " keys ", hv.portrait_keys() if hv else [])
+			await _shot("mirror-hail-" + str(it[1]))
+			app.close_all_modals()
+			await _wait(4)
 	AppSaves.store_settings(saved)
 	quit(0)
