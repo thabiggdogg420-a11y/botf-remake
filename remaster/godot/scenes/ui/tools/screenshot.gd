@@ -1,3 +1,4 @@
+class_name BotfShotTree
 extends SceneTree
 ## Renders UI screenshots (needs a display: run under xvfb-run with --rendering-driver opengl3).
 ##   godot --path remaster/godot --rendering-driver opengl3 --resolution 1920x1080 \
@@ -89,6 +90,11 @@ func _run() -> void:
 			await _wait(1)
 		print("SHOT web packs ", "done" if app.web_packs_done else "NOT done", " after ", (Time.get_ticks_msec() - t0) / 1000.0, " s")
 		await _wait(30)
+	# WebGPU trial: the fork's templates ignore -s, so the "Web Capture" export starts this tree through
+	# application/run/main_loop_type, which also loads the main scene. Drop it once the shared pack fetch it started is in.
+	if OS.has_feature("botf_capture") and current_scene != null and current_scene != app:
+		current_scene.queue_free()
+		await _wait(2)
 	var code := 0
 	for s in shots:
 		await _prepare(s)
@@ -98,6 +104,11 @@ func _run() -> void:
 			t.queue_free()
 		await _wait(10)
 		_report_fps(s)
+		if _env("SHOT_NOREAD") != "":
+			# WebGPU trial: the fork crashes ("null function") on a viewport read-back; the page screenshot is the frame.
+			print("saved (no read-back) ", s)
+			await _web_hold(s, Image.create(8, 8, false, Image.FORMAT_RGB8))
+			continue
 		var img := root.get_viewport().get_texture().get_image()
 		if _env("SHOT_ROOT") == "" and (s == "battle-closeup" or s == "battle-kill" or s == "battle-burning" or (s.begins_with("battle-volley") or s.begins_with("battle-strip") or s == "battle-campaign")) and app._current != null and app._current.get("host") != null and app._current.host.view_node != null:
 			img = app._current.host.view_node.get_viewport().get_texture().get_image() # the 3D view alone, no panels

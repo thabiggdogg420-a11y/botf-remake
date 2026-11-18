@@ -19,7 +19,8 @@ param(
     [ValidateSet('release', 'debug', 'both')][string]$Target = 'release',
     [switch]$Clean,
     [string]$GodotCpp = $env:BOTF_GODOT_CPP,
-    [int]$Jobs = 8
+    [int]$Jobs = 8,
+    [string]$EmccVersion = '3.1.64'   # WebGPU trial: the fork's template needs 6.0.x
 )
 $ErrorActionPreference = 'Stop'
 $core = $PSScriptRoot
@@ -36,7 +37,7 @@ Remove-Item Env:MSYSTEM, Env:SHELL -ErrorAction SilentlyContinue   # emsdk write
 }
 $env:EMSDK = $emsdk
 $ver = (& emcc --version | Select-Object -First 1)
-if ($ver -notmatch '3\.1\.64') { throw "emcc must be 3.1.64 (the proven pairing with the Godot 4.5 dlink template); found: $ver" }
+if ($ver -notmatch [regex]::Escape($EmccVersion)) { throw "emcc must be $EmccVersion (3.1.64 is the proven pairing with the Godot 4.5 dlink template); found: $ver" }
 foreach ($t in 'cmake', 'ninja') {
     if (-not (Get-Command $t -ErrorAction SilentlyContinue)) {
         $hit = Get-ChildItem 'C:\Program Files (x86)\Microsoft Visual Studio', 'C:\Program Files\Microsoft Visual Studio' -Recurse -Filter "$t.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
@@ -61,10 +62,12 @@ if (-not (Test-Path -LiteralPath (Join-Path $GodotCpp 'CMakeLists.txt'))) {
 Write-Host "[web-core] emcc $ver; godot-cpp $GodotCpp"
 
 # --- side-module C++ runtime with wasm exceptions, once ------------------------------------------------------------------
+# emsdk 3.x names the wasm-exception runtime '-except'; 4.x and later '-legacyexcept' (legacy wasm EH is still their default).
+$eh = if ($EmccVersion -like '3.*') { 'except' } else { 'legacyexcept' }
 $pic = Join-Path $emsdk 'upstream\emscripten\cache\sysroot\lib\wasm32-emscripten\pic'
-if (-not ((Test-Path (Join-Path $pic 'libc++abi-except.a')) -and (Test-Path (Join-Path $pic 'libunwind-except.a')))) {
-    Write-Host '[web-core] embuilder libc++abi-except libunwind-except --pic'
-    & embuilder build libc++abi-except libunwind-except --pic
+if (-not ((Test-Path (Join-Path $pic "libc++abi-$eh.a")) -and (Test-Path (Join-Path $pic "libunwind-$eh.a")))) {
+    Write-Host "[web-core] embuilder libc++abi-$eh libunwind-$eh --pic"
+    & embuilder build "libc++abi-$eh" "libunwind-$eh" --pic
     if ($LASTEXITCODE -ne 0) { throw 'embuilder failed' }
 }
 
@@ -75,7 +78,7 @@ foreach ($t in $targets) {
     if ($Clean -and (Test-Path -LiteralPath $dir)) { Remove-Item -LiteralPath $dir -Recurse -Force }
     New-Item -ItemType Directory -Force -Path $dir | Out-Null
     New-Item -ItemType File -Force -Path (Join-Path $dir '.gdignore') | Out-Null   # keep Godot from importing .o files
-    & emcmake cmake -S $core -B $dir -G Ninja -DCMAKE_BUILD_TYPE=Release "-DBOTF_GODOT_TARGET=template_$t" -DGODOTCPP_THREADS=OFF "-DBOTF_GODOT_CPP_DIR=$GodotCpp" "-DPython3_EXECUTABLE=$py"
+    & emcmake cmake -S $core -B $dir -G Ninja -DCMAKE_BUILD_TYPE=Release "-DBOTF_GODOT_TARGET=template_$t" -DGODOTCPP_THREADS=OFF "-DBOTF_GODOT_CPP_DIR=$GodotCpp" "-DPython3_EXECUTABLE=$py" "-DBOTF_EM_EH=$eh"
     if ($LASTEXITCODE -ne 0) { throw "configure failed ($t)" }
     & cmake --build $dir -j $Jobs
     if ($LASTEXITCODE -ne 0) { throw "build failed ($t)" }
