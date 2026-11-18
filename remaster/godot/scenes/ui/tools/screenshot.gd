@@ -95,6 +95,8 @@ func _run() -> void:
 	if OS.has_feature("botf_capture") and current_scene != null and current_scene != app:
 		current_scene.queue_free()
 		await _wait(2)
+		# That App may have begun the battle warm-up (a static once-only flag) and died with it: let this App's run it.
+		App._warmed_battle = false
 	if _env("SHOT_PROBE") != "":
 		await _probe_readback(_env("SHOT_PROBE"))
 	var code := 0

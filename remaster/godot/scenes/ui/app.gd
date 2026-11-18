@@ -233,6 +233,15 @@ func _open_combat_when_ready(remember: bool, need: Array) -> void:
 	for name: String in need:
 		await AppLoader.fetch_web_pack(self, name)
 		web_packs_changed.emit(name)
+	if WebGpuWarm.needed():
+		# WebGPU: the first battle's render pipelines are built here, behind the panel, not in the battle's first frames.
+		_loading_bar.set_meta("need", [])
+		_loading_title = "Preparing battle graphics"
+		_loading_label.text = "Preparing battle graphics (first battle only, a few seconds)"
+		_loading_fill.size.x = _loading_bar.size.x
+		for _i in 3:
+			await get_tree().process_frame # the panel is on screen before the pipeline builds freeze the frame
+		await WebGpuWarm.run(self, settings)
 	_hide_loading()
 	_combat_ready = true
 	goto("combat", remember)
@@ -669,7 +678,7 @@ func goto(id: String, remember: bool = true) -> void:
 		return
 	if id == "combat" and not _combat_ready:
 		var need := _missing_ship_packs()   # web only: hulls of a faction not downloaded yet
-		if not need.is_empty():
+		if not need.is_empty() or WebGpuWarm.needed():
 			_open_combat_when_ready(remember, need)
 			return
 	if id == "system" and not view.is_empty():
