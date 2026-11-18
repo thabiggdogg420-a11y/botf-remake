@@ -106,8 +106,20 @@ func _header(c: Dictionary) -> Control:
 	sb.content_margin_top = 8
 	sb.content_margin_bottom = 8
 	band.add_theme_stylebox_override("panel", sb)
+	# the 3D system fills the whole band; the title block and the colony arrows ride over it (F3 review: the view sat in a
+	# strip right of the title)
+	var stack := Control.new()
+	stack.custom_minimum_size = Vector2(0, 300)
+	stack.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	band.add_child(stack)
+	var view := _system_view()
+	view.set_anchors_preset(Control.PRESET_FULL_RECT)
+	view.left_inset = 44 + 18 + 300 + 18
+	stack.add_child(view)
 	var h := Lcars.hbox(18)
-	band.add_child(h)
+	h.set_anchors_preset(Control.PRESET_FULL_RECT)
+	h.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	stack.add_child(h)
 	h.add_child(_nav("delta_left", -1, count, "Previous colony", "Q"))
 	var tb := Lcars.vbox(0)
 	tb.custom_minimum_size.x = 300
@@ -125,7 +137,9 @@ func _header(c: Dictionary) -> Control:
 		badges.add_child(Lcars.badge("Queue idle", "warn"))
 	tb.add_child(badges)
 	h.add_child(tb)
-	h.add_child(_system_view())
+	var gap := Lcars.spacer()
+	gap.mouse_filter = Control.MOUSE_FILTER_IGNORE   # clicks reach the planets under it
+	h.add_child(gap)
 	h.add_child(_nav("delta_right", 1, count, "Next colony", "E"))
 	return band
 
@@ -141,7 +155,7 @@ func _nav(glyph: String, d: int, count: int, hint: String, key: String) -> Butto
 
 ## F3: the system in 3D (SystemView3D): its star, the planets on their orbits with the colony's structures, the LCARS
 ## labels over them. The flat orrery below stays for tools that want it.
-func _system_view() -> Control:
+func _system_view() -> SystemView3D:
 	var sid := int(vm.sid())
 	var star := Color(1.0, 0.86, 0.58)
 	var seed_v := int(app.view.get("meta", {}).get("seed", 0))
@@ -151,9 +165,7 @@ func _system_view() -> Control:
 			star = GalaxyLayout.STAR_TYPES[clampi(ti, 0, GalaxyLayout.STAR_TYPES.size() - 1)]["color"]
 			break
 	var c := vm.colony()
-	var v := SystemView3D.make(detail.get("planets", []), c.get("structures", {}), star, sid, Vector2(640, 300))
-	v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	return v
+	return SystemView3D.make(detail.get("planets", []), c.get("structures", {}), star, sid, Vector2(640, 300))
 
 ## Star at the left, then each planet sized by class, its numeral, class and capacity bar; hover explains it.
 func _orrery() -> Control:
@@ -239,7 +251,9 @@ func _workforce(c: Dictionary) -> Control:
 	top.add_child(right)
 	b.add_child(top)
 	var acts := Lcars.hbox(8)
-	acts.add_child(Lcars.pill("Balance", "ghost", func(): if not vm.auto_balance(false): _update_forecast(), _locked(), "Feed the colony, then split industry and research"))
+	var bal := Lcars.pill("Balance", "ghost", func(): if not vm.auto_balance(false): _update_forecast(), _locked(), "Feed the colony, then split industry and research")
+	bal.name = "WorkforceBalance"   # the advisor's Balance hint points here
+	acts.add_child(bal)
 	acts.add_child(Lcars.pill("Industry", "ghost", func(): if not vm.auto_balance(true): _update_forecast(), _locked(), "Feed the colony, then maximise industry"))
 	right.add_child(acts)
 	_forecast = Lcars.hbox(16)

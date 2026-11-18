@@ -3,7 +3,8 @@ extends Control
 ## The hail scene (TREK-PASS item 7): a comm viewscreen with the power's leader as a silhouette bust (HailBust), backlit
 ## in the empire's colours, its insignia in the corner, the channel line and the leader's name strip.
 ## Where the private portrait pack holds a picture for the power (PortraitSlot keys, Simon's 16 Nov portraits) that
-## picture fills the screen instead; the public build, the Mirror Universe and any power without a picture get the bust.
+## picture fills the screen instead (in a Mirror game the Mirror character's picture, else the normal one); the public
+## build and any power without a picture get the bust.
 
 var empire := 0
 var key := ""            ## HailBust key ("" = from empire and the active pack)
@@ -31,13 +32,30 @@ func bust_key() -> String:
 		return key
 	return HailBust.key_for(empire, HailBust.mirror_active())
 
+## The portrait pack keys tried in order (Simon, 18 Nov: hail scenes show the character portrait for every power, Mirror
+## games included). Under the Mirror pack the power's Mirror character comes first (portrait.terran, portrait.mirror.kli,
+## ...), then its normal portrait; the bust is drawn only when the pack holds neither (always in the public repo).
+func portrait_keys() -> Array[String]:
+	var out: Array[String] = []
+	if art_key != "":
+		out.append(art_key)
+		return out
+	if HailBust.mirror_active() and PortraitSlot.MAJOR_KEYS.has(empire):
+		out.append("portrait." + HailBust.key_for(empire, true))
+	var k := str(PortraitSlot.MAJOR_KEYS.get(empire, ""))
+	if k != "":
+		out.append(k)
+	return out
+
 func shows_bust() -> bool:
 	return _tex == null
 
 func _ready() -> void:
-	if not force_bust and not HailBust.mirror_active():
-		var ak := art_key if art_key != "" else str(PortraitSlot.MAJOR_KEYS.get(empire, ""))
-		_tex = AppLoader.art(ak, "portrait")
+	if not force_bust:
+		for ak in portrait_keys():
+			_tex = AppLoader.art(ak, "portrait")
+			if _tex:
+				break
 	set_process(live and not UiTokens.reduced_motion)
 
 func _process(delta: float) -> void:

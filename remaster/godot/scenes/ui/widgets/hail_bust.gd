@@ -23,8 +23,15 @@ static func key_for(empire: int, mirror: bool = false) -> String:
 	return k
 
 ## True when the running game carries a pack that renames the powers (the Mirror Universe, schema 25).
+## The core sends meta.empireNames for every game (the plain names too), so a non-empty table is not the test: the Mirror
+## pack is on when a power carries one of its names (data/overlays/mirror.overlay.json). Until 18 Nov this read "any name",
+## which put every game in the Mirror and hid the portraits behind the busts (the 0.1.469 Klingon hail frame).
+const MIRROR_NAMES := ["Terran Empire", "Klingon-Cardassian Alliance", "Cardassian Alliance"]
 static func mirror_active() -> bool:
-	return not Lcars._pack_names.is_empty()
+	for n in Lcars._pack_names.values():
+		if str(n) in MIRROR_NAMES:
+			return true
+	return false
 
 static func draw(ci: CanvasItem, key: String, rect: Rect2, rim: Color) -> void:
 	var px := minf(rect.size.x, rect.size.y)

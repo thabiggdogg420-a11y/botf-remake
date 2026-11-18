@@ -92,6 +92,20 @@ func _system_view() -> void:
 		check(sv.world.find_child("Star", true, false) != null and n > 0, "the star and %d textured or procedural planets are in the scene" % n)
 		check(sv.home_index >= 0 and sv.structure_nodes.size() > 0, "the colony world carries its structures (%s)" % str(sv.structure_nodes))
 		check(sv.overlay != null and sv.planet_screen(sv.home_index).x >= 0, "LCARS labels track the planets on screen")
+		await frames(3)
+		# F3 review: the view fills its band and the colony world reads (was a strip with ~12 px planets)
+		var lo := 1e9
+		var hi := -1e9
+		for i in sv._bodies.size():
+			if sv._bodies[i]:
+				var p := sv.planet_screen(i)
+				lo = minf(lo, p.x)
+				hi = maxf(hi, p.x)
+		check(sv.size.x > 1200.0 and sv.left_inset > 0.0, "the 3D view spans the band behind the title (%.0f px wide)" % sv.size.x)
+		check(sv.planet_screen_radius(sv.home_index) >= 25.0, "the colony world is drawn large (%.1f px radius)" % sv.planet_screen_radius(sv.home_index))
+		check(sv.selected == sv.home_index and sv.world.find_child("SelectRing", true, false) != null, "the colony world is selected and ringed")
+		check(sv._works != null and sv._works.get_child_count() > 0, "the colony's surface works face the camera (%d kinds)" % (sv._works.get_child_count() if sv._works else 0))
+		check(not HailBust.mirror_active(), "a plain game is not read as the Mirror Universe (meta.empireNames is always sent)")
 
 func _hail() -> void:
 	app.goto("diplomacy")
@@ -104,6 +118,14 @@ func _hail() -> void:
 	var hv: Node = m.find_child("HailViewscreen", true, false)
 	check(hv is HailViewscreen and (hv as HailViewscreen).empire == tid, "Hail opens the viewscreen for power %d" % tid)
 	check(m.find_child("HailNegotiate", true, false) != null, "the hail scene offers Negotiate")
+	if hv is HailViewscreen:
+		var h := hv as HailViewscreen
+		var pic := AppLoader.art(str(PortraitSlot.MAJOR_KEYS.get(tid, "")), "portrait")
+		check(h.portrait_keys() == [str(PortraitSlot.MAJOR_KEYS.get(tid, ""))], "hail looks up the power's own portrait (%s)" % str(h.portrait_keys()))
+		if pic:
+			check(not h.shows_bust(), "the private portrait pack's picture fills the hail screen, not the bust")
+		else:
+			check(h.shows_bust(), "no portrait pack here: the hail screen draws the bust")
 	app.close_all_modals()
 	await frames()
 
@@ -135,6 +157,8 @@ func _turn10(backend: String) -> void:
 	var panel := app.advisor_panel
 	var presses := 0
 	var tutorial_steps := {}
+	var covered := []
+	var pointed := 0
 	print("TURN10 transcript (backend %s, seed 31337):" % backend)
 	while int(app.view.get("meta", {}).get("turn", 0)) < 10 and presses < 400:
 		panel.update()
@@ -148,6 +172,17 @@ func _turn10(backend: String) -> void:
 			break
 		if g.get("tutorial", false):
 			tutorial_steps[str(g["id"])] = true
+		# F3 review: the card never sits on the control the step points at, and that control is ringed
+		panel._place()
+		var rects := panel.target_rects()
+		if not rects.is_empty():
+			pointed += 1
+			var hl: Control = app.find_child("AdvisorHighlight", true, false)
+			if hl == null or not hl.visible:
+				covered.append(str(g["id"]) + " (no ring)")
+		for r in rects:
+			if panel.get_global_rect().intersects(r):
+				covered.append(str(g["id"]))
 		var t0 := int(app.view["meta"]["turn"])
 		btn.pressed.emit()       # the only input the run gives
 		presses += 1
@@ -155,6 +190,7 @@ func _turn10(backend: String) -> void:
 		print("  T%02d %-8s %-22s -> %s%s" % [t0, app.screen, str(g["title"]), str(g["act_label"]), ("  [tutorial %d/%d]" % [int(g["step"]), int(g["steps"])]) if g.get("tutorial", false) else ""])
 	var turn := int(app.view.get("meta", {}).get("turn", 0))
 	check(turn >= 10, "reached turn %d by advisor presses only (%d presses)" % [turn, presses])
+	check(pointed > 0 and covered.is_empty(), "the advisor card left every pointed-at control clear and ringed (%d steps pointed, covered: %s)" % [pointed, str(covered)])
 	check(tutorial_steps.size() >= 6, "the tutorial taught the loop (%s)" % ", ".join(tutorial_steps.keys()))
 	check(str(app.view["meta"].get("outcome", "ongoing")) == "ongoing", "the empire is still in the game at turn %d" % turn)
 	check(app.view.get("colonies", []).size() >= 1, "colonies at turn %d: %d" % [turn, app.view.get("colonies", []).size()])

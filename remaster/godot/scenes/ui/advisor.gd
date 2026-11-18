@@ -157,6 +157,23 @@ func _hint() -> Dictionary:
 				return _g(id, "Treasury", str(w["text"]) + " Check the empire screen for upkeep.", str(w["tone"]), "dismiss", "Understood")
 	return _g("ready", "All stations ready", "Every colony is busy and every ship has orders. End the turn.", "good", "end_turn", "End turn")
 
+## The controls a piece of guidance points at, by node name: the first one found on screen is highlighted, and the card is
+## placed clear of all of them (the lead's F3 review: the card sat over the Workforce rows it was teaching about).
+func targets(g: Dictionary) -> Array[String]:
+	var out: Array[String] = []
+	var act := str(g.get("act", ""))
+	match act:
+		"build":
+			out.assign(["Construction", "Workforce"])
+		"balance":
+			out.assign(["WorkforceBalance", "Workforce"])
+		"end_turn":
+			out.assign(["EndTurn"])
+		_:
+			if act.begins_with("goto:"):
+				out.assign(["Rail_" + act.substr(5)])
+	return out
+
 func _g(id: String, title: String, text: String, tone: String, act: String, label_: String) -> Dictionary:
 	return {"id": id, "title": title, "text": text, "tone": tone, "act": act, "act_label": label_, "tutorial": false, "dismiss": act != "end_turn" and act != "dismiss", "step": 0, "steps": 0}
 
