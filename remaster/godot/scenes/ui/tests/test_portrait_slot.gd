@@ -86,6 +86,25 @@ func _hail_wait_test() -> void:
 	check(b.drawn() == "static", "hail wait: a pack with no picture for this power does not end the wait by itself")
 	b._on_pack_done()
 	check(b.drawn() == "bust", "hail wait: pack done with no picture (or the timeout) -> the bust (got %s)" % b.drawn())
+	# the timeout passes first, the pack lands later: the bust gives way to the portrait
+	var c := HailViewscreen.make(1, Vector2(300, 220), "Test", "Incoming transmission", "portrait.test.hailwait2")
+	root.add_child(c)
+	await process_frame
+	check(c.drawn() == "static", "hail late: waiting (got %s)" % c.drawn())
+	c._on_timeout()
+	check(c.drawn() == "bust", "hail late: timeout with the pack still coming -> the bust (got %s)" % c.drawn())
+	var png2 := dir.path_join("t2.png")
+	img.fill(Color.BLUE)
+	img.save_png(png2)
+	var pck2 := "user://packs/art_hailwait_test2.pck"
+	var packer2 := PCKPacker.new()
+	packer2.pck_start(pck2)
+	packer2.add_file("res://art/portrait/portrait.test.hailwait2.png", png2)
+	packer2.flush()
+	AppLoader.mount_pack(pck2)
+	await process_frame
+	check(c.drawn() == "picture", "hail late: the pack lands after the timeout -> the portrait replaces the bust (got %s)" % c.drawn())
+	c.queue_free()
 	AppLoader.test_pack_pending = false
 	a.queue_free()
 	b.queue_free()

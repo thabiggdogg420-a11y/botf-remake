@@ -16,7 +16,6 @@ var force_bust := false  ## capture and tests: always draw the bust
 var _tex: Texture2D
 var _t := 0.0
 var _waiting := false    ## web, cold visit: the pack holding the portrait has not landed yet; the screen shows static, not the bust
-var _gave_up := false    ## the pack failed to load, held no portrait for this power, or the timeout passed: the bust is drawn
 ## How long a hail waits for its art pack before it falls back to the bust (seconds).
 const WAIT_TIMEOUT := 20.0
 
@@ -76,30 +75,37 @@ func _ready() -> void:
 
 ## Web, first visit: the portraits sit in art_web.pck, still downloading. Raise that pack to the front of the queue, show the
 ## static until it mounts, and use the bust only if the pack fails, holds no portrait for this power, or the timeout passes.
+## After a timeout the bust is drawn but the screen still swaps to the portrait if the pack lands later.
 func _start_waiting() -> void:
 	_waiting = true
 	AppLoader.art_events.packs_mounted.connect(_on_packs_mounted)
 	AppLoader.raise_pack(AppLoader.PORTRAIT_PACK, _on_pack_done)
-	get_tree().create_timer(WAIT_TIMEOUT).timeout.connect(_on_pack_done)
+	get_tree().create_timer(WAIT_TIMEOUT).timeout.connect(_on_timeout)
 
 func _on_packs_mounted(_path: String = "") -> void:
-	if not _waiting:
+	if _tex != null:
 		return
 	_find_portrait()
 	if _tex != null:
-		_stop_waiting()
+		_stop_waiting(true)
 
-## The fetch finished (loaded or failed) or the timeout passed: one last look for the picture, else the bust.
+## The fetch finished (loaded or failed): one last look for the picture, else the bust for good.
 func _on_pack_done() -> void:
+	if _tex != null or not is_inside_tree():
+		return
+	_find_portrait()
+	_stop_waiting(true)
+
+## The timeout passed with the pack still coming: the bust for now, the portrait if it lands later.
+func _on_timeout() -> void:
 	if not _waiting or not is_inside_tree():
 		return
 	_find_portrait()
-	_gave_up = _tex == null
-	_stop_waiting()
+	_stop_waiting(_tex != null)
 
-func _stop_waiting() -> void:
+func _stop_waiting(disconnect_signal: bool) -> void:
 	_waiting = false
-	if AppLoader.art_events.packs_mounted.is_connected(_on_packs_mounted):
+	if disconnect_signal and AppLoader.art_events.packs_mounted.is_connected(_on_packs_mounted):
 		AppLoader.art_events.packs_mounted.disconnect(_on_packs_mounted)
 	set_process(live and not UiTokens.reduced_motion)
 	queue_redraw()
