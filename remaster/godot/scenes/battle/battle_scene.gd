@@ -340,7 +340,7 @@ func _killcam_step(dt: float) -> bool:
 			var ks := fx.kill_screen_share(_killcam_job)
 			print("KILLCAM FRAME %d %d share=%.3f on=%s at=%s shot=%s subj=%d" % [_killcam_kills, _killcam_k, float(ks[0]), str(ks[1]),
 				str(ks[2]) if ks.size() > 2 else "-", str(_dir.get("type", "")), int(_dir.get("subject", 0))])
-			if _killcam_dir != "web":
+			if _killcam_dir != "web" and GpuReadback.allowed(): # WebGPU: read-back crashes the fork
 				var img := get_viewport().get_texture().get_image()
 				img.save_png(_killcam_dir.path_join("kill%d_%d.png" % [_killcam_kills, _killcam_k]))
 		if Time.get_ticks_msec() < _killcam_hold:
