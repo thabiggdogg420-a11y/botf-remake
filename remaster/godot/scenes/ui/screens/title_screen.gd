@@ -156,7 +156,7 @@ func _ensure_backdrop(empire: int) -> void:
 		DisplaySettings.apply_viewport(sv, app.settings)
 	svc.add_child(sv)
 	backdrop.add_child(svc)
-	CompatBloom.attach(svc, sv, 0.95, 0.6, 0.8) # web: engines and lights glow, lit hulls do not
+	# No CompatBloom on the title fleet yet: see battle_host.gd (web hull speckle bloomed into a white haze, 19 Nov).
 	fleet = TitleFleet.new()
 	fleet.animate = app == null or not app.settings.get("reducedMotion", false)
 	sv.add_child(fleet)
