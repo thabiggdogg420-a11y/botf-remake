@@ -87,6 +87,8 @@ func _check_director(scene: BattleScene, encounter: Dictionary) -> void:
 	var dt := 1.0 / 30.0
 	var shots: Array = []     # [n, type, subject, start clock, end clock, subject gone at the cut]
 	var last_n := -1
+	var kill_frames := 0
+	var kill_framed := 0
 	for r in encounter.rounds.size():
 		scene.play_round(encounter, r)
 		var frames := 0
@@ -94,6 +96,11 @@ func _check_director(scene: BattleScene, encounter: Dictionary) -> void:
 			scene._process(dt)
 			frames += 1
 			var d: Dictionary = scene._dir
+			var kw: Dictionary = scene._kill_window(scene.time)
+			if not kw.is_empty() and scene.time >= float(kw.boom):
+				kill_frames += 1
+				if str(d.get("type", "")) == "victim" and int(d.get("subject", 0)) == int(kw.fid):
+					kill_framed += 1
 			if int(d.get("n", -1)) != last_n and str(d.get("type", "")) != "":
 				if not shots.is_empty():
 					var prev: Array = shots.back()
@@ -103,7 +110,7 @@ func _check_director(scene: BattleScene, encounter: Dictionary) -> void:
 					var tr := scene.timeline.track(sid) if sid != 0 else null
 					if tr != null and tr.hide_at >= 0.0 and scene.time >= tr.hide_at:
 						gone = true
-					prev[5] = gone
+					prev[5] = gone or d.has("boom") # a kill cuts in whatever is running (BattleScene.KILL_LEAD)
 				last_n = int(d.n)
 				shots.append([last_n, str(d.type), int(d.get("subject", 0)), scene._dir_clock, -1.0, false])
 				if str(d.type) != "establish":
@@ -111,6 +118,7 @@ func _check_director(scene: BattleScene, encounter: Dictionary) -> void:
 				check(str(d.type) in ["establish", "track", "push", "push_rev", "lead", "approach", "victim"], "director shot type %s" % d.type)
 		for k in 15: # the player's turn: a short gap (inside GAP_GRACE), the shot carries over
 			scene._process(dt)
+	check(kill_frames == 0 or kill_framed == kill_frames, "the director holds on every breakup (%d of %d frames)" % [kill_framed, kill_frames])
 	check(shots.size() >= 4, "director made %d shots over the battle" % shots.size())
 	if shots.is_empty():
 		return

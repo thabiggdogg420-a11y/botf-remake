@@ -50,7 +50,10 @@ void fragment() {
 	float n = fbm(q + vec2(age * 0.9, -age * 0.6));
 	float n2 = fbm(q * 2.3 - vec2(age * 1.3, age * 0.4) + 3.1);
 	// Lumpy silhouette: the lobe's edge radius wanders with the noise (cauliflower lumps, not a disc).
-	float edge = 0.55 + 0.42 * n - 0.12 * age;
+	// A low-frequency term round the rim adds the big billows (3-5 bulges), so the outline is lumpy at every scale.
+	vec2 dir = p / max(r, 1e-3); // direction round the rim, seam-free (no atan wrap)
+	float big = vnoise(dir * 1.5 + vec2(seed * 3.0, age * 0.5)) + 0.5 * vnoise(dir * 3.1 + vec2(-seed, seed * 2.0));
+	float edge = 0.40 + 0.30 * n + 0.20 * big - 0.12 * age; // under 0.9: never clipped square by the quad
 	float body = 1.0 - smoothstep(edge - 0.18, edge, r);
 	float density = body * (0.55 + 0.75 * n2);
 	// Temperature: hot in the middle and early, cooling to deep orange, then brown-black smoke at the rim and late.

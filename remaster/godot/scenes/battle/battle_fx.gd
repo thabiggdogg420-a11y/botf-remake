@@ -389,6 +389,10 @@ func _flare(color: Color, size: float, intensity := 1.0, spikes := 0.0) -> MeshI
 ## close kill or stacked hits never wash the screen white (footage: a capital's fireball fills a close shot, never the
 ## whole frame with glare).
 const FLARE_MAX_SCREEN := 0.32
+## A kill's fire lobes are orange-to-smoke cloud, not glare (their near-white core is the small core flare, capped above):
+## each lobe may span up to this share of the frame's height, so the fireball reaches the show's ~1.5 hull lengths in a
+## kill shot (lead, 18 Nov: SoA's fireball fills 15-25% of the frame; ours was held to a 3-5% blob by the glare cap).
+const LOBE_MAX_SCREEN := 0.85
 var _flares: Array = []
 
 func _cap_flares() -> void:
@@ -401,7 +405,7 @@ func _cap_flares() -> void:
 		if not is_instance_valid(n) or not n.is_inside_tree():
 			continue
 		keep.append(n)
-		var cap := _px_world(n.global_position, FLARE_MAX_SCREEN * h)
+		var cap := _px_world(n.global_position, (LOBE_MAX_SCREEN if n.has_meta("lobe") else FLARE_MAX_SCREEN) * h)
 		if cap > 0.0 and n.scale.x > cap:
 			n.scale = Vector3.ONE * cap
 	_flares = keep
@@ -819,13 +823,15 @@ func _fireball(i: int, st: Dictionary, p: Vector3, size: float, s: BattleShip = 
 ## over the first 0.3 s, swelling and cooling to smoke. st.lobes: [{node, delay, off, s0, life}].
 func _kill_fire(i: int, st: Dictionary, p: Vector3, size: float) -> void:
 	var lobes: Array = []
-	var n := 7 if _web else 9
+	var n := 9 # web too: fewer lobes read as a rounder blob (lead, 18 Nov strip); the lobes are cheap quads
 	for k in n:
 		var h1 := BattleTimeline.unit_hash(i * 31 + k, 11)
 		var h2 := BattleTimeline.unit_hash(i * 31 + k, 23)
 		var h3 := BattleTimeline.unit_hash(i * 31 + k, 37)
 		var inner := k < 3
-		var off := Vector3(h1 - 0.5, (h2 - 0.5) * 0.6, h3 - 0.5) * size * (0.25 if inner else 0.6)
+		# Inner lobes swell over the hull; outer ones sit out past its ends and flanks, so the cloud spans ~1.5 hull
+		# lengths with a lumpy, cauliflower outline instead of one disc.
+		var off := Vector3(h1 - 0.5, (h2 - 0.5) * 0.7, h3 - 0.5) * size * (0.3 if inner else 1.0)
 		var mi := MeshInstance3D.new()
 		mi.mesh = _quad
 		var m := ShaderMaterial.new()
@@ -836,13 +842,14 @@ func _kill_fire(i: int, st: Dictionary, p: Vector3, size: float) -> void:
 		add_child(mi)
 		mi.global_position = p + off
 		mi.scale = Vector3.ONE * 0.001
+		mi.set_meta("lobe", true)
 		_fxp(mi, "seed", float(k) * 1.37 + h1 * 10.0)
 		_fxp(mi, "heat", 1.0 if inner else 0.5 + 0.35 * h2)
 		_fxp(mi, "age", 0.0)
 		_fxp(mi, "alpha_gain", 0.0)
 		_flares.append(mi) # the glare cap holds every lobe under FLARE_MAX_SCREEN of the frame too
 		lobes.append({"node": mi, "delay": (0.0 if inner else 0.06 + 0.25 * h3), "off": off,
-			"s0": size * ((0.95 if inner else 0.75) + 0.35 * h2), "life": 1.6 + 0.8 * h1})
+			"s0": size * ((1.25 if inner else 0.85) + 0.4 * h2), "life": 1.6 + 0.8 * h1})
 		st.nodes.append(mi)
 	st.lobes = lobes
 
@@ -1451,3 +1458,34 @@ func _burst(p: Vector3, color: Color, kind: String, amount: int, scale_factor :=
 		gp.process_material = pm
 	gp.emitting = true
 	gp.finished.connect(gp.queue_free)
+
+
+## Killcam diagnostic: the share of the frame the kill of job i covers (its fire lobes' visible discs, rasterised on a
+## coarse grid), and whether its centre is on screen. [share, on_screen]; [0, false] when the kill has not lit.
+func kill_screen_share(i: int) -> Array:
+	var st: Dictionary = _active.get(i, {})
+	var cam := get_viewport().get_camera_3d()
+	if cam == null or not st.has("lobes"):
+		return [0.0, false]
+	var vs := get_viewport().get_visible_rect().size
+	var discs := []
+	for lb in st.lobes:
+		var mi: MeshInstance3D = lb.node
+		if not is_instance_valid(mi) or not cam.is_position_in_frustum(mi.global_position):
+			continue
+		var c := cam.unproject_position(mi.global_position)
+		var r := mi.scale.x * 0.35 / maxf(0.01, _px_world(mi.global_position, 1.0))
+		discs.append([c, r])
+	var p: Vector3 = st.get("point", Vector3.ZERO)
+	var on := cam.is_position_in_frustum(p)
+	var gw := 96
+	var gh := 54
+	var hit := 0
+	for gy in gh:
+		for gx in gw:
+			var q := Vector2((gx + 0.5) * vs.x / gw, (gy + 0.5) * vs.y / gh)
+			for d in discs:
+				if q.distance_to(d[0]) < float(d[1]):
+					hit += 1
+					break
+	return [float(hit) / float(gw * gh), on]
