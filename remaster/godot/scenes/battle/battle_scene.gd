@@ -118,6 +118,11 @@ func _ready() -> void:
 # ------------------------------------------------------------------------------------------------------------------
 
 func play_round(p_encounter: Dictionary, p_round_index: int) -> void:
+	if _build_task >= 0:
+		# A build still running for a superseded round shares the flight sim: let it finish before anything here touches
+		# the sim (flight.reset/commit below cleared its ship list under the worker: capture-battles crash, 18 Nov).
+		WorkerThreadPool.wait_for_task_completion(_build_task)
+		_build_task = -1
 	encounter = BattleSynth.with_events(p_encounter) # rules 1-2 rounds have no event stream: present them from the round's result
 	round_index = p_round_index
 	BattleEnvironment.set_planet_class(_env, str(encounter.get("planetClass", ""))) # the battle system's planet
@@ -158,10 +163,6 @@ func play_round(p_encounter: Dictionary, p_round_index: int) -> void:
 		if node != null:
 			i["lengthMeters"] = node.length_meters
 	var evs: Array = rounds[round_index].get("events", [])
-	if _build_task >= 0:
-		# A build still running for a superseded round shares the flight sim: let it finish first (two at once raced).
-		WorkerThreadPool.wait_for_task_completion(_build_task)
-		_build_task = -1
 	if threaded_build and AppLoader.threads() and DisplayServer.get_name() != "headless":
 		# F2: the round's playback (flight sim and schedule) is built on a worker thread over a few frames: on the main
 		# thread it cost 20-35 ms at 4v5 and more at 24v24, on the first frame of every round. The view holds the last
