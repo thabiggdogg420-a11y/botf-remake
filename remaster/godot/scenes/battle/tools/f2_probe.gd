@@ -165,7 +165,11 @@ func _run() -> void:
 		all_worst = maxf(all_worst, d)
 		if d > 33.0:
 			cur.slow += 1
-			_log("F2 SLOW round %d frame %d (%d into the round): %.1f ms %s" % [cur.n, Engine.get_process_frames(), cur.frames, d, _perf()])
+			var vs = cs.host.view_node if cs.get("host") != null else null
+			var shot := ""
+			if vs != null:
+				shot = " t=%.2f shot=%s subj=%d" % [float(vs.time), str(vs._dir.get("type", "")), int(vs._dir.get("subject", 0))]
+			_log("F2 SLOW round %d frame %d (%d into the round): %.1f ms %s%s" % [cur.n, Engine.get_process_frames(), cur.frames, d, _perf(), shot])
 		vn = cs.host.view_node if cs.get("host") != null else null
 		if vn != null and vn.is_playing() and vn.timeline != null:
 			if int(cur.beam_jobs) < 0:
