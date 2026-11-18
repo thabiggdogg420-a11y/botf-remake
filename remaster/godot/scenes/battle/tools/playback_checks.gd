@@ -4,7 +4,7 @@ extends RefCounted
 ## cinematic timeline against the core's round record and returns {"stats": {...}, "problems": [String]}:
 ##   - shots spread over the timeline: not all launch in the first 10% of it, and not all at one moment;
 ##   - torpedoes have travel time (every torpedo that strikes flies at least MIN_TORPEDO_FLIGHT seconds);
-##   - ships move during playback: a ship the core moved is somewhere between its start and end mid-round, and some
+##   - ships move during playback: a ship the core moved a cell is between its start and end, or still under way, mid-round, and some
 ##     shots leave a ship that is still flying;
 ##   - the playback's final state is the core's: each surviving ship ends on the core's end cell, the hull damage
 ##     shown by the end of the round is hullBefore - hullAfter, and a ship is gone at the end iff the core lost it.
@@ -47,11 +47,24 @@ static func check_round(tl: BattleTimeline, rnd: Dictionary) -> Dictionary:
 	for s in tl.ships:
 		var a := tl.pose_of(s, 0.0)
 		var b := tl.pose_of(s, tl.round_seconds)
-		if Vector2(b.x - a.x, b.y - a.y).length() < 0.01:
+		# Moved means the core moved it a cell this round (a segment whose cells differ). Since fleets deploy inside beam range
+		# (Simon, 18 Nov 2026) many ships hold their cell all round, and their flight settles a few hundredths of a cell off
+		# where it started: that drift is not a core move and has no "between" to be in.
+		var core_moved := false
+		for seg in s.segments:
+			if absf(seg.to.x - seg.from.x) + absf(seg.to.y - seg.from.y) > 0.5:
+				core_moved = true
+				break
+		if not core_moved:
 			continue
 		moved += 1
 		var m := tl.pose_of(s, 0.5 * tl.round_seconds)
-		if Vector2(m.x - a.x, m.y - a.y).length() > 0.01 and Vector2(b.x - m.x, b.y - m.y).length() > 0.01:
+		# A ship still under way mid-round passes too: at short range an attack run can back off and cross its own start
+		# point at the half (24v24 round 3, ship 18: 0.010 cells from its start at 4.0 s, flying 0.1 cells/s).
+		var m0 := tl.pose_of(s, 0.45 * tl.round_seconds)
+		var m1 := tl.pose_of(s, 0.55 * tl.round_seconds)
+		var under_way := Vector2(m1.x - m0.x, m1.y - m0.y).length() > 0.01
+		if under_way or (Vector2(m.x - a.x, m.y - a.y).length() > 0.01 and Vector2(b.x - m.x, b.y - m.y).length() > 0.01):
 			mid_ok += 1
 		else:
 			problems.append("ship %d is not between its start and end mid-round" % s.fleet_id)

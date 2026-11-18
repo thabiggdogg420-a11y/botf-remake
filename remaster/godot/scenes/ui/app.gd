@@ -869,7 +869,7 @@ func end_turn() -> String:
 
 func _open_combat_next_frame() -> void:
 	await get_tree().process_frame
-	if screen != "combat" and not encounter.is_empty():
+	if screen != "combat" and encounter is Dictionary and not encounter.is_empty():
 		goto("combat")
 
 # ---------------------------------------------------------------------------------------------
