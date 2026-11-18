@@ -1488,4 +1488,5 @@ func kill_screen_share(i: int) -> Array:
 				if q.distance_to(d[0]) < float(d[1]):
 					hit += 1
 					break
-	return [float(hit) / float(gw * gh), on]
+	var sp := cam.unproject_position(p) / vs if on else Vector2(-1, -1)
+	return [float(hit) / float(gw * gh), on, sp]

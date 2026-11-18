@@ -337,8 +337,8 @@ func _killcam_step(dt: float) -> bool:
 			_killcam_saved = true # the frame drawn since the hold began shows the frozen moment
 			# Framing measure: the kill's share of the frame (fire lobes) and whether it is on screen, plus the shot.
 			var ks := fx.kill_screen_share(_killcam_job)
-			print("KILLCAM FRAME %d %d share=%.3f on=%s shot=%s subj=%d" % [_killcam_kills, _killcam_k, float(ks[0]), str(ks[1]),
-				str(_dir.get("type", "")), int(_dir.get("subject", 0))])
+			print("KILLCAM FRAME %d %d share=%.3f on=%s at=%s shot=%s subj=%d" % [_killcam_kills, _killcam_k, float(ks[0]), str(ks[1]),
+				str(ks[2]) if ks.size() > 2 else "-", str(_dir.get("type", "")), int(_dir.get("subject", 0))])
 			if _killcam_dir != "web":
 				var img := get_viewport().get_texture().get_image()
 				img.save_png(_killcam_dir.path_join("kill%d_%d.png" % [_killcam_kills, _killcam_k]))
@@ -817,6 +817,9 @@ func _direct_shot(t: float, delta: float, centroid: Vector3, spread: float) -> D
 	if not kw.is_empty() and not on_kill:
 		_direct_kill(kw)
 		on_kill = true
+	elif on_kill and not _dir.has("job"):
+		# Already on this ship (a victim shot picked ahead): keep the lens, and follow the kill through its breakup.
+		_dir.merge({"boom": float(kw.boom), "L": float(kw.size), "job": int(kw.job)}, true)
 	var ended := _dir_clock >= float(_dir.until) and not on_kill
 	if str(_dir.get("type", "")) == "victim" and _dir.has("boom"):
 		ended = not on_kill and (t >= float(_dir.boom) + KILL_HOLD or not _playing)
@@ -868,7 +871,8 @@ func _kill_window(t: float) -> Dictionary:
 	var out := {}
 	if timeline == null:
 		return out
-	for j in timeline.jobs:
+	for ji in timeline.jobs.size():
+		var j: Dictionary = timeline.jobs[ji]
 		if float(j.start) > t + KILL_LEAD + 2.0:
 			break
 		if int(j.kind) != BattleTimeline.Job.EXPLOSION:
@@ -882,7 +886,7 @@ func _kill_window(t: float) -> Dictionary:
 			continue
 		var size := sh.length if sh != null else float(_dir_len.get(fid, 8.0))
 		if out.is_empty() or size > float(out.size) or (size == float(out.size) and boom < float(out.boom)):
-			out = {"fid": fid, "other": int(j.get("source_fleet_id", 0)), "boom": boom, "size": size}
+			out = {"fid": fid, "other": int(j.get("source_fleet_id", 0)), "boom": boom, "size": size, "job": ji}
 	return out
 
 var _dir_len := {}   ## fleet_id -> hull length last seen (a kill shot outlives the ship node)
@@ -891,7 +895,7 @@ var _dir_len := {}   ## fleet_id -> hull length last seen (a kill shot outlives 
 func _direct_kill(kw: Dictionary) -> void:
 	var n := int(_dir.n) + 1
 	_dir = {"n": n, "from": _dir_clock, "until": 0.0, "type": "victim", "subject": int(kw.fid),
-		"other": int(kw.other), "sgn": 1.0, "boom": float(kw.boom), "L": float(kw.size)}
+		"other": int(kw.other), "sgn": 1.0, "boom": float(kw.boom), "L": float(kw.size), "job": int(kw.job)}
 	_dir.until = _dir_clock + KILL_LEAD + KILL_HOLD # the drift's pace; the shot itself ends with the kill window
 	_dir_recent.append(int(kw.fid))
 	if _dir_recent.size() > 3:
@@ -1046,6 +1050,14 @@ func _dir_choose_side(a: BattleShip, sd: Vector3, n: int) -> void:
 			var w := clampf((c - eye).dot(seg) / maxf(1e-3, seg.length_squared()), 0.0, 1.0)
 			if (eye + seg * w).distance_to(c) < o.length * 0.45 and w < 0.95:
 				bad += 1.0
+		if _env.has("planet"):
+			# Never film through (or from inside) the planet: the third kill of the drill sat behind the gas giant.
+			var pc := (_env.planet as Node3D).global_position
+			var pr := BattleEnvironment.PLANET_RADIUS * 1.02
+			var seg2 := look - eye
+			var w2 := clampf((pc - eye).dot(seg2) / maxf(1e-3, seg2.length_squared()), 0.0, 1.0)
+			if (eye + seg2 * w2).distance_to(pc) < pr:
+				bad += 20.0
 		bad += BattleTimeline.unit_hash(n * 3 + int(sg > 0.0), 76) * 0.1
 		if bad < best_bad:
 			best_bad = bad
@@ -1088,12 +1100,18 @@ func _direct_pose(typ: String, u: float, e: float) -> Array:
 		var eye := pc - d * back * (1.0 - 0.25 * e) + side * sg * rp * (0.45 - 0.2 * e) + Vector3.UP * (rp * 0.16 + 8.0)
 		return [eye, pc.lerp(ec, 0.6), 46.0]
 	var a: BattleShip = _ships.get(int(_dir.get("subject", 0)))
-	if a == null and typ == "victim" and _dir_prev.has(int(_dir.get("subject", 0))):
-		# The ship's node is gone mid-breakup: hold on where it died.
-		var p0: Vector3 = _dir_prev[int(_dir.subject)]
+	if typ == "victim" and _dir.has("job"):
+		# Once the fireball has lit, the lens holds on it (the hull node is hidden and no longer where the kill is).
+		var st: Dictionary = fx._active.get(int(_dir.job), {})
+		if st.has("boom_at"):
+			_dir["kp"] = st.point
+			a = null
+	if a == null and typ == "victim" and (_dir.has("kp") or _dir_prev.has(int(_dir.get("subject", 0)))):
+		# The fireball has lit, or the ship's node is gone mid-breakup: hold on where it died.
+		var p0: Vector3 = _dir.get("kp", _dir_prev.get(int(_dir.subject), Vector3.ZERO))
 		var L0 := maxf(float(_dir.get("L", 8.0)), 8.0)
 		var fl0: Vector3 = _dir.get("fwd_s", Vector3(1, 0, 0))
-		var off0 := (fl0.cross(Vector3.UP).normalized() * sg - fl0 * 0.35 + Vector3.UP * 0.32).normalized() * L0 * KILL_DIST
+		var off0 := (fl0.cross(Vector3.UP).normalized() * sg - fl0 * 0.35 + Vector3.UP * 0.32).normalized().rotated(Vector3.UP, deg_to_rad(10.0) * (u - 0.5) * 4.0 * sg) * L0 * KILL_DIST
 		return [p0 + off0, p0, 40.0]
 	if a == null:
 		return []
