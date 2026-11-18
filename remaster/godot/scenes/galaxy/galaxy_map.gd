@@ -19,6 +19,7 @@ signal hover_changed(cell: int, screen_pos: Vector2)
 
 const CELL := 84.0
 const COMPAT_DISC_STRENGTH := 5.0
+const COMPAT_DISC_COOL := Vector3(0.18, 0.16, 0.16) ## gap 6: the disc's cool dust on Compatibility (Forward+ 0.12, 0.15, 0.24)
 const COMPAT_FOG_OPACITY := 0.4
 const COMPAT_STAR_SATURATION := 1.6
 const FOV := 40.0
@@ -512,6 +513,8 @@ func _build_disc(g: Vector2i) -> void:
 	# Compatibility (the web build) blends 8-bit sRGB, so the faint additive dust that Forward+ accumulates in HDR floats all but
 	# vanishes: the disc is drawn stronger there (F1 web parity, compared frame for frame with the desktop).
 	m.set_shader_parameter("strength", COMPAT_DISC_STRENGTH if PlanetTextures.compat() else 1.0)
+	if PlanetTextures.compat():
+		m.set_shader_parameter("cool", COMPAT_DISC_COOL)
 	m.render_priority = -5
 	_disc.material_override = m
 

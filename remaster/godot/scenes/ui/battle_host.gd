@@ -70,8 +70,10 @@ func attach(node: Node) -> void:
 		sv.add_child(node)
 		svc.add_child(sv)
 		add_child(svc)
-		# No CompatBloom here (WEB-PARITY.md, 19 Nov): the web hero hulls carry bright specular speckle that the 8-bit frame
-		# clips to white, and the bloom spread it into a white haze over every hull. Back on once the hull speckle is fixed.
+		# web: glow on engines, beams and fire (no-op under Forward+). Threshold near white: the 8-bit frame cannot tell a
+		# lit white hull (0.85-0.93 after ACES) from fire, so only clipped cores bloom. (Off 19 Nov while the web hulls drew
+		# unmipped and speckled, WEB-PARITY.md gap 5; back on with that fixed.)
+		CompatBloom.attach(svc, sv, 0.95, 0.6, 0.8)
 	else:
 		if node is Control:
 			(node as Control).set_anchors_preset(Control.PRESET_FULL_RECT)

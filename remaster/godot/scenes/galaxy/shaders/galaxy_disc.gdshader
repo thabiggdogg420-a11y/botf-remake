@@ -8,6 +8,10 @@ render_mode unshaded, blend_add, depth_draw_never, cull_disabled, fog_disabled, 
 uniform vec2 cells = vec2(16.0, 12.0);
 uniform vec2 core_dir = vec2(-0.7, -0.5);
 uniform float strength = 1.0;
+// The cool (rim-side) dust colour. Forward+ keeps the default; Compatibility gets a warmer, greyer one from galaxy_map.gd:
+// Forward+ adds the faint dust in HDR floats and ACES pulls its blue toward grey, the 8-bit sRGB add of the web does not,
+// so the same colour read +10-15 blue and -10 red there (WEB-PARITY.md gap 6, 19 Nov).
+uniform vec3 cool = vec3(0.12, 0.15, 0.24);
 
 void fragment() {
 	vec2 p = (UV - 0.5) * 3.0;          // the plane spans three grids; p in grid units, |p| <= 1.5
@@ -19,7 +23,6 @@ void fragment() {
 	float lanes = smoothstep(0.48, 0.66, g_fbm2(world * 0.22 + vec2(9.0, 1.0)));
 	float core = clamp(dot(normalize(p + 0.0001), normalize(core_dir)) * 0.5 + 0.5, 0.0, 1.0);
 	vec3 warm = vec3(0.32, 0.25, 0.18);
-	vec3 cool = vec3(0.12, 0.15, 0.24);
 	vec3 col = mix(cool, warm, core * 0.8) * (0.25 + 0.75 * clouds) * smoothstep(0.3, 0.7, arm + 0.15);
 	col *= 1.0 - 0.8 * lanes;
 	ALBEDO = col * fade * strength * 0.32;

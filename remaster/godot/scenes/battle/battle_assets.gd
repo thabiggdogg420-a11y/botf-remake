@@ -231,7 +231,10 @@ func instantiate_ship(keys: PackedStringArray) -> Node3D:
 func instantiate_hero(key: String) -> Node3D:
 	if not _hero_scenes.has(key):
 		var e := hero(key)
-		_hero_scenes[key] = _shared_model(hero_glb_path(e)) if not e.is_empty() else null
+		# The hero entry goes along so a synchronous load (the web build: no worker threads, warm() starts nothing) also
+		# mip-chains the glb's images from the decoded bytes. Without it HeroLook.mipmapped fell back to a GPU readback,
+		# which WebGL cannot give, and the hulls drew unmipped: white, speckled (WEB-PARITY.md gap 5, 19 Nov).
+		_hero_scenes[key] = _shared_model(hero_glb_path(e), e, hero_root) if not e.is_empty() else null
 		if e.is_empty() or _hero_scenes[key] == null:
 			if not e.is_empty():
 				push_warning("BattleAssets: hero %s glb did not load (%s)" % [key, hero_glb_path(e)])
@@ -317,7 +320,7 @@ static func _load_job(path: String, hero: Dictionary = {}, root: String = "") ->
 	_mutex.unlock()
 
 
-static func _shared_model(path: String) -> PackedScene:
+static func _shared_model(path: String, hero: Dictionary = {}, root: String = "") -> PackedScene:
 	if path == "":
 		return null
 	if _tasks.has(path):
@@ -328,7 +331,7 @@ static func _shared_model(path: String) -> PackedScene:
 		_results.erase(path)
 		_mutex.unlock()
 	if not _shared.has(path):
-		_shared[path] = _load_model(path)
+		_shared[path] = _load_model(path, hero, root)
 	return _shared[path]
 
 
