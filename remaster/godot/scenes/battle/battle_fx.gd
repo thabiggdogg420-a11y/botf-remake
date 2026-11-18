@@ -9,6 +9,8 @@ const TRAIL_SHADER := preload("res://scenes/battle/shaders/trail.gdshader")
 const SHOCK_SHADER := preload("res://scenes/battle/shaders/shockwave.gdshader")
 const TORPEDO_SHADER := preload("res://scenes/battle/shaders/torpedo.gdshader")
 const RIBBON_SHADER := preload("res://scenes/battle/shaders/weapon_beam.gdshader")
+const KILL_FIRE_SHADER := preload("res://scenes/battle/shaders/kill_fire.gdshader")
+const HULL_PIECE_SHADER := preload("res://scenes/battle/shaders/hull_piece.gdshader")
 const Job := BattleTimeline.Job
 ## Effect sizes follow Unreal's TickTimeline (BotfCombatScene.cpp) in its scene units, converted with the cell size:
 ## Unreal's 170-unit cell is BattleScene.CELL here. R3 doubled the cell and drew hulls at true scale but kept the R1
@@ -246,8 +248,23 @@ func prewarm() -> void:
 	add_child(light)
 	light.global_position = at
 	nodes.append(light)
+	# The kill's fire lobe and torn-hull materials (_kill_fire, _hull_pieces).
+	var lobe := MeshInstance3D.new()
+	lobe.mesh = _quad
+	lobe.material_override = _shader_mat(KILL_FIRE_SHADER)
+	lobe.scale = Vector3.ONE * 0.005
+	add_child(lobe)
+	lobe.global_position = at
+	nodes.append(lobe)
+	var piece := MeshInstance3D.new()
+	piece.mesh = BoxMesh.new()
+	piece.material_override = _shader_mat(HULL_PIECE_SHADER)
+	piece.scale = Vector3.ONE * 0.004
+	add_child(piece)
+	piece.global_position = at
+	nodes.append(piece)
 	var before := get_child_count()
-	for kind in ["sparks", "sparks_small", "fire_small", "fireball", "smoke", "debris", "vent"]:
+	for kind in ["sparks", "sparks_small", "streamer", "fire_small", "fireball", "smoke", "debris", "vent"]:
 		_burst(at, Color(1, 0.5, 0.2), kind, 1, 0.01)
 	for i in range(before, get_child_count()):
 		nodes.append(get_child(i))
@@ -695,16 +712,19 @@ func _spawn(i: int, j: Dictionary) -> void:
 				var p := target.hull_point(from, hash([j.event_index, 7]))
 				st.point = p
 				st.size = maxf(50.0 * UE, target.radius() * 0.4)
-				st.nodes = [_flare(Color(1.0, 0.6, 0.25), st.size, 1.4, 1.0)]
+				# The killing blow (kill redesign, 18 Nov): no spiked flash and no pale vent puffs on a ship about to die;
+				# the kill reads as orange fire from the first frame (SoA 1161 s).
+				var killing := _killing_hit(j)
+				st.nodes = [_flare(Color(1.0, 0.6, 0.25), st.size, 1.0 if killing else 1.4, 0.0 if killing else 1.0)]
 				var n: int = clampi(6 + j.hull_damage / 2, 8, 30) # F2: fewer streaks (SoA hull hits are fire, not a spray)
 				var k := maxf(1.5, target.radius() * 0.1)
 				_burst(p, Color(1.0, 0.55, 0.15), "sparks", n, k, (from - p).normalized())
 				_burst(p, Color(1.0, 0.4, 0.1), "fire_small", 12, k)
-				_burst(p, Color(0.35, 0.3, 0.28), "smoke", 6, k * 0.6)
+				_burst(p, Color(0.1, 0.08, 0.07), "smoke", 6, k * 0.6) # dark smoke (SoA): the 0.35 grey read as white puffs by a kill
 				# Hull breach: a spray of debris and plasma venting out of the wound for a couple of seconds.
 				var out := (p - target.global_position).normalized()
 				_burst(p, Color(1.0, 0.5, 0.2), "debris", clampi(6 + j.hull_damage / 2, 8, 30), k * 0.8, out)
-				_burst(p, Color(0.7, 0.85, 1.0), "vent", 36, k * 0.7, out)
+				_burst(p, Color(1.0, 0.55, 0.25) if killing else Color(0.7, 0.85, 1.0), "vent", 16 if killing else 36, k * 0.7, out)
 				_flash_light(p, Color(1.0, 0.55, 0.2), 9.0, 800.0 * UE, 0.6)
 				target.add_scorch(p, from, clampf(target.length * 0.18, 0.6, 2.2))
 				# Tactical rules 4: a hit that damages a subsystem sparks where that system sits (engines, weapons...).
@@ -746,13 +766,13 @@ func _spawn(i: int, j: Dictionary) -> void:
 				st.next_vent = j.start + 0.3
 				# F2 side-by-side (SoA 1160 1.4-1.9 s): the killing blow is an orange fire burst, not a white flash with a
 				# radial spray of white streaks.
-				st.nodes = [_flare(Color(1.0, 0.5, 0.18), s.length * 0.5, 0.8, 0.6)]
-				_burst(p0, Color(1.0, 0.45, 0.12), "fire_small", 60, k0 * 1.8)
+				st.nodes = [_flare(Color(1.0, 0.5, 0.18), s.length * 0.3, 0.5, 0.0)]
+				_burst(p0, Color(1.0, 0.45, 0.12), "fire_small", 24, k0 * 1.8)
 				_burst(p0, Color(1.0, 0.55, 0.2), "sparks", 14, k0 * 1.2)
-				_burst(p0, Color(0.7, 0.85, 1.0), "vent", 40, k0)
+				_burst(p0, Color(1.0, 0.55, 0.25), "vent", 16, k0)
 				_flash_light(p0, Color(1.0, 0.6, 0.3), 11.0, s.length * 8.0, 0.9)
 			elif s != null:
-				_fireball(i, st, s.global_position, s.length)
+				_fireball(i, st, s.global_position, s.length, s, j.start)
 		Job.WARP:
 			var s := _ship(j.fleet_id)
 			if s != null:
@@ -761,33 +781,208 @@ func _spawn(i: int, j: Dictionary) -> void:
 			pass
 
 
-## The kill fireball (footage SoA 1160, WotW 4891): flare, sparks, debris, smoke; nodes [flare, ring, ring2].
-func _fireball(i: int, st: Dictionary, p: Vector3, size: float) -> void:
+## True when hull hit j lands on a ship in its last moments (its kill or hide comes within 3 s of the hit).
+func _killing_hit(j: Dictionary) -> bool:
+	if _tl == null:
+		return false
+	var tr = _tl.track(int(j.target_fleet_id))
+	if tr == null:
+		return false
+	# Every hit in the last 3 s before the killing blow counts: their pale vent puffs otherwise hang round the fireball.
+	var dead: float = tr.kill_at if tr.kill_at >= 0.0 else tr.hide_at
+	return dead >= 0.0 and dead - float(j.start) < 3.0 and dead - float(j.start) > -0.6
+
+
+## The kill (redesign 18 Nov against DS9 "Sacrifice of Angels" 1161-1163 s): a lumpy, volumetric orange-yellow fireball
+## of layered noise lobes with a dark smoke rim (_kill_fire), the torn hull still inside it that breaks into 2-4 pieces
+## which drift, tumble, char and burn away (_hull_pieces), orange streamers and a little debris. White is only a small
+## core flare with no spikes; no starburst, no shock rings. nodes[0] is the core flare.
+func _fireball(i: int, st: Dictionary, p: Vector3, size: float, s: BattleShip = null, t0 := 0.0) -> void:
 	st.point = p
 	st.size = size
-	var ring := MeshInstance3D.new()
-	ring.mesh = _plane
-	ring.material_override = _shock_mat.duplicate()
-	ring.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	add_child(ring)
-	ring.global_position = p
-	ring.rotation_degrees = Vector3(rng_angle(i, 20.0), rng_angle(i + 3, 180.0), rng_angle(i + 5, 20.0))
-	var ring2 := MeshInstance3D.new()
-	ring2.mesh = _plane
-	ring2.material_override = _shock_mat.duplicate()
-	ring2.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	add_child(ring2)
-	ring2.global_position = p
-	ring2.rotation_degrees = ring.rotation_degrees + Vector3(70.0, 35.0, 0.0)
-	# M4 flight stage 2 (show footage, SoA 20:05-20:53): a capital's death fills the close frame, lights the hulls
-	# round it for a couple of seconds and throws debris well clear of the wreck.
-	st.nodes = [_flare(Color(1.0, 0.75, 0.4), size * 2.4, 3.0, 1.5), ring, ring2]
-	# F2 side-by-side (SoA 1160 1.5-2.9 s): a billowing orange fireball that holds, not a white spark spray.
-	_burst(p, Color(1.0, 0.48, 0.12), "fireball", 280, size / 3.0)
-	_burst(p, Color(1.0, 0.6, 0.25), "sparks", 45, size / 3.6)
-	_burst(p, Color(1.0, 0.45, 0.1), "debris", 130, size / 2.4)
-	_burst(p, Color(0.35, 0.3, 0.28), "smoke", 30, size / 2.6)
-	_flash_light(p, Color(1.0, 0.65, 0.3), 16.0, size * 14.0, 2.2)
+	st.boom_at = t0
+	var core := _flare(Color(1.0, 0.55, 0.2), size * 0.45, 1.0, 0.0)
+	core.global_position = p
+	st.nodes = [core]
+	_kill_fire(i, st, p, size)
+	if s != null:
+		_hull_pieces(i, st, s)
+	var k := size / 3.0
+	# No particle fire or grey smoke puffs: the lobes carry the volume and the dark rim (their hot particle cores read as
+	# white dots in the first strip). A few soft streamers and fine glinting debris.
+	_burst(p, Color(1.0, 0.5, 0.12), "streamer", 6 if _web else 8, k * 0.9)
+	_burst(p, Color(1.0, 0.45, 0.1), "debris", 40 if _web else 60, size / 2.4)
+	_flash_light(p, Color(1.0, 0.6, 0.25), 9.0, size * 12.0, 2.0)
+
+
+## The fire lobes: camera-facing noise billboards (kill_fire.gdshader) scattered over the hull, lit one after another
+## over the first 0.3 s, swelling and cooling to smoke. st.lobes: [{node, delay, off, s0, life}].
+func _kill_fire(i: int, st: Dictionary, p: Vector3, size: float) -> void:
+	var lobes: Array = []
+	var n := 7 if _web else 9
+	for k in n:
+		var h1 := BattleTimeline.unit_hash(i * 31 + k, 11)
+		var h2 := BattleTimeline.unit_hash(i * 31 + k, 23)
+		var h3 := BattleTimeline.unit_hash(i * 31 + k, 37)
+		var inner := k < 3
+		var off := Vector3(h1 - 0.5, (h2 - 0.5) * 0.6, h3 - 0.5) * size * (0.25 if inner else 0.6)
+		var mi := MeshInstance3D.new()
+		mi.mesh = _quad
+		var m := ShaderMaterial.new()
+		m.shader = KILL_FIRE_SHADER
+		m.render_priority = 3 if inner else 2
+		mi.material_override = m
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		add_child(mi)
+		mi.global_position = p + off
+		mi.scale = Vector3.ONE * 0.001
+		_fxp(mi, "seed", float(k) * 1.37 + h1 * 10.0)
+		_fxp(mi, "heat", 1.0 if inner else 0.5 + 0.35 * h2)
+		_fxp(mi, "age", 0.0)
+		_fxp(mi, "alpha_gain", 0.0)
+		_flares.append(mi) # the glare cap holds every lobe under FLARE_MAX_SCREEN of the frame too
+		lobes.append({"node": mi, "delay": (0.0 if inner else 0.06 + 0.25 * h3), "off": off,
+			"s0": size * ((0.95 if inner else 0.75) + 0.35 * h2), "life": 1.6 + 0.8 * h1})
+		st.nodes.append(mi)
+	st.lobes = lobes
+
+
+## The torn hull: the ship's model copied once per piece, each copy clipped to its slab between two jagged cut planes
+## across the hull's length (hull_piece.gdshader). They start exactly where the hull was, so the ship reads whole inside
+## the fire for a beat, then part, drift and tumble, char and burn away. BattleScene hides the real hull from the
+## breakup on. st.pieces: [{node, xf0, vel, axis, spin, mats}].
+func _hull_pieces(i: int, st: Dictionary, s: BattleShip) -> void:
+	if s.model == null or not s.model.is_inside_tree():
+		return
+	var he := s.half_extents
+	var n := 2 + int(BattleTimeline.unit_hash(i, 5) * 2.99) # 2-4 pieces
+	var cn := Vector3(1.0, (BattleTimeline.unit_hash(i, 7) - 0.5) * 0.8, (BattleTimeline.unit_hash(i, 9) - 0.5) * 0.8).normalized()
+	var span := he.x * 1.1
+	var cuts: Array = [-1e6]
+	for k in range(1, n):
+		cuts.append(-span + 2.0 * span * (float(k) + (BattleTimeline.unit_hash(i + k, 13) - 0.5) * 0.5) / float(n))
+	cuts.append(1e6)
+	var model_len := maxf(he.x * 2.0, 0.01)
+	var pieces: Array = []
+	for k in n:
+		var root := Node3D.new()
+		add_child(root)
+		root.global_transform = s.model.global_transform
+		var dup: Node3D = s.model.duplicate()
+		dup.transform = Transform3D.IDENTITY
+		dup.visible = true # BattleScene hides the real model from the breakup frame on
+		root.add_child(dup)
+		var mats: Array = []
+		for g in dup.find_children("*", "MeshInstance3D", true, false):
+			var mi := g as MeshInstance3D
+			if mi.name.begins_with("NavLight"):
+				mi.visible = false
+				continue
+			if mi.mesh == null:
+				continue
+			mi.material_overlay = null
+			mi.material_override = null
+			mi.transparency = 0.0
+			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			var m2r := root.global_transform.affine_inverse() * mi.global_transform
+			for si in mi.mesh.get_surface_count():
+				var pm := _piece_material(mi, si)
+				pm.set_shader_parameter("mesh_to_root", Projection(m2r))
+				pm.set_shader_parameter("cut_n", cn)
+				pm.set_shader_parameter("cut_lo", cuts[k])
+				pm.set_shader_parameter("cut_hi", cuts[k + 1])
+				pm.set_shader_parameter("jag", model_len * 0.06)
+				pm.set_shader_parameter("noise_scale", 1.0 / model_len)
+				mi.set_surface_override_material(si, pm)
+				mats.append(pm)
+		for g in dup.find_children("*", "GeometryInstance3D", true, false):
+			if not (g is MeshInstance3D):
+				(g as GeometryInstance3D).visible = false # damage fire and smoke emitters stay with the real ship
+		# Drift away from the hull's middle along the cut axis, with a little sideways scatter and a slow tumble.
+		var mid := -span if k == 0 else (span if k == n - 1 else (float(cuts[k]) + float(cuts[k + 1])) * 0.5)
+		var side := Vector3(0.0, BattleTimeline.unit_hash(i + k, 17) - 0.5, BattleTimeline.unit_hash(i + k, 19) - 0.5)
+		var local_dir := (cn * (1.0 if mid >= 0.0 else -1.0) + side).normalized()
+		var wdir := (s.model.global_basis * local_dir).normalized()
+		var axis := Vector3(BattleTimeline.unit_hash(i + k, 21) - 0.5, BattleTimeline.unit_hash(i + k, 25) - 0.5,
+			BattleTimeline.unit_hash(i + k, 29) - 0.5)
+		if axis.length() < 0.01:
+			axis = Vector3.UP
+		pieces.append({"node": root, "xf0": root.global_transform,
+			"vel": wdir * s.length * (0.10 + 0.08 * BattleTimeline.unit_hash(i + k, 31)),
+			"axis": axis.normalized(), "spin": (0.35 + 0.5 * BattleTimeline.unit_hash(i + k, 33)) * (1.0 if k % 2 == 0 else -1.0),
+			"mats": mats})
+		st.nodes.append(root)
+	st.pieces = pieces
+
+
+## A hull_piece material carrying the look of one surface of the ship (its colour map and tint, or vertex colours).
+func _piece_material(mi: MeshInstance3D, si: int) -> ShaderMaterial:
+	var src: Material = mi.get_surface_override_material(si)
+	if src == null:
+		src = mi.mesh.surface_get_material(si)
+	var m := ShaderMaterial.new()
+	m.shader = HULL_PIECE_SHADER
+	if src is BaseMaterial3D:
+		var sm := src as BaseMaterial3D
+		m.set_shader_parameter("tint", Vector3(sm.albedo_color.r, sm.albedo_color.g, sm.albedo_color.b))
+		if sm.albedo_texture != null:
+			m.set_shader_parameter("bc_tex", sm.albedo_texture)
+			m.set_shader_parameter("has_tex", true)
+		m.set_shader_parameter("use_vc", sm.vertex_color_use_as_albedo)
+	elif src is ShaderMaterial:
+		var shm := src as ShaderMaterial
+		var tex = shm.get_shader_parameter("bc_tex")
+		if tex is Texture2D:
+			m.set_shader_parameter("bc_tex", tex)
+			m.set_shader_parameter("has_tex", true)
+		var tint = shm.get_shader_parameter("tint")
+		if tint == null:
+			tint = shm.get_shader_parameter("base_color")
+		if tint is Color:
+			tint = Vector3(tint.r, tint.g, tint.b)
+		m.set_shader_parameter("tint", tint if tint is Vector3 else Vector3(0.6, 0.6, 0.62))
+		m.set_shader_parameter("use_vc", shm.get_shader_parameter("use_vertex_color") == true)
+	return m
+
+
+## The kill after its fireball lit (_fireball): core flare, fire lobes and hull pieces as a function of time.
+func _animate_kill(st: Dictionary, t: float, t_end: float) -> void:
+	if not st.has("boom_at"):
+		return
+	var el := maxf(0.0, t - float(st.boom_at))
+	var life := maxf(0.5, t_end - float(st.boom_at))
+	var size: float = st.size
+	var p: Vector3 = st.point
+	var c = st.nodes[0] if not st.nodes.is_empty() else null
+	if c is MeshInstance3D and is_instance_valid(c):
+		# The white core: small, short, no spikes.
+		c.global_position = p
+		_fxp(c, "flare_intensity", 1.1 * exp(-el * 6.0) + 0.15 * exp(-el * 1.5))
+		c.scale = Vector3.ONE * maxf(size * (0.45 + 0.25 * minf(el, 1.0)), _px_world(p, 24.0))
+	for lb in st.get("lobes", []):
+		var mi: MeshInstance3D = lb.node
+		if not is_instance_valid(mi):
+			continue
+		var a := clampf((el - float(lb.delay)) / float(lb.life), 0.0, 1.0)
+		_fxp(mi, "age", a)
+		_fxp(mi, "alpha_gain", 1.0 if el >= float(lb.delay) else 0.0)
+		var grow := 0.35 + 0.95 * (1.0 - exp(-a * 5.0))
+		mi.scale = Vector3.ONE * maxf(float(lb.s0) * grow, 0.001)
+		mi.global_position = p + (lb.off as Vector3) * (1.0 + 0.8 * a)
+	for pc in st.get("pieces", []):
+		var root: Node3D = pc.node
+		if not is_instance_valid(root):
+			continue
+		# Whole for a beat (0.2 s), then the pieces part and tumble; charred by 1.2 s; burnt away over the last 40%.
+		var m := maxf(0.0, el - 0.2)
+		var drift := m * m / (m + 0.4)
+		var xf0: Transform3D = pc.xf0
+		root.global_transform = Transform3D(Basis(pc.axis, float(pc.spin) * drift) * xf0.basis, xf0.origin + (pc.vel as Vector3) * drift)
+		var burn := smoothstep(0.0, 1.2, el)
+		var dis := smoothstep(life * 0.6, life * 0.98, el)
+		for mat in pc.mats:
+			(mat as ShaderMaterial).set_shader_parameter("burn", burn)
+			(mat as ShaderMaterial).set_shader_parameter("dissolve", dis)
 
 
 ## Torpedo impact (docs/WEAPON-FX.md): a big spiked flash and a camera-facing shockwave ring that grows to twice the
@@ -1000,14 +1195,14 @@ func _animate(i: int, j: Dictionary, t: float) -> void:
 				var p0: Vector3 = s.global_position if s != null else st.point
 				st.point = p0
 				st.nodes[0].global_position = p0
-				_fxp(st.nodes[0], "flare_intensity", 1.2 * exp(-el * 5.0) + 0.25)
-				st.nodes[0].scale = Vector3.ONE * maxf(st.size * (0.5 + 0.2 * sin(el * 23.0)), _px_world(p0, 30.0))
+				_fxp(st.nodes[0], "flare_intensity", 0.8 * exp(-el * 5.0) + 0.2) # 18 Nov: the white core stays small
+				st.nodes[0].scale = Vector3.ONE * maxf(st.size * (0.3 + 0.1 * sin(el * 23.0)), _px_world(p0, 24.0))
 				if t >= float(st.next_vent):
 					st.next_vent = t + 0.3
 					var q: Vector3 = s.hull_point(p0 + Vector3(sin(el * 7.0), 0.4, cos(el * 5.0)) * 50.0, int(el * 10.0)) if s != null else p0
 					var k0 := maxf(1.5, float(st.size) * 0.08)
 					_burst(q, Color(1.0, 0.45, 0.1), "fire_small", 14, k0)
-					_burst(q, Color(0.7, 0.85, 1.0), "vent", 20, k0 * 0.8, (q - p0).normalized())
+					_burst(q, Color(1.0, 0.55, 0.25), "vent", 8, k0 * 0.8, (q - p0).normalized())
 					_flash_light(q, Color(1.0, 0.55, 0.2), 3.0, float(st.size) * 2.5, 0.3)
 				if el < float(j.breakup):
 					return
@@ -1016,22 +1211,8 @@ func _animate(i: int, j: Dictionary, t: float) -> void:
 				for n in st.nodes:
 					if is_instance_valid(n):
 						n.queue_free()
-				_fireball(i, st, p0, float(st.size))
-				st.boom_at = t
-			var u2 := u
-			if st.has("boom_at"):
-				u2 = clampf((t - float(st.boom_at)) / maxf(0.1, j.start + j.duration - float(st.boom_at)), 0.0, 1.0)
-			u = u2
-			var size: float = st.size
-			st.nodes[0].global_position = st.point
-			_fxp(st.nodes[0], "flare_intensity", 1.5 * exp(-u * 7.0) + 0.25 * (1.0 - u)) # R3.5: the 2.5 peak whited out the kill frame
-			st.nodes[0].scale = Vector3.ONE * maxf(size * (1.5 + 2.0 * u), _px_world(st.point, 50.0 * (1.0 + u)))
-			for k in range(1, st.nodes.size()):
-				var ring: MeshInstance3D = st.nodes[k]
-				ring.visible = false # footage (SoA 1160, WotW 4891): a kill is a fireball and sparks, no shock rings
-				var r := size * (0.3 + (1.5 if k == 1 else 1.1) * (1.0 - pow(1.0 - u, 2.5)))
-				ring.scale = Vector3(r, 1.0, r)
-				_fxp(ring, "ring_age", u)
+				_fireball(i, st, p0, float(st.size), s, t)
+			_animate_kill(st, t, j.start + j.duration)
 		Job.WARP:
 			var s := _ship(j.fleet_id)
 			if s != null and not st.nodes.is_empty():
@@ -1081,7 +1262,7 @@ func _particle_material(kind: String, color: Color) -> Array:
 	mesh.size = Vector2(1, 1)
 	var align := false
 	var hdr := func(c: Color, m: float, a: float) -> Color: return Color(c.r * m, c.g * m, c.b * m, a)
-	if _web and kind in ["fireball", "fire_small", "debris"]:
+	if _web and kind in ["fireball", "fire_small", "debris", "streamer"]:
 		# F2 follow-up (18 Nov): the web build (Compatibility, no HDR) clamps every channel above 1, so the 3-5x hot core
 		# of a fire ramp turned (1, 1, 1) and 280 added particles read as a white puff. On the web the core keeps its hue
 		# (no multiplier above 1, pulled toward the burst's orange) and each particle adds less, so kills and hull hits
@@ -1101,6 +1282,24 @@ func _particle_material(kind: String, color: Color) -> Array:
 			ramp.set_color(1, hdr.call(color, 2.0, 0.0))
 			mesh.size = Vector2(0.05, 0.55)
 			pm.particle_flag_align_y = true
+			draw.billboard_mode = BaseMaterial3D.BILLBOARD_DISABLED
+			align = true
+		"streamer":
+			# Kill streamers (SoA 1161 s): long orange tongues of fire thrown out of the fireball, cooling to ember red.
+			# Soft and fat, not needles: the show's streamers are smoky fire, never white spike lines.
+			pm.initial_velocity_min = 2.5
+			pm.initial_velocity_max = 7.0
+			pm.damping_min = 1.5
+			pm.damping_max = 3.0
+			pm.scale_min = 0.8
+			pm.scale_max = 1.4
+			ramp.set_color(0, Color(color.r, color.g, color.b, 0.0))
+			ramp.add_point(0.12, hdr.call(Color(1, 0.55, 0.15), 1.3, 0.75))
+			ramp.add_point(0.55, hdr.call(Color(0.7, 0.22, 0.05), 1.0, 0.45))
+			ramp.set_color(1, Color(0.15, 0.05, 0.02, 0.0))
+			mesh.size = Vector2(0.55, 1.1)
+			pm.particle_flag_align_y = true
+			draw.albedo_texture = _puff_tex
 			draw.billboard_mode = BaseMaterial3D.BILLBOARD_DISABLED
 			align = true
 		"fire_small":
@@ -1160,7 +1359,8 @@ func _particle_material(kind: String, color: Color) -> Array:
 			var vct := CurveTexture.new()
 			vct.curve = vcurve
 			pm.scale_curve = vct
-			ramp.set_color(0, hdr.call(Color(0.9, 0.95, 1.0), 1.6, 0.7))
+			# A dying ship's vents (warm colour) burn orange; a breach elsewhere vents pale plasma.
+			ramp.set_color(0, hdr.call(Color(0.9, 0.95, 1.0) if color.b >= color.r else color, 1.6 if color.b >= color.r else 1.0, 0.7))
 			ramp.add_point(0.35, hdr.call(color, 0.9, 0.35))
 			ramp.set_color(1, Color(color.r * 0.4, color.g * 0.4, color.b * 0.4, 0.0))
 			pm.angle_min = -180.0
@@ -1176,8 +1376,8 @@ func _particle_material(kind: String, color: Color) -> Array:
 			draw.billboard_mode = BaseMaterial3D.BILLBOARD_DISABLED
 			mesh.size = Vector2(0.06, 0.3)
 			align = true
-			ramp.set_color(0, hdr.call(Color(1, 0.6, 0.2), 3.0, 1.0))
-			ramp.add_point(0.5, hdr.call(color, 1.2, 0.8))
+			ramp.set_color(0, hdr.call(Color(1, 0.6, 0.2), 1.6, 1.0))
+			ramp.add_point(0.5, hdr.call(color, 1.0, 0.8))
 			ramp.set_color(1, Color(0.3, 0.08, 0.02, 0.0))
 	var gt := GradientTexture1D.new()
 	gt.gradient = ramp
@@ -1225,7 +1425,7 @@ func _burst(p: Vector3, color: Color, kind: String, amount: int, scale_factor :=
 	gp.amount = maxi(1, amount)
 	gp.one_shot = true
 	gp.explosiveness = {"smoke": 0.7, "vent": 0.0}.get(kind, 0.95) # a vent streams out over its life
-	gp.lifetime = {"sparks": 0.9, "sparks_small": 0.5, "fire_small": 0.6, "fireball": 1.8, "smoke": 3.5, "debris": 2.5, "vent": 1.8}.get(kind, 1.0)
+	gp.lifetime = {"sparks": 0.9, "streamer": 1.4, "sparks_small": 0.5, "fire_small": 0.6, "fireball": 1.8, "smoke": 3.5, "debris": 2.5, "vent": 1.8}.get(kind, 1.0)
 	gp.speed_scale = 1.0
 	gp.randomness = 0.5
 	gp.fixed_fps = 0

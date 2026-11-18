@@ -295,6 +295,8 @@ func _process(delta: float) -> void:
 		return
 	# A hitch (first-use shader compile, a model load) must slow playback, not teleport ships across the arena.
 	var dt := minf(delta, MAX_FRAME_STEP) * playback_speed * _fast_forward
+	if _killcam_dir != "" and _playing and _killcam_step(dt):
+		dt = 0.0
 	if _playing:
 		time += dt
 		_fire_cues()
@@ -305,6 +307,60 @@ func _process(delta: float) -> void:
 	var t_us := Time.get_ticks_usec()
 	_apply(time, delta)
 	last_apply_usec = Time.get_ticks_usec() - t_us
+
+
+## Kill-frame capture (diagnostic only, off unless asked): BOTF_KILLCAM=<dir> on the desktop, or ?killcam in the web
+## build's URL. At each of the first KILLCAM_MAX kills the playback stops at the breakup and KILLCAM_AT seconds after it,
+## holds each moment for KILLCAM_HOLD_MS of real time with the whole engine frozen (time_scale 0, particles too), saves
+## <dir>/kill<n>_<k>.png on the desktop and prints "KILLCAM HOLD n k t=..." for a browser driver to screenshot.
+const KILLCAM_AT := [0.04, 0.3, 0.75, 1.4]
+const KILLCAM_MAX := 3
+const KILLCAM_HOLD_MS := 1800
+var _killcam_dir := _killcam_init()
+var _killcam_done := {}   ## explosion job index -> next KILLCAM_AT index
+var _killcam_kills := 0
+var _killcam_hold := -1   ## ticks_msec the current hold ends (-1 = none)
+var _killcam_saved := false
+var _killcam_k := 0
+
+static func _killcam_init() -> String:
+	var d := OS.get_environment("BOTF_KILLCAM")
+	if d == "" and OS.has_feature("web") and str(JavaScriptBridge.eval("location.search")).contains("killcam"):
+		d = "web"
+	return d
+
+## True while a hold freezes playback.
+func _killcam_step(dt: float) -> bool:
+	if _killcam_hold >= 0:
+		if not _killcam_saved and _killcam_dir != "web":
+			_killcam_saved = true # the frame drawn since the hold began shows the frozen moment
+			var img := get_viewport().get_texture().get_image()
+			img.save_png(_killcam_dir.path_join("kill%d_%d.png" % [_killcam_kills, _killcam_k]))
+		if Time.get_ticks_msec() < _killcam_hold:
+			return true
+		_killcam_hold = -1
+		Engine.time_scale = 1.0
+	for i in timeline.jobs.size():
+		var j: Dictionary = timeline.jobs[i]
+		if j.kind != BattleTimeline.Job.EXPLOSION:
+			continue
+		var boom: float = j.start + float(j.get("breakup", 0.0))
+		var k: int = _killcam_done.get(i, 0)
+		if k >= KILLCAM_AT.size() or (k == 0 and _killcam_kills >= KILLCAM_MAX):
+			continue
+		var at: float = boom + KILLCAM_AT[k]
+		if time < at and time + dt >= at:
+			if k == 0:
+				_killcam_kills += 1
+			time = at
+			_killcam_done[i] = k + 1
+			_killcam_k = k
+			_killcam_hold = Time.get_ticks_msec() + KILLCAM_HOLD_MS
+			_killcam_saved = false
+			Engine.time_scale = 0.0
+			print("KILLCAM HOLD %d %d t=%.2f boom=%.2f fleet=%d" % [_killcam_kills, k, at, boom, int(j.fleet_id)])
+			return true
+	return false
 
 
 func _player_empire() -> int:
@@ -458,6 +514,7 @@ func _apply(t: float, delta: float) -> void:
 		var pos := cell_to_world(p.x, p.y, p.altitude + idle.x) + ship.spacing
 		ship.transform = Transform3D(pose_basis(p.facing, p.pitch + idle.z, p.bank + idle.y), pos)
 		ship.model.transform = Transform3D.IDENTITY
+		ship.model.visible = true
 		var vis := track.visibility_at(t)
 		var shimmer := 0.0
 		for j in _ship_jobs.get(track.fleet_id, []):
@@ -473,9 +530,9 @@ func _apply(t: float, delta: float) -> void:
 					var bu: float = float(j.get("breakup", 0.0))
 					if bu > 0.0 and t - j.start < bu:
 						continue
-					var k := smoothstep(0.0, 0.35, u) if bu <= 0.0 else smoothstep(bu, bu + 0.15, t - j.start)
-					var axis := Vector3(0.3, 1.0, 0.6).normalized()
-					ship.model.transform = Transform3D(Basis(axis, k * 1.2).scaled(Vector3.ONE * (1.0 - 0.35 * k)), Vector3.ZERO)
+					# From the breakup on, BattleFx's torn hull pieces stand in for the hull (SoA 1161 s: the hull stays
+					# inside the fireball, then breaks apart); the whole model is hidden so it never doubles them.
+					ship.model.visible = false
 				BattleTimeline.Job.WARP:
 					var s := 1.0 + 12.0 * u * u * u
 					ship.model.transform = Transform3D(Basis.from_scale(Vector3(s, 1.0 - 0.5 * u, 1.0 - 0.5 * u)),
@@ -748,8 +805,11 @@ func _direct_shot(t: float, delta: float, centroid: Vector3, spread: float) -> D
 		var sid := int(_dir.get("subject", 0))
 		var a0: BattleShip = _ships.get(sid)
 		var tr0 := timeline.track(sid) if timeline != null else null
-		var hold := 1.4 if str(_dir.get("type", "")) == "victim" else 0.6
-		if a0 == null or not a0.visible or (tr0 != null and tr0.hide_at >= 0.0 and t >= tr0.hide_at + hold and _playing):
+		# A victim shot stays on the kill while its fireball and torn hull play out (SoA 1161-1163 s holds on it); the hull
+		# itself is hidden from the breakup on (BattleFx's pieces stand in for it).
+		var victim := str(_dir.get("type", "")) == "victim"
+		var hold := 1.9 if victim else 0.6
+		if a0 == null or (not a0.visible and not victim) or (tr0 != null and tr0.hide_at >= 0.0 and t >= tr0.hide_at + hold and _playing):
 			ended = true
 	if ended:
 		_direct_pick(t)
