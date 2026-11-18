@@ -126,6 +126,7 @@ static func apply_viewport(v: Viewport, s: Dictionary) -> void:
 	var aa := str(s["display.antiAlias"])
 	v.screen_space_aa = Viewport.SCREEN_SPACE_AA_FXAA if aa == "fxaa" else Viewport.SCREEN_SPACE_AA_DISABLED
 	v.msaa_3d = {"msaa2": Viewport.MSAA_2X, "msaa4": Viewport.MSAA_4X, "msaa8": Viewport.MSAA_8X}.get(aa, Viewport.MSAA_DISABLED)
+	CompatLook.viewport(v)
 	var sh := str(s["display.shadows"])
 	v.positional_shadow_atlas_size = {"off": 256, "low": 1024, "medium": 2048, "high": 4096}.get(sh, 4096)
 

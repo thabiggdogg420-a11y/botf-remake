@@ -24,6 +24,8 @@ static func active() -> bool:
 static func tune(env: Environment) -> void:
 	if not active() or env == null:
 		return
+	if hdr():
+		return # an HDR 3D buffer (viewport below): the Forward+ glow settings fire as they do on the desktop
 	env.glow_hdr_threshold = GLOW_THRESHOLD
 	env.glow_hdr_scale = GLOW_HDR_SCALE
 	env.glow_intensity = GLOW_INTENSITY
@@ -31,3 +33,26 @@ static func tune(env: Environment) -> void:
 ## The energy the key light (a sun) should have under the active renderer.
 static func sun(energy: float) -> float:
 	return energy * SUN_SCALE if active() else energy
+
+## Whether Compatibility 3D views render to a half-float (HDR) buffer. Off: tried 19 Nov (WEB-PARITY.md). A kill's
+## fireball kept its shape, but Godot 4.5 Compatibility skips the Environment's tonemapper on an HDR 2D buffer, so lit
+## hulls, the station and the title planet blew out to white. BOTF_COMPAT_HDR=1 (environment or web user argument)
+## turns it on for experiments.
+static func hdr() -> bool:
+	return flag("BOTF_COMPAT_HDR") == "1"
+
+## A 3D viewport under Compatibility (no-op under Forward+).
+static func viewport(v: Viewport) -> void:
+	if not active() or v == null:
+		return
+	v.use_hdr_2d = hdr()
+
+## A diagnostics switch from the environment or, on the web (no environment), a user argument NAME=value.
+static func flag(name_: String) -> String:
+	var v := OS.get_environment(name_)
+	if v != "":
+		return v
+	for a in OS.get_cmdline_user_args():
+		if str(a).begins_with(name_ + "="):
+			return str(a).substr(name_.length() + 1)
+	return ""

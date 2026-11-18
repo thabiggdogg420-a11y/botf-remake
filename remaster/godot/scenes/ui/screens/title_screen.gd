@@ -122,7 +122,7 @@ func _wide(b: Button) -> Button:
 
 ## The power the title films: the campaign's empire, else the latest save's, else a random one.
 func title_empire() -> int:
-	return vm.title_empire(int(OS.get_environment("BOTF_TITLE_EMPIRE")), fleet_empire)
+	return vm.title_empire(int(CompatLook.flag("BOTF_TITLE_EMPIRE")), fleet_empire) # env, or a web user argument
 
 ## Rebuilds the live fleet (the web build calls this when the title empire's hero hulls arrive in the background).
 func refresh_fleet() -> void:
@@ -156,6 +156,7 @@ func _ensure_backdrop(empire: int) -> void:
 		DisplaySettings.apply_viewport(sv, app.settings)
 	svc.add_child(sv)
 	backdrop.add_child(svc)
+	CompatBloom.attach(svc, sv, 0.95, 0.6, 0.8) # web: engines and lights glow, lit hulls do not
 	fleet = TitleFleet.new()
 	fleet.animate = app == null or not app.settings.get("reducedMotion", false)
 	sv.add_child(fleet)

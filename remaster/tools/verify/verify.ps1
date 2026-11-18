@@ -402,7 +402,7 @@ if (-not $SkipExport) {
         $winPacks = Join-Path $proj 'build\packs'
         New-Item -ItemType Directory -Force -Path $winPacks | Out-Null
         Get-ChildItem -LiteralPath $winPacks -Filter '*.pck' -ErrorAction SilentlyContinue | Remove-Item -Force
-        foreach ($n in 'planets_desktop.pck', 'ships_desktop.pck', 'ship_icons_desktop.pck') {
+        foreach ($n in 'planets_desktop.pck', 'ships_desktop.pck', 'ship_icons_desktop.pck', 'art_desktop.pck') {
             $dp = Join-Path $userPacks $n
             if (Test-Path -LiteralPath $dp) { Link-Pack $dp $winPacks }
         }

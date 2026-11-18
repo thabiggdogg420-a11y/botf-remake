@@ -55,6 +55,7 @@ func _ready() -> void:
 	viewport.msaa_3d = Viewport.MSAA_2X
 	viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 	add_child(viewport)
+	CompatBloom.attach(self, viewport, 0.6, 0.9, 1.8) # the star's wide warm halo (Forward+ glow 0.6 on an HDR core)
 	_build()
 	overlay = Overlay.new()
 	overlay.view = self
@@ -113,7 +114,7 @@ func _build() -> void:
 	var smat := ShaderMaterial.new()
 	smat.shader = _star_shader()
 	smat.set_shader_parameter("tint", star_color)
-	smat.set_shader_parameter("hdr", 1.0 if RenderingServer.get_current_rendering_method() == "forward_plus" else 0.0)
+	smat.set_shader_parameter("hdr", 1.0 if RenderingServer.get_current_rendering_method() == "forward_plus" or CompatLook.hdr() else 0.0) # web: HDR buffer since 19 Nov
 	star.material_override = smat
 	world.add_child(star)
 	var halo := MeshInstance3D.new()

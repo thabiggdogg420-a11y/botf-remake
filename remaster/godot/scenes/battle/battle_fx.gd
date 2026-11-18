@@ -1269,8 +1269,8 @@ func _particle_material(kind: String, color: Color) -> Array:
 	mesh.size = Vector2(1, 1)
 	var align := false
 	var hdr := func(c: Color, m: float, a: float) -> Color: return Color(c.r * m, c.g * m, c.b * m, a)
-	if _web and kind in ["fireball", "fire_small", "debris", "streamer"]:
-		# F2 follow-up (18 Nov): the web build (Compatibility, no HDR) clamps every channel above 1, so the 3-5x hot core
+	if _web and not CompatLook.hdr() and kind in ["fireball", "fire_small", "debris", "streamer"]:
+		# Only with BOTF_COMPAT_HDR=0 since 19 Nov (the web 3D views are HDR now). F2 follow-up (18 Nov): the web build (Compatibility, no HDR) clamps every channel above 1, so the 3-5x hot core
 		# of a fire ramp turned (1, 1, 1) and 280 added particles read as a white puff. On the web the core keeps its hue
 		# (no multiplier above 1, pulled toward the burst's orange) and each particle adds less, so kills and hull hits
 		# read as orange fire as they do on the desktop build.

@@ -378,7 +378,16 @@ static func mip_scene_images(node: Node, state: GLTFState) -> void:
 		var bytes: PackedByteArray = (buffers[view.buffer] as PackedByteArray).slice(view.byte_offset, view.byte_offset + view.byte_length)
 		var img := Image.new()
 		var mime := str(j.get("mimeType", "image/png"))
-		var err := img.load_jpg_from_buffer(bytes) if mime == "image/jpeg" else img.load_png_from_buffer(bytes)
+		# The web packs carry WebP (EXT_texture_webp, 17 Nov): decoded as PNG it failed and the hull kept its unmipped
+		# texture, which sparkled into speckle at battle range (WEB-PARITY.md, 19 Nov).
+		var err: Error
+		match mime:
+			"image/jpeg":
+				err = img.load_jpg_from_buffer(bytes)
+			"image/webp":
+				err = img.load_webp_from_buffer(bytes)
+			_:
+				err = img.load_png_from_buffer(bytes)
 		if err != OK or img.is_empty() or img.is_compressed():
 			continue
 		img.generate_mipmaps()

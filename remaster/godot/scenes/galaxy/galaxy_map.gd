@@ -99,6 +99,7 @@ func _ready() -> void:
 	_viewport.screen_space_aa = get_viewport().screen_space_aa
 	_viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 	_container.add_child(_viewport)
+	CompatBloom.attach(_container, _viewport)
 	_root3d = Node3D.new()
 	_root3d.name = "Galaxy3D"
 	_viewport.add_child(_root3d)

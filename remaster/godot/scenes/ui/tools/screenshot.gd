@@ -31,6 +31,9 @@ func _initialize() -> void:
 		if str(a).begins_with("SHOT_") and str(a).contains("="):
 			_arg_env[str(a).get_slice("=", 0)] = str(a).substr(str(a).find("=") + 1)
 			args.erase(a)
+	for a in args.duplicate():
+		if str(a).begins_with("BOTF_") and str(a).contains("="):
+			args.erase(a) # CompatLook.flag switches, read where they apply
 	if args.size() > 0:
 		out_dir = args[0]
 	shots = args.slice(1) if args.size() > 1 else ["title", "new", "galaxy", "galaxy-menu", "system", "research", "fleets", "empire", "diplomacy", "intel", "database", "combat", "briefing", "events", "victory", "end", "settings", "saves"]
@@ -96,9 +99,9 @@ func _run() -> void:
 		await _wait(10)
 		_report_fps(s)
 		var img := root.get_viewport().get_texture().get_image()
-		if (s == "battle-closeup" or s == "battle-kill" or s == "battle-burning" or (s.begins_with("battle-volley") or s.begins_with("battle-strip") or s == "battle-campaign")) and app._current != null and app._current.get("host") != null and app._current.host.view_node != null:
+		if _env("SHOT_ROOT") == "" and (s == "battle-closeup" or s == "battle-kill" or s == "battle-burning" or (s.begins_with("battle-volley") or s.begins_with("battle-strip") or s == "battle-campaign")) and app._current != null and app._current.get("host") != null and app._current.host.view_node != null:
 			img = app._current.host.view_node.get_viewport().get_texture().get_image() # the 3D view alone, no panels
-		if s == "system3d":
+		if s == "system3d" and _env("SHOT_ROOT") == "":
 			var sv3: SystemView3D = app.current_screen().find_child("SystemView3D", true, false)
 			if sv3:
 				img = sv3.viewport.get_texture().get_image()
@@ -251,8 +254,7 @@ func _prepare(s: String) -> void:
 			# A player battle against a Borg cube (threat drill, battle mode), a few rounds in.
 			app.start_drill("newThreatDrill", "Threat drill", {"battle": true, "ships": int(_env("SHOT_DRILL_SHIPS")) if _env("SHOT_DRILL_SHIPS") != "" else 6})
 			app.end_turn()
-			await _wait(4)
-			app.close_all_modals()
+			await _take_command()
 			for n in 2:
 				await _hulls_ready()
 				app._current._round()
@@ -291,8 +293,7 @@ func _prepare(s: String) -> void:
 				drill["ships"] = int(_env("SHOT_DRILL_SHIPS"))
 			app.start_drill("newBattleDrill", "Starbase drill", drill)
 			app.end_turn()
-			await _wait(4)
-			app.close_all_modals()
+			await _take_command()
 			await _wait(90)
 		"battle-r1", "battle-r3":
 			# Starbase drill (Remastered rules 3): take command and resolve rounds, then let the 3D view play.
@@ -304,8 +305,7 @@ func _prepare(s: String) -> void:
 			_ft.clear()
 			app.start_drill("newBattleDrill", "Starbase drill", drill)
 			app.end_turn()
-			await _wait(4)
-			app.close_all_modals() # the deferred "Enemy contact" choice; Take command
+			await _take_command()
 			for n in (1 if s == "battle-r1" else 3):
 				await _hulls_ready()
 				app._current._round()
@@ -317,8 +317,7 @@ func _prepare(s: String) -> void:
 			if not (app._current != null and app._current.get("host") != null and app._current.host.view_node != null):
 				app.start_drill("newBattleDrill", "Starbase drill", {"station": true})
 				app.end_turn()
-				await _wait(4)
-				app.close_all_modals()
+				await _take_command()
 				for n in 2:
 					await _hulls_ready()
 					app._current._round()
@@ -488,8 +487,7 @@ func _prepare(s: String) -> void:
 			# following the worst-hit ship (below half hull) with its fires. Saved from the 3D view alone.
 			app.start_drill("newBattleDrill", "Starbase drill", {"station": true})
 			app.end_turn()
-			await _wait(4)
-			app.close_all_modals()
+			await _take_command()
 			var view: Node = app._current.host.view_node
 			var at := -1.0
 			var worst := 0
@@ -625,8 +623,7 @@ func _volley_drill(campaign := false) -> void:
 			drill["foeStation"] = true
 		app.start_drill("newBattleDrill", "Starbase drill", drill)
 		app.end_turn()
-	await _wait(4)
-	app.close_all_modals()
+		await _take_command()
 	var view: Node = app._current.host.view_node
 	var best := -1
 	var best_t := 0.0
@@ -732,4 +729,17 @@ func _hulls_ready() -> void:
 		var vn: Node = app._current.host.view_node if app._current != null and app._current.get("host") != null else null
 		if vn != null and not BattleAssets.loading() and (vn.get("_pending_round") == null or (vn._pending_round as Dictionary).is_empty()) and (vn.get("_stage") == null or (vn._stage as Dictionary).is_empty()):
 			return
+		await _wait(1)
+
+
+## After a drill's end_turn: the "Enemy contact" choice is deferred (on the web it can open several frames later, and the
+## 19 Nov web capture resolved the battle under it). Waits for the battle view, then keeps closing modals (Take command)
+## for 30 frames.
+func _take_command() -> void:
+	for n in 600:
+		await _wait(1)
+		if app._current != null and app._current.get("host") != null and app._current.host.view_node != null:
+			break
+	for n in 30:
+		app.close_all_modals()
 		await _wait(1)

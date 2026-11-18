@@ -70,6 +70,9 @@ func attach(node: Node) -> void:
 		sv.add_child(node)
 		svc.add_child(sv)
 		add_child(svc)
+		# web: glow on engines, beams and fire (no-op under Forward+). Threshold near white: the 8-bit frame cannot tell a
+		# lit white hull (0.85-0.93 after ACES) from fire, so only clipped cores bloom.
+		CompatBloom.attach(svc, sv, 0.95, 0.6, 0.8)
 	else:
 		if node is Control:
 			(node as Control).set_anchors_preset(Control.PRESET_FULL_RECT)
