@@ -83,5 +83,16 @@ void fragment() {
 	float win = smoothstep(0.35, 0.45, ry) * (1.0 - smoothstep(0.55, 0.65, ry))
 		* smoothstep(0.15, 0.3, fract(cx)) * (1.0 - smoothstep(0.7, 0.85, fract(cx)));
 	float warm = h31(vec3(cell, floor(v_pos.y * rows), 1.0));
-	EMISSION = window_color * (0.7 + 0.6 * warm) * win * lit * side * window_energy;
+	float energy = window_energy;
+#if CURRENT_RENDERER == RENDERER_COMPATIBILITY
+	// Compatibility (the web build): no HDR range and no tonemap roll-off, so every window over 1.0 clips to white, and the
+	// window grid is finer than a pixel at battle and title range: it aliased into a white speckle over the whole hull
+	// (WEB-PARITY.md gap 5, 19 Nov). Fade the windows out as a window cell shrinks under ~3 pixels, and cap their energy.
+	float px = max(fwidth(cx), fwidth(v_pos.y * rows));
+	energy = min(energy, 1.2) * (1.0 - smoothstep(0.12, 0.35, px));
+	ROUGHNESS = max(ROUGHNESS, 0.45 + 0.4 * smoothstep(0.05, 0.3, px));
+	// The 8-bit frame clips the lit plating that Forward+ ACES rolls off: a shade darker reads as the desktop's grey.
+	ALBEDO *= 0.8;
+#endif
+	EMISSION = window_color * (0.7 + 0.6 * warm) * win * lit * side * energy;
 }
