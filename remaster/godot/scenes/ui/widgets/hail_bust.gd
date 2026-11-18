@@ -70,10 +70,10 @@ static func _build(key: String) -> Dictionary:
 			body.append(_poly([[36, 26], [30, 36], [25, 50], [24, 66], [33, 70], [37, 52], [39, 36]]))
 			body.append(_poly([[64, 26], [70, 36], [75, 50], [76, 66], [67, 70], [63, 52], [61, 36]]))
 			body.append(_poly([[41, 46], [44, 57], [50, 61], [56, 57], [59, 46], [50, 50]]))
-			# forehead ridge crest, three bumps
-			for i in 3:
-				body.append(_ellipse(Vector2(50, 17.5 - i * 0.6 + i * 0.0), 6.5 - i * 1.2, 3.2, 0.0).duplicate())
-			lines.append(_poly([[40, 22], [45, 19.5], [50, 21], [55, 19.5], [60, 22]]))
+			# the forehead ridges, drawn on a round head (a crest above it read as a hood)
+			lines.append(_poly([[39, 24], [44, 21], [50, 23], [56, 21], [61, 24]]))
+			lines.append(_poly([[42, 19], [46, 17], [50, 18.5], [54, 17], [58, 19]]))
+			lines.append(_poly([[50, 14], [50, 23]]))
 			# armour plates and baldric
 			lines.append(_poly([[26, 84], [74, 96]]))
 			lines.append(_poly([[18, 80], [32, 76], [36, 88]]))

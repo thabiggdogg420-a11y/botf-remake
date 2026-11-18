@@ -79,6 +79,8 @@ func guidance() -> Dictionary:
 	if app.view.is_empty():
 		return {}
 	var urgent := _situational()   # a battle or an open report outranks the lesson
+	if urgent.get("hide", false):
+		return {}
 	if not urgent.is_empty():
 		return urgent
 	if tutorial_active():
@@ -106,10 +108,15 @@ func _situational() -> Dictionary:
 			return _g("battle_done", "Battle over", "The battle is decided. Continue the turn to see its outcome in your log.", "good", "continue_battle", "Continue turn")
 		return _g("battle", "Battle joined", "Your ships are engaged. Command them round by round, or let your captains fight it out.", "alert", "auto_battle", "Auto-resolve")
 	if app.has_modal():
-		var log_step := tutorial_active() and str(STEPS[tutorial_step()]["id"]) == "log"
-		if log_step:
+		var top: Control = app._modals.back()
+		if top.find_child("Aftermath", true, false) != null:
+			return _g("aftermath", "A world is taken", "Choose what happens to the conquered world. I will take the first choice offered.", "warn", "aftermath", "Decide")
+		var report := top.find_child("Briefing", true, false) != null or top.find_child("Events", true, false) != null
+		if report and tutorial_active() and str(STEPS[tutorial_step()]["id"]) == "log":
 			return {}
-		return _g("report", "Report waiting", "Read the report on screen, then close it to carry on.", "info", "close", "Close")
+		if report:
+			return _g("report", "Captain's log", "Read the log, then close it to carry on.", "info", "close", "Close log")
+		return {"hide": true}   # a menu, a confirmation or a hail: the player is busy with it
 	return {}
 
 ## After the tutorial: the next useful thing, from the end-turn check first.
@@ -201,12 +208,19 @@ func perform(g: Dictionary) -> String:
 				why = "No battle screen"
 		"continue_battle":
 			app.end_turn()
+		"aftermath":
+			var top: Control = app._modals.back() if app.has_modal() else null
+			var picks: Array = (top.find_children("Aftermath_*", "Button", true, false) if top else []).filter(func(b): return not (b as Button).disabled)
+			if picks.is_empty():
+				why = "No decision on screen"
+			else:
+				(picks[0] as Button).pressed.emit()
 		_:
 			if act.begins_with("goto:"):
 				app.goto(act.substr(5))
 	if why == "" and g.get("tutorial", false):
 		_advance()
-	elif not g.get("tutorial", false) and act not in ["end_turn", "close", "auto_battle", "continue_battle"]:
+	elif not g.get("tutorial", false) and act not in ["end_turn", "close", "auto_battle", "continue_battle", "aftermath"]:
 		_dismissed[str(g["id"])] = turn()   # one offer per hint per turn: done, or it could not be done
 	return why
 
