@@ -26,6 +26,7 @@ func _initialize() -> void:
 	for id in range(1, 9):
 		check(PortraitSlot.MAJOR_KEYS.has(id) and str(PortraitSlot.MAJOR_KEYS[id]).begins_with("portrait."), "power %d has a portrait key" % id)
 	await _late_pack_test()
+	await _hail_wait_test()
 	quit(1 if failures > 0 else 0)
 
 ## Cold web visit: the card is drawn before art_web.pck mounts. A slot built with no art must show the portrait once the pack mounts.
@@ -53,3 +54,38 @@ func _late_pack_test() -> void:
 	check(AppLoader.art(key, "portrait") != null, "late pack: AppLoader.art now serves the picture")
 	slot.queue_free()
 	DirAccess.remove_absolute(pck)
+
+## Cold web visit, hail: the portrait pack is still downloading. The hail shows the transmission static (not the bust), then the
+## portrait when the pack mounts; with no picture in the pack or after the timeout it falls back to the bust. drawn() says which.
+func _hail_wait_test() -> void:
+	AppLoader.test_pack_pending = true
+	var key := "portrait.test.hailwait"
+	var a := HailViewscreen.make(1, Vector2(300, 220), "Test", "Incoming transmission", key)
+	root.add_child(a)
+	await process_frame
+	check(a.drawn() == "static", "hail wait: pack pending -> the viewscreen draws the transmission static (got %s)" % a.drawn())
+	check(not a.shows_bust(), "hail wait: the bust is not drawn while the portrait is on its way")
+	var b := HailViewscreen.make(1, Vector2(300, 220), "Test", "Incoming transmission", "portrait.test.nothere")
+	root.add_child(b)
+	await process_frame
+	var dir := OS.get_temp_dir().path_join("botf_hailwait_test")
+	DirAccess.make_dir_recursive_absolute(dir)
+	var png := dir.path_join("t.png")
+	var img := Image.create(8, 8, false, Image.FORMAT_RGBA8)
+	img.fill(Color.GREEN)
+	img.save_png(png)
+	DirAccess.make_dir_recursive_absolute("user://packs")
+	var pck := "user://packs/art_hailwait_test.pck"
+	var packer := PCKPacker.new()
+	packer.pck_start(pck)
+	packer.add_file("res://art/portrait/%s.png" % key, png)
+	packer.flush()
+	check(AppLoader.mount_pack(pck), "hail wait: the pack mounts")
+	await process_frame
+	check(a.drawn() == "picture", "hail wait: the pack lands -> the portrait is drawn (got %s)" % a.drawn())
+	check(b.drawn() == "static", "hail wait: a pack with no picture for this power does not end the wait by itself")
+	b._on_pack_done()
+	check(b.drawn() == "bust", "hail wait: pack done with no picture (or the timeout) -> the bust (got %s)" % b.drawn())
+	AppLoader.test_pack_pending = false
+	a.queue_free()
+	b.queue_free()

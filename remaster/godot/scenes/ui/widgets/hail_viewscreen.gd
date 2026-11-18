@@ -15,6 +15,10 @@ var live := true
 var force_bust := false  ## capture and tests: always draw the bust
 var _tex: Texture2D
 var _t := 0.0
+var _waiting := false    ## web, cold visit: the pack holding the portrait has not landed yet; the screen shows static, not the bust
+var _gave_up := false    ## the pack failed to load, held no portrait for this power, or the timeout passed: the bust is drawn
+## How long a hail waits for its art pack before it falls back to the bust (seconds).
+const WAIT_TIMEOUT := 20.0
 
 static func make(empire_: int, px: Vector2, caption_: String = "", status_: String = "", art_key_: String = "") -> HailViewscreen:
 	var h := HailViewscreen.new()
@@ -48,19 +52,80 @@ func portrait_keys() -> Array[String]:
 	return out
 
 func shows_bust() -> bool:
-	return _tex == null
+	return _tex == null and not _waiting
+
+## What the screen is actually drawing right now: "picture", "static" (the portrait is on its way, the viewscreen shows the
+## incoming-transmission static) or "bust". Capture logs and tests report this, not what was intended.
+func drawn() -> String:
+	if _tex != null:
+		return "picture"
+	return "static" if _waiting else "bust"
+
+func _find_portrait() -> void:
+	for ak in portrait_keys():
+		_tex = AppLoader.art(ak, "portrait")
+		if _tex:
+			break
 
 func _ready() -> void:
 	if not force_bust:
-		for ak in portrait_keys():
-			_tex = AppLoader.art(ak, "portrait")
-			if _tex:
-				break
+		_find_portrait()
+		if _tex == null and AppLoader.portrait_pack_pending() and not portrait_keys().is_empty():
+			_start_waiting()
+	set_process((live and not UiTokens.reduced_motion) or _waiting)
+
+## Web, first visit: the portraits sit in art_web.pck, still downloading. Raise that pack to the front of the queue, show the
+## static until it mounts, and use the bust only if the pack fails, holds no portrait for this power, or the timeout passes.
+func _start_waiting() -> void:
+	_waiting = true
+	AppLoader.art_events.packs_mounted.connect(_on_packs_mounted)
+	AppLoader.raise_pack(AppLoader.PORTRAIT_PACK, _on_pack_done)
+	get_tree().create_timer(WAIT_TIMEOUT).timeout.connect(_on_pack_done)
+
+func _on_packs_mounted(_path: String = "") -> void:
+	if not _waiting:
+		return
+	_find_portrait()
+	if _tex != null:
+		_stop_waiting()
+
+## The fetch finished (loaded or failed) or the timeout passed: one last look for the picture, else the bust.
+func _on_pack_done() -> void:
+	if not _waiting or not is_inside_tree():
+		return
+	_find_portrait()
+	_gave_up = _tex == null
+	_stop_waiting()
+
+func _stop_waiting() -> void:
+	_waiting = false
+	if AppLoader.art_events.packs_mounted.is_connected(_on_packs_mounted):
+		AppLoader.art_events.packs_mounted.disconnect(_on_packs_mounted)
 	set_process(live and not UiTokens.reduced_motion)
+	queue_redraw()
 
 func _process(delta: float) -> void:
 	_t = fmod(_t + delta * 0.22, 1.0)
 	queue_redraw()
+
+## The "incoming transmission" static: banded noise and rolling bars in the empire's colour, no face.
+func _draw_static(inner: Rect2, col: Color) -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = int(Time.get_ticks_msec() / 70) * 2654435761 + empire
+	var step := 6.0
+	var y := inner.position.y
+	while y < inner.end.y:
+		var x := inner.position.x
+		while x < inner.end.x:
+			var v := rng.randf()
+			draw_rect(Rect2(x, y, minf(step, inner.end.x - x), minf(step, inner.end.y - y)), Color(col.lerp(Color.WHITE, 0.55), v * v * 0.55))
+			x += step
+		y += step
+	var by := fmod(_t * 3.0, 1.0) * inner.size.y
+	draw_rect(Rect2(inner.position.x, inner.position.y + by, inner.size.x, 18), Color(col.lightened(0.5), 0.18))
+	var f := Lcars.font("display", 600)
+	var msg := "INCOMING TRANSMISSION"
+	draw_string(f, Vector2(inner.position.x, inner.position.y + inner.size.y * 0.5), msg, HORIZONTAL_ALIGNMENT_CENTER, inner.size.x, 20, Color(col.lightened(0.55), 0.9))
 
 func _draw() -> void:
 	var r := Rect2(Vector2.ZERO, size)
@@ -73,6 +138,8 @@ func _draw() -> void:
 	var inner := r.grow(-3)
 	if _tex:
 		draw_texture_rect_region(_tex, inner, PortraitSlot.cover_src(_tex.get_size(), inner.size))
+	elif _waiting:
+		_draw_static(inner, col)
 	else:
 		# the backlight: a soft disc of the empire's colour behind the head, then faint stars
 		var c := Vector2(size.x * 0.5, size.y * 0.42)

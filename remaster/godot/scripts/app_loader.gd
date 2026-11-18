@@ -148,6 +148,29 @@ const WEB_MUSIC := "audio_music_web.pck"
 ## The baked menu ship pictures (about 12 MB of PNG), fetched after the title; ShipIcons finds them once mounted.
 const WEB_SHIP_ICONS := "ship_icons_web.pck"
 
+## The logical pack that carries the character portraits (tools/build_ship_packs.py --portraits).
+const PORTRAIT_PACK := "art_web.pck"
+
+## True on the web while the portrait pack has not mounted yet this session (a cold first visit): a hail screen that finds no
+## portrait then waits for it instead of drawing the bust. Always false off the web (desktop packs mount at start-up).
+static func portrait_pack_pending() -> bool:
+	return test_pack_pending or (OS.has_feature("web") and not _mounted.has(PORTRAIT_PACK))
+## Headless tests only: pretend the portrait pack is still downloading (and fetch nothing).
+static var test_pack_pending := false
+
+## Web: fetches pack `name` now, ahead of the background queue (a second call for a pack already in flight just waits for
+## it). Run on the tree root so it survives the screen that asked; `on_done` is called once the fetch has finished, loaded or failed.
+static func raise_pack(name: String, on_done: Callable = Callable()) -> void:
+	var loop := Engine.get_main_loop()
+	if test_pack_pending or not (loop is SceneTree):
+		return
+	_raise_pack(loop.root, name, on_done)
+
+static func _raise_pack(host: Node, name: String, on_done: Callable) -> void:
+	await fetch_web_pack(host, name)
+	if on_done.is_valid():
+		on_done.call()
+
 static var _web_manifest: Variant = null
 static var _mounted := {}   ## logical name -> true once mounted this session
 ## Bytes fetched over the network and served from the IndexedDB cache this session (web only; for the verify report).

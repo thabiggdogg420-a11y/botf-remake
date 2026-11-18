@@ -542,10 +542,7 @@ func _build_chrome() -> void:
 		keyl.position = Vector2(8, 4)
 		keyl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		b.add_child(keyl)
-		var ic := UiIcon.make(ShellVM.SCREEN_ICONS.get(s["id"], "arrow_right"), 22, Color(Lcars.ink(), 0.85))
-		ic.position = Vector2(8, 21)
-		ic.size = Vector2(22, 22)
-		b.add_child(ic)
+		_rail_icon(b, str(ShellVM.SCREEN_ICONS.get(s["id"], "arrow_right")), 18, Vector2(5, 21))
 		_rail.add_child(b)
 	var fill := ColorRect.new()
 	fill.color = a.darkened(0.45)
@@ -564,13 +561,29 @@ func _build_chrome() -> void:
 		b2.add_theme_stylebox_override("normal", sb2)
 		_rail_era_style(b2, _rail.get_child_count() + 2, false, 38)
 		b2.tooltip_text = ex["hint"] + ("  [%s]" % ex["key"] if str(ex.get("key", "")) != "" else "")
-		var ic2 := UiIcon.make(str(ex.get("icon", "arrow_right")), 20, Color(Lcars.ink(), 0.85))
-		ic2.position = Vector2(9, 9)
-		ic2.size = Vector2(20, 20)
-		b2.add_child(ic2)
+		_rail_icon(b2, str(ex.get("icon", "arrow_right")), 18, Vector2(5, 7))
 		var xid: String = ex["id"]
 		b2.pressed.connect(func(): goto(xid) if xid == "combat" else open_overlay(xid))
 		_rail.add_child(b2)
+
+## A rail icon on its pill (Simon, 18 Nov: the navy icons were hard to read on the blue and lavender pills). The two-tone icon
+## is drawn light on a dark ink chip, so both tones read against any pill colour, gold (active) or blue, lavender (idle).
+func _rail_icon(b: Button, icon: String, px: float, at: Vector2) -> void:
+	var chip := Panel.new()
+	var cs := px + 6.0
+	chip.position = at
+	chip.size = Vector2(cs, cs)
+	chip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var sb := Lcars.box(Color(Lcars.ink(), 0.92), 0, Color.TRANSPARENT, 0, Vector4(0, 0, 0, 0))
+	sb.set_corner_radius_all(8)
+	chip.add_theme_stylebox_override("panel", sb)
+	chip.name = "RailChip"
+	b.add_child(chip)
+	var ic := UiIcon.make(icon, px, Color(0.94, 0.97, 1.0))
+	ic.position = Vector2(3, 3)
+	ic.size = Vector2(px, px)
+	ic.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	chip.add_child(ic)
 
 ## The rail button's shape per interface look: TOS gets square push-button blocks in the console's gold, red, blue and green with a
 ## black gap; the movies a flat grey-blue plate with a hairline; the later looks keep the LCARS tab from the theme.

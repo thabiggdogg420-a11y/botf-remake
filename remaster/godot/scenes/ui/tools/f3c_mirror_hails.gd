@@ -63,7 +63,7 @@ func _run() -> void:
 			ds.open_hail(app.empire_name(int(it[0])), int(it[0]), false, "At war")
 			await _wait_ms(1200)
 			var hv: HailViewscreen = app.find_child("HailViewscreen", true, false) as HailViewscreen
-			print("HAIL ", app.empire_name(int(it[0])), " ", ("bust" if hv == null or hv.shows_bust() else "picture"), " keys ", hv.portrait_keys() if hv else [])
+			print("HAIL ", app.empire_name(int(it[0])), " ", ("bust" if hv == null else hv.drawn()), " keys ", hv.portrait_keys() if hv else [])
 			await _shot("mirror-hail-" + str(it[1]))
 			app.close_all_modals()
 			await _wait(4)

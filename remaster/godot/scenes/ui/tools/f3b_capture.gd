@@ -117,7 +117,7 @@ func _run() -> void:
 			ds.open_hail(app.empire_name(tid), tid, false, "At peace")
 		await _wait_ms(1200)
 		var hv: HailViewscreen = app.find_child("HailViewscreen", true, false) as HailViewscreen
-		print("HAIL ", app.empire_name(tid), " ", ("bust" if hv == null or hv.shows_bust() else "picture"), " keys ", hv.portrait_keys() if hv else [])
+		print("HAIL ", app.empire_name(tid), " ", ("bust" if hv == null else hv.drawn()), " keys ", hv.portrait_keys() if hv else [])
 		await _shot("f3b-hail-scene")
 		app.close_all_modals()
 	await _mirror()
@@ -142,6 +142,6 @@ func _mirror() -> void:
 	ds.open_hail(app.empire_name(1), 1, false, "At war")
 	await _wait_ms(1200)
 	var hv: HailViewscreen = app.find_child("HailViewscreen", true, false) as HailViewscreen
-	print("HAIL mirror ", app.empire_name(1), " ", ("bust" if hv == null or hv.shows_bust() else "picture"), " keys ", hv.portrait_keys() if hv else [])
+	print("HAIL mirror ", app.empire_name(1), " ", ("bust" if hv == null else hv.drawn()), " keys ", hv.portrait_keys() if hv else [])
 	await _shot("f3b-mirror-hail")
 	app.close_all_modals()
