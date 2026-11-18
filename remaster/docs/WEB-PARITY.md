@@ -46,6 +46,13 @@ is not resolution, and the 1024 px cap stays for GPU memory (F1 note below).
 Sheets: `Documents\ChatGPT\webparity-captures\sheets\parity-<screen>.jpg` (before row: 0.1.482 code; after row: this
 release). Before battle rows are the 3D view alone; after rows are full frames (`SHOT_ROOT=1`) so the web bloom shows.
 
+## 19 Nov follow-up (0.1.488, Barclay)
+- Gap 5 cause found: not the WebP packs. The editor on Compatibility drew the web WebP glbs clean, and the WebGPU trial drew the same packs clean. The white, speckled hulls on the web title (a cold visit has no hull packs, so the title draws procedural hulls) and on the battle starbase come from `hull.gdshader`. Its lit-window grid is smaller than a pixel at range and runs at energy 4, so on Compatibility (no HDR, no tonemap roll-off) it clips and aliases into white speckle. Fix, Compatibility only: windows fade under ~3 px, energy is capped at 1.2, roughness has a floor at range, albedo is x0.8. No pack change and no size change (19.0 MB gzip first load).
+- Also fixed: the web (no worker threads) loaded hero glbs without the hero entry, so `mip_scene_images` never ran (`_shared_model(path, hero, root)`).
+- CompatBloom is back on battle and title. Phaser, star-flare and engine glow show in the browser.
+- Gap 6: the disc's cool dust is warmer and greyer on Compatibility (`COMPAT_DISC_COOL`). The web backdrop is now neutral grey like the desktop.
+- Still open: the web title's procedural hulls are brighter than the desktop's hero hulls (different models by design on a cold visit). The kill fireball halo is unconfirmed: the web drill's held kill frame is a different instant (gap 8).
+
 # Browser build: what does not work or differs (16 Nov 2026, F1)
 
 Played from the host-sim `/botf/` sub-path on the real GPU (Chrome, ANGLE D3D11, RTX 4090), captures in
