@@ -616,7 +616,7 @@ class LcarsMeter extends ProgressBar:
 ## A flat glyph button drawn from the UI icon set (delta, cross, pin ...), tinted by state.
 class GlyphButton extends Button:
 	var glyph := "delta_right"
-	var px := 16.0
+	var px := 22.0   # the Trek control pill (18 Nov) needs room to read
 	func _draw() -> void:
 		var col := Lcars.TEXT2
 		if disabled:

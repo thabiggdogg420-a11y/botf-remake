@@ -26,7 +26,7 @@ static func make(icon: String, caption: String, value: String, delta: String = "
 	var row := Lcars.hbox(10)
 	t.add_child(row)
 	var tint := Lcars.tone_color(tone) if tone != "" else Lcars.accent()
-	row.add_child(UiIcon.make(icon, 18 if compact else 24, tint))
+	row.add_child(UiIcon.make(icon, 22 if compact else 28, tint))   # Trek icon set: solid marks, sized to read at bar size
 	var col := Lcars.vbox(-3 if compact else 0)
 	col.add_child(Lcars.caption(caption))
 	var vr := Lcars.hbox(6)

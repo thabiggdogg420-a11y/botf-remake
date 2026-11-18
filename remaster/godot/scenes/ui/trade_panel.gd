@@ -55,8 +55,12 @@ func _routes() -> Control:
 	for rt in data["routes"]:
 		var row := Lcars.hbox(10)
 		row.name = "Route_%d" % int(rt["from"])
-		var txt := Lcars.label("%s  →  %s" % [rt["fromName"], rt["toName"]], "", 15, Lcars.TEXT)
+		# the route as from, the delta, to (Trek icon pass, 18 Nov: no text arrows)
+		var txt := Lcars.hbox(6)
 		txt.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		txt.add_child(Lcars.label(str(rt["fromName"]), "", 15, Lcars.TEXT))
+		txt.add_child(UiIcon.make("routes", 16, Lcars.accent2()))
+		txt.add_child(Lcars.label(str(rt["toName"]), "", 15, Lcars.TEXT))
 		row.add_child(txt)
 		row.add_child(Lcars.label(str(rt["partnerName"]), "Muted", 13))
 		var blocker := str(rt.get("blocker", ""))

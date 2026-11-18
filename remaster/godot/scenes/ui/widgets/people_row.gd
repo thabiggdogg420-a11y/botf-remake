@@ -67,7 +67,7 @@ func _draw() -> void:
 		var c := col if on else Color(col, 0.2)
 		if editable and _hover >= 0 and not _drag and i <= _hover and not on:
 			c = Color(col, 0.45)
-		UiIcon.draw_icon(self, "population", r, c)
+		UiIcon.draw_icon(self, "worker", r, c)
 	if limit <= 0:
 		draw_string(Lcars.font("ui", 500), Vector2(2, size.y / 2.0 + 5), "-", HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Lcars.TEXT3)
 
