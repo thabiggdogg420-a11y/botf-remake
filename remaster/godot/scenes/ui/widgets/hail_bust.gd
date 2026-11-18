@@ -66,7 +66,10 @@ static func _build(key: String) -> Dictionary:
 			head_rx = 16.0
 			shoulder_w = 50.0
 			# long hair falling to the shoulders behind the head
-			body.append(_poly([[34, 30], [37, 25], [63, 25], [66, 30], [73, 62], [62, 70], [38, 70], [27, 62]]))
+			# long hair in two heavy locks falling past the shoulders, and a beard
+			body.append(_poly([[36, 26], [30, 36], [25, 50], [24, 66], [33, 70], [37, 52], [39, 36]]))
+			body.append(_poly([[64, 26], [70, 36], [75, 50], [76, 66], [67, 70], [63, 52], [61, 36]]))
+			body.append(_poly([[41, 46], [44, 57], [50, 61], [56, 57], [59, 46], [50, 50]]))
 			# forehead ridge crest, three bumps
 			for i in 3:
 				body.append(_ellipse(Vector2(50, 17.5 - i * 0.6 + i * 0.0), 6.5 - i * 1.2, 3.2, 0.0).duplicate())
