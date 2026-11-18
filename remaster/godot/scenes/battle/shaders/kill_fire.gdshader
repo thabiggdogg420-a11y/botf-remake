@@ -65,6 +65,10 @@ void fragment() {
 	// Desktop (HDR): the hottest part glows a little above 1 for the bloom; never a white disc.
 #if CURRENT_RENDERER != RENDERER_COMPATIBILITY
 	col *= 1.0 + 0.8 * smoothstep(0.6, 0.95, temp);
+#else
+	// Compatibility (web) writes this colour with no linear-to-sRGB step, so the fire read dark red (first web strip,
+	// 18 Nov): lift it with the same sRGB-like curve as flare.gdshader so it shows the desktop's orange-yellow.
+	col = pow(col, vec3(1.0 / 2.2));
 #endif
 	float fade_in = smoothstep(0.0, 0.06, age);
 	float fade_out = 1.0 - smoothstep(0.55, 1.0, age);
