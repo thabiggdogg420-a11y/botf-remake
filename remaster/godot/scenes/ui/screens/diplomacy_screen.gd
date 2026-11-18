@@ -298,11 +298,6 @@ func _hail(name_: String, tid: int, is_minor: bool, rel: Dictionary, minor: Dict
 	p.add_theme_stylebox_override("panel", sb)
 	var v := Lcars.vbox(6)
 	p.add_child(v)
-	var key := PortraitSlot.minor_key(name_) if is_minor else ""
-	var ps := PortraitSlot.make(0 if is_minor else tid, Vector2(300, 225), key, name_)
-	ps.name = "Portrait"
-	v.add_child(ps)
-	var row := Lcars.hbox(6)
 	var st := "Independent"
 	var tone := "dim"
 	if not rel.is_empty():
@@ -311,9 +306,19 @@ func _hail(name_: String, tid: int, is_minor: bool, rel: Dictionary, minor: Dict
 	elif not minor.is_empty() and int(minor.get("memberOf", 0)) != 0:
 		st = "Member world"
 		tone = "primary"
+	if is_minor:
+		var ps := PortraitSlot.make(0, Vector2(300, 225), PortraitSlot.minor_key(name_), name_)
+		ps.name = "Portrait"
+		v.add_child(ps)
+	else:
+		# F3 hail scene: the leader on the viewscreen (silhouette bust unless the private portrait pack has a picture)
+		var hv := HailViewscreen.make(tid, Vector2(300, 225), name_, "Channel open" if not rel.get("eliminated", false) else "No carrier")
+		hv.name = "Portrait"
+		v.add_child(hv)
+	var row := Lcars.hbox(6)
 	row.add_child(Lcars.badge(st, tone))
 	row.add_child(Lcars.spacer())
-	var hail := Lcars.pill("Hail", "secondary", func(): dossier_tab = "propose"; refresh(), "" if not rel.get("eliminated", false) else "No one answers", "Open a channel and negotiate")
+	var hail := Lcars.pill("Hail", "secondary", func(): open_hail(name_, tid, is_minor, st), "" if not rel.get("eliminated", false) else "No one answers", "Open a channel and negotiate")
 	hail.name = "Hail"
 	row.add_child(hail)
 	v.add_child(row)
@@ -546,3 +551,25 @@ func _minor_standing(minor: Dictionary) -> Control:
 		col.add_child(Lcars.marked("tick" if friend else "cross", "Friendship signed in an earlier turn", "", 14, Lcars.GOOD if friend else Lcars.TEXT2, 14))
 		col.add_child(Lcars.para("A gift raises attitude by 4 per 1,000 credits. A friendship class treaty adds +2 per review (every 5 turns); rivals with a friendship take -2.", Lcars.TEXT3, 12))
 	return col
+
+## The hail scene: the channel opens on the viewscreen, the leader's greeting under it, then Negotiate or Close.
+func open_hail(name_: String, tid: int, is_minor: bool, standing: String) -> Control:
+	var col := Lcars.vbox(12)
+	col.name = "HailScene"
+	var screen: Control
+	if is_minor:
+		screen = PortraitSlot.make(0, Vector2(640, 400), PortraitSlot.minor_key(name_), name_)
+	else:
+		screen = HailViewscreen.make(tid, Vector2(640, 400), name_, "Incoming transmission")
+	screen.name = "HailViewscreen"
+	col.add_child(screen)
+	col.add_child(Lcars.para(HailLines.greeting(tid if not is_minor else 0, standing, app.empire_name(app.player())), Lcars.TEXT, 17))
+	var row := Lcars.hbox(10)
+	row.alignment = BoxContainer.ALIGNMENT_END
+	row.add_child(Lcars.pill("Close channel", "ghost", func(): app.close_modal(), "", "", "Esc"))
+	var neg := Lcars.pill("Negotiate", "secondary", func(): app.close_modal(); dossier_tab = "propose"; refresh())
+	neg.name = "HailNegotiate"
+	row.add_child(neg)
+	col.add_child(row)
+	BotfAudioSystem.cue_now("first_contact", "", HailBust.key_for(tid) if not is_minor else "")
+	return app.open_modal(col, "Hailing " + name_, Vector2(700, 0), "secondary")

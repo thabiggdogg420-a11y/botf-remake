@@ -57,6 +57,7 @@ var _overlay: Control
 var _toasts: VBoxContainer
 var _current: Control
 var _modals: Array[Control] = []
+var advisor_panel: AdvisorPanel   ## F3 advisor and first-run tutorial
 var _theme_empire := -1
 
 func _init() -> void:
@@ -431,6 +432,8 @@ func _build_layers() -> void:
 	_overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_overlay)
+	advisor_panel = AdvisorPanel.make(self)   # F3: above modals so "Close log" can be pressed while the log is open
+	add_child(advisor_panel)
 	_toasts = VBoxContainer.new()
 	_toasts.name = "Toasts"
 	_toasts.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)

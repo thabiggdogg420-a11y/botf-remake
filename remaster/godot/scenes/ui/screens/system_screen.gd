@@ -125,7 +125,7 @@ func _header(c: Dictionary) -> Control:
 		badges.add_child(Lcars.badge("Queue idle", "warn"))
 	tb.add_child(badges)
 	h.add_child(tb)
-	h.add_child(_orrery())
+	h.add_child(_system_view())
 	h.add_child(_nav("delta_right", 1, count, "Next colony", "E"))
 	return band
 
@@ -138,6 +138,22 @@ func _nav(glyph: String, d: int, count: int, hint: String, key: String) -> Butto
 	ic.size = Vector2(22, 22)
 	b.add_child(ic)
 	return b
+
+## F3: the system in 3D (SystemView3D): its star, the planets on their orbits with the colony's structures, the LCARS
+## labels over them. The flat orrery below stays for tools that want it.
+func _system_view() -> Control:
+	var sid := int(vm.sid())
+	var star := Color(1.0, 0.86, 0.58)
+	var seed_v := int(app.view.get("meta", {}).get("seed", 0))
+	for s in app.view.get("systems", []):
+		if int(s["id"]) == sid:
+			var ti := int(s["starType"]) if s.has("starType") else GalaxyLayout.star_type(int(s["x"]), int(s["y"]), seed_v)
+			star = GalaxyLayout.STAR_TYPES[clampi(ti, 0, GalaxyLayout.STAR_TYPES.size() - 1)]["color"]
+			break
+	var c := vm.colony()
+	var v := SystemView3D.make(detail.get("planets", []), c.get("structures", {}), star, sid, Vector2(640, 300))
+	v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	return v
 
 ## Star at the left, then each planet sized by class, its numeral, class and capacity bar; hover explains it.
 func _orrery() -> Control:

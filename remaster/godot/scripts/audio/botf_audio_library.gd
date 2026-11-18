@@ -97,11 +97,11 @@ func files_for(key: String, extra: BattleAssets = null) -> PackedStringArray:
 			var rec: Dictionary = a.resolve(key)
 			if not rec.is_empty():
 				for f in a.local_files(rec, PackedStringArray(["wav", "ogg"])):
-					if AppLoader.allowed(f) and not out.has(f):   # a disk path never reaches the runtime
+					if AppLoader.allowed(f) and not out.has(f) and not AudioDoubtful.blocked(f):   # a disk path never reaches the runtime
 						out.append(f)
 	if cue_files.has(key):
 		for f in cue_files[key]:
-			if not out.has(f) and AppLoader.exists(f):
+			if not out.has(f) and not AudioDoubtful.blocked(f) and AppLoader.exists(f):
 				out.append(f)
 	for ext in ["wav", "ogg"]:
 		var rp := "res://scenes/battle/audio/%s.%s" % [key, ext]

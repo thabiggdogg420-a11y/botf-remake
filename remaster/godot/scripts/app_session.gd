@@ -209,6 +209,7 @@ func issue(command: Dictionary, cancel_ids: Array = [], success: String = "") ->
 		failed.emit(r["error"])
 		return false
 	refresh()
+	BotfAudioSystem.ack_command(command)   # F3: the crew acknowledges unit orders by voice
 	if success != "":
 		notified.emit(success, "good")
 	return true

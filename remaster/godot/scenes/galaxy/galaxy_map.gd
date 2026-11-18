@@ -639,7 +639,7 @@ func _build_planets(sid: int) -> void:
 		if cls == "GasGiant" and GalaxyLayout.hash01(x, y, _seed, 60 + i) < 0.6:
 			mi.add_child(_ring(r))
 
-func _planet_look(m: ShaderMaterial, cls: String) -> void:
+static func _planet_look(m: ShaderMaterial, cls: String) -> void:
 	# Anchored on the art bible section 8 class table.
 	var look := {
 		"M": [0, Color("#1d4f8c"), Color("#4f8a46"), Color("#b39b74"), Color(0.55, 0.75, 1.0), 0.5, 0.82, 0.55],

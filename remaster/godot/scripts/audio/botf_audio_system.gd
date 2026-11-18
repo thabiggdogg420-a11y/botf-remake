@@ -542,6 +542,27 @@ static func load_empire_pack(empire: String) -> bool:
 	return instance != null and instance.library != null and instance.library.load_pack(empire)
 
 
+## F3: campaign orders the crew acknowledges by voice (command type -> the battle maneuver whose voice group fits).
+## Unit and fleet orders only; queue, policy and diplomacy clicks keep their interface beep.
+const CAMPAIGN_ACKS := {"MoveFleet": "Move", "SetFleetOrder": "Move", "SetTaskForceOrder": "Move", "Colonize": "Move",
+	"TerraformPlanet": "Move", "UpgradeStation": "Move", "RetreatFleet": "Retreat", "Invade": "Engage", "SetTacticalStance": "Move",
+	"CreateTaskForce": "Move", "EstablishTradeRoute": "Move"}
+const ACK_GAP := 0.8
+var _last_ack := -100.0
+
+## Called by AppSession.issue after the core accepts a command. Returns what played ({} when the order has no voice).
+func campaign_ack(command: Dictionary) -> Dictionary:
+	var m: String = CAMPAIGN_ACKS.get(str(command.get("type", "")), "")
+	if m == "" or not enabled or now() - _last_ack < ACK_GAP:
+		return {}
+	_last_ack = now()
+	return order_ack(m)
+
+static func ack_command(command: Dictionary) -> void:
+	if instance != null:
+		instance.campaign_ack(command)
+
+
 static func cue_now(cue_name: String, fac := "", other := "", detail := "") -> void:
 	if instance != null:
 		instance.cue(cue_name, fac, other, detail)

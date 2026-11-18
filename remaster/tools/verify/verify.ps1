@@ -266,6 +266,7 @@ try {
             @('idle-prefetch', 'res://scenes/ui/tests/test_idle_prefetch.gd'),
             @('trek-icons', 'res://scenes/ui/tests/test_trek_icons.gd'),
             @('trek-text', 'res://scenes/ui/tests/test_trek_text.gd'),
+            @('f3-people', 'res://scenes/ui/tests/test_f3_people.gd'),
             @('battle-timeline', 'res://scenes/battle/tests/test_battle_timeline.gd'),
             @('camera-rig', 'res://scenes/battle/tests/test_camera_rig.gd'),
             @('hero-models', 'res://scenes/battle/tests/test_hero_models.gd'),
