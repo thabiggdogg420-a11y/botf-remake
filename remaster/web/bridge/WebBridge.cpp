@@ -2226,6 +2226,9 @@ void writeEncounter(Writer& w, const tac::Encounter& e, int me, const botf::Game
         w.field("beam", ship.beamAttack); w.field("torpedo", ship.torpedoAttack); w.field("speed", ship.speed);
         w.key("position"); writeCoord(w, ship.position);
         if (const auto* rc = botf::roster::findRosterClass(ship.referenceShipId)) w.field("assetKey", rc->assetKey);
+        // F4: a commissioned flagship is marked in battle (presentation only; its bonuses are already in the numbers).
+        for (const auto& gf : gs.fleets)
+            if (gf.id == ship.fleetId && gf.flagship > 0) { w.field("flagship", true).field("flagshipName", botf::scenarios::flagshipName(gf)); break; }
         if (botf::threats::isThreatCombatant(ship.fleetId)) {   // Schema 20: a threat actor; the model is an existing roster asset (stand-ins in THREAT-ACTORS.md).
             const int k = botf::threats::kindForShip(ship.referenceShipId);
             w.field("threat", true);

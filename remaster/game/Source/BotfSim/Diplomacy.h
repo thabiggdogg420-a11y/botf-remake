@@ -40,6 +40,8 @@
 // - SetWarState carries explicit typed boolean `setAtWar`.
 // =============================================================================
 
+#include "EmpireSlots.h"
+
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -421,11 +423,12 @@ enum class MajorPersonality : int {
     Ferengi = 4,    // Profit: credits and trade pacts decide almost everything
     Dominion = 5,   // Control: the Founders' order, tribute from the weak, treaties only on its terms (schema 17)
     Borg = 6,       // Assimilation: cold, demanding, rarely friendly (schema 17; the full collective rules are lane MOD-5)
-    Breen = 7       // Secretive confederacy: generic profile until its own lane (schema 17)
+    Breen = 7,      // Secretive confederacy: generic profile until its own lane (schema 17)
+    Duras = 8       // F4 / MOD-8: the House of Duras (klingon-civil-war overlay): ambitious, treacherous Klingon rebels
 };
 
 inline bool isValidPersonality(int val) {
-    return val >= 0 && val <= 7;
+    return val >= 0 && val <= 8;
 }
 
 inline const char* personalityName(MajorPersonality personality) {
@@ -438,13 +441,19 @@ inline const char* personalityName(MajorPersonality personality) {
         case MajorPersonality::Dominion: return "Dominion";
         case MajorPersonality::Borg: return "Borg";
         case MajorPersonality::Breen: return "Breen";
+        case MajorPersonality::Duras: return "Duras";
         default: return "Unknown";
     }
 }
 
 // Campaign empire slots follow the race order: 1 Federation, 2 Klingon, 3 Romulan, 4 Cardassian, 5 Ferengi, 6 Dominion,
 // 7 Borg, 8 Breen. Unknown slots behave like the Federation.
+// F4: a slot seated by the House of Duras (race key "duras", the klingon-civil-war overlay) plays the Duras personality.
 inline MajorPersonality personalityForEmpire(int empireId) {
+    if (empireId >= 1 && empireId <= 8) {
+        if (const auto* r = slots::raceForEmpire(empireId); r && r->key && std::string_view(r->key) == "duras")
+            return MajorPersonality::Duras;
+    }
     return (empireId >= 1 && empireId <= 8) ? static_cast<MajorPersonality>(empireId - 1)
                                             : MajorPersonality::Federation;
 }
@@ -1107,6 +1116,7 @@ inline PersonalityThresholds thresholdsFor(MajorPersonality personality) {
         case MajorPersonality::Ferengi:    return {45, 45, 55, 65, 80, 35, 60};
         case MajorPersonality::Dominion:   return {55, 55, 70, 80, 90, 50, 60};
         case MajorPersonality::Borg:       return {70, 65, 85, 95, 99, 70, 90};
+        case MajorPersonality::Duras:      return {65, 60, 65, 75, 85, 55, 70};   // Rebels: slow to make peace, proud
         default: return {50, 45, 55, 65, 75, 50, 55};
     }
 }
@@ -1147,6 +1157,7 @@ inline PersonalityProfile profileFor(MajorPersonality personality) {
         case MajorPersonality::Ferengi:    return {10, 1, 4, 50, 50, 60, 70, 85, 30, false, false, false, 55};
         case MajorPersonality::Dominion:   return {45, 3, 12, 35, 50, 65, 80, 90, 50, true, true, false, 35};
         case MajorPersonality::Borg:       return {40, 3, 15, 40, 70, 80, 95, 99, 40, false, true, false, 20};
+        case MajorPersonality::Duras:      return {50, 3, 12, 30, 60, 70, 80, 90, 55, true, true, false, 35}; // Ambition without honour: breaks its word
         default: return {0, 1, 3, 50, 50, 60, 70, 80, 45, false, false, false, 100};
     }
 }
@@ -1169,6 +1180,7 @@ inline RivalryProfile rivalryProfileFor(MajorPersonality personality) {
         case MajorPersonality::Ferengi:    return {40, 40, 0, 100, 20};     // Mercenary: friendly while the profit is
         case MajorPersonality::Dominion:   return {100, 100, 60, 0, 0};    // Hostile: everything near it is its to order
         case MajorPersonality::Borg:       return {100, 100, 0, 0, 0};     // Hostile: everything near it is to be assimilated
+        case MajorPersonality::Duras:      return {100, 90, 100, 0, 0};    // Usurpers: border-hungry and quick to strike the weak
         default: return {40, 40, 0, 0, 10};
     }
 }

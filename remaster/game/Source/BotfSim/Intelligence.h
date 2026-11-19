@@ -1003,7 +1003,8 @@ enum class IntelDoctrine : int {
     Ferengi = 4,    // Economic espionage for profit
     Dominion = 5,   // Internal Security and the Vorta: strong security, broad surveillance (schema 17)
     Borg = 6,       // The Collective learns what it meets: security first, science focus (schema 17)
-    Breen = 7       // Generic doctrine until its own lane (schema 17)
+    Breen = 7,      // Generic doctrine until its own lane (schema 17)
+    Duras = 8       // F4: the House of Duras: Klingon military sabotage with Romulan-funded treachery
 };
 
 struct IntelDoctrineProfile {
@@ -1026,6 +1027,7 @@ inline IntelDoctrineProfile doctrineProfile(IntelDoctrine doctrine) {
         case IntelDoctrine::Ferengi:    return {70, 3, 4, 10, 30, false, IntelDepartment::Economic, IntelDepartment::Economic};
         case IntelDoctrine::Dominion:   return {75, 3, 6, 25, 55, false, IntelDepartment::General, IntelDepartment::Military};
         case IntelDoctrine::Borg:       return {90, 2, 6, 0, 40, false, IntelDepartment::Science, IntelDepartment::Military};
+        case IntelDoctrine::Duras:      return {60, 3, 8, 30, 70, true, IntelDepartment::Military, IntelDepartment::Military};
         default: return {80, 2, 6, 0, 40, false, IntelDepartment::General, IntelDepartment::Military};
     }
 }

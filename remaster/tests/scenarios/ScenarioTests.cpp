@@ -301,6 +301,10 @@ int main() {
         check(seatedId(s, 8), "the game goes on");
         const auto allies = alliedEmpires(s, 3);
         check(std::find(allies.begin(), allies.end(), 8) != allies.end(), "the Romulans allied with the house on turn 8");
+        // F4: the house plays its own AI personality (personality only: no rule differs).
+        check(diplomacy::personalityForEmpire(8) == diplomacy::MajorPersonality::Duras, "the house plays the Duras personality");
+        check(diplomacy::personalityForEmpire(2) == diplomacy::MajorPersonality::Klingon, "the loyalists stay Klingon");
+        check(diplomacy::profileFor(diplomacy::MajorPersonality::Duras).treacherous, "the Duras breaks its word when strong");
     }, passed);
 
     run("Klingon Civil War: a Federation player sees the same war from outside", [] {

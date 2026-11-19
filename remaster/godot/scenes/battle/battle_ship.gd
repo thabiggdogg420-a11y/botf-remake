@@ -94,6 +94,9 @@ func setup(ship: Dictionary, assets: BattleAssets = null) -> void:
 	_measure()
 	if hull.has_meta("botf_hero"):
 		_show_look(hull)
+	is_flagship = bool(ship.get("flagship", false))
+	if is_flagship:
+		_add_flagship_marking()
 	_build_shield()
 	_cloak_mat = ShaderMaterial.new()
 	_cloak_mat.shader = CLOAK_SHADER
@@ -293,6 +296,52 @@ func _show_look(hull: Node) -> void:
 		light.set_instance_shader_parameter("blink_rate", sp[3])
 		model.add_child(light)
 		_meshes.append(light) # cloak, damage and visibility treat it as part of the hull
+
+
+## F4 (20 Nov 2026): a commissioned flagship reads apart in battle: a thin gold command ring around the hull and a
+## steady gold beacon above it (presentation only; the flagship's bonuses are already in its numbers).
+const FLAGSHIP_GOLD := Color(1.0, 0.78, 0.25)
+var is_flagship := false
+
+func _add_flagship_marking() -> void:
+	var he := half_extents
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	mat.albedo_color = Color(FLAGSHIP_GOLD, 0.55)
+	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	var ring := MeshInstance3D.new()
+	ring.name = "FlagshipRing"
+	var tm := TorusMesh.new()
+	var r := maxf(he.x, he.z) * 1.12
+	tm.inner_radius = r
+	tm.outer_radius = r + maxf(length * 0.012, 0.05)
+	tm.rings = 64
+	tm.ring_segments = 6
+	ring.mesh = tm
+	ring.material_override = mat
+	ring.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	ring.position = _center.position + Vector3(0, -he.y * 0.2, 0)
+	model.add_child(ring)
+	_meshes.append(ring)
+	var beacon := MeshInstance3D.new()
+	beacon.name = "FlagshipBeacon"
+	var sm := SphereMesh.new()
+	sm.radius = 1.0
+	sm.height = 2.0
+	sm.radial_segments = 8
+	sm.rings = 4
+	beacon.mesh = sm
+	var bm := StandardMaterial3D.new()
+	bm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	bm.albedo_color = FLAGSHIP_GOLD
+	beacon.material_override = bm
+	beacon.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	beacon.scale = Vector3.ONE * clampf(length * 0.016, 0.16, 0.6)
+	beacon.position = Vector3(0, he.y * 1.15, 0)
+	model.add_child(beacon)
+	_meshes.append(beacon)
 
 
 func _measure() -> void:
