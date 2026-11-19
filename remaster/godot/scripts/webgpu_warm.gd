@@ -58,33 +58,59 @@ static func run(host: Node, settings: Dictionary) -> void:
 	if busy and is_instance_valid(_current):
 		await _current.finished
 
+## Round 9: the set-up is spread over frames (the fixture read, the hull queue, the battle view's instance, its entry into
+## the tree), one step a frame; building it all in one frame took about 0.3 s at galaxy open. The node goes in first, so
+## run() can wait on it; _process plays nothing until _staged is true.
 static func _begin(host: Node, settings: Dictionary) -> void:
 	busy = true
 	print("webgpu warm: start, %d pipelines compiling" % pending())
-	var enc: Variant = JSON.parse_string(FileAccess.get_file_as_string(FIXTURE)) if FileAccess.file_exists(FIXTURE) else null
-	if not enc is Dictionary or (enc.get("rounds", []) as Array).is_empty() or not AppLoader.exists(BATTLE_SCENE):
-		print("webgpu warm: no fixture battle")
-		_settle_only(host)
-		return
-	# Web smoothness pass (19 Nov): the fixture's hero hulls load a step per frame first (BattleAssets sliced loads);
-	# _process waits for them, so no frame parses a whole glb.
-	BattleAssets.shared().warm(BattleAssets.encounter_keys(enc))
 	var w := WebGpuWarm.new()
 	w.name = "WebGpuWarm"
-	w._enc = enc
 	w._t0 = Time.get_ticks_msec()
-	w._sv = SubViewport.new()
-	w._sv.size = Vector2i(320, 180)
-	w._sv.own_world_3d = true
-	w._sv.render_target_update_mode = SubViewport.UPDATE_ALWAYS
-	DisplaySettings.apply_viewport(w._sv, settings) # the battle host's MSAA and scale: the same pipelines
-	w._view = (AppLoader.resource(BATTLE_SCENE) as PackedScene).instantiate()
-	if "play_audio" in w._view:
-		w._view.play_audio = false # off-screen: the player must not hear it
-	w._sv.add_child(w._view)
-	w._sv.add_child(w)
-	host.add_child(w._sv)
+	host.add_child(w)
 	_current = w
+	w._stage(settings)
+
+func _stage(settings: Dictionary) -> void:
+	var tree := get_tree()
+	var t := LoadTrace.start()
+	var enc: Variant = JSON.parse_string(FileAccess.get_file_as_string(FIXTURE)) if FileAccess.file_exists(FIXTURE) else null
+	t = LoadTrace.done("webgpu warm: fixture read", t)
+	if not enc is Dictionary or (enc.get("rounds", []) as Array).is_empty() or not AppLoader.exists(BATTLE_SCENE):
+		print("webgpu warm: no fixture battle")
+		_ts = Time.get_ticks_msec()
+		_settling = true
+		return
+	_enc = enc
+	await tree.process_frame
+	# Web smoothness pass (19 Nov): the fixture's hero hulls load a step per frame first (BattleAssets sliced loads);
+	# _process waits for them, so no frame parses a whole glb.
+	t = LoadTrace.start()
+	BattleAssets.shared().warm(BattleAssets.encounter_keys(enc))
+	t = LoadTrace.done("webgpu warm: hulls queued", t)
+	await tree.process_frame
+	t = LoadTrace.start()
+	var packed := AppLoader.resource(BATTLE_SCENE) as PackedScene
+	t = LoadTrace.done("webgpu warm: scene load", t)
+	await tree.process_frame
+	t = LoadTrace.start()
+	_view = packed.instantiate()
+	if "play_audio" in _view:
+		_view.play_audio = false # off-screen: the player must not hear it
+	t = LoadTrace.done("webgpu warm: view instance", t)
+	await tree.process_frame
+	t = LoadTrace.start()
+	_sv = SubViewport.new()
+	_sv.size = Vector2i(320, 180)
+	_sv.own_world_3d = true
+	_sv.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+	DisplaySettings.apply_viewport(_sv, settings) # the battle host's MSAA and scale: the same pipelines
+	_sv.add_child(_view)
+	get_parent().add_child(_sv)
+	t = LoadTrace.done("webgpu warm: view in tree", t)
+	_staged = true
+
+var _staged := false
 
 ## No fixture: still wait for the pipelines already asked for.
 static func _settle_only(host: Node) -> void:
@@ -104,6 +130,8 @@ func _process(_delta: float) -> void:
 		_quiet = _quiet + 1 if pending() == 0 else 0
 		if _quiet >= SETTLE_FRAMES or Time.get_ticks_msec() - _ts > SETTLE_CAP_MS:
 			_done()
+		return
+	if not _staged:
 		return
 	if not is_instance_valid(_view):
 		_finish()
@@ -144,5 +172,4 @@ func _done() -> void:
 	finished.emit()
 	if is_instance_valid(_sv):
 		_sv.queue_free()
-	else:
-		queue_free()
+	queue_free()

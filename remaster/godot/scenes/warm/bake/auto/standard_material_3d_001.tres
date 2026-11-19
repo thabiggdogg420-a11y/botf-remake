@@ -1,0 +1,92 @@
+[gd_resource type="StandardMaterial3D" format=3]
+
+[sub_resource type="Image" id="Image_w0jlt"]
+data = {
+"data": PackedByteArray(255, 255, 255, 255),
+"format": "RGBA8",
+"height": 1,
+"mipmaps": false,
+"width": 1
+}
+
+[sub_resource type="ImageTexture" id="ImageTexture_pt772"]
+image = SubResource("Image_w0jlt")
+
+[sub_resource type="Image" id="Image_nvakg"]
+data = {
+"data": PackedByteArray(255, 255, 255, 255),
+"format": "RGBA8",
+"height": 1,
+"mipmaps": false,
+"width": 1
+}
+
+[sub_resource type="ImageTexture" id="ImageTexture_k6yq5"]
+image = SubResource("Image_nvakg")
+
+[sub_resource type="Image" id="Image_1gcmc"]
+data = {
+"data": PackedByteArray(255, 255, 255, 255),
+"format": "RGBA8",
+"height": 1,
+"mipmaps": false,
+"width": 1
+}
+
+[sub_resource type="ImageTexture" id="ImageTexture_rk01m"]
+image = SubResource("Image_1gcmc")
+
+[sub_resource type="Image" id="Image_6wy1k"]
+data = {
+"data": PackedByteArray(255, 255, 255, 255),
+"format": "RGBA8",
+"height": 1,
+"mipmaps": false,
+"width": 1
+}
+
+[sub_resource type="ImageTexture" id="ImageTexture_p57hh"]
+image = SubResource("Image_6wy1k")
+
+[sub_resource type="Image" id="Image_j0rbe"]
+data = {
+"data": PackedByteArray(255, 255, 255, 255),
+"format": "RGBA8",
+"height": 1,
+"mipmaps": false,
+"width": 1
+}
+
+[sub_resource type="ImageTexture" id="ImageTexture_n2ain"]
+image = SubResource("Image_j0rbe")
+
+[sub_resource type="Image" id="Image_o4718"]
+data = {
+"data": PackedByteArray(255, 255, 255, 255),
+"format": "RGBA8",
+"height": 1,
+"mipmaps": false,
+"width": 1
+}
+
+[sub_resource type="ImageTexture" id="ImageTexture_0a7oc"]
+image = SubResource("Image_o4718")
+
+[resource]
+resource_name = "M00"
+cull_mode = 2
+albedo_texture = SubResource("ImageTexture_pt772")
+metallic = 1.0
+metallic_texture = SubResource("ImageTexture_p57hh")
+metallic_texture_channel = 2
+roughness_texture = SubResource("ImageTexture_0a7oc")
+roughness_texture_channel = 1
+emission_enabled = true
+emission = Color(1, 1, 1, 1)
+emission_operator = 1
+emission_texture = SubResource("ImageTexture_rk01m")
+normal_enabled = true
+normal_texture = SubResource("ImageTexture_n2ain")
+ao_enabled = true
+ao_texture = SubResource("ImageTexture_k6yq5")
+metadata/_gltf_primary_texture_coord = 0

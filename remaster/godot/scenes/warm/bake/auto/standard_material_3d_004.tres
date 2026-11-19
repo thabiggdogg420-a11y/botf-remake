@@ -1,6 +1,93 @@
 [gd_resource type="StandardMaterial3D" format=3]
 
+[sub_resource type="Image" id="Image_rhjgc"]
+data = {
+"data": PackedByteArray(255, 255, 255, 255),
+"format": "RGBA8",
+"height": 1,
+"mipmaps": false,
+"width": 1
+}
+
+[sub_resource type="ImageTexture" id="ImageTexture_405uo"]
+image = SubResource("Image_rhjgc")
+
+[sub_resource type="Image" id="Image_ngvgn"]
+data = {
+"data": PackedByteArray(255, 255, 255, 255),
+"format": "RGBA8",
+"height": 1,
+"mipmaps": false,
+"width": 1
+}
+
+[sub_resource type="ImageTexture" id="ImageTexture_lab2p"]
+image = SubResource("Image_ngvgn")
+
+[sub_resource type="Image" id="Image_tda4s"]
+data = {
+"data": PackedByteArray(255, 255, 255, 255),
+"format": "RGBA8",
+"height": 1,
+"mipmaps": false,
+"width": 1
+}
+
+[sub_resource type="ImageTexture" id="ImageTexture_rcvvc"]
+image = SubResource("Image_tda4s")
+
+[sub_resource type="Image" id="Image_f5n3a"]
+data = {
+"data": PackedByteArray(255, 255, 255, 255),
+"format": "RGBA8",
+"height": 1,
+"mipmaps": false,
+"width": 1
+}
+
+[sub_resource type="ImageTexture" id="ImageTexture_31if1"]
+image = SubResource("Image_f5n3a")
+
+[sub_resource type="Image" id="Image_cfj65"]
+data = {
+"data": PackedByteArray(255, 255, 255, 255),
+"format": "RGBA8",
+"height": 1,
+"mipmaps": false,
+"width": 1
+}
+
+[sub_resource type="ImageTexture" id="ImageTexture_x73vo"]
+image = SubResource("Image_cfj65")
+
+[sub_resource type="Image" id="Image_qaeot"]
+data = {
+"data": PackedByteArray(255, 255, 255, 255),
+"format": "RGBA8",
+"height": 1,
+"mipmaps": false,
+"width": 1
+}
+
+[sub_resource type="ImageTexture" id="ImageTexture_h0jci"]
+image = SubResource("Image_qaeot")
+
 [resource]
-albedo_color = Color(0.08, 0.08, 0.09, 1)
-metallic = 0.7
-roughness = 0.5
+resource_name = "M00"
+cull_mode = 2
+vertex_color_use_as_albedo = true
+albedo_texture = SubResource("ImageTexture_405uo")
+metallic = 1.0
+metallic_texture = SubResource("ImageTexture_31if1")
+metallic_texture_channel = 2
+roughness_texture = SubResource("ImageTexture_h0jci")
+roughness_texture_channel = 1
+emission_enabled = true
+emission = Color(1, 1, 1, 1)
+emission_operator = 1
+emission_texture = SubResource("ImageTexture_rcvvc")
+normal_enabled = true
+normal_texture = SubResource("ImageTexture_x73vo")
+ao_enabled = true
+ao_texture = SubResource("ImageTexture_lab2p")
+metadata/_gltf_primary_texture_coord = 0

@@ -1,6 +1,6 @@
 [gd_resource type="ParticleProcessMaterial" format=3]
 
-[sub_resource type="Image" id="Image_6uuud"]
+[sub_resource type="Image" id="Image_fmgph"]
 data = {
 "data": PackedByteArray(255, 255, 255, 255),
 "format": "RGBA8",
@@ -9,8 +9,8 @@ data = {
 "width": 1
 }
 
-[sub_resource type="ImageTexture" id="ImageTexture_fmrvb"]
-image = SubResource("Image_6uuud")
+[sub_resource type="ImageTexture" id="ImageTexture_n6xby"]
+image = SubResource("Image_fmgph")
 
 [resource]
 emission_shape = 3
@@ -21,4 +21,4 @@ initial_velocity_max = 0.3
 gravity = Vector3(0, 0, 0)
 scale_min = 0.03
 scale_max = 0.08
-color_ramp = SubResource("ImageTexture_fmrvb")
+color_ramp = SubResource("ImageTexture_n6xby")

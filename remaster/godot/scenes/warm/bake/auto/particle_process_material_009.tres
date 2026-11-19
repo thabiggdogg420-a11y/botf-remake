@@ -12,31 +12,15 @@ data = {
 [sub_resource type="ImageTexture" id="ImageTexture_u8aim"]
 image = SubResource("Image_4egal")
 
-[sub_resource type="Image" id="Image_qah1f"]
-data = {
-"data": PackedByteArray(255, 255, 255, 255),
-"format": "RGBA8",
-"height": 1,
-"mipmaps": false,
-"width": 1
-}
-
-[sub_resource type="ImageTexture" id="ImageTexture_3xkij"]
-image = SubResource("Image_qah1f")
-
 [resource]
-emission_shape = 1
-emission_sphere_radius = 0.012
-angle_min = -180.0
-angle_max = 180.0
+particle_flag_align_y = true
 direction = Vector3(0, 0, 1)
-spread = 180.0
-initial_velocity_min = 0.015
-initial_velocity_max = 0.07
+spread = 60.0
+initial_velocity_min = 0.03
+initial_velocity_max = 0.08
 gravity = Vector3(0, 0, 0)
-damping_min = 1.0
-damping_max = 2.5
-scale_min = 0.016
-scale_max = 0.04
-scale_curve = SubResource("ImageTexture_3xkij")
+damping_min = 4.0
+damping_max = 8.0
+scale_min = 0.006
+scale_max = 0.01
 color_ramp = SubResource("ImageTexture_u8aim")

@@ -66,6 +66,7 @@ func _init() -> void:
 func _ready() -> void:
 	set_anchors_preset(Control.PRESET_FULL_RECT)
 	var t := LoadTrace.start()
+	LoadTrace.split_frames(get_tree())
 	_load_settings()
 	DisplaySettings.fill_defaults(settings)
 	DisplaySettings.apply(settings, get_tree())   # window mode, resolution, vsync, FPS cap, render scale, AA, shadows
@@ -78,6 +79,7 @@ func _ready() -> void:
 		# Web smoothness pass (19 Nov): the shell first, then one start-up step a frame behind the panel, never one long frame.
 		_apply_theme(1)
 		_build_layers()
+		AppLoader.reserve_pack_pool(WEB_PACK_POOL_MB)
 		_show_loading("Starting", [])
 		_loading_label.text = "Starting"
 		await get_tree().process_frame
@@ -101,9 +103,17 @@ func _ready() -> void:
 		_apply_theme(1)
 		_build_layers()
 	t = LoadTrace.done("boot: theme+layers", t)
+	var early_warm := web and DisplayServer.get_name() != "headless"
+	if early_warm:
+		_warmed_battle = true
+		await _warm_battle_view()   # round 9: behind the HTML loading screen, not after the title
+		t = LoadTrace.start()
 	goto("title")
 	LoadTrace.done("boot: title", t)
-	_warm_battle.call_deferred()
+	if early_warm:
+		_warm_glyphs.call_deferred(90)
+	else:
+		_warm_battle.call_deferred()
 	if OS.has_feature("web"):
 		_fetch_background.call_deferred()
 
@@ -343,6 +353,9 @@ func _title_empire() -> int:
 ## galaxy sit idle, so the first battle opens in a frame or two instead of a 300-500 ms stall (M1-BETAFIX; it was 1.5-4 s
 ## with hero models, see BattleAssets.mip_scene_images). The references are kept for the life of the process.
 static var _warm_refs: Array = []
+## Web: the pack pool (AppLoader.reserve_pack_pool) holds the title's packs, the full planet tier, the first empire's audio
+## and the first battle's hulls (about 120 MB on the Tactical drill route).
+const WEB_PACK_POOL_MB := 160
 static var _warmed_battle := false
 
 func _warm_battle() -> void:
@@ -355,12 +368,31 @@ func _warm_battle() -> void:
 	if not is_inside_tree():
 		_warmed_battle = false
 		return
+	await _warm_battle_view()
+	await _warm_glyphs()
+
+## The off-screen battle view (sky, planet, effects, ship shaders, flame and puff textures), kept as the spare for the
+## first battle. Round 9: the web boot runs this behind the HTML loading screen, before the title (after the title its
+## first draws were 0.3-0.55 s frames: new pipelines and the effect textures built in GDScript).
+func _warm_battle_view() -> void:
+	var tree := get_tree()
+	# Round 9: every step below is traced and gets its own frame (the view's instance, its entry into the tree, each warm
+	# sphere, each font size); a few of them together made 0.2-0.4 s frames just after the title.
+	var t := LoadTrace.start()
 	_warm_refs.append(AppLoader.resource(AppRoutes.script_for("combat")))
+	LoadTrace.done("warm battle: combat script", t)
 	await tree.process_frame
+	t = LoadTrace.start()
 	var packed: PackedScene = AppLoader.resource(BattleHost.BATTLE_SCENE)
 	_warm_refs.append(packed)
+	LoadTrace.done("warm battle: scene load", t)
 	await tree.process_frame
 	# An off-screen battle view: compiles the sky, planet and effect shaders and uploads the backdrop planet's textures.
+	t = LoadTrace.start()
+	var view := packed.instantiate()
+	LoadTrace.done("warm battle: view instance", t)
+	await tree.process_frame
+	t = LoadTrace.start()
 	var sv := SubViewport.new()
 	sv.size = Vector2i(256, 144)
 	sv.own_world_3d = true
@@ -369,18 +401,28 @@ func _warm_battle() -> void:
 	# ones the battle draws with (a different MSAA mode compiled them again on the first battle frame: 90-100 ms).
 	DisplaySettings.apply_viewport(sv, settings)
 	add_child(sv)
-	var view := packed.instantiate()
 	sv.add_child(view)
+	LoadTrace.done("warm battle: view in tree", t)
 	await tree.process_frame
+	t = LoadTrace.start()
 	if "_env" in view:
 		BattleEnvironment.set_planet_class(view._env, "M")
+	LoadTrace.done("warm battle: planet class", t)
 	await tree.process_frame
+	t = LoadTrace.start()
 	if "fx" in view and view.fx != null:
-		view.fx.prewarm()
+		view.fx.prewarm(true)
+	LoadTrace.done("warm battle: fx prewarm", t)
+	for _i in 12:
+		await tree.process_frame # the prewarm's groups go in a frame apart (round 9)
 	# Ship shaders (hero hull, plating, hull, shield, cloak, blink): a sphere each, in front of the warm-up camera, so
-	# their pipelines compile now and not when the first hull of a battle is drawn.
+	# their pipelines compile now and not when the first hull of a battle is drawn. One a frame (round 9).
 	var warm_meshes: Array = []
 	for sh in [HeroLook.HULL_SHADER, HeroLook.PLATED_SHADER, BattleShip.HULL_SHADER, BattleShip.SHIELD_SHADER, BattleShip.CLOAK_SHADER, BattleShip.BLINK_SHADER]:
+		await tree.process_frame
+		if not is_instance_valid(view):
+			break
+		t = LoadTrace.start()
 		var mi := MeshInstance3D.new()
 		warm_meshes.append(mi)
 		mi.mesh = SphereMesh.new()
@@ -390,8 +432,18 @@ func _warm_battle() -> void:
 		view.add_child(mi)
 		if "camera" in view and view.camera != null:
 			mi.global_position = view.camera.global_position + (view.camera.global_transform.basis * Vector3(0, 0, -3.0))
-	BattleShip.flame_flipbook()
+		LoadTrace.done("warm battle: sphere %s" % sh.resource_path.get_file(), t)
+	await tree.process_frame
+	t = LoadTrace.start()
+	while not BattleShip.flame_flipbook_step():
+		LoadTrace.done("warm battle: flame tile", t)
+		await tree.process_frame
+		t = LoadTrace.start()
+	t = LoadTrace.done("warm battle: flame tile", t)
+	await tree.process_frame
+	t = LoadTrace.start()
 	BattleShip.puff_texture()
+	LoadTrace.done("warm battle: puff texture", t)
 	for _i in 6:
 		await tree.process_frame
 	# F2: keep the warmed view for the first battle (BattleHost takes it): instancing a fresh one when the battle opened
@@ -405,8 +457,20 @@ func _warm_battle() -> void:
 		_spare_battle_view = view
 	elif is_instance_valid(view):
 		view.queue_free()
-	# F2: rasterise the UI fonts' glyphs at the sizes the screens use, one font a frame, in the same off-screen viewport:
-	# the battle screen's first draw rendered them (60-70 ms on the frame it opened).
+	sv.queue_free()
+
+## F2 glyph warm, in its own small off-screen viewport.
+func _warm_glyphs(delay_frames := 0) -> void:
+	var tree := get_tree()
+	for _i in delay_frames:
+		await tree.process_frame # the title's own first draws go first
+	var sv := SubViewport.new()
+	sv.size = Vector2i(256, 144)
+	sv.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+	add_child(sv)
+	# F2: rasterise the UI fonts' glyphs at the sizes the screens use, in the same off-screen viewport: the battle screen's
+	# first draw rendered them (60-70 ms on the frame it opened). Round 9: one font size a frame (a whole font, 17 sizes,
+	# in one frame was up to 0.17 s).
 	if not _glyphs_warmed:
 		_glyphs_warmed = true
 		var canvas := Control.new()
@@ -419,14 +483,14 @@ func _warm_battle() -> void:
 		for f: Font in Lcars._fonts.values():
 			if f == null:
 				continue
-			var cb := func():
-				for px in [10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 24, 26, 28, 30]:
+			for px in [10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 24, 26, 28, 30]:
+				var cb := func():
 					canvas.draw_string(f, Vector2(0, 40), text, HORIZONTAL_ALIGNMENT_LEFT, -1, px)
-			canvas.draw.connect(cb)
-			canvas.queue_redraw()
-			await tree.process_frame
-			await tree.process_frame
-			canvas.draw.disconnect(cb)
+				canvas.draw.connect(cb)
+				canvas.queue_redraw()
+				await tree.process_frame
+				await tree.process_frame
+				canvas.draw.disconnect(cb)
 	sv.queue_free()
 
 static var _glyphs_warmed := false
@@ -849,17 +913,32 @@ func _fetch_empire_audio(player: int) -> void:
 	if await AppLoader.fetch_empire_audio(self, tok):
 		BotfAudioSystem.load_empire_pack(tok)
 
-func _enter_game(v: Dictionary, name_: String) -> void:
+func _enter_game(v: Dictionary, name_: String, spread := false) -> void:
 	history.clear()
 	save_name = name_
 	session._adopt_pack_look(v)   # before the theme: the pack may recolour the empires (schema 25)
+	var web := spread and OS.has_feature("web") and DisplayServer.get_name() != "headless"
+	if web:
+		# WebGPU round 9: the core's start, the theme and the galaxy's build each get their own frame (all three on the
+		# click's frame came to 0.26-0.30 s); the title stays on screen, unchanged, for those frames.
+		await get_tree().process_frame
+	var t := LoadTrace.start()
 	_theme_empire = -1
 	_apply_theme(int(v["meta"]["player"]))
+	t = LoadTrace.done("enter game: theme", t)
+	if web:
+		AppLoader.resource(AppRoutes.script_for("galaxy"))   # the galaxy screen's scripts load and compile on this frame
+		t = LoadTrace.done("enter game: galaxy script", t)
 	_fetch_empire_audio(int(v["meta"]["player"]))   # web: not awaited, the campaign starts while the pack downloads
 	_fetch_game_packs(v)   # web: the empires' hulls in the background (not awaited)
+	if web:
+		await get_tree().process_frame
+		t = LoadTrace.start()
 	session.enter(v)
+	t = LoadTrace.done("enter game: session", t)
 	screen = ""
 	goto("galaxy", false)
+	LoadTrace.done("enter game: galaxy", t)
 
 ## Starts a campaign. The player's power is options.faction; options.empire is accepted as an alias
 ## (AppSession.campaign_options).
@@ -872,11 +951,14 @@ func start_campaign(options: Dictionary) -> bool:
 	autosave()
 	return true
 
-func start_drill(method: String, label_: String, args: Dictionary = {}) -> void:
+## `spread` (the title buttons, round 9): on the web the start is spread over three frames; tools keep it on one.
+func start_drill(method: String, label_: String, args: Dictionary = {}, spread := false) -> void:
+	var t := LoadTrace.start()
 	var v := session.start(method, args)
+	LoadTrace.done("drill: core start", t)
 	if v.is_empty():
 		return
-	_enter_game(v, label_)
+	await _enter_game(v, label_, spread)
 	toast(label_ + " loaded.", "warn")
 
 func request_end_turn() -> void:

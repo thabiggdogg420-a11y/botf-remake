@@ -1,6 +1,6 @@
 [gd_resource type="StandardMaterial3D" format=3]
 
-[sub_resource type="Image" id="Image_l8vmw"]
+[sub_resource type="Image" id="Image_gsa0f"]
 data = {
 "data": PackedByteArray(255, 255, 255, 255),
 "format": "RGBA8",
@@ -9,13 +9,13 @@ data = {
 "width": 1
 }
 
-[sub_resource type="ImageTexture" id="ImageTexture_dhi86"]
-image = SubResource("Image_l8vmw")
+[sub_resource type="ImageTexture" id="ImageTexture_kfbto"]
+image = SubResource("Image_gsa0f")
 
 [resource]
 transparency = 1
 blend_mode = 1
 shading_mode = 0
 vertex_color_use_as_albedo = true
-albedo_texture = SubResource("ImageTexture_dhi86")
-disable_receive_shadows = true
+albedo_texture = SubResource("ImageTexture_kfbto")
+billboard_mode = 3

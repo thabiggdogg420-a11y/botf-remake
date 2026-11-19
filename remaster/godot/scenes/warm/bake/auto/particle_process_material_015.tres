@@ -1,0 +1,40 @@
+[gd_resource type="ParticleProcessMaterial" format=3]
+
+[sub_resource type="Image" id="Image_27sw1"]
+data = {
+"data": PackedByteArray(255, 255, 255, 255),
+"format": "RGBA8",
+"height": 1,
+"mipmaps": false,
+"width": 1
+}
+
+[sub_resource type="ImageTexture" id="ImageTexture_foohu"]
+image = SubResource("Image_27sw1")
+
+[sub_resource type="Image" id="Image_dpamg"]
+data = {
+"data": PackedByteArray(255, 255, 255, 255),
+"format": "RGBA8",
+"height": 1,
+"mipmaps": false,
+"width": 1
+}
+
+[sub_resource type="ImageTexture" id="ImageTexture_jjldg"]
+image = SubResource("Image_dpamg")
+
+[resource]
+angle_min = -180.0
+angle_max = 180.0
+direction = Vector3(0, 0, 1)
+spread = 180.0
+initial_velocity_min = 0.025
+initial_velocity_max = 0.05
+gravity = Vector3(0, 0, 0)
+damping_min = 0.6
+damping_max = 1.2
+scale_min = 0.008
+scale_max = 0.016
+scale_curve = SubResource("ImageTexture_jjldg")
+color_ramp = SubResource("ImageTexture_foohu")

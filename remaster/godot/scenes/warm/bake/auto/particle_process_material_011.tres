@@ -12,29 +12,12 @@ data = {
 [sub_resource type="ImageTexture" id="ImageTexture_m4572"]
 image = SubResource("Image_sf0qq")
 
-[sub_resource type="Image" id="Image_c0i4m"]
-data = {
-"data": PackedByteArray(255, 255, 255, 255),
-"format": "RGBA8",
-"height": 1,
-"mipmaps": false,
-"width": 1
-}
-
-[sub_resource type="ImageTexture" id="ImageTexture_3sbwq"]
-image = SubResource("Image_c0i4m")
-
 [resource]
-angle_min = -180.0
-angle_max = 180.0
 direction = Vector3(0, 0, 1)
 spread = 180.0
-initial_velocity_min = 0.025
-initial_velocity_max = 0.05
+initial_velocity_min = 0.005
+initial_velocity_max = 0.02
 gravity = Vector3(0, 0, 0)
-damping_min = 0.6
-damping_max = 1.2
-scale_min = 0.008
-scale_max = 0.016
-scale_curve = SubResource("ImageTexture_3sbwq")
+scale_min = 0.006
+scale_max = 0.012
 color_ramp = SubResource("ImageTexture_m4572")

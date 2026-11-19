@@ -29,6 +29,15 @@ static func _check(path: String) -> bool:
 	push_error("AppLoader: refused non-pack path %s" % path)
 	return false
 
+## Web (round 9): reserves one JS buffer for the session's packs (`mb` megabytes), so a pack fetched after the title is
+## copied into memory that already exists: no new large allocation, which is what made the browser stop the page for a
+## full garbage collection (0.3-1.0 s) while packs came in. Called once behind the loading screen; packs that do not fit
+## get their own buffer as before. A browser that refuses the size just goes without.
+static func reserve_pack_pool(mb: int) -> void:
+	if not OS.has_feature("web"):
+		return
+	JavaScriptBridge.eval("(function(){if(globalThis.__botfPool)return;try{globalThis.__botfPool={b:new Uint8Array(%d),o:0};}catch(e){globalThis.__botfPool={b:null,o:0};}})()" % (mb * 1048576))
+
 ## Mounts an extra resource pack (a web-fetchable asset bundle already in user:// or res://).
 static func mount_pack(path: String) -> bool:
 	var t := LoadTrace.start()
@@ -480,6 +489,10 @@ static func _fetch_web_pack(host: Node, name: String) -> bool:
 				remove("user://packs/" + f)   # an older build's copy in IndexedDB (a delete: nothing big is saved)
 	return ok
 
+## Round 9: a pack's bytes go into the pack pool (reserve_pack_pool: one buffer made behind the loading screen) when it has
+## room, else into one buffer of the manifest's size (a BYOB reader: no chunk copies); the cache gets a Blob copy afterwards
+## (was: a teed second stream). Each pack used to allocate its size three times in JS memory after the title, and that
+## growth set off 0.3-1.0 s garbage collections mid-frame.
 ## Fetches one pack and writes it into the game's in-memory file system (engine.copyToFS) at `dest`. WebGPU round 8: the
 ## browser's Cache API is looked at first (cache WEB_PACK_CACHE, keyed by the URL); a miss is fetched with the browser's own
 ## fetch() and a copy handed to the cache, which the browser stores off the page's thread. Nothing goes to IndexedDB.
@@ -491,16 +504,23 @@ static func _download_pack(host: Node, url: String, dest: String, name: String, 
 	var u := JSON.stringify(url)
 	var js := "(function(){var s={done:false,ok:false,bytes:0,cached:false,err:''};(window.__botfDl=window.__botfDl||{})['" + id + "']=s;" \
 		+ "var want=" + str(want) + ";var cp=self.caches?caches.open('" + WEB_PACK_CACHE + "').catch(function(){return null;}):Promise.resolve(null);" \
-		+ "var read=function(r){var rd=r.body.getReader();var ch=[];var b=want>0?new Uint8Array(want):null;" \
+		+ "var pal=function(n){var P=globalThis.__botfPool;if(P&&P.b&&n>0&&P.o+n<=P.b.length){var v=P.b.subarray(P.o,P.o+n);P.o+=(n+15)&~15;return v;}return null;};" \
+		+ "var into=function(st,b){var rd=st.getReader();var pump=function(){return rd.read().then(function(x){if(x.done)return;var v=x.value;if(s.bytes+v.length<=want)b.set(v,s.bytes);s.bytes+=v.length;return pump();});};" \
+		+ "return pump().then(function(){if(s.bytes!==want)throw new Error('size '+s.bytes+', manifest '+want);return b;});};" \
+		+ "var byob=function(r){var rd;try{rd=r.body.getReader({mode:'byob'});}catch(e){return null;}var buf=new ArrayBuffer(want);" \
+		+ "var pump=function(){if(s.bytes>=want){return rd.read(new Uint8Array(1)).then(function(x){if(!x.done){s.bytes+=1;rd.cancel().catch(function(){});}return new Uint8Array(buf,0,want);});}" \
+		+ "return rd.read(new Uint8Array(buf,s.bytes,want-s.bytes)).then(function(x){if(x.value){buf=x.value.buffer;s.bytes+=x.value.byteLength;}if(x.done)return new Uint8Array(buf,0,s.bytes);return pump();});};return pump();};" \
+		+ "var read=function(r){if(want>0){var pb=pal(want);if(pb)return into(r.body,pb);var q=byob(r);if(q)return q;}var rd=r.body.getReader();var ch=[];var b=want>0?new Uint8Array(want):null;" \
 		+ "var pump=function(){return rd.read().then(function(x){if(x.done)return;var v=x.value;" \
 		+ "if(b&&s.bytes+v.length<=want){b.set(v,s.bytes);}else{if(b){ch.push(b.subarray(0,s.bytes));b=null;}ch.push(v);}s.bytes+=v.length;return pump();});};" \
 		+ "return pump().then(function(){if(b)return s.bytes===want?b:b.subarray(0,s.bytes);var o2=new Uint8Array(s.bytes);var o=0;for(var i=0;i<ch.length;i++){o2.set(ch[i],o);o+=ch[i].length;}ch=null;return o2;});};" \
 		+ "cp.then(function(c){return (c?c.match(" + u + ").catch(function(){return null;}):Promise.resolve(null)).then(function(hit){" \
-		+ "if(hit){s.cached=true;return hit.arrayBuffer().then(function(a){if(want>=0&&a.byteLength!==want){s.cached=false;return null;}s.bytes=a.byteLength;return new Uint8Array(a);});}return null;})" \
+		+ "if(hit){s.cached=true;var hb=want>0&&hit.body?pal(want):null;if(hb)return into(hit.body,hb).catch(function(){s.cached=false;s.bytes=0;return null;});" \
+		+ "return hit.arrayBuffer().then(function(a){if(want>=0&&a.byteLength!==want){s.cached=false;return null;}s.bytes=a.byteLength;return new Uint8Array(a);});}return null;})" \
 		+ ".then(function(b){if(b)return b;return fetch(" + u + ").then(function(r){if(!r.ok)throw new Error('http '+r.status);" \
-		+ "if(c){c.put(" + u + ",r.clone()).catch(function(){});}return read(r);});});})" \
+		+ "return read(r).then(function(b){if(c&&(want<0||b.byteLength===want)){c.put(" + u + ",new Response(new Blob([b]))).catch(function(){});}return b;});});});})" \
 		+ ".then(function(b){var fs=engine.rtenv&&engine.rtenv.FS;var p=" + JSON.stringify(dest) + ";" \
-		+ "if(fs&&fs.writeFile){try{fs.mkdirTree(p.slice(0,p.lastIndexOf('/')));}catch(e){}fs.writeFile(p,b,{canOwn:true});}else{engine.copyToFS(p,b.buffer);}" \
+		+ "if(fs&&fs.writeFile){try{fs.mkdirTree(p.slice(0,p.lastIndexOf('/')));}catch(e){}fs.writeFile(p,b,{canOwn:true});}else{engine.copyToFS(p,b.byteLength===b.buffer.byteLength?b.buffer:b.slice().buffer);}" \
 		+ "b=null;s.ok=true;s.done=true;})" \
 		+ ".catch(function(e){s.err=String(e);s.done=true;});})();"
 	progress = {"name": name, "bytes": 0, "total": want}

@@ -31,6 +31,7 @@ func _initialize() -> void:
 		if "play_audio" in _view:
 			_view.play_audio = false
 		_root.add_child(_view)
+	_capture_hulls()
 	var gm_scene := "res://scenes/galaxy/galaxy_map.tscn"
 	if ResourceLoader.exists(gm_scene):
 		_root.add_child((load(gm_scene) as PackedScene).instantiate())
@@ -121,3 +122,42 @@ func _key(m: Material) -> String:
 			TYPE_OBJECT:
 				parts.append("%s=%s" % [p.name, "1" if v != null else "0"])
 	return "|".join(parts)
+
+
+## Round 9 (19 Nov 2026): the hero hulls' own glTF materials. A web build's first hull of each look compiled its
+## StandardMaterial3D shader when the glb's scene was built (0.25-0.33 s in one frame, cold visits only: the return visit
+## had it in the shader cache). With `-- --hull-packs=<dir>` (a web host's packs folder) every hull pack there is
+## mounted and each hero glb is built exactly as the browser builds it (images stripped, BattleAssets sliced steps), and
+## its materials are captured like the rest, so ShaderWarm compiles them behind the "Starting" panel.
+func _capture_hulls() -> void:
+	var dir := ""
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with("--hull-packs="):
+			dir = a.trim_prefix("--hull-packs=")
+	if dir == "" or not DirAccess.dir_exists_absolute(dir):
+		return
+	var mounted := 0
+	for f in DirAccess.get_files_at(dir):
+		if f.ends_with(".pck") and (f.begins_with("ships_base_web") or f.begins_with("hull_ship_")):
+			if ProjectSettings.load_resource_pack(dir.path_join(f)):
+				mounted += 1
+	var assets := BattleAssets.new()
+	var seen := {}
+	var built := 0
+	for key: String in assets.heroes:
+		var e := assets.hero(key)
+		var path := assets.hero_glb_path(e)
+		if path == "" or seen.has(path):
+			continue
+		seen[path] = true
+		BattleAssets._queue_sliced(path, e, assets.hero_root)
+		BattleAssets._finish_sliced(path)
+		var packed: PackedScene = BattleAssets._shared.get(path)
+		if packed == null:
+			continue
+		var n := packed.instantiate()
+		_collect(n)
+		n.free()
+		built += 1
+	print("hull materials: %d packs mounted, %d hero glbs built, %d materials so far" % [mounted, built, _n])
+
