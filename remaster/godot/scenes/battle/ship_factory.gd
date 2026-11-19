@@ -27,7 +27,7 @@ const LOOK := {
 ## then ROLE_LENGTH by the class role), else the first length along the manifest fallback chain.
 ## Regenerate when those files change. A local resolved-manifest.json overrides this at runtime (BattleShip).
 const CANON_LENGTHS := {
-	"ship.and.kumari": 350, "ship.baj.assault": 250, "ship.baj.lightship": 90, "ship.borg.cube": 3000,
+	"ship.and.kumari": 350, "ship.baj.assault": 250, "ship.baj.lightship": 60, "ship.borg.cube": 3000,
 	"ship.borg.diamond": 1000, "ship.borg.probe": 400, "ship.borg.scout": 100, "ship.borg.sphere": 600,
 	"ship.borg.tactical_cube": 3100, "ship.breen.breen_warship": 400, "ship.car.atr4107": 150, "ship.car.galor": 371,
 	"ship.car.groumall": 200, "ship.car.hideki": 80, "ship.car.keldon": 371, "ship.car.kraxon": 280,

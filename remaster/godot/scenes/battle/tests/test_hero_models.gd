@@ -85,6 +85,9 @@ func _run() -> void:
 		check(mat != null and mat.shader == HeroLook.PLATED_SHADER, "plated hull material")
 		check(mat != null and bool(mat.get_shader_parameter("use_vertex_color")), "plated material reads the vertex colour")
 		check(mat != null and is_equal_approx(float(mat.get_shader_parameter("metallic")), 0.1575), "plated metallic from the hint")
+		# F4 round 2: ship-scale plating from the hull length (100 m -> 60 plates of 1.67 m, bands of five).
+		check(mat != null and is_equal_approx(float(mat.get_shader_parameter("plate_m")), 100.0 / 60.0), "plate size follows the hull length")
+		check(mat != null and is_equal_approx(float(mat.get_shader_parameter("band_m")), 500.0 / 60.0), "panel bands five plates across")
 		var arrays := mi.mesh.surface_get_arrays(0)
 		var cols = arrays[Mesh.ARRAY_COLOR]
 		check(cols is PackedColorArray and cols.size() > 0 and _close(cols[0], Color(0.19, 0.25, 0.16)), "vertex colour Col survives the glb")

@@ -54,7 +54,15 @@ func _run() -> void:
 		root.add_child(cam)
 		cam.current = true
 		var l: float = ship.length
-		cam.position = Vector3(0.18 * l, 0.32 * l, 1.15 * l)
+		# Framed on the drawn hull's bounds, not its length (F4 round 2: the lightship's sails and the cube's depth
+		# spill past a length-based frame): the bounding sphere fills the frame.
+		await _wait(2)
+		var box := _bounds(ship)
+		var centre := box.get_center() if box.size != Vector3.ZERO else Vector3.ZERO
+		var radius := box.size.length() * 0.5 if box.size != Vector3.ZERO else l * 0.6
+		var dist := radius / sin(deg_to_rad(cam.fov * 0.5)) * 0.62
+		cam.position = centre + Vector3(0.18, 0.32, 1.15).normalized() * dist
+		cam.far = maxf(6000.0, dist * 3.0)
 		if view != "":
 			# Hull-relative views (ship local axes: bow is -Z, up is +Y): top bottom port starboard bow stern.
 			var d: Vector3 = {"top": Vector3(0, 1, 0.001), "bottom": Vector3(0, -1, 0.001), "port": Vector3(-1, 0.15, 0), "starboard": Vector3(1, 0.15, 0),
@@ -63,7 +71,7 @@ func _run() -> void:
 			cam.position = c + ship.global_transform.basis * (d.normalized() * 0.95 * l)
 			cam.look_at(c, ship.global_transform.basis.y if absf(d.y) < 0.9 else ship.global_transform.basis.z)
 		else:
-			cam.look_at(Vector3.ZERO, Vector3.UP)
+			cam.look_at(centre, Vector3.UP)
 		await _wait(90)
 		var hero_ok: bool = ship.hero_key != ""
 		print("HULL ", "ok" if hero_ok else "FAIL", " ", spec, ": ", "hero " + ship.hero_key if hero_ok else "fallback hull")
@@ -81,3 +89,17 @@ func _run() -> void:
 		root.queue_free()
 		await _wait(5)
 	quit(code)
+
+
+## World-space bounds of the ship's visible meshes (nav lights and shields excluded).
+func _bounds(ship: Node3D) -> AABB:
+	var out := AABB()
+	var first := true
+	for n in ship.find_children("*", "MeshInstance3D", true, false):
+		var mi := n as MeshInstance3D
+		if mi.mesh == null or not mi.is_visible_in_tree() or mi.name.begins_with("NavLight") or "hield" in str(mi.name):
+			continue
+		var b := mi.global_transform * mi.get_aabb()
+		out = b if first else out.merge(b)
+		first = false
+	return out

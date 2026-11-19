@@ -17,10 +17,10 @@ static var _lock := Mutex.new() ## _textures and _mipped are also filled from th
 ## Builds the plating images of a hull ahead of apply() (the worker thread that parsed the glb calls this, so the first
 ## instance of a class does not decode them on a battle frame). The glb's own images are mip-chained in the same thread by
 ## BattleAssets.mip_scene_images.
-static func prime(hero: Dictionary, root_dir: String) -> void:
-	var plating: Dictionary = hero.get("plating", {})
-	for k in ["panels", "normal"]:
-		_texture(root_dir, str(plating.get(k, "")))
+## F4 round 2: the plated shader draws its plating procedurally, so the manifest's tiling plating images are no longer
+## decoded (they still travel in the manifest for the Unreal importer).
+static func prime(_hero: Dictionary, _root_dir: String) -> void:
+	pass
 
 
 ## Replaces every surface material under `hull` by its hero material. Returns the number of surfaces set.
@@ -86,6 +86,38 @@ static func mipmapped(t: Texture2D) -> Texture2D:
 	return out
 
 
+## Ship-scale plating per power (hero_plated.gdshader, F4 round 2): the band accent (a multiplier on the baked hull
+## colour), window light colour and how many side bands carry windows, and the plate contrast.
+const FINE_PLATING := {
+	"and": {"accent": Color(0.82, 0.92, 1.12), "window": Color(0.7, 0.85, 1.0), "density": 0.35, "contrast": 0.07},
+	"baj": {"accent": Color(1.12, 0.98, 0.80), "window": Color(1.0, 0.8, 0.5), "density": 0.25, "contrast": 0.08},
+	"fer": {"accent": Color(1.15, 0.90, 0.70), "window": Color(1.0, 0.75, 0.35), "density": 0.40, "contrast": 0.08},
+	"gor": {"accent": Color(0.85, 1.10, 0.80), "window": Color(1.0, 0.6, 0.3), "density": 0.20, "contrast": 0.09},
+	"nau": {"accent": Color(1.15, 0.80, 0.70), "window": Color(1.0, 0.55, 0.3), "density": 0.20, "contrast": 0.09},
+	"sul": {"accent": Color(1.08, 1.02, 0.80), "window": Color(0.9, 1.0, 0.6), "density": 0.25, "contrast": 0.08},
+	"tal": {"accent": Color(0.95, 0.95, 1.10), "window": Color(0.9, 0.9, 1.0), "density": 0.30, "contrast": 0.07},
+	"thol": {"accent": Color(1.20, 0.85, 0.55), "window": Color(1.0, 0.65, 0.25), "density": 0.30, "contrast": 0.07},
+	"vul": {"accent": Color(1.12, 0.92, 0.75), "window": Color(1.0, 0.85, 0.6), "density": 0.35, "contrast": 0.06},
+	"xin": {"accent": Color(0.90, 1.00, 1.12), "window": Color(0.6, 0.9, 1.0), "density": 0.30, "contrast": 0.08},
+}
+
+
+## Sets the plated shader's ship-scale plating for a power and a hull length in metres: about 60 plates along the hull
+## (1.2-10 m), bands five plates across, decks 3.6 m apart (never fewer than about 6 down a small hull).
+static func set_fine_plating(m: ShaderMaterial, faction: String, length_m: float) -> void:
+	var fp: Dictionary = FINE_PLATING.get(faction, {})
+	var plate := clampf(length_m / 60.0, 1.2, 10.0)
+	m.set_shader_parameter("plate_m", plate)
+	m.set_shader_parameter("band_m", plate * 5.0)
+	m.set_shader_parameter("deck_m", clampf(length_m / 90.0, 1.0, 3.6))
+	m.set_shader_parameter("plate_contrast", float(fp.get("contrast", 0.05)))
+	var a: Color = fp.get("accent", Color(1, 1, 1))
+	m.set_shader_parameter("accent", Vector3(a.r, a.g, a.b))
+	var w: Color = fp.get("window", Color(1.0, 0.85, 0.6))
+	m.set_shader_parameter("window_color", Vector3(w.r, w.g, w.b))
+	m.set_shader_parameter("window_density", float(fp.get("density", 0.3)))
+
+
 static func material_for(slot: Dictionary, src: Material, hero: Dictionary, root_dir: String) -> ShaderMaterial:
 	var m := ShaderMaterial.new()
 	var std := src as BaseMaterial3D
@@ -97,21 +129,9 @@ static func material_for(slot: Dictionary, src: Material, hero: Dictionary, root
 		var tint = slot.get("tint")
 		if tint is Array and tint.size() >= 3:
 			m.set_shader_parameter("tint", Vector3(tint[0], tint[1], tint[2]))
-		var tone: Array = slot.get("tone", [0.7, 0.65])
-		m.set_shader_parameter("tone", Vector2(tone[0], tone[1]))
-		m.set_shader_parameter("seam", float(slot.get("seam", 0.55)))
-		m.set_shader_parameter("panel_scale", float(slot.get("panelScale", 0.35)))
 		m.set_shader_parameter("roughness_min", float(slot.get("roughnessMin", 0.32)))
 		m.set_shader_parameter("metallic", float(slot.get("metallic", 0.15)))
-		var plating: Dictionary = hero.get("plating", {})
-		var panels := _texture(root_dir, str(plating.get("panels", "")))
-		var normal := _texture(root_dir, str(plating.get("normal", "")))
-		m.set_shader_parameter("has_panels", panels != null)
-		if panels != null:
-			m.set_shader_parameter("panels_tex", panels)
-		m.set_shader_parameter("has_panel_normal", normal != null)
-		if normal != null:
-			m.set_shader_parameter("panel_normal_tex", normal)
+		HeroLook.set_fine_plating(m, str(slot.get("faction", "")), float(hero.get("lengthMeters", 350.0)))
 		return m
 	m.shader = HULL_SHADER
 	m.resource_name = "HeroHull_%s" % slot.get("name", "")
