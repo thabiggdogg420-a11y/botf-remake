@@ -218,14 +218,27 @@ static func _pack_rank(n: String) -> int:
 	return 7
 
 ## Logical names of every pack in the build, in preload order ([] until the manifest is loaded).
+## WebGPU r6: the preload widget asks for this twice every half second; sorting several hundred packs through a script
+## comparator took 0.9 s of one frame. The order is now built once per manifest (rank and name as a native sort key).
+static var _packs_sorted: Array = []
+static var _packs_for: Variant = null
+
 static func all_packs() -> Array:
-	var names: Array = []
 	var man: Variant = _web_manifest
-	if man is Dictionary:
-		for k in man.get("files", {}):
-			names.append(str(k))
-	names.sort_custom(func(a, b): return _pack_rank(a) < _pack_rank(b) or (_pack_rank(a) == _pack_rank(b) and a < b))
-	return names
+	if not (man is Dictionary):
+		return []
+	if is_same(man, _packs_for) and _packs_sorted.size() == (man.get("files", {}) as Dictionary).size():
+		return _packs_sorted.duplicate()
+	var keyed: Array = []
+	for k in man.get("files", {}):
+		keyed.append("%d|%s" % [_pack_rank(str(k)), str(k)])
+	keyed.sort()
+	var names: Array = []
+	for e: String in keyed:
+		names.append(e.substr(e.find("|") + 1))
+	_packs_sorted = names
+	_packs_for = man
+	return names.duplicate()
 
 static func total_bytes() -> int:
 	var t := 0
@@ -234,6 +247,8 @@ static func total_bytes() -> int:
 	return t
 
 ## True when this exact pack content is already on the device (mounted this session or complete in user://packs).
+static var _cached_ok := {}   ## pack file names already confirmed complete on the device this session
+
 static func is_cached(name: String) -> bool:
 	if _mounted.has(name):
 		return true
@@ -243,8 +258,13 @@ static func is_cached(name: String) -> bool:
 	var file := str(man.get("files", {}).get(name, ""))
 	if file == "" or not FileAccess.file_exists("user://packs/" + file):
 		return false
+	if _cached_ok.has(file):
+		return true
 	var f := FileAccess.open("user://packs/" + file, FileAccess.READ)
-	return f != null and f.get_length() == int(man.get("bytes", {}).get(file, -1))
+	var ok := f != null and f.get_length() == int(man.get("bytes", {}).get(file, -1))
+	if ok:
+		_cached_ok[file] = true
+	return ok
 
 static func cached_bytes() -> int:
 	var t := 0

@@ -46,6 +46,10 @@ func _web_boot() -> void:
 			await tree.process_frame
 			t0 = Time.get_ticks_usec()
 	await tree.process_frame
+	# WebGPU round 6: the game's shaders compile one per frame here, behind the panel, not all in the title's first frame.
+	if ShaderWarm.needed():
+		await ShaderWarm.run(self, func(d: int, total: int) -> void:
+			label.text = "Preparing graphics (%d%%)" % (100 * d / maxi(total, 1)))
 
 static var _boot_refs: Array = []   ## the compiled scripts stay loaded (the game uses them all)
 

@@ -73,7 +73,10 @@ func _ready() -> void:
 	ensure_buses()
 	_ensure_limiter()
 	library = BotfAudioLibrary.new()
-	library.prewarm_music()
+	# WebGPU r6: the web build has no worker threads, so the prewarm ran all four synth beds inline in the boot frame
+	# (1.5 s). The web plays the music packs; a bed is synthesised on demand only if its pack track is missing.
+	if not OS.has_feature("web"):
+		library.prewarm_music()
 	for i in POOL:
 		var p := AudioStreamPlayer.new()
 		p.finished.connect(_on_sfx_finished.bind(p))

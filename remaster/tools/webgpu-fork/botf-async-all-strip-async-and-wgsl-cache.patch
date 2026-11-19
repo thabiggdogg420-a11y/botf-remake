@@ -1,0 +1,471 @@
+diff --git a/drivers/webgpu/rendering_device_driver_webgpu.cpp b/drivers/webgpu/rendering_device_driver_webgpu.cpp
+index ec492576..ce5274e3 100644
+--- a/drivers/webgpu/rendering_device_driver_webgpu.cpp
++++ b/drivers/webgpu/rendering_device_driver_webgpu.cpp
+@@ -402,6 +402,30 @@ static char *_spv_to_wgsl_cached(const uint8_t *p_spv_ptr, int p_spv_size, bool
+ 		return out;
+ 	}
+ 
++	// 1b. BOTF patch (wgsl-cache, 19 Nov 2026): WGSL the page shipped or kept, keyed by the
++	// SPIR-V hash ("<hi>_<lo>" hex), in globalThis.godotWgslCacheIn. Filled from a
++	// recorded play-through (wgsl-cache.js beside index.html), so the material
++	// variants the export bake cannot see are not translated on the main thread.
++	{
++		int js_len = EM_ASM_INT({
++			var m = globalThis.godotWgslCacheIn; if (!m) return 0;
++			var w = m[($0 >>> 0).toString(16) + '_' + ($1 >>> 0).toString(16)];
++			return w ? lengthBytesUTF8(w) + 1 : 0; }, hash_hi, hash_lo);
++		if (js_len > 0) {
++			char *out = (char *)malloc(js_len);
++			if (out) {
++				EM_ASM({
++					var w = globalThis.godotWgslCacheIn[($0 >>> 0).toString(16) + '_' + ($1 >>> 0).toString(16)];
++					stringToUTF8(w, $2, $3);
++					globalThis.godotWgslCacheInHits = (globalThis.godotWgslCacheInHits | 0) + 1; }, hash_hi, hash_lo, out, js_len);
++				_spv_to_wgsl_cache[spv_hash] = String::utf8(out);
++				_spv_to_wgsl_cache_hits++;
++				_publish_shader_stats();
++				return out;
++			}
++		}
++	}
++
+ 	// 2. Check build-time precompiled table (eliminates runtime translation for ubershaders).
+ 	const char *precompiled = _lookup_precompiled_wgsl(spv_hash);
+ 	if (precompiled) {
+@@ -454,6 +478,9 @@ static char *_spv_to_wgsl_cached(const uint8_t *p_spv_ptr, int p_spv_size, bool
+ 
+ 	if (wgsl_str) {
+ 		_spv_to_wgsl_cache[spv_hash] = String(wgsl_str);
++		// BOTF wgsl-cache: offer it to the page (recording run, or a returning-visit store).
++		EM_ASM({ var o = globalThis.godotWgslCacheOut || (globalThis.godotWgslCacheOut = {});
++			o[($0 >>> 0).toString(16) + '_' + ($1 >>> 0).toString(16)] = UTF8ToString($2); }, hash_hi, hash_lo, wgsl_str);
+ 	}
+ 
+ 	_notify_js_shader_compile_activity();
+@@ -8048,8 +8075,14 @@ void RenderingDeviceDriverWebGPU::pipeline_free(PipelineID p_pipeline) {
+ 		render_pipelines_in_flight.erase(pw->render_async_token);
+ 		pw->render_async_token = 0;
+ 	}
+-	if (pw->type == WGPipelineWrapper::RENDER && pw->render_handle) {
+-		wgpuRenderPipelineRelease(pw->render_handle);
++	if (pw->render_u16_token) {
++		render_u16_in_flight.erase(pw->render_u16_token);
++		pw->render_u16_token = 0;
++	}
++	if (pw->type == WGPipelineWrapper::RENDER && (pw->render_handle || pw->render_handle_u16)) {
++		if (pw->render_handle) {
++			wgpuRenderPipelineRelease(pw->render_handle);
++		}
+ 		if (pw->render_handle_u16) {
+ 			wgpuRenderPipelineRelease(pw->render_handle_u16);
+ 		}
+@@ -8088,7 +8121,7 @@ void RenderingDeviceDriverWebGPU::_render_pipeline_async_cb(WGPUCreatePipelineAs
+ 		if (pw && p_status != WGPUCreatePipelineAsyncStatus_CallbackCancelled) {
+ 			// It stays not ready, so PipelineHashMapRD compiles it again synchronously
+ 			// after a while, which reports the error the usual way.
+-			print_verbose(vformat("WebGPU: asynchronous compile of a render pipeline failed (%s).", String::utf8(p_message.data, p_message.length == WGPU_STRLEN ? -1 : (int)p_message.length)));
++			WARN_PRINT(vformat("WebGPU: asynchronous compile of a render pipeline failed (%s).", String::utf8(p_message.data, p_message.length == WGPU_STRLEN ? -1 : (int)p_message.length)));
+ 		}
+ 		if (p_pipeline) {
+ 			wgpuRenderPipelineRelease(p_pipeline);
+@@ -8100,7 +8133,42 @@ void RenderingDeviceDriverWebGPU::_render_pipeline_async_cb(WGPUCreatePipelineAs
+ 		pw->pending_label = CharString();
+ 	}
+ 	pw->render_handle = p_pipeline;
+-	pw->render_pending = false;
++	if (pw->render_waiting > 0) {
++		pw->render_waiting--;
++	}
++	pw->render_pending = pw->render_waiting > 0;
++}
++
++// BOTF r6 (strip-async): the Uint16 variant of an asynchronously created strip pipeline.
++void RenderingDeviceDriverWebGPU::_render_pipeline_u16_async_cb(WGPUCreatePipelineAsyncStatus p_status, WGPURenderPipeline p_pipeline, WGPUStringView p_message, void *p_userdata1, void *p_userdata2) {
++	RenderingDeviceDriverWebGPU *driver = (RenderingDeviceDriverWebGPU *)p_userdata1;
++	const uint64_t token = (uint64_t)(uintptr_t)p_userdata2;
++	WGPipelineWrapper *pw = nullptr;
++	if (WGPipelineWrapper **found = driver->render_u16_in_flight.getptr(token)) {
++		pw = *found;
++		driver->render_u16_in_flight.erase(token);
++		pw->render_u16_token = 0;
++	}
++	if (!pw) {
++		if (p_pipeline) {
++			wgpuRenderPipelineRelease(p_pipeline);
++		}
++		return;
++	}
++	if (p_status == WGPUCreatePipelineAsyncStatus_Success) {
++		pw->render_handle_u16 = p_pipeline;
++	} else {
++		// Non-fatal, as on the synchronous path: the Uint32 variant still draws.
++		WARN_PRINT_ONCE("WebGPU: failed to create Uint16 strip pipeline variant.");
++		if (p_pipeline) {
++			wgpuRenderPipelineRelease(p_pipeline);
++		}
++	}
++	if (pw->render_waiting > 0) {
++		pw->render_waiting--;
++	}
++	// The Uint32 compile may have failed (render_handle null): then it stays pending, as before.
++	pw->render_pending = pw->render_waiting > 0 || !pw->render_handle;
+ }
+ 
+ void RenderingDeviceDriverWebGPU::command_bind_push_constants(CommandBufferID p_cmd_buffer, ShaderID p_shader, uint32_t p_first_index, VectorView<uint32_t> p_data) {
+@@ -8926,6 +8994,7 @@ void RenderingDeviceDriverWebGPU::command_begin_render_pass(CommandBufferID p_cm
+ 
+ 	// Reset cached state — new render pass requires binding everything fresh.
+ 	cmd->render_state.current_pipeline = nullptr;
++	cmd->render_state.skip_draws = false;
+ 	cmd->render_state.blend_constants_set = false;
+ 	cmd->render_state.blend_constants_as_alpha = false;
+ 	cmd->render_state.current_index_buffer = nullptr;
+@@ -9076,6 +9145,7 @@ void RenderingDeviceDriverWebGPU::command_next_render_subpass(CommandBufferID p_
+ 	cmd->invalidate_bind_groups();
+ 	cmd->reset_bound_group_state();
+ 	cmd->render_state.current_pipeline = nullptr;
++	cmd->render_state.skip_draws = false;
+ 	cmd->render_state.blend_constants_set = false;
+ 	cmd->render_state.blend_constants_as_alpha = false;
+ 	cmd->render_state.current_index_buffer = nullptr;
+@@ -9167,7 +9237,13 @@ void RenderingDeviceDriverWebGPU::command_bind_render_pipeline(CommandBufferID p
+ 	ERR_FAIL_NULL(cmd);
+ 	ERR_FAIL_NULL(pw);
+ 	ERR_FAIL_COND(!cmd->render_encoder);
+-	ERR_FAIL_COND_MSG(pw->render_pending, "WebGPU: a render pipeline was bound before its asynchronous compilation finished (pipeline_is_ready()).");
++	if (pw->render_pending) {
++		// BOTF async-all: still compiling; draw nothing with it until it is ready.
++		cmd->render_state.current_pipeline = nullptr;
++		cmd->render_state.skip_draws = true;
++		return;
++	}
++	cmd->render_state.skip_draws = false;
+ 
+ 	if (cmd->render_state.current_pipeline == pw) {
+ 		return; // Pipeline already bound, skip redundant call.
+@@ -9486,6 +9562,9 @@ void RenderingDeviceDriverWebGPU::command_render_draw(CommandBufferID p_cmd_buff
+ 	WGCommandBuffer *cmd = (WGCommandBuffer *)(p_cmd_buffer.id);
+ 	ERR_FAIL_NULL(cmd);
+ 	ERR_FAIL_COND(!cmd->render_encoder);
++	if (cmd->render_state.skip_draws) {
++		return; // BOTF async-all: pipeline still compiling.
++	}
+ 
+ 	if (cmd->render_state.current_pipeline) {
+ 		_reconcile_render_bind_groups(cmd, cmd->render_state.current_pipeline->shader);
+@@ -9503,6 +9582,9 @@ void RenderingDeviceDriverWebGPU::command_render_draw_indexed(CommandBufferID p_
+ 	WGCommandBuffer *cmd = (WGCommandBuffer *)(p_cmd_buffer.id);
+ 	ERR_FAIL_NULL(cmd);
+ 	ERR_FAIL_COND(!cmd->render_encoder);
++	if (cmd->render_state.skip_draws) {
++		return; // BOTF async-all: pipeline still compiling.
++	}
+ 
+ 	WGPipelineWrapper *pw = cmd->render_state.current_pipeline;
+ 	if (pw) {
+@@ -9531,6 +9613,9 @@ void RenderingDeviceDriverWebGPU::command_render_draw_indexed_indirect(CommandBu
+ 	ERR_FAIL_NULL(cmd);
+ 	ERR_FAIL_NULL(indirect);
+ 	ERR_FAIL_COND(!cmd->render_encoder);
++	if (cmd->render_state.skip_draws) {
++		return; // BOTF async-all: pipeline still compiling.
++	}
+ 
+ 	WGPipelineWrapper *pw = cmd->render_state.current_pipeline;
+ 	if (pw) {
+@@ -9578,6 +9663,9 @@ void RenderingDeviceDriverWebGPU::command_render_draw_indirect(CommandBufferID p
+ 	ERR_FAIL_NULL(cmd);
+ 	ERR_FAIL_NULL(indirect);
+ 	ERR_FAIL_COND(!cmd->render_encoder);
++	if (cmd->render_state.skip_draws) {
++		return; // BOTF async-all: pipeline still compiling.
++	}
+ 
+ 	if (cmd->render_state.current_pipeline) {
+ 		_reconcile_render_bind_groups(cmd, cmd->render_state.current_pipeline->shader);
+@@ -10276,7 +10364,8 @@ RDD::PipelineID RenderingDeviceDriverWebGPU::render_pipeline_create(
+ 	// which also produces the page's frames, so a Forward+ specialization (~0.5 s
+ 	// on a desktop GPU) froze the game each time a new one was needed. A strip
+ 	// pipeline needs a second, Uint16 variant and stays synchronous.
+-	const bool create_async = async_pipeline_creation && !is_strip;
++	// BOTF r6 (strip-async): strip pipelines compile asynchronously too, both variants (below).
++	const bool create_async = (async_pipeline_creation || async_all);
+ 	WGPURenderPipeline pipeline = nullptr;
+ 	if (!create_async) {
+ 		pipeline = wgpuDeviceCreateRenderPipeline(device, &desc);
+@@ -10297,6 +10386,7 @@ RDD::PipelineID RenderingDeviceDriverWebGPU::render_pipeline_create(
+ 	if (create_async) {
+ 		const uint64_t token = prewarm_next_token++;
+ 		pw->render_pending = true;
++		pw->render_waiting = 1;
+ 		pw->render_async_token = token;
+ 		render_pipelines_in_flight.insert(token, pw);
+ 		WGPUCreateRenderPipelineAsyncCallbackInfo callback_info = {};
+@@ -10336,10 +10426,23 @@ RDD::PipelineID RenderingDeviceDriverWebGPU::render_pipeline_create(
+ 		// Create a Uint16 variant — WebGPU bakes stripIndexFormat into the pipeline,
+ 		// but Godot only knows the index format at bind time.
+ 		desc.primitive.stripIndexFormat = WGPUIndexFormat_Uint16;
+-		pw->render_handle_u16 = wgpuDeviceCreateRenderPipeline(device, &desc);
+-		// Non-fatal if this fails — Uint32 variant still works for the common case.
+-		if (!pw->render_handle_u16) {
+-			WARN_PRINT_ONCE("WebGPU: failed to create Uint16 strip pipeline variant.");
++		if (create_async) {
++			const uint64_t token16 = prewarm_next_token++;
++			pw->render_u16_token = token16;
++			pw->render_waiting++;
++			render_u16_in_flight.insert(token16, pw);
++			WGPUCreateRenderPipelineAsyncCallbackInfo callback_info16 = {};
++			callback_info16.mode = WGPUCallbackMode_AllowSpontaneous;
++			callback_info16.callback = &RenderingDeviceDriverWebGPU::_render_pipeline_u16_async_cb;
++			callback_info16.userdata1 = this;
++			callback_info16.userdata2 = (void *)(uintptr_t)token16;
++			wgpuDeviceCreateRenderPipelineAsync(device, &desc, callback_info16);
++		} else {
++			pw->render_handle_u16 = wgpuDeviceCreateRenderPipeline(device, &desc);
++			// Non-fatal if this fails — Uint32 variant still works for the common case.
++			if (!pw->render_handle_u16) {
++				WARN_PRINT_ONCE("WebGPU: failed to create Uint16 strip pipeline variant.");
++			}
+ 		}
+ 	}
+ 	return PipelineID(pw);
+@@ -10373,8 +10476,11 @@ void RenderingDeviceDriverWebGPU::command_bind_compute_pipeline(CommandBufferID
+ 	}
+ 
+ 	if (!_ensure_compute_pipeline(pw)) {
++		cmd->render_state.current_pipeline = nullptr;
++		cmd->render_state.skip_dispatch = true;
+ 		return;
+ 	}
++	cmd->render_state.skip_dispatch = false;
+ 	wgpuComputePassEncoderSetPipeline(cmd->compute_encoder, pw->compute_handle);
+ 	cmd->render_state.current_pipeline = pw;
+ 
+@@ -10599,6 +10705,9 @@ void RenderingDeviceDriverWebGPU::command_compute_dispatch(CommandBufferID p_cmd
+ 	WGCommandBuffer *cmd = (WGCommandBuffer *)(p_cmd_buffer.id);
+ 	ERR_FAIL_NULL(cmd);
+ 	ERR_FAIL_COND(!cmd->compute_encoder);
++	if (cmd->render_state.skip_dispatch) {
++		return; // BOTF async-all: pipeline still compiling.
++	}
+ 
+ 	if (cmd->render_state.current_pipeline) {
+ 		_reconcile_compute_bind_groups(cmd, cmd->render_state.current_pipeline->shader);
+@@ -10614,6 +10723,9 @@ void RenderingDeviceDriverWebGPU::command_compute_dispatch_indirect(CommandBuffe
+ 	ERR_FAIL_NULL(cmd);
+ 	ERR_FAIL_NULL(indirect);
+ 	ERR_FAIL_COND(!cmd->compute_encoder);
++	if (cmd->render_state.skip_dispatch) {
++		return; // BOTF async-all: pipeline still compiling.
++	}
+ 
+ 	if (cmd->render_state.current_pipeline) {
+ 		_reconcile_compute_bind_groups(cmd, cmd->render_state.current_pipeline->shader);
+@@ -10695,57 +10807,70 @@ static constexpr uint32_t PREWARM_START_SEGMENT = 120; // ~2 s at 60 fps: after
+ static constexpr uint32_t PREWARM_PER_SEGMENT = 1;
+ static constexpr uint32_t PREWARM_MAX_IN_FLIGHT = 2;
+ 
++// BOTF async-all: starts the asynchronous compile of a deferred compute pipeline
++// (the body the prewarm used inline). False if it has to take the synchronous path.
++bool RenderingDeviceDriverWebGPU::_start_compute_async(WGPipelineWrapper *pw) {
++	if (pw->queued_for_prewarm) {
++		prewarm_queue.erase(pw);
++		pw->queued_for_prewarm = false;
++	}
++	WGShader *shader = pw->shader;
++	if (!pw->pending_specialization_constants.is_empty() && !shader->has_override_declarations) {
++		return false; // Legacy specialization: see above.
++	}
++	WGPUShaderModule module = _get_stage_module(shader, SHADER_STAGE_COMPUTE);
++	if (!module) {
++		return false;
++	}
++
++	LocalVector<WGPUConstantEntry> constants;
++	LocalVector<CharString> keys;
++	_fill_compute_constants(shader, pw->pending_specialization_constants, constants, keys);
++	WGPUComputePipelineDescriptor desc = {};
++	desc.layout = shader->pipeline_layout;
++	desc.compute.module = module;
++	desc.compute.entryPoint = { "main", WGPU_STRLEN };
++	if (!constants.is_empty()) {
++		desc.compute.constantCount = constants.size();
++		desc.compute.constants = constants.ptr();
++	}
++	const CharString label = ("cpipe-prewarm:" + shader->name).utf8();
++	desc.label = { label.get_data(), WGPU_STRLEN };
++
++	const uint64_t token = prewarm_next_token++;
++	pw->prewarm_token = token;
++	prewarm_in_flight.insert(token, pw);
++	WGPUCreateComputePipelineAsyncCallbackInfo callback_info = {};
++	callback_info.mode = WGPUCallbackMode_AllowSpontaneous;
++	callback_info.callback = &RenderingDeviceDriverWebGPU::_prewarm_compute_pipeline_cb;
++	callback_info.userdata1 = this;
++	callback_info.userdata2 = (void *)(uintptr_t)token;
++	wgpuDeviceCreateComputePipelineAsync(device, &desc, callback_info);
++	_compute_prewarm_started++;
++	_pipeline_stats_dirty = true;
++	return true;
++}
++
+ void RenderingDeviceDriverWebGPU::_prewarm_compute_pipelines() {
+ 	if (prewarm_queue.is_empty()) {
+ 		return;
+ 	}
+-	if (prewarm_segments_seen < PREWARM_START_SEGMENT) {
++	if (prewarm_segments_seen < PREWARM_START_SEGMENT && !async_all) {
+ 		prewarm_segments_seen++;
+ 		return;
+ 	}
+ 
+ 	uint32_t started = 0;
+-	while (started < PREWARM_PER_SEGMENT && prewarm_in_flight.size() < PREWARM_MAX_IN_FLIGHT && !prewarm_queue.is_empty()) {
++	while (started < (async_all ? 4u : PREWARM_PER_SEGMENT) && prewarm_in_flight.size() < (async_all ? 8u : PREWARM_MAX_IN_FLIGHT) && !prewarm_queue.is_empty()) {
+ 		WGPipelineWrapper *pw = prewarm_queue[0];
+ 		prewarm_queue.remove_at(0); // Creation order, so the earliest effects go first.
+ 		pw->queued_for_prewarm = false;
+ 		if (!pw->compute_pending) {
+ 			continue; // Already compiled by a dispatch.
+ 		}
+-		WGShader *shader = pw->shader;
+-		if (!pw->pending_specialization_constants.is_empty() && !shader->has_override_declarations) {
+-			continue; // Legacy specialization: see above.
+-		}
+-		WGPUShaderModule module = _get_stage_module(shader, SHADER_STAGE_COMPUTE);
+-		if (!module) {
++		if (!_start_compute_async(pw)) {
+ 			continue;
+ 		}
+-
+-		LocalVector<WGPUConstantEntry> constants;
+-		LocalVector<CharString> keys;
+-		_fill_compute_constants(shader, pw->pending_specialization_constants, constants, keys);
+-		WGPUComputePipelineDescriptor desc = {};
+-		desc.layout = shader->pipeline_layout;
+-		desc.compute.module = module;
+-		desc.compute.entryPoint = { "main", WGPU_STRLEN };
+-		if (!constants.is_empty()) {
+-			desc.compute.constantCount = constants.size();
+-			desc.compute.constants = constants.ptr();
+-		}
+-		const CharString label = ("cpipe-prewarm:" + shader->name).utf8();
+-		desc.label = { label.get_data(), WGPU_STRLEN };
+-
+-		const uint64_t token = prewarm_next_token++;
+-		pw->prewarm_token = token;
+-		prewarm_in_flight.insert(token, pw);
+-		WGPUCreateComputePipelineAsyncCallbackInfo callback_info = {};
+-		callback_info.mode = WGPUCallbackMode_AllowSpontaneous;
+-		callback_info.callback = &RenderingDeviceDriverWebGPU::_prewarm_compute_pipeline_cb;
+-		callback_info.userdata1 = this;
+-		callback_info.userdata2 = (void *)(uintptr_t)token;
+-		wgpuDeviceCreateComputePipelineAsync(device, &desc, callback_info);
+-		_compute_prewarm_started++;
+-		_pipeline_stats_dirty = true;
+ 		started++;
+ 	}
+ }
+@@ -10764,7 +10889,10 @@ void RenderingDeviceDriverWebGPU::_prewarm_compute_pipeline_cb(WGPUCreatePipelin
+ 	if (!pw || !pw->compute_pending || p_status != WGPUCreatePipelineAsyncStatus_Success) {
+ 		if (p_status != WGPUCreatePipelineAsyncStatus_Success && p_status != WGPUCreatePipelineAsyncStatus_CallbackCancelled) {
+ 			// Leave it to the synchronous path, whose error reporting is the usual one.
+-			print_verbose(vformat("WebGPU: background compile of a compute pipeline failed (%s); it will compile on first use.", String::utf8(p_message.data, p_message.length == WGPU_STRLEN ? -1 : (int)p_message.length)));
++			if (pw) {
++				pw->async_failed = true;
++			}
++			WARN_PRINT(vformat("WebGPU: background compile of a compute pipeline failed (%s); it will compile on first use.", String::utf8(p_message.data, p_message.length == WGPU_STRLEN ? -1 : (int)p_message.length)));
+ 		}
+ 		if (p_pipeline) {
+ 			wgpuComputePipelineRelease(p_pipeline);
+@@ -10798,6 +10926,9 @@ bool RenderingDeviceDriverWebGPU::_ensure_compute_pipeline(WGPipelineWrapper *p_
+ 	if (!p_pipeline->compute_pending) {
+ 		return p_pipeline->compute_handle != nullptr;
+ 	}
++	if (false && async_all && !p_pipeline->async_failed && (p_pipeline->prewarm_token || _start_compute_async(p_pipeline))) { // off: skipped one-shot compute (LUTs, radiance) left hulls black
++		return false; // BOTF async-all: compiling on a GPU-process worker; skip until ready.
++	}
+ 	p_pipeline->compute_pending = false; // Whatever happens below, try once.
+ 	_compute_compiled_on_first_use++;
+ 	_pipeline_stats_dirty = true;
+@@ -11167,8 +11298,10 @@ void RenderingDeviceDriverWebGPU::command_insert_breadcrumb(CommandBufferID p_cm
+ void RenderingDeviceDriverWebGPU::begin_segment(uint32_t p_frame_index, uint32_t p_frames_drawn) {
+ 	frame_index = p_frame_index;
+ 	frames_drawn = p_frames_drawn;
++	async_all = EM_ASM_INT({ return globalThis.godotWebgpuAsyncAll === false ? 0 : 1; }) != 0;
+ 	_prewarm_compute_pipelines();
+ 	_publish_pipeline_stats();
++	EM_ASM({ globalThis.godotWebgpuPending = $0; globalThis.godotWebgpuQueued = $1; }, (int)(render_pipelines_in_flight.size() + render_u16_in_flight.size() + prewarm_in_flight.size()), (int)prewarm_queue.size());
+ 
+ 	// Per-frame counters, summarized once a second.
+ 	//
+diff --git a/drivers/webgpu/rendering_device_driver_webgpu.h b/drivers/webgpu/rendering_device_driver_webgpu.h
+index 4d075884..1879daa0 100644
+--- a/drivers/webgpu/rendering_device_driver_webgpu.h
++++ b/drivers/webgpu/rendering_device_driver_webgpu.h
+@@ -71,7 +71,17 @@ class RenderingDeviceDriverWebGPU : public RenderingDeviceDriver {
+ 	// Render pipelines created through createRenderPipelineAsync() while
+ 	// pipeline_set_async_creation() is on, by token until their result arrives.
+ 	bool async_pipeline_creation = false;
++	// BOTF patch (async-all, 19 Nov 2026): while globalThis.godotWebgpuAsyncAll is not
++	// false, every render pipeline (except strip variants) and every compute pipeline
++	// is compiled through the async API, so Chrome compiles it on a GPU-process worker
++	// instead of the GPU main thread that also presents frames. A pending pipeline's
++	// draws/dispatches are skipped until it is ready. globalThis.godotWebgpuPending is
++	// the number still compiling, for a loading screen to wait on.
++	bool async_all = true;
++	bool _start_compute_async(WGPipelineWrapper *p_pipeline);
+ 	HashMap<uint64_t, WGPipelineWrapper *> render_pipelines_in_flight;
++	HashMap<uint64_t, WGPipelineWrapper *> render_u16_in_flight; // BOTF r6 strip-async
++	static void _render_pipeline_u16_async_cb(WGPUCreatePipelineAsyncStatus p_status, WGPURenderPipeline p_pipeline, WGPUStringView p_message, void *p_userdata1, void *p_userdata2);
+ 	static void _render_pipeline_async_cb(WGPUCreatePipelineAsyncStatus p_status, WGPURenderPipeline p_pipeline, WGPUStringView p_message, void *p_userdata1, void *p_userdata2);
+ 
+ 	// Per-frame performance counters (logged once per second via EM_ASM).
+diff --git a/drivers/webgpu/webgpu_objects.h b/drivers/webgpu/webgpu_objects.h
+index d7572982..7fca9707 100644
+--- a/drivers/webgpu/webgpu_objects.h
++++ b/drivers/webgpu/webgpu_objects.h
+@@ -303,6 +303,7 @@ struct WGPipelineWrapper {
+ 	// queued, or the token of an asynchronous creation in flight (0 if none).
+ 	bool queued_for_prewarm = false;
+ 	uint64_t prewarm_token = 0;
++	bool async_failed = false; // BOTF async-all: its async compile failed; take the synchronous path.
+ 	// A render pipeline created asynchronously
+ 	// (RenderingDeviceDriverWebGPU::pipeline_set_async_creation()): render_handle
+ 	// is null until the result arrives, and the token of the creation in flight is
+@@ -310,6 +311,10 @@ struct WGPipelineWrapper {
+ 	// pipeline_is_ready(); one that failed to compile stays not ready.
+ 	bool render_pending = false;
+ 	uint64_t render_async_token = 0;
++	// BOTF r6 (strip-async): a strip pipeline's Uint16 variant compiles asynchronously too;
++	// render_pending clears once every outstanding compile (1, or 2 for a strip) is back.
++	uint64_t render_u16_token = 0;
++	uint8_t render_waiting = 0;
+ 
+ 	WGPipelineWrapper() : render_handle(nullptr) {}
+ };
+@@ -469,6 +474,8 @@ struct WGCommandBuffer {
+ 		WGFramebuffer *framebuffer = nullptr;
+ 		uint32_t current_subpass = 0;
+ 		WGPipelineWrapper *current_pipeline = nullptr;
++		bool skip_draws = false; // BOTF async-all: the bound render pipeline is still compiling.
++		bool skip_dispatch = false; // BOTF async-all: the bound compute pipeline is still compiling.
+ 		WGPUIndexFormat current_index_format = WGPUIndexFormat_Uint32;
+ 		// The blend constants Godot last set in this pass, and whether they were
+ 		// applied as (a, a, a, a) for a constant-alpha pipeline.
+diff --git a/drivers/webgpu/wgsl_precompile.py b/drivers/webgpu/wgsl_precompile.py
+index a76433af..f2c030b8 100644
+--- a/drivers/webgpu/wgsl_precompile.py
++++ b/drivers/webgpu/wgsl_precompile.py
+@@ -1295,6 +1295,10 @@ def build_wgsl_precompiled(target, source, env):
+         print("[WGSL Precompile] ERROR: wgsl_cli/build.sh not found", file=sys.stderr)
+         sys.exit(1)
+ 
++    if os.environ.get("WGSL_CONVERT_CLI") and os.path.isfile(os.environ["WGSL_CONVERT_CLI"]):
++        # BOTF: use a prebuilt converter (the editor ships one) instead of building it with clang++.
++        precompile_wgsl(repo_root, output, env.get("GLSLANG", "glslangValidator"))
++        return
+     print("[WGSL Precompile] Building wgsl_convert_cli...")
+     result = subprocess.run(
+         ["bash", build_script],
