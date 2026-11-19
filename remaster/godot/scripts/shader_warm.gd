@@ -60,8 +60,10 @@ static var done := false
 
 
 ## True when this session still has to warm (web only, once).
+## WebGPU only. On WebGL (Firefox) each ANGLE compile took 1.3-5 s by itself, so a shader a frame still froze every frame
+## and held the boot panel 54 s with no gain in the worst frame (r6 measurement); the Compatibility build skips it.
 static func needed() -> bool:
-	return not done and OS.has_feature("web")
+	return not done and OS.has_feature("web") and GpuReadback.webgpu()
 
 
 ## Runs the warm-up under `host` and returns when it is over. `progress` (optional) gets (done, total).
