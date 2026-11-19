@@ -589,11 +589,15 @@ test('Balance and AI (MOD-7): Expert, planets per star, start colonies, race sta
   assert.equal(ex.meta.playerName, 'Federation');
 });
 
-test('tactical rules 3: rounds carry the core combat event stream and ships their mounts', () => {
-  call('newBattleDrill', { station: true });   // Remastered preset -> flight model (rules 3)
+test('tactical rules 3+: rounds carry the core combat event stream and ships their mounts', () => {
+  // The station drill plays the Remastered preset. Since 8 Nov 2026 (69e81a5, BATTLE-DESIGN proposals 9-12, Simon's yes)
+  // that preset turns on WEGO (Rules.cpp: wegoCombat = remastered; COMBAT-RULES.md "Tactical rules 4"), and rules 4 is
+  // rules 3 plus simultaneous movement, so the rules 3 event stream below must still hold. The engine was right; this
+  // test predated the switch-on.
+  call('newBattleDrill', { station: true });
   assert.equal(call('endTurn').status, 'battle');
   let e = call('tactical');
-  assert.equal(e.rules, 3);
+  assert.equal(e.rules, 4, 'Remastered preset fights under WEGO (rules 4)');
   assert.equal(e.ticksPerRound, 12);
   for (const s of e.ships.filter((x) => !x.hidden && !x.station)) {
     assert.ok(Array.isArray(s.weapons) && s.weapons.length > 0, `mounts for ${s.name}`);
