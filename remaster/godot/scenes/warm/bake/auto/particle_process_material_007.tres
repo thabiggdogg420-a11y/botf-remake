@@ -1,0 +1,23 @@
+[gd_resource type="ParticleProcessMaterial" format=3]
+
+[sub_resource type="Image" id="Image_nue8u"]
+data = {
+"data": PackedByteArray(255, 255, 255, 255),
+"format": "RGBA8",
+"height": 1,
+"mipmaps": false,
+"width": 1
+}
+
+[sub_resource type="ImageTexture" id="ImageTexture_u2knw"]
+image = SubResource("Image_nue8u")
+
+[resource]
+direction = Vector3(0, 0, 1)
+spread = 180.0
+initial_velocity_min = 0.005
+initial_velocity_max = 0.02
+gravity = Vector3(0, 0, 0)
+scale_min = 0.006
+scale_max = 0.012
+color_ramp = SubResource("ImageTexture_u2knw")

@@ -37,12 +37,21 @@ func _initialize() -> void:
 
 
 func _process(_delta: float) -> bool:
+	# r7: the effect materials BattleFx.prewarm() builds (every burst kind, spark stream) live only 3 frames, and the
+	# title's background battle warm-up draws them on the web: capture them every frame while they exist.
+	if _view != null and _frames == 5 and "fx" in _view and _view.fx != null:
+		_view.fx.prewarm()
 	if _view != null and _frames % 60 == 0 and _frames / 60 < 3 and _frames / 60 < (_enc.get("rounds", []) as Array).size():
 		_view.play_round(_enc, _frames / 60)
 	_frames += 1
-	if _frames % 15 == 0:
-		_collect(root)
+	_collect(root) # every frame (r7): prewarm's bursts are freed after 3 frames, a 15-frame sample missed them
 	if _frames >= 200:
+		# r7: a damaged ship's fire, smoke and vent emitters (BattleShip._particle_mat) only exist once a hull is hit
+		# hard enough; the first one compiled mid-round on the web. Every additive/flipbook combination.
+		var tex := BattleShip.puff_texture()
+		for additive in [false, true]:
+			for flipbook in [false, true]:
+				_take(BattleShip._particle_mat(tex, additive, flipbook))
 		print("runtime materials: %d saved to %s" % [_n, OUT])
 		return true
 	return false

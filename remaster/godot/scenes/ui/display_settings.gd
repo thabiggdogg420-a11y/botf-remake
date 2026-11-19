@@ -122,7 +122,10 @@ static func apply_viewport(v: Viewport, s: Dictionary) -> void:
 	fill_defaults(s)
 	var scale := clampf(float(s["display.renderScale"]), 0.5, 1.0)
 	v.scaling_3d_scale = scale
-	v.scaling_3d_mode = Viewport.SCALING_3D_MODE_FSR if scale < 0.999 else Viewport.SCALING_3D_MODE_BILINEAR
+	# Set by a built name on purpose (WebGPU round 7): the export's shader baker bakes Forward+'s advanced variants (TAA,
+	# FSR 2 motion vectors: 70 MB of the browser build's shader pack) for any script that names this property, without
+	# looking at the value. Only FSR 1 and bilinear are ever set here, which need none of them.
+	v.set("scaling_3d" + "_mode", Viewport.SCALING_3D_MODE_FSR if scale < 0.999 else Viewport.SCALING_3D_MODE_BILINEAR)
 	var aa := str(s["display.antiAlias"])
 	v.screen_space_aa = Viewport.SCREEN_SPACE_AA_FXAA if aa == "fxaa" else Viewport.SCREEN_SPACE_AA_DISABLED
 	v.msaa_3d = {"msaa2": Viewport.MSAA_2X, "msaa4": Viewport.MSAA_4X, "msaa8": Viewport.MSAA_8X}.get(aa, Viewport.MSAA_DISABLED)

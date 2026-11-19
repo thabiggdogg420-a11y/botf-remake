@@ -1,0 +1,86 @@
+diff --git a/core/io/file_access.cpp b/core/io/file_access.cpp
+index e16e06eb..2a763d44 100644
+--- a/core/io/file_access.cpp
++++ b/core/io/file_access.cpp
+@@ -42,6 +42,36 @@
+ #include "core/os/os.h"
+ #include "core/os/time.h"
+ 
++#ifdef WEB_ENABLED
++// BOTF web round 7: an exported web game has res:// only in its mounted packs, and the engine probes res:// for files
++// that are not there all the time (.remap, .import, .gdc and uid variants while scripts compile and resources load).
++// Each miss falls through to the Emscripten file system, whose path lookup throws a JS exception per missing file:
++// about 30% of the boot's script-compile frames. A res:// path that was not found once is remembered as missing;
++// a hit is never cached, so a file that does exist on disk (GDExtension side modules) still loads.
++#include "core/os/mutex.h"
++#include "core/templates/hash_set.h"
++static HashSet<String> web_res_missing;
++static Mutex web_res_missing_mutex;
++static bool _web_res_known_missing(const String &p_path) {
++	if (!p_path.begins_with("res://")) {
++		return false;
++	}
++	MutexLock lock(web_res_missing_mutex);
++	return web_res_missing.has(p_path);
++}
++static void _web_res_note_missing(const String &p_path) {
++	if (!p_path.begins_with("res://")) {
++		return;
++	}
++	static const bool exported = OS::get_singleton() && OS::get_singleton()->has_feature("template");
++	if (!exported) {
++		return;
++	}
++	MutexLock lock(web_res_missing_mutex);
++	web_res_missing.insert(p_path);
++}
++#endif
++
+ Ref<FileAccess> FileAccess::create(AccessType p_access) {
+ 	ERR_FAIL_INDEX_V(p_access, ACCESS_MAX, nullptr);
+ 	ERR_FAIL_NULL_V(create_func[p_access], nullptr);
+@@ -56,9 +86,20 @@ bool FileAccess::exists(const String &p_name) {
+ 		return true;
+ 	}
+ 
++#ifdef WEB_ENABLED
++	if (_web_res_known_missing(p_name)) {
++		return false;
++	}
++#endif
+ 	// Using file_exists because it's faster than trying to open the file.
+ 	Ref<FileAccess> ret = create_for_path(p_name);
+-	return ret->file_exists(p_name);
++	const bool found = ret->file_exists(p_name);
++#ifdef WEB_ENABLED
++	if (!found) {
++		_web_res_note_missing(p_name);
++	}
++#endif
++	return found;
+ }
+ 
+ void FileAccess::_set_access_type(AccessType p_access) {
+@@ -171,8 +212,22 @@ Ref<FileAccess> FileAccess::open(const String &p_path, int p_mode_flags, Error *
+ 		}
+ 	}
+ 
++#ifdef WEB_ENABLED
++	const bool web_read_only = !(p_mode_flags & WRITE);
++	if (web_read_only && _web_res_known_missing(p_path)) {
++		if (r_error) {
++			*r_error = ERR_FILE_NOT_FOUND;
++		}
++		return Ref<FileAccess>();
++	}
++#endif
+ 	ret = create_for_path(p_path);
+ 	Error err = ret->open_internal(p_path, p_mode_flags & ~SKIP_PACK);
++#ifdef WEB_ENABLED
++	if (web_read_only && err == ERR_FILE_NOT_FOUND) {
++		_web_res_note_missing(p_path);
++	}
++#endif
+ 
+ 	if (r_error) {
+ 		*r_error = err;

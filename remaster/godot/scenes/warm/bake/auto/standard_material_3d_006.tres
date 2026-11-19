@@ -1,8 +1,21 @@
 [gd_resource type="StandardMaterial3D" format=3]
 
+[sub_resource type="Image" id="Image_l8vmw"]
+data = {
+"data": PackedByteArray(255, 255, 255, 255),
+"format": "RGBA8",
+"height": 1,
+"mipmaps": false,
+"width": 1
+}
+
+[sub_resource type="ImageTexture" id="ImageTexture_dhi86"]
+image = SubResource("Image_l8vmw")
+
 [resource]
-render_priority = 1
 transparency = 1
-cull_mode = 2
+blend_mode = 1
 shading_mode = 0
 vertex_color_use_as_albedo = true
+albedo_texture = SubResource("ImageTexture_dhi86")
+disable_receive_shadows = true

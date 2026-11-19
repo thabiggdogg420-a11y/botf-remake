@@ -82,12 +82,18 @@ func _ready() -> void:
 		p.finished.connect(_on_sfx_finished.bind(p))
 		add_child(p)
 		_sfx.append(p)
+	# WebGPU round 7: the web default plays every sound as a Sample, which decodes the whole clip on the main thread the
+	# first time it plays: the title's music track froze the page about 2 s right after the title appeared. Music and
+	# voice lines stream on the web instead (decoded as they play); short effects stay Samples.
+	var stream_web := AudioServer.PLAYBACK_TYPE_STREAM if OS.has_feature("web") else AudioServer.PLAYBACK_TYPE_DEFAULT
 	_voice = AudioStreamPlayer.new()
 	_voice.bus = BotfAudioCues.BUS_VOICE
+	_voice.playback_type = stream_web
 	add_child(_voice)
 	for i in 2:
 		var m := AudioStreamPlayer.new()
 		m.bus = BotfAudioCues.BUS_MUSIC
+		m.playback_type = stream_web
 		m.volume_db = -80.0
 		m.finished.connect(_on_music_finished.bind(m))
 		add_child(m)
