@@ -24,9 +24,12 @@ static func _check(path: String) -> bool:
 
 ## Mounts an extra resource pack (a web-fetchable asset bundle already in user:// or res://).
 static func mount_pack(path: String) -> bool:
+	var t := LoadTrace.start()
 	var ok := _check(path) and ProjectSettings.load_resource_pack(path)
+	t = LoadTrace.done("pack mount %s" % path.get_file(), t)
 	if ok:
 		art_events.packs_mounted.emit(path)
+		LoadTrace.done("pack mounted signal %s" % path.get_file(), t)
 	return ok
 
 ## Art widgets (PortraitSlot, PlanetOrb, ChoiceIcon) connect to `AppLoader.art_events.packs_mounted` and re-request their
@@ -434,6 +437,7 @@ static func _download_pack(host: Node, url: String, dest: String, name: String, 
 		+ ".then(function(b){engine.copyToFS(" + JSON.stringify(path) + ",b.buffer);s.ok=true;s.done=true;})" \
 		+ ".catch(function(e){s.err=String(e);s.done=true;});})();"
 	progress = {"name": name, "bytes": 0, "total": want}
+	LoadTrace.mark("download %s (%d bytes)" % [name, want])
 	JavaScriptBridge.eval(js)
 	var tree := host.get_tree()
 	var st: Dictionary = {}
@@ -477,6 +481,7 @@ static func flush_pending(host: Node) -> void:
 ## calls the file system's syncfs directly and waits for its callback. Falls back to the open/close nudge when it is not reachable.
 static func _flush_sync(host: Node) -> void:
 	_unsynced = 0
+	LoadTrace.mark("flush to IndexedDB")
 	var id := "s%d" % Time.get_ticks_usec()
 	var ok := bool(JavaScriptBridge.eval("(function(){try{var fs=engine.rtenv.FS;if(!fs||!fs.syncfs)return false;(window.__botfSync=window.__botfSync||{})['" + id + "']=false;fs.syncfs(false,function(e){window.__botfSync['" + id + "']=e?String(e):true;});return true;}catch(e){return false;}})()"))
 	if not ok:
