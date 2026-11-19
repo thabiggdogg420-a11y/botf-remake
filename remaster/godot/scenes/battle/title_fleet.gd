@@ -43,6 +43,35 @@ func setup(p_empire: int, p_assets: BattleAssets = null) -> void:
 	t = LoadTrace.done("title fleet: stage", t)
 	_build_ships()
 	t = LoadTrace.done("title fleet: ships", t)
+	_make_camera()
+
+
+## The web build's setup() (smoothness pass, 19 Nov 2026): the same scene a piece per frame (the environment, then one
+## ship a frame), so the title never spends a second or more in one frame. Stops quietly if the title is left meanwhile.
+func setup_sliced(p_empire: int, p_assets: BattleAssets = null) -> void:
+	empire = clampi(p_empire, 1, 5)
+	assets = p_assets
+	name = "TitleFleet"
+	var t := LoadTrace.start()
+	env = BattleEnvironment.build(self, Vector2(16, 12) * BattleScene.CELL)
+	_stage_environment()
+	_make_camera()
+	LoadTrace.done("title fleet: environment (sliced)", t)
+	var lengths := _ship_lengths()   # queues the hero models (a step per frame on the web)
+	while BattleAssets.loading():
+		await get_tree().process_frame
+		if not is_inside_tree():
+			return
+	for i in (HEROES[empire] as Array).size():
+		await get_tree().process_frame
+		if not is_inside_tree():
+			return
+		t = LoadTrace.start()
+		_build_ship(i, lengths)
+		LoadTrace.done("title fleet: ship %d (sliced)" % i, t)
+
+
+func _make_camera() -> void:
 	camera = Camera3D.new()
 	camera.name = "Camera"
 	camera.fov = 40.0
@@ -69,6 +98,13 @@ static func lengths_for(canon: Array) -> Array:
 
 
 func _build_ships() -> void:
+	var lengths := _ship_lengths()
+	for i in (HEROES[empire] as Array).size():
+		_build_ship(i, lengths)
+
+
+## Display lengths of the lead and escorts (starts the hero loads first: worker threads on desktop).
+func _ship_lengths() -> Array:
 	var picks: Array = HEROES[empire]
 	if assets != null:
 		# The three hulls parse in parallel on worker threads (a Galaxy alone is ~2 s), not one after another.
@@ -84,19 +120,22 @@ func _build_ships() -> void:
 			if h > 0.0:
 				l = h
 		canon.append(l)
-	var lengths := lengths_for(canon)
+	return lengths_for(canon)
+
+
+func _build_ship(i: int, lengths: Array) -> void:
+	var picks: Array = HEROES[empire]
 	var heading := Basis(Vector3.UP, deg_to_rad(HEADING_DEG))
-	for i in picks.size():
-		var ship := BattleShip.new()
-		add_child(ship)
-		# maxHull picks the larger procedural variant for the lead; displayLength sets the size outright.
-		ship.setup({"id": i + 1, "owner": empire, "name": picks[i][1], "assetKey": picks[i][0],
-			"maxHull": 150 if i == 0 else 70, "displayLength": lengths[i]}, assets)
-		var at: Vector3 = heading * (FORMATION[i] * HERO_LENGTH)
-		var basis := heading * Basis(Vector3.RIGHT, deg_to_rad(BANK_DEG[i]))
-		_base.append(Transform3D(basis, at))
-		ship.transform = _base[i]
-		ships.append(ship)
+	var ship := BattleShip.new()
+	add_child(ship)
+	# maxHull picks the larger procedural variant for the lead; displayLength sets the size outright.
+	ship.setup({"id": i + 1, "owner": empire, "name": picks[i][1], "assetKey": picks[i][0],
+		"maxHull": 150 if i == 0 else 70, "displayLength": lengths[i]}, assets)
+	var at: Vector3 = heading * (FORMATION[i] * HERO_LENGTH)
+	var basis := heading * Basis(Vector3.RIGHT, deg_to_rad(BANK_DEG[i]))
+	_base.append(Transform3D(basis, at))
+	ship.transform = _base[i]
+	ships.append(ship)
 
 
 func _stage_environment() -> void:
