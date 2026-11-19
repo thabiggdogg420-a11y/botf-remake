@@ -2045,3 +2045,15 @@ Built by `tools/hullhd/f4_config.py` -> `hullhd_build.py`; sources stay in the g
 | ship.baj.assault | Thingiverse 4390840, Bajoran Raider, m_collectable | CC NC |
 | ship.borg.cube, car.atr4107, car.scout, rom.drone | Bridge Commander library (B_TNG_CUBE, CardFreighter, C_TNG_BARKUS, R_TOS_SWARM) | as the rest of the BC library |
 | Xindi (5), sul.cell_ship, nau.raider, baj.lightship, fer.outpost, fer.starbase, fer.pod, fer.scout | original, modelled in `tools/hullhd/f4_blender_builds.py` | ours |
+
+## MOD-9 media (20 Nov 2026, Barclay)
+Private, local only (nothing below is committed; `tools/mod9/build_mod9.py` rebuilds it from Simon's own disc and library).
+
+| Item | Source | Licence |
+|---|---|---|
+| Opening movie `movies/open.ogv` | BOTF disc (`BOTF.iso` ENGLISH\open.avi, video; ENGLISH\INTRO.WAV, sound) | MicroProse/Paramount, Simon's own copy |
+| Race intros `movies/fed|kli|rom|car|fer.ogv` | BOTF disc ENGLISH\H/K/R/C/F.avi | as above |
+| End-game speeches (15 wins, 5 defeats) | BOTF disc EOG wavs (already in the voice packs); texts transcribed with faster-whisper small.en, names corrected | as above |
+| Dominion voice (8 clips) | DS9 episodes on `D:\TV Shows` (To the Death, By Inferno's Light, A Time to Stand, Rocks and Shoals, What You Leave Behind), centre channel, cut by subtitle line | Paramount, Simon's own copies |
+| Borg lines `vo.borg.hail`, `vo.borg.locutus` | Star Trek: First Contact on `D:\Movies\Star Trek`, centre channel, cut by subtitle line | as above |
+| Borg cutscenes, the Dominion intro | drawn in-engine (`scenes/ui/cinema.gd`) with the game's own hulls and planets | ours |

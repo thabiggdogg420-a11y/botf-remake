@@ -338,10 +338,54 @@ func _add_flagship_marking() -> void:
 	bm.albedo_color = FLAGSHIP_GOLD
 	beacon.material_override = bm
 	beacon.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	beacon.scale = Vector3.ONE * clampf(length * 0.016, 0.16, 0.6)
-	beacon.position = Vector3(0, he.y * 1.15, 0)
+	var bs := clampf(length * 0.016, 0.16, 0.6)
+	beacon.scale = Vector3.ONE * bs
+	# F4 round 3: the beacon sits on the hull's own top at its middle, not at the bounding box's top: a tall fin or
+	# sail (Bird-of-Prey wings up, the lightship's sails, D'deridex neck) put the old one far above the hull.
+	beacon.position = Vector3(0, top_near_centre(model, maxf(he.x, he.z) * 0.3, he.y) + bs * 1.4, 0)
 	model.add_child(beacon)
 	_meshes.append(beacon)
+
+
+## Height (model space) of the hull's top where the vertical line through the model's origin meets it: the highest
+## triangle (every mesh under `root`; nav lights, flagship marks and shields excluded) whose footprint covers the origin,
+## sampled at the origin and at four points `radius` out, so a slot or hole right at the middle does not miss the hull.
+## `fallback` when no triangle lies over any of those points.
+static func top_near_centre(root: Node3D, radius: float, fallback: float) -> float:
+	var probes := [Vector2.ZERO, Vector2(radius, 0), Vector2(-radius, 0), Vector2(0, radius), Vector2(0, -radius)]
+	var best := -INF
+	var stack := [[root, Transform3D.IDENTITY]]
+	while not stack.is_empty():
+		var item = stack.pop_back()
+		var node: Node = item[0]
+		var t: Transform3D = item[1]
+		if node is MeshInstance3D and node.mesh != null and not str(node.name).begins_with("NavLight") 				and not str(node.name).begins_with("Flagship") and not "hield" in str(node.name):
+			var f: PackedVector3Array = (node.mesh as Mesh).get_faces()
+			for i in range(0, f.size() - 2, 3):
+				var a := t * f[i]
+				var b := t * f[i + 1]
+				var c := t * f[i + 2]
+				for p: Vector2 in probes:
+					var y := _tri_height(a, b, c, p)
+					if y > best:
+						best = y
+		for ch in node.get_children():
+			if ch is Node3D:
+				stack.append([ch, t * (ch as Node3D).transform])
+	return best if best > -INF else fallback
+
+
+## Height of triangle abc above the point p (x, z), or -INF when p lies outside its footprint.
+static func _tri_height(a: Vector3, b: Vector3, c: Vector3, p: Vector2) -> float:
+	var d := (b.z - c.z) * (a.x - c.x) + (c.x - b.x) * (a.z - c.z)
+	if absf(d) < 1e-9:
+		return -INF
+	var u := ((b.z - c.z) * (p.x - c.x) + (c.x - b.x) * (p.y - c.z)) / d
+	var v := ((c.z - a.z) * (p.x - c.x) + (a.x - c.x) * (p.y - c.z)) / d
+	var w := 1.0 - u - v
+	if u < -1e-6 or v < -1e-6 or w < -1e-6:
+		return -INF
+	return u * a.y + v * b.y + w * c.y
 
 
 func _measure() -> void:

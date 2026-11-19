@@ -6,7 +6,7 @@
 Reads LocalAssets/audio/cues.json (the BOTF banks, remaster/tools/build_audio_cues.py) and LocalAssets/audio/trek/cues.json
 (Simon's Trek library, mine_trek_audio.py cues). Writes, under --out (gitignored, private):
 
-  <pack>/<kind>/<name>.ogg      one folder per pack: "shared" plus one per empire (fed kli rom car fer)
+  <pack>/<kind>/<name>.ogg      one folder per pack: "shared" plus one per empire (fed kli rom car fer dom)
   <pack>/cues.json              {"cues": {key: [relative ogg paths]}}, read by BotfAudioLibrary.load_pack
   pack_manifest.json            packs, file counts, bytes, budgets and any violation
 
@@ -27,7 +27,9 @@ import re
 import subprocess
 import sys
 
-FACS = ["fed", "kli", "rom", "car", "fer"]
+FACS = ["fed", "kli", "rom", "car", "fer", "dom"]
+# MOD-9 (20 Nov 2026): the Dominion's voice is its own pack; its weapon sounds stay shared (every player hears them in battle).
+VOICE_ONLY_FACS = {"dom"}
 BUDGET = {"voice": 120 * 1024, "sfx": 80 * 1024, "music": int(2.5 * 1024 * 1024)}
 PACK_BUDGET = {"shared": 15 * 1024 * 1024}
 EMPIRE_BUDGET = 40 * 1024 * 1024
@@ -48,6 +50,8 @@ def pack_of(key):
     parts = key.split(".")
     for p in reversed(parts):
         if p in FACS:
+            if p in VOICE_ONLY_FACS and not key.startswith("vo."):
+                return "shared"
             return p
     return "shared"
 
@@ -112,7 +116,7 @@ def main():
     a = ap.parse_args()
 
     tables = []
-    for rel in ["cues.json", "trek/cues.json"]:
+    for rel in ["cues.json", "trek/cues.json", "mod9/cues.json"]:   # mod9: tools/mod9/build_mod9.py (Dominion, Borg)
         p = os.path.join(a.audio, rel)
         if os.path.exists(p):
             tables.append((os.path.dirname(p), json.load(open(p, encoding="utf-8"))["cues"]))
@@ -169,6 +173,11 @@ def main():
         if note.startswith("OVER") or note == "encode failed":
             manifest["violations"].append("%s: %s" % (os.path.relpath(dst, a.out).replace("\\", "/"), note))
     json.dump(manifest, open(os.path.join(a.out, "pack_manifest.json"), "w"), indent=1)
+    sp = os.path.join(a.audio, "mod9", "speeches.json")   # MOD-9 end-game speech texts, read by EndSpeech (shared pack, json)
+    if os.path.exists(sp):
+        os.makedirs(os.path.join(a.out, "shared"), exist_ok=True)
+        with open(sp, encoding="utf-8") as f, open(os.path.join(a.out, "shared", "speeches.json"), "w", encoding="utf-8") as g:
+            g.write(f.read())
     for k, v in manifest["packs"].items():
         print("%-7s %4d keys %5d files %7.1f MB (budget %.0f MB)" % (k, v["keys"], v["files"], v["bytes"] / 1048576, v["budget"] / 1048576))
     print("violations:", len(manifest["violations"]))

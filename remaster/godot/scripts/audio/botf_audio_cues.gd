@@ -12,7 +12,7 @@ const BUS_INTERFACE := "Interface"
 const BUS_MUSIC := "Music"
 const BUSES := ["Master", "Effects", "Voice", "Interface", "Music"]
 
-const FACTION_PREFIX := {1: "fed", 2: "kli", 3: "rom", 4: "car", 5: "fer"}
+const FACTION_PREFIX := {1: "fed", 2: "kli", 3: "rom", 4: "car", 5: "fer", 6: "dom"} # MOD-9: the Dominion speaks (Weyoun, the Founder, Jem'Hadar)
 
 ## cue name -> {sfx: keys tried in order, voice: keys with {fac} {other} {speaker} {detail} placeholders,
 ## bus: bus of the sfx, priority, beep: play sfx.ui.beep when no voice file resolves and no sfx is listed}.

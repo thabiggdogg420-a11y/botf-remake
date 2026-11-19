@@ -575,7 +575,8 @@ static func on_battle_joined() -> void:
 
 
 ## The turn's briefing: turn start, then one cue per kind from its events (research, construction, diplomacy...).
-static func on_turn_briefing(briefing: Variant, view: Dictionary) -> void:
+## skip_outcome: the end screen is about to open and plays the leader's speech itself (F4 end-game speeches).
+static func on_turn_briefing(briefing: Variant, view: Dictionary, skip_outcome := false) -> void:
 	var sys := instance
 	if sys == null or not (briefing is Dictionary):
 		return
@@ -587,6 +588,8 @@ static func on_turn_briefing(briefing: Variant, view: Dictionary) -> void:
 	if empires.is_empty() and sys._app != null and "meta" in sys._app:
 		empires = sys._app.meta.get("empires", [])
 	for c in BotfAudioCues.turn_cues(briefing, str(meta.get("playerName", "")), empires, player_id):
+		if skip_outcome and c.cue in ["victory", "defeat"]:
+			continue
 		sys.cue(c.cue, "", c.other, c.detail)
 
 

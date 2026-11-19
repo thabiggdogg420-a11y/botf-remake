@@ -1,0 +1,9 @@
+; MOD-9 build-only project: Godot's Movie Maker writes the Theora for the disc's movies (tools/mod9/build_mod9.py).
+config_version=5
+
+[application]
+config/name="BOTF MOD-9 movie writer"
+
+[editor]
+movie_writer/video_quality=0.45
+movie_writer/fps=24

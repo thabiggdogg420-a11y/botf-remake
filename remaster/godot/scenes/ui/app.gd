@@ -45,7 +45,9 @@ var encounter: Variant:
 var screen := ""
 var history: Array[String] = []
 var save_name := ""
-var settings := {"uiScale": 1.0, "colorblind": false, "reducedMotion": false, "autosave": true, "confirmEndTurn": false, "showGrid": true, "uiEra": "tng"}  ## plus vol_* (BotfAudioMix)
+## MOD-9: main.gd sets this in a real run; the opening, race intros and Borg cutscenes play only then (settings "cinematics").
+var cinematics_live := false
+var settings := {"cinematics": true, "uiScale": 1.0, "colorblind": false, "reducedMotion": false, "autosave": true, "confirmEndTurn": false, "showGrid": true, "uiEra": "tng"}  ## plus vol_* (BotfAudioMix)
 var map_layers := {"territory": true, "supply": true, "routes": true, "trade": true, "grid": true, "labels": true, "fog": true}
 
 var _background: ColorRect
@@ -103,6 +105,8 @@ func _ready() -> void:
 	t = LoadTrace.done("boot: theme+layers", t)
 	goto("title")
 	LoadTrace.done("boot: title", t)
+	if cinematics_on():
+		Cinema.play_movie(self, "open")   # the disc's opening over the title; any key or click skips it
 	_warm_battle.call_deferred()
 	if OS.has_feature("web"):
 		_fetch_background.call_deferred()
@@ -829,7 +833,7 @@ var _empire_audio := {}
 
 ## Web only: downloads and reads one empire's audio pack (shared audio is already in the main pck). Idempotent.
 func _fetch_empire_audio(player: int) -> void:
-	var tok: String = _EMPIRE_TOKENS.get(player, "")
+	var tok: String = BotfAudioCues.faction_prefix(player)   # the five and the Dominion (MOD-9 voice pack)
 	if tok == "" or _empire_audio.has(tok) or not OS.has_feature("web"):
 		return
 	_empire_audio[tok] = true
@@ -855,6 +859,8 @@ func start_campaign(options: Dictionary) -> bool:
 	if v.is_empty():
 		return false
 	_enter_game(v, "%s campaign %s" % [v["meta"]["playerName"], str(v["meta"]["seed"])])
+	if cinematics_on():
+		Cinema.race_intro(self, int(v["meta"]["player"]))   # MOD-9: the race's intro movie (the Dominion's drawn in-engine)
 	toast("Campaign begins. %s, turn %d." % [view["meta"]["playerName"], int(view["meta"]["turn"])], "good")
 	autosave()
 	return true
@@ -907,11 +913,12 @@ func end_turn() -> String:
 		return "battle"
 	briefing = res.get("briefing")
 	refresh()
-	BotfAudioSystem.on_turn_briefing(briefing, view)
+	BotfAudioSystem.on_turn_briefing(briefing, view, str(view.get("meta", {}).get("outcome", "ongoing")) != "ongoing")
 	if screen == "combat":
 		goto("galaxy", false)
 	autosave()
 	var outcome := str(view.get("meta", {}).get("outcome", "ongoing"))
+	_borg_cutscene(briefing)
 	if outcome != "ongoing":
 		open_overlay("end")
 	elif not view.get("aftermaths", []).is_empty():
@@ -919,6 +926,36 @@ func end_turn() -> String:
 	elif briefing is Dictionary:
 		open_overlay("briefing")
 	return "complete"
+
+## MOD-9 cinematics gate: a real run (main.gd) with the setting on.
+func cinematics_on() -> bool:
+	return cinematics_live and bool(settings.get("cinematics", true))
+
+## MOD-9 Borg cutscenes from the turn's briefing: a Borg vessel entering the quadrant, or the Borg assimilating one of the
+## player's worlds. At most one a turn (the arrival first), each over the screens the turn opens. Returns the kind played.
+func _borg_cutscene(b: Variant) -> String:
+	var pick := borg_cutscene_for(b, str(view.get("meta", {}).get("playerName", "")))
+	if pick.is_empty() or not cinematics_on():
+		return str(pick.get("kind", ""))
+	Cinema.borg(self, pick.kind, pick.asset, pick.caption)
+	return pick.kind
+
+## Pure: {kind, asset, caption} for the briefing's Borg moment, {} when none. player_name: the player's empire name.
+static func borg_cutscene_for(b: Variant, player_name: String) -> Dictionary:
+	if not (b is Dictionary):
+		return {}
+	var arrival := {}
+	var lost := {}
+	for e in b.get("events", []):
+		var text := str(e.get("text", ""))
+		if arrival.is_empty() and text.contains("Borg") and text.ends_with("detected entering the quadrant."):
+			var sphere := text.contains("Borg sphere")
+			arrival = {"kind": "arrival", "asset": "ship.borg.sphere" if sphere else "ship.borg.tactical_cube",
+				"caption": ("Borg sphere" if sphere else "Borg cube") + " detected entering the quadrant"}
+		elif lost.is_empty() and text.begins_with("The Borg have assimilated ") and player_name != "" and text.contains("(" + player_name + ")"):
+			var place := text.trim_prefix("The Borg have assimilated ").get_slice(" (", 0)
+			lost = {"kind": "assimilation", "asset": "ship.borg.tactical_cube", "caption": "The Borg have assimilated " + place}
+	return arrival if not arrival.is_empty() else lost
 
 func _open_combat_next_frame() -> void:
 	await get_tree().process_frame

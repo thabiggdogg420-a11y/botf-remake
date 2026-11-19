@@ -15,7 +15,7 @@ func _initialize() -> void:
 		return
 	DirAccess.make_dir_recursive_absolute(args[1])
 	var total := 0
-	for emp in ["fed", "kli", "rom", "car", "fer"]:
+	for emp in ["fed", "kli", "rom", "car", "fer", "dom"]:
 		var src: String = str(args[0]).path_join(emp)
 		if not DirAccess.dir_exists_absolute(src):
 			continue

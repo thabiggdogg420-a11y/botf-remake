@@ -62,6 +62,9 @@ func _ready() -> void:
 		await _web_boot()
 	var t_boot := LoadTrace.start()
 	var app_scene: Node = load("res://scenes/ui/app.tscn").instantiate()
+	# MOD-9: the opening, race intros and Borg cutscenes play only in a real run (tests and capture tools build the App
+	# themselves and never set this). "--no-intro" skips them too.
+	app_scene.cinematics_live = DisplayServer.get_name() != "headless" and not OS.get_cmdline_user_args().has("--no-intro")
 	t_boot = LoadTrace.done("boot: app scene load", t_boot)
 	add_child(app_scene)
 	LoadTrace.done("boot: app ready (total)", t_boot)

@@ -360,6 +360,9 @@ static func end_screen(app: App, preview: String = "") -> Control:
 	var rl := Lcars.para(sum["reason"], Lcars.TEXT, 18)
 	rl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	root.add_child(rl)
+	var speech := end_speech(app, won, v)
+	if speech != null:
+		root.add_child(speech)
 	var stats := Lcars.grid(4)
 	stats.add_theme_constant_override("h_separation", 40)
 	for pair in sum["stats"]:
@@ -379,6 +382,64 @@ static func end_screen(app: App, preview: String = "") -> Control:
 	acts.add_child(Lcars.pill("Title", "tertiary", func(): app.close_modal(); app.view = {}; app.goto("title")))
 	root.add_child(acts)
 	return app.open_modal(root, "", Vector2(980, 0), "good" if won else "alert")
+
+## F4 end-game speeches (MOD-9, 20 Nov 2026): the leader's speech for how the campaign ended, as in the original's end
+## screens: the power's viewscreen beside the text, which types out with the voice. Keys: vo.victory.<kind>.<fac>, kind
+## from the achieved condition (conquest, domination, diplomatic; any other win the conquest speech), defeat on a loss.
+## Text and length come from the audio pack's shared/speeches.json; with no entry the screen shows no speech.
+static func speech_key(won: bool, v: Dictionary, fac: String) -> String:
+	if fac == "":
+		return ""
+	if not won:
+		return "vo.victory.defeat.%s" % fac
+	for c in v.get("victory", {}).get("conditions", []):
+		if c.get("achieved", false):
+			var k: String = {"Conquest": "conquest", "Domination": "domination", "Diplomatic": "diplomatic"}.get(str(c.get("condition", "")), "win")
+			return "vo.victory.%s.%s" % [k, fac]
+	return "vo.victory.win.%s" % fac
+
+static func end_speech(app: App, won: bool, v: Dictionary) -> Control:
+	var player := app.player()
+	var key := speech_key(won, v, BotfAudioCues.faction_prefix(player))
+	var sp: Dictionary = Cinema.speeches().get(key, {})
+	if sp.is_empty():
+		sp = Cinema.speeches().get("vo.victory.win.%s" % BotfAudioCues.faction_prefix(player), {}) if won else {}
+		if sp.is_empty():
+			return null
+		key = "vo.victory.win.%s" % BotfAudioCues.faction_prefix(player)
+	var row := Lcars.hbox(18)
+	row.name = "EndSpeech"
+	row.set_meta("speech_key", key)
+	var screen := HailViewscreen.make(player, Vector2(150, 124), "", "Address")
+	row.add_child(screen)
+	var col := Lcars.vbox(8)
+	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var text := Lcars.para(str(sp.get("text", "")), Lcars.TEXT, 16)
+	text.name = "SpeechText"
+	text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	text.visible_ratio = 0.0
+	# A fixed-height window on the speech (the longest run to ten lines): the end screen keeps its buttons on screen,
+	# and the window follows the words as they type out.
+	var sc := ScrollContainer.new()
+	sc.custom_minimum_size = Vector2(660, 72)
+	sc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	sc.add_child(text)
+	text.custom_minimum_size = Vector2(640, 0)
+	text.draw.connect(func(): sc.scroll_vertical = int(sc.get_v_scroll_bar().max_value * text.visible_ratio))
+	col.add_child(sc)
+	var secs := maxf(float(sp.get("seconds", 20.0)), 2.0)
+	var play := func():
+		text.visible_ratio = 0.0
+		var tw := text.create_tween()
+		tw.tween_property(text, "visible_ratio", 1.0, secs * 0.95)
+		if BotfAudioSystem.instance != null:
+			BotfAudioSystem.instance.play_keys(PackedStringArray([key]), 10)
+	var again := Lcars.pill("Replay speech", "ghost", play)
+	again.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	col.add_child(again)
+	row.add_child(col)
+	play.call_deferred()
+	return row
 
 # ---------------------------------------------------------------------------------------------
 static func menu(app: App) -> Control:
@@ -459,12 +520,13 @@ static func settings(app: App) -> Control:
 	for item in [["reducedMotion", "Reduced motion", "Stops camera glides, pulsing effects and battle animations."],
 			["colorblind", "Colour-blind-safe owner colours", "Okabe-Ito palette for empires on the map and in the interface. Emblems stay the primary owner cue."],
 			["autosave", "Autosave every turn", "Keeps one rolling autosave slot for the campaign in progress."],
-			["confirmEndTurn", "Confirm end turn", "Ask before ending a turn with idle units."]]:
+			["confirmEndTurn", "Confirm end turn", "Ask before ending a turn with idle units."],
+			["cinematics", "Cinematics", "The opening movie at start-up, the race intro when a campaign begins, and the Borg cutscenes. Any key or click skips one."]]:
 		var r := Lcars.hbox(12)
 		r.add_child(_setting_text(item[1], item[2]))
 		var key: String = item[0]
 		var cb := CheckButton.new()
-		cb.button_pressed = bool(s.get(key, false))
+		cb.button_pressed = bool(s.get(key, key == "cinematics"))
 		cb.toggled.connect(func(on): s[key] = on; app.save_settings())
 		cb.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		r.add_child(cb)
@@ -477,7 +539,7 @@ static func settings(app: App) -> Control:
 		root.add_child(PreloadWidget.make(app))
 	var acts := Lcars.hbox(8)
 	acts.add_child(Lcars.pill("Reset to defaults", "ghost", func():
-		app.settings = {"uiScale": 1.0, "colorblind": false, "reducedMotion": false, "autosave": true, "confirmEndTurn": false, "showGrid": true, "uiEra": "tng"}
+		app.settings = {"cinematics": true, "uiScale": 1.0, "colorblind": false, "reducedMotion": false, "autosave": true, "confirmEndTurn": false, "showGrid": true, "uiEra": "tng"}
 		BotfAudioMix.fill_defaults(app.settings)
 		DisplaySettings.fill_defaults(app.settings)
 		DisplaySettings.apply(app.settings, app.get_tree())
