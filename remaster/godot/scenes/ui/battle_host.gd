@@ -53,6 +53,8 @@ func _mount() -> void:
 	var t1 := Time.get_ticks_usec()
 	if not _last_encounter.is_empty():
 		load_encounter(_last_encounter) # the screen asked before the view existed
+	LoadTrace.done("battle: mount attach", t0)
+	LoadTrace.done("battle: mount load", t1)
 	if OS.get_environment("ROUND_TIMING") != "":
 		print("ROUND_TIMING mount frame %d: attach=%d load=%d ms" % [Engine.get_process_frames(), (t1 - t0) / 1000, (Time.get_ticks_usec() - t1) / 1000])
 

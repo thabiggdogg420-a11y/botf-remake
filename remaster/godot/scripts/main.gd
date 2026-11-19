@@ -1,6 +1,54 @@
 extends Node
 ## Entry point: checks the core extension, then mounts the strategic UI shell.
 
+## Web smoothness pass (19 Nov 2026): the browser runs the game on one thread, so the boot used to compile every script the
+## title needs, build the shell and draw the title in a single frame of several seconds. On the web a plain "Starting" panel
+## shows first, the game's scripts are compiled a few per frame behind it (BOOT_BUDGET_USEC each frame), and only then is the
+## shell mounted (App splits its own start-up over frames too). Desktop boots as before.
+const BOOT_BUDGET_USEC := 30000
+var _boot_panel: CanvasLayer = null
+
+func _web_boot() -> void:
+	var tree := get_tree()
+	var layer := CanvasLayer.new()
+	layer.layer = 100
+	var bg := ColorRect.new()
+	bg.color = Color(0.02, 0.027, 0.06)
+	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
+	var label := Label.new()
+	label.text = "Starting BOTF Remastered"
+	label.set_anchors_preset(Control.PRESET_CENTER)
+	label.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	label.grow_vertical = Control.GROW_DIRECTION_BOTH
+	label.add_theme_font_size_override("font_size", 28)
+	label.add_theme_color_override("font_color", Color(0.81, 0.88, 1.0))
+	bg.add_child(label)
+	layer.add_child(bg)
+	add_child(layer)
+	_boot_panel = layer
+	for _i in 2:
+		await tree.process_frame # the panel is on screen before any loading starts
+	var paths: Array = []
+	for c in ProjectSettings.get_global_class_list():
+		var p := str(c.get("path", ""))
+		if p.ends_with(".gd") and not p.contains("/tests/") and not p.contains("/tools/") and not p.begins_with("res://core/"):
+			paths.append(p)
+	var t0 := Time.get_ticks_usec()
+	var n := 0
+	for p: String in paths:
+		var t := LoadTrace.start()
+		if ResourceLoader.exists(p):
+			_boot_refs.append(load(p))
+		LoadTrace.done("boot: compile %s" % p.get_file(), t, 60)
+		n += 1
+		if Time.get_ticks_usec() - t0 >= BOOT_BUDGET_USEC:
+			label.text = "Starting BOTF Remastered (%d%%)" % (100 * n / maxi(paths.size(), 1))
+			await tree.process_frame
+			t0 = Time.get_ticks_usec()
+	await tree.process_frame
+
+static var _boot_refs: Array = []   ## the compiled scripts stay loaded (the game uses them all)
+
 func _ready() -> void:
 	if Engine.has_singleton("BotfCore"):
 		var meta: Dictionary = BotfCore.request("meta")
@@ -10,7 +58,16 @@ func _ready() -> void:
 	if DisplayServer.get_name() == "headless" and OS.get_cmdline_user_args().has("--boot-check"):
 		get_tree().quit()
 		return
-	add_child(load("res://scenes/ui/app.tscn").instantiate())
+	if OS.has_feature("web"):
+		await _web_boot()
+	var t_boot := LoadTrace.start()
+	var app_scene: Node = load("res://scenes/ui/app.tscn").instantiate()
+	t_boot = LoadTrace.done("boot: app scene load", t_boot)
+	add_child(app_scene)
+	LoadTrace.done("boot: app ready (total)", t_boot)
+	if _boot_panel != null:
+		_boot_panel.queue_free()
+		_boot_panel = null
 	if AppLoader.diag():
 		var t := Timer.new()
 		t.wait_time = 5.0

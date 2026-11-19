@@ -253,18 +253,126 @@ func instantiate_hero(key: String) -> Node3D:
 ## Returns the number of loads started.
 func warm(keys: PackedStringArray) -> int:
 	var started := 0
-	if not AppLoader.threads():
-		return 0 # the web build has no worker threads: a glb parses when its battle opens
 	for key in keys:
 		var e := hero(key)
 		if e.is_empty():
 			continue
 		var path := hero_glb_path(e)
-		if _shared.has(path) or _tasks.has(path):
+		if _shared.has(path) or _tasks.has(path) or _sliced_index(path) >= 0:
 			continue
-		_tasks[path] = WorkerThreadPool.add_task(_load_job.bind(path, e, hero_root), false, "botf hero " + key.get_file())
+		if AppLoader.threads():
+			_tasks[path] = WorkerThreadPool.add_task(_load_job.bind(path, e, hero_root), false, "botf hero " + key.get_file())
+		else:
+			_queue_sliced(path, e, hero_root) # the web build has no worker threads: the glb loads a step per frame
 		started += 1
 	return started
+
+
+# ---- Sliced loads (web smoothness pass, 19 Nov 2026) -----------------------------------------------------------------
+# The web build has no worker threads, so a hero glb used to parse whole on the frame a battle opened (0.3-1.5 s per class
+# in the browser). Queued here instead, it loads one step per frame (parse, build the scene, one image's mip chain per
+# step, plating, pack) inside a small per-frame budget, while the battle's loading panel or the galaxy is on screen.
+# loading() stays true until the queue is empty, so the battle deploys its fleets only once every model is in.
+
+const SLICE_BUDGET_USEC := 10000   ## keep stepping in one frame while under this; a step is never split
+static var _sliced: Array = []      ## [{path, hero, root, stage, doc, state, node, jobs, swap}]
+static var _pump_cb: Callable
+
+
+static func _sliced_index(path: String) -> int:
+	for i in _sliced.size():
+		if _sliced[i].path == path:
+			return i
+	return -1
+
+
+static func _queue_sliced(path: String, hero: Dictionary, root: String) -> void:
+	_sliced.append({"path": path, "hero": hero, "root": root, "stage": 0, "doc": null, "state": null, "node": null, "jobs": [], "swap": {}})
+	var tree := Engine.get_main_loop() as SceneTree
+	if tree == null:
+		return
+	if not _pump_cb.is_valid():
+		_pump_cb = func() -> void: BattleAssets._pump_sliced()
+	if not tree.process_frame.is_connected(_pump_cb):
+		tree.process_frame.connect(_pump_cb)
+
+
+## One frame's share of the queued loads.
+static func _pump_sliced() -> void:
+	var t0 := Time.get_ticks_usec()
+	while not _sliced.is_empty():
+		if _step_sliced(_sliced[0]):
+			_sliced.pop_front()
+		if Time.get_ticks_usec() - t0 >= SLICE_BUDGET_USEC:
+			break
+	if _sliced.is_empty() and _pump_cb.is_valid():
+		var tree := Engine.get_main_loop() as SceneTree
+		if tree != null and tree.process_frame.is_connected(_pump_cb):
+			tree.process_frame.disconnect(_pump_cb)
+
+
+## Advances one load by one step. True when it has finished (its PackedScene, or null on failure, is in _shared).
+static func _step_sliced(j: Dictionary) -> bool:
+	var t := LoadTrace.start()
+	var label := "sliced %s stage %d" % [str(j.path).get_file(), int(j.stage)]
+	var finished := false
+	match int(j.stage):
+		0:
+			var path: String = j.path
+			if path.get_extension().to_lower() == "fbx":
+				j.doc = FBXDocument.new()
+				j.state = FBXState.new()
+			else:
+				j.doc = GLTFDocument.new()
+				j.state = GLTFState.new()
+			if j.doc.append_from_file(path, j.state) != OK:
+				_shared[path] = null
+				finished = true
+			else:
+				j.stage = 1
+		1:
+			j.node = j.doc.generate_scene(j.state)
+			if j.node == null:
+				_shared[j.path] = null
+				finished = true
+			elif (j.hero as Dictionary).is_empty():
+				j.stage = 4
+			else:
+				j.jobs = _mip_jobs(j.state)
+				j.stage = 2
+		2:
+			if (j.jobs as Array).is_empty():
+				_apply_mips(j.node, j.swap)
+				j.stage = 3
+			else:
+				var job: Dictionary = j.jobs.pop_front()
+				var tex := _mip_one(job)
+				if tex != null:
+					j.swap[job.id] = tex
+		3:
+			HeroLook.prime(j.hero, j.root)
+			j.stage = 4
+		4:
+			var packed := PackedScene.new()
+			_own(j.node, j.node)
+			packed.pack(j.node)
+			j.node.free()
+			j.node = null
+			_shared[j.path] = packed
+			finished = true
+	LoadTrace.done(label, t)
+	return finished
+
+
+## Finishes a queued load now (a caller needs the model this frame).
+static func _finish_sliced(path: String) -> void:
+	var i := _sliced_index(path)
+	if i < 0:
+		return
+	var j: Dictionary = _sliced[i]
+	while not _step_sliced(j):
+		pass
+	_sliced.remove_at(i)
 
 
 static var _instance: BattleAssets
@@ -301,6 +409,8 @@ static func wait_for_loads() -> void:
 
 ## True while any worker-thread model load started by warm() is still running.
 static func loading() -> bool:
+	if not _sliced.is_empty():
+		return true
 	for path in _tasks:
 		if not WorkerThreadPool.is_task_completed(_tasks[path]):
 			return true
@@ -323,6 +433,8 @@ static func _load_job(path: String, hero: Dictionary = {}, root: String = "") ->
 static func _shared_model(path: String, hero: Dictionary = {}, root: String = "") -> PackedScene:
 	if path == "":
 		return null
+	if _sliced_index(path) >= 0:
+		_finish_sliced(path)
 	if _tasks.has(path):
 		WorkerThreadPool.wait_for_task_completion(_tasks[path])
 		_tasks.erase(path)
@@ -344,20 +456,26 @@ static func _load_model(path: String, hero: Dictionary = {}, root: String = "") 
 	else:
 		doc = GLTFDocument.new()
 		state = GLTFState.new()
+	var t := LoadTrace.start()
 	if doc.append_from_file(path, state) != OK:
 		return null
+	t = LoadTrace.done("model %s: parse" % path.get_file(), t)
 	var node := doc.generate_scene(state)
 	if node == null:
 		return null
+	t = LoadTrace.done("model %s: scene" % path.get_file(), t)
 	if not hero.is_empty():
 		# Mip chains and plating images are built here, on the worker, not on the first battle frame: HeroLook.apply on
 		# the main thread cost 0.2-1.8 s per class (M1-BETAFIX profile) generating them from a GPU readback.
 		BattleAssets.mip_scene_images(node, state)
+		t = LoadTrace.done("model %s: mips" % path.get_file(), t)
 		HeroLook.prime(hero, root)
+		t = LoadTrace.done("model %s: prime" % path.get_file(), t)
 	var packed := PackedScene.new()
 	_own(node, node)
 	packed.pack(node)
 	node.free()
+	LoadTrace.done("model %s: pack" % path.get_file(), t)
 	return packed
 
 
@@ -365,11 +483,21 @@ static func _load_model(path: String, hero: Dictionary = {}, root: String = "") 
 ## texture of `node` at the mipped copy (tagged "botf_mipped" so HeroLook.mipmapped leaves it alone). Any image it cannot
 ## decode here keeps the plain texture, which HeroLook.mipmapped still handles on the main thread.
 static func mip_scene_images(node: Node, state: GLTFState) -> void:
+	var swap := {} # texture instance id -> mipped texture
+	for job in _mip_jobs(state):
+		var tex := _mip_one(job)
+		if tex != null:
+			swap[job.id] = tex
+	_apply_mips(node, swap)
+
+
+## The embedded images of a parsed glb as decode jobs: {id (the parsed texture's instance id), bytes, mime}.
+static func _mip_jobs(state: GLTFState) -> Array:
+	var out: Array = []
 	var imgs: Array = state.get_images()
 	var jimgs: Array = state.json.get("images", []) if state.json is Dictionary else []
 	var views: Array = state.get_buffer_views()
 	var buffers: Array = state.get_buffers()
-	var swap := {} # texture instance id -> mipped texture
 	for i in mini(imgs.size(), jimgs.size()):
 		var j: Dictionary = jimgs[i]
 		var bv := int(j.get("bufferView", -1))
@@ -379,24 +507,34 @@ static func mip_scene_images(node: Node, state: GLTFState) -> void:
 		if view.buffer < 0 or view.buffer >= buffers.size():
 			continue
 		var bytes: PackedByteArray = (buffers[view.buffer] as PackedByteArray).slice(view.byte_offset, view.byte_offset + view.byte_length)
-		var img := Image.new()
-		var mime := str(j.get("mimeType", "image/png"))
-		# The web packs carry WebP (EXT_texture_webp, 17 Nov): decoded as PNG it failed and the hull kept its unmipped
-		# texture, which sparkled into speckle at battle range (WEB-PARITY.md, 19 Nov).
-		var err: Error
-		match mime:
-			"image/jpeg":
-				err = img.load_jpg_from_buffer(bytes)
-			"image/webp":
-				err = img.load_webp_from_buffer(bytes)
-			_:
-				err = img.load_png_from_buffer(bytes)
-		if err != OK or img.is_empty() or img.is_compressed():
-			continue
-		img.generate_mipmaps()
-		var tex := ImageTexture.create_from_image(img)
-		tex.set_meta("botf_mipped", true)
-		swap[(imgs[i] as Object).get_instance_id()] = tex
+		out.append({"id": (imgs[i] as Object).get_instance_id(), "bytes": bytes, "mime": str(j.get("mimeType", "image/png"))})
+	return out
+
+
+## Decodes one job's image and builds its mip chain; null when it cannot be decoded here.
+static func _mip_one(job: Dictionary) -> ImageTexture:
+	var img := Image.new()
+	var bytes: PackedByteArray = job.bytes
+	# The web packs carry WebP (EXT_texture_webp, 17 Nov): decoded as PNG it failed and the hull kept its unmipped
+	# texture, which sparkled into speckle at battle range (WEB-PARITY.md, 19 Nov).
+	var err: Error
+	match str(job.mime):
+		"image/jpeg":
+			err = img.load_jpg_from_buffer(bytes)
+		"image/webp":
+			err = img.load_webp_from_buffer(bytes)
+		_:
+			err = img.load_png_from_buffer(bytes)
+	if err != OK or img.is_empty() or img.is_compressed():
+		return null
+	img.generate_mipmaps()
+	var tex := ImageTexture.create_from_image(img)
+	tex.set_meta("botf_mipped", true)
+	return tex
+
+
+## Points every material texture of `node` found in `swap` (texture instance id -> mipped texture) at the mipped copy.
+static func _apply_mips(node: Node, swap: Dictionary) -> void:
 	if swap.is_empty():
 		return
 	var meshes: Array = node.find_children("*", "MeshInstance3D", true, false)

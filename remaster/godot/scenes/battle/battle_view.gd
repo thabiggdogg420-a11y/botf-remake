@@ -56,17 +56,22 @@ func _process(delta: float) -> void:
 	if not _pending_deploy.is_empty() and not BattleAssets.loading():
 		var e := _pending_deploy
 		_pending_deploy = {}
+		var t := LoadTrace.start()
 		_show_deployment(e)
+		LoadTrace.done("battle: show deployment", t)
 	elif not _stage.is_empty():
 		# F2: the hulls are built a couple a frame (hidden), and the deployment is posed once, when the last is built
 		# (posing every step rebuilt the deployment timeline each frame: 28-34 ms frames while a fleet arrived).
 		var n0 := int(_stage.n)
 		_stage.n = mini(n0 + DEPLOY_PER_FRAME, _stage.ships.size())
+		var t := LoadTrace.start()
 		_build_hulls(_stage.ships.slice(n0, _stage.n))
+		t = LoadTrace.done("battle: build hulls %d-%d" % [n0, int(_stage.n)], t)
 		if int(_stage.n) >= _stage.ships.size():
 			var st := _stage
 			_stage = {}
 			_deploy_rows(st.e, st.ships)
+			LoadTrace.done("battle: deploy rows", t)
 
 
 var _pending_round := {}   ## F2: {e, idx, key} of a round asked for before the hulls were ready
