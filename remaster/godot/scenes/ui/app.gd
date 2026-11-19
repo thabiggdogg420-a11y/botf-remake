@@ -65,20 +65,44 @@ func _init() -> void:
 
 func _ready() -> void:
 	set_anchors_preset(Control.PRESET_FULL_RECT)
+	var t := LoadTrace.start()
 	_load_settings()
 	DisplaySettings.fill_defaults(settings)
 	DisplaySettings.apply(settings, get_tree())   # window mode, resolution, vsync, FPS cap, render scale, AA, shadows
+	t = LoadTrace.done("boot: settings", t)
 	AppLoader.mount_user_packs()   # desktop asset bundles (planets, hero ships); the web fetches its own after the title
 	PlanetTextures.reset()
+	t = LoadTrace.done("boot: packs", t)
+	var web := OS.has_feature("web")
+	if web:
+		# Web smoothness pass (19 Nov): the shell first, then one start-up step a frame behind the panel, never one long frame.
+		_apply_theme(1)
+		_build_layers()
+		_show_loading("Starting", [])
+		_loading_label.text = "Starting"
+		await get_tree().process_frame
+		t = LoadTrace.start()
 	BotfAudioSystem.attach(self)   # audio: shares settings, listens to screen changes (music, screen cue)
+	t = LoadTrace.done("boot: audio", t)
+	if web:
+		await get_tree().process_frame
+		t = LoadTrace.start()
 	session.connect_core(CoreClient.create("fixture" if forced_backend == "fixture" else "auto"))
+	t = LoadTrace.done("boot: core", t)
 	session.view_changed.connect(_on_view_changed)
 	session.selection_changed.connect(func(): selection_changed.emit())
 	session.notified.connect(func(text, tone): toast(text, tone))
 	session.failed.connect(report_error)
-	_apply_theme(1)
-	_build_layers()
+	if web:
+		await get_tree().process_frame
+		t = LoadTrace.start()
+		_hide_loading()
+	else:
+		_apply_theme(1)
+		_build_layers()
+	t = LoadTrace.done("boot: theme+layers", t)
 	goto("title")
+	LoadTrace.done("boot: title", t)
 	_warm_battle.call_deferred()
 	if OS.has_feature("web"):
 		_fetch_background.call_deferred()
@@ -707,10 +731,12 @@ func goto(id: String, remember: bool = true) -> void:
 		return
 	var _tg := Time.get_ticks_usec()
 	var s: Control = (AppLoader.resource(path) as GDScript).new()
+	var _tl := LoadTrace.done("goto %s: script+new" % id, _tg)
 	s.name = "Screen_" + id
 	s.set("app", self)
 	_current = s
 	_stage.add_child(s)
+	_tl = LoadTrace.done("goto %s: add_child" % id, _tl)
 	if id == "galaxy" and WebGpuWarm.needed():
 		WebGpuWarm.start.call_deferred(self, settings) # WebGPU: battle pipelines compile in the background from here
 	_place_current()
@@ -718,10 +744,13 @@ func goto(id: String, remember: bool = true) -> void:
 	if id == "galaxy" and not _warmed_battle:
 		_warm_battle.call_deferred() # F2: a spare battle view for the next battle
 	_build_chrome()
+	_tl = LoadTrace.done("goto %s: chrome" % id, _tl)
 	if s.has_method("refresh"):
 		s.refresh()
+	_tl = LoadTrace.done("goto %s: refresh" % id, _tl)
 	Motion.enter(s, 0, "screen")
 	screen_changed.emit(id)
+	LoadTrace.done("goto %s: signals" % id, _tl)
 	if OS.get_environment("ROUND_TIMING") != "":
 		print("ROUND_TIMING goto %s frame %d: %d ms" % [id, Engine.get_process_frames(), (Time.get_ticks_usec() - _tg) / 1000])
 

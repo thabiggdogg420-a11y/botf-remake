@@ -66,6 +66,9 @@ static func _begin(host: Node, settings: Dictionary) -> void:
 		print("webgpu warm: no fixture battle")
 		_settle_only(host)
 		return
+	# Web smoothness pass (19 Nov): the fixture's hero hulls load a step per frame first (BattleAssets sliced loads);
+	# _process waits for them, so no frame parses a whole glb.
+	BattleAssets.shared().warm(BattleAssets.encounter_keys(enc))
 	var w := WebGpuWarm.new()
 	w.name = "WebGpuWarm"
 	w._enc = enc
@@ -105,6 +108,8 @@ func _process(_delta: float) -> void:
 	if not is_instance_valid(_view):
 		_finish()
 		return
+	if _round < 0 and BattleAssets.loading():
+		return # hero hulls still loading a step per frame
 	if _frame % FRAMES_PER_ROUND == 0:
 		_round += 1
 		if _round >= mini(ROUNDS, (_enc.get("rounds", []) as Array).size()):
