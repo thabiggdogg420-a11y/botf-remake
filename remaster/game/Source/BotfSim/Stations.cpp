@@ -565,7 +565,8 @@ void planStationRaids(GameState& next, int owner) {
 }
 
 void planRivalStations(GameState& next) {
-    for (const auto& rival : next.rivals) {
+    for (const EmpireState* planner : internal::aiPlanners(next)) {
+        const auto& rival = *planner;
         const int owner = rival.id;
         const bool war = empireAtAnyWar(next, owner);
         // Builders keep their post whatever the general fleet plan says.

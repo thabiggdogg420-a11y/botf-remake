@@ -4,8 +4,17 @@ extends RefCounted
 ## name, stored as JSON in user://saves (IndexedDB in the web build). All file access goes through AppLoader.
 ## See docs/CLIENT-ARCHITECTURE.md.
 
-const DIR := "user://saves"
-const SETTINGS_PATH := "user://botf_settings.json"
+## The live paths. Capture tools point both at a scratch folder before the App starts (sandbox()), so a capture never writes
+## the player's saves or settings (F5 round 2: the MOD-9 capture wrote autosaves into the real user://saves).
+static var DIR := "user://saves"
+static var SETTINGS_PATH := "user://botf_settings.json"
+const REAL_DIR := "user://saves"
+
+## Points saves, settings and user packs at `root` (a user:// scratch folder). For capture tools and tests only.
+static func sandbox(root: String) -> void:
+	DIR = root.path_join("saves")
+	SETTINGS_PATH = root.path_join("botf_settings.json")
+	UserPacks.dir = root.path_join("mods")
 
 ## Writes a slot. Returns "" or the error to show.
 static func write(blob: Dictionary, name_: String, player_name: String) -> String:

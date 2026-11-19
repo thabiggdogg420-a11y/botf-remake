@@ -1,0 +1,1759 @@
+{
+ "note": "F5 music identification (tools/identify_music.py). Measurements only.",
+ "tracks": [
+  {
+   "track": 0,
+   "role": "title",
+   "race": null,
+   "fac": null,
+   "segments": [
+    {
+     "segment": 0,
+     "file": "music_t00_s00.ogg",
+     "seconds": 22.0,
+     "rms_db": -17.6,
+     "centroid_hz": 1589,
+     "onsets_per_s": 0.59,
+     "tier": "build",
+     "join_db": 34.1
+    },
+    {
+     "segment": 1,
+     "file": "music_t00_s01.ogg",
+     "seconds": 25.97,
+     "rms_db": -19.8,
+     "centroid_hz": 1790,
+     "onsets_per_s": 0.62,
+     "tier": "calm",
+     "join_db": 44.3
+    },
+    {
+     "segment": 2,
+     "file": "music_t00_s02.ogg",
+     "seconds": 27.63,
+     "rms_db": -17.2,
+     "centroid_hz": 1563,
+     "onsets_per_s": 1.01,
+     "tier": "peak",
+     "join_db": 26.2
+    },
+    {
+     "segment": 3,
+     "file": "music_t00_s03.ogg",
+     "seconds": 20.66,
+     "rms_db": -22.2,
+     "centroid_hz": 1965,
+     "onsets_per_s": 0.58,
+     "tier": "calm",
+     "join_db": 4.3
+    },
+    {
+     "segment": 4,
+     "file": "music_t00_s04.ogg",
+     "seconds": 26.11,
+     "rms_db": -18.5,
+     "centroid_hz": 1493,
+     "onsets_per_s": 0.57,
+     "tier": "build",
+     "join_db": null
+    }
+   ],
+   "identified_as": "title theme"
+  },
+  {
+   "track": 1,
+   "role": "strategic",
+   "race": "Cardassian",
+   "fac": "car",
+   "segments": [
+    {
+     "segment": 0,
+     "file": "music_t01_s00.ogg",
+     "seconds": 29.24,
+     "rms_db": -23.1,
+     "centroid_hz": 1339,
+     "onsets_per_s": 0.58,
+     "tier": "calm",
+     "join_db": 61.4
+    },
+    {
+     "segment": 1,
+     "file": "music_t01_s01.ogg",
+     "seconds": 25.6,
+     "rms_db": -20.1,
+     "centroid_hz": 2018,
+     "onsets_per_s": 0.94,
+     "tier": "build",
+     "join_db": 15.8
+    },
+    {
+     "segment": 2,
+     "file": "music_t01_s02.ogg",
+     "seconds": 32.65,
+     "rms_db": -20.5,
+     "centroid_hz": 2090,
+     "onsets_per_s": 0.8,
+     "tier": "build",
+     "join_db": 0.2
+    },
+    {
+     "segment": 3,
+     "file": "music_t01_s03.ogg",
+     "seconds": 26.01,
+     "rms_db": -18.4,
+     "centroid_hz": 1647,
+     "onsets_per_s": 0.96,
+     "tier": "peak",
+     "join_db": 28.1
+    },
+    {
+     "segment": 4,
+     "file": "music_t01_s04.ogg",
+     "seconds": 45.38,
+     "rms_db": -17.8,
+     "centroid_hz": 1486,
+     "onsets_per_s": 1.32,
+     "tier": "peak",
+     "join_db": 78.8
+    },
+    {
+     "segment": 5,
+     "file": "music_t01_s05.ogg",
+     "seconds": 27.03,
+     "rms_db": -19.2,
+     "centroid_hz": 2240,
+     "onsets_per_s": 0.96,
+     "tier": "build",
+     "join_db": 72.9
+    },
+    {
+     "segment": 6,
+     "file": "music_t01_s06.ogg",
+     "seconds": 26.29,
+     "rms_db": -17.5,
+     "centroid_hz": 2105,
+     "onsets_per_s": 0.8,
+     "tier": "build",
+     "join_db": 49.4
+    },
+    {
+     "segment": 7,
+     "file": "music_t01_s07.ogg",
+     "seconds": 32.01,
+     "rms_db": -17.4,
+     "centroid_hz": 1376,
+     "onsets_per_s": 1.06,
+     "tier": "peak",
+     "join_db": 3.9
+    },
+    {
+     "segment": 8,
+     "file": "music_t01_s08.ogg",
+     "seconds": 35.51,
+     "rms_db": -26.4,
+     "centroid_hz": 2857,
+     "onsets_per_s": 1.55,
+     "tier": "calm",
+     "join_db": 50.8
+    },
+    {
+     "segment": 9,
+     "file": "music_t01_s09.ogg",
+     "seconds": 33.58,
+     "rms_db": -19.6,
+     "centroid_hz": 1098,
+     "onsets_per_s": 0.48,
+     "tier": "calm",
+     "join_db": 61.0
+    },
+    {
+     "segment": 10,
+     "file": "music_t01_s10.ogg",
+     "seconds": 25.64,
+     "rms_db": -18.4,
+     "centroid_hz": 1114,
+     "onsets_per_s": 1.72,
+     "tier": "peak",
+     "join_db": 41.8
+    },
+    {
+     "segment": 11,
+     "file": "music_t01_s11.ogg",
+     "seconds": 28.64,
+     "rms_db": -22.7,
+     "centroid_hz": 1518,
+     "onsets_per_s": 0.49,
+     "tier": "calm",
+     "join_db": 47.5
+    },
+    {
+     "segment": 12,
+     "file": "music_t01_s12.ogg",
+     "seconds": 26.24,
+     "rms_db": -16.8,
+     "centroid_hz": 1424,
+     "onsets_per_s": 1.64,
+     "tier": "peak",
+     "join_db": 43.3
+    },
+    {
+     "segment": 13,
+     "file": "music_t01_s13.ogg",
+     "seconds": 26.01,
+     "rms_db": -19.0,
+     "centroid_hz": 839,
+     "onsets_per_s": 0.85,
+     "tier": "build",
+     "join_db": 2.6
+    },
+    {
+     "segment": 14,
+     "file": "music_t01_s14.ogg",
+     "seconds": 42.16,
+     "rms_db": -20.7,
+     "centroid_hz": 1382,
+     "onsets_per_s": 0.66,
+     "tier": "calm",
+     "join_db": null
+    }
+   ],
+   "identified_as": "strategic map theme (Cardassian)"
+  },
+  {
+   "track": 2,
+   "role": "strategic",
+   "race": "Federation",
+   "fac": "fed",
+   "segments": [
+    {
+     "segment": 0,
+     "file": "music_t02_s00.ogg",
+     "seconds": 30.49,
+     "rms_db": -23.3,
+     "centroid_hz": 1801,
+     "onsets_per_s": 1.51,
+     "tier": "peak",
+     "join_db": 8.3
+    },
+    {
+     "segment": 1,
+     "file": "music_t02_s01.ogg",
+     "seconds": 28.69,
+     "rms_db": -22.0,
+     "centroid_hz": 1712,
+     "onsets_per_s": 1.74,
+     "tier": "peak",
+     "join_db": 16.3
+    },
+    {
+     "segment": 2,
+     "file": "music_t02_s02.ogg",
+     "seconds": 33.44,
+     "rms_db": -22.2,
+     "centroid_hz": 1795,
+     "onsets_per_s": 0.96,
+     "tier": "build",
+     "join_db": 46.8
+    },
+    {
+     "segment": 3,
+     "file": "music_t02_s03.ogg",
+     "seconds": 31.64,
+     "rms_db": -19.1,
+     "centroid_hz": 1898,
+     "onsets_per_s": 1.11,
+     "tier": "peak",
+     "join_db": 6.2
+    },
+    {
+     "segment": 4,
+     "file": "music_t02_s04.ogg",
+     "seconds": 38.6,
+     "rms_db": -24.1,
+     "centroid_hz": 1674,
+     "onsets_per_s": 1.27,
+     "tier": "build",
+     "join_db": 21.7
+    },
+    {
+     "segment": 5,
+     "file": "music_t02_s05.ogg",
+     "seconds": 33.9,
+     "rms_db": -25.3,
+     "centroid_hz": 1978,
+     "onsets_per_s": 1.21,
+     "tier": "calm",
+     "join_db": 29.7
+    },
+    {
+     "segment": 6,
+     "file": "music_t02_s06.ogg",
+     "seconds": 23.94,
+     "rms_db": -22.3,
+     "centroid_hz": 1642,
+     "onsets_per_s": 0.5,
+     "tier": "calm",
+     "join_db": 40.8
+    },
+    {
+     "segment": 7,
+     "file": "music_t02_s07.ogg",
+     "seconds": 23.57,
+     "rms_db": -28.3,
+     "centroid_hz": 2171,
+     "onsets_per_s": 1.06,
+     "tier": "calm",
+     "join_db": 18.3
+    },
+    {
+     "segment": 8,
+     "file": "music_t02_s08.ogg",
+     "seconds": 36.81,
+     "rms_db": -26.1,
+     "centroid_hz": 1851,
+     "onsets_per_s": 1.17,
+     "tier": "calm",
+     "join_db": 10.4
+    },
+    {
+     "segment": 9,
+     "file": "music_t02_s09.ogg",
+     "seconds": 28.0,
+     "rms_db": -25.0,
+     "centroid_hz": 1802,
+     "onsets_per_s": 1.14,
+     "tier": "calm",
+     "join_db": 14.6
+    },
+    {
+     "segment": 10,
+     "file": "music_t02_s10.ogg",
+     "seconds": 27.81,
+     "rms_db": -19.7,
+     "centroid_hz": 1744,
+     "onsets_per_s": 1.47,
+     "tier": "peak",
+     "join_db": 25.8
+    },
+    {
+     "segment": 11,
+     "file": "music_t02_s11.ogg",
+     "seconds": 33.85,
+     "rms_db": -22.8,
+     "centroid_hz": 1571,
+     "onsets_per_s": 1.15,
+     "tier": "build",
+     "join_db": 9.7
+    },
+    {
+     "segment": 12,
+     "file": "music_t02_s12.ogg",
+     "seconds": 34.5,
+     "rms_db": -24.1,
+     "centroid_hz": 1894,
+     "onsets_per_s": 1.45,
+     "tier": "build",
+     "join_db": 10.8
+    },
+    {
+     "segment": 13,
+     "file": "music_t02_s13.ogg",
+     "seconds": 32.19,
+     "rms_db": -24.0,
+     "centroid_hz": 1545,
+     "onsets_per_s": 1.43,
+     "tier": "build",
+     "join_db": 3.8
+    },
+    {
+     "segment": 14,
+     "file": "music_t02_s14.ogg",
+     "seconds": 36.16,
+     "rms_db": -22.8,
+     "centroid_hz": 1811,
+     "onsets_per_s": 1.36,
+     "tier": "peak",
+     "join_db": null
+    }
+   ],
+   "identified_as": "strategic map theme (Federation)"
+  },
+  {
+   "track": 3,
+   "role": "strategic",
+   "race": "Ferengi",
+   "fac": "fer",
+   "segments": [
+    {
+     "segment": 0,
+     "file": "music_t03_s00.ogg",
+     "seconds": 29.75,
+     "rms_db": -21.0,
+     "centroid_hz": 1793,
+     "onsets_per_s": 1.04,
+     "tier": "peak",
+     "join_db": 28.3
+    },
+    {
+     "segment": 1,
+     "file": "music_t03_s01.ogg",
+     "seconds": 25.69,
+     "rms_db": -20.9,
+     "centroid_hz": 1800,
+     "onsets_per_s": 0.9,
+     "tier": "peak",
+     "join_db": 4.0
+    },
+    {
+     "segment": 2,
+     "file": "music_t03_s02.ogg",
+     "seconds": 24.63,
+     "rms_db": -19.1,
+     "centroid_hz": 2031,
+     "onsets_per_s": 0.69,
+     "tier": "peak",
+     "join_db": 27.9
+    },
+    {
+     "segment": 3,
+     "file": "music_t03_s03.ogg",
+     "seconds": 22.18,
+     "rms_db": -26.0,
+     "centroid_hz": 1598,
+     "onsets_per_s": 1.26,
+     "tier": "build",
+     "join_db": 19.1
+    },
+    {
+     "segment": 4,
+     "file": "music_t03_s04.ogg",
+     "seconds": 34.18,
+     "rms_db": -24.5,
+     "centroid_hz": 1764,
+     "onsets_per_s": 0.35,
+     "tier": "calm",
+     "join_db": 20.8
+    },
+    {
+     "segment": 5,
+     "file": "music_t03_s05.ogg",
+     "seconds": 28.27,
+     "rms_db": -23.8,
+     "centroid_hz": 2133,
+     "onsets_per_s": 1.1,
+     "tier": "build",
+     "join_db": 1.8
+    },
+    {
+     "segment": 6,
+     "file": "music_t03_s06.ogg",
+     "seconds": 24.35,
+     "rms_db": -30.6,
+     "centroid_hz": 1977,
+     "onsets_per_s": 1.07,
+     "tier": "calm",
+     "join_db": 10.8
+    },
+    {
+     "segment": 7,
+     "file": "music_t03_s07.ogg",
+     "seconds": 32.65,
+     "rms_db": -24.1,
+     "centroid_hz": 1812,
+     "onsets_per_s": 1.04,
+     "tier": "build",
+     "join_db": 16.8
+    },
+    {
+     "segment": 8,
+     "file": "music_t03_s08.ogg",
+     "seconds": 26.29,
+     "rms_db": -20.3,
+     "centroid_hz": 1654,
+     "onsets_per_s": 1.03,
+     "tier": "peak",
+     "join_db": 8.4
+    },
+    {
+     "segment": 9,
+     "file": "music_t03_s09.ogg",
+     "seconds": 36.99,
+     "rms_db": -29.9,
+     "centroid_hz": 2708,
+     "onsets_per_s": 1.54,
+     "tier": "build",
+     "join_db": 7.7
+    },
+    {
+     "segment": 10,
+     "file": "music_t03_s10.ogg",
+     "seconds": 26.47,
+     "rms_db": -22.7,
+     "centroid_hz": 2138,
+     "onsets_per_s": 1.17,
+     "tier": "peak",
+     "join_db": 23.9
+    },
+    {
+     "segment": 11,
+     "file": "music_t03_s11.ogg",
+     "seconds": 28.92,
+     "rms_db": -26.7,
+     "centroid_hz": 1674,
+     "onsets_per_s": 1.18,
+     "tier": "calm",
+     "join_db": 9.2
+    },
+    {
+     "segment": 12,
+     "file": "music_t03_s12.ogg",
+     "seconds": 29.47,
+     "rms_db": -21.8,
+     "centroid_hz": 1746,
+     "onsets_per_s": 0.51,
+     "tier": "calm",
+     "join_db": 4.1
+    },
+    {
+     "segment": 13,
+     "file": "music_t03_s13.ogg",
+     "seconds": 32.98,
+     "rms_db": -26.5,
+     "centroid_hz": 1986,
+     "onsets_per_s": 1.15,
+     "tier": "calm",
+     "join_db": 0.3
+    },
+    {
+     "segment": 14,
+     "file": "music_t03_s14.ogg",
+     "seconds": 39.85,
+     "rms_db": -30.1,
+     "centroid_hz": 1739,
+     "onsets_per_s": 1.51,
+     "tier": "build",
+     "join_db": null
+    }
+   ],
+   "identified_as": "strategic map theme (Ferengi)"
+  },
+  {
+   "track": 4,
+   "role": "strategic",
+   "race": "Klingon",
+   "fac": "kli",
+   "segments": [
+    {
+     "segment": 0,
+     "file": "music_t04_s00.ogg",
+     "seconds": 21.68,
+     "rms_db": -19.2,
+     "centroid_hz": 1169,
+     "onsets_per_s": 1.57,
+     "tier": "build",
+     "join_db": 13.8
+    },
+    {
+     "segment": 1,
+     "file": "music_t04_s01.ogg",
+     "seconds": 24.77,
+     "rms_db": -20.0,
+     "centroid_hz": 1653,
+     "onsets_per_s": 1.09,
+     "tier": "calm",
+     "join_db": 51.6
+    },
+    {
+     "segment": 2,
+     "file": "music_t04_s02.ogg",
+     "seconds": 18.59,
+     "rms_db": -18.2,
+     "centroid_hz": 1086,
+     "onsets_per_s": 1.99,
+     "tier": "peak",
+     "join_db": 13.6
+    },
+    {
+     "segment": 3,
+     "file": "music_t04_s03.ogg",
+     "seconds": 22.65,
+     "rms_db": -19.7,
+     "centroid_hz": 2654,
+     "onsets_per_s": 0.53,
+     "tier": "calm",
+     "join_db": 24.8
+    },
+    {
+     "segment": 4,
+     "file": "music_t04_s04.ogg",
+     "seconds": 24.77,
+     "rms_db": -17.5,
+     "centroid_hz": 1749,
+     "onsets_per_s": 0.89,
+     "tier": "calm",
+     "join_db": 74.0
+    },
+    {
+     "segment": 5,
+     "file": "music_t04_s05.ogg",
+     "seconds": 18.59,
+     "rms_db": -17.5,
+     "centroid_hz": 671,
+     "onsets_per_s": 1.61,
+     "tier": "build",
+     "join_db": 25.7
+    },
+    {
+     "segment": 6,
+     "file": "music_t04_s06.ogg",
+     "seconds": 23.25,
+     "rms_db": -18.0,
+     "centroid_hz": 1093,
+     "onsets_per_s": 1.72,
+     "tier": "build",
+     "join_db": 48.2
+    },
+    {
+     "segment": 7,
+     "file": "music_t04_s07.ogg",
+     "seconds": 30.99,
+     "rms_db": -17.4,
+     "centroid_hz": 915,
+     "onsets_per_s": 1.9,
+     "tier": "peak",
+     "join_db": 41.4
+    },
+    {
+     "segment": 8,
+     "file": "music_t04_s08.ogg",
+     "seconds": 30.99,
+     "rms_db": -18.6,
+     "centroid_hz": 1164,
+     "onsets_per_s": 1.61,
+     "tier": "build",
+     "join_db": 40.3
+    },
+    {
+     "segment": 9,
+     "file": "music_t04_s09.ogg",
+     "seconds": 25.55,
+     "rms_db": -19.2,
+     "centroid_hz": 1119,
+     "onsets_per_s": 1.02,
+     "tier": "calm",
+     "join_db": 61.2
+    },
+    {
+     "segment": 10,
+     "file": "music_t04_s10.ogg",
+     "seconds": 34.04,
+     "rms_db": -21.6,
+     "centroid_hz": 988,
+     "onsets_per_s": 0.73,
+     "tier": "calm",
+     "join_db": 57.1
+    },
+    {
+     "segment": 11,
+     "file": "music_t04_s11.ogg",
+     "seconds": 18.59,
+     "rms_db": -15.7,
+     "centroid_hz": 937,
+     "onsets_per_s": 1.51,
+     "tier": "peak",
+     "join_db": 4.8
+    },
+    {
+     "segment": 12,
+     "file": "music_t04_s12.ogg",
+     "seconds": 23.25,
+     "rms_db": -18.0,
+     "centroid_hz": 963,
+     "onsets_per_s": 1.55,
+     "tier": "build",
+     "join_db": 18.6
+    },
+    {
+     "segment": 13,
+     "file": "music_t04_s13.ogg",
+     "seconds": 30.99,
+     "rms_db": -17.4,
+     "centroid_hz": 1455,
+     "onsets_per_s": 1.71,
+     "tier": "peak",
+     "join_db": 15.9
+    },
+    {
+     "segment": 14,
+     "file": "music_t04_s14.ogg",
+     "seconds": 24.81,
+     "rms_db": -17.9,
+     "centroid_hz": 986,
+     "onsets_per_s": 1.85,
+     "tier": "peak",
+     "join_db": 9.6
+    },
+    {
+     "segment": 15,
+     "file": "music_t04_s15.ogg",
+     "seconds": 41.42,
+     "rms_db": -18.7,
+     "centroid_hz": 1538,
+     "onsets_per_s": 0.6,
+     "tier": "calm",
+     "join_db": null
+    }
+   ],
+   "identified_as": "strategic map theme (Klingon)"
+  },
+  {
+   "track": 5,
+   "role": "strategic",
+   "race": "Romulan",
+   "fac": "rom",
+   "segments": [
+    {
+     "segment": 0,
+     "file": "music_t05_s00.ogg",
+     "seconds": 29.06,
+     "rms_db": -16.5,
+     "centroid_hz": 704,
+     "onsets_per_s": 1.48,
+     "tier": "build",
+     "join_db": 30.0
+    },
+    {
+     "segment": 1,
+     "file": "music_t05_s01.ogg",
+     "seconds": 37.45,
+     "rms_db": -20.6,
+     "centroid_hz": 1859,
+     "onsets_per_s": 0.99,
+     "tier": "calm",
+     "join_db": 33.8
+    },
+    {
+     "segment": 2,
+     "file": "music_t05_s02.ogg",
+     "seconds": 29.8,
+     "rms_db": -16.7,
+     "centroid_hz": 769,
+     "onsets_per_s": 1.41,
+     "tier": "build",
+     "join_db": 14.8
+    },
+    {
+     "segment": 3,
+     "file": "music_t05_s03.ogg",
+     "seconds": 30.58,
+     "rms_db": -19.2,
+     "centroid_hz": 1364,
+     "onsets_per_s": 0.85,
+     "tier": "calm",
+     "join_db": 66.3
+    },
+    {
+     "segment": 4,
+     "file": "music_t05_s04.ogg",
+     "seconds": 29.8,
+     "rms_db": -19.3,
+     "centroid_hz": 890,
+     "onsets_per_s": 1.34,
+     "tier": "build",
+     "join_db": 5.3
+    },
+    {
+     "segment": 5,
+     "file": "music_t05_s05.ogg",
+     "seconds": 30.95,
+     "rms_db": -17.4,
+     "centroid_hz": 1048,
+     "onsets_per_s": 1.39,
+     "tier": "build",
+     "join_db": 15.6
+    },
+    {
+     "segment": 6,
+     "file": "music_t05_s06.ogg",
+     "seconds": 33.99,
+     "rms_db": -17.5,
+     "centroid_hz": 1550,
+     "onsets_per_s": 0.71,
+     "tier": "calm",
+     "join_db": 36.7
+    },
+    {
+     "segment": 7,
+     "file": "music_t05_s07.ogg",
+     "seconds": 30.21,
+     "rms_db": -21.7,
+     "centroid_hz": 1698,
+     "onsets_per_s": 0.76,
+     "tier": "calm",
+     "join_db": 38.3
+    },
+    {
+     "segment": 8,
+     "file": "music_t05_s08.ogg",
+     "seconds": 26.38,
+     "rms_db": -19.3,
+     "centroid_hz": 710,
+     "onsets_per_s": 1.02,
+     "tier": "calm",
+     "join_db": 0.1
+    },
+    {
+     "segment": 9,
+     "file": "music_t05_s09.ogg",
+     "seconds": 28.64,
+     "rms_db": -16.6,
+     "centroid_hz": 909,
+     "onsets_per_s": 1.68,
+     "tier": "peak",
+     "join_db": 5.2
+    },
+    {
+     "segment": 10,
+     "file": "music_t05_s10.ogg",
+     "seconds": 32.1,
+     "rms_db": -17.7,
+     "centroid_hz": 818,
+     "onsets_per_s": 1.99,
+     "tier": "peak",
+     "join_db": 1.4
+    },
+    {
+     "segment": 11,
+     "file": "music_t05_s11.ogg",
+     "seconds": 39.02,
+     "rms_db": -17.5,
+     "centroid_hz": 1053,
+     "onsets_per_s": 1.97,
+     "tier": "peak",
+     "join_db": 5.6
+    },
+    {
+     "segment": 12,
+     "file": "music_t05_s12.ogg",
+     "seconds": 27.54,
+     "rms_db": -16.1,
+     "centroid_hz": 655,
+     "onsets_per_s": 1.78,
+     "tier": "peak",
+     "join_db": 1.8
+    },
+    {
+     "segment": 13,
+     "file": "music_t05_s13.ogg",
+     "seconds": 30.99,
+     "rms_db": -16.9,
+     "centroid_hz": 966,
+     "onsets_per_s": 1.48,
+     "tier": "build",
+     "join_db": 20.3
+    },
+    {
+     "segment": 14,
+     "file": "music_t05_s14.ogg",
+     "seconds": 41.28,
+     "rms_db": -16.3,
+     "centroid_hz": 709,
+     "onsets_per_s": 1.89,
+     "tier": "peak",
+     "join_db": null
+    }
+   ],
+   "identified_as": "strategic map theme (Romulan)"
+  },
+  {
+   "track": 6,
+   "role": "combat",
+   "race": "Cardassian",
+   "fac": "car",
+   "segments": [
+    {
+     "segment": 0,
+     "file": "music_t06_s00.ogg",
+     "seconds": 13.74,
+     "rms_db": -14.3,
+     "centroid_hz": 1027,
+     "onsets_per_s": 1.89,
+     "tier": "peak",
+     "join_db": 9.9
+    },
+    {
+     "segment": 1,
+     "file": "music_t06_s01.ogg",
+     "seconds": 13.7,
+     "rms_db": -13.3,
+     "centroid_hz": 1008,
+     "onsets_per_s": 1.31,
+     "tier": "build",
+     "join_db": 9.0
+    },
+    {
+     "segment": 2,
+     "file": "music_t06_s02.ogg",
+     "seconds": 13.74,
+     "rms_db": -15.8,
+     "centroid_hz": 1376,
+     "onsets_per_s": 1.75,
+     "tier": "calm",
+     "join_db": 9.6
+    },
+    {
+     "segment": 3,
+     "file": "music_t06_s03.ogg",
+     "seconds": 6.83,
+     "rms_db": -13.8,
+     "centroid_hz": 1087,
+     "onsets_per_s": 1.46,
+     "tier": "build",
+     "join_db": 4.5
+    },
+    {
+     "segment": 4,
+     "file": "music_t06_s04.ogg",
+     "seconds": 6.87,
+     "rms_db": -13.6,
+     "centroid_hz": 1131,
+     "onsets_per_s": 2.04,
+     "tier": "peak",
+     "join_db": 7.1
+    },
+    {
+     "segment": 5,
+     "file": "music_t06_s05.ogg",
+     "seconds": 13.74,
+     "rms_db": -14.3,
+     "centroid_hz": 1239,
+     "onsets_per_s": 1.16,
+     "tier": "calm",
+     "join_db": 17.2
+    },
+    {
+     "segment": 6,
+     "file": "music_t06_s06.ogg",
+     "seconds": 20.57,
+     "rms_db": -15.9,
+     "centroid_hz": 1716,
+     "onsets_per_s": 1.17,
+     "tier": "calm",
+     "join_db": 8.5
+    },
+    {
+     "segment": 7,
+     "file": "music_t06_s07.ogg",
+     "seconds": 13.74,
+     "rms_db": -14.5,
+     "centroid_hz": 842,
+     "onsets_per_s": 1.96,
+     "tier": "build",
+     "join_db": 14.9
+    },
+    {
+     "segment": 8,
+     "file": "music_t06_s08.ogg",
+     "seconds": 20.62,
+     "rms_db": -15.4,
+     "centroid_hz": 2041,
+     "onsets_per_s": 1.02,
+     "tier": "calm",
+     "join_db": 10.8
+    },
+    {
+     "segment": 9,
+     "file": "music_t06_s09.ogg",
+     "seconds": 13.74,
+     "rms_db": -13.2,
+     "centroid_hz": 1009,
+     "onsets_per_s": 1.75,
+     "tier": "peak",
+     "join_db": null
+    }
+   ],
+   "identified_as": "combat theme (Cardassian)"
+  },
+  {
+   "track": 7,
+   "role": "combat",
+   "race": "Federation",
+   "fac": "fed",
+   "segments": [
+    {
+     "segment": 0,
+     "file": "music_t07_s00.ogg",
+     "seconds": 19.46,
+     "rms_db": -13.9,
+     "centroid_hz": 1699,
+     "onsets_per_s": 1.85,
+     "tier": "peak",
+     "join_db": 17.2
+    },
+    {
+     "segment": 1,
+     "file": "music_t07_s01.ogg",
+     "seconds": 13.01,
+     "rms_db": -13.5,
+     "centroid_hz": 1702,
+     "onsets_per_s": 1.61,
+     "tier": "peak",
+     "join_db": 10.4
+    },
+    {
+     "segment": 2,
+     "file": "music_t07_s02.ogg",
+     "seconds": 12.96,
+     "rms_db": -13.8,
+     "centroid_hz": 1379,
+     "onsets_per_s": 1.62,
+     "tier": "build",
+     "join_db": 10.7
+    },
+    {
+     "segment": 3,
+     "file": "music_t07_s03.ogg",
+     "seconds": 25.97,
+     "rms_db": -14.4,
+     "centroid_hz": 1467,
+     "onsets_per_s": 0.92,
+     "tier": "calm",
+     "join_db": 12.5
+    },
+    {
+     "segment": 4,
+     "file": "music_t07_s04.ogg",
+     "seconds": 4.47,
+     "rms_db": -14.9,
+     "centroid_hz": 1796,
+     "onsets_per_s": 1.79,
+     "tier": "calm",
+     "join_db": 16.1
+    },
+    {
+     "segment": 5,
+     "file": "music_t07_s05.ogg",
+     "seconds": 17.43,
+     "rms_db": -15.5,
+     "centroid_hz": 1944,
+     "onsets_per_s": 1.43,
+     "tier": "calm",
+     "join_db": 19.7
+    },
+    {
+     "segment": 6,
+     "file": "music_t07_s06.ogg",
+     "seconds": 19.88,
+     "rms_db": -14.3,
+     "centroid_hz": 1871,
+     "onsets_per_s": 1.61,
+     "tier": "build",
+     "join_db": 14.4
+    },
+    {
+     "segment": 7,
+     "file": "music_t07_s07.ogg",
+     "seconds": 13.01,
+     "rms_db": -14.6,
+     "centroid_hz": 1506,
+     "onsets_per_s": 1.54,
+     "tier": "calm",
+     "join_db": 6.8
+    },
+    {
+     "segment": 8,
+     "file": "music_t07_s08.ogg",
+     "seconds": 13.01,
+     "rms_db": -14.4,
+     "centroid_hz": 1130,
+     "onsets_per_s": 1.69,
+     "tier": "build",
+     "join_db": 6.3
+    },
+    {
+     "segment": 9,
+     "file": "music_t07_s09.ogg",
+     "seconds": 17.43,
+     "rms_db": -13.1,
+     "centroid_hz": 1583,
+     "onsets_per_s": 1.61,
+     "tier": "peak",
+     "join_db": null
+    }
+   ],
+   "identified_as": "combat theme (Federation)"
+  },
+  {
+   "track": 8,
+   "role": "combat",
+   "race": "Ferengi",
+   "fac": "fer",
+   "segments": [
+    {
+     "segment": 0,
+     "file": "music_t08_s00.ogg",
+     "seconds": 15.68,
+     "rms_db": -15.6,
+     "centroid_hz": 1283,
+     "onsets_per_s": 1.21,
+     "tier": "build",
+     "join_db": 3.8
+    },
+    {
+     "segment": 1,
+     "file": "music_t08_s01.ogg",
+     "seconds": 15.64,
+     "rms_db": -15.1,
+     "centroid_hz": 1437,
+     "onsets_per_s": 1.6,
+     "tier": "peak",
+     "join_db": 4.1
+    },
+    {
+     "segment": 2,
+     "file": "music_t08_s02.ogg",
+     "seconds": 19.51,
+     "rms_db": -18.7,
+     "centroid_hz": 1138,
+     "onsets_per_s": 0.82,
+     "tier": "calm",
+     "join_db": 13.0
+    },
+    {
+     "segment": 3,
+     "file": "music_t08_s03.ogg",
+     "seconds": 15.68,
+     "rms_db": -14.5,
+     "centroid_hz": 1345,
+     "onsets_per_s": 1.53,
+     "tier": "peak",
+     "join_db": 0.9
+    },
+    {
+     "segment": 4,
+     "file": "music_t08_s04.ogg",
+     "seconds": 15.68,
+     "rms_db": -15.4,
+     "centroid_hz": 2191,
+     "onsets_per_s": 0.7,
+     "tier": "calm",
+     "join_db": 9.5
+    },
+    {
+     "segment": 5,
+     "file": "music_t08_s05.ogg",
+     "seconds": 19.56,
+     "rms_db": -15.5,
+     "centroid_hz": 1657,
+     "onsets_per_s": 1.53,
+     "tier": "build",
+     "join_db": 7.1
+    },
+    {
+     "segment": 6,
+     "file": "music_t08_s06.ogg",
+     "seconds": 15.68,
+     "rms_db": -14.8,
+     "centroid_hz": 1183,
+     "onsets_per_s": 1.85,
+     "tier": "peak",
+     "join_db": 6.0
+    },
+    {
+     "segment": 7,
+     "file": "music_t08_s07.ogg",
+     "seconds": 15.68,
+     "rms_db": -14.1,
+     "centroid_hz": 1453,
+     "onsets_per_s": 0.7,
+     "tier": "calm",
+     "join_db": 3.2
+    },
+    {
+     "segment": 8,
+     "file": "music_t08_s08.ogg",
+     "seconds": 15.68,
+     "rms_db": -14.9,
+     "centroid_hz": 1452,
+     "onsets_per_s": 1.34,
+     "tier": "build",
+     "join_db": null
+    }
+   ],
+   "identified_as": "combat theme (Ferengi)"
+  },
+  {
+   "track": 9,
+   "role": "combat",
+   "race": "Klingon",
+   "fac": "kli",
+   "segments": [
+    {
+     "segment": 0,
+     "file": "music_t09_s00.ogg",
+     "seconds": 14.57,
+     "rms_db": -14.3,
+     "centroid_hz": 1440,
+     "onsets_per_s": 2.06,
+     "tier": "build",
+     "join_db": 13.5
+    },
+    {
+     "segment": 1,
+     "file": "music_t09_s01.ogg",
+     "seconds": 7.29,
+     "rms_db": -14.8,
+     "centroid_hz": 1578,
+     "onsets_per_s": 1.65,
+     "tier": "calm",
+     "join_db": 4.1
+    },
+    {
+     "segment": 2,
+     "file": "music_t09_s02.ogg",
+     "seconds": 14.57,
+     "rms_db": -14.3,
+     "centroid_hz": 1534,
+     "onsets_per_s": 2.61,
+     "tier": "peak",
+     "join_db": 26.2
+    },
+    {
+     "segment": 3,
+     "file": "music_t09_s03.ogg",
+     "seconds": 14.57,
+     "rms_db": -13.3,
+     "centroid_hz": 1105,
+     "onsets_per_s": 1.65,
+     "tier": "peak",
+     "join_db": 12.0
+    },
+    {
+     "segment": 4,
+     "file": "music_t09_s04.ogg",
+     "seconds": 7.29,
+     "rms_db": -15.0,
+     "centroid_hz": 1375,
+     "onsets_per_s": 1.78,
+     "tier": "build",
+     "join_db": 5.5
+    },
+    {
+     "segment": 5,
+     "file": "music_t09_s05.ogg",
+     "seconds": 14.57,
+     "rms_db": -13.9,
+     "centroid_hz": 1574,
+     "onsets_per_s": 2.2,
+     "tier": "peak",
+     "join_db": 13.5
+    },
+    {
+     "segment": 6,
+     "file": "music_t09_s06.ogg",
+     "seconds": 5.49,
+     "rms_db": -14.7,
+     "centroid_hz": 1766,
+     "onsets_per_s": 2.0,
+     "tier": "build",
+     "join_db": 8.4
+    },
+    {
+     "segment": 7,
+     "file": "music_t09_s07.ogg",
+     "seconds": 5.44,
+     "rms_db": -15.8,
+     "centroid_hz": 1742,
+     "onsets_per_s": 1.84,
+     "tier": "calm",
+     "join_db": 8.5
+    },
+    {
+     "segment": 8,
+     "file": "music_t09_s08.ogg",
+     "seconds": 14.57,
+     "rms_db": -13.5,
+     "centroid_hz": 1150,
+     "onsets_per_s": 1.78,
+     "tier": "peak",
+     "join_db": 11.2
+    },
+    {
+     "segment": 9,
+     "file": "music_t09_s09.ogg",
+     "seconds": 3.64,
+     "rms_db": -13.3,
+     "centroid_hz": 2112,
+     "onsets_per_s": 1.37,
+     "tier": "build",
+     "join_db": 7.2
+    },
+    {
+     "segment": 10,
+     "file": "music_t09_s10.ogg",
+     "seconds": 1.8,
+     "rms_db": -15.3,
+     "centroid_hz": 1907,
+     "onsets_per_s": 1.67,
+     "tier": "calm",
+     "join_db": 0.1
+    },
+    {
+     "segment": 11,
+     "file": "music_t09_s11.ogg",
+     "seconds": 7.29,
+     "rms_db": -14.5,
+     "centroid_hz": 1734,
+     "onsets_per_s": 1.51,
+     "tier": "calm",
+     "join_db": null
+    }
+   ],
+   "identified_as": "combat theme (Klingon)"
+  },
+  {
+   "track": 10,
+   "role": "combat",
+   "race": "Romulan",
+   "fac": "rom",
+   "segments": [
+    {
+     "segment": 0,
+     "file": "music_t10_s00.ogg",
+     "seconds": 14.53,
+     "rms_db": -15.0,
+     "centroid_hz": 1441,
+     "onsets_per_s": 1.17,
+     "tier": "calm",
+     "join_db": 4.1
+    },
+    {
+     "segment": 1,
+     "file": "music_t10_s01.ogg",
+     "seconds": 14.57,
+     "rms_db": -15.6,
+     "centroid_hz": 1214,
+     "onsets_per_s": 1.58,
+     "tier": "calm",
+     "join_db": 11.3
+    },
+    {
+     "segment": 2,
+     "file": "music_t10_s02.ogg",
+     "seconds": 14.57,
+     "rms_db": -14.1,
+     "centroid_hz": 1340,
+     "onsets_per_s": 1.17,
+     "tier": "build",
+     "join_db": 2.5
+    },
+    {
+     "segment": 3,
+     "file": "music_t10_s03.ogg",
+     "seconds": 14.57,
+     "rms_db": -15.1,
+     "centroid_hz": 1419,
+     "onsets_per_s": 1.51,
+     "tier": "build",
+     "join_db": 7.2
+    },
+    {
+     "segment": 4,
+     "file": "music_t10_s04.ogg",
+     "seconds": 14.57,
+     "rms_db": -13.8,
+     "centroid_hz": 1299,
+     "onsets_per_s": 1.37,
+     "tier": "build",
+     "join_db": 9.2
+    },
+    {
+     "segment": 5,
+     "file": "music_t10_s05.ogg",
+     "seconds": 14.53,
+     "rms_db": -14.9,
+     "centroid_hz": 1140,
+     "onsets_per_s": 2.0,
+     "tier": "peak",
+     "join_db": 5.9
+    },
+    {
+     "segment": 6,
+     "file": "music_t10_s06.ogg",
+     "seconds": 14.57,
+     "rms_db": -13.6,
+     "centroid_hz": 1349,
+     "onsets_per_s": 1.37,
+     "tier": "build",
+     "join_db": 2.4
+    },
+    {
+     "segment": 7,
+     "file": "music_t10_s07.ogg",
+     "seconds": 14.57,
+     "rms_db": -14.6,
+     "centroid_hz": 1486,
+     "onsets_per_s": 1.85,
+     "tier": "peak",
+     "join_db": 6.5
+    },
+    {
+     "segment": 8,
+     "file": "music_t10_s08.ogg",
+     "seconds": 14.57,
+     "rms_db": -14.7,
+     "centroid_hz": 1458,
+     "onsets_per_s": 1.24,
+     "tier": "calm",
+     "join_db": 1.3
+    },
+    {
+     "segment": 9,
+     "file": "music_t10_s09.ogg",
+     "seconds": 14.57,
+     "rms_db": -16.0,
+     "centroid_hz": 1104,
+     "onsets_per_s": 1.17,
+     "tier": "calm",
+     "join_db": 10.6
+    },
+    {
+     "segment": 10,
+     "file": "music_t10_s10.ogg",
+     "seconds": 14.57,
+     "rms_db": -13.8,
+     "centroid_hz": 1315,
+     "onsets_per_s": 1.65,
+     "tier": "peak",
+     "join_db": null
+    }
+   ],
+   "identified_as": "combat theme (Romulan)"
+  },
+  {
+   "track": 11,
+   "role": "unlabelled",
+   "race": "Cardassian",
+   "fac": "car",
+   "segments": [
+    {
+     "segment": 0,
+     "file": "music_t11_s00.ogg",
+     "seconds": 13.01,
+     "rms_db": -24.4,
+     "centroid_hz": 1177,
+     "onsets_per_s": 1.08,
+     "tier": "calm",
+     "join_db": 2.6
+    },
+    {
+     "segment": 1,
+     "file": "music_t11_s01.ogg",
+     "seconds": 8.67,
+     "rms_db": -18.1,
+     "centroid_hz": 2082,
+     "onsets_per_s": 1.85,
+     "tier": "build",
+     "join_db": 0.1
+    },
+    {
+     "segment": 2,
+     "file": "music_t11_s02.ogg",
+     "seconds": 8.67,
+     "rms_db": -19.8,
+     "centroid_hz": 2316,
+     "onsets_per_s": 2.77,
+     "tier": "peak",
+     "join_db": 13.2
+    },
+    {
+     "segment": 3,
+     "file": "music_t11_s03.ogg",
+     "seconds": 17.34,
+     "rms_db": -19.2,
+     "centroid_hz": 1019,
+     "onsets_per_s": 1.67,
+     "tier": "calm",
+     "join_db": null
+    }
+   ],
+   "identified_as": "short race cue (Cardassian; quieter than its strategic theme; screen unconfirmed)",
+   "nearest": [
+    {
+     "track": 9,
+     "chroma_match": 0.95,
+     "role": "combat",
+     "race": "Klingon"
+    },
+    {
+     "track": 3,
+     "chroma_match": 0.895,
+     "role": "strategic",
+     "race": "Ferengi"
+    },
+    {
+     "track": 5,
+     "chroma_match": 0.892,
+     "role": "strategic",
+     "race": "Romulan"
+    }
+   ]
+  },
+  {
+   "track": 12,
+   "role": "unlabelled",
+   "race": "Federation",
+   "fac": "fed",
+   "segments": [
+    {
+     "segment": 0,
+     "file": "music_t12_s00.ogg",
+     "seconds": 17.39,
+     "rms_db": -23.8,
+     "centroid_hz": 1115,
+     "onsets_per_s": 2.47,
+     "tier": "calm",
+     "join_db": 12.1
+    },
+    {
+     "segment": 1,
+     "file": "music_t12_s01.ogg",
+     "seconds": 12.64,
+     "rms_db": -22.6,
+     "centroid_hz": 1611,
+     "onsets_per_s": 3.01,
+     "tier": "build",
+     "join_db": 10.9
+    },
+    {
+     "segment": 2,
+     "file": "music_t12_s02.ogg",
+     "seconds": 17.39,
+     "rms_db": -20.9,
+     "centroid_hz": 1167,
+     "onsets_per_s": 2.24,
+     "tier": "calm",
+     "join_db": 6.7
+    },
+    {
+     "segment": 3,
+     "file": "music_t12_s03.ogg",
+     "seconds": 12.64,
+     "rms_db": -20.9,
+     "centroid_hz": 1185,
+     "onsets_per_s": 2.93,
+     "tier": "peak",
+     "join_db": null
+    }
+   ],
+   "identified_as": "short race cue (Federation; louder than its strategic theme; screen unconfirmed)",
+   "nearest": [
+    {
+     "track": 8,
+     "chroma_match": 0.904,
+     "role": "combat",
+     "race": "Ferengi"
+    },
+    {
+     "track": 5,
+     "chroma_match": 0.903,
+     "role": "strategic",
+     "race": "Romulan"
+    },
+    {
+     "track": 2,
+     "chroma_match": 0.885,
+     "role": "strategic",
+     "race": "Federation"
+    }
+   ]
+  },
+  {
+   "track": 13,
+   "role": "unlabelled",
+   "race": "Ferengi",
+   "fac": "fer",
+   "segments": [
+    {
+     "segment": 0,
+     "file": "music_t13_s00.ogg",
+     "seconds": 17.43,
+     "rms_db": -18.5,
+     "centroid_hz": 1767,
+     "onsets_per_s": 2.98,
+     "tier": "build",
+     "join_db": 4.3
+    },
+    {
+     "segment": 1,
+     "file": "music_t13_s01.ogg",
+     "seconds": 21.86,
+     "rms_db": -17.5,
+     "centroid_hz": 875,
+     "onsets_per_s": 1.97,
+     "tier": "calm",
+     "join_db": 13.5
+    },
+    {
+     "segment": 2,
+     "file": "music_t13_s02.ogg",
+     "seconds": 17.48,
+     "rms_db": -16.3,
+     "centroid_hz": 1430,
+     "onsets_per_s": 2.86,
+     "tier": "peak",
+     "join_db": null
+    }
+   ],
+   "identified_as": "short race cue (Ferengi; louder than its strategic theme; screen unconfirmed)",
+   "nearest": [
+    {
+     "track": 4,
+     "chroma_match": 0.82,
+     "role": "strategic",
+     "race": "Klingon"
+    },
+    {
+     "track": 2,
+     "chroma_match": 0.8,
+     "role": "strategic",
+     "race": "Federation"
+    },
+    {
+     "track": 3,
+     "chroma_match": 0.776,
+     "role": "strategic",
+     "race": "Ferengi"
+    }
+   ]
+  },
+  {
+   "track": 14,
+   "role": "unlabelled",
+   "race": "Klingon",
+   "fac": "kli",
+   "segments": [
+    {
+     "segment": 0,
+     "file": "music_t14_s00.ogg",
+     "seconds": 18.13,
+     "rms_db": -17.0,
+     "centroid_hz": 879,
+     "onsets_per_s": 2.87,
+     "tier": "build",
+     "join_db": 2.8
+    },
+    {
+     "segment": 1,
+     "file": "music_t14_s01.ogg",
+     "seconds": 18.13,
+     "rms_db": -16.3,
+     "centroid_hz": 650,
+     "onsets_per_s": 1.82,
+     "tier": "calm",
+     "join_db": 16.6
+    },
+    {
+     "segment": 2,
+     "file": "music_t14_s02.ogg",
+     "seconds": 18.13,
+     "rms_db": -15.8,
+     "centroid_hz": 690,
+     "onsets_per_s": 1.71,
+     "tier": "peak",
+     "join_db": null
+    }
+   ],
+   "identified_as": "short race cue (Klingon; louder than its strategic theme; screen unconfirmed)",
+   "nearest": [
+    {
+     "track": 1,
+     "chroma_match": 0.883,
+     "role": "strategic",
+     "race": "Cardassian"
+    },
+    {
+     "track": 5,
+     "chroma_match": 0.875,
+     "role": "strategic",
+     "race": "Romulan"
+    },
+    {
+     "track": 8,
+     "chroma_match": 0.862,
+     "role": "combat",
+     "race": "Ferengi"
+    }
+   ]
+  },
+  {
+   "track": 15,
+   "role": "unlabelled",
+   "race": "Romulan",
+   "fac": "rom",
+   "segments": [
+    {
+     "segment": 0,
+     "file": "music_t15_s00.ogg",
+     "seconds": 17.99,
+     "rms_db": -16.0,
+     "centroid_hz": 791,
+     "onsets_per_s": 1.5,
+     "tier": "peak",
+     "join_db": 32.7
+    },
+    {
+     "segment": 1,
+     "file": "music_t15_s01.ogg",
+     "seconds": 17.99,
+     "rms_db": -17.4,
+     "centroid_hz": 1034,
+     "onsets_per_s": 1.56,
+     "tier": "build",
+     "join_db": 9.9
+    },
+    {
+     "segment": 2,
+     "file": "music_t15_s02.ogg",
+     "seconds": 17.99,
+     "rms_db": -19.0,
+     "centroid_hz": 771,
+     "onsets_per_s": 1.67,
+     "tier": "calm",
+     "join_db": 32.3
+    },
+    {
+     "segment": 3,
+     "file": "music_t15_s03.ogg",
+     "seconds": 17.99,
+     "rms_db": -18.1,
+     "centroid_hz": 1064,
+     "onsets_per_s": 1.28,
+     "tier": "calm",
+     "join_db": null
+    }
+   ],
+   "identified_as": "short race cue (Romulan; louder than its strategic theme; screen unconfirmed)",
+   "nearest": [
+    {
+     "track": 0,
+     "chroma_match": 0.951,
+     "role": "title",
+     "race": null
+    },
+    {
+     "track": 8,
+     "chroma_match": 0.933,
+     "role": "combat",
+     "race": "Ferengi"
+    },
+    {
+     "track": 7,
+     "chroma_match": 0.926,
+     "role": "combat",
+     "race": "Federation"
+    }
+   ]
+  }
+ ]
+}

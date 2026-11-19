@@ -411,7 +411,8 @@ void expireFeatures(GameState& next, TurnReport& report) {
 void planAnomalySurveys(GameState& next) {
     static constexpr std::array<std::pair<int, int>, 8> Approach{{
         {-1, -1}, {1, -1}, {-1, 1}, {1, 1}, {0, -1}, {-1, 0}, {1, 0}, {0, 1}}};
-    for (const auto& rival : next.rivals) {
+    for (const EmpireState* planner : internal::aiPlanners(next)) {
+        const auto& rival = *planner;
         const int owner = rival.id, bit = 1 << owner;
         std::set<int> reserved;
         for (auto& fleet : next.fleets) {

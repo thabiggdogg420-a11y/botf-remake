@@ -45,6 +45,23 @@ static func exists(path: String) -> bool:
 		return FileAccess.file_exists(path)
 	return ResourceLoader.exists(path) or FileAccess.file_exists(path)
 
+## F5: loads a res:// resource on a worker thread (desktop warm-up). Returns false when it cannot start. Poll with
+## threaded_status (0 loading, 1 loaded, -1 failed) and take the result with threaded_take.
+static func threaded_start(path: String) -> bool:
+	return _check(path) and path.begins_with("res://") and threads() and ResourceLoader.load_threaded_request(path, "", false) == OK
+
+static func threaded_status(path: String) -> int:
+	match ResourceLoader.load_threaded_get_status(path):
+		ResourceLoader.THREAD_LOAD_IN_PROGRESS: return 0
+		ResourceLoader.THREAD_LOAD_LOADED: return 1
+	return -1
+
+static func threaded_take(path: String) -> Resource:
+	return ResourceLoader.load_threaded_get(path) if threaded_status(path) == 1 else null
+
+static func cached(path: String) -> bool:
+	return ResourceLoader.has_cached(path)
+
 ## A resource (scene, script, font, shader, texture), or null.
 static func resource(path: String) -> Resource:
 	if not _check(path):
@@ -79,6 +96,42 @@ static func art(key: String, category: String) -> Texture2D:
 	if tex != null:   # a missing picture is never cached: the pack that holds it may mount later
 		_art_cache[ck] = tex
 	return tex
+
+## F5 performance pass: decodes pack art (raw images in art_desktop.pck) on a worker thread and fills the art cache, so the
+## first screen that shows them does not decode on the main thread (the New campaign screen's eight portraits cost about
+## 130 ms there). Imported textures and pictures already cached are skipped. Desktop only (needs threads); awaitable.
+static func warm_art(tree: SceneTree, keys: Array, category: String) -> int:
+	if not threads():
+		return 0
+	var n := 0
+	for key in keys:
+		var ck := category + "/" + str(key)
+		if _art_cache.has(ck):
+			continue
+		var path := ""
+		for ext in ART_EXTS:
+			var p := "res://art/%s/%s.%s" % [category, key, ext]
+			if ResourceLoader.exists(p):
+				path = ""
+				break
+			if FileAccess.file_exists(p):
+				path = p
+				break
+		if path == "":
+			continue
+		var holder := [null]
+		var task := WorkerThreadPool.add_task(func():
+			var img := Image.load_from_file(path)
+			if img != null and not img.is_empty():
+				img.generate_mipmaps()
+				holder[0] = img, false, "botf art warm")
+		while not WorkerThreadPool.is_task_completed(task):
+			await tree.process_frame
+		WorkerThreadPool.wait_for_task_completion(task)
+		if holder[0] != null and not _art_cache.has(ck):
+			_art_cache[ck] = ImageTexture.create_from_image(holder[0])
+			n += 1
+	return n
 
 ## A res:// or user:// text file ("" when missing). Content packs are read this way and handed to the core (loadContent).
 static func text(path: String) -> String:

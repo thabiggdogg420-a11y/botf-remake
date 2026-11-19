@@ -323,16 +323,20 @@ void battles(GameState& state, TurnReport& report, std::set<int>& withdrawn, std
     std::vector<int> ids;
     for (const auto& a : state.threatActors) ids.push_back(a.id);
     for (int actorId : ids) {
+        // F5 (20 Nov 2026): each empire meets the actor once a turn. Before, an empire whose ships neither died nor withdrew
+        // (a duel that ran to its round limit) was picked again forever: dominion-war seed 7655 turn 61 grew past 19 GB here.
+        std::set<int> fought;
         for (;;) {   // One duel per empire present, in empire-id order; the actor carries its wounds from duel to duel.
             auto it = std::find_if(state.threatActors.begin(), state.threatActors.end(), [actorId](const ThreatActor& a) { return a.id == actorId; });
             if (it == state.threatActors.end() || !hostile(*it)) break;
             const ThreatActor actor = *it;
             int owner = 0;
             for (const auto& f : state.fleets) {
-                if (f.hull <= 0 || f.x != actor.x || f.y != actor.y || withdrawn.count(f.id) || !eligibleOwner(state, f.ownerId)) continue;
+                if (f.hull <= 0 || f.x != actor.x || f.y != actor.y || withdrawn.count(f.id) || !eligibleOwner(state, f.ownerId) || fought.count(f.ownerId)) continue;
                 if (owner == 0 || f.ownerId < owner) owner = f.ownerId;
             }
             if (owner == 0) break;
+            fought.insert(owner);
             std::vector<int> fleetIds;
             for (const auto& f : state.fleets)
                 if (f.hull > 0 && f.x == actor.x && f.y == actor.y && f.ownerId == owner && !withdrawn.count(f.id)) fleetIds.push_back(f.id);

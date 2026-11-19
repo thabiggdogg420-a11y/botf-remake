@@ -1,5 +1,6 @@
 // F5 balance evidence (20 Nov 2026): AI-vs-AI soaks on every registered preset. Not a test suite (no add_test): a report.
-// The player slot is passive (no orders), so the rival AIs decide the campaign; every turn it reads victoryProgress for every
+// F5 round 2: observer mode (GameState::observerMode) by default, so the AI plays the player's seat too and a campaign runs
+// to a victory of any type; BOTF_SOAK_PASSIVE=1 restores round 1's passive player seat (no orders), where the rival AIs decide the campaign; every turn it reads victoryProgress for every
 // empire still standing and records, per empire and condition, the best percent and the first turn it reached 100 or was
 // achieved. A campaign stops at its outcome or the turn cap.
 //   BotfAiSoak [turns=300] [seeds=6] [preset-id ...]
@@ -90,9 +91,11 @@ int main(int argc, char** argv) {
                 std::cout << "FAIL " << p->id << " seed " << setup.seed << ": newCampaign: " << e.what() << std::endl;
                 continue;
             }
+            state.observerMode = !std::getenv("BOTF_SOAK_PASSIVE");
             std::map<int, EmpireTrack> track;
             for (int id : internal::activeEmpires(state)) { track[id].id = id; track[id].name = empireName(id); }
             std::string ending;
+            double slowestTurn = 0;
             try {
                 for (int t = 0; t < turns && state.outcome == CampaignOutcome::Ongoing; ++t) {
                     if (const char* dump = std::getenv("BOTF_SOAK_DUMP_TURN"); dump && std::atoi(dump) == state.turn) {
@@ -104,6 +107,7 @@ int main(int argc, char** argv) {
                     // Runaway guard (dominion-war seed 7655 grew to 10 GB in the first run): a turn over 20 s, or a campaign
                     // with an absurd fleet count, is recorded with its sizes and the campaign stops there.
                     const double turnSecs = std::chrono::duration<double>(std::chrono::steady_clock::now() - tg).count();
+                    slowestTurn = std::max(slowestTurn, turnSecs);
                     if (turnSecs > 20.0 || state.fleets.size() > 20000) {
                         std::cout << "RUNAWAY " << p->id << " seed " << setup.seed << " turn " << state.turn << ": " << turnSecs << " s, fleets "
                                   << state.fleets.size() << ", colonies " << state.colonies.size() << ", stations "
@@ -126,7 +130,7 @@ int main(int argc, char** argv) {
                     }
                     if (state.outcome != CampaignOutcome::Ongoing)
                         for (const auto& line : report.events)
-                            if (line.find("victory") != std::string::npos || line.find("defeat") != std::string::npos) ending = line;
+                            if (ending.empty() && (line.find("victory") != std::string::npos || line.find("defeat") != std::string::npos)) ending = line;
                 }
             } catch (const std::exception& e) {
                 std::cout << "FAIL " << p->id << " seed " << setup.seed << " turn " << state.turn << ": " << e.what() << std::endl;
@@ -139,21 +143,23 @@ int main(int argc, char** argv) {
             else if (ending.find("Vendetta") != std::string::npos) kind = "vendetta";
             else if (ending.find("scientific") != std::string::npos) kind = "scientific";
             else if (ending.find("diplomatic") != std::string::npos) kind = "diplomatic";
+            else if (ending.find("conquest victory") != std::string::npos) kind = "conquest";
+            else if (ending.find("domination victory") != std::string::npos) kind = "domination";
             else if (state.outcome == CampaignOutcome::Defeat && empireEliminated(state, state.playerEmpire)) { kind = "player-eliminated"; ++playerOut; }
             else kind = "conquest/domination";
             ++endings[kind];
             const std::string winner = state.winnerEmpire ? empireName(state.winnerEmpire) : "-";
             if (state.winnerEmpire && kind != "player-eliminated") ++winsBy[winner];
-            std::cout << "GAME " << p->id << " seed " << setup.seed << " turns " << state.turn << " end " << kind << " winner " << winner
+            std::cout << "GAME " << p->id << " seed " << setup.seed << " turns " << state.turn << " end " << kind << " winner " << winner << " slowest-turn " << slowestTurn << "s"
                       << (ending.empty() ? "" : " | " + ending) << std::endl;
             for (const auto& [id, tr] : track) {
                 ++appearances[tr.name];
-                std::cout << "EMP " << p->id << " seed " << setup.seed << " " << tr.name << (id == state.playerEmpire ? " (passive)" : "")
+                std::cout << "EMP " << p->id << " seed " << setup.seed << " " << tr.name << (id == state.playerEmpire ? (state.observerMode ? " (observer seat)" : " (passive)") : "")
                           << " colonies " << tr.colonies << " peak " << tr.peakColonies
                           << (tr.eliminatedTurn ? " out@" + std::to_string(tr.eliminatedTurn) : std::string());
                 for (int c = 0; c < 5; ++c) {
                     std::cout << " " << condName(c) << " " << tr.best[c] << "%" << (tr.first[c] ? "@" + std::to_string(tr.first[c]) : std::string());
-                    if (tr.first[c] && id != state.playerEmpire) firstReach[tr.name + " " + condName(c)].push_back(tr.first[c]);
+                    if (tr.first[c] && (id != state.playerEmpire || state.observerMode)) firstReach[tr.name + " " + condName(c)].push_back(tr.first[c]);
                 }
                 std::cout << std::endl;
             }

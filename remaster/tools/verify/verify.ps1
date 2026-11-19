@@ -274,6 +274,7 @@ try {
             @('title-fleet', 'res://scenes/battle/tests/test_title_fleet.gd'),
             @('galaxy-map', 'res://scenes/galaxy/tests/test_galaxy_map.gd'),
             @('audio', 'res://scripts/audio/tests/test_audio.gd'),
+            @('music-director', 'res://scripts/audio/tests/test_music_director.gd'),
             @('cue-trace', 'res://scripts/audio/tests/test_cue_trace.gd'),
             @('check-scripts', 'res://scenes/ui/tools/check_scripts.gd')
         )

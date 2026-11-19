@@ -5,10 +5,15 @@ extends SceneTree
 ## borg-assimilation end-<fac>-<outcome> (fac fed kli rom car fer dom, outcome conquest domination diplomatic defeat).
 ## Each cinematic is shot at several moments (<item>-<n>.png); prints "MOD9 <item>: ..." lines (movie length, the voice key
 ## the audio system resolved and the file it would play, subtitle text) and exits 1 when something expected is missing.
+## Saves, settings and user packs go to a fresh scratch folder per run (user://capture_sandbox/mod9/<unix time>); the run checks the
+## real user://saves is untouched at the end and exits 1 if it changed.
 
 var app: App
 var out_dir := "user://mod9"
 var code := 0
+const SANDBOX := "user://capture_sandbox/mod9"
+var _real_before := {}
+var _sandbox := ""
 
 
 func _initialize() -> void:
@@ -16,6 +21,9 @@ func _initialize() -> void:
 	if args.size() > 0:
 		out_dir = str(args[0])
 	DirAccess.make_dir_recursive_absolute(out_dir)
+	_real_before = _listing(AppSaves.REAL_DIR)
+	_sandbox = SANDBOX.path_join(str(int(Time.get_unix_time_from_system())))   # a fresh folder per run: nothing is cleared
+	AppSaves.sandbox(_sandbox)   # before the App exists: its autosaves and settings land in the sandbox
 	app = load("res://scenes/ui/app.tscn").instantiate()
 	root.add_child(app)
 	_run.call_deferred(args.slice(1))
@@ -132,5 +140,21 @@ func _run(items: Array) -> void:
 			await _shot(it)
 			app.close_modal()
 			await _wait(4)
+	var after := _listing(AppSaves.REAL_DIR)
+	if after != _real_before:
+		print("MOD9 REAL SAVES CHANGED: before ", _real_before.keys(), " after ", after.keys())
+		code = 1
+	else:
+		print("MOD9 real saves untouched (%d files); capture saves in %s: %s" % [after.size(), _sandbox, Array(DirAccess.get_files_at(AppSaves.DIR)) if DirAccess.dir_exists_absolute(AppSaves.DIR) else []])
 	print("MOD9 done, code ", code)
 	quit(code)
+
+
+## File name -> modified time for a folder (empty when it does not exist).
+func _listing(dir: String) -> Dictionary:
+	var out := {}
+	if DirAccess.dir_exists_absolute(dir):
+		for f in DirAccess.get_files_at(dir):
+			out[f] = FileAccess.get_modified_time(dir.path_join(f))
+	return out
+

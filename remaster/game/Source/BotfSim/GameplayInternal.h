@@ -48,6 +48,14 @@ bool colonySuppliedWithRange(const GameState& state, int owner, int range, int x
 // own and allied powered shipyards, own and allied stations, known wormhole exits.
 bool supplyReaches(const GameState& state, int owner, int range, int x, int y);
 std::vector<int> activeEmpires(const GameState& state); // Player and rivals, sorted.
+// Empires the AI plans for: the rivals, plus the player's seat in observer mode (soaks only).
+inline std::vector<const EmpireState*> aiPlanners(const GameState& state) {
+    std::vector<const EmpireState*> out;
+    if (state.observerMode) out.push_back(&state);
+    for (const auto& r : state.rivals) out.push_back(&r);
+    std::sort(out.begin(), out.end(), [](const EmpireState* a, const EmpireState* b) { return a->id < b->id; });
+    return out;
+}
 // Schema 25 (Scenarios.cpp): relations, treaties and seating for scenario scripts and secession.
 MajorRelation& relation(GameState& state, int a, int b);
 void war(GameState& state, int a, int b, bool engine);   // engine: through the diplomacy engine (calls to arms); false: the relation only

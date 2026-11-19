@@ -813,7 +813,7 @@ public:
     }
 
     bool isHuman(diplomacy::ParticipantId p) const override {
-        return !p.isMinor && p.id == state.playerEmpire;
+        return !p.isMinor && p.id == state.playerEmpire && !state.observerMode;
     }
 
     bool isEliminated(diplomacy::ParticipantId p) const override {
@@ -1483,7 +1483,13 @@ int standingFleetWanted(const GameState& s, int empireId) {
 }
 
 void planRivals(GameState& s) {
-    for (auto& owner : s.rivals) {
+    // Observer mode (soaks only): the player's seat is planned too, in empire-id order with the rivals.
+    std::vector<EmpireState*> planners;
+    if (s.observerMode) planners.push_back(&s);
+    for (auto& r : s.rivals) planners.push_back(&r);
+    std::sort(planners.begin(), planners.end(), [](const EmpireState* a, const EmpireState* b) { return a->id < b->id; });
+    for (EmpireState* plannerSeat : planners) {
+        auto& owner = *plannerSeat;
         // Personality- and situation-driven war decisions (treaties, cool-downs,
         // relative strength, trust and grievances); see planAiWarDeclarations.
         planAiWarDeclarations(s, owner.id);
@@ -2193,7 +2199,7 @@ void planAiWarDeclarations(GameState& s, int ownerId) {
             const int foe = r.first == s.playerEmpire ? r.second : r.first;
             if (foe != ownerId && !empireEliminatedInternal(s, foe)) ++warsOnHuman;
         }
-    const bool humanFull = modern && warsOnHuman >= 1 + s.turn / 40;
+    const bool humanFull = modern && !s.observerMode && warsOnHuman >= 1 + s.turn / 40;
     int best = 0, bestScore = 0;
     for (int other : candidates) {
         if (humanFull && other == s.playerEmpire) continue;
@@ -2283,7 +2289,7 @@ void answerCallsToArms(GameState& next, TurnReport& report) {
     if (!next.aiAggressionEnabled) return;
     const auto calls = next.diplomacyEngineState.defenseCalls;
     for (const auto& call : calls) {
-        if (call.ally == next.playerEmpire || !campaignEmpire(next, call.ally) || !campaignEmpire(next, call.aggressor)) continue;
+        if ((call.ally == next.playerEmpire && !next.observerMode) || !campaignEmpire(next, call.ally) || !campaignEmpire(next, call.aggressor)) continue;
         if (empireEliminatedInternal(next, call.ally) || empireEliminatedInternal(next, call.aggressor)) continue;
         const auto* rel = majorRelation(next, call.ally, call.aggressor);
         if (!rel || !rel->contact || rel->atWar) continue;
@@ -2348,7 +2354,7 @@ void applyTreatyConsequences(GameState& next, TurnReport& report) {
         if (rank <= 1) {
             for (int side = 0; side < 2; ++side) {
                 const int ai = side == 0 ? rel.first : rel.second, other = side == 0 ? rel.second : rel.first;
-                if (ai == next.playerEmpire) continue;
+                if (ai == next.playerEmpire && !next.observerMode) continue;
                 const auto cause = rivalryBreakdown(next, ai, other);
                 const int pressure = cause.total();
                 if (pressure < 10) continue;
@@ -2469,7 +2475,7 @@ void submitAiProposals(GameState& next, TurnReport& report) {
     ds.currentTurn = next.turn;
     const CampaignDiplomacyContext ctx(next);
     std::vector<int> planners;
-    for (int id : survivingEmpires(next)) if (id != next.playerEmpire) planners.push_back(id);
+    for (int id : survivingEmpires(next)) if (id != next.playerEmpire || next.observerMode) planners.push_back(id);
     const auto intents = diplomacy::planAiDiplomacy(ds, ctx, planners, next.seed ^ 0xD1B54A32D192ED03ULL);
     for (const auto& intent : intents) {
         const bool toPlayer = ctx.isHuman(intent.target);
@@ -2677,7 +2683,7 @@ void planAiIntelligence(GameState& next, const std::vector<int>& activeEmpires) 
     if (!next.aiAggressionEnabled) return; // Passive AI keeps its default posture
     const CampaignDiplomacyContext ctx(next);
     for (int empId : activeEmpires) {
-        if (empId == next.playerEmpire) continue;
+        if (empId == next.playerEmpire && !next.observerMode) continue;
         std::vector<intelligence::AiIntelRivalView> views;
         for (int rivalId : activeEmpires) {
             if (rivalId == empId) continue;
@@ -5669,7 +5675,21 @@ TurnReport advanceWithCombat(GameState& state, const std::function<void(GameStat
     if (!next.rivals.empty()) {
         std::set<int> surviving;
         for (const auto& c : next.colonies) surviving.insert(c.ownerId);
-        if (!surviving.count(next.playerEmpire)) {
+        if (next.observerMode) {
+            // Observer mode (soaks only): the player's seat is one AI among the others. The campaign ends when one empire is
+            // left (conquest) or an empire holds three fifths of the systems from turn 20 (the player's domination test).
+            int winner = surviving.size() == 1 ? *surviving.begin() : 0;
+            if (!winner && next.turn >= 20)
+                for (int id : surviving)
+                    if (static_cast<int>(std::count_if(next.colonies.begin(), next.colonies.end(), [&](const Colony& c) { return c.ownerId == id; })) * 5 >=
+                        static_cast<int>(next.systems.size()) * 3) { winner = id; break; }
+            if (winner) {
+                next.winnerEmpire = winner;
+                next.outcome = winner == next.playerEmpire ? CampaignOutcome::Victory : CampaignOutcome::Defeat;
+                report.events.push_back(std::string(empireName(winner)) + (surviving.size() == 1 ? " is the last power standing: conquest victory (observer)." : " holds three fifths of the galaxy: domination victory (observer)."));
+            }
+        }
+        else if (!surviving.count(next.playerEmpire)) {
             next.outcome = CampaignOutcome::Defeat;
             next.winnerEmpire = surviving.size() == 1 ? *surviving.begin() : 0;
         }
@@ -5678,7 +5698,7 @@ TurnReport advanceWithCombat(GameState& state, const std::function<void(GameStat
             static_cast<int>(next.systems.size()) * 3)) {
             next.outcome = CampaignOutcome::Victory; next.winnerEmpire = next.playerEmpire;
         }
-        if (next.outcome != CampaignOutcome::Ongoing) report.events.push_back(next.outcome == CampaignOutcome::Victory ?
+        if (!next.observerMode && next.outcome != CampaignOutcome::Ongoing) report.events.push_back(next.outcome == CampaignOutcome::Victory ?
             std::string(empireName(next.playerEmpire)) + " campaign victory." : std::string(empireName(next.playerEmpire)) + " campaign defeat.");
     }
     if (next.outcome == CampaignOutcome::Ongoing) gameplay::evaluateVictory(next, report);

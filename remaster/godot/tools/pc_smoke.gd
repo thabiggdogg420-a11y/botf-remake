@@ -18,6 +18,9 @@ func _initialize() -> void:
 		# Uncapped frame rates: the real frame cost rather than the display's refresh.
 		DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
 	DirAccess.make_dir_recursive_absolute(out_dir)
+	# F5 round 2: the run's campaign autosaves every turn; keep it out of the player's own saves and settings.
+	AppSaves.sandbox("user://capture_sandbox/pc-smoke/%d" % int(Time.get_unix_time_from_system()))
+	RenderingServer.viewport_set_measure_render_time(root.get_viewport_rid(), true)   # F5 perf pass: slow frames split process / render
 	DisplayServer.window_set_size(Vector2i(1920, 1080))
 	root.size = Vector2i(1920, 1080)
 	app = load("res://scenes/ui/app.tscn").instantiate()
@@ -76,7 +79,10 @@ func measure(label: String, seconds: float, from_us := 0) -> void:
 		var now := Time.get_ticks_usec()
 		times.append((now - last) / 1000.0)
 		if (now - last) > 60000:
-			print("SMOKE   slow frame in %s: frame %d took %.0f ms" % [label, times.size(), (now - last) / 1000.0])
+			var vp := root.get_viewport_rid()
+			print("SMOKE   slow frame in %s: frame %d took %.0f ms (process %.0f ms, render cpu %.0f ms, gpu %.0f ms, frame %d)" % [label, times.size(), (now - last) / 1000.0,
+				Performance.get_monitor(Performance.TIME_PROCESS) * 1000.0, RenderingServer.viewport_get_measured_render_time_cpu(vp) + RenderingServer.get_frame_setup_time_cpu(),
+				RenderingServer.viewport_get_measured_render_time_gpu(vp), Engine.get_process_frames()])
 		last = now
 	var sorted := times.duplicate()
 	sorted.sort()

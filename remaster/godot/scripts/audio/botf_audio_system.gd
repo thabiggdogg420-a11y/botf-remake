@@ -26,6 +26,8 @@ var enabled := true                    ## false in tests that want silence witho
 var recent: Array = []                 ## last played [{cue, key, bus, kind, t}], newest last (debug and tests)
 var music_context := ""
 var music_key := ""                    ## key or generated kind currently playing
+var music_mood := "calm"               ## F5 adaptive music: calm / build / peak on the strategic map (BotfMusicDirector)
+var adaptive_music := true             ## off: segments play straight through in game order, as before F5
 var clock_override := -1.0             ## tests drive time with this
 var chatter := BotfBridgeChatter.new()
 var chatter_enabled := true            ## the bridge chatter layer (battle only); settings can switch it off
@@ -49,6 +51,7 @@ var _bound_buttons := true
 var _prev_screen := ""
 var _music_fac := ""
 var _seed := -1
+var _last_colonies := -1               ## the player's colony count at the last view (adaptive music: a loss raises to peak)
 
 
 func _init() -> void:
@@ -125,7 +128,7 @@ static func bus_names() -> PackedStringArray:
 ## Reads the vol_* settings from the client settings file (before the App has loaded it).
 func load_settings_file() -> void:
 	var s := {}
-	var data: Variant = AppLoader.json(SETTINGS_PATH)   # user:// (IndexedDB on web)
+	var data: Variant = AppLoader.json(AppSaves.SETTINGS_PATH)   # user:// (IndexedDB on web); a capture sandbox moves it
 	if data is Dictionary:
 		s = data
 	attach_settings(s)
@@ -397,6 +400,8 @@ func set_music(context: String) -> void:
 	if not r.is_empty():
 		_playlist = r.files
 		_playlist_pos = 0   # a track's segments are in game order: intro first, then on through
+		if _adaptive_here():
+			_playlist_pos = BotfMusicDirector.first_index(_playlist, 0, music_mood)
 		music_key = r.key
 		stream = library.stream_at(_playlist[_playlist_pos])
 	if stream == null:
@@ -405,6 +410,26 @@ func set_music(context: String) -> void:
 		_playlist = PackedStringArray()
 	_crossfade_to(stream)
 	music_changed.emit(context)
+
+
+## Adaptive music applies to the strategic map's tracks only (battle keeps approach / tension).
+func _adaptive_here() -> bool:
+	return adaptive_music and music_context == "galaxy" and not _playlist.is_empty()
+
+
+## F5: sets the strategic map's mood. A rise to peak crossfades at once to a peak segment; any other change waits for the
+## playing segment to end, then the next segment the mood allows plays.
+func set_music_mood(mood: String) -> void:
+	if not (mood in BotfMusicDirector.MOODS) or mood == music_mood:
+		return
+	music_mood = mood
+	if not _adaptive_here():
+		return
+	if mood == "peak" and not BotfMusicDirector.allows(mood, _playlist[_playlist_pos]):
+		_playlist_pos = BotfMusicDirector.next_index(_playlist, _playlist_pos, mood)
+		var s := library.stream_at(_playlist[_playlist_pos])
+		if s != null:
+			_crossfade_to(s)
 
 
 func _crossfade_to(stream: AudioStream) -> void:
@@ -427,7 +452,7 @@ func _on_music_finished(p: AudioStreamPlayer) -> void:
 		if p == _music[_music_front] and p.stream is AudioStreamWAV:
 			p.play()
 		return
-	_playlist_pos = (_playlist_pos + 1) % _playlist.size()
+	_playlist_pos = BotfMusicDirector.next_index(_playlist, _playlist_pos, music_mood) if _adaptive_here() else (_playlist_pos + 1) % _playlist.size()
 	var s := library.stream_at(_playlist[_playlist_pos])
 	if s != null:
 		p.stream = s
@@ -639,7 +664,16 @@ func _poll_app() -> void:
 	var view: Dictionary = _app.get("view")
 	if view.is_empty():
 		_seen_contacts.clear()
+		_last_colonies = -1
 		return
+	if _app.has_method("player"):
+		var pid := int(_app.player())
+		var cols := BotfMusicDirector.player_colonies(view, pid)
+		# A loss in the same campaign plays one peak segment (another campaign or save resets the count).
+		var same := int(view.get("meta", {}).get("seed", 0)) == _seed
+		var lost := same and _last_colonies >= 0 and cols < _last_colonies
+		_last_colonies = cols
+		set_music_mood(BotfMusicDirector.mood_for(view, pid, lost))
 	var fresh := false
 	var seed_now := int(view.get("meta", {}).get("seed", 0))
 	if seed_now != _seed:

@@ -15,7 +15,7 @@ static var forced_backend := ""
 
 const GAME_SCREENS := AppRoutes.GAME_SCREENS
 const OUTSIDE_SCREENS := AppRoutes.OUTSIDE_SCREENS
-const SETTINGS_PATH := AppSaves.SETTINGS_PATH
+const SETTINGS_PATH := "user://botf_settings.json"   ## the default; AppSaves.SETTINGS_PATH is the live path (a capture sandbox moves it)
 
 ## Game state: core, meta, view, selection, briefing, encounter and the order API.
 var session := AppSession.new()
@@ -108,8 +108,43 @@ func _ready() -> void:
 	if cinematics_on():
 		Cinema.play_movie(self, "open")   # the disc's opening over the title; any key or click skips it
 	_warm_battle.call_deferred()
+	_warm_screens.call_deferred()
 	if OS.has_feature("web"):
 		_fetch_background.call_deferred()
+
+## F5 performance pass: the eight powers' portraits are decoded off the main thread first (AppLoader.warm_art). The first
+## visit to each screen used to compile its script on the main thread (New campaign 565 ms,
+## Galaxy 273 ms, System 198 ms, Empire 147 ms, Diplomacy 119 ms on the desktop). After the title has drawn, the desktop
+## build loads every screen script on a worker thread, one at a time, in the order a player meets them; goto() then finds
+## them compiled. A screen opened before its turn simply waits for its load, as before. The web build has no worker
+## threads and keeps loading on first visit.
+const WARM_SCREENS := ["new", "galaxy", "system", "saves", "empire", "research", "fleets", "diplomacy", "intel", "database", "packs"]
+var screens_warmed := 0   ## how many screen scripts the warm-up has loaded (tests read it)
+
+func _warm_screens() -> void:
+	if not AppLoader.threads() or DisplayServer.get_name() == "headless":
+		return
+	var tree := get_tree()
+	for _i in 20:
+		await tree.process_frame   # let the title draw first
+	await AppLoader.warm_art(tree, PortraitSlot.MAJOR_KEYS.values(), "portrait")   # the New campaign screen's powers
+	for id: String in WARM_SCREENS:
+		var path := AppRoutes.script_for(id)
+		if path == "" or not is_inside_tree():
+			continue
+		if AppLoader.cached(path):
+			screens_warmed += 1
+			continue
+		if not AppLoader.threaded_start(path):
+			continue
+		while AppLoader.threaded_status(path) == 0:
+			await tree.process_frame
+			if not is_inside_tree():
+				return
+		var res := AppLoader.threaded_take(path)
+		if res != null:
+			_warm_refs.append(res)
+			screens_warmed += 1
 
 ## Web only, after the title is up (the first playable load is the engine and the game's own pck alone). Only the small
 ## bundles come now: the planet tier, the portraits and the shared music (about 15 MB together). Hero hulls, empire audio and

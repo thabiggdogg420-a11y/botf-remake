@@ -599,6 +599,10 @@ struct GameState : EmpireState {
     int winnerEmpire = 0;
     bool eventsEnabled = true;
     bool aiAggressionEnabled = true;
+    // F5 observer mode (soaks only; no game, screen or save sets it, and it is not serialized): the AI also plays the
+    // player's seat, the player's elimination does not end the campaign, and the campaign ends when one empire is left or
+    // any empire meets a victory condition (the player's own domination test applied to every empire). Rules are unchanged.
+    bool observerMode = false;
     Ruleset ruleset = Ruleset::Prototype;
     int lastRandomEventTurn = 0;
     bool advancedRulesEnabled = false; // Schema 4-9 games retain their prior combat/diplomacy behavior.

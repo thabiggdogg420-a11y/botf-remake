@@ -64,7 +64,8 @@ void applyMegaprojectCommand(GameState& state, const Command& c) {
 }
 
 void planRivalMegaprojects(GameState& next, TurnReport& report) {
-    for (const auto& rival : next.rivals) {
+    for (const EmpireState* planner : internal::aiPlanners(next)) {
+        const auto& rival = *planner;
         if (empireMegaproject(next, rival.id) || rival.credits < 2 * megaprojectCreditCost(next)) continue;
         int best = 0, bestIndustry = 0;
         for (const auto& c : next.colonies) {

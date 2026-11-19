@@ -64,7 +64,9 @@ func refresh() -> void:
 		vm.ui_era = str(app.settings.get("uiEra", "tng"))
 	UiTokens.era = vm.ui_era
 	Lcars.accent_empire = faction
+	var _t := LoadTrace.start()
 	app.theme = Lcars.build_theme(faction)
+	_t = LoadTrace.done("new: theme", _t, 10)
 	var margin := Lcars.screen_margin(self, Vector4(48, 48, 28, 28))
 	var col := Lcars.vbox(16)
 	margin.add_child(col)
@@ -79,6 +81,7 @@ func refresh() -> void:
 	col.add_child(cards)
 	for f in Lcars.FACTIONS:
 		cards.add_child(_faction_card(f))
+	_t = LoadTrace.done("new: faction cards", _t, 10)
 	# The option columns scroll: with the preset and Threats panels the middle column is taller than a 1080p window.
 	var scroll := ScrollContainer.new()
 	scroll.name = "OptionsScroll"
@@ -90,18 +93,22 @@ func refresh() -> void:
 	opts.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	scroll.add_child(opts)
 	opts.add_child(_galaxy_panel())
+	_t = LoadTrace.done("new: galaxy panel", _t, 10)
 	# The middle column holds the preview and, under it, the preset picker (the Rules column keeps the height the launch card needs).
 	var mid := Lcars.vbox(14)
 	mid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var pv := _preview_panel()
+	_t = LoadTrace.done("new: preview", _t, 10)
 	pv.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	mid.add_child(pv)
 	if not vm.scenarios().is_empty():
 		mid.add_child(_scenario_panel())
 	mid.add_child(_preset_panel())
+	_t = LoadTrace.done("new: presets", _t, 10)
 	mid.add_child(_threat_panel())
 	opts.add_child(mid)
 	opts.add_child(_rules_column())
+	LoadTrace.done("new: threats+rules", _t, 10)
 	Motion.stagger(opts)
 
 var _era_read := false
