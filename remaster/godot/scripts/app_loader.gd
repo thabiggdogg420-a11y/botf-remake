@@ -352,7 +352,7 @@ static func _manifest(host: Node) -> Dictionary:
 	var req := HTTPRequest.new()
 	req.accept_gzip = false   # the browser already decodes a compressed body; Godot must not try to inflate it again
 	host.add_child(req)
-	var url := str(JavaScriptBridge.eval("new URL('packs/manifest.json', location.href).href"))
+	var url := str(JavaScriptBridge.eval("new URL((globalThis.BOTF_PACKS || 'packs/') + 'manifest.json', location.href).href"))
 	if req.request(url, PackedStringArray(["Cache-Control: no-cache"])) == OK:
 		var res: Array = await req.request_completed
 		if int(res[0]) == HTTPRequest.RESULT_SUCCESS and int(res[1]) == 200:
@@ -404,7 +404,7 @@ static func _fetch_web_pack(host: Node, name: String) -> bool:
 		bytes_cached += cached
 		ok = mount_pack(dest)
 	else:
-		var url := str(JavaScriptBridge.eval("new URL('packs/%s', location.href).href" % file))
+		var url := str(JavaScriptBridge.eval("new URL((globalThis.BOTF_PACKS || 'packs/') + '%s', location.href).href" % file))
 		ok = await _download_pack(host, url, dest, name, want)
 		if ok:
 			ok = mount_pack(dest)
