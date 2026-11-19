@@ -210,7 +210,19 @@ func _ship_entry(id: int) -> Control:
 	silhouette.view = "iso"
 	silhouette.color = Lcars.owner_color(RACE_TO_EMPIRE.get(int(s["race"]), 0))
 	silhouette.custom_minimum_size = Vector2(0, 190)
-	col.add_child(silhouette)
+	# F5 (20 Nov): roster ships turn in a 3D viewer (the battle's own hull); legacy catalogue entries keep the plan view.
+	if silhouette.asset_key != "":
+		silhouette.free()
+		var viewer := ShipViewer3D.new()
+		viewer.name = "ShipViewer"
+		viewer.asset_key = str(r.get("assetKey", ""))
+		viewer.owner_id = RACE_TO_EMPIRE.get(int(s["race"]), 0)
+		viewer.ship_name = str(s["designClass"])
+		viewer.custom_minimum_size = Vector2(0, 300)
+		col.add_child(viewer)
+		col.add_child(Lcars.label("Drag to turn · wheel to zoom · double-click to reset", "", 12, Lcars.TEXT3))
+	else:
+		col.add_child(silhouette)
 	var tags := HFlowContainer.new()
 	if r is Dictionary:
 		tags.add_child(Lcars.badge(Roster.era_label(r["era"]), "primary"))

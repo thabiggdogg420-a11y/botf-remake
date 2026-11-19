@@ -42,10 +42,21 @@ func refresh() -> void:
 	list.add_child(grid)
 	for s in saves:
 		var row := Lcars.card()
-		row.custom_minimum_size = Vector2(560, 0)
+		row.custom_minimum_size = Vector2(620, 0)
 		var h := Lcars.hbox(14)
 		row.add_child(h)
-		h.add_child(PortraitSlot.make(int(s.get("player", 0)), Vector2(96, 96)))
+		var tex := AppSaves.thumb_texture(s)
+		if tex != null:
+			# F5: the screen at the save, framed like the portrait it replaces.
+			var tr0 := TextureRect.new()
+			tr0.name = "SaveThumb"
+			tr0.texture = tex
+			tr0.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+			tr0.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+			tr0.custom_minimum_size = Vector2(171, 96)
+			h.add_child(tr0)
+		else:
+			h.add_child(PortraitSlot.make(int(s.get("player", 0)), Vector2(96, 96)))
 		var t := Lcars.vbox(2)
 		t.add_child(Lcars.label(str(s.get("name", "?")), "SubHeading", 22, Lcars.TEXT))
 		var tr := Lcars.hbox(8)

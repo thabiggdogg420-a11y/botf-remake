@@ -343,34 +343,43 @@ static func end_screen(app: App, preview: String = "") -> Control:
 	var outcome := preview if preview != "" else str(v["meta"].get("outcome", "ongoing"))
 	var sum := _vm(app).end_summary(outcome)
 	var won: bool = sum["won"]
-	var root := Lcars.vbox(14)
+	var root := Lcars.vbox(10)
 	root.name = "EndScreen"
 	root.alignment = BoxContainer.ALIGNMENT_CENTER
 	var winner: int = sum["winner"]
-	var em := Lcars.emblem(app.player() if won or winner == 0 else winner, 84)
+	var em := Lcars.emblem(app.player() if won or winner == 0 else winner, 60)
 	em.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	root.add_child(em)
 	var kick := Lcars.caption("%s · turn %d" % [TrekText.log_header(app.player(), int(v["meta"]["turn"])).trim_suffix("."), int(v["meta"]["turn"])])
 	kick.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	root.add_child(kick)
-	var title := Lcars.label("VICTORY" if won else "DEFEAT", "", 96, Lcars.GOOD if won else Lcars.ALERT)
+	var title := Lcars.label("VICTORY" if won else "DEFEAT", "", 72, Lcars.GOOD if won else Lcars.ALERT)
 	title.add_theme_font_override("font", Lcars.font("display", 700))
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	root.add_child(title)
-	var rl := Lcars.para(sum["reason"], Lcars.TEXT, 18)
+	var rl := Lcars.para(sum["reason"], Lcars.TEXT, 16)
 	rl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	root.add_child(rl)
 	var speech := end_speech(app, won, v)
 	if speech != null:
 		root.add_child(speech)
-	var stats := Lcars.grid(4)
-	stats.add_theme_constant_override("h_separation", 40)
+	var stats := Lcars.grid(maxi(sum["stats"].size(), 1))
+	stats.add_theme_constant_override("h_separation", 34)
 	for pair in sum["stats"]:
 		stats.add_child(Lcars.stat(pair[0], pair[1]))
 	var sc := CenterContainer.new()
 	sc.add_child(stats)
 	root.add_child(sc)
-	root.add_child(victory_rows(v, true))
+	# F4 polish (20 Nov): the victory conditions scroll in a window sized to what the screen has left, so the buttons
+	# stay on screen for every power and outcome at 1366x768 and up (they ran off the bottom at 1080p before).
+	var vs := ScrollContainer.new()
+	vs.name = "EndConditions"
+	vs.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	var rows := victory_rows(v, true)
+	rows.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	vs.add_child(rows)
+	vs.custom_minimum_size.y = 300
+	root.add_child(vs)
 	var acts := Lcars.hbox(10)
 	acts.alignment = BoxContainer.ALIGNMENT_CENTER
 	acts.add_child(Lcars.pill("Final briefing", "ghost", func(): app.close_modal(); app.open_overlay("briefing")))
@@ -381,7 +390,29 @@ static func end_screen(app: App, preview: String = "") -> Control:
 	acts.add_child(Lcars.pill("New campaign", "primary", func(): app.close_modal(); app.view = {}; app.goto("new")))
 	acts.add_child(Lcars.pill("Title", "tertiary", func(): app.close_modal(); app.view = {}; app.goto("title")))
 	root.add_child(acts)
-	return app.open_modal(root, "", Vector2(980, 0), "good" if won else "alert")
+	var m := app.open_modal(root, "", Vector2(1040, 0), "good" if won else "alert")
+	_fit_end_screen(app, root, vs, 3)
+	return m
+
+## Shrinks the conditions window until the end screen's panel fits its screen with a margin (a few frames: text wraps
+## settle after the first layout).
+static func _fit_end_screen(app: App, root: Control, vs: ScrollContainer, passes: int) -> void:
+	app.get_tree().process_frame.connect(func():
+		if not is_instance_valid(root) or not is_instance_valid(vs):
+			return
+		var panel := root.get_parent() as Control
+		var space := panel.get_parent() as Control if panel != null else null
+		if space == null:
+			return
+		var over: float = panel.size.y - (space.size.y - 28.0)
+		var need: float = rows_height(vs)
+		var target: float = minf(need, vs.custom_minimum_size.y - maxf(over, 0.0)) if over > 0.0 else minf(need, vs.custom_minimum_size.y + (-over))
+		vs.custom_minimum_size.y = maxf(target, 90.0)
+		if passes > 1:
+			_fit_end_screen(app, root, vs, passes - 1), CONNECT_ONE_SHOT)
+
+static func rows_height(vs: ScrollContainer) -> float:
+	return vs.get_child(0).get_combined_minimum_size().y if vs.get_child_count() > 0 else 0.0
 
 ## F4 end-game speeches (MOD-9, 20 Nov 2026): the leader's speech for how the campaign ended, as in the original's end
 ## screens: the power's viewscreen beside the text, which types out with the voice. Keys: vo.victory.<kind>.<fac>, kind
@@ -519,7 +550,7 @@ static func settings(app: App) -> Control:
 	root.add_child(era_row)
 	for item in [["reducedMotion", "Reduced motion", "Stops camera glides, pulsing effects and battle animations."],
 			["colorblind", "Colour-blind-safe owner colours", "Okabe-Ito palette for empires on the map and in the interface. Emblems stay the primary owner cue."],
-			["autosave", "Autosave every turn", "Keeps one rolling autosave slot for the campaign in progress."],
+			["autosave", "Autosave every turn", "Keeps three rolling autosave slots (the last three turns) for the campaign in progress."],
 			["confirmEndTurn", "Confirm end turn", "Ask before ending a turn with idle units."],
 			["cinematics", "Cinematics", "The opening movie at start-up, the race intro when a campaign begins, and the Borg cutscenes. Any key or click skips one."]]:
 		var r := Lcars.hbox(12)

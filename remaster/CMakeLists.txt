@@ -66,6 +66,11 @@ function(botf_suite name source)
     add_test(NAME ${name} COMMAND ${name} WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures)
 endfunction()
 
+# F5 balance evidence: AI-vs-AI soak report on every preset (a report, not a suite: no add_test).
+add_executable(BotfAiSoak ${BOTF_TEST_DIR}/AiSoakReport.cpp)
+target_link_libraries(BotfAiSoak PRIVATE botf_core)
+target_compile_options(BotfAiSoak PRIVATE ${BOTF_WARN})
+
 botf_suite(BotfSimTests SimulationTests.cpp)
 botf_suite(BotfTacticalTests TacticalCombatTests.cpp)
 botf_suite(BotfSessionTests CampaignSessionTests.cpp)

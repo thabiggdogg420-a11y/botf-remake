@@ -247,32 +247,85 @@ void fragment() {
 			"sun_node": sun, "sun_dir": sun.global_transform.basis.z, "sun_color": Color(1.0, 0.93, 0.82)})
 		ship.position = Vector3(0, l * 0.3, -l * 0.4)
 		ship.rotation_degrees = Vector3(0, 140, 0)
-		var beam := MeshInstance3D.new()
-		var bm := CylinderMesh.new()
-		bm.top_radius = l * 0.05
-		bm.bottom_radius = l * 0.32
-		bm.height = l * 1.8
-		beam.mesh = bm
-		var bmat := StandardMaterial3D.new()
-		bmat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-		bmat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-		bmat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
-		bmat.albedo_color = Color(green, 0.0)
-		beam.material_override = bmat
-		beam.position = ship.position + Vector3(0, -l * 1.0, -l * 0.25)
-		root.add_child(beam)
+		# The tractor beam (F4 polish, 20 Nov): a volume of light, not a flat cone. Two open cylinders (a wide sheath and a
+		# bright core), drawn from both sides and brighter where the eye looks through more of them, with scan bands running
+		# down, fine vertical striations and a flicker; where it meets the surface, a glow and rings spreading on the ground.
+		var top_y: float = ship.position.y - l * 0.38
+		var hit := Vector3(0, 0, ship.position.z - l * 0.25)
+		var pr: float = l * 2.2
+		var dz: float = hit.z - planet.position.z
+		hit.y = planet.position.y + sqrt(maxf(pr * pr - dz * dz, 0.0))
+		var beam_len: float = top_y - hit.y + l * 0.04
+		var beam_mats: Array[ShaderMaterial] = []
+		for layer in [[0.07, 0.36, 0.55, 1.0], [0.025, 0.12, 1.0, 2.2]]:
+			var beam := MeshInstance3D.new()
+			var bm := CylinderMesh.new()
+			bm.top_radius = l * float(layer[0])
+			bm.bottom_radius = l * float(layer[1])
+			bm.height = beam_len
+			bm.radial_segments = 48
+			bm.rings = 8
+			bm.cap_top = false
+			bm.cap_bottom = false
+			beam.mesh = bm
+			var bsm := ShaderMaterial.new()
+			bsm.shader = _beam_shader()
+			bsm.set_shader_parameter("tint", green)
+			bsm.set_shader_parameter("core", float(layer[2]))
+			bsm.set_shader_parameter("boost", float(layer[3]))
+			bsm.set_shader_parameter("intensity", 0.0)
+			beam.material_override = bsm
+			beam.position = Vector3(hit.x, hit.y - l * 0.04 + beam_len * 0.5, hit.z)
+			root.add_child(beam)
+			beam_mats.append(bsm)
+		# Where it lands: rings spreading on the ground (a disc laid on the surface) and a soft glow facing the camera.
+		var up_n: Vector3 = (hit - planet.position).normalized()
+		var ground := MeshInstance3D.new()
+		var gq := QuadMesh.new()
+		gq.size = Vector2(l * 1.3, l * 1.3)
+		ground.mesh = gq
+		var gsm := ShaderMaterial.new()
+		gsm.shader = _beam_ground_shader()
+		gsm.set_shader_parameter("tint", green)
+		gsm.set_shader_parameter("intensity", 0.0)
+		ground.material_override = gsm
+		ground.position = hit + up_n * l * 0.012
+		ground.basis = Basis(Quaternion(Vector3.BACK, up_n))
+		root.add_child(ground)
+		beam_mats.append(gsm)
+		var halo := MeshInstance3D.new()
+		var hq := QuadMesh.new()
+		hq.size = Vector2(l * 1.0, l * 1.0)
+		halo.mesh = hq
+		var hsm := ShaderMaterial.new()
+		hsm.shader = _beam_halo_shader()
+		hsm.set_shader_parameter("tint", green)
+		hsm.set_shader_parameter("intensity", 0.0)
+		halo.material_override = hsm
+		halo.position = hit + up_n * l * 0.03
+		root.add_child(halo)
+		beam_mats.append(hsm)
 		var glow := OmniLight3D.new()
 		glow.light_color = green
-		glow.omni_range = l * 3.0
+		glow.omni_range = l * 1.6
 		glow.light_energy = 0.0
-		glow.position = beam.position + Vector3(0, -l * 0.6, l * 0.4)
+		glow.position = hit + up_n * l * 0.25
 		root.add_child(glow)
+		var under := OmniLight3D.new()
+		under.light_color = green
+		under.omni_range = l * 1.2
+		under.light_energy = 0.0
+		under.position = Vector3(hit.x, top_y - l * 0.1, hit.z)
+		root.add_child(under)
 		cam.position = Vector3(l * 2.8, l * 0.1, l * 3.4)
-		cam.look_at(ship.position + Vector3(0, -l * 0.45, 0), Vector3.UP)
+		cam.look_at(ship.position + Vector3(0, -l * 0.6, 0), Vector3.UP)
 		var tw := c.create_tween().set_parallel(true)
-		tw.tween_property(bmat, "albedo_color:a", 0.55, 1.2).set_delay(1.4)
-		tw.tween_property(glow, "light_energy", 3.0, 1.2).set_delay(1.4)
-		c._anim = {"look_from": ship.position + Vector3(0, -l * 0.45, 0), "look_to": ship.position + Vector3(0, -l * 0.35, 0), "cam_to": Vector3(l * 2.0, -l * 0.3, l * 2.6), "t0": 0.0, "t1": 9.0}
+		for bmat in beam_mats:
+			tw.tween_method(func(x: float): bmat.set_shader_parameter("intensity", x), 0.0, 1.0, 1.2).set_delay(1.4)
+		tw.tween_property(glow, "light_energy", 4.0, 1.2).set_delay(1.4)
+		tw.tween_property(under, "light_energy", 2.0, 1.2).set_delay(1.4)
+		# The push-in keeps the cube and the beam's foot on the planet in frame to the end (the foot fell under the letterbox).
+		c._anim = {"look_from": ship.position + Vector3(0, -l * 0.6, 0), "look_to": ship.position + Vector3(0, -l * 0.5, 0), "cam_to": Vector3(l * 2.7, -l * 0.2, l * 3.9), "t0": 0.0, "t1": 9.0}
 	c._anim["cam_from"] = cam.position
 	c._letterbox()
 	var cap := caption if caption != "" else ("Borg vessel detected entering the quadrant" if k == "arrival" else "Assimilation")
@@ -286,6 +339,72 @@ void fragment() {
 	c._length = c._voice_line(line_key, 15.0 if k == "arrival" else 7.0, 1.4 if k == "arrival" else 1.0) + 2.0
 	c._add_skip_hint()
 	return c
+
+
+## The assimilation beam's volume: brightest where the eye looks through the middle, a thin rim, scan bands sweeping down
+## toward the planet, vertical striations and an uneven flicker. UV.y runs 0 at the ship to 1 at the ground.
+static func _beam_shader() -> Shader:
+	var sh := Shader.new()
+	sh.code = """shader_type spatial;
+render_mode unshaded, blend_add, cull_disabled, depth_draw_never, shadows_disabled;
+uniform vec3 tint = vec3(0.35, 1.0, 0.45);
+uniform float intensity = 0.0;
+uniform float core = 0.55;
+uniform float boost = 1.0;
+float h(float x) { return fract(sin(x * 91.7) * 43758.5); }
+void fragment() {
+	float facing = abs(dot(normalize(NORMAL), normalize(VIEW)));
+	float body = pow(facing, 2.0);
+	float rim = pow(1.0 - facing, 4.0) * 0.35;
+	float v = UV.y;
+	float bands = pow(0.5 + 0.5 * sin(v * 46.0 - TIME * 11.0), 8.0);
+	float sweep = smoothstep(0.07, 0.0, abs(fract(v * 0.8 - TIME * 0.55) - 0.5));
+	float stri = 0.62 + 0.38 * sin(UV.x * 6.2832 * 11.0 + sin(TIME * 1.7 + v * 5.0) * 1.5);
+	float t = floor(TIME * 24.0);
+	float flick = 0.8 + 0.2 * h(t) + 0.08 * sin(TIME * 41.0);
+	float ends = smoothstep(0.0, 0.1, v) * (0.75 + 0.25 * v);
+	float a = (body * core + rim + (bands * 0.45 + sweep * 0.9) * body) * stri * flick * ends * intensity;
+	ALBEDO = mix(tint, vec3(0.85, 1.0, 0.88), clamp(sweep * body * 0.7 + bands * 0.2, 0.0, 1.0)) * boost;
+	ALPHA = clamp(a, 0.0, 1.0);
+}"""
+	return sh
+
+
+## The ground under the beam: rings spreading out from the point it lands, over a bright pool.
+static func _beam_ground_shader() -> Shader:
+	var sh := Shader.new()
+	sh.code = """shader_type spatial;
+render_mode unshaded, blend_add, cull_disabled, depth_draw_never, shadows_disabled;
+uniform vec3 tint = vec3(0.35, 1.0, 0.45);
+uniform float intensity = 0.0;
+void fragment() {
+	float r = length(UV * 2.0 - 1.0);
+	float pool = pow(1.0 - smoothstep(0.0, 0.55, r), 2.0);
+	float rings = pow(0.5 + 0.5 * sin(r * 30.0 - TIME * 6.0), 6.0) * (1.0 - smoothstep(0.3, 1.0, r));
+	ALBEDO = mix(tint, vec3(0.9, 1.0, 0.9), pool * 0.6) * 1.6;
+	ALPHA = clamp((pool * 0.9 + rings * 0.55) * intensity, 0.0, 1.0);
+}"""
+	return sh
+
+
+## A soft glow at the beam's foot, always facing the camera, pulsing with the flicker.
+static func _beam_halo_shader() -> Shader:
+	var sh := Shader.new()
+	sh.code = """shader_type spatial;
+render_mode unshaded, blend_add, cull_disabled, depth_draw_never, shadows_disabled;
+uniform vec3 tint = vec3(0.35, 1.0, 0.45);
+uniform float intensity = 0.0;
+void vertex() {
+	MODELVIEW_MATRIX = VIEW_MATRIX * mat4(INV_VIEW_MATRIX[0], INV_VIEW_MATRIX[1], INV_VIEW_MATRIX[2], MODEL_MATRIX[3]);
+}
+void fragment() {
+	float r = length(UV * 2.0 - 1.0);
+	float g = pow(1.0 - smoothstep(0.0, 1.0, r), 3.0);
+	float pulse = 0.85 + 0.15 * sin(TIME * 7.0);
+	ALBEDO = mix(tint, vec3(1.0), g * 0.5) * 1.5;
+	ALPHA = clamp(g * pulse * intensity, 0.0, 1.0);
+}"""
+	return sh
 
 
 # ------------------------------------------------------------------------------------------------------------------

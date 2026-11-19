@@ -969,6 +969,9 @@ func save_game(name_: String) -> bool:
 	var blob := session.save_blob()
 	if blob.is_empty():
 		return false
+	var thumb := AppSaves.thumbnail(get_viewport())
+	if thumb != "":
+		blob["thumb"] = thumb
 	var err := AppSaves.write(blob, name_, str(view.get("meta", {}).get("playerName", "")))
 	if err != "":
 		report_error(err)
@@ -993,9 +996,11 @@ func load_game(blob: Dictionary) -> bool:
 func delete_save(file: String) -> void:
 	AppSaves.delete(file)
 
+## F5 (20 Nov 2026): three rolling autosave slots, one per turn in turn (Autosave 1-3), so a bad turn can be stepped back
+## from; each carries a thumbnail of the screen at the save.
 func autosave() -> void:
 	if settings.get("autosave", true) and not view.is_empty():
-		save_game("Autosave")
+		save_game(AppSaves.autosave_name(int(view.get("meta", {}).get("turn", 0))))
 
 func _load_settings() -> void:
 	AppSaves.load_settings(settings)
@@ -1107,8 +1112,7 @@ func quit_game() -> void:
 	if quit_hook.is_valid():
 		quit_hook.call()
 		return
-	if settings.get("autosave", true) and not view.is_empty():
-		save_game("Autosave")
+	autosave()
 	get_tree().quit()
 
 ## Named overlays: briefing, events, victory, end, menu, settings, help.

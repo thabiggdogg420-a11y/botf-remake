@@ -68,5 +68,13 @@ func _run() -> void:
 	check(not app.cinematics_live and not app.cinematics_on(), "cinematics off outside a real run")
 	app.free()
 
+	# F4 polish and F5 (20 Nov): the assimilation beam's shaders compile from code; autosaves rotate through three slots;
+	# a headless run takes no thumbnail; a slot without one draws no texture.
+	for sh in [Cinema._beam_shader(), Cinema._beam_ground_shader(), Cinema._beam_halo_shader()]:
+		check(sh.code.contains("intensity"), "beam shader carries its intensity uniform")
+	check(AppSaves.autosave_name(0) == "Autosave 1" and AppSaves.autosave_name(1) == "Autosave 2" and AppSaves.autosave_name(2) == "Autosave 3" and AppSaves.autosave_name(3) == "Autosave 1", "autosaves rotate through three slots")
+	check(AppSaves.thumbnail(root.get_viewport()) == "", "headless: no thumbnail")
+	check(AppSaves.thumb_texture({}) == null and AppSaves.thumb_texture({"thumb": "bm90IGEganBlZw=="}) == null, "no thumb or a broken one: no texture")
+
 	print("%d checks, %d failures" % [checks, failures])
 	quit(1 if failures > 0 else 0)
