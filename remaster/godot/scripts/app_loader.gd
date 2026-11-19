@@ -14,7 +14,14 @@ static func allowed(path: String) -> bool:
 	for r in ALLOWED_ROOTS:
 		if path.begins_with(r):
 			return true
-	return false
+	return OS.has_feature("web") and path.begins_with(WEB_PACK_DIR)
+
+## Web (WebGPU round 8): where fetched packs live for the session. A plain in-memory folder outside user://, so the engine
+## never copies them into IndexedDB (saving the 46 MB planet pack there froze one frame for 0.8-2.4 s). The packs persist
+## between visits in the browser's Cache API instead (cache "botf-packs", keyed by the pack's URL: the same cache web-host/sw.js
+## uses), which the browser writes off the page's thread.
+const WEB_PACK_DIR := "/botf-packs/"
+const WEB_PACK_CACHE := "botf-packs"
 
 static func _check(path: String) -> bool:
 	if allowed(path):
@@ -256,10 +263,12 @@ static func is_cached(name: String) -> bool:
 	if not (man is Dictionary):
 		return false
 	var file := str(man.get("files", {}).get(name, ""))
-	if file == "" or not FileAccess.file_exists("user://packs/" + file):
+	if file == "":
 		return false
-	if _cached_ok.has(file):
+	if _cached_ok.has(file) or _cache_index.has(file):
 		return true
+	if not FileAccess.file_exists("user://packs/" + file):   # a copy saved by a build before round 8
+		return false
 	var f := FileAccess.open("user://packs/" + file, FileAccess.READ)
 	var ok := f != null and f.get_length() == int(man.get("bytes", {}).get(file, -1))
 	if ok:
@@ -391,7 +400,27 @@ static func _manifest(host: Node) -> Dictionary:
 			_web_manifest = cached
 	req.queue_free()
 	_manifest_loading = false
+	_refresh_cache_index()
 	return _web_manifest
+
+## Hashed pack file names already in the browser's pack cache (web). Filled once per session by an async look at the cache,
+## then kept current as packs arrive; the preload widget reads it through is_cached.
+static var _cache_index := {}
+
+static func _refresh_cache_index() -> void:
+	if not OS.has_feature("web"):
+		return
+	JavaScriptBridge.eval("(function(){window.__botfCacheKeys=null;if(!self.caches)return;caches.open('" + WEB_PACK_CACHE + "').then(function(c){return c.keys();})" \
+		+ ".then(function(ks){window.__botfCacheKeys=ks.map(function(r){return r.url.slice(r.url.lastIndexOf('/')+1);}).join('|');}).catch(function(){});})()")
+	var loop := Engine.get_main_loop()
+	if loop is SceneTree:
+		for i in 40:
+			await (loop as SceneTree).create_timer(0.25).timeout
+			var ks: Variant = JavaScriptBridge.eval("window.__botfCacheKeys")
+			if ks is String:
+				for k in (ks as String).split("|", false):
+					_cache_index[k] = true
+				return
 
 static var _manifest_loading := false
 static var _inflight := {}   ## logical name -> true while one coroutine is fetching it
@@ -416,25 +445,31 @@ static func _fetch_web_pack(host: Node, name: String) -> bool:
 	var man: Dictionary = await _manifest(host)
 	var file: String = str(man.get("files", {}).get(name, name))
 	var want := int(man.get("bytes", {}).get(file, -1))
-	var dest := "user://packs/" + file
+	var legacy := "user://packs/" + file
+	var dest := WEB_PACK_DIR + file
 	var ok := false
-	# A cached copy counts when its size matches the manifest (a hashed name already pins the content; the size check
-	# catches a download cut short). Unhashed builds (no manifest) always download.
+	# A copy an older build saved in user://packs (IndexedDB) still counts when its size matches the manifest (a hashed name
+	# pins the content; the size check catches a download cut short). It is mounted where it is, and nothing new is written.
 	var cached := -1
-	if file != name and FileAccess.file_exists(dest):
-		var have := FileAccess.open(dest, FileAccess.READ)
+	if file != name and FileAccess.file_exists(legacy):
+		var have := FileAccess.open(legacy, FileAccess.READ)
 		if have != null:
 			cached = have.get_length()
 	if cached > 0 and (want < 0 or cached == want):
 		bytes_cached += cached
-		ok = mount_pack(dest)
+		ok = mount_pack(legacy)
 	else:
 		var url := str(JavaScriptBridge.eval("new URL((globalThis.BOTF_PACKS || 'packs/') + '%s', location.href).href" % file))
-		ok = await _download_pack(host, url, dest, name, want)
+		var got: int = await _download_pack(host, url, dest, name, want)
+		ok = got != 0
 		if ok:
 			ok = mount_pack(dest)
 			if ok:
-				bytes_downloaded += maxi(want, 0)
+				_cache_index[file] = true
+				if got == 2:
+					bytes_cached += maxi(want, 0)
+				else:
+					bytes_downloaded += maxi(want, 0)
 			else:
 				push_warning("AppLoader: web pack %s downloaded but not mounted" % file)
 	if ok:
@@ -442,21 +477,31 @@ static func _fetch_web_pack(host: Node, name: String) -> bool:
 		var stem := name.get_basename() + "."
 		for f in list("user://packs"):
 			if f != file and (f == name or f.begins_with(stem)):
-				remove("user://packs/" + f)
+				remove("user://packs/" + f)   # an older build's copy in IndexedDB (a delete: nothing big is saved)
 	return ok
 
-## Downloads one pack with the browser's own fetch() and writes it into the game's file system (engine.copyToFS), instead of
-## Godot's HTTPRequest. fetch() undoes any Content-Encoding a host or CDN adds (gzip, brotli) before the bytes reach us, which
-## HTTPRequest.download_file cannot do on the web (it hangs on a compressed body: seen with a host that gzips everything), and
-## it reports progress for the loading bar. Returns true when `want` bytes (the manifest's size) are in `dest`.
-static func _download_pack(host: Node, url: String, dest: String, name: String, want: int) -> bool:
+## Fetches one pack and writes it into the game's in-memory file system (engine.copyToFS) at `dest`. WebGPU round 8: the
+## browser's Cache API is looked at first (cache WEB_PACK_CACHE, keyed by the URL); a miss is fetched with the browser's own
+## fetch() and a copy handed to the cache, which the browser stores off the page's thread. Nothing goes to IndexedDB.
+## fetch() undoes any Content-Encoding a host or CDN adds (gzip, brotli) before the bytes reach us, which HTTPRequest cannot
+## do on the web, and it reports progress for the loading bar. A browser without the Cache API (an insecure page) just fetches.
+## Returns 0 on failure, 1 when downloaded, 2 when it came from the cache; success means `want` bytes (the manifest's size) are in `dest`.
+static func _download_pack(host: Node, url: String, dest: String, name: String, want: int) -> int:
 	var id := "d%d" % Time.get_ticks_usec()
-	var path := ProjectSettings.globalize_path(dest)
-	var js := "(function(){var s={done:false,ok:false,bytes:0,err:''};(window.__botfDl=window.__botfDl||{})['" + id + "']=s;" \
-		+ "fetch(" + JSON.stringify(url) + ").then(function(r){if(!r.ok)throw new Error('http '+r.status);var rd=r.body.getReader();var ch=[];" \
-		+ "var pump=function(){return rd.read().then(function(x){if(x.done)return;ch.push(x.value);s.bytes+=x.value.length;return pump();});};" \
-		+ "return pump().then(function(){var b=new Uint8Array(s.bytes);var o=0;for(var i=0;i<ch.length;i++){b.set(ch[i],o);o+=ch[i].length;}ch=null;return b;});})" \
-		+ ".then(function(b){engine.copyToFS(" + JSON.stringify(path) + ",b.buffer);s.ok=true;s.done=true;})" \
+	var u := JSON.stringify(url)
+	var js := "(function(){var s={done:false,ok:false,bytes:0,cached:false,err:''};(window.__botfDl=window.__botfDl||{})['" + id + "']=s;" \
+		+ "var want=" + str(want) + ";var cp=self.caches?caches.open('" + WEB_PACK_CACHE + "').catch(function(){return null;}):Promise.resolve(null);" \
+		+ "var read=function(r){var rd=r.body.getReader();var ch=[];var b=want>0?new Uint8Array(want):null;" \
+		+ "var pump=function(){return rd.read().then(function(x){if(x.done)return;var v=x.value;" \
+		+ "if(b&&s.bytes+v.length<=want){b.set(v,s.bytes);}else{if(b){ch.push(b.subarray(0,s.bytes));b=null;}ch.push(v);}s.bytes+=v.length;return pump();});};" \
+		+ "return pump().then(function(){if(b)return s.bytes===want?b:b.subarray(0,s.bytes);var o2=new Uint8Array(s.bytes);var o=0;for(var i=0;i<ch.length;i++){o2.set(ch[i],o);o+=ch[i].length;}ch=null;return o2;});};" \
+		+ "cp.then(function(c){return (c?c.match(" + u + ").catch(function(){return null;}):Promise.resolve(null)).then(function(hit){" \
+		+ "if(hit){s.cached=true;return hit.arrayBuffer().then(function(a){if(want>=0&&a.byteLength!==want){s.cached=false;return null;}s.bytes=a.byteLength;return new Uint8Array(a);});}return null;})" \
+		+ ".then(function(b){if(b)return b;return fetch(" + u + ").then(function(r){if(!r.ok)throw new Error('http '+r.status);" \
+		+ "if(c){c.put(" + u + ",r.clone()).catch(function(){});}return read(r);});});})" \
+		+ ".then(function(b){var fs=engine.rtenv&&engine.rtenv.FS;var p=" + JSON.stringify(dest) + ";" \
+		+ "if(fs&&fs.writeFile){try{fs.mkdirTree(p.slice(0,p.lastIndexOf('/')));}catch(e){}fs.writeFile(p,b,{canOwn:true});}else{engine.copyToFS(p,b.buffer);}" \
+		+ "b=null;s.ok=true;s.done=true;})" \
 		+ ".catch(function(e){s.err=String(e);s.done=true;});})();"
 	progress = {"name": name, "bytes": 0, "total": want}
 	LoadTrace.mark("download %s (%d bytes)" % [name, want])
@@ -474,20 +519,17 @@ static func _download_pack(host: Node, url: String, dest: String, name: String, 
 	progress = {}
 	if not bool(st.get("ok", false)):
 		push_warning("AppLoader: download of %s failed: %s" % [name, str(st.get("err", "no state"))])
-		return false
+		return 0
 	var f := FileAccess.open(dest, FileAccess.READ)
 	var have := f.get_length() if f != null else -1
 	f = null
 	if want > 0 and have != want:
 		push_warning("AppLoader: %s is %d bytes, the manifest says %d" % [name, have, want])
-		remove(dest)
-		return false
-	# Writing through the engine's own file API is what makes it save the new file to IndexedDB (copyToFS alone does not).
-	# A preload writes hundreds of packs: it flushes once at the end and every 48 MB (_flush_sync), not after each one.
-	_unsynced += maxi(have, 0)
-	if not (preload_running or batch_sync) or _unsynced >= 48 * 1048576:
-		await _flush_sync(host)
-	return true
+		DirAccess.remove_absolute(dest)
+		return 0
+	var from_cache := bool(st.get("cached", false))
+	LoadTrace.mark("pack %s %s" % [name, "from cache" if from_cache else "downloaded"])
+	return 2 if from_cache else 1
 
 static var _unsynced := 0
 ## True while a long background run (the idle prefetch) fetches packs: it flushes to IndexedDB every 48 MB and at its end, like the preload.

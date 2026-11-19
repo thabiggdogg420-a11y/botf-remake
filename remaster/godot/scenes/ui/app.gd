@@ -746,7 +746,9 @@ func goto(id: String, remember: bool = true) -> void:
 	_stage.add_child(s)
 	_tl = LoadTrace.done("goto %s: add_child" % id, _tl)
 	if id == "galaxy" and WebGpuWarm.needed():
-		WebGpuWarm.start.call_deferred(self, settings) # WebGPU: battle pipelines compile in the background from here
+		# WebGPU: battle pipelines compile in the background from here. Round 8: a second after the galaxy is up, so building
+		# the off-screen battle view never lands in the galaxy's first frame (the battle open still starts it at once if earlier).
+		get_tree().create_timer(1.0).timeout.connect(func() -> void: WebGpuWarm.start(self, settings))
 	_place_current()
 	_background.visible = id != "galaxy"
 	if id == "galaxy" and not _warmed_battle:

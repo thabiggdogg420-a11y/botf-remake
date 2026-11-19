@@ -49,6 +49,7 @@ func _web_boot() -> void:
 		n += 1
 		if Time.get_ticks_usec() - t0 >= BOOT_BUDGET_USEC:
 			label.text = "Starting BOTF Remastered (%d%%)" % (100 * n / maxi(paths.size(), 1))
+			_boot_text("Loading the game (%d%%)" % (100 * n / maxi(paths.size(), 1)))
 			await tree.process_frame
 			t0 = Time.get_ticks_usec()
 	await tree.process_frame
@@ -58,7 +59,12 @@ func _web_boot() -> void:
 	var warm: GDScript = load("res://scripts/shader_warm.gd")
 	if warm.needed():
 		await warm.run(self, func(d: int, total: int) -> void:
-			label.text = "Preparing graphics (%d%%)" % (100 * d / maxi(total, 1)))
+			label.text = "Preparing graphics (%d%%)" % (100 * d / maxi(total, 1))
+			_boot_text(label.text))
+
+## Web: the HTML loading screen's progress line.
+static func _boot_text(t: String) -> void:
+	JavaScriptBridge.eval("globalThis.botfBootText && globalThis.botfBootText(%s)" % JSON.stringify(t))
 
 static var _boot_refs: Array = []   ## the compiled scripts stay loaded (the game uses them all)
 
@@ -81,6 +87,19 @@ func _ready() -> void:
 	if _boot_panel != null:
 		_boot_panel.queue_free()
 		_boot_panel = null
+	if OS.has_feature("web"):
+		# WebGPU round 8: the HTML loading screen (export preset head_include) stays over the canvas from the page's first
+		# paint until the title has drawn two frames, so the browser never shows a frozen game frame while the engine starts
+		# and the shaders compile. Its spinner is a CSS animation, which the browser keeps turning while the page is busy.
+		# App builds the title over its own next frames (App._ready awaits), so wait for the title screen to exist first.
+		for _i in 600:
+			if str(app_scene.get("screen")) == "title":
+				break
+			await get_tree().process_frame
+		for _i in 2:
+			await get_tree().process_frame
+		JavaScriptBridge.eval("globalThis.botfBootDone && globalThis.botfBootDone()")
+	print("BOTF title up")   # WebGPU round 8: the verify drivers wait for this (Preparing graphics is over, the title is drawn)
 	if AppLoader.diag():
 		var t := Timer.new()
 		t.wait_time = 5.0

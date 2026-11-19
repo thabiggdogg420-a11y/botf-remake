@@ -110,6 +110,10 @@ func _process(_delta: float) -> void:
 		return
 	if _round < 0 and BattleAssets.loading():
 		return # hero hulls still loading a step per frame
+	# Round 8: a fixture hull whose pack landed after _begin was not queued then, and the first round parsed it whole in one
+	# frame (2.6-3.0 s at galaxy open). Queue any such hull now and wait for it, a step per frame, like the others.
+	if _round < 0 and BattleAssets.shared().warm(BattleAssets.encounter_keys(_enc)) > 0:
+		return
 	if _frame % FRAMES_PER_ROUND == 0:
 		_round += 1
 		if _round >= mini(ROUNDS, (_enc.get("rounds", []) as Array).size()):

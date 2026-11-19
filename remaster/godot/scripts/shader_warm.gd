@@ -98,7 +98,7 @@ static func run(host: Node, progress: Callable = Callable()) -> void:
 	var canvas: Array = CANVAS.duplicate()
 	if not GpuReadback.webgpu():
 		canvas.append_array(COMPAT_CANVAS)
-	var total := SPATIAL.size() + canvas.size() + SKY.size() + FOG.size() + auto.size() + 1
+	var total := SPATIAL.size() + canvas.size() + SKY.size() + FOG.size() + auto.size() + 2
 	var n := 0
 	var env_node := WorldEnvironment.new()
 	env_node.environment = Environment.new()
@@ -195,6 +195,37 @@ static func run(host: Node, progress: Callable = Callable()) -> void:
 		progress.call(n, total)
 	for _f in 4:
 		await tree.process_frame
+	# WebGPU round 8: the galaxy screen's own pipelines. Its viewport (the window's MSAA), its environment (galaxy sky, ACES,
+	# glow) and its materials as GalaxyMap builds them asked for 72 new pipelines in the galaxy's first frame on an Edge return
+	# visit (a 2.4 s frame). A GalaxyMap built from the recorded campaign view draws off-screen here, the whole disc first,
+	# then a system close-up with its planets, rings and belt, so the galaxy opens on pipelines that already exist.
+	var t_gal := LoadTrace.start()
+	var gv := SubViewport.new()
+	gv.name = "GalaxyWarm"
+	gv.size = Vector2i(480, 270)
+	gv.msaa_3d = host.get_viewport().msaa_3d
+	gv.screen_space_aa = host.get_viewport().screen_space_aa
+	gv.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+	var gm := WarmGalaxy.new()
+	gm.size = Vector2(480, 270)
+	gv.add_child(gm)
+	host.add_child(gv)
+	await tree.process_frame
+	if gm.load_view():
+		gm.rebuild()
+		gm.frame_galaxy()
+		LoadTrace.done("shader warm: galaxy overview", t_gal)
+		for _f in 4:
+			await tree.process_frame
+		var home := gm.home_cell()
+		gm.focus_cell(home.x, home.y, GalaxyMap.FLY_SYSTEM, false)
+		for _f in 8:
+			gm._update_lod()
+			await tree.process_frame
+		LoadTrace.done("shader warm: galaxy close-up", t_gal)
+	n += 1
+	if progress.is_valid():
+		progress.call(n, total)
 	# WebGPU: let the GPU process finish the pipelines those draws asked for, a frame at a time.
 	var quiet := 0
 	var ts := Time.get_ticks_msec()
@@ -203,3 +234,47 @@ static func run(host: Node, progress: Callable = Callable()) -> void:
 		await tree.process_frame
 	print("shader warm: %d shaders in %d ms (%d pipelines still compiling)" % [n, Time.get_ticks_msec() - t0, WebGpuWarm.pending()])
 	sv.queue_free()
+	gv.queue_free()
+
+
+## A GalaxyMap with no App: it draws the recorded campaign view (fixtures/campaign-view.json, shipped in the web pck) and
+## keeps its 2D overlays hidden (they read the App). Used only by the warm-up above.
+class WarmGalaxy extends GalaxyMap:
+	var _v := {}
+
+	func _ready() -> void:
+		super._ready()
+		for c in get_children():
+			if c is GalaxyOverlay:
+				(c as Control).visible = false
+
+	func load_view() -> bool:
+		var d: Variant = AppLoader.json("res://fixtures/campaign-view.json")
+		if d is Dictionary and (d as Dictionary).get("result") is Dictionary:
+			_v = d["result"]
+		return not _v.is_empty()
+
+	func view() -> Dictionary:
+		return _v
+
+	func home_cell() -> Vector2i:
+		var sid := int((_v.get("colonies", [{}]) as Array)[0].get("systemId", 0)) if not (_v.get("colonies", []) as Array).is_empty() else 0
+		for st in _v.get("systems", []):
+			if int(st.get("id", -1)) == sid:
+				return Vector2i(int(st.get("x", 0)), int(st.get("y", 0)))
+		return Vector2i.ZERO
+
+	func rebuild() -> void:
+		var v := view()
+		if v.is_empty():
+			return
+		var g := grid_size()
+		_seed = int(v["meta"].get("seed", 0))
+		_build_stars(v, g)
+		_build_disc(g)
+		_build_territory(v, g)
+		_build_fog(v, g)
+		_build_features(v)
+		_update_focus_height(true)
+		_apply_camera()
+		_update_lod()
