@@ -2029,3 +2029,19 @@ Kind voice, faction fer. Fallback: none.
 
 _No candidate found._
 
+
+## F4 ship models (20 Nov 2026, Barclay)
+Built by `tools/hullhd/f4_config.py` -> `hullhd_build.py`; sources stay in the gitignored `game/LocalAssets/incoming`. Private, local only. Online downloads under Simon's 16 Nov OK for all files; no account or payment.
+
+| Key | Source | Licence |
+|---|---|---|
+| ship.and.kumari | Thingiverse 2153244, Andorian Kumari 1:2000, outcastrc | CC BY-NC 3.0 |
+| ship.vul.dkyr | Thingiverse 2156077, Vulcan D'Kyr 1:2000, outcastrc | CC BY-NC 3.0 |
+| ship.vul.suurok | Thingiverse 1540458, ENT Vulcan Suurok, nd4spd1919 | CC BY 3.0 |
+| ship.thol.web_spinner | Thingiverse 2157700, Tholian Webspinner 1:2000, outcastrc | CC BY-NC 3.0 |
+| ship.tal.observer | Thingiverse 2267939, Talarian Observation Craft, DWHALE | CC BY 3.0 |
+| ship.gorn.cruiser | Thingiverse 3047585, Gorn Tuatara, Burning_Bridges | CC BY 3.0 |
+| ship.fer.shuttle | Thingiverse 5030869, Nafar class, TJafk | "cc" (variant not stated) |
+| ship.baj.assault | Thingiverse 4390840, Bajoran Raider, m_collectable | CC NC |
+| ship.borg.cube, car.atr4107, car.scout, rom.drone | Bridge Commander library (B_TNG_CUBE, CardFreighter, C_TNG_BARKUS, R_TOS_SWARM) | as the rest of the BC library |
+| Xindi (5), sul.cell_ship, nau.raider, baj.lightship, fer.outpost, fer.starbase, fer.pod, fer.scout | original, modelled in `tools/hullhd/f4_blender_builds.py` | ours |
