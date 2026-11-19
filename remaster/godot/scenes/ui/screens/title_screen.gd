@@ -165,8 +165,11 @@ func _ensure_backdrop(empire: int) -> void:
 	fleet = TitleFleet.new()
 	fleet.animate = app == null or not app.settings.get("reducedMotion", false)
 	sv.add_child(fleet)
-	fleet.setup(empire, BattleAssets.new())
 	backdrop.add_child(TitleScrim.new())
+	if OS.has_feature("web"):
+		fleet.setup_sliced(empire, BattleAssets.new()) # web: a piece per frame (smoothness pass, 19 Nov)
+	else:
+		fleet.setup(empire, BattleAssets.new())
 
 ## Dark at the left where the title and menu sit, clear right of centre where the fleet flies, with a low band for
 ## the footer: a smoothstep ramp so no edge shows.
