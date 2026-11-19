@@ -36,9 +36,13 @@ func setup(p_empire: int, p_assets: BattleAssets = null) -> void:
 	empire = clampi(p_empire, 1, 5)
 	assets = p_assets
 	name = "TitleFleet"
+	var t := LoadTrace.start()
 	env = BattleEnvironment.build(self, Vector2(16, 12) * BattleScene.CELL)
+	t = LoadTrace.done("title fleet: environment", t)
 	_stage_environment()
+	t = LoadTrace.done("title fleet: stage", t)
 	_build_ships()
+	t = LoadTrace.done("title fleet: ships", t)
 	camera = Camera3D.new()
 	camera.name = "Camera"
 	camera.fov = 40.0
