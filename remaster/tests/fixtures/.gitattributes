@@ -1,0 +1,2 @@
+# Saves carry a checksum over their exact bytes: never convert line endings.
+*.sav binary
