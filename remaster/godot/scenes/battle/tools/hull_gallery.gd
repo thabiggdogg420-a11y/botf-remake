@@ -34,6 +34,9 @@ func _run() -> void:
 		var spec := str(args[ki])
 		var key := spec.get_slice(":", 0)
 		var view := spec.get_slice(":", 1) if spec.contains(":") else ""
+		var flag := view == "flag" # <key>:flag draws it as a commissioned flagship (gold ring and beacon), default view
+		if flag:
+			view = ""
 		var parts := key.split(".")
 		var empire: int = {"fed": 1, "kli": 2, "rom": 3, "car": 4, "fer": 5}.get(parts[1] if parts.size() > 1 else "fed", 1)
 		var root := Node3D.new()
@@ -45,7 +48,7 @@ func _run() -> void:
 		var assets := BattleAssets.shared()
 		var ship := BattleShip.new()
 		root.add_child(ship)
-		ship.setup({"id": 1, "owner": empire, "name": key, "assetKey": key, "maxHull": 150}, assets)
+		ship.setup({"id": 1, "owner": empire, "name": key, "assetKey": key, "maxHull": 150, "flagship": flag}, assets)
 		ship.transform = Transform3D(Basis(Vector3.UP, deg_to_rad(-138.0)), Vector3.ZERO) if view == "" else Transform3D.IDENTITY
 		var cam := Camera3D.new()
 		cam.fov = 40.0
@@ -78,7 +81,7 @@ func _run() -> void:
 		if not hero_ok:
 			code = 1
 		var img := get_root().get_viewport().get_texture().get_image()
-		img.save_png("%s/hull-%s%s.png" % [out_dir, key, "-" + view if view != "" else ""])
+		img.save_png("%s/hull-%s%s.png" % [out_dir, key, "-flag" if flag else ("-" + view if view != "" else "")])
 		if OS.has_feature("web"):
 			# tools/verify/web_parity.py --script res://scenes/battle/tools/hull_gallery.gd: hand the frame to the page, wait for its ack.
 			JavaScriptBridge.eval("window.__shotPng = '%s';" % Marshalls.raw_to_base64(img.save_png_to_buffer()))
