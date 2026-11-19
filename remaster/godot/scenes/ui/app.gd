@@ -118,13 +118,19 @@ var web_packs_done := false
 
 func _fetch_background() -> void:
 	await AppLoader.fetch_web_packs(self)
+	var t := LoadTrace.start()
 	PlanetTextures.reset()
 	web_packs_changed.emit("planets_web.pck")
+	LoadTrace.done("title packs: planets+art in", t)
 	if await AppLoader.fetch_web_pack(self, AppLoader.WEB_MUSIC):
+		t = LoadTrace.start()
 		BotfAudioSystem.music_pack_ready()
+		LoadTrace.done("title packs: music ready", t)
 	if await AppLoader.fetch_web_pack(self, AppLoader.WEB_SHIP_ICONS):
+		t = LoadTrace.start()
 		ShipIcons.reset()
 		web_packs_changed.emit(AppLoader.WEB_SHIP_ICONS)
+		LoadTrace.done("title packs: ship icons in", t)
 	web_packs_done = true
 	print("web packs: %.1f MB downloaded, %.1f MB from cache" % [AppLoader.bytes_downloaded / 1048576.0, AppLoader.bytes_cached / 1048576.0])
 	web_packs_changed.emit("")
@@ -177,10 +183,12 @@ func _idle_prefetch() -> void:
 			await get_tree().create_timer(1.0).timeout
 			continue
 		if await AppLoader.fetch_web_pack(self, next):
+			var t := LoadTrace.start()
 			idle_fetched.append(next)
 			if next == AppLoader.WEB_PLANETS_HI:
 				PlanetTextures.reset()
 			web_packs_changed.emit(next)
+			LoadTrace.done("idle pack in: %s" % next, t)
 		else:
 			_idle_failed[next] = true
 	AppLoader.batch_sync = false

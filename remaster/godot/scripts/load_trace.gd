@@ -12,6 +12,12 @@ static func start() -> int:
 	return Time.get_ticks_usec()
 
 
+## Prints a marker line (LOADT-MARK <label>) when tracing: for work that runs outside GDScript (JS promises, the browser).
+static func mark(label: String) -> void:
+	if on:
+		print("LOADT-MARK %s (frame %d)" % [label, Engine.get_process_frames()])
+
+
 ## Prints the step when it took at least `min_ms`. Returns the clock, so steps can be chained.
 static func done(label: String, t0: int, min_ms: int = 20) -> int:
 	var t := Time.get_ticks_usec()
