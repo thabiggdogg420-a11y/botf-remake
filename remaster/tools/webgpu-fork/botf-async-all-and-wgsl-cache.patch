@@ -1,5 +1,5 @@
 diff --git a/drivers/webgpu/rendering_device_driver_webgpu.cpp b/drivers/webgpu/rendering_device_driver_webgpu.cpp
-index ec492576..a7bae077 100644
+index ec492576..21df3376 100644
 --- a/drivers/webgpu/rendering_device_driver_webgpu.cpp
 +++ b/drivers/webgpu/rendering_device_driver_webgpu.cpp
 @@ -402,6 +402,30 @@ static char *_spv_to_wgsl_cached(const uint8_t *p_spv_ptr, int p_spv_size, bool
@@ -285,7 +285,7 @@ index ec492576..a7bae077 100644
  	if (!p_pipeline->compute_pending) {
  		return p_pipeline->compute_handle != nullptr;
  	}
-+	if (async_all && !p_pipeline->async_failed && (p_pipeline->prewarm_token || _start_compute_async(p_pipeline))) {
++	if (false && async_all && !p_pipeline->async_failed && (p_pipeline->prewarm_token || _start_compute_async(p_pipeline))) { // off: skipped one-shot compute (LUTs, radiance) left hulls black
 +		return false; // BOTF async-all: compiling on a GPU-process worker; skip until ready.
 +	}
  	p_pipeline->compute_pending = false; // Whatever happens below, try once.

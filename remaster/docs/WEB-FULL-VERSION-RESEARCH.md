@@ -27,3 +27,10 @@ If the trial fails, A stands on its own.
 - WebGPU fork: https://github.com/Shane-Gadsby/godotwebgpu
 - Port of the fork to 4.7.1 in a game client: https://github.com/StudfarmStudios/godot-aw3/pull/31
 - Streaming costs: https://www.strayspark.studio/blog/pixel-streaming-ue5-cloud-gaming-demo , https://bloggeek.me/is-webrtc-really-free
+
+## WebGPU trial round 3/r4 (19 Nov 2026, Barclay)
+- Cause of the freeze, from Chrome traces: not WGSL translation alone. (1) The GPU process compiled 78 render pipelines synchronously (DXC, up to 3.9 s each) on the thread that also presents frames; (2) about 400 material shader stages that the export bake does not cover were translated SPIR-V to WGSL on the main thread (13-15 s).
+- Fix 1, fork patch `remaster/tools/webgpu-fork/botf-async-all-and-wgsl-cache.patch` (on fork commit c4b5f43eb): every render pipeline goes through createRenderPipelineAsync while `globalThis.godotWebgpuAsyncAll` is not false, and pending draws are skipped. `godotWebgpuPending` counts what is still compiling. Compute is left out, because skipping one-shot compute work made hulls render black.
+- Fix 2, shipped WGSL cache: WGSL recorded from play-throughs and keyed by SPIR-V hash goes in `wgsl-cache.js` (17.7 MB raw, 2.0 MB gzip). The driver checks it before translating, which took runtime translation from 402 stages to 0.
+- Game: `webgpu_warm.gd` starts the off-screen battle warm-up on the galaxy screen and waits for pending to reach 0, then turns async-all off.
+- Result: the shader stall is gone and the first battle's worst frame dropped from 12.6 s to 0.26-3.8 s. The 250 ms goal is NOT met. The frames still over it come from single-threaded main-thread loading (boot about 4.7 s, battle scene and hull setup about 3.4 s on a new profile). The shipped WebGL build has the same problem and worse: boot 17.9 s, battle 2.7 s.
