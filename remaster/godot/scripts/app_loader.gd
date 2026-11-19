@@ -90,8 +90,10 @@ static func dir_exists(dir: String) -> bool:
 	return DirAccess.dir_exists_absolute(dir)
 
 ## True when this build may start worker threads (desktop yes; the web export is not threaded).
+## BOTF_NO_THREADS=1: no worker-thread loads (WebGPU trial r4: the fork's 4.8-dev desktop build deadlocks generating a
+## StandardMaterial3D shader for a hull glb loaded on a worker, so the matched desktop capture loads them on the main thread).
 static func threads() -> bool:
-	return OS.has_feature("threads") and not OS.has_feature("web")
+	return OS.has_feature("threads") and not OS.has_feature("web") and OS.get_environment("BOTF_NO_THREADS") == ""
 
 ## An Image from a res:// or user:// file (a pack or a loose file), resized to at most `max_width` wide with mipmaps;
 ## null when missing. Synchronous and thread-safe, so the planet textures can call it on a worker or on the main thread.
@@ -352,7 +354,7 @@ static func _manifest(host: Node) -> Dictionary:
 	var req := HTTPRequest.new()
 	req.accept_gzip = false   # the browser already decodes a compressed body; Godot must not try to inflate it again
 	host.add_child(req)
-	var url := str(JavaScriptBridge.eval("new URL('packs/manifest.json', location.href).href"))
+	var url := str(JavaScriptBridge.eval("new URL((globalThis.BOTF_PACKS || 'packs/') + 'manifest.json', location.href).href"))
 	if req.request(url, PackedStringArray(["Cache-Control: no-cache"])) == OK:
 		var res: Array = await req.request_completed
 		if int(res[0]) == HTTPRequest.RESULT_SUCCESS and int(res[1]) == 200:
@@ -404,7 +406,7 @@ static func _fetch_web_pack(host: Node, name: String) -> bool:
 		bytes_cached += cached
 		ok = mount_pack(dest)
 	else:
-		var url := str(JavaScriptBridge.eval("new URL('packs/%s', location.href).href" % file))
+		var url := str(JavaScriptBridge.eval("new URL((globalThis.BOTF_PACKS || 'packs/') + '%s', location.href).href" % file))
 		ok = await _download_pack(host, url, dest, name, want)
 		if ok:
 			ok = mount_pack(dest)

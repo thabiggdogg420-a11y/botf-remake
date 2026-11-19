@@ -237,10 +237,10 @@ func _open_combat_when_ready(remember: bool, need: Array) -> void:
 		# WebGPU: the first battle's render pipelines are built here, behind the panel, not in the battle's first frames.
 		_loading_bar.set_meta("need", [])
 		_loading_title = "Preparing battle graphics"
-		_loading_label.text = "Preparing battle graphics (first battle only, a few seconds)"
+		_loading_label.text = "Preparing battle graphics (first battle only)"
 		_loading_fill.size.x = _loading_bar.size.x
 		for _i in 3:
-			await get_tree().process_frame # the panel is on screen before the pipeline builds freeze the frame
+			await get_tree().process_frame # the panel is on screen before the warm-up starts
 		await WebGpuWarm.run(self, settings)
 	_hide_loading()
 	_combat_ready = true
@@ -711,6 +711,8 @@ func goto(id: String, remember: bool = true) -> void:
 	s.set("app", self)
 	_current = s
 	_stage.add_child(s)
+	if id == "galaxy" and WebGpuWarm.needed():
+		WebGpuWarm.start.call_deferred(self, settings) # WebGPU: battle pipelines compile in the background from here
 	_place_current()
 	_background.visible = id != "galaxy"
 	if id == "galaxy" and not _warmed_battle:
