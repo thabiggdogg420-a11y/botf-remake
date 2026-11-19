@@ -9,6 +9,8 @@ var checks := 0
 var app: App
 
 func _initialize() -> void:
+	# saves (incl. end-turn autosaves) and settings go to a fresh scratch folder: this run once overwrote Simon's Autosave 2 and 3
+	AppSaves.sandbox("user://capture_sandbox/test-campaign-ui/%d-%d" % [int(Time.get_unix_time_from_system()), OS.get_process_id()])
 	_run.call_deferred()
 
 func check(cond: bool, what: String) -> void:
@@ -417,7 +419,7 @@ func _r35_display_and_quit() -> void:
 	check(app.settings["display.windowMode"] == "borderless" and app.settings["display.antiAlias"] == "fxaa", "window mode and AA chosen")
 	check(root.screen_space_aa == Viewport.SCREEN_SPACE_AA_FXAA and absf(root.scaling_3d_scale - 0.75) < 0.001, "FXAA and 75% render scale on the viewport")
 	check(not DisplaySettings.shadows_enabled, "shadows off")
-	var saved: Variant = JSON.parse_string(FileAccess.get_file_as_string(App.SETTINGS_PATH))
+	var saved: Variant = JSON.parse_string(FileAccess.get_file_as_string(AppSaves.SETTINGS_PATH))
 	check(saved is Dictionary and int(saved.get("display.fpsCap", 0)) == 60 and saved.get("display.windowMode") == "borderless", "display settings persist to user://")
 	# Startup: a fresh App reads them back and applies them.
 	Engine.max_fps = 0

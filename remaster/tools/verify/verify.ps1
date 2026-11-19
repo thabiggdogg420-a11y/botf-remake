@@ -99,6 +99,10 @@ Write-Host "BOTF verify  run folder: $run" -ForegroundColor Cyan
 $wantWin = $Target -in 'both', 'windows'
 $wantWeb = $Target -in 'both', 'web'
 
+# The player's real saves and settings are fingerprinted now and checked at the end: any change fails the run (F6 round).
+$guardState = Join-Path $logs 'real-saves-before.json'
+& $python (Join-Path $PSScriptRoot 'real_saves_guard.py') snapshot $guardState | Out-Host
+
 # ---- Phase 0: import, version stamp ---------------------------------------------------------------------------------
 $sha = (git -C $remaster rev-parse --short HEAD 2>$null)
 $count = (git -C $remaster rev-list --count HEAD 2>$null)
@@ -263,6 +267,7 @@ try {
             @('empire-rules-vm', 'res://scripts/viewmodels/tests/test_empire_rules_vm.gd'),
             @('pack-editor-vm', 'res://scripts/viewmodels/tests/test_pack_editor_vm.gd'),
             @('ui', 'res://scenes/ui/tests/test_campaign_ui.gd'),
+            @('save-sandbox', 'res://scenes/ui/tests/test_save_sandbox.gd'),
             @('idle-prefetch', 'res://scenes/ui/tests/test_idle_prefetch.gd'),
             @('trek-icons', 'res://scenes/ui/tests/test_trek_icons.gd'),
             @('trek-text', 'res://scenes/ui/tests/test_trek_text.gd'),
@@ -537,6 +542,10 @@ if (-not $SkipCapture) {
     Write-Host $s.TrimEnd()
     Add-Result 'contact-sheets' $(if ($LASTEXITCODE -eq 0) { 'ok' } else { 'FAIL' }) "$run"
 }
+
+# ---- Real saves guard -----------------------------------------------------------------------------------------------------
+$g = & $python (Join-Path $PSScriptRoot 'real_saves_guard.py') check $guardState 2>&1 | Out-String
+Add-Result 'real-saves-guard' $(if ($LASTEXITCODE -eq 0) { 'ok' } else { 'FAIL' }) $g.Trim()
 
 # ---- Summary --------------------------------------------------------------------------------------------------------------
 $fail = @($results | Where-Object { $_.Status -in 'FAIL', 'BLOCKED' })

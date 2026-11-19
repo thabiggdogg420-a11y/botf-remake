@@ -18,6 +18,8 @@ func check(cond: bool, what: String) -> void:
 
 
 func _initialize() -> void:
+	# saves and settings go to a fresh scratch folder: this test writes the settings file (F6 round, Simon's saves rule)
+	AppSaves.sandbox("user://capture_sandbox/test-audio/%d-%d" % [int(Time.get_unix_time_from_system()), OS.get_process_id()])
 	_run.call_deferred()
 
 
@@ -301,8 +303,9 @@ func _persistence() -> void:
 	var sys := _sys()
 	if sys == null:
 		return
-	var path := BotfAudioSystem.SETTINGS_PATH
-	var backup := FileAccess.get_file_as_string(path) if FileAccess.file_exists(path) else ""
+	var path := AppSaves.SETTINGS_PATH   # the sandbox's settings file
+	check(not AppSaves.is_real_path(path), "the test writes a sandboxed settings file, not the player's")
+	DirAccess.make_dir_recursive_absolute(path.get_base_dir())
 	App.forced_backend = "fixture"
 	var app: App = load("res://scenes/ui/app.tscn").instantiate()
 	app.size = Vector2(1920, 1080)
@@ -344,13 +347,7 @@ func _persistence() -> void:
 	f.close()
 	sys.load_settings_file()
 	check(absf(BotfAudioSystem.bus_linear("Master") - 0.3) < 0.02, "an old settings file's volume becomes the master slider")
-	# put the user's file back
-	if backup != "":
-		var g := FileAccess.open(path, FileAccess.WRITE)
-		g.store_string(backup)
-		g.close()
-	else:
-		DirAccess.remove_absolute(path)
+	DirAccess.remove_absolute(path)   # the sandbox's file; the player's was never touched
 	sys.load_settings_file()
 
 

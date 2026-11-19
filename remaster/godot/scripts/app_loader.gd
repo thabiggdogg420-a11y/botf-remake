@@ -578,6 +578,9 @@ static func json(path: String) -> Variant:
 static func write_json(path: String, data: Variant) -> String:
 	if not path.begins_with("user://"):
 		return "Only user:// is writable"
+	if AppSaves.is_real_path(path) and AppSaves.scripted_run():
+		push_error("AppLoader: a test or tool tried to write the player's %s (sandbox it with AppSaves)" % path)
+		return "Refused: the player's saves and settings are off limits to tests and tools"
 	DirAccess.make_dir_recursive_absolute(path.get_base_dir())
 	var f := FileAccess.open(path, FileAccess.WRITE)
 	if f == null:
@@ -590,6 +593,9 @@ static func write_json(path: String, data: Variant) -> String:
 static func write_text(path: String, text: String) -> String:
 	if not path.begins_with("user://"):
 		return "Only user:// is writable"
+	if AppSaves.is_real_path(path) and AppSaves.scripted_run():
+		push_error("AppLoader: a test or tool tried to write the player's %s (sandbox it with AppSaves)" % path)
+		return "Refused: the player's saves and settings are off limits to tests and tools"
 	DirAccess.make_dir_recursive_absolute(path.get_base_dir())
 	var f := FileAccess.open(path, FileAccess.WRITE)
 	if f == null:
@@ -606,5 +612,8 @@ static func list(dir: String) -> PackedStringArray:
 	return d.get_files() if d else PackedStringArray()
 
 static func remove(path: String) -> void:
+	if AppSaves.is_real_path(path) and AppSaves.scripted_run():
+		push_error("AppLoader: a test or tool tried to delete the player's %s" % path)
+		return
 	if path.begins_with("user://"):
 		DirAccess.remove_absolute(path)

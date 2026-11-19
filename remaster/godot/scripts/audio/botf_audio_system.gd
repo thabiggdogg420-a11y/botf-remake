@@ -128,6 +128,7 @@ static func bus_names() -> PackedStringArray:
 ## Reads the vol_* settings from the client settings file (before the App has loaded it).
 func load_settings_file() -> void:
 	var s := {}
+	AppSaves.ensure()
 	var data: Variant = AppLoader.json(AppSaves.SETTINGS_PATH)   # user:// (IndexedDB on web); a capture sandbox moves it
 	if data is Dictionary:
 		s = data
