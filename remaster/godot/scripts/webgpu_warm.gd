@@ -88,6 +88,10 @@ func _stage(settings: Dictionary) -> void:
 	t = LoadTrace.start()
 	BattleAssets.shared().warm(BattleAssets.encounter_keys(enc))
 	t = LoadTrace.done("webgpu warm: hulls queued", t)
+	# Round 9: the battle view goes in only once the hulls are in, so its first frames never share one with a hull's
+	# decode step (0.3 s frames at galaxy open).
+	while BattleAssets.loading():
+		await tree.process_frame
 	await tree.process_frame
 	t = LoadTrace.start()
 	var packed := AppLoader.resource(BATTLE_SCENE) as PackedScene

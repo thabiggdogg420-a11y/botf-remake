@@ -796,7 +796,15 @@ func goto(id: String, remember: bool = true) -> void:
 		_chrome.modulate.a = 1.0
 	close_all_modals()
 	if _current:
-		_current.queue_free()
+		if OS.has_feature("web") and DisplayServer.get_name() != "headless":
+			# Round 9: the old screen (the title's 3D fleet, a galaxy map) is freed on the next frame, not on the frame that
+			# builds the new one; hidden until then.
+			var old := _current
+			old.visible = false
+			old.process_mode = Node.PROCESS_MODE_DISABLED
+			get_tree().process_frame.connect(old.queue_free, CONNECT_ONE_SHOT)
+		else:
+			_current.queue_free()
 		_current = null
 	var path := AppRoutes.script_for(id)
 	if path == "":
