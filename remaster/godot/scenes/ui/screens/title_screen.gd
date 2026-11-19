@@ -20,8 +20,11 @@ func refresh() -> void:
 	for c in get_children():
 		if c != backdrop:
 			c.queue_free()
+	var t := LoadTrace.start()
 	vm.fetch()
+	t = LoadTrace.done("title: vm", t)
 	_ensure_backdrop(title_empire())
+	t = LoadTrace.done("title: backdrop", t)
 	var root := Lcars.vbox(14)
 	root.position = Vector2(size.x * 0.09, size.y * 0.16)
 	root.custom_minimum_size = Vector2(620, 0)
@@ -115,6 +118,7 @@ func refresh() -> void:
 	var first := menu.get_child(0) as Button
 	if first and is_inside_tree():
 		first.grab_focus.call_deferred()
+	LoadTrace.done("title: menu", t)
 
 func _wide(b: Button) -> Button:
 	b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -157,6 +161,7 @@ func _ensure_backdrop(empire: int) -> void:
 	svc.add_child(sv)
 	backdrop.add_child(svc)
 	CompatBloom.attach(svc, sv, 0.95, 0.6, 0.8) # web: engines and lights glow, lit hulls do not
+	LoadTrace.mark("title: bloom attached")
 	fleet = TitleFleet.new()
 	fleet.animate = app == null or not app.settings.get("reducedMotion", false)
 	sv.add_child(fleet)
