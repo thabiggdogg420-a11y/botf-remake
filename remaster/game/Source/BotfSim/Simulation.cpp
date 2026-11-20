@@ -3623,7 +3623,11 @@ void resolveTacticalBattles(GameState& state, TurnReport& report,
             auto encounter = station ? gameplay::constructStationEncounter(state, ids, seed, *station)
                                      : tactical::constructEncounter(state, ids, seed);
             const bool playerInvolved = relation.first == state.playerEmpire || relation.second == state.playerEmpire;
-            if (playerInvolved && playerEncounter) playerEncounter(encounter);
+            // Hotseat (21 Nov 2026): a battle of any human, seated or not, waits for that human's orders. The encounter is
+            // commanded by the chair when it is in the battle, otherwise by the human in it (the bridge hands the chair over).
+            const bool humanInvolved = playerInvolved || humanSeat(state, relation.first) || humanSeat(state, relation.second);
+            if (humanInvolved && !playerInvolved) encounter.controllingOwnerId = humanSeat(state, relation.first) ? relation.first : relation.second;
+            if (humanInvolved && playerEncounter) playerEncounter(encounter);
             else encounter.runUntilFinished();
             require(encounter.isFinished, "Tactical encounter did not finish");
             if (station) gameplay::applyStationEncounter(state, encounter);
@@ -3631,7 +3635,7 @@ void resolveTacticalBattles(GameState& state, TurnReport& report,
             for (const auto& ship : encounter.ships) if (ship.retreated) withdrawn.insert(ship.fleetId);
             reconcileTaskForces(state); // Destroyed and independently withdrawing ships leave task forces.
             auto battle = tactical::toCombatReport(encounter);
-            if (playerInvolved)
+            if (humanInvolved)
                 report.events.push_back("Battle at sector " + std::to_string(x) + "," + std::to_string(y) +
                     ": " + std::to_string(battle.lostFleetIds.size()) + " ships lost, " +
                     std::to_string(battle.retreatedFleetIds.size()) + " withdrew" +

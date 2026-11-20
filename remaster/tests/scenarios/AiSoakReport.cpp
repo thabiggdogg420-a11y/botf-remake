@@ -103,6 +103,8 @@ int main(int argc, char** argv) {
             const int snapTurn = std::getenv("BOTF_SOAK_SNAP") ? std::atoi(std::getenv("BOTF_SOAK_SNAP")) : 100;
             std::map<int, int> ownerAt;   // system id -> colony owner last turn
             std::set<int> shipsSeen;
+            std::map<int, int> ownerPrev, ownerNow; std::map<std::pair<int, int>, int> captured, pairWarTurns; long long parkedTransportTurns = 0;
+            for (const auto& c : state.colonies) ownerPrev[c.systemId] = c.ownerId;
             for (const auto& c : state.colonies) ownerAt[c.systemId] = c.ownerId;
             try {
                 for (int t = 0; t < turns && state.outcome == CampaignOutcome::Ongoing; ++t) {
@@ -149,6 +151,53 @@ int main(int argc, char** argv) {
                                 for (const auto& c : state.colonies) if (c.ownerId == id) { ++tr.colonies100; tr.pop100 += c.population; }
                                 for (const auto& m : state.minors) tr.members100 += m.memberOf == id;
                             }
+                    }
+                    // Conquest diagnosis (21 Nov 2026, BOTF_SOAK_WARS=<every n turns>): who is left, how strong, and what stands
+                    // between each surviving pair (war and since when, active treaties, worlds taken from each other so far).
+                    if (const char* wars = std::getenv("BOTF_SOAK_WARS")) {
+                        for (const auto& c : state.colonies) ownerNow[c.systemId] = c.ownerId;
+                        for (const auto& [sys, owner] : ownerNow) {
+                            const auto was = ownerPrev.find(sys);
+                            if (was != ownerPrev.end() && was->second != owner && was->second > 0 && owner > 0) ++captured[{owner, was->second}];
+                        }
+                        ownerPrev = ownerNow; ownerNow.clear();
+                        for (const auto& r : state.majorRelations) if (r.atWar) ++pairWarTurns[{std::min(r.first, r.second), std::max(r.first, r.second)}];
+                        // Transports idle at an enemy colony they do not assault (the stuck-transport bug), counted per turn.
+                        for (const auto& f : state.fleets) {
+                            if (f.shipClass != Building::Transport || f.hull <= 0 || f.invadeSystemId || f.x != f.targetX || f.y != f.targetY) continue;
+                            for (const auto& c : state.colonies) {
+                                const auto* sys = gameplay::systemById(state, c.systemId);
+                                if (!sys || sys->x != f.x || sys->y != f.y || c.ownerId == f.ownerId) continue;
+                                const bool war = std::any_of(state.majorRelations.begin(), state.majorRelations.end(), [&](const MajorRelation& r) {
+                                    return r.atWar && ((r.first == f.ownerId && r.second == c.ownerId) || (r.second == f.ownerId && r.first == c.ownerId)); });
+                                if (war) ++parkedTransportTurns;
+                            }
+                        }
+                        const int every = std::max(1, std::atoi(wars));
+                        if (state.turn % every == 0 || state.outcome != CampaignOutcome::Ongoing) {
+                            std::map<int, int> cols, fleets;
+                            for (const auto& c : state.colonies) ++cols[c.ownerId];
+                            for (const auto& f : state.fleets) { ++fleets[f.ownerId]; }
+                            std::cout << "WARS " << p->id << " seed " << setup.seed << " turn " << state.turn << " systems " << state.systems.size() << " colonies " << state.colonies.size()
+                                      << " parked-transport-turns " << parkedTransportTurns << " |";
+                            for (const auto& [id, n] : cols) std::cout << " " << empireName(id) << " c" << n << " f" << fleets[id];
+                            std::cout << std::endl;
+                            const auto& dip = campaignDiplomacyState(state);
+                            for (auto a = cols.begin(); a != cols.end(); ++a)
+                                for (auto b = std::next(a); b != cols.end(); ++b) {
+                                    const MajorRelation* rel = nullptr;
+                                    for (const auto& r : state.majorRelations)
+                                        if ((r.first == a->first && r.second == b->first) || (r.first == b->first && r.second == a->first)) rel = &r;
+                                    std::cout << "  PAIR " << empireName(a->first) << " / " << empireName(b->first) << ": "
+                                              << (rel ? (rel->atWar ? "WAR since " + std::to_string(rel->warStartTurn) : std::string(rel->contact ? "peace" : "no-contact")) : std::string("no-relation"))
+                                              << " war-turns " << pairWarTurns[{a->first, b->first}] << " taken " << captured[{a->first, b->first}] << "/" << captured[{b->first, a->first}] << " treaties";
+                                    for (const auto& tr8 : dip.activeTreaties)
+                                        if (tr8.status == diplomacy::TreatyStatus::Active && !tr8.partyA.isMinor && !tr8.partyB.isMinor &&
+                                            ((tr8.partyA.id == a->first && tr8.partyB.id == b->first) || (tr8.partyA.id == b->first && tr8.partyB.id == a->first)))
+                                            std::cout << " " << static_cast<int>(tr8.type) << "@" << tr8.startTurn;
+                                    std::cout << std::endl;
+                                }
+                        }
                     }
                     if (state.turn % 50 == 0) std::cout << "TICK " << p->id << " seed " << setup.seed << " turn " << state.turn << " fleets " << state.fleets.size() << std::endl;
                     for (auto& [id, tr] : track) {

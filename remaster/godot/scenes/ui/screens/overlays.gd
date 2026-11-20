@@ -360,6 +360,15 @@ static func end_screen(app: App, preview: String = "") -> Control:
 	var rl := Lcars.para(sum["reason"], Lcars.TEXT, 16)
 	rl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	root.add_child(rl)
+	if str(sum.get("allied", "")) != "":   # hotseat: the allied humans who share the win, with their emblems
+		var ar := Lcars.hbox(8)
+		ar.name = "EndAllies"
+		ar.alignment = BoxContainer.ALIGNMENT_CENTER
+		for h in sum.get("winners", []):
+			ar.add_child(Lcars.emblem(int(h), 28))
+		var al := Lcars.label(str(sum["allied"]), "", 18, Lcars.GOOD)
+		ar.add_child(al)
+		root.add_child(ar)
 	var speech := end_speech(app, won, v)
 	if speech != null:
 		root.add_child(speech)

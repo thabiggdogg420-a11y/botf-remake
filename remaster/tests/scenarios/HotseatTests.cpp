@@ -1,7 +1,10 @@
 // Hotseat multiplayer core (MULTIPLAYER.md, decisions of 20 Nov 2026): several humans share one PC; the AI plays the rest.
 // Checks: setHotseat validation, the HOTSEAT save section, switchSeat applying the seated human's orders and handing the chair
 // over, the AI leaving every human's empire alone during the turn, and one-player games unchanged.
+#include "CampaignSession.h"
 #include "Simulation.h"
+
+#include <algorithm>
 
 #include <cstdint>
 #include <iostream>
@@ -26,6 +29,32 @@ void allocate(GameState& s, std::array<int, ResearchFields> a) {
     submit(s, c);
 }
 const EmpireState& seat(const GameState& s, int id) { return empire(s, id); }
+
+// Hotseat battles (21 Nov 2026): empires 2 and 3 at war with ships in one sector; empire 1 is in the chair.
+GameState battleOf2And3(std::vector<int> humans) {
+    auto state = generateCampaign(1999, 3, 16, 12, 28, 1);
+    state.aiAggressionEnabled = false;
+    state.eventsEnabled = false;
+    auto first = std::find_if(state.fleets.begin(), state.fleets.end(), [](const Fleet& f) { return f.ownerId == 2; });
+    auto second = std::find_if(state.fleets.begin(), state.fleets.end(), [](const Fleet& f) { return f.ownerId == 3; });
+    second->x = second->targetX = first->x;
+    second->y = second->targetY = first->y;
+    second->attackTarget = 0;
+    second->retreat = false;
+    auto& known = std::find_if(state.rivals.begin(), state.rivals.end(), [](const EmpireState& e) { return e.id == 3; })->explored;
+    known.push_back(first->y * state.width + first->x);
+    std::sort(known.begin(), known.end());
+    known.erase(std::unique(known.begin(), known.end()), known.end());
+    for (auto& r : state.majorRelations)
+        if (r.first == 2 && r.second == 3) { r.contact = true; r.atWar = true; r.tradeTreaty = false; r.warStartTurn = state.turn; }
+    validate(state);
+    if (!humans.empty()) setHotseat(state, humans);
+    return state;
+}
+int shipOf(const tactical::Encounter& e, int owner) {
+    for (const auto& s : e.ships) if (s.ownerId == owner && tactical::Encounter::shipActive(s)) return s.fleetId;
+    return 0;
+}
 }
 
 int main() {
@@ -79,6 +108,45 @@ int main() {
     check(s.playerEmpire == p1 && s.id == p1, "the chair comes back to the first human");
     setHotseat(s, {});
     check(s.hotseatHumans.empty() && !humanSeat(s, p2), "the game can go back to one player");
+
+    // Battles for a human not in the chair wait for that human instead of being fought by the tactical AI.
+    {
+        auto solo = battleOf2And3({});
+        session::TurnSession t;
+        session::begin(t, solo);
+        check(session::resume(t, solo).has_value(), "one player: a battle between two AIs is fought by the AI (no pause)");
+    }
+    {
+        auto g = battleOf2And3({1, 2});
+        session::TurnSession t;
+        session::begin(t, g);
+        const auto paused = session::resume(t, g);
+        check(!paused && t.pending && t.pending->controllingOwnerId == 2, "hotseat: the battle of the human not in the chair waits for that human");
+        const int mine = t.pending ? shipOf(*t.pending, 2) : 0, theirs = t.pending ? shipOf(*t.pending, 3) : 0;
+        check(!throws([&] { session::order(t, {mine, theirs, tactical::TacticalManeuver::Engage}); }), "that human orders their own ships");
+        check(throws([&] { session::order(t, {theirs, mine, tactical::TacticalManeuver::Engage}); }), "nobody orders the AI's ships");
+        session::resolveRound(t);
+        session::autoResolve(t);
+        const auto done = session::resume(t, g);
+        check(done.has_value() && !done->battles.empty() && g.turn == 1, "the battle commits with the turn after the human fought it");
+        auto again = battleOf2And3({1, 2});
+        advance(again);
+        check(again.turn == 1, "headless advance still fights it by the tactical AI");
+    }
+    {
+        auto g = battleOf2And3({1, 2, 3});
+        session::TurnSession t;
+        session::begin(t, g);
+        check(!session::resume(t, g) && t.pending, "a battle between two humans waits for them");
+        const int a = t.pending ? shipOf(*t.pending, 2) : 0, b = t.pending ? shipOf(*t.pending, 3) : 0;
+        check(!throws([&] { session::order(t, {a, b, tactical::TacticalManeuver::Engage}); }) &&
+              !throws([&] { session::order(t, {b, a, tactical::TacticalManeuver::Evade}); }), "each human orders their own ships in the same round");
+        check(t.pending && t.pending->controllingOwnerId == 2, "the encounter's controller is unchanged by the other human's order");
+        session::resolveRound(t);
+        session::autoResolve(t);
+        const auto done = session::resume(t, g);
+        check(done.has_value() && g.turn == 1, "both humans' recorded orders replay and the turn commits");
+    }
 
     std::cout << "hotseat: " << checks - failures << " passed, " << failures << " failed\n";
     return failures ? 1 : 0;

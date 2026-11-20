@@ -130,3 +130,71 @@ in every run).
   empire in 400 turns. A conquest ending needs every rival gone; the AIs finish the nearly beaten, but the strong ones still
   balance each other until the cap or a diplomatic win. The conquest victory remains reachable by a human player. Whether
   the AI should be pushed further (for example, peace terms that hand over worlds, or alliances breaking late) is Simon's call.
+
+## Round 4 (21 Nov 2026): why no AI ever wins by conquest
+Barclay. Observer soaks, the same harness with a new report switch (`BOTF_SOAK_WARS=<n>`: every n turns, who is left, their
+colonies and ships, and for each surviving pair: at war and since when, turns at war, worlds taken from each other, active
+treaties; plus transport-turns spent idle at an enemy world). Raw output: `Documents\ChatGPT\r6-conquest\` (`classic-1200`,
+`kcw-1200`, `remastered-400`, `bop-800` before; `after\`, `after2\` after the AI fix; `exp*.txt` the what-if runs below, built
+from a scratch copy of the core that is not in the game).
+
+### What the soaks show (code as of 8b02dc3, P1-P3 in)
+Classic and Klingon Civil War for 1,200 turns on 4 seeds, Remastered 400 x 8, Balance of Power 800 x 4. No conquest, and no
+campaign ever came down to one empire.
+1. **Alliances never end.** Every Full Alliance between AIs is indefinite, and none was broken in 1,200 turns. In Classic, 2 to
+   4 alliance pairs formed between turn 30 and 120 and were all still standing at turn 1,200 (Federation-Romulan from turn 66,
+   Federation-Ferengi from 35, and so on). Allies never fight, so a bloc of two or three allies is a floor under the number of
+   empires left. Klingon Civil War forms no alliances, and there every pair is at war for most of 1,200 turns; it still ends
+   with four empires.
+2. **AI fleets do not grow with the empire.** The AI build planner keeps at most 5 warships and 1 troop transport at war (2
+   and 2 for a minor-race campaign, a peacetime standing fleet by personality), whatever its size. A 25-colony Ferengi
+   Alliance fields 7 ships at turn 1,200, the same as at turn 300. Total ships in a five-empire galaxy stay at 20-30 for the
+   whole game.
+3. **The AI never lands on a big world.** A transport lands only when its troops are at least 7/10 of the world's ground
+   defence as the AI reckons it (8 + hull 14 + 2 x weapons tech, against 8 + population/3 + morale/10 + batteries, times the
+   shield grid). A homeworld of 120+ population is out of reach for any single transport at any tech level, and the AI never
+   sends two together. The last world of a beaten empire is nearly always its homeworld, so empires sit on one colony for
+   hundreds of turns at war with a far larger neighbour (Klingon Empire, 1 colony, at war with all four others from turn
+   ~1,000 to 1,200, seed 7000).
+4. **Domination comes first.** Colonies fill the galaxy (50 of 50 systems colonised by turn 300-600 in every Classic run).
+   Domination needs 60% of the systems; conquest needs every colony. Whoever holds every colony crossed 60% on the way, so
+   in a full galaxy conquest can only be the ending if the last rival falls on the same turn the winner first reaches 60%.
+   This holds for a human player as much as for the AI.
+
+### Looking for an AI bug: none found that blocks conquest
+The one candidate was the transport. The AI sends it to the nearest enemy world; when its own 7/10 test refuses the landing it
+waits there, and with one transport allowed at a time it builds no other. I changed the planner so that a transport (and a task
+force carrying troops) went only for worlds it would assault, and soaked it (`r6-conquest\after\`, `after2\`). The result was
+no better for conquest: the same number of empires fell (2 in 4 Classic campaigns before and after, none in Klingon Civil
+War), one each way (seed 7000 now finished a one-colony Klingon Empire; seed 7262 now let one survive at one or two colonies
+from turn 700 to 1,200, where the old code finished it by turn 900), and 4 of 16 endings in Remastered and Ultimate moved
+(Ages none). The waiting transport is in effect a siege: it lands the turn a starved or bombarded world's defence drops under the
+line. So the waiting is
+behaviour, not a bug, and the change was taken back; the game's AI is as it was at 8b02dc3. I found no other fault in the war code
+(read: the war build order, task-force targeting with P3's pull, the transport test, invasion resolution; not traced turn by
+turn: war declarations). Every reason above is a rule or a tuning number, so each one is put to Simon below.
+
+### What-if runs (scratch copy, not in the game; to size the rule levers)
+Classic and Klingon Civil War, 1,200 turns, 4 seeds each, domination switched off so that only conquest can end a campaign
+between AIs that are not diplomats:
+| Run | Change | Conquests | Empires left at 1,200 (Classic) |
+|---|---|---|---|
+| A | none | 0 / 8 | 4-5 |
+| B | AI fleet caps scale with colonies (+1 warship per 2 colonies, +1 transport per 6) | 0 / 8 | 2-5 (seed 7000: Cardassian and Ferengi, allied since turn 57) |
+| C | AI alliances last 100 turns (renewable) | 0 / 8 | 4-5 |
+| D | B + C | 0 / 8 | 3-5; last worlds of 1 colony left standing |
+| E | D + the transport change above | 0 / 4 Classic (Klingon Civil War stopped early, 2 of 4 ran: 0) | 3-4 |
+| F | E + AI transports land at any odds (as a player may) | 0 / 4 Classic (Klingon Civil War stopped early: 0) | 2-4 (seed 7262: Federation and Ferengi, allied since turn 1,183) |
+Every lever moves the galaxy towards fewer empires, but none alone or together produced a conquest in 1,200 turns: the last
+two or three powers end up allied (C3 below), and with alliances lapsing they re-ally within a few turns.
+
+### Proposals (each is Simon's call; none applied)
+- C1. The AI may land on a world it cannot take with one transport: either several transports land together (their troops
+  added), or the AI accepts worse odds when finishing a war (P3's "finishing" test). Without this no AI ever takes a capital.
+- C2. AI war fleets scale with the empire (for example, at war up to 3 warships plus 1 per 2 colonies, and 1 transport per 6
+  colonies, inside the existing 256-ship galaxy cap). Today it is 5 and 1 for every empire.
+- C3. Alliances between AIs lapse: a Full Alliance runs 100 turns and is renewed only while both still want it, and an alliance
+  of the last two powers left ends (the bloc has nobody left to stand against).
+- C4. Conquest and domination. Either leave it (conquest is a win only in a galaxy with room to spare, which is how the rule
+  reads today), or let a campaign go on past domination when the winner chooses to (the original's "continue playing"), or
+  count domination only after a set turn. This one is about the rule itself, not the AI.

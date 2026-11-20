@@ -59,3 +59,53 @@ Not yet (next steps, in this order):
 2. A galactic event choice or a conquered world's fate for a human not in the chair is decided by the AI's rule.
 3. The shared diplomatic win is shown as the winner's victory; the end screen does not yet name the allied humans.
 4. Turn timer (off by default, host-set) and LAN lockstep are not started.
+
+## Round 2 (21 Nov 2026, Barclay): hotseat battles, the shared win named, LAN lockstep
+### Hotseat
+- Battles: a battle of a human who is not in the chair now waits for that human instead of being fought by the tactical AI.
+  Core: `resolveTacticalBattles` and the threat battles route every human's encounter to the session; when the chair is not
+  in it, the encounter's controller is the human who is. `session::order` accepts any human's ship (the controller is that
+  ship's owner for the order and is put back afterwards); the replay check replays every human's recorded orders. Bridge:
+  `session.battleHumans` (the humans with ships in the pending battle), `session.battleSeat` (who commands it now) and
+  `battleSeat {empire}`; the tactical view, "all ships" orders and group orders follow the battle seat. Client: the battle
+  screen opens behind the hand-over card for that human. In a battle between two humans each plans the round in turn behind
+  the card (the first human's Resolve hands the round over; the second's resolves it), both watch it, and the next round
+  starts again with the first. One-player games are unchanged (the same encounters pause, the same replay).
+  One edge, written down rather than changed: the tactical rules let "the AI side" accept a hail truce; in a two-human
+  battle the side that is not the encounter's controller is judged by that rule when every ship of the other side hails.
+- The shared diplomatic win: the bridge's `meta.winners` lists the humans who share the win (the winner if human; for a
+  diplomatic win every human in the winner's full alliance). The end screen judges the human in the chair by it and names
+  every allied human ("Shared victory: Federation, Klingon Empire, allied players."). Decision 1's "two or more humans in
+  the winning bloc all win" also holds under an AI's lead (Victory.cpp, hotseat games only).
+- Tests: BotfHotseatTests (27 checks: the battle of a human not in the chair waits, they order only their own ships, the
+  turn commits; a two-human battle with both humans' orders in one round replays and commits; one-player and headless
+  routes unchanged). Frames: `godot/scenes/ui/tools/hotseat_battle_capture.gd`.
+
+### LAN (desktop)
+- `godot/scripts/lan_session.gd` (LanSession, a child of App) and the "LAN game" modal (`scenes/ui/screens/lan_lobby.gd`,
+  Title > LAN game): host (port 47474 by default, the host's power, turn timer, 0 = off, the default) or join by address,
+  or "Find games" (UDP broadcast on port + 1). Transport: ENetMultiplayerPeer, JSON messages on one reliable channel. A
+  joining peer with a different protocol or content pack checksum is refused.
+- The game is a hotseat game where each LAN player is one of the humans; every peer holds the host's save of the turn's
+  start. The core journals each order the seat gives (bridge `journal`: the accepted `submit`/`cancel` calls with their
+  ids). End turn sends the journal to the host; with every human's in (or a dropped player counted as empty) the host sends
+  the full set; each peer reloads the turn-start save, `lanApply` replays every seat's journal in seating order (switchSeat
+  between seats, submit ids renumbered, a refused order skipped the same way everywhere), ends the turn with battles fought
+  by the tactical AI (the same on every peer), and sends its fingerprint. Matching: the turn stands. Different: "DESYNC ON
+  TURN N" with every peer's fingerprint, the report saved to `user://lan/desync-turn-N-<host|client>.txt`, and the host's
+  save goes to everyone; play continues from it.
+- Turn timer: off by default; the host sets seconds per turn; when they run out, that human's turn ends with the orders
+  already given. A strip under the header shows host/client, the turn, planning or waiting, the seconds left and the last
+  check.
+- Proof (21 Nov, two windowed instances on this PC over 127.0.0.1, off-screen): 13 turns, every fingerprint matched on
+  both peers (4 orders replayed a turn, none refused); a forced desync (the client replays one extra order on one turn) was
+  caught on that turn, the host's state went out and the next turns matched again (the same fingerprints as the clean run);
+  with a 6 s timer and a client that takes 20 s to plan, the client's turns ended on the timer and the fingerprints matched.
+  Driver: `BOTF_LAN_AUTO` (lan_session.gd, test only), runner `Documents\ChatGPT\r6-lan\lan_run.ps1`.
+
+Not yet:
+1. LAN battles are fought by the tactical AI on every peer; planning them on each human's PC (design point LAN 4) is next.
+2. A dropped player's seat plans nothing until the end of the game (the design says the AI plays it until they rejoin from
+   the host's latest save); rejoining is not built.
+3. The host starts a new campaign from the lobby (default galaxy, the host's power, a fixed seed in tests); starting LAN from
+   a saved game or the full New campaign setup is not built.

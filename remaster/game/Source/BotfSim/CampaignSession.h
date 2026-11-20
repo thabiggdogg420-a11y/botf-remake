@@ -35,8 +35,14 @@ inline void begin(TurnSession& session, const GameState& state) {
 inline void order(TurnSession& session, const tactical::Order& command) {
     require(session.active && session.pending.has_value(), "No tactical encounter awaits orders");
     const auto* ship = session.pending->getShip(command.fleetId);
-    require(ship && ship->ownerId == session.baseline.playerEmpire, "Cannot command an enemy ship");
-    session.pending->submitOrder(command);
+    require(ship && humanSeat(session.baseline, ship->ownerId), "Cannot command an enemy ship");
+    // Hotseat (21 Nov 2026): in a battle between two humans each commands their own ships, so the encounter's controller is
+    // that ship's owner for the order and is restored afterwards (it decides only who may order and the AI's hail answer).
+    auto& encounter = *session.pending;
+    const int controller = encounter.controllingOwnerId;
+    encounter.controllingOwnerId = ship->ownerId;
+    try { encounter.submitOrder(command); } catch (...) { encounter.controllingOwnerId = controller; throw; }
+    encounter.controllingOwnerId = controller;
 }
 inline void resolveRound(TurnSession& session) {
     require(session.active && session.pending.has_value(), "No tactical encounter awaits orders");
@@ -97,7 +103,7 @@ inline void adoptGroupStanding(tactical::Encounter& replay, const tactical::Enco
 // Replays recorded rounds. inferAi=true (legacy recordings only) treats a player
 // ship as AI-driven until the first round whose recorded order differs from the
 // AI's decision, because V1 recordings did not mark AI decisions.
-inline bool replayMatches(const tactical::Encounter& initial, const tactical::Encounter& recorded, int player, bool inferAi) {
+inline bool replayMatches(const tactical::Encounter& initial, const tactical::Encounter& recorded, const std::set<int>& humans, bool inferAi) {
     const bool remaster = recorded.rulesVersion >= tactical::RemasterTacticalRules;
     auto replay = prepareReplay(initial, recorded);
     std::set<int> explicitShips;
@@ -106,7 +112,7 @@ inline bool replayMatches(const tactical::Encounter& initial, const tactical::En
             if (replay.isFinished) return false;
             for (const auto& status : round.shipStatuses) {
                 const auto* ship = replay.getShip(status.fleetId);
-                if (!ship || ship->ownerId != player || !tactical::Encounter::shipActive(*ship)) continue;
+                if (!ship || !humans.count(ship->ownerId) || !tactical::Encounter::shipActive(*ship)) continue;
                 const tactical::Order recordedOrder{status.fleetId, status.targetFleetId, status.maneuverExecuted, status.subsystemTarget};
                 if (remaster) {
                     if (status.aiControlled) continue; // The AI re-derives the same decision.
@@ -114,7 +120,10 @@ inline bool replayMatches(const tactical::Encounter& initial, const tactical::En
                     if (!replay.standingOrders.count(status.fleetId) && replay.aiOrderFor(*ship) == recordedOrder) continue;
                     explicitShips.insert(status.fleetId);
                 }
+                const int controller = replay.controllingOwnerId;   // hotseat: a human's order under its own command
+                replay.controllingOwnerId = ship->ownerId;
                 replay.submitOrder(recordedOrder);
+                replay.controllingOwnerId = controller;
             }
             replay.resolveRound();
         }
@@ -127,11 +136,15 @@ inline bool replayMatches(const tactical::Encounter& initial, const tactical::En
 }
 } // namespace detail
 
-inline void verifyReplay(const tactical::Encounter& initial, const tactical::Encounter& recorded, int player) {
-    bool matches = detail::replayMatches(initial, recorded, player, false);
+inline void verifyReplay(const tactical::Encounter& initial, const tactical::Encounter& recorded, const std::set<int>& humans) {
+    bool matches = detail::replayMatches(initial, recorded, humans, false);
     if (!matches && recorded.rulesVersion < tactical::RemasterTacticalRules)
-        matches = detail::replayMatches(initial, recorded, player, true);
+        matches = detail::replayMatches(initial, recorded, humans, true);
     require(matches, "Tactical result does not match deterministic order replay");
+}
+
+inline void verifyReplay(const tactical::Encounter& initial, const tactical::Encounter& recorded, int player) {
+    verifyReplay(initial, recorded, std::set<int>{player});
 }
 
 inline std::optional<TurnReport> resumeWorking(TurnSession& session, GameState& committed) {
@@ -143,7 +156,8 @@ inline std::optional<TurnReport> resumeWorking(TurnSession& session, GameState& 
         session.pending.reset();
     }
     auto working = session.baseline;
-    const int player = working.playerEmpire;
+    std::set<int> humans{working.playerEmpire};   // hotseat: every human's ships carry recorded orders
+    humans.insert(working.hotseatHumans.begin(), working.hotseatHumans.end());
     std::size_t encounterIndex = 0;
     // The same resolver as headless advance(); only player encounters are routed here.
     const auto playerEncounter = [&](tactical::Encounter& encounter) {
@@ -160,7 +174,7 @@ inline std::optional<TurnReport> resumeWorking(TurnSession& session, GameState& 
             const auto* saved = recorded.getShip(ship.fleetId);
             require(saved && saved->ownerId == ship.ownerId, "Tactical result participant mismatch");
         }
-        verifyReplay(encounter, recorded, player);
+        verifyReplay(encounter, recorded, humans);
         encounter = recorded;
     };
     const auto combat = [&](GameState& state, TurnReport& report) {

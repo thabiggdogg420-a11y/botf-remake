@@ -131,6 +131,13 @@ struct Bridge {
     std::vector<tac::Encounter> lastEncounters;   // player encounters fought in the last committed turn
     std::string lastBriefing;                      // JSON of the last turn briefing
     std::map<int, std::string> hotseatBriefings;   // Hotseat: each human's briefing of the last turn (from its own seat)
+    int battleSeat = 0;                            // Hotseat: the human commanding the pending battle now (0 = default)
+    // LAN lockstep (MULTIPLAYER.md, 21 Nov 2026): this seat's accepted commands ("submit" / "cancel", raw args and the id the
+    // core gave a submit) since the last "journal" take. lanApply replays every seat's journal on the canonical state.
+    struct JournalEntry { std::string method, args; std::uint64_t id = 0; };
+    std::vector<JournalEntry> journal;
+    bool journalOn = true;
+    std::string callArgs;   // the raw args of the botf_call being dispatched
     std::string scenario = "campaign";
     // Combat sandbox (tactical rules 4): a standalone WEGO encounter the battle scene can drive before campaigns
     // switch rules 4 on (that needs GameplayRules::wegoCombat, outside this bridge). Never touches the campaign.
@@ -138,6 +145,8 @@ struct Bridge {
     botf::GameState sandboxState;
 };
 Bridge B;
+std::vector<int> battleHumans(const tac::Encounter& e);   // hotseat battles (defined with the tactical calls)
+int battleViewer();
 
 void touch() { ++B.version; }
 void requireGame() { if (!B.active) fail("No campaign is loaded"); }
@@ -1026,6 +1035,20 @@ void writeView(Writer& w) {
     w.field("outcome", s.outcome == botf::CampaignOutcome::Victory ? "victory" : s.outcome == botf::CampaignOutcome::Defeat ? "defeat" : "ongoing");
     w.field("winner", s.winnerEmpire);
     w.key("hotseat").beginArray(); for (int h : s.hotseatHumans) w.value(h); w.endArray();   // human empires, [] for one player
+    // Hotseat (21 Nov 2026): the humans who share the win: the winner if human, and for a diplomatic win every human in the
+    // winner's full alliance (MULTIPLAYER.md decision 1). [] while the game runs or when no human won.
+    w.key("winners").beginArray();
+    if (s.outcome != botf::CampaignOutcome::Ongoing && s.winnerEmpire) {
+        std::set<int> bloc{s.winnerEmpire};
+        bool diplomatic = false;
+        try {
+            for (const auto& v : botf::victoryProgress(s, s.winnerEmpire))
+                if (v.condition == botf::VictoryCondition::Diplomatic && v.achieved) diplomatic = true;
+            if (diplomatic) for (int ally : botf::diplomaticVictoryStatus(s, s.winnerEmpire).allies) bloc.insert(ally);
+        } catch (...) {}
+        for (int id : bloc) if (botf::humanSeat(s, id)) w.value(id);
+    }
+    w.endArray();
     w.field("advancedRules", s.advancedRulesEnabled);
     w.field("campaignExpansion", s.campaignExpansionEnabled);
     w.field("modernEngines", s.modernEnginesActive);
@@ -1309,6 +1332,10 @@ void writeView(Writer& w) {
     w.field("active", B.session.active);
     w.field("battlePending", B.session.active && B.session.pending.has_value());
     w.field("battleFinished", B.session.active && B.session.pending && B.session.pending->isFinished);
+    w.key("battleHumans").beginArray();
+    if (B.session.active && B.session.pending) for (int h : battleHumans(*B.session.pending)) w.value(h);
+    w.endArray();
+    w.field("battleSeat", battleViewer());
     w.field("replays", static_cast<int>(B.lastEncounters.size()));
     w.endObject();
 
@@ -2449,6 +2476,22 @@ void requireEncounter() {
     if (!B.session.active || !B.session.pending) fail("No tactical encounter awaits orders");
 }
 
+// Hotseat (21 Nov 2026): the humans with ships in the pending battle, and the one commanding it now. A battle of a human
+// who is not in the chair waits for that human (the client shows the hand-over card); in a battle between two humans each
+// takes the battle seat in turn ("battleSeat") and orders their own ships.
+std::vector<int> battleHumans(const tac::Encounter& e) {
+    std::set<int> out;
+    for (const auto& ship : e.ships) if (botf::humanSeat(B.session.baseline, ship.ownerId)) out.insert(ship.ownerId);
+    return {out.begin(), out.end()};
+}
+int battleViewer() {
+    if (!B.session.active || !B.session.pending) return B.state.playerEmpire;
+    const auto humans = battleHumans(*B.session.pending);
+    if (B.battleSeat && std::find(humans.begin(), humans.end(), B.battleSeat) != humans.end()) return B.battleSeat;
+    if (std::find(humans.begin(), humans.end(), B.state.playerEmpire) != humans.end()) return B.state.playerEmpire;
+    return humans.empty() ? B.state.playerEmpire : B.session.pending->controllingOwnerId;
+}
+
 void writeManeuvers(Writer& w) {
     w.beginArray();
     for (int i = 0; i < static_cast<int>(ManeuverKeys.size()); ++i)
@@ -2733,6 +2776,7 @@ void writeTurnStatus(Writer& w, const char* status) {
 
 void continueTurn(Writer& w) {
     const auto before = B.session.baseline;
+    B.battleSeat = 0;   // each battle starts under its default commander
     auto report = botf::session::resume(B.session, B.state);
     touch();
     if (!report) {
@@ -2742,6 +2786,8 @@ void continueTurn(Writer& w) {
     }
     B.lastEncounters = B.session.completed;
     B.session = botf::session::TurnSession();
+    B.battleSeat = 0;
+    B.journal.clear();   // the turn's commands are spent
     B.lastBriefing = writeBriefing(before, B.state, *report);
     // Hotseat: every human gets the turn's briefing from its own seat (fog, events and ledger as that empire sees them).
     B.hotseatBriefings.clear();
@@ -3567,6 +3613,7 @@ std::string dispatch(const std::string& method, const Value& a) {
         std::uint64_t id = 0;
         B.state = applyOrder(B.state, idList(a["cancelIds"]), a["command"], &id);
         touch();
+        if (B.journalOn) B.journal.push_back({"submit", B.callArgs, id});
         w.beginObject().field("id", id).endObject();
     } else if (method == "dryRun") {
         requireGame();
@@ -3595,6 +3642,7 @@ std::string dispatch(const std::string& method, const Value& a) {
         std::vector<std::uint64_t> ids = a.has("ids") ? idList(a["ids"]) : std::vector<std::uint64_t>{a["id"].asUInt()};
         B.state = applyOrder(B.state, ids, std::nullopt);
         touch();
+        if (B.journalOn) B.journal.push_back({"cancel", B.callArgs, 0});
         w.value(true);
     } else if (method == "route") {
         requireGame();
@@ -3642,6 +3690,69 @@ std::string dispatch(const std::string& method, const Value& a) {
         botf::setHotseat(B.state, a.has("humans") ? intList(a["humans"]) : std::vector<int>{});
         touch();
         writeView(w);
+    }
+    // LAN lockstep (MULTIPLAYER.md): "journal" hands over this seat's commands since the last take (and clears them; {"keep":
+    // true} leaves them); "lanApply" {"seats":[{"empire","journal":[...]}]} replays every seat's commands in seating order on
+    // the canonical turn-start state: the chair passes to each human in turn (switchSeat, as in hotseat), submit ids are
+    // re-numbered and cancels follow them, and a command the state refuses is skipped (the same on every peer).
+    else if (method == "journal") {
+        requireGame();
+        w.beginArray();
+        for (const auto& e : B.journal)
+            w.beginObject().field("method", e.method).key("args").raw(e.args.empty() ? "{}" : e.args).field("id", static_cast<std::int64_t>(e.id)).endObject();
+        w.endArray();
+        if (!a.getBool("keep")) B.journal.clear();
+    }
+    else if (method == "lanApply") {
+        requireGame(); requireNoSession();
+        int applied = 0, skipped = 0;
+        std::vector<std::string> refusals;
+        auto next = B.state;
+        for (const auto& seat : a["seats"].items) {
+            const int empire = seat.getInt("empire");
+            botf::switchSeat(next, empire);
+            std::map<std::uint64_t, std::uint64_t> renumber;
+            const auto mapIds = [&](const Value& v) {
+                std::vector<std::uint64_t> out;
+                for (auto id : idList(v)) { const auto it = renumber.find(id); if (it != renumber.end()) out.push_back(it->second); }
+                return out;
+            };
+            for (const auto& e : seat["journal"].items) {
+                const std::string kind = e.getString("method");
+                const Value& args = e["args"];
+                try {
+                    if (kind == "submit") {
+                        std::uint64_t id = 0;
+                        next = applyOrder(next, mapIds(args["cancelIds"]), args["command"], &id);
+                        renumber[static_cast<std::uint64_t>(e["id"].asUInt())] = id;
+                    } else if (kind == "cancel") {
+                        std::vector<std::uint64_t> ids;
+                        if (args.has("ids")) ids = mapIds(args["ids"]);
+                        else if (const auto it = renumber.find(args["id"].asUInt()); it != renumber.end()) ids.push_back(it->second);
+                        next = applyOrder(next, ids, std::nullopt);
+                    } else throw std::runtime_error("unknown journal entry " + kind);
+                    ++applied;
+                } catch (const std::exception& ex) {
+                    ++skipped;
+                    if (refusals.size() < 16) refusals.push_back(std::string(botf::empireName(empire)) + ": " + ex.what());
+                }
+            }
+        }
+        B.state = std::move(next);
+        B.journal.clear();
+        touch();
+        w.beginObject().field("applied", applied).field("skipped", skipped).field("player", B.state.playerEmpire);
+        w.key("refusals").beginArray(); for (const auto& r : refusals) w.value(r); w.endArray();
+        w.endObject();
+    }
+    else if (method == "battleSeat") {
+        requireGame();
+        requireEncounter();
+        const int seat = a.getInt("empire");
+        const auto humans = battleHumans(*B.session.pending);
+        if (std::find(humans.begin(), humans.end(), seat) == humans.end()) fail("That player has no ships in this battle");
+        B.battleSeat = seat;
+        writeEncounter(w, *B.session.pending, battleViewer());
     }
     else if (method == "switchSeat") {
         requireGame();
@@ -3693,7 +3804,7 @@ std::string dispatch(const std::string& method, const Value& a) {
         writeForecast(w, *B.session.pending, readTacticalOrder(a, *B.session.pending));
     } else if (method == "tactical") {
         requireGame();
-        if (B.session.active && B.session.pending) writeEncounter(w, *B.session.pending, B.state.playerEmpire);
+        if (B.session.active && B.session.pending) writeEncounter(w, *B.session.pending, battleViewer());
         else w.null();
     } else if (method == "tacticalOrder") {
         requireGame();
@@ -3712,7 +3823,11 @@ std::string dispatch(const std::string& method, const Value& a) {
                 if (const auto* s = trial.pending->getShip(fid); s && tac::Encounter::shipActive(*s) &&
                     (maneuver != tac::TacticalManeuver::Retreat || s->canRetreat)) ++count;
             if (!count) fail(maneuver == tac::TacticalManeuver::Retreat ? "No ship in this group has a safe withdrawal sector" : "No active ships in this group");
+            if (!botf::humanSeat(trial.baseline, g->ownerId)) fail("Cannot order group belonging to other owner.");
+            const int controller = trial.pending->controllingOwnerId;   // hotseat: the group's own human commands it
+            trial.pending->controllingOwnerId = g->ownerId;
             trial.pending->submitGroupOrder(groupId, maneuver, maneuver == tac::TacticalManeuver::Retreat ? 0 : target);
+            trial.pending->controllingOwnerId = controller;
             B.session = std::move(trial);
             touch();
             w.value(count);
@@ -3720,7 +3835,7 @@ std::string dispatch(const std::string& method, const Value& a) {
         }
         if (a.getBool("all")) {
             for (const auto& ship : B.session.pending->ships)
-                if (ship.ownerId == B.state.playerEmpire && ship.isAlive && ship.activeInCombat && !ship.retreated &&
+                if (ship.ownerId == battleViewer() && ship.isAlive && ship.activeInCombat && !ship.retreated &&
                     (maneuver != tac::TacticalManeuver::Retreat || ship.canRetreat)) ids.push_back(ship.fleetId);
         } else ids.push_back(a.getInt("fleetId"));
         if (ids.empty()) fail(maneuver == tac::TacticalManeuver::Retreat ? "No ship has a safe withdrawal sector" : "No active ships to command");
@@ -3732,7 +3847,7 @@ std::string dispatch(const std::string& method, const Value& a) {
             const auto* ship = trial.pending->getShip(id);
             int t = maneuver == tac::TacticalManeuver::Retreat ? 0 : target;
             if (t) { const auto* ts = trial.pending->getShip(t); if (!ts || !ts->isAlive || ts->retreated || !ts->activeInCombat) t = 0; }
-            (void)ship;
+            if (ship && ship->ownerId != battleViewer()) fail("Cannot command another player's ship");
             botf::session::order(trial, {id, t, maneuver, static_cast<tac::Subsystem>(aim)});
         }
         B.session = std::move(trial);
@@ -3743,13 +3858,13 @@ std::string dispatch(const std::string& method, const Value& a) {
         requireEncounter();
         botf::session::resolveRound(B.session);
         touch();
-        writeEncounter(w, *B.session.pending, B.state.playerEmpire);
+        writeEncounter(w, *B.session.pending, battleViewer());
     } else if (method == "tacticalAuto") {
         requireGame();
         requireEncounter();
         botf::session::autoResolve(B.session);
         touch();
-        writeEncounter(w, *B.session.pending, B.state.playerEmpire);
+        writeEncounter(w, *B.session.pending, battleViewer());
     } else if (method == "replays") {
         w.beginArray();
         for (std::size_t i = 0; i < B.lastEncounters.size(); ++i) {
@@ -3847,6 +3962,8 @@ BOTF_EXPORT const char* botf_call(const char* method, const char* args) {
         const std::string m = method ? method : "";
         const std::string text = args && *args ? args : "{}";
         const Value parsed = botfweb::json::parse(text);
+        B.callArgs = text;
+        if (m == "newCampaign" || m == "load" || m.rfind("new", 0) == 0) B.journal.clear();   // a new game starts a new journal
         const std::string result = dispatch(m, parsed);
         w.beginObject().field("ok", true).key("result").raw(result.empty() ? "null" : result).endObject();
     } catch (const std::exception& e) {

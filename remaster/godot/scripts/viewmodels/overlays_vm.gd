@@ -86,6 +86,20 @@ func end_summary(outcome: String) -> Dictionary:
 	var v := view()
 	var won := outcome == "victory"
 	var winner := int(v["meta"].get("winner", 0))
+	# Hotseat (MULTIPLAYER.md decision 1): the humans who share the win; the end screen judges the human in the chair by it
+	# and names every allied human. One-player games have no hotseat list and keep the outcome as it is.
+	var winners: Array = v["meta"].get("winners", [])
+	var hotseat: Array = v["meta"].get("hotseat", [])
+	var allied := ""
+	if not hotseat.is_empty() and outcome != "ongoing":
+		won = winners.has(player())
+		var names := PackedStringArray()
+		for h in winners:
+			names.append(session.empire_name(int(h)))
+		if names.size() >= 2:
+			allied = "Shared victory: %s, allied players." % ", ".join(names)
+		elif names.size() == 1:
+			allied = "%s wins." % names[0]
 	var reason := "Your empire commands the quadrant."
 	for c in v.get("victory", {}).get("conditions", []):
 		if c["achieved"] and won:
@@ -105,4 +119,4 @@ func end_summary(outcome: String) -> Dictionary:
 			contacts += 1
 	var stats := [["Turns", v["meta"]["turn"]], ["Colonies", v["colonies"].size()], ["Population", Fmt.fmt(v["empire"]["population"])], ["Ships", v["fleets"].size()],
 		["Stations", mine], ["Treasury", Fmt.fmt(v["empire"]["credits"])], ["Tech levels", techs], ["Contacts", contacts]]
-	return {"won": won, "winner": winner, "reason": reason, "stats": stats}
+	return {"won": won, "winner": winner, "reason": reason, "stats": stats, "allied": allied, "winners": winners}

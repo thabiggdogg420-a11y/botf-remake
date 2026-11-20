@@ -103,8 +103,15 @@ func _ready() -> void:
 		_apply_theme(1)
 		_build_layers()
 	t = LoadTrace.done("boot: theme+layers", t)
+	lan = LanSession.new(self)   # LAN multiplayer (desktop): idle until a game is hosted or joined
+	add_child(lan)
+	lan.changed.connect(_lan_strip)
 	goto("title")
 	LoadTrace.done("boot: title", t)
+	if OS.get_environment("BOTF_LAN_AUTO") != "":   # LAN proof runs (tools: two instances on one PC)
+		cinematics_live = false
+		settings["autosave"] = false
+		lan.start_auto.call_deferred(OS.get_environment("BOTF_LAN_AUTO"))
 	if cinematics_on():
 		Cinema.play_movie(self, "open")   # the disc's opening over the title; any key or click skips it
 	_warm_battle.call_deferred()
@@ -920,6 +927,9 @@ func start_drill(method: String, label_: String, args: Dictionary = {}) -> void:
 	toast(label_ + " loaded.", "warn")
 
 func request_end_turn() -> void:
+	if lan != null and lan.in_game:   # LAN: this seat's orders go to the host; the turn resolves when every player's are in
+		lan.end_turn_pressed()
+		return
 	if has_node("HotseatCard"):   # hotseat: Enter on the hand-over card takes the chair, it never ends the hidden turn
 		_hotseat_take(get_node("HotseatCard"))
 		return
@@ -973,6 +983,7 @@ func end_turn() -> String:
 			goto("combat")
 		get_tree().create_timer(0.25).timeout.connect(BotfAudioSystem.on_battle_joined) # off the frame that opens the screen
 		get_tree().create_timer(0.3).timeout.connect(func(): toast("Battle joined. Issue maneuvers or let the tactical AI command.", "warn"))
+		hotseat_battle_open()
 		return "battle"
 	briefing = res.get("briefing")
 	refresh()
@@ -1377,8 +1388,139 @@ func hotseat_card(empire_id: int) -> void:
 func _hotseat_take(card: Node) -> void:
 	if card != null and is_instance_valid(card):
 		card.queue_free()
+	if card != null and card.has_meta("battle"):   # a battle hand-over: the battle screen is already behind the card
+		toast("%s commands the battle." % session.empire_name(int(card.get_meta("battle"))), "warn")
+		return
 	toast("%s, turn %d." % [view.get("meta", {}).get("playerName", ""), int(view.get("meta", {}).get("turn", 0))], "good")
 	if not view.get("aftermaths", []).is_empty():
 		open_overlay("aftermath")
 	elif briefing is Dictionary:
 		open_overlay("briefing")
+
+
+# Hotseat battles (21 Nov 2026): a battle of a human who is not in the chair waits for that human (the core routes it to the
+# session; the bridge names the humans in it and the one commanding, "battleHumans" / "battleSeat"). The battle screen opens
+# behind a hand-over card for that human. In a battle between two humans each plans the round in turn behind the card; the
+# second human's Resolve ends the round, both watch it play, and the next round starts again with the first.
+var battle_planned: Array = [] ## humans who have planned the current round of a two-human battle
+
+func battle_humans() -> Array:
+	var bh = view.get("session", {}).get("battleHumans", [])
+	return bh if bh is Array else []
+
+## On a battle's opening: hands the battle to its human behind the card when that is not the chair, or to the first human
+## of a two-human battle.
+func hotseat_battle_open() -> void:
+	battle_planned.clear()
+	if hotseat_humans().size() < 2:
+		return
+	var bh := battle_humans()
+	var seat := int(view.get("session", {}).get("battleSeat", 0))
+	if bh.size() >= 2:
+		seat = int(bh[0])
+	if seat == 0 or (bh.size() < 2 and seat == int(view.get("meta", {}).get("player", 0))):
+		return
+	_battle_seat(seat)
+
+## Before a round resolves in a two-human battle: true when another human still has to plan (the chair passes behind the
+## card and their Resolve ends the round), false when the round may resolve now.
+func hotseat_battle_next() -> bool:
+	var bh := battle_humans()
+	if hotseat_humans().size() < 2 or bh.size() < 2:
+		return false
+	var seat := int(view.get("session", {}).get("battleSeat", 0))
+	if not battle_planned.has(seat):
+		battle_planned.append(seat)
+	for h in bh:
+		if not battle_planned.has(int(h)):
+			_battle_seat(int(h))
+			return true
+	battle_planned.clear()
+	return false
+
+## After a round has played in a two-human battle: the first human plans the next round behind the card.
+func hotseat_battle_round_done() -> void:
+	var bh := battle_humans()
+	if hotseat_humans().size() < 2 or bh.size() < 2:
+		return
+	if encounter is Dictionary and encounter.get("finished", false):
+		return
+	_battle_seat(int(bh[0]))
+
+func _battle_seat(seat: int) -> void:
+	var r: Dictionary = session.core.invoke("battleSeat", {"empire": seat})
+	if not r["ok"]:
+		session.failed.emit(r["error"])
+		return
+	session.encounter = r["result"]
+	session.refresh()
+	view = session.view
+	if screen == "combat":
+		close_all_modals()   # the battle-open choice and any panel belong to the human who had the battle before
+	if _current and _current.has_method("refresh"):
+		_current.refresh()
+	hotseat_card(seat)
+	var card := get_node_or_null("HotseatCard")
+	if card != null:
+		card.set_meta("battle", seat)
+		var loc := str(encounter.get("location", "")) if encounter is Dictionary else ""
+		for n in card.find_children("*", "Label", true, false):
+			if (n as Label).text.to_lower().begins_with("hotseat"):
+				(n as Label).text = "Hotseat · battle%s · the other players look away" % ((" at " + loc) if loc != "" else "")
+
+
+# ---------------------------------------------------------------------------------------------
+# LAN multiplayer (MULTIPLAYER.md "LAN", 21 Nov 2026): scripts/lan_session.gd runs the lockstep; the strip at the top of the
+# screen shows the game's state (whose orders are awaited, the turn timer when the host set one, the last fingerprint check).
+var lan: LanSession
+var _lan_label: Label
+
+func _lan_strip() -> void:
+	if _lan_label == null:
+		var layer := CanvasLayer.new()
+		layer.layer = 90
+		layer.name = "LanStrip"
+		add_child(layer)
+		var bg := PanelContainer.new()   # bottom centre, clear of the header, the toolbar and the orders panel
+		bg.name = "LanStripPanel"
+		var sb := StyleBoxFlat.new()
+		sb.bg_color = Color(0.02, 0.03, 0.07, 0.88)
+		sb.set_corner_radius_all(10)
+		sb.content_margin_left = 12
+		sb.content_margin_right = 12
+		sb.content_margin_top = 3
+		sb.content_margin_bottom = 3
+		bg.add_theme_stylebox_override("panel", sb)
+		_lan_label = Label.new()
+		_lan_label.name = "LanStripLabel"
+		_lan_label.add_theme_font_size_override("font_size", 13)
+		_lan_label.add_theme_color_override("font_color", Lcars.accent())
+		bg.add_child(_lan_label)
+		layer.add_child(bg)
+		var tick := Timer.new()
+		tick.wait_time = 0.5
+		tick.autostart = true
+		tick.timeout.connect(_lan_strip_text)
+		layer.add_child(tick)
+	_lan_strip_text()
+
+func _lan_strip_text() -> void:
+	if _lan_label == null:
+		return
+	var panel := _lan_label.get_parent() as Control
+	panel.visible = lan != null and lan.in_game
+	if not panel.visible:
+		return
+	var left := lan.seconds_left()
+	var check := ""
+	if not lan.history.is_empty():
+		var h: Array = lan.history.back()
+		check = " · check %s" % ("OK" if h[2] == "ok" else "DESYNC")
+	_lan_label.text = "LAN %s · turn %d · %s%s%s" % ["host" if lan.is_host else "client", lan.turn, "waiting for the others" if lan.sent else "planning", (" · %d s" % left) if left >= 0 else "", check]
+	_lan_label.tooltip_text = lan.last_status
+	panel.reset_size()
+	var vp := get_viewport_rect().size   # the UI's own coordinates (the canvas is scaled to the window)
+	panel.position = Vector2(vp.x * 0.532, vp.y * 0.089)   # between the galaxy's summary box and the side panel, under the header
+
+func open_lan_lobby() -> void:
+	LanLobby.open(self)

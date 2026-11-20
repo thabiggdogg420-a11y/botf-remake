@@ -397,7 +397,8 @@ void battles(GameState& state, TurnReport& report, std::set<int>& withdrawn, std
                 encounter.groups.push_back(group);
                 ship->groupId = group.groupId;
             }
-            const bool playerInvolved = owner == state.playerEmpire;
+            const bool playerInvolved = owner == state.playerEmpire || humanSeat(state, owner);   // hotseat: any human's battle waits for them
+            if (playerInvolved && owner != state.playerEmpire) encounter.controllingOwnerId = owner;
             if (playerInvolved && playerEncounter) playerEncounter(encounter);
             else encounter.runUntilFinished();
             require(encounter.isFinished, "Tactical encounter did not finish");

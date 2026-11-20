@@ -83,6 +83,10 @@ func refresh() -> void:
 		var pe := _wide(Lcars.pill("Pack editor", "tertiary", func(): app.goto("packs"), "", "Make your own pack: ship classes, structures, techs, balance, eras and powers. Packs you save join the preset picker"))
 		pe.name = "PackEditor"
 		row3.add_child(pe)
+	if not OS.has_feature("web"):   # LAN multiplayer is a desktop feature (the browser cannot open sockets)
+		var lanb := _wide(Lcars.pill("LAN game", "tertiary", func(): app.open_lan_lobby(), "", "Host or join a game on the local network"))
+		lanb.name = "LanGame"
+		row3.add_child(lanb)
 	row3.add_child(_wide(Lcars.pill("Settings", "ghost", func(): app.open_overlay("settings"))))
 	var quit := _wide(Lcars.pill("Quit", "ghost", func(): Overlays.confirm_quit_game(app), "", "Close the game", "Alt+F4"))
 	quit.name = "Quit"

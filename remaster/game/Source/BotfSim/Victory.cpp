@@ -184,6 +184,13 @@ void evaluateVictory(GameState& next, TurnReport& report) {
     next.winnerEmpire = winner;
     // Hotseat: any human's win is a human victory (the client names the winner and, for a diplomatic win, the allied humans).
     next.outcome = winner == next.playerEmpire || humanSeat(next, winner) ? CampaignOutcome::Victory : CampaignOutcome::Defeat;
+    // Hotseat (MULTIPLAYER.md decision 1, Simon 20 Nov 2026): allies share a diplomatic win; when the winning bloc holds two or
+    // more humans every one of them wins, even under an AI's lead. Humans outside the bloc lose. A one-human game is unchanged.
+    if (how == VictoryCondition::Diplomatic && !next.hotseatHumans.empty() && next.outcome == CampaignOutcome::Defeat) {
+        int humans = 0;
+        for (int ally : diplomaticVictoryStatus(next, winner).allies) humans += humanSeat(next, ally);
+        if (humans >= 2) next.outcome = CampaignOutcome::Victory;
+    }
     const std::string text = how == VictoryCondition::Vendetta
         ? std::string(empireName(winner)) + " settled its vendetta: both of its sworn rivals are finished. Vendetta victory. " +
             (winner == next.playerEmpire ? "Campaign victory." : "Campaign defeat.")

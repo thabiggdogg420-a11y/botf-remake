@@ -492,6 +492,8 @@ func order(maneuver: String) -> void:
 	refresh()
 
 func _round() -> void:
+	if app.has_method("hotseat_battle_next") and app.hotseat_battle_next():   # hotseat: the other human plans this round first
+		return
 	var _t0 := Time.get_ticks_usec()
 	if not vm.resolve(false):
 		return
@@ -567,7 +569,7 @@ func _plan_after_round(_idx: int) -> void:
 	# A round of nothing but closing in has just run through at speed: go straight on into the next, so one Engage reaches the
 	# first shots (at most four such rounds in a row; the orders stay as given).
 	var vn: Node = host.view_node if host != null and is_instance_valid(host) else null
-	if vn != null and bool(vn.get("last_round_idle")) and not _enc().get("finished", false) and _chain < 4:
+	if vn != null and bool(vn.get("last_round_idle")) and not _enc().get("finished", false) and _chain < 4 and app.battle_humans().size() < 2:
 		_chain += 1
 		if vm.maneuver != "":
 			vm.order(vm.maneuver)
@@ -576,6 +578,7 @@ func _plan_after_round(_idx: int) -> void:
 	_chain = 0
 	_set_play_layout(false)
 	_plan()
+	app.hotseat_battle_round_done()   # hotseat: a two-human battle's next round starts with the first human behind the card
 
 func _auto() -> void:
 	if not vm.resolve(true):
