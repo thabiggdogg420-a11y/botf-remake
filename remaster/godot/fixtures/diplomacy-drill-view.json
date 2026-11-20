@@ -22,6 +22,7 @@
    "saveVersion": 25,
    "outcome": "ongoing",
    "winner": 0,
+   "hotseat": [],
    "advancedRules": true,
    "campaignExpansion": true,
    "modernEngines": true,

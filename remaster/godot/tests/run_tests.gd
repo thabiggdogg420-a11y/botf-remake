@@ -403,7 +403,7 @@ func test_uncharted_view() -> void:
 
 ## The view is a read: a fixed-seed autoplay to turn 20 reaches the same state with or without the view being read every turn,
 ## and the hash is the one the core produced before the view change (recorded from the unchanged simulation sources).
-const FINGERPRINT_T20 := "16091701257822506776" # re-checked 18 Nov 2026 after the beam-range deployment (no change: native and wasm agree); re-pinned 17 Nov 2026 for the AI rivalry layer and early-food fix (9a617d9) plus the governor floors (b64149b), wasm and native agree; before: "8684820387310109984" re-pinned for schema 25 (the header line is in the payload; the body is unchanged, see SCENARIOS.md section 9); schema 24: the header line is in the payload, and the AI now builds its race academy (BALANCE-AI.md section 4); native and wasm agree
+const FINGERPRINT_T20 := "11345200427737667517" # re-pinned 20 Nov 2026 for balance P1-P3 (one academy project per empire, finishing wars), native and wasm agree; before: "16091701257822506776" re-checked 18 Nov 2026 after the beam-range deployment (no change: native and wasm agree); re-pinned 17 Nov 2026 for the AI rivalry layer and early-food fix (9a617d9) plus the governor floors (b64149b), wasm and native agree; before: "8684820387310109984" re-pinned for schema 25 (the header line is in the payload; the body is unchanged, see SCENARIOS.md section 9); schema 24: the header line is in the payload, and the AI now builds its race academy (BALANCE-AI.md section 4); native and wasm agree
 
 func _autoplay_fingerprint(read_view: bool) -> String:
 	api("newCampaign", CAMPAIGN)

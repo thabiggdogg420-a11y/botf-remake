@@ -28,6 +28,7 @@
    "saveVersion": 25,
    "outcome": "ongoing",
    "winner": 0,
+   "hotseat": [],
    "advancedRules": true,
    "campaignExpansion": true,
    "modernEngines": true,
@@ -810,7 +811,7 @@
      "enabled": true,
      "achieved": false,
      "percent": 17,
-     "explanation": "Alliance bloc holds 40 of 350 galactic population with 0 partner(s). Victory needs two-thirds of the population, at least 2 allied empires or member races, the largest population among the allies, and turn 150 or later."
+     "explanation": "Alliance bloc holds 40 of 350 galactic population with 0 partner(s). Victory needs two-thirds of the population, at least 2 allied empires or member races, the largest population among the allies, and turn 150 or later, all held for 10 turns in a row (held 0)."
     },
     {
      "condition": "Vendetta",
