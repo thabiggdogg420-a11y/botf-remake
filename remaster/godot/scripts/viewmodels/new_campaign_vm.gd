@@ -102,6 +102,8 @@ const PRESET_FALLBACK := [
 
 ## The UI era look (docs/UI-DESIGN-SYSTEM.md §2.3), stored in settings.uiEra at launch.
 var ui_era := "tng"
+## Hotseat (MULTIPLAYER.md): empire ids played by other humans at this PC, besides the chosen faction. [] = one player.
+var hotseat: Array = []
 
 const SHAPES := [
 	{"id": "spiral", "label": "Spiral", "blurb": "Three arms around a bright core; borders form along the arms."},
@@ -415,7 +417,22 @@ func options() -> Dictionary:
 		o["planetsMin"] = int(pr["min"])
 		o["planetsMax"] = int(pr["max"])
 	o["starTypes"] = star_types
+	var hs := hotseat_ids()
+	if not hs.is_empty():
+		o["hotseat"] = hs
 	return o
+
+## The hotseat humans still in the lineup, other than the chosen faction.
+func hotseat_ids() -> Array:
+	var ids := lineup_ids()
+	return hotseat.filter(func(h): return ids.has(int(h)) and int(h) != faction)
+
+func toggle_hotseat(id: int) -> void:
+	if hotseat.has(id):
+		hotseat.erase(id)
+	elif id != faction:
+		hotseat.append(id)
+		hotseat.sort()
 
 ## The chosen preset's eras block ({techCap, years, startTech}), or {} when it has none (Classic, Remastered and the other presets).
 func preset_eras() -> Dictionary:

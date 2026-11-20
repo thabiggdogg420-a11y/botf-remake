@@ -34,6 +34,7 @@
 #include <cstdio>
 #include <cstring>
 #include <functional>
+#include <map>
 #include <optional>
 #include <set>
 #include <sstream>
@@ -129,6 +130,7 @@ struct Bridge {
     botf::GameState previewCache;
     std::vector<tac::Encounter> lastEncounters;   // player encounters fought in the last committed turn
     std::string lastBriefing;                      // JSON of the last turn briefing
+    std::map<int, std::string> hotseatBriefings;   // Hotseat: each human's briefing of the last turn (from its own seat)
     std::string scenario = "campaign";
     // Combat sandbox (tactical rules 4): a standalone WEGO encounter the battle scene can drive before campaigns
     // switch rules 4 on (that needs GameplayRules::wegoCombat, outside this bridge). Never touches the campaign.
@@ -1023,6 +1025,7 @@ void writeView(Writer& w) {
     w.field("contentVersion", botf::ContentVersion); w.field("saveVersion", botf::SaveVersion);
     w.field("outcome", s.outcome == botf::CampaignOutcome::Victory ? "victory" : s.outcome == botf::CampaignOutcome::Defeat ? "defeat" : "ongoing");
     w.field("winner", s.winnerEmpire);
+    w.key("hotseat").beginArray(); for (int h : s.hotseatHumans) w.value(h); w.endArray();   // human empires, [] for one player
     w.field("advancedRules", s.advancedRulesEnabled);
     w.field("campaignExpansion", s.campaignExpansionEnabled);
     w.field("modernEngines", s.modernEnginesActive);
@@ -2740,6 +2743,17 @@ void continueTurn(Writer& w) {
     B.lastEncounters = B.session.completed;
     B.session = botf::session::TurnSession();
     B.lastBriefing = writeBriefing(before, B.state, *report);
+    // Hotseat: every human gets the turn's briefing from its own seat (fog, events and ledger as that empire sees them).
+    B.hotseatBriefings.clear();
+    for (int h : B.state.hotseatHumans) {
+        if (h == B.state.playerEmpire) { B.hotseatBriefings[h] = B.lastBriefing; continue; }
+        try {
+            auto b = before, a = B.state;
+            botf::switchSeatInternal(b, h);
+            botf::switchSeatInternal(a, h);
+            B.hotseatBriefings[h] = writeBriefing(b, a, *report);
+        } catch (...) {}
+    }
     writeTurnStatus(w, "complete");
 }
 
@@ -3622,6 +3636,22 @@ std::string dispatch(const std::string& method, const Value& a) {
         w.value(botf::canTerraformPlanet(draft(), a.getInt("fleetId"), a.getInt("systemId"), a.getInt("planetIndex")));
     }
     else if (method == "endTurn") endTurn(w);
+    // Hotseat (MULTIPLAYER.md): the human empires, then the chair handed from one to the next between their turns.
+    else if (method == "setHotseat") {
+        requireGame();
+        botf::setHotseat(B.state, a.has("humans") ? intList(a["humans"]) : std::vector<int>{});
+        touch();
+        writeView(w);
+    }
+    else if (method == "switchSeat") {
+        requireGame();
+        if (B.session.active) fail("Finish the battle before handing over the chair");
+        botf::switchSeat(B.state, a.getInt("empire"));
+        const auto it = B.hotseatBriefings.find(B.state.playerEmpire);
+        if (it != B.hotseatBriefings.end()) B.lastBriefing = it->second;
+        touch();
+        writeView(w);
+    }
     else if (method == "briefing") w.raw(B.lastBriefing.empty() ? "null" : B.lastBriefing);
     else if (method == "combatSandbox") {
         newCombatSandbox(a.getInt("ships", 3), static_cast<std::uint64_t>(a.getInt("seed", 0)));

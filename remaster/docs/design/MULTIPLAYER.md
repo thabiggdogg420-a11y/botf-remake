@@ -38,3 +38,24 @@ Each human on their own PC, same rules as hotseat.
 1. Allies may share a diplomatic victory. When the winning bloc holds two or more humans, every human in it wins (the outcome screen names the bloc); humans outside it lose. A human may still win alone by any other condition. The diplomatic win must hold for 10 turns in a row (P1, Simon's yes the same day).
 2. Desktop hotseat first, then LAN, both lockstep on commands with a fingerprint check after every turn (above). Browser online play is a later, separate job (it needs WebRTC or a relay) and is not part of this one.
 3. The turn timer is off by default. The host can set one (per-turn seconds) in the game setup; when it runs out, that human's turn ends with the orders already given.
+
+## Hotseat build (20 Nov 2026, Barclay): first cut
+Built (core, bridge, Godot client):
+- Core: `GameState::hotseatHumans` (every human, ascending; saved as the optional HOTSEAT section, schema 25), `setHotseat`,
+  `switchSeat` (applies the seated human's queued orders, then swaps that empire into the chair) and `humanSeat`. Every AI
+  planner (orders, builds, research, war, diplomacy proposals and answers, calls to arms, intelligence, stations, galaxy
+  features, megaprojects) skips all humans. A human who loses every world is out; the chair passes on and the game goes on
+  for the others. Any human's victory is a human victory (`winner` names who). Suite `BotfHotseatTests`: validation, the
+  save round-trip, orders applied on hand-over, the AI leaving both humans alone for eleven turns, determinism, and back to
+  one player.
+- Bridge: `setHotseat {humans}`, `switchSeat {empire}`, `meta.hotseat`; every human gets the turn's briefing from its own seat.
+- Client: "Hotseat players" on the New campaign screen; End turn hands the chair to the next human behind a full-screen
+  hand-over card (Enter on the card takes the chair; it never ends the hidden turn); after the last human the turn
+  resolves, and the next turn opens with the first human behind the card. Test: test_campaign_ui `_hotseat`.
+
+Not yet (next steps, in this order):
+1. Battles: a battle involving the human in the chair at the end of the turn (the last one) is fought on the tactical
+   screen; a battle involving any other human is resolved by the tactical AI. Planned: a hand-over to each human in a battle.
+2. A galactic event choice or a conquered world's fate for a human not in the chair is decided by the AI's rule.
+3. The shared diplomatic win is shown as the winner's victory; the end screen does not yet name the allied humans.
+4. Turn timer (off by default, host-set) and LAN lockstep are not started.

@@ -158,6 +158,7 @@ func _galaxy_panel() -> Control:
 	gb.add_child(_choice_row("Planets per star", NewCampaignVM.PLANET_RANGES.map(func(r): return [r["id"], r["label"], r["blurb"]]), vm.planets_id, func(id): vm.planets_id = id; refresh(), "planetsPerStar"))
 	gb.add_child(_choice_row("Start systems", NewCampaignVM.START_SYSTEM_CHOICES.map(func(n): return [str(n), str(n), "Each empire starts with its capital and %d more colon%s nearby." % [n, "y" if n == 1 else "ies"]]), str(vm.start_systems), func(id): vm.start_systems = int(id); refresh(), "startSystems"))
 	gb.add_child(_powers_row())
+	gb.add_child(_hotseat_row())
 	gb.add_child(_seed_row())
 	return galaxy
 
@@ -444,3 +445,25 @@ func _faction_card(f: Dictionary) -> Control:
 		n.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	h.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	return b
+
+
+## Hotseat players (MULTIPLAYER.md): the other powers in play that a human at this PC will command. The chair passes between
+## the humans each turn behind a hand-over card; the AI plays the rest.
+func _hotseat_row() -> Control:
+	var box := Lcars.vbox(5)
+	box.name = "HotseatPlayers"
+	var hs := vm.hotseat_ids()
+	box.add_child(Lcars.caption("Hotseat players  %s" % ("off: one player" if hs.is_empty() else "%d humans at this PC" % (hs.size() + 1))))
+	var row := HFlowContainer.new()
+	row.add_theme_constant_override("h_separation", 6)
+	row.add_theme_constant_override("v_separation", 6)
+	var ids := vm.lineup_ids()
+	for f in Lcars.FACTIONS:
+		var id := int(f["id"])
+		if not ids.has(id) or id == faction:
+			continue
+		var t := Lcars.toggle(str(f["short"]), hs.has(id), func(_on): vm.toggle_hotseat(id); refresh(), "A second human plays %s at this PC (hotseat)" % f["short"])
+		t.name = "Hotseat%d" % id
+		row.add_child(t)
+	box.add_child(row)
+	return box

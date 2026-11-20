@@ -79,6 +79,7 @@ botf_suite(BotfDiplomacyTests DiplomacyTests.cpp)
 botf_suite(BotfRemasterGameplayTests RemasterGameplayTests.cpp)
 botf_suite(BotfSoakTests SoakTests.cpp)
 botf_suite(BotfRunawayTests RunawayTests.cpp) # F5: Dominion War memory runaway (fixture dominion-war-7655-turn61.sav)
+botf_suite(BotfHotseatTests HotseatTests.cpp) # Hotseat multiplayer core (MULTIPLAYER.md, 20 Nov 2026)
 set_tests_properties(BotfSoakTests PROPERTIES TIMEOUT 1800)
 botf_suite(BotfCampaignDiplomacyTests CampaignDiplomacyTests.cpp)
 botf_suite(BotfContentTests ContentTests.cpp) # Lane G: original text + minor-race roster

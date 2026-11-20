@@ -821,7 +821,7 @@ public:
     }
 
     bool isHuman(diplomacy::ParticipantId p) const override {
-        return !p.isMinor && p.id == state.playerEmpire && !state.observerMode;
+        return !p.isMinor && humanSeat(state, p.id);
     }
 
     bool isEliminated(diplomacy::ParticipantId p) const override {
@@ -1494,7 +1494,7 @@ void planRivals(GameState& s) {
     // Observer mode (soaks only): the player's seat is planned too, in empire-id order with the rivals.
     std::vector<EmpireState*> planners;
     if (s.observerMode) planners.push_back(&s);
-    for (auto& r : s.rivals) planners.push_back(&r);
+    for (auto& r : s.rivals) if (!humanSeat(s, r.id)) planners.push_back(&r);   // hotseat humans plan for themselves
     std::sort(planners.begin(), planners.end(), [](const EmpireState* a, const EmpireState* b) { return a->id < b->id; });
     for (EmpireState* plannerSeat : planners) {
         auto& owner = *plannerSeat;
@@ -2301,7 +2301,7 @@ void answerCallsToArms(GameState& next, TurnReport& report) {
     if (!next.aiAggressionEnabled) return;
     const auto calls = next.diplomacyEngineState.defenseCalls;
     for (const auto& call : calls) {
-        if ((call.ally == next.playerEmpire && !next.observerMode) || !campaignEmpire(next, call.ally) || !campaignEmpire(next, call.aggressor)) continue;
+        if (humanSeat(next, call.ally) || !campaignEmpire(next, call.ally) || !campaignEmpire(next, call.aggressor)) continue;
         if (empireEliminatedInternal(next, call.ally) || empireEliminatedInternal(next, call.aggressor)) continue;
         const auto* rel = majorRelation(next, call.ally, call.aggressor);
         if (!rel || !rel->contact || rel->atWar) continue;
@@ -2366,7 +2366,7 @@ void applyTreatyConsequences(GameState& next, TurnReport& report) {
         if (rank <= 1) {
             for (int side = 0; side < 2; ++side) {
                 const int ai = side == 0 ? rel.first : rel.second, other = side == 0 ? rel.second : rel.first;
-                if (ai == next.playerEmpire && !next.observerMode) continue;
+                if (humanSeat(next, ai)) continue;
                 const auto cause = rivalryBreakdown(next, ai, other);
                 const int pressure = cause.total();
                 if (pressure < 10) continue;
@@ -2487,7 +2487,7 @@ void submitAiProposals(GameState& next, TurnReport& report) {
     ds.currentTurn = next.turn;
     const CampaignDiplomacyContext ctx(next);
     std::vector<int> planners;
-    for (int id : survivingEmpires(next)) if (id != next.playerEmpire || next.observerMode) planners.push_back(id);
+    for (int id : survivingEmpires(next)) if (!humanSeat(next, id)) planners.push_back(id);
     const auto intents = diplomacy::planAiDiplomacy(ds, ctx, planners, next.seed ^ 0xD1B54A32D192ED03ULL);
     for (const auto& intent : intents) {
         const bool toPlayer = ctx.isHuman(intent.target);
@@ -2695,7 +2695,7 @@ void planAiIntelligence(GameState& next, const std::vector<int>& activeEmpires) 
     if (!next.aiAggressionEnabled) return; // Passive AI keeps its default posture
     const CampaignDiplomacyContext ctx(next);
     for (int empId : activeEmpires) {
-        if (empId == next.playerEmpire && !next.observerMode) continue;
+        if (humanSeat(next, empId)) continue;
         std::vector<intelligence::AiIntelRivalView> views;
         for (int rivalId : activeEmpires) {
             if (rivalId == empId) continue;
@@ -3477,6 +3477,11 @@ std::string payload(const GameState& s) {
     if (!s.diplomaticHold.empty()) {   // P1 (20 Nov 2026): diplomatic holds in progress (ascending empire id).
         out << "DIPLOMATIC_HOLD " << s.diplomaticHold.size();
         for (const auto& [id, turns] : s.diplomaticHold) out << ' ' << id << ' ' << turns;
+        out << '\n';
+    }
+    if (!s.hotseatHumans.empty()) {   // Hotseat (20 Nov 2026): the human empires, ascending.
+        out << "HOTSEAT " << s.hotseatHumans.size();
+        for (int h : s.hotseatHumans) out << ' ' << h;
         out << '\n';
     }
     // Schema 14: per-ship orders of recorded battle rounds. Written only when some
@@ -5353,6 +5358,52 @@ void cancel(GameState& state, std::uint64_t commandId) {
     state = std::move(next);
 }
 
+bool humanSeat(const GameState& state, int empireId) {
+    if (state.observerMode) return false;
+    return empireId == state.playerEmpire || std::binary_search(state.hotseatHumans.begin(), state.hotseatHumans.end(), empireId);
+}
+
+void setHotseat(GameState& state, std::vector<int> humans) {
+    validate(state);
+    std::sort(humans.begin(), humans.end());
+    humans.erase(std::unique(humans.begin(), humans.end()), humans.end());
+    if (!humans.empty()) {
+        require(humans.size() >= 2 && humans.size() <= 8, "A hotseat game needs two to eight human empires");
+        require(std::binary_search(humans.begin(), humans.end(), state.playerEmpire), "The seated player must be one of the humans");
+        const auto active = internal::activeEmpires(state);
+        for (int h : humans) require(std::binary_search(active.begin(), active.end(), h), "Every human must be a seated empire");
+    }
+    auto next = state;
+    next.hotseatHumans = std::move(humans);
+    validate(next);
+    state = std::move(next);
+}
+
+// The seat swap without validation (advance uses it when a hotseat human falls).
+void switchSeatInternal(GameState& s, int empireId) {
+    if (empireId == s.playerEmpire) return;
+    auto it = std::find_if(s.rivals.begin(), s.rivals.end(), [&](const EmpireState& e) { return e.id == empireId; });
+    require(it != s.rivals.end(), "No such empire to seat");
+    EmpireState seated = static_cast<const EmpireState&>(s);
+    static_cast<EmpireState&>(s) = *it;
+    *it = std::move(seated);
+    s.playerEmpire = empireId;
+    std::sort(s.rivals.begin(), s.rivals.end(), [](const EmpireState& a, const EmpireState& b) { return a.id < b.id; });
+}
+
+void switchSeat(GameState& state, int empireId) {
+    validate(state);
+    require(std::binary_search(state.hotseatHumans.begin(), state.hotseatHumans.end(), empireId), "Only a hotseat human can take the chair");
+    require(state.outcome == CampaignOutcome::Ongoing, "Campaign has ended");
+    if (empireId == state.playerEmpire) return;
+    auto next = state;
+    applyDraft(next);       // the seated human's queued orders are applied now, as at the start of a turn
+    next.pending.clear();
+    switchSeatInternal(next, empireId);
+    validate(next);
+    state = std::move(next);
+}
+
 GameState preview(const GameState& state) {
     validate(state);
     auto draft = state;
@@ -5706,6 +5757,17 @@ TurnReport advanceWithCombat(GameState& state, const std::function<void(GameStat
                 report.events.push_back(std::string(empireName(winner)) + (surviving.size() == 1 ? " is the last power standing: conquest victory (observer)." : " holds three fifths of the galaxy: domination victory (observer)."));
             }
         }
+        else if (!next.hotseatHumans.empty() && !surviving.count(next.playerEmpire) &&
+                 std::any_of(next.hotseatHumans.begin(), next.hotseatHumans.end(), [&](int h) { return h != next.playerEmpire && surviving.count(h); })) {
+            // Hotseat: a human is out, the game goes on for the others (the chair passes to the next surviving human).
+            const int out = next.playerEmpire;
+            report.events.push_back(std::string(empireName(out)) + " has fallen: its player is out of the game.");
+            std::erase(next.hotseatHumans, out);
+            int seat = 0;
+            for (int h : next.hotseatHumans) if (surviving.count(h)) { seat = h; break; }
+            switchSeatInternal(next, seat);
+            if (next.hotseatHumans.size() == 1) next.hotseatHumans.clear();
+        }
         else if (!surviving.count(next.playerEmpire)) {
             next.outcome = CampaignOutcome::Defeat;
             next.winnerEmpire = surviving.size() == 1 ? *surviving.begin() : 0;
@@ -5715,8 +5777,14 @@ TurnReport advanceWithCombat(GameState& state, const std::function<void(GameStat
             static_cast<int>(next.systems.size()) * 3)) {
             next.outcome = CampaignOutcome::Victory; next.winnerEmpire = next.playerEmpire;
         }
+        else if (!next.hotseatHumans.empty() && next.turn >= 20) {
+            // Hotseat: another human's domination (three fifths of the systems) ends the game too; it is a human win.
+            for (int h : next.hotseatHumans)
+                if (h != next.playerEmpire && static_cast<int>(std::count_if(next.colonies.begin(), next.colonies.end(), [&](const Colony& c) { return c.ownerId == h; })) * 5 >=
+                        static_cast<int>(next.systems.size()) * 3) { next.outcome = CampaignOutcome::Victory; next.winnerEmpire = h; break; }
+        }
         if (!next.observerMode && next.outcome != CampaignOutcome::Ongoing) report.events.push_back(next.outcome == CampaignOutcome::Victory ?
-            std::string(empireName(next.playerEmpire)) + " campaign victory." : std::string(empireName(next.playerEmpire)) + " campaign defeat.");
+            std::string(empireName(next.winnerEmpire ? next.winnerEmpire : next.playerEmpire)) + " campaign victory." : std::string(empireName(next.playerEmpire)) + " campaign defeat.");
     }
     if (next.outcome == CampaignOutcome::Ongoing) gameplay::evaluateVictory(next, report);
     if (next.outcome == CampaignOutcome::Ongoing) scenarios::evaluateVictories(next, report); // Schema 25: the scenario's own conditions
@@ -6302,6 +6370,18 @@ GameState deserialize(const std::string& text) {
             s.diplomaticHold.emplace_back(id, turns); last = id;
         }
         nextTag = readTag("Malformed save section after DIPLOMATIC_HOLD");
+    }
+    if (nextTag == "HOTSEAT") {   // Hotseat (20 Nov 2026): the human empires, ascending, the seated player among them.
+        require(current25, "HOTSEAT section in an older save");
+        std::size_t humans = 0;
+        require(static_cast<bool>(in >> humans) && humans >= 2 && humans <= 8, "Malformed HOTSEAT section");
+        int last = 0;
+        for (std::size_t i = 0; i < humans; ++i) {
+            int h = 0;
+            require(static_cast<bool>(in >> h) && h > last, "Malformed HOTSEAT entry");
+            s.hotseatHumans.push_back(h); last = h;
+        }
+        nextTag = readTag("Malformed save section after HOTSEAT");
     }
     if (nextTag == "COMBAT_ORDERS") {
         require(current, "Schema 14 section in an older save");

@@ -607,6 +607,10 @@ struct GameState : EmpireState {
     // (empire id, consecutive turns the empire has met every diplomatic condition), ascending id, only while the count is >= 1.
     // Saved as the optional DIPLOMATIC_HOLD section (schema 25, written only when non-empty).
     std::vector<std::pair<int, int>> diplomaticHold;
+    // Hotseat multiplayer (MULTIPLAYER.md, 20 Nov 2026): every human empire, ascending, the seated one (playerEmpire) included;
+    // empty in a one-player game. The AI plans for none of them; switchSeat() hands the chair from one to the next. Saved as the
+    // optional HOTSEAT section (schema 25, written only in a hotseat game).
+    std::vector<int> hotseatHumans;
     Ruleset ruleset = Ruleset::Prototype;
     int lastRandomEventTurn = 0;
     bool advancedRulesEnabled = false; // Schema 4-9 games retain their prior combat/diplomacy behavior.
@@ -793,6 +797,16 @@ std::string technologyBlocker(const GameState& state, Building product, int owne
 std::vector<ConstructionChoice> constructionChoices(const GameState& state, int systemId);
 void submit(GameState& state, const Command& command); // Atomic; validates full draft.
 void cancel(GameState& state, std::uint64_t commandId); // IDs never reused.
+// Hotseat (MULTIPLAYER.md): `humans` are the human empires (2 or more, each a seated major, the current player among them).
+// An empty list makes the game one-player again.
+void setHotseat(GameState& state, std::vector<int> humans);
+// Hands the chair to `empireId` (one of the hotseat humans): the seated human's queued orders are applied to the state first
+// (as at the start of a turn), then that empire becomes playerEmpire. The turn does not advance.
+void switchSeat(GameState& state, int empireId);
+// The seat swap alone, no validation and no orders applied (advance uses it when a hotseat human falls).
+void switchSeatInternal(GameState& state, int empireId);
+// True when `empireId` is played by a human: the seated player, or any hotseat human (never in observer mode).
+bool humanSeat(const GameState& state, int empireId);
 GameState preview(const GameState& state); // Draft colony/queue values for inspection, without resolving a turn.
 TurnReport advanceWithCombat(GameState& state, const std::function<void(GameState&, TurnReport&)>& combatResolver = {});
 TurnReport advance(GameState& state); // Publish only after complete success.

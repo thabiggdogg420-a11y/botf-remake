@@ -52,7 +52,7 @@ std::vector<int> activeEmpires(const GameState& state); // Player and rivals, so
 inline std::vector<const EmpireState*> aiPlanners(const GameState& state) {
     std::vector<const EmpireState*> out;
     if (state.observerMode) out.push_back(&state);
-    for (const auto& r : state.rivals) out.push_back(&r);
+    for (const auto& r : state.rivals) if (!humanSeat(state, r.id)) out.push_back(&r);   // hotseat humans plan for themselves
     std::sort(out.begin(), out.end(), [](const EmpireState* a, const EmpireState* b) { return a->id < b->id; });
     return out;
 }

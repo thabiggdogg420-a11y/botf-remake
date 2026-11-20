@@ -182,7 +182,8 @@ void evaluateVictory(GameState& next, TurnReport& report) {
     }
     if (!winner) return;
     next.winnerEmpire = winner;
-    next.outcome = winner == next.playerEmpire ? CampaignOutcome::Victory : CampaignOutcome::Defeat;
+    // Hotseat: any human's win is a human victory (the client names the winner and, for a diplomatic win, the allied humans).
+    next.outcome = winner == next.playerEmpire || humanSeat(next, winner) ? CampaignOutcome::Victory : CampaignOutcome::Defeat;
     const std::string text = how == VictoryCondition::Vendetta
         ? std::string(empireName(winner)) + " settled its vendetta: both of its sworn rivals are finished. Vendetta victory. " +
             (winner == next.playerEmpire ? "Campaign victory." : "Campaign defeat.")

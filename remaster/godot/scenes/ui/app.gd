@@ -894,6 +894,18 @@ func start_campaign(options: Dictionary) -> bool:
 	if v.is_empty():
 		return false
 	_enter_game(v, "%s campaign %s" % [v["meta"]["playerName"], str(v["meta"]["seed"])])
+	var extra: Array = options.get("hotseat", [])
+	if not extra.is_empty():
+		var humans := [int(v["meta"]["player"])]
+		for h in extra:
+			humans.append(int(h))
+		var r: Dictionary = session.core.invoke("setHotseat", {"humans": humans})
+		if not r["ok"]:
+			session.failed.emit(r["error"])
+		else:
+			session.refresh()
+			view = session.view
+			hotseat_done.clear()
 	if cinematics_on():
 		Cinema.race_intro(self, int(v["meta"]["player"]))   # MOD-9: the race's intro movie (the Dominion's drawn in-engine)
 	toast("Campaign begins. %s, turn %d." % [view["meta"]["playerName"], int(view["meta"]["turn"])], "good")
@@ -908,6 +920,9 @@ func start_drill(method: String, label_: String, args: Dictionary = {}) -> void:
 	toast(label_ + " loaded.", "warn")
 
 func request_end_turn() -> void:
+	if has_node("HotseatCard"):   # hotseat: Enter on the hand-over card takes the chair, it never ends the hidden turn
+		_hotseat_take(get_node("HotseatCard"))
+		return
 	if view.is_empty() or view.get("session", {}).get("active", false) and not view.get("session", {}).get("battleFinished", false):
 		if screen != "combat" and view.get("session", {}).get("active", false):
 			goto("combat")
@@ -927,6 +942,19 @@ func preview_turn() -> void:
 
 ## Ends the turn. Returns the status ("battle" or "complete").
 func end_turn() -> String:
+	# Hotseat: each human plans in turn; the chair passes behind a hand-over card and the turn resolves after the last.
+	var hs := hotseat_humans()
+	if hs.size() >= 2 and screen != "combat" and not session.battle_active():
+		var me := int(view.get("meta", {}).get("player", 0))
+		if not hotseat_done.has(me):
+			hotseat_done.append(me)
+		var nxt := 0
+		for h in hs:
+			if not hotseat_done.has(int(h)):
+				nxt = int(h)
+				break
+		if nxt != 0:
+			return "handover" if hotseat_switch(nxt) else "error"
 	var res := session.end_turn()
 	if res.is_empty():
 		return "error"
@@ -948,6 +976,14 @@ func end_turn() -> String:
 		return "battle"
 	briefing = res.get("briefing")
 	refresh()
+	if hotseat_humans().size() >= 2 and str(view.get("meta", {}).get("outcome", "ongoing")) == "ongoing":
+		# The new turn opens with the first human in the chair, behind the hand-over card; the briefing is that human's.
+		hotseat_done.clear()
+		var first := int(hotseat_humans()[0])
+		if first != int(view.get("meta", {}).get("player", 0)):
+			hotseat_switch(first)
+			return "complete"
+		hotseat_card(first)
 	BotfAudioSystem.on_turn_briefing(briefing, view, str(view.get("meta", {}).get("outcome", "ongoing")) != "ongoing")
 	if screen == "combat":
 		goto("galaxy", false)
@@ -1284,3 +1320,65 @@ func _cycle_unit(dir: int) -> void:
 	select_fleet(int(nxt["id"]))
 	if _current and _current.has_method("focus_cell"):
 		_current.focus_cell(int(nxt["x"]), int(nxt["y"]))
+
+
+# ---------------------------------------------------------------------------------------------
+# Hotseat (MULTIPLAYER.md, 20 Nov 2026): two to eight humans at one PC. The core keeps every human's empire out of the AI's
+# hands; the client hands the chair from one to the next (setHotseat / switchSeat on the bridge). Each human sees only their
+# own view: between seats a full-screen card hides the map until the next human takes the chair.
+var hotseat_done: Array = [] ## humans who have planned this turn
+
+func hotseat_humans() -> Array:
+	var hs = view.get("meta", {}).get("hotseat", [])
+	return hs if hs is Array else []
+
+## Hands the chair to `empire_id` and shows the hand-over card. False after a core error.
+func hotseat_switch(empire_id: int) -> bool:
+	var r: Dictionary = session.core.invoke("switchSeat", {"empire": empire_id})
+	if not r["ok"]:
+		session.failed.emit(r["error"])
+		return false
+	close_all_modals()
+	session.refresh()
+	view = session.view
+	var b = session.core.request("briefing")
+	briefing = b if b is Dictionary else null
+	refresh()
+	if screen != "galaxy":
+		goto("galaxy", false)
+	hotseat_card(empire_id)
+	return true
+
+## The full-screen hand-over card: the map stays hidden until the named human takes the chair; then their briefing opens.
+func hotseat_card(empire_id: int) -> void:
+	var old := get_node_or_null("HotseatCard")
+	if old != null:
+		old.queue_free()
+	var card := ColorRect.new()
+	card.name = "HotseatCard"
+	card.color = Color(0.0, 0.0, 0.02, 1.0)
+	card.mouse_filter = Control.MOUSE_FILTER_STOP
+	card.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	card.z_index = 100
+	var col := Lcars.vbox(18)
+	col.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	col.alignment = BoxContainer.ALIGNMENT_CENTER
+	col.add_child(Lcars.emblem(empire_id, 96))
+	var name_ := session.empire_name(empire_id)
+	col.add_child(Lcars.label(("%s, take the chair" % name_).to_upper(), "Heading", 40, Lcars.accent()))
+	col.add_child(Lcars.caption("Hotseat · turn %d · the other players look away" % int(view.get("meta", {}).get("turn", 0))))
+	var go := Lcars.pill("I have the chair", "primary", func(): _hotseat_take(card), "", "Show %s's turn" % name_, "Enter")
+	go.name = "HotseatTake"
+	col.add_child(go)
+	card.add_child(col)
+	add_child(card)
+	col.position = (get_viewport_rect().size - col.get_combined_minimum_size()) * 0.5
+
+func _hotseat_take(card: Node) -> void:
+	if card != null and is_instance_valid(card):
+		card.queue_free()
+	toast("%s, turn %d." % [view.get("meta", {}).get("playerName", ""), int(view.get("meta", {}).get("turn", 0))], "good")
+	if not view.get("aftermaths", []).is_empty():
+		open_overlay("aftermath")
+	elif briefing is Dictionary:
+		open_overlay("briefing")

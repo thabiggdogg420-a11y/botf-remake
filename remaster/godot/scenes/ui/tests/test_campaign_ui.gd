@@ -46,6 +46,9 @@ func _run() -> void:
 	for b in backends:
 		print("== backend: ", b)
 		await _workflow(b)
+	if "native" in backends:
+		await _new_app("native")
+		await _hotseat()
 	await _new_app("fixture")
 	await _r35_display_and_quit()
 	await _new_app("fixture")
@@ -618,4 +621,43 @@ func _f6_realtime(cs) -> void:
 		check(cs._realtime_key(sp) and cs._rt_paused, "F6: Space asks for a pause")
 		check(not cs._realtime_continue() and not cs.realtime and cs.helm == 0, "F6: the pause stops real time after the round")
 		cs._playing_layout = false
+	await frames()
+
+
+## Hotseat (MULTIPLAYER.md): the new-campaign row, two humans, the hand-over card between them, one turn resolving after both.
+func _hotseat() -> void:
+	app.goto("new")
+	await frames()
+	var nc := app.current_screen()
+	nc.faction = 1
+	nc.seed_value = 515151
+	nc.preset = "remastered"
+	nc.refresh()
+	await frames()
+	check(find(nc, "HotseatPlayers") != null and find(nc, "Hotseat2") != null, "hotseat: the new-campaign screen offers hotseat players")
+	nc.vm.toggle_hotseat(2)
+	check(nc.options().get("hotseat", []) == [2], "hotseat: the Klingons are a second human")
+	check(app.start_campaign(nc.options()), "hotseat: campaign starts")
+	await frames()
+	app.close_all_modals()
+	var meta: Dictionary = app.view.get("meta", {})
+	check(meta.get("hotseat", []) == [1, 2] and int(meta.get("player", 0)) == 1, "hotseat: humans 1 and 2, the Federation in the chair")
+	var turn := int(meta.get("turn", 0))
+	check(app.end_turn() == "handover", "hotseat: ending the first human's turn hands over the chair")
+	await frames()
+	check(int(app.view["meta"]["player"]) == 2 and int(app.view["meta"]["turn"]) == turn, "hotseat: the Klingons have the chair, same turn")
+	check(app.has_node("HotseatCard"), "hotseat: the hand-over card hides the map")
+	app.request_end_turn()   # Enter on the card takes the chair, it does not end the hidden turn
+	await frames()
+	check(not app.has_node("HotseatCard") and int(app.view["meta"]["turn"]) == turn, "hotseat: Enter on the card takes the chair")
+	var st := app.end_turn()
+	await frames()
+	if st == "battle":
+		app.current_screen()._auto()
+		await frames()
+		st = app.end_turn()
+		await frames()
+	check(st == "complete" and int(app.view["meta"]["turn"]) == turn + 1, "hotseat: the turn resolves after the last human")
+	check(int(app.view["meta"]["player"]) == 1 and app.has_node("HotseatCard"), "hotseat: the new turn opens with the first human behind the card")
+	app._hotseat_take(app.get_node("HotseatCard"))
 	await frames()
