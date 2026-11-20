@@ -76,6 +76,9 @@ func _battle_host() -> BattleHost:
 
 func _unhandled_key_input(event: InputEvent) -> void:
 	var k := event as InputEventKey
+	if k and k.pressed and not k.echo and not app.has_modal() and _realtime_key(k):
+		get_viewport().set_input_as_handled()
+		return
 	if k and k.pressed and not k.echo and (k.keycode == KEY_ENTER or k.keycode == KEY_KP_ENTER) and not app.has_modal():
 		var e := _enc()
 		if not e.is_empty() and e.get("finished", false):
@@ -113,6 +116,14 @@ func _header(e: Dictionary, mine: Array, foes: Array, foe_name: String, last: Di
 		var au := Lcars.pill("Auto-resolve", "alert", func(): _auto(), "", "Let your captains fight the battle to its end")
 		au.name = "AutoResolve"
 		h.add_child(au)
+		var rt := Lcars.toggle("Real-time", realtime, func(on): set_realtime(on), "F6: rounds run on by themselves with your standing orders; Space pauses, 1-0 give orders, Tab picks a target (R)")
+		rt.name = "RealtimeToggle"
+		h.add_child(rt)
+		var sel := _selected()
+		var helm_ok: bool = not sel.is_empty() and is_active(sel) and not sel.get("station", false)
+		var hp := Lcars.pill("Release helm" if helm != 0 else "Take the helm", "primary" if helm != 0 else "secondary", func(): toggle_helm(), "" if helm_ok or helm != 0 else "Select one of your ships first", "F6: fly the selected ship yourself from its own camera, in real time (H)")
+		hp.name = "HelmToggle"
+		h.add_child(hp)
 	return h
 
 func _bottom(e: Dictionary, foe_name: String, last: Dictionary) -> Control:
@@ -551,6 +562,8 @@ func _set_play_layout(on: bool) -> void:
 				n.modulate.a = 1.0
 
 func _plan_after_round(_idx: int) -> void:
+	if _realtime_continue():
+		return
 	# A round of nothing but closing in has just run through at speed: go straight on into the next, so one Engage reaches the
 	# first shots (at most four such rounds in a row; the orders stay as given).
 	var vn: Node = host.view_node if host != null and is_instance_valid(host) else null
@@ -635,3 +648,198 @@ func _archive() -> void:
 	else:
 		rb.add_child(Lcars.empty_note("Select a battle."))
 	row.add_child(right)
+
+
+# ---------------------------------------------------------------------------------------------
+# F6 extras (FINISH-PLAN.md; parked by MASTER-PLAN decision 5): a real-time mode and a Bridge-Commander-style helm mode.
+# Both are ways of giving orders, not new rules (combat rules changes go to Simon). The core resolves the same WEGO rounds;
+# real time runs them one after another with the standing orders, and an order given while a round plays is sent at once
+# and counts from the next round, exactly like an order given in the plan phase. The helm puts the camera on one of your
+# ships and the order keys on that ship alone. Design: docs/design/F6-REALTIME-HELM.md.
+var realtime := false
+var helm := 0 ## fleet id at the helm, 0 = none
+var _rt_paused := false
+var _rt_hud: Label = null
+const RT_KEYS := [KEY_1, KEY_2, KEY_3, KEY_4, KEY_5, KEY_6, KEY_7, KEY_8, KEY_9, KEY_0]
+
+## Real time on or off. Switched on in the plan phase, the first round starts at once; off stops after the round playing.
+func set_realtime(on: bool) -> void:
+	realtime = on
+	_rt_paused = false
+	if not on:
+		helm = 0
+	_rt_hud_update()
+	if on and not _playing_layout and vm.live() and not _enc().get("finished", false):
+		app.toast("Real time: rounds run on with your standing orders. Space pauses.", "info", 2.4)
+		_round()
+	elif not on and not _playing_layout and vm.live():
+		refresh()
+
+## The helm: take the selected ship (camera on it, orders for it alone, real time on) or give it back.
+func toggle_helm() -> void:
+	if helm != 0:
+		var was := _ship_by_id(helm)
+		helm = 0
+		app.toast("%s is back under its captain." % (short_name(was) if not was.is_empty() else "The ship"), "info", 1.8)
+		_rt_hud_update()
+		if not _playing_layout:
+			refresh()
+		return
+	var sel := _selected()
+	if sel.is_empty() or not is_active(sel) or sel.get("station", false):
+		app.toast("Select one of your ships to take the helm.", "warn", 1.8)
+		return
+	helm = int(sel["id"])
+	scope = "ship"
+	_helm_camera()
+	app.toast("You have the helm of %s. 1-0 orders, Tab target, Space pause, H gives it back." % short_name(sel), "info", 3.0)
+	if not realtime:
+		set_realtime(true)
+	else:
+		_rt_hud_update()
+
+func _ship_by_id(id: int) -> Dictionary:
+	for sd in _enc().get("ships", []):
+		if int(sd["id"]) == id:
+			return sd
+	return {}
+
+func _helm_camera() -> void:
+	var vn: Node = host.view_node if host != null and is_instance_valid(host) else null
+	if helm != 0 and vn != null and "camera" in vn and vn.camera != null:
+		host.set_selection(helm, target)   # the selection ring and label mark the helm ship, not an earlier pick
+		vn.camera.follow_fleet(helm)
+
+## Called when a round's playback ends. True when real time carries on into the next round.
+func _realtime_continue() -> bool:
+	if not realtime:
+		return false
+	if _enc().get("finished", false):
+		realtime = false
+		helm = 0
+		_rt_hud_update()
+		return false
+	if helm != 0:
+		var hs := _ship_by_id(helm)
+		if hs.is_empty() or not is_active(hs):
+			app.toast("The helm ship is out of the fight: the helm is released.", "warn", 2.4)
+			helm = 0
+	if _rt_paused:
+		_rt_paused = false
+		realtime = false
+		helm = 0
+		_rt_hud_update()
+		return false
+	# Standing orders: the last maneuver goes again for the scope (the core takes orders round by round).
+	if helm != 0:
+		ship = helm
+		scope = "ship"
+	if vm.maneuver != "":
+		vm.order(vm.maneuver)
+	_rt_hud_update()
+	_round.call_deferred()
+	_helm_camera.call_deferred()
+	return true
+
+## Keys while real time or the helm is on (and R / H to switch them). True when the key was used.
+func _realtime_key(k: InputEventKey) -> bool:
+	if not vm.live() or _enc().is_empty() or _enc().get("finished", false) or choice:
+		return false
+	if k.keycode == KEY_R and not k.ctrl_pressed:
+		set_realtime(not realtime)
+		return true
+	if k.keycode == KEY_H and not k.ctrl_pressed:
+		toggle_helm()
+		return true
+	if not realtime:
+		return false
+	if k.keycode == KEY_SPACE:
+		if _playing_layout:
+			_rt_paused = not _rt_paused
+			app.toast("Pausing: the battle stops after this round." if _rt_paused else "Running on.", "info", 1.6)
+			_rt_hud_update()
+		else:
+			set_realtime(false)
+		return true
+	if k.keycode == KEY_TAB:
+		_cycle_target()
+		return true
+	var i := RT_KEYS.find(k.keycode)
+	if i >= 0:
+		var usable := _rt_maneuvers()
+		if i < usable.size():
+			if helm != 0:
+				ship = helm
+				scope = "ship"
+			var note := vm.order(usable[i])
+			if note != "":
+				app.toast(note + " From the next round.", "info", 1.6)
+			_rt_hud_update()
+		return true
+	return false
+
+## The maneuvers the keys 1-0 give, in the orders-bar order (Hail and Ram stay on the bar).
+func _rt_maneuvers() -> Array:
+	var out := []
+	for mv in MANEUVERS:
+		var key: String = mv["key"]
+		if key in ["Hail", "Ram"] or vm.maneuver_block(key) != "":
+			continue
+		out.append(key)
+	return out.slice(0, 10)
+
+func _cycle_target() -> void:
+	var foes: Array = _enc().get("ships", []).filter(func(sd): return not sd.get("mine", false) and is_active(sd) and not sd.get("hidden", false))
+	if foes.is_empty():
+		return
+	var idx := -1
+	for i in foes.size():
+		if int(foes[i]["id"]) == target:
+			idx = i
+	var next: Dictionary = foes[(idx + 1) % foes.size()]
+	target = int(next["id"])
+	if host != null and is_instance_valid(host):
+		host.set_selection(ship, target)
+	app.toast("Target: %s. Counts from your next order." % short_name(next), "info", 1.4)
+	_rt_hud_update()
+
+## The strip at the foot of the battle view while real time is on: mode, standing order, target and the keys.
+func _rt_hud_update() -> void:
+	if host == null or not is_instance_valid(host):
+		return
+	if not realtime:
+		if _rt_hud != null and is_instance_valid(_rt_hud):
+			_rt_hud.queue_free()
+		_rt_hud = null
+		return
+	if _rt_hud == null or not is_instance_valid(_rt_hud):
+		_rt_hud = Label.new()
+		_rt_hud.name = "RealtimeHud"
+		_rt_hud.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_rt_hud.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		_rt_hud.add_theme_font_size_override("font_size", 15)
+		_rt_hud.add_theme_color_override("font_color", Lcars.accent())
+		_rt_hud.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.85))
+		_rt_hud.add_theme_constant_override("outline_size", 6)
+		_rt_hud.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
+		_rt_hud.offset_top = -64
+		_rt_hud.offset_bottom = -18
+		_rt_hud.offset_left = -600
+		_rt_hud.offset_right = 600
+		host.add_child(_rt_hud)
+	var keys := []
+	var usable := _rt_maneuvers()
+	for i in usable.size():
+		keys.append("%d %s" % [(i + 1) % 10, usable[i]])
+	var tgt := _ship_by_id(target)
+	var head := "REAL TIME"
+	if helm != 0:
+		var hs := _ship_by_id(helm)
+		head = ("HELM · %s · HULL %d%%" % [short_name(hs).to_upper(), _hull_pct(hs)]) if not hs.is_empty() else "HELM"
+	_rt_hud.text = "%s%s  ·  ORDER %s  ·  TARGET %s\n%s  ·  TAB target  ·  SPACE %s  ·  H helm  ·  R real time" % [
+		head, "  ·  PAUSING" if _rt_paused else "", vm.maneuver.to_upper(), short_name(tgt).to_upper() if not tgt.is_empty() else "CAPTAIN'S CHOICE",
+		"  ".join(keys), "run on" if _rt_paused else "pause"]
+
+static func _hull_pct(sd: Dictionary) -> int:
+	var mx := float(sd.get("maxHull", 0))
+	return int(round(100.0 * float(sd.get("hull", 0)) / mx)) if mx > 0.0 else 100

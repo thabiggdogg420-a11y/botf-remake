@@ -235,6 +235,9 @@ func _workflow(backend: String) -> void:
 		await frames()
 		check(app.encounter is Dictionary and int(app.encounter.get("round", 0)) >= 1, "a round resolved")
 		cs2 = app.current_screen()
+		# F6: real time and the helm (ways of giving orders; the core's rounds are unchanged).
+		await _f6_realtime(cs2)
+		cs2 = app.current_screen()
 		cs2._auto()
 		await frames()
 		check(app.encounter.get("finished", false), "battle finished")
@@ -573,3 +576,46 @@ func _m1_ui() -> void:
 	app.save_settings()
 	await frames()
 	check(UiTokens.era == before, "the interface look restores")
+
+
+## F6 extras: the Real-time toggle and Take the helm; real time chains rounds with the standing order, keys give orders,
+## Space pauses after the round, and the helm follows one ship.
+func _f6_realtime(cs) -> void:
+	if app.encounter.get("finished", false):
+		return
+	cs.refresh()
+	await frames()
+	check(find(cs, "RealtimeToggle") != null and find(cs, "HelmToggle") != null, "F6: Real-time and Take the helm are on the combat header")
+	var mine: Array = app.encounter.get("ships", []).filter(func(sd): return sd.get("mine", false) and CombatVM.is_active(sd) and not sd.get("station", false))
+	if mine.is_empty():
+		return
+	cs.vm.pick(int(mine[0]["id"]))
+	var r0 := int(app.encounter.get("round", 0))
+	cs._set_play_layout(false)   # the plan phase (headless playback never reports the earlier round's end)
+	cs.toggle_helm()
+	await frames(4)
+	check(cs.helm == int(mine[0]["id"]) and cs.realtime and cs.scope == "ship", "F6: the helm takes the selected ship and turns real time on")
+	check(find(cs, "RealtimeHud") != null, "F6: the real-time strip shows")
+	var native: bool = app.core.backend == "native"   # the fixture backend replays one canned round
+	if native:
+		check(int(app.encounter.get("round", 0)) > r0 or app.encounter.get("finished", false), "F6: switching real time on resolves the first round at once")
+	r0 = int(app.encounter.get("round", 0))
+	if not app.encounter.get("finished", false):
+		check(cs._realtime_continue(), "F6: at a round's end real time carries on")
+		await frames(4)
+		if native:
+			check(int(app.encounter.get("round", 0)) > r0 or app.encounter.get("finished", false), "F6: the next round resolved without the plan phase")
+	if not app.encounter.get("finished", false):
+		var key := InputEventKey.new()
+		key.keycode = KEY_2
+		key.pressed = true
+		check(cs._realtime_key(key), "F6: a number key gives an order")
+		check(cs.vm.maneuver == cs._rt_maneuvers()[1], "F6: key 2 is the second maneuver (%s)" % cs.vm.maneuver)
+		cs._playing_layout = true
+		var sp := InputEventKey.new()
+		sp.keycode = KEY_SPACE
+		sp.pressed = true
+		check(cs._realtime_key(sp) and cs._rt_paused, "F6: Space asks for a pause")
+		check(not cs._realtime_continue() and not cs.realtime and cs.helm == 0, "F6: the pause stops real time after the round")
+		cs._playing_layout = false
+	await frames()
