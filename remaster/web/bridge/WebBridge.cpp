@@ -1034,6 +1034,7 @@ void writeView(Writer& w) {
     w.field("contentVersion", botf::ContentVersion); w.field("saveVersion", botf::SaveVersion);
     w.field("outcome", s.outcome == botf::CampaignOutcome::Victory ? "victory" : s.outcome == botf::CampaignOutcome::Defeat ? "defeat" : "ongoing");
     w.field("winner", s.winnerEmpire);
+    w.field("canPlayOn", botf::canPlayOn(s)); w.field("playingOnFrom", s.playingOnFrom);   // C4
     w.key("hotseat").beginArray(); for (int h : s.hotseatHumans) w.value(h); w.endArray();   // human empires, [] for one player
     // Hotseat (21 Nov 2026): the humans who share the win: the winner if human, and for a diplomatic win every human in the
     // winner's full alliance (MULTIPLAYER.md decision 1). [] while the game runs or when no human won.
@@ -3753,6 +3754,12 @@ std::string dispatch(const std::string& method, const Value& a) {
         if (std::find(humans.begin(), humans.end(), seat) == humans.end()) fail("That player has no ships in this battle");
         B.battleSeat = seat;
         writeEncounter(w, *B.session.pending, battleViewer());
+    }
+    else if (method == "playOn") {   // C4 (20 Nov 2026): the winner plays on after a domination win
+        requireGame();
+        botf::playOn(B.state);
+        touch();
+        writeView(w);
     }
     else if (method == "switchSeat") {
         requireGame();

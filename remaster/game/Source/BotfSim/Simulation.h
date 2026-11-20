@@ -611,6 +611,10 @@ struct GameState : EmpireState {
     // empty in a one-player game. The AI plans for none of them; switchSeat() hands the chair from one to the next. Saved as the
     // optional HOTSEAT section (schema 25, written only in a hotseat game).
     std::vector<int> hotseatHumans;
+    // C4 (Simon, 20 Nov 2026, "keep playing"): the turn a human winner chose to play on after a domination win, 0 while not.
+    // From then domination no longer ends the campaign; conquest and the other victories still do. Saved as the optional
+    // PLAYING_ON section (written only when set).
+    int playingOnFrom = 0;
     Ruleset ruleset = Ruleset::Prototype;
     int lastRandomEventTurn = 0;
     bool advancedRulesEnabled = false; // Schema 4-9 games retain their prior combat/diplomacy behavior.
@@ -805,6 +809,10 @@ void setHotseat(GameState& state, std::vector<int> humans);
 void switchSeat(GameState& state, int empireId);
 // The seat swap alone, no validation and no orders applied (advance uses it when a hotseat human falls).
 void switchSeatInternal(GameState& state, int empireId);
+// C4: true when the campaign has just been won by a human through domination (other powers still stand) and the winner has
+// not already chosen to play on. playOn() takes that choice: the campaign is ongoing again and domination no longer ends it.
+bool canPlayOn(const GameState& state);
+void playOn(GameState& state);
 // True when `empireId` is played by a human: the seated player, or any hotseat human (never in observer mode).
 bool humanSeat(const GameState& state, int empireId);
 GameState preview(const GameState& state); // Draft colony/queue values for inspection, without resolving a turn.

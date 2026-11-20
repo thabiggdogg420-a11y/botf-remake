@@ -1429,6 +1429,23 @@ void reveal(GameState& s, int x, int y, int owner = 1) {
         if (it == knowledge.end() || *it != cell) knowledge.insert(it, cell);
     }
 }
+// C1 (Simon, 20 Nov 2026): several transports land together and their troops add up. The AI's landing test (troops at least
+// 7/10 of the world's ground defence as it reckons it) now counts every transport of the empire at the world, and when it
+// passes they all land. Returns true when the landing was ordered.
+bool aiJointLanding(GameState& s, int ownerId, const Colony& target, int x, int y) {
+    const int defBat = s.advancedRulesEnabled ? economy(s, target).poweredBatteries : 0;
+    const int defStr = (8 + target.population / 3 + target.morale / 10 + batteryDefense(defBat)) * content::balance().shieldDefensePercent / 100;
+    int atkStr = 0;
+    for (const auto& t : s.fleets)
+        if (t.ownerId == ownerId && t.shipClass == Building::Transport && t.hull > 0 && t.x == x && t.y == y)
+            atkStr += 8 + t.hull + 2 * empire(s, ownerId).technologies[5].level;
+    if (atkStr == 0 || atkStr * 10 < defStr * 7) return false;
+    for (auto& t : s.fleets)
+        if (t.ownerId == ownerId && t.shipClass == Building::Transport && t.hull > 0 && t.x == x && t.y == y)
+            t.invadeSystemId = target.systemId;
+    return true;
+}
+
 bool queueMilitaryShip(GameState& s, Colony& colony, Building role) {
     if (s.ruleset == Ruleset::Prototype) { colony.queue.push_back(role); return true; }
     const referenceData::ShipRecord* choice = nullptr;
@@ -1525,6 +1542,12 @@ void planRivals(GameState& s) {
         for (const auto& f : s.fleets) if (f.ownerId == owner.id && f.colonyShip) ++colonyShips;
         for (const auto& c : s.colonies) if (c.ownerId == owner.id)
             for (auto b : c.queue) if (b == Building::ColonyShip) ++colonyShips;
+        // C2 (Simon, 20 Nov 2026): AI war fleets scale with the empire: +1 warship per 2 colonies and +1 transport per 6,
+        // inside the 256-fleet galaxy cap.
+        int ownColonies = 0;
+        for (const auto& c : s.colonies) if (c.ownerId == owner.id) ++ownColonies;
+        const int warCap = 5 + ownColonies / 2, transportCap = 1 + ownColonies / 6;
+        const bool roomForFleet = s.fleets.size() < 256 && s.nextFleetId <= 1000000;
         int destroyers = 0, transports = 0;
         for (const auto& f : s.fleets) if (f.ownerId == owner.id) {
             if (f.shipClass == Building::Destroyer) ++destroyers;
@@ -1583,12 +1606,12 @@ void planRivals(GameState& s) {
             else if (empire_rules::aiMinorCampaign(s, owner.id, atWar) && destroyers < 2 && queueMilitaryShip(s, c, Building::Destroyer)) ++destroyers;
             else if (empire_rules::aiMinorCampaign(s, owner.id, atWar) && transports < 2 && queueMilitaryShip(s, c, Building::Transport)) ++transports;
             else if (atWar && destroyers < 3 && queueMilitaryShip(s, c, Building::Destroyer)) ++destroyers;
-            else if (atWar && transports < 1 && queueMilitaryShip(s, c, Building::Transport)) ++transports;
+            else if (atWar && transports < transportCap && roomForFleet && queueMilitaryShip(s, c, Building::Transport)) ++transports;
             else if (colonyShips < desiredColonyShips && s.fleets.size() < 256 && s.nextFleetId <= 1000000 &&
                 queueMilitaryShip(s, c, Building::ColonyShip)) {
                 ++colonyShips;
             } else if (c.laboratories == 0) c.queue.push_back(Building::Laboratory);
-            else if (atWar && destroyers < 5 && queueMilitaryShip(s, c, Building::Destroyer)) ++destroyers;
+            else if (atWar && destroyers < warCap && roomForFleet && queueMilitaryShip(s, c, Building::Destroyer)) ++destroyers;
         }
 
         auto evaluateSectorSafety = [&](int tx, int ty, bool isTransport, const Fleet* movingFleet = nullptr) -> bool {
@@ -1701,14 +1724,8 @@ void planRivals(GameState& s) {
                     auto m = std::find_if(s.fleets.begin(), s.fleets.end(), [fid](const Fleet& x) { return x.id == fid; });
                     if (m != s.fleets.end()) {
                         m->targetX = loc->x; m->targetY = loc->y;
-                        if (m->shipClass == Building::Transport && m->x == loc->x && m->y == loc->y) {
-                            const int defBat = s.advancedRulesEnabled ? economy(s, *targetColony).poweredBatteries : 0;
-                            const int defStr = (8 + targetColony->population / 3 + targetColony->morale / 10 + batteryDefense(defBat)) * content::balance().shieldDefensePercent / 100;
-                            const int atkStr = 8 + m->hull + 2 * empire(s, owner.id).technologies[5].level;
-                            if (atkStr * 10 >= defStr * 7) {
-                                m->invadeSystemId = targetColony->systemId;
-                            }
-                        }
+                        if (m->shipClass == Building::Transport && m->x == loc->x && m->y == loc->y)
+                            aiJointLanding(s, owner.id, *targetColony, loc->x, loc->y); // C1: every transport there lands together
                     }
                 }
             }
@@ -1778,13 +1795,7 @@ void planRivals(GameState& s) {
                         }
                         if (atHostileColony) {
                             if (evaluateSectorSafety(f.x, f.y, true, &f)) {
-                                const int defBat = s.advancedRulesEnabled ? economy(s, *atHostileColony).poweredBatteries : 0;
-                                const int defStr = (8 + atHostileColony->population / 3 + atHostileColony->morale / 10 + batteryDefense(defBat)) * content::balance().shieldDefensePercent / 100;
-                                const int atkStr = 8 + f.hull + 2 * empire(s, owner.id).technologies[5].level;
-                                if (atkStr * 10 >= defStr * 7) {
-                                    f.invadeSystemId = atHostileColony->systemId;
-                                    continue;
-                                }
+                                if (aiJointLanding(s, owner.id, *atHostileColony, f.x, f.y)) continue; // C1: troops of every transport there add up
                             }
                             f.targetX = f.x; f.targetY = f.y;
                             continue;
@@ -1868,14 +1879,8 @@ void planRivals(GameState& s) {
                     if (enemyColony) {
                         const auto loc = std::find_if(s.systems.begin(), s.systems.end(), [&](const System& x) { return x.id == enemyColony->systemId; });
                         f.targetX = loc->x; f.targetY = loc->y;
-                        if (f.shipClass == Building::Transport && f.x == loc->x && f.y == loc->y) {
-                            const int defBat = s.advancedRulesEnabled ? economy(s, *enemyColony).poweredBatteries : 0;
-                            const int defStr = (8 + enemyColony->population / 3 + enemyColony->morale / 10 + batteryDefense(defBat)) * content::balance().shieldDefensePercent / 100;
-                            const int atkStr = 8 + f.hull + 2 * empire(s, owner.id).technologies[5].level;
-                            if (atkStr * 10 >= defStr * 7) {
-                                f.invadeSystemId = enemyColony->systemId;
-                            }
-                        }
+                        if (f.shipClass == Building::Transport && f.x == loc->x && f.y == loc->y)
+                            aiJointLanding(s, owner.id, *enemyColony, loc->x, loc->y); // C1
                         continue;
                     }
                 }
@@ -3193,7 +3198,16 @@ void resolveInvasions(GameState& s, TurnReport& report) {
                 0, 0, 0, false});
             fleet.invadeSystemId = 0; continue;
         }
-        const int attacker = 8 + fleet.hull + 2 * empire(s, fleet.ownerId).technologies[5].level;
+        // C1 (Simon, 20 Nov 2026): every transport of this empire landing on this world this turn assaults together; their
+        // troops add up and all of them are spent.
+        int attacker = 0;
+        std::vector<Fleet*> wave;
+        for (auto& other : s.fleets)
+            if (other.ownerId == fleet.ownerId && other.invadeSystemId == fleet.invadeSystemId && other.x == fleet.x && other.y == fleet.y && other.hull > 0) {
+                attacker += 8 + other.hull + 2 * empire(s, fleet.ownerId).technologies[5].level;
+                wave.push_back(&other);
+            }
+        if (wave.empty()) { attacker = 8 + fleet.hull + 2 * empire(s, fleet.ownerId).technologies[5].level; wave.push_back(&fleet); }
         const int defenderBatteries = s.advancedRulesEnabled ? economy(s, *target).poweredBatteries : 0;
         const int defender = minors::invasionDefense(s, *target, 8 + target->population / 3 + target->morale / 10 + batteryDefense(defenderBatteries))
             * (100 + empire_rules::programDefensePercent(*target)) / 100; // Schema 15: Martial Law, Tribunal
@@ -3221,8 +3235,7 @@ void resolveInvasions(GameState& s, TurnReport& report) {
         }
         report.invasions.push_back({s.turn, target->systemId, fleet.ownerId, oldOwner, fleet.id,
             attacker, defender, originalPopulation - target->population, won});
-        fleet.invadeSystemId = 0;
-        fleet.hull = 0; // A transport makes one ground assault; surviving troops garrison a captured colony.
+        for (auto* w : wave) { w->invadeSystemId = 0; w->hull = 0; } // A transport makes one ground assault; surviving troops garrison a captured colony.
     }
     std::erase_if(s.fleets, [](const Fleet& f) { return f.hull <= 0; });
     reconcileTaskForces(s);
@@ -3484,6 +3497,7 @@ std::string payload(const GameState& s) {
         for (int h : s.hotseatHumans) out << ' ' << h;
         out << '\n';
     }
+    if (s.playingOnFrom > 0) out << "PLAYING_ON " << s.playingOnFrom << '\n';   // C4 (20 Nov 2026)
     // Schema 14: per-ship orders of recorded battle rounds. Written only when some
     // round carries orders, so campaigns without them keep the schema-13 layout.
     const bool anyOrders = std::any_of(s.latestBattles.begin(), s.latestBattles.end(), [](const CombatReport& b) {
@@ -5751,7 +5765,7 @@ TurnReport advanceWithCombat(GameState& state, const std::function<void(GameStat
             // Observer mode (soaks only): the player's seat is one AI among the others. The campaign ends when one empire is
             // left (conquest) or an empire holds three fifths of the systems from turn 20 (the player's domination test).
             int winner = surviving.size() == 1 ? *surviving.begin() : 0;
-            if (!winner && next.turn >= 20)
+            if (!winner && next.turn >= 20 && next.playingOnFrom == 0)   // C4: no domination end once the campaign plays on
                 for (int id : surviving)
                     if (static_cast<int>(std::count_if(next.colonies.begin(), next.colonies.end(), [&](const Colony& c) { return c.ownerId == id; })) * 5 >=
                         static_cast<int>(next.systems.size()) * 3) { winner = id; break; }
@@ -5776,12 +5790,12 @@ TurnReport advanceWithCombat(GameState& state, const std::function<void(GameStat
             next.outcome = CampaignOutcome::Defeat;
             next.winnerEmpire = surviving.size() == 1 ? *surviving.begin() : 0;
         }
-        else if (surviving.size() == 1 || (next.turn >= 20 &&
+        else if (surviving.size() == 1 || (next.turn >= 20 && next.playingOnFrom == 0 &&
             static_cast<int>(std::count_if(next.colonies.begin(), next.colonies.end(), [&](const Colony& c) { return c.ownerId == next.playerEmpire; })) * 5 >=
             static_cast<int>(next.systems.size()) * 3)) {
             next.outcome = CampaignOutcome::Victory; next.winnerEmpire = next.playerEmpire;
         }
-        else if (!next.hotseatHumans.empty() && next.turn >= 20) {
+        else if (!next.hotseatHumans.empty() && next.turn >= 20 && next.playingOnFrom == 0) {
             // Hotseat: another human's domination (three fifths of the systems) ends the game too; it is a human win.
             for (int h : next.hotseatHumans)
                 if (h != next.playerEmpire && static_cast<int>(std::count_if(next.colonies.begin(), next.colonies.end(), [&](const Colony& c) { return c.ownerId == h; })) * 5 >=
@@ -5807,6 +5821,22 @@ TurnReport advanceWithCombat(GameState& state, const std::function<void(GameStat
     report.stateHash = fingerprint(next);
     state = std::move(next);
     return report;
+}
+
+bool canPlayOn(const GameState& s) {
+    if (s.outcome != CampaignOutcome::Victory || s.playingOnFrom > 0 || s.observerMode || !s.winnerEmpire || !humanSeat(s, s.winnerEmpire)) return false;
+    std::set<int> surviving;
+    for (const auto& c : s.colonies) surviving.insert(c.ownerId);
+    if (surviving.size() <= 1) return false;   // conquest: nobody is left to play on against
+    const int own = static_cast<int>(std::count_if(s.colonies.begin(), s.colonies.end(), [&](const Colony& c) { return c.ownerId == s.winnerEmpire; }));
+    return own * 5 >= static_cast<int>(s.systems.size()) * 3;   // the win was domination
+}
+
+void playOn(GameState& s) {
+    require(canPlayOn(s), "Only a domination win can be played on");
+    s.outcome = CampaignOutcome::Ongoing;
+    s.winnerEmpire = 0;
+    s.playingOnFrom = std::max(1, s.turn);
 }
 
 TurnReport advance(GameState& state) {
@@ -6386,6 +6416,11 @@ GameState deserialize(const std::string& text) {
             s.hotseatHumans.push_back(h); last = h;
         }
         nextTag = readTag("Malformed save section after HOTSEAT");
+    }
+    if (nextTag == "PLAYING_ON") {   // C4 (20 Nov 2026): the turn the winner chose to play on past domination.
+        require(current25, "PLAYING_ON section in an older save");
+        require(static_cast<bool>(in >> s.playingOnFrom) && s.playingOnFrom >= 1, "Malformed PLAYING_ON section");
+        nextTag = readTag("Malformed save section after PLAYING_ON");
     }
     if (nextTag == "COMBAT_ORDERS") {
         require(current, "Schema 14 section in an older save");

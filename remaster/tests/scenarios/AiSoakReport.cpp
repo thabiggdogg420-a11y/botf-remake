@@ -95,6 +95,9 @@ int main(int argc, char** argv) {
                 continue;
             }
             state.observerMode = !std::getenv("BOTF_SOAK_PASSIVE");
+            // C4 (20 Nov 2026): BOTF_SOAK_PLAYON=1 plays on past domination (as a winner who chose "Continue playing"), so a
+            // campaign ends only by conquest or another victory type.
+            if (std::getenv("BOTF_SOAK_PLAYON")) state.playingOnFrom = 1;
             std::map<int, EmpireTrack> track;
             for (int id : internal::activeEmpires(state)) { track[id].id = id; track[id].name = empireName(id); }
             std::string ending;

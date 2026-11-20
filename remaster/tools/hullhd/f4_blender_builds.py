@@ -367,6 +367,38 @@ def fed_wells():
         wing((-1.8, 0.9 * s, -0.12), 1.85 * s, 2.0, 1.2, 0.1, sweep=0.5, dihedral=-0.12)
 
 
+def fed_k7():
+    # Deep Space Station K-7 (TOS "The Trouble with Tribbles"): a central core with a domed upper tower and a long lower spire,
+    # a broad hub ring, and three long arms at 120 degrees, each angled slightly down to a cylindrical end module with domed
+    # caps and a docking collar.
+    cyl((0, 0, 0), r1=1.6, r2=1.6, depth=1.6, seg=48)                      # hub drum
+    cyl((0, 0, 1.05), r1=1.6, r2=1.1, depth=0.5, seg=48)                   # upper shoulder
+    cyl((0, 0, -1.05), r1=1.1, r2=1.6, depth=0.5, seg=48)                  # lower shoulder
+    torus((0, 0, 0), R=1.75, r=0.22, seg=64, mseg=12)                      # window band
+    cyl((0, 0, 2.1), r1=0.55, r2=0.55, depth=1.8, seg=32)                  # upper tower
+    cyl((0, 0, 3.05), r1=0.95, r2=0.95, depth=0.18, seg=40)                # control deck
+    uvsphere((0, 0, 3.2), (0.8, 0.8, 0.45), seg=32, rings=16)              # dome
+    cyl((0, 0, 3.95), r1=0.04, r2=0.02, depth=0.9, seg=8)                  # antenna mast
+    cyl((0, 0, -2.6), r1=0.18, r2=0.7, depth=2.6, seg=32)                  # lower spire
+    cyl((0, 0, -4.2), r1=0.05, r2=0.18, depth=0.8, seg=16)                 # spire tip
+    torus((0, 0, -2.0), R=0.9, r=0.1, seg=40, mseg=8)                      # spire ring
+    for a in (0, 120, 240):
+        r = math.radians(a)
+        c, s = math.cos(r), math.sin(r)
+        arm = cyl((0, 0, 0), r1=0.42, r2=0.3, depth=3.2, seg=20)
+        arm.rotation_euler = (0, math.radians(90 + 6), r)
+        arm.location = (3.2 * c, 3.2 * s, -0.15)
+        brace = box((0, 0, 0), (1.6, 0.08, 0.35))
+        brace.rotation_euler = (0, math.radians(6), r)
+        brace.location = (3.0 * c, 3.0 * s, 0.2)
+        mx, my, mz = 5.3 * c, 5.3 * s, -0.4
+        cyl((mx, my, mz), r1=0.75, r2=0.75, depth=1.5, seg=32)            # end module
+        uvsphere((mx, my, mz + 0.75), (0.75, 0.75, 0.35), seg=24, rings=12)
+        uvsphere((mx, my, mz - 0.75), (0.75, 0.75, 0.3), seg=24, rings=12)
+        torus((mx, my, mz), R=0.85, r=0.1, seg=32, mseg=8)                 # docking collar
+        cyl((mx, my, mz + 1.35), r1=0.03, r2=0.02, depth=0.5, seg=6)      # beacon mast
+
+
 def fer_station(big):
     # Ferengi station: a tiered central dome with the Ferengi horseshoe arms (a starbase has three of them and docking rings).
     uvsphere((0, 0, 0.3), (2.2, 2.2, 1.1), seg=40, rings=20)
@@ -506,7 +538,7 @@ MODELLED = {
     "ship.xindi.reptilian": xindi_reptilian, "ship.xindi.insectoid": xindi_insectoid, "ship.xindi.aquatic": xindi_aquatic,
     "ship.xindi.primate": xindi_primate, "ship.xindi.weapon": xindi_weapon, "ship.sul.cell_ship": suliban_cell_ship,
     "ship.nau.raider": nausicaan_raider, "ship.fer.pod": ferengi_pod, "ship.fer.scout": ferengi_scout, "ship.baj.lightship": bajoran_lightship, "ship.borg.scout": borg_scout,
-    "ship.borg.outpost": borg_outpost, "ship.fed.wells": fed_wells,
+    "ship.borg.outpost": borg_outpost, "ship.fed.wells": fed_wells, "ship.fed.k7": fed_k7,
     "ship.fer.outpost": lambda: fer_station(False), "ship.fer.starbase": lambda: fer_station(True),
     "ship.breen.outpost": lambda: breen_station(False), "ship.breen.starbase": lambda: breen_station(True),
     "ship.threat.crystalline": threat_crystalline, "ship.threat.calamarain": threat_calamarain,

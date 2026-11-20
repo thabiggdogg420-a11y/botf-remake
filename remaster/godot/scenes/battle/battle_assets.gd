@@ -325,7 +325,17 @@ static func _step_sliced(j: Dictionary) -> bool:
 			else:
 				j.doc = GLTFDocument.new()
 				j.state = GLTFState.new()
-			if j.doc.append_from_file(path, j.state) != OK:
+			# WebGPU r6 (19 Nov): a hero glb parses with its embedded images swapped for a 1x1 placeholder, so
+			# append_from_file no longer decodes every image in one frame (up to 1 s on a big hull, and the images were
+			# then decoded a second time for the mips); stage 2 decodes them one per step from the original bytes.
+			var stripped: Dictionary = strip_glb_images(path) if not (j.hero as Dictionary).is_empty() and j.doc is GLTFDocument else {}
+			var err: Error
+			if not stripped.is_empty():
+				err = j.doc.append_from_buffer(stripped.glb, path.get_base_dir(), j.state)
+				j.raw_jobs = stripped.jobs
+			else:
+				err = j.doc.append_from_file(path, j.state)
+			if err != OK:
 				_shared[path] = null
 				finished = true
 			else:
@@ -338,7 +348,7 @@ static func _step_sliced(j: Dictionary) -> bool:
 			elif (j.hero as Dictionary).is_empty():
 				j.stage = 4
 			else:
-				j.jobs = _mip_jobs(j.state)
+				j.jobs = _jobs_for_stripped(j.state, j.raw_jobs) if j.has("raw_jobs") else _mip_jobs(j.state)
 				j.stage = 2
 		2:
 			if (j.jobs as Array).is_empty():
@@ -508,6 +518,69 @@ static func _mip_jobs(state: GLTFState) -> Array:
 			continue
 		var bytes: PackedByteArray = (buffers[view.buffer] as PackedByteArray).slice(view.byte_offset, view.byte_offset + view.byte_length)
 		out.append({"id": (imgs[i] as Object).get_instance_id(), "bytes": bytes, "mime": str(j.get("mimeType", "image/png"))})
+	return out
+
+
+## A 1x1 opaque white PNG: what a stripped glb's images parse as until their real image is decoded.
+const PLACEHOLDER_PNG := "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg=="
+
+## Reads a .glb and returns {glb: the same file with every bufferView-embedded image replaced by PLACEHOLDER_PNG,
+## jobs: [{index, bytes, mime}] the original image bytes}, or {} when the file is not a glb this can rewrite.
+static func strip_glb_images(path: String) -> Dictionary:
+	if path.get_extension().to_lower() != "glb":
+		return {}
+	var b := FileAccess.get_file_as_bytes(path)
+	if b.size() < 28 or b.decode_u32(0) != 0x46546C67 or b.decode_u32(16) != 0x4E4F534A:
+		return {}
+	var jlen := b.decode_u32(12)
+	var bin_at := 20 + jlen
+	var bin := PackedByteArray()
+	if b.size() >= bin_at + 8 and b.decode_u32(bin_at + 4) == 0x004E4942:
+		bin = b.slice(bin_at + 8, bin_at + 8 + b.decode_u32(bin_at))
+	var json: Variant = JSON.parse_string(b.slice(20, 20 + jlen).get_string_from_utf8())
+	if not json is Dictionary or not (json as Dictionary).has("images"):
+		return {}
+	var views: Array = json.get("bufferViews", [])
+	var jobs: Array = []
+	var images: Array = json.images
+	for i in images.size():
+		var im: Dictionary = images[i]
+		var bv := int(im.get("bufferView", -1))
+		if bv < 0 or bv >= views.size() or int((views[bv] as Dictionary).get("buffer", 0)) != 0:
+			continue
+		var v: Dictionary = views[bv]
+		var off := int(v.get("byteOffset", 0))
+		jobs.append({"index": i, "bytes": bin.slice(off, off + int(v.byteLength)), "mime": str(im.get("mimeType", "image/png"))})
+		var ph := {"uri": PLACEHOLDER_PNG, "mimeType": "image/png"}
+		if im.has("name"):
+			ph["name"] = im.name
+		images[i] = ph
+	if jobs.is_empty():
+		return {}
+	var jb := JSON.stringify(json).to_utf8_buffer()
+	while jb.size() % 4 != 0:
+		jb.append(0x20)
+	var out := PackedByteArray()
+	out.resize(20)
+	out.encode_u32(0, 0x46546C67)
+	out.encode_u32(4, 2)
+	out.encode_u32(12, jb.size())
+	out.encode_u32(16, 0x4E4F534A)
+	out.append_array(jb)
+	if b.size() > bin_at:
+		out.append_array(b.slice(bin_at))
+	out.encode_u32(8, out.size())
+	return {"glb": out, "jobs": jobs}
+
+
+## The decode jobs of a stripped parse: each original image keyed by its placeholder texture's instance id.
+static func _jobs_for_stripped(state: GLTFState, raw: Array) -> Array:
+	var out: Array = []
+	var imgs: Array = state.get_images()
+	for r: Dictionary in raw:
+		var i := int(r.index)
+		if i < imgs.size() and imgs[i] != null:
+			out.append({"id": (imgs[i] as Object).get_instance_id(), "bytes": r.bytes, "mime": r.mime})
 	return out
 
 

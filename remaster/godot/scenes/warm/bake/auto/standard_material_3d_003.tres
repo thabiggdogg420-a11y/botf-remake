@@ -1,0 +1,7 @@
+[gd_resource type="StandardMaterial3D" format=3]
+
+[resource]
+resource_name = "M01"
+cull_mode = 2
+albedo_color = Color(0.7883685, 0.7883685, 0.7883685, 1)
+metallic = 0.55

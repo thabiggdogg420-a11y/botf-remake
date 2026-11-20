@@ -1,0 +1,22 @@
+[gd_resource type="StandardMaterial3D" format=3]
+
+[sub_resource type="Image" id="Image_h1176"]
+data = {
+"data": PackedByteArray(255, 255, 255, 255),
+"format": "RGBA8",
+"height": 1,
+"mipmaps": false,
+"width": 1
+}
+
+[sub_resource type="ImageTexture" id="ImageTexture_ktto3"]
+image = SubResource("Image_h1176")
+
+[resource]
+transparency = 1
+blend_mode = 1
+shading_mode = 0
+vertex_color_use_as_albedo = true
+albedo_texture = SubResource("ImageTexture_ktto3")
+disable_receive_shadows = true
+billboard_mode = 3

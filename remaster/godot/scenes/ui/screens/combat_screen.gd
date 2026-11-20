@@ -196,8 +196,10 @@ func _stage_bottom(root: Control, ph: Control, e: Dictionary, foe_name: String, 
 		await get_tree().process_frame
 	if not is_instance_valid(ph) or not ph.is_inside_tree() or _bottom_box != ph:
 		return
+	var tb := LoadTrace.start()
 	var bottom := _bottom(e, foe_name, last)
 	root.add_child(bottom)
+	LoadTrace.done("combat: staged bottom", tb)
 	root.move_child(bottom, ph.get_index())
 	root.remove_child(ph)
 	ph.queue_free()
@@ -218,8 +220,10 @@ func _live(e: Dictionary) -> void:
 	var root := Lcars.vbox(10)
 	Lcars.screen_margin(self, Vector4(14, 14, 14, 14)).add_child(root)
 	_root = root
+	var th := LoadTrace.start()
 	var h := _header(e, mine, foes, foe_name, last)
 	root.add_child(h)
+	th = LoadTrace.done("combat: header", th)
 	# Middle: ship lists and the battle host
 	var mid := Lcars.hbox(10)
 	mid.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -291,10 +295,12 @@ func _fill_list_staged(list: Control, ships: Array, all: Array, sel: int, hostil
 		n += 1
 		if not is_instance_valid(list) or not list.is_inside_tree():
 			return
+		var tc := LoadTrace.start()
 		var cd := _ship_card(s, all, sel, hostile)
 		_cards[int(s["id"])] = cd
 		list.add_child(cd)
 		Motion.enter(cd, 0, "panel")
+		LoadTrace.done("combat: staged card", tc)
 
 func _ship_card(s: Dictionary, all: Array, sel: int, hostile: bool) -> Control:
 	var id := int(s["id"])

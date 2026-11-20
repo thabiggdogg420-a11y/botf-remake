@@ -74,9 +74,12 @@ if(EMSCRIPTEN)
     # Godot's official web templates build the main module with exceptions off (its __cxa_throw aborts). The core
     # throws, so the side module carries its own wasm-exceptions libc++abi and libunwind, bound locally (-Bsymbolic).
     # Build them once with: embuilder build libc++abi-except libunwind-except --pic
+    if(NOT BOTF_EM_EH)
+        set(BOTF_EM_EH except)   # emsdk 3.x name; emsdk 4+ builds pass legacyexcept (build-web.ps1 -EmccVersion)
+    endif()
     set(BOTF_EM_PIC ${EMSCRIPTEN_SYSROOT}/lib/wasm32-emscripten/pic)
     target_link_options(botf_core PRIVATE -sSIDE_MODULE=1 -sWASM_BIGINT -Wl,-Bsymbolic
-        ${BOTF_EM_PIC}/libc++abi-except.a ${BOTF_EM_PIC}/libunwind-except.a)
+        ${BOTF_EM_PIC}/libc++abi-${BOTF_EM_EH}.a ${BOTF_EM_PIC}/libunwind-${BOTF_EM_EH}.a)
     # wasm-ld's string tail-merging (-O1 and up) mis-resolves string literal pointers in this side module once the core grows
     # (schema 20: godot-cpp's get_proc_address names read as the tail of another literal and the extension fails to load).
     # -O0 turns the merge off; the module grows by about 14 KB.

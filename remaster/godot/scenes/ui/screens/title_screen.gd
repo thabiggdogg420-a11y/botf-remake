@@ -71,7 +71,7 @@ func refresh() -> void:
 	lb.name = "LoadCampaign"
 	menu.add_child(lb)
 	var row := Lcars.hbox(10)
-	row.add_child(_wide(Lcars.pill("Tactical drill", "tertiary", func(): app.start_drill("newBattleDrill", "Tactical drill"), "", "A ready-made skirmish at Sol to practise tactical command")))
+	row.add_child(_wide(Lcars.pill("Tactical drill", "tertiary", func(): app.start_drill("newBattleDrill", "Tactical drill", {}, true), "", "A ready-made skirmish at Sol to practise tactical command")))
 	row.add_child(_wide(Lcars.pill("Diplomacy drill", "tertiary", func(): app.start_drill("newDiplomacyDrill", "Diplomacy drill"), "", "Incoming proposals, a tribute demand and an ally's call to arms")))
 	menu.add_child(row)
 	var row2 := Lcars.hbox(10)

@@ -1571,6 +1571,9 @@ inline constexpr int AiDemandCooldownTurns = 15;
 inline constexpr int AiMaxIntentsPerTurn = 2;
 
 // Desire of `self` for closer ties with `other` (trust-based, integer).
+// C3: the term of an alliance between two AI empires (renewed only while both want it).
+constexpr int AiAllianceTermTurns = 100;
+
 inline int diplomaticDesire(const DiplomacyState& state, const DiplomacyContext& ctx, ParticipantId self, ParticipantId other) {
     const MajorPersonality selfP = ctx.personality(self);
     const MajorPersonality otherP = ctx.personality(other);
@@ -2312,7 +2315,30 @@ public:
                 treaty.turnsRemaining--;
             }
 
-            if (treaty.duration != TreatyDuration::Indefinite && treaty.turnsRemaining <= 0) {
+            // C3 (Simon, 20 Nov 2026): a Full Alliance between two AI empires runs 100 turns; on each 100th turn it is renewed
+            // only while both still want it (each one's desire for the other at its alliance threshold), and it ends at once
+            // when the two allies are the last powers left. Alliances with the player are untouched.
+            bool aiAllianceEnds = false;
+            const char* aiAllianceWhy = "";
+            if (treaty.type == TreatyType::Alliance && !treaty.partyA.isMinor && !treaty.partyB.isMinor &&
+                !ctx.isHuman(treaty.partyA) && !ctx.isHuman(treaty.partyB)) {
+                int left = 0;
+                for (int id : ctx.majorEmpires()) if (!ctx.isEliminated(ParticipantId::major(id))) ++left;
+                const int age = state.currentTurn - treaty.startTurn;
+                if (left == 2) {
+                    aiAllianceEnds = true;
+                    aiAllianceWhy = "The last two powers part ways";
+                } else if (age > 0 && age % AiAllianceTermTurns == 0) {
+                    const bool wantsA = diplomaticDesire(state, ctx, treaty.partyA, treaty.partyB) >= profileFor(ctx.personality(treaty.partyA)).allianceDesire;
+                    const bool wantsB = diplomaticDesire(state, ctx, treaty.partyB, treaty.partyA) >= profileFor(ctx.personality(treaty.partyB)).allianceDesire;
+                    if (!(wantsA && wantsB)) {
+                        aiAllianceEnds = true;
+                        aiAllianceWhy = "Alliance term ended without renewal";
+                    }
+                }
+            }
+
+            if (aiAllianceEnds || (treaty.duration != TreatyDuration::Indefinite && treaty.turnsRemaining <= 0)) {
                 treaty.status = TreatyStatus::Expired;
                 archiveTreaty(state, treaty);
                 delta.expiredTreaties.push_back(treaty.id);
@@ -2327,7 +2353,7 @@ public:
                 op.partyA = treaty.partyA;
                 op.partyB = treaty.partyB;
                 op.treatyType = treaty.type;
-                op.notes = "Treaty reached duration expiry";
+                op.notes = aiAllianceEnds ? aiAllianceWhy : "Treaty reached duration expiry";
                 delta.operations.push_back(op);
 
                 DiplomaticEvent evt;

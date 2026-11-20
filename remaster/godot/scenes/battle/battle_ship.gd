@@ -585,29 +585,52 @@ static var _puff_tex: Texture2D
 static func flame_flipbook() -> Texture2D:
 	if _flame_tex != null:
 		return _flame_tex
-	var fs := 64
-	var img := Image.create(fs * 4, fs * 4, false, Image.FORMAT_RGBA8)
-	var noise := FastNoiseLite.new()
-	noise.seed = 4127
-	noise.frequency = 0.09
-	noise.fractal_octaves = 3
-	for f in 16:
-		var ox := (f % 4) * fs
-		var oy := (f / 4) * fs
-		var rise := float(f) * 6.0
-		for y in fs:
-			for x in fs:
-				var u := (float(x) + 0.5) / fs * 2.0 - 1.0
-				var v := 1.0 - (float(y) + 0.5) / fs # 0 bottom .. 1 top
-				var n := noise.get_noise_2d(float(x) * 1.2, float(y) * 1.2 + rise) * 0.5 + 0.5
-				var width := 0.62 * (1.0 - v) + 0.08
-				var shape := clampf(1.0 - absf(u + (n - 0.5) * 0.5 * v) / width, 0.0, 1.0)
-				var a := clampf(shape * (n * 1.4 - v * 0.9 + 0.35), 0.0, 1.0)
-				var heat := clampf(a * 1.3 - v * 0.4, 0.0, 1.0)
-				var col := Color(1.0, 0.25 + 0.7 * heat, 0.05 + 0.5 * heat * heat, a)
-				img.set_pixel(ox + x, oy + y, col)
-	_flame_tex = ImageTexture.create_from_image(img)
+	while not flame_flipbook_step():
+		pass
 	return _flame_tex
+
+
+static var _flame_img: Image = null
+static var _flame_noise: FastNoiseLite = null
+static var _flame_next := 0
+
+## One tile of the 4x4 flame flipbook per call (the web title warm-up calls it once a frame, round 9: the whole sheet in
+## GDScript was 0.3-1.2 s in one browser frame). True once the texture exists. The same pixels as one pass.
+static func flame_flipbook_step() -> bool:
+	if _flame_tex != null:
+		return true
+	var fs := 64
+	if _flame_img == null:
+		_flame_img = Image.create(fs * 4, fs * 4, false, Image.FORMAT_RGBA8)
+		_flame_noise = FastNoiseLite.new()
+		_flame_noise.seed = 4127
+		_flame_noise.frequency = 0.09
+		_flame_noise.fractal_octaves = 3
+		_flame_next = 0
+	var img := _flame_img
+	var noise := _flame_noise
+	var f := _flame_next
+	var ox := (f % 4) * fs
+	var oy := (f / 4) * fs
+	var rise := float(f) * 6.0
+	for y in fs:
+		for x in fs:
+			var u := (float(x) + 0.5) / fs * 2.0 - 1.0
+			var v := 1.0 - (float(y) + 0.5) / fs # 0 bottom .. 1 top
+			var n := noise.get_noise_2d(float(x) * 1.2, float(y) * 1.2 + rise) * 0.5 + 0.5
+			var width := 0.62 * (1.0 - v) + 0.08
+			var shape := clampf(1.0 - absf(u + (n - 0.5) * 0.5 * v) / width, 0.0, 1.0)
+			var a := clampf(shape * (n * 1.4 - v * 0.9 + 0.35), 0.0, 1.0)
+			var heat := clampf(a * 1.3 - v * 0.4, 0.0, 1.0)
+			var col := Color(1.0, 0.25 + 0.7 * heat, 0.05 + 0.5 * heat * heat, a)
+			img.set_pixel(ox + x, oy + y, col)
+	_flame_next = f + 1
+	if _flame_next < 16:
+		return false
+	_flame_tex = ImageTexture.create_from_image(img)
+	_flame_img = null
+	_flame_noise = null
+	return true
 
 
 ## Soft round puff for smoke and venting gas.

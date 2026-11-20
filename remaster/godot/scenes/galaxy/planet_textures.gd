@@ -33,9 +33,14 @@ const WEB_MAX_WIDTH := 1024
 static func reset() -> void:
 	_sets.clear()
 
-## True when the active renderer is Compatibility (WebGL2 or the desktop gl_compatibility path): the web tier only.
+## True when the active renderer is Compatibility (WebGL2 or the desktop gl_compatibility path). The look tweaks for
+## 8-bit blending key off this; the WebGPU (Forward+) browser build is not Compatibility and gets the desktop look.
 static func compat() -> bool:
-	return OS.has_feature("web") or RenderingServer.get_current_rendering_method() == "gl_compatibility"
+	return RenderingServer.get_current_rendering_method() == "gl_compatibility"
+
+## True when only the web texture tier should load: any browser build (pack sizes) or a Compatibility run.
+static func web_tier() -> bool:
+	return OS.has_feature("web") or compat()
 
 ## The variants available for a planet class (each a dict of file paths), [] when L7 has none. `hi` asks for the
 ## desktop tier (4096 source, capped at MAX_WIDTH on load, with normal map) where the renderer allows it: for a planet that
@@ -51,7 +56,7 @@ static func variants(cls: String, hi: bool = false) -> Array:
 	if disabled:
 		return out
 	var tiers := ["desktop", "web"] if hi else ["web", "desktop"]
-	if compat() and not hi:
+	if web_tier() and not hi:
 		tiers = ["web"]
 	for root in [ROOT]:
 		for d in CLASS_DIRS.get(cls, [cls.to_lower()]):

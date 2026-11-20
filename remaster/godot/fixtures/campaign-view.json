@@ -28,6 +28,8 @@
    "saveVersion": 25,
    "outcome": "ongoing",
    "winner": 0,
+   "canPlayOn": false,
+   "playingOnFrom": 0,
    "hotseat": [],
    "winners": [],
    "advancedRules": true,

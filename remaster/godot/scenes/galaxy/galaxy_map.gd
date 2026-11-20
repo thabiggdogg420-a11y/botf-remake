@@ -327,7 +327,9 @@ func is_focused_on(x: int, y: int) -> bool:
 ## star (plus room for its label) sit inside the free rectangle, so Small through Huge never clip behind the nav rail,
 ## the top bar or the inspector. The kept name frame_known() is what older callers (captures, tests) use.
 func frame_known() -> void:
+	var t := LoadTrace.start()
 	frame_galaxy()
+	LoadTrace.done("galaxy: frame known", t)
 
 func frame_galaxy() -> void:
 	var v := view()

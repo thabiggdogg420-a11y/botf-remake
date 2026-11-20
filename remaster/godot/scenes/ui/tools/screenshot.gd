@@ -1,3 +1,4 @@
+class_name BotfShotTree
 extends SceneTree
 ## Renders UI screenshots (needs a display: run under xvfb-run with --rendering-driver opengl3).
 ##   godot --path remaster/godot --rendering-driver opengl3 --resolution 1920x1080 \
@@ -89,6 +90,15 @@ func _run() -> void:
 			await _wait(1)
 		print("SHOT web packs ", "done" if app.web_packs_done else "NOT done", " after ", (Time.get_ticks_msec() - t0) / 1000.0, " s")
 		await _wait(30)
+	# WebGPU trial: the fork's templates ignore -s, so the "Web Capture" export starts this tree through
+	# application/run/main_loop_type, which also loads the main scene. Drop it once the shared pack fetch it started is in.
+	if OS.has_feature("botf_capture") and current_scene != null and current_scene != app:
+		current_scene.queue_free()
+		await _wait(2)
+		# That App may have begun the battle warm-up (a static once-only flag) and died with it: let this App's run it.
+		App._warmed_battle = false
+	if _env("SHOT_PROBE") != "":
+		await _probe_readback(_env("SHOT_PROBE"))
 	var code := 0
 	for s in shots:
 		await _prepare(s)
@@ -98,6 +108,11 @@ func _run() -> void:
 			t.queue_free()
 		await _wait(10)
 		_report_fps(s)
+		if _env("SHOT_NOREAD") != "" or not GpuReadback.allowed():
+			# WebGPU trial: the fork crashes ("null function") on a viewport read-back; the page screenshot is the frame.
+			print("saved (no read-back) ", s)
+			await _web_hold(s, Image.create(8, 8, false, Image.FORMAT_RGB8))
+			continue
 		var img := root.get_viewport().get_texture().get_image()
 		if _env("SHOT_ROOT") == "" and (s == "battle-closeup" or s == "battle-kill" or s == "battle-burning" or (s.begins_with("battle-volley") or s.begins_with("battle-strip") or s == "battle-campaign")) and app._current != null and app._current.get("host") != null and app._current.host.view_node != null:
 			img = app._current.host.view_node.get_viewport().get_texture().get_image() # the 3D view alone, no panels
@@ -130,6 +145,37 @@ func _hero_check(s: String) -> bool:
 
 ## Web capture (tools/verify/web_parity.py): hands the frame Godot read back to the page as base64 PNG, prints SHOT_READY and
 ## holds the scene until the page has taken its own screenshot and set window.__shotAck to the shot name (2 min at most).
+## SHOT_PROBE=<steps> (WebGPU trial): which GPU read-backs the renderer survives, one step per comma, in order. A step that
+## kills the engine leaves "PROBE <step> start" as the last PROBE line. Steps: ctex (imported texture), imgtex
+## (ImageTexture), subvp (a small SubViewport), root (the window's viewport), guard (GpuReadback on the root viewport).
+func _probe_readback(steps: String) -> void:
+	print("PROBE renderer ", RenderingServer.get_current_rendering_method(), " readback allowed ", GpuReadback.allowed())
+	for st in steps.split(","):
+		print("PROBE ", st, " start")
+		await _wait(2)
+		var img: Image = null
+		match st:
+			"ctex":
+				img = (load("res://icon.png") as Texture2D).get_image()
+			"imgtex":
+				img = ImageTexture.create_from_image(Image.create(16, 16, false, Image.FORMAT_RGBA8)).get_image()
+			"subvp":
+				var vp := SubViewport.new()
+				vp.size = Vector2i(64, 64)
+				vp.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+				root.add_child(vp)
+				await _wait(3)
+				await RenderingServer.frame_post_draw
+				img = vp.get_texture().get_image()
+				vp.queue_free()
+			"root":
+				await RenderingServer.frame_post_draw
+				img = root.get_viewport().get_texture().get_image()
+			"guard":
+				img = GpuReadback.image(root.get_viewport().get_texture())
+		print("PROBE ", st, " ok ", "null" if img == null else "%dx%d" % [img.get_width(), img.get_height()])
+	print("PROBE done")
+
 func _web_hold(s: String, img: Image) -> void:
 	JavaScriptBridge.eval("window.__shotPng = '%s';" % Marshalls.raw_to_base64(img.save_png_to_buffer()))
 	print("SHOT_READY ", s)

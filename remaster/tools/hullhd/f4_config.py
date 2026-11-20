@@ -21,6 +21,7 @@ MODELLED = {
     "ship.nau.raider": ("nau", "+X", "+Z"), "ship.baj.lightship": ("baj", "+X", "+Z"),
     "ship.fer.outpost": ("fer", "+X", "+Z"), "ship.fer.starbase": ("fer", "+X", "+Z"),
     "ship.fer.pod": ("fer", "+X", "+Z"), "ship.fer.scout": ("fer", "+X", "+Z"),
+    "ship.fed.k7": ("fed", "+X", "+Z"),   # RC round (20 Nov): replaces the Bridge Commander command-post stand-in
 }
 ONLINE = {
     "ship.and.kumari": ("and", "-Y", "+Z"), "ship.vul.dkyr": ("vul", "-Y", "+Z"),

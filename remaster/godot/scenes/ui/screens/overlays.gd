@@ -391,6 +391,8 @@ static func end_screen(app: App, preview: String = "") -> Control:
 	root.add_child(vs)
 	var acts := Lcars.hbox(10)
 	acts.alignment = BoxContainer.ALIGNMENT_CENTER
+	if app.can_play_on():   # C4: a domination win can be played on
+		acts.add_child(Lcars.pill("Continue playing", "primary", func(): app.play_on()))
 	acts.add_child(Lcars.pill("Final briefing", "ghost", func(): app.close_modal(); app.open_overlay("briefing")))
 	acts.add_child(Lcars.pill("View the galaxy", "ghost", func(): app.close_modal()))
 	acts.add_child(Lcars.pill("Save", "secondary", func():

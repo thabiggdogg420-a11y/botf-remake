@@ -164,7 +164,8 @@ static func _fxp(n: Node, param: StringName, value: Variant) -> void:
 
 ## Draws one of every effect material once, tiny and just in front of the camera, then frees them. The first real
 ## volley otherwise compiles its pipelines mid-round (a 1.35 s freeze on a fresh shader cache on the PC).
-func prewarm() -> void:
+## `spread` (the web title warm-up, round 9): the groups below go in a frame apart, each first drawn on its own frame.
+func prewarm(spread := false) -> void:
 	var cam := get_viewport().get_camera_3d()
 	if cam == null:
 		return
@@ -204,6 +205,8 @@ func prewarm() -> void:
 	add_child(ring)
 	ring.global_position = at
 	nodes.append(ring)
+	if spread:
+		await get_tree().process_frame
 	# The ship-side effects (a shield flash, the cloak overlay, a scorch decal) and a flash light render for the first
 	# time mid-battle too, and each carries its own pipeline: draw them once now, tiny and out of the way.
 	var shield := MeshInstance3D.new()
@@ -248,6 +251,8 @@ func prewarm() -> void:
 	add_child(light)
 	light.global_position = at
 	nodes.append(light)
+	if spread:
+		await get_tree().process_frame
 	# The kill's fire lobe and torn-hull materials (_kill_fire, _hull_pieces).
 	var lobe := MeshInstance3D.new()
 	lobe.mesh = _quad
@@ -263,11 +268,13 @@ func prewarm() -> void:
 	add_child(piece)
 	piece.global_position = at
 	nodes.append(piece)
-	var before := get_child_count()
 	for kind in ["sparks", "sparks_small", "streamer", "fire_small", "fireball", "smoke", "debris", "vent"]:
+		if spread:
+			await get_tree().process_frame
+		var before := get_child_count()
 		_burst(at, Color(1, 0.5, 0.2), kind, 1, 0.01)
-	for i in range(before, get_child_count()):
-		nodes.append(get_child(i))
+		for i in range(before, get_child_count()):
+			nodes.append(get_child(i))
 	for i in 3:
 		await get_tree().process_frame
 	for n in nodes:

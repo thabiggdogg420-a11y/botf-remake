@@ -38,9 +38,21 @@ func _ready() -> void:
 		push_error("BattleHost: %s is missing" % BATTLE_SCENE)
 
 func _mount_next_frame() -> void:
-	await get_tree().process_frame
+	# RC (20 Nov): two frames after the screen. The frame after the screen draws its new text and the first ship cards; the
+	# view entering the tree (about 50 ms) on that same frame made the 123-165 ms battle-open frame.
+	for _i in MOUNT_DELAY_FRAMES:
+		await get_tree().process_frame
+	# RC (20 Nov): a battle opened while the App is still warming its spare view (a battle straight after a load or a
+	# relaunch) waits for that view, which is built a step a frame, instead of building a second one (its _ready, 40-55 ms)
+	# in one frame. The screen's panels are up meanwhile; the 3D view appears when the spare is ready (at most ~4 s).
+	var waited := 0
+	while App.warming_battle_view() and waited < 240 and is_inside_tree():
+		await get_tree().process_frame
+		waited += 1
 	if is_inside_tree():
 		_mount()
+
+static var MOUNT_DELAY_FRAMES := 2
 
 
 func _mount() -> void:
@@ -69,9 +81,12 @@ func attach(node: Node) -> void:
 		sv.own_world_3d = true
 		if App.i != null:
 			DisplaySettings.apply_viewport(sv, App.i.settings) # render scale, anti-aliasing, shadow atlas
+		var ta := LoadTrace.start()
 		sv.add_child(node)
+		ta = LoadTrace.done("battle: attach view into viewport", ta)
 		svc.add_child(sv)
 		add_child(svc)
+		ta = LoadTrace.done("battle: attach viewport into host", ta)
 		# web: glow on engines, beams and fire (no-op under Forward+). Threshold near white: the 8-bit frame cannot tell a
 		# lit white hull (0.85-0.93 after ACES) from fire, so only clipped cores bloom. (Off 19 Nov while the web hulls drew
 		# unmipped and speckled, WEB-PARITY.md gap 5; back on with that fixed.)
@@ -89,13 +104,19 @@ func attach(node: Node) -> void:
 		node.connect("subsystem_picked", func(t, k): subsystem_picked.emit(t, k))
 	if node.has_signal("round_finished"):
 		node.connect("round_finished", func(i): round_finished.emit(i))
-	_add_camera_bar.call_deferred()
+	_add_camera_bar_next_frame()
+
+func _add_camera_bar_next_frame() -> void:
+	if DisplayServer.get_name() != "headless":
+		await get_tree().process_frame   # RC (20 Nov): not on the frame the view enters the tree
+	_add_camera_bar()
 
 ## The camera mode bar over the 3D view (as the Unreal combat screen): OVERVIEW CHASE SHIP TARGET TOP-DOWN CINEMATIC,
 ## then RESET (Home). The lit button follows the camera, whichever way its mode changed (keys, double-click, pan).
 func _add_camera_bar() -> void:
 	if view_node == null or not ("camera" in view_node) or view_node.camera == null or has_node("CameraBar"):
 		return
+	var tb := LoadTrace.start()
 	var cam: BattleCamera = view_node.camera
 	var bar := HBoxContainer.new()
 	bar.name = "CameraBar"
@@ -126,6 +147,7 @@ func _add_camera_bar() -> void:
 		for i in buttons.size():
 			buttons[i].set_pressed_no_signal(i == m))
 	add_child(bar)
+	LoadTrace.done("battle: camera bar", tb)
 
 
 ## Round playback (M1 battleplay): 1x and 2x speed, and SKIP to the round's end (the ships stand where the core left
@@ -164,17 +186,21 @@ func _camera_button(text: String, tip: String) -> Button:
 	return b
 
 func load_encounter(e: Dictionary) -> void:
+	var tl := LoadTrace.start()
 	_last_encounter = e
 	if view_node and view_node.has_method("load_encounter"):
 		view_node.load_encounter(e)
+	LoadTrace.done("battle: load_encounter", tl)
 
 func play_round(r: Dictionary, e: Dictionary) -> void:
 	if view_node and view_node.has_method("play_round"):
 		view_node.play_round(r, e)
 
 func set_selection(ship: int, target: int) -> void:
+	var ts := LoadTrace.start()
 	if view_node and view_node.has_method("set_selection"):
 		view_node.set_selection(ship, target)
+	LoadTrace.done("battle: set_selection", ts)
 
 func show_plan(ship: Dictionary, forecast: Dictionary) -> void:
 	if view_node and view_node.has_method("show_plan"):

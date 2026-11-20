@@ -48,6 +48,9 @@ def main(path):
         sections.append((sid, data[p:p + size]))
         pos = p + size
     if any(sid == 13 for sid, _ in sections):
+        # emsdk 4+ (WebGPU trial, 19 Nov 2026): with -Bsymbolic the module defines __cpp_exception itself and imports no tag.
+        if TAG_NAME not in b"".join(pl for sid, pl in sections if sid == 2):
+            print("module defines its own tags and imports no %s: nothing to do" % TAG_NAME.decode()); return
         sys.exit("module already defines tags; refusing to guess the index order")
     out_sections = []
     tag_type = None
