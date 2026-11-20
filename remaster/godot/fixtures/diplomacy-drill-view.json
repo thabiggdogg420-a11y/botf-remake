@@ -23,6 +23,7 @@
    "outcome": "ongoing",
    "winner": 0,
    "hotseat": [],
+   "winners": [],
    "advancedRules": true,
    "campaignExpansion": true,
    "modernEngines": true,
@@ -873,6 +874,8 @@
    "active": false,
    "battlePending": false,
    "battleFinished": false,
+   "battleHumans": [],
+   "battleSeat": 1,
    "replays": 0
   },
   "stations": [],
