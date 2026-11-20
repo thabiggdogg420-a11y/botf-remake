@@ -717,6 +717,9 @@ const char* rivalryCause(const RivalryBreakdown& b) {
     return "eyes your treasury";
 }
 
+// P3: how many squares nearer a nearly finished rival's world counts when an AI task force picks its target.
+constexpr int FinishWarTargetPull = 8;
+
 class CampaignDiplomacyContext : public diplomacy::DiplomacyContext {
 public:
     const GameState& state;
@@ -771,6 +774,11 @@ public:
             if (f.ownerId == p.id && f.hull > 0) mil += fleetAttack(f) * 10 + f.hull;
         }
         return mil;
+    }
+
+    int colonyCount(diplomacy::ParticipantId p) const override {
+        if (p.isMinor) return -1;
+        return static_cast<int>(std::count_if(state.colonies.begin(), state.colonies.end(), [&](const Colony& c) { return c.ownerId == p.id; }));
     }
 
     int64_t economicPower(diplomacy::ParticipantId p) const override {
@@ -1565,7 +1573,8 @@ void planRivals(GameState& s) {
                 queueMilitaryShip(s, c, Building::Destroyer)) ++destroyers; // Rivalry: a warlike power keeps a standing fleet in peacetime, ahead of its upgrade ladder (at war the old order stands)
             else if (empire_rules::aiWantsRefinery(s, owner.id, c)) c.queue.push_back(Building::DilithiumRefinery);
             else if (const int rung = structures::aiNext(s, c, economy(s, c).industry); rung >= 0) c.queue.emplace_back(Building::Structure, 0, structures::refFor(rung));
-            else if (const int academy = structures::aiAcademy(s, c, economy(s, c).industry); academy >= 0) c.queue.emplace_back(Building::Structure, 0, structures::refFor(academy)); // Schema 24: the AI trains crews
+            else if (const int academy = structures::aiAcademy(s, c, economy(s, c).industry); academy >= 0) // Schema 24: the AI trains crews
+                c.queue.emplace_back(Building::Structure, 0, structures::refFor(academy));
             else if (const int up = economy_rules::aiUpgrade(s, c); up >= 0) c.queue.emplace_back(Building::Structure, 0, structures::refFor(up)); // Schema 23
             else if (policy.standardBuild && c.laboratories < 2) c.queue.push_back(Building::Laboratory); // Standard order: a second laboratory once the race structures are in hand.
             else if ((atWar || (policy.standardBuild && onBorder(c))) && s.advancedRulesEnabled && c.defenseBatteries < 1) c.queue.push_back(Building::DefenseBattery);
@@ -1676,7 +1685,10 @@ void planRivals(GameState& s) {
                 }
                 if (!canReach) continue;
 
-                const int dist = std::max(std::abs(leaderIt->x - loc->x), std::abs(leaderIt->y - loc->y));
+                int dist = std::max(std::abs(leaderIt->x - loc->x), std::abs(leaderIt->y - loc->y));
+                // P3 (20 Nov 2026): a rival down to its last worlds is the first target (diplomacy::finishingWar).
+                if (modernDiplomacy(s) && diplomacy::finishingWar(CampaignDiplomacyContext(s), diplomacy::ParticipantId::major(owner.id),
+                        diplomacy::ParticipantId::major(candidate.ownerId))) dist -= FinishWarTargetPull;
                 if (dist < bestDist) {
                     bestDist = dist;
                     targetColony = &candidate;
@@ -3461,6 +3473,11 @@ std::string payload(const GameState& s) {
             out << "STAR_TYPES 1 " << typed << '\n';
             for (const auto& sys : s.systems) if (sys.starType >= 0) out << sys.id << ' ' << sys.starType << '\n';
         }
+    }
+    if (!s.diplomaticHold.empty()) {   // P1 (20 Nov 2026): diplomatic holds in progress (ascending empire id).
+        out << "DIPLOMATIC_HOLD " << s.diplomaticHold.size();
+        for (const auto& [id, turns] : s.diplomaticHold) out << ' ' << id << ' ' << turns;
+        out << '\n';
     }
     // Schema 14: per-ship orders of recorded battle rounds. Written only when some
     // round carries orders, so campaigns without them keep the schema-13 layout.
@@ -6273,6 +6290,18 @@ GameState deserialize(const std::string& text) {
             sys->starType = type; last = id;
         }
         nextTag = readTag("Malformed save section after STAR_TYPES");
+    }
+    if (nextTag == "DIPLOMATIC_HOLD") {   // P1 (20 Nov 2026): consecutive turns each empire has met the diplomatic conditions.
+        require(current25, "DIPLOMATIC_HOLD section in an older save");
+        std::size_t holds = 0;
+        require(static_cast<bool>(in >> holds) && holds >= 1 && holds <= 64, "Malformed DIPLOMATIC_HOLD section");
+        int last = 0;
+        for (std::size_t i = 0; i < holds; ++i) {
+            int id = 0, turns = 0;
+            require(static_cast<bool>(in >> id >> turns) && id > last && turns >= 1, "Malformed DIPLOMATIC_HOLD entry");
+            s.diplomaticHold.emplace_back(id, turns); last = id;
+        }
+        nextTag = readTag("Malformed save section after DIPLOMATIC_HOLD");
     }
     if (nextTag == "COMBAT_ORDERS") {
         require(current, "Schema 14 section in an older save");

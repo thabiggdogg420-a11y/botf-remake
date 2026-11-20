@@ -603,6 +603,10 @@ struct GameState : EmpireState {
     // player's seat, the player's elimination does not end the campaign, and the campaign ends when one empire is left or
     // any empire meets a victory condition (the player's own domination test applied to every empire). Rules are unchanged.
     bool observerMode = false;
+    // P1 (Simon's yes, 20 Nov 2026): a diplomatic win must hold for DiplomaticVictoryHoldTurns consecutive turns. Each entry is
+    // (empire id, consecutive turns the empire has met every diplomatic condition), ascending id, only while the count is >= 1.
+    // Saved as the optional DIPLOMATIC_HOLD section (schema 25, written only when non-empty).
+    std::vector<std::pair<int, int>> diplomaticHold;
     Ruleset ruleset = Ruleset::Prototype;
     int lastRandomEventTurn = 0;
     bool advancedRulesEnabled = false; // Schema 4-9 games retain their prior combat/diplomacy behavior.

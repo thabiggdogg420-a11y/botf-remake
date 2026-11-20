@@ -1588,6 +1588,32 @@ void testAiDiplomacyPlanner() {
     for (const auto& i : peace) suesForPeace |= i.target.id == 2 && i.treatyType == TreatyType::Peace;
     DIPLOMACY_ASSERT(suesForPeace, "The losing side proposes peace");
 
+    // P3 (Simon's yes, 20 Nov 2026): the AI finishes its wars. The Klingons hold 8 worlds to the Romulans' 2 and are far stronger:
+    // they offer no peace however long the war, and they refuse the Romulans' plea. With 4 Romulan worlds the old rules hold.
+    struct Counted : SimpleDiplomacyContext {
+        std::map<int, int> colonies;
+        int colonyCount(ParticipantId p) const override { auto it = colonies.find(p.id); return it == colonies.end() ? -1 : it->second; }
+    };
+    Counted finish;
+    static_cast<SimpleDiplomacyContext&>(finish) = war;
+    finish.setPower(ParticipantId::major(2), 300, 100);
+    finish.setTrust(ParticipantId::major(2), ParticipantId::major(3), 90);
+    finish.setWarDuration(ParticipantId::major(2), ParticipantId::major(3), 200);
+    finish.colonies = {{2, 8}, {3, 2}};
+    DIPLOMACY_ASSERT(finishingWar(finish, ParticipantId::major(2), ParticipantId::major(3)), "Klingons are finishing the Romulans");
+    DIPLOMACY_ASSERT(!finishingWar(finish, ParticipantId::major(3), ParticipantId::major(2)), "The Romulans are not finishing anyone");
+    for (const auto& i : planAiDiplomacy(state, finish, {2}, 7))
+        DIPLOMACY_ASSERT(!(i.target.id == 3 && i.treatyType == TreatyType::Peace), "A finishing AI offers no peace");
+    Proposal plea;
+    plea.id = 77; plea.proposer = ParticipantId::major(3); plea.target = ParticipantId::major(2);
+    plea.treatyType = TreatyType::Peace; plea.tone = DiplomaticTone::Cordial;
+    DIPLOMACY_ASSERT(evaluateAiProposal(state, finish, plea, 7, MajorPersonality::Klingon).decision != AiDecision::Accept, "A finishing AI refuses peace");
+    finish.colonies[3] = 4;
+    DIPLOMACY_ASSERT(!finishingWar(finish, ParticipantId::major(2), ParticipantId::major(3)), "Four worlds left: not a finishing war");
+    bool offers = false;
+    for (const auto& i : planAiDiplomacy(state, finish, {2}, 7)) offers |= i.target.id == 3 && i.treatyType == TreatyType::Peace;
+    DIPLOMACY_ASSERT(offers, "Without P3's condition a weary, trusting AI still offers peace");
+
     // Cool-down and refusal back-off.
     for (const auto& i : intents) {
         DIPLOMACY_ASSERT(DiplomacyEngine::submitProposal(state, ctx, i.proposer, i.target, i.treatyType, i.duration, i.tone,

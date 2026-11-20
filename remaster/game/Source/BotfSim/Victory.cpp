@@ -98,6 +98,9 @@ void resolveMegaprojectLosses(GameState& next, TurnReport& report) {
 // bloc (hold more population than any of its allies), so one bloc has one winner.
 constexpr int DiplomaticVictoryEarliestTurn = 150;
 constexpr int DiplomaticVictoryMinimumPartners = 2;
+// P1 (Simon's yes, 20 Nov 2026; BALANCE-PROPOSALS-F5.md): the bloc must meet every condition for this many consecutive turns
+// before it wins. In the F5 soaks 21 of 27 AI diplomatic wins came on turn 150 or 151, the rule's first legal turn.
+constexpr int DiplomaticVictoryHoldTurns = 10;
 bool diplomaticSupermajority(const diplomacy::DiplomaticVictoryStatus& bloc) {
     return bloc.galaxyPopulation > 0 && bloc.blocPopulation * 3 >= bloc.galaxyPopulation * 2;
 }
@@ -114,11 +117,26 @@ bool leadsBloc(const GameState& state, int empireId, const diplomacy::Diplomatic
     }
     return true;
 }
-bool diplomaticVictoryClaimed(const GameState& state, int empireId) {
+bool diplomaticConditionsMet(const GameState& state, int empireId) {
     if (state.turn < DiplomaticVictoryEarliestTurn || !diplomaticVictoryAchieved(state, empireId)) return false;
     const auto bloc = diplomaticVictoryStatus(state, empireId);
     const auto partners = static_cast<int>(bloc.allies.size() + bloc.memberMinors.size());
     return partners >= DiplomaticVictoryMinimumPartners && diplomaticSupermajority(bloc) && leadsBloc(state, empireId, bloc);
+}
+int diplomaticHoldTurns(const GameState& state, int empireId) {
+    for (const auto& [id, turns] : state.diplomaticHold) if (id == empireId) return turns;
+    return 0;
+}
+bool diplomaticVictoryClaimed(const GameState& state, int empireId) {
+    return diplomaticHoldTurns(state, empireId) >= DiplomaticVictoryHoldTurns && diplomaticConditionsMet(state, empireId);
+}
+// Once a turn, before the victory checks: an empire meeting every condition adds a turn to its hold; any other loses it.
+void updateDiplomaticHold(GameState& next) {
+    std::vector<std::pair<int, int>> held;
+    for (int id : internal::activeEmpires(next))
+        if (diplomaticConditionsMet(next, id)) held.emplace_back(id, diplomaticHoldTurns(next, id) + 1);
+    std::sort(held.begin(), held.end());
+    next.diplomaticHold = std::move(held);
 }
 
 // Schema 25: the vanilla vendetta victory. An empire wins by eliminating both of its designated racial rivals (scenarios::vendettaRivals),
@@ -143,6 +161,7 @@ bool vendettaClaimed(const GameState& state, int empireId) {
 
 void evaluateVictory(GameState& next, TurnReport& report) {
     if (!next.rules.alternativeVictories || next.outcome != CampaignOutcome::Ongoing) return;
+    updateDiplomaticHold(next);
     const int cost = megaprojectIndustryCost(next);
     int winner = 0;
     VictoryCondition how = VictoryCondition::Scientific;
@@ -310,7 +329,9 @@ std::vector<VictoryProgress> victoryProgress(const GameState& state, int empireI
             std::to_string(bloc.galaxyPopulation) + " galactic population with " + std::to_string(partners) +
             " partner(s). Victory needs two-thirds of the population, at least " +
             std::to_string(gameplay::DiplomaticVictoryMinimumPartners) + " allied empires or member races, the largest population "
-            "among the allies, and turn " + std::to_string(gameplay::DiplomaticVictoryEarliestTurn) + " or later.";
+            "among the allies, and turn " + std::to_string(gameplay::DiplomaticVictoryEarliestTurn) + " or later, all held for " +
+            std::to_string(gameplay::DiplomaticVictoryHoldTurns) + " turns in a row (held " +
+            std::to_string(gameplay::diplomaticHoldTurns(state, empireId)) + ").";
     } else {
         diplomacyProgress.percent = 0;
         diplomacyProgress.explanation = "Disabled by the Classic ruleset.";

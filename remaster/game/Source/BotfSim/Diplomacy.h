@@ -493,7 +493,25 @@ public:
     // neighbour will neither offer nor accept a cooperation treaty with it. Standalone harnesses keep the old rules (false, 0).
     virtual bool rivalryEnabled() const { return false; }
     virtual int rivalryPressure(ParticipantId, ParticipantId) const { return 0; }
+    // P3 (Simon's yes, 20 Nov 2026): colonies a major holds, or -1 when the context does not know (standalone harnesses).
+    virtual int colonyCount(ParticipantId) const { return -1; }
 };
+
+// P3 (Simon's yes, 20 Nov 2026; BALANCE-PROPOSALS-F5.md): the AI finishes its wars. `self` is finishing `other` when they are at
+// war, `other` is down to its last 1 to 3 colonies, `self` holds at least twice as many and at least 6 (so the opening turns,
+// when every empire has a few worlds, are untouched), and `self`'s fleets are at least half again
+// as strong. A finishing AI neither offers nor accepts peace with that rival, and its task forces go for the rival's last worlds
+// first (Simulation.cpp). In the F5 soaks no war ever ran on to one survivor, so conquest was never reached.
+inline constexpr int FinishWarMaxColonies = 3;
+inline constexpr int FinishWarMinOwnColonies = 6;
+inline bool finishingWar(const DiplomacyContext& ctx, ParticipantId self, ParticipantId other) {
+    if (self.isMinor || other.isMinor || !ctx.isAtWar(self, other)) return false;
+    const int theirs = ctx.colonyCount(other), ours = ctx.colonyCount(self);
+    if (theirs < 1 || theirs > FinishWarMaxColonies || ours < 2 * theirs || ours < FinishWarMinOwnColonies) return false;
+    const int64_t a = ctx.militaryPower(self), b = ctx.militaryPower(other);
+    return a > 0 && a * 2 >= b * 3;
+}
+
 
 // Default in-memory context for standalone execution and tests
 class SimpleDiplomacyContext : public DiplomacyContext {
@@ -1341,6 +1359,10 @@ inline AiDecisionResult evaluateAiProposal(
     switch (p.treatyType) {
         case TreatyType::Peace: {
             res.threshold = th.peace;
+            if (!ctx.isHuman(p.target) && finishingWar(ctx, p.target, p.proposer)) {   // P3: the AI finishes its wars
+                score -= 200;
+                expl << "- Finishing the war: the rival is down to its last worlds (-200) ";
+            }
             const int weariness = std::min(20, std::max(0, ctx.warDurationTurns(p.proposer, p.target)) / 2);
             if (weariness > 0) {
                 score += weariness;
@@ -1627,6 +1649,7 @@ inline std::vector<AiDiplomaticIntent> planAiDiplomacy(
                 static_cast<uint64_t>(selfId) * 6151ULL + static_cast<uint64_t>(otherId) * 97ULL, 3);
 
             if (ctx.isAtWar(self, other)) {
+                if (finishingWar(ctx, self, other)) continue;   // P3: no peace while the rival is nearly finished
                 const int duration = ctx.warDurationTurns(self, other);
                 const bool losing = ratio < 80;
                 const bool weary = duration >= 3 * prof.minWarTurns;

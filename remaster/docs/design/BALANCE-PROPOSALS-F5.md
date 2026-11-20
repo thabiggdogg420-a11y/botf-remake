@@ -81,3 +81,52 @@ alternative victories, so a Classic campaign between AIs does not end.
   for a 60% rule. Simon's call whether it should come sooner.
 - N2. The F5 exit gate ("a full campaign on each victory type without a blocker") is met for diplomatic, scientific, vendetta
   and domination by the AI alone. Conquest needs P3, or a human-played campaign, to show.
+
+## Round 3 (20 Nov 2026): P1-P3 applied on Simon's "Yes"
+Same harness as round 2 (observer mode, 9 presets x 8 seeds, 400 turns). Before: `f5-balance\r4-before\` (the code before P1-P3,
+identical to round 2). After: `f5-balance\r4-after\`. Breakdown runs for P2: `f5-balance\r4-gains\` (`BOTF_SOAK_GAINS=1`).
+
+### What was changed
+- **P1, diplomatic win holds 10 turns.** `Victory.cpp`: the bloc must meet every diplomatic condition for 10 consecutive turns
+  (`DiplomaticVictoryHoldTurns`). The count is per empire in `GameState::diplomaticHold`, saved as the optional
+  `DIPLOMATIC_HOLD` section (schema 25, written only while a hold runs, so every other save is byte-identical). The victory
+  explanation shows the turns held. Test: BalanceTests "P1" (seed 7000: first hold turn 152, the save round-trips mid-hold).
+- **P2, the Ferengi lead: cause found, then fixed.** The breakdown (colony gains by source, war turns, what every colony's
+  build queue held each turn) showed the Ferengi built 2-3x the colony ships of anyone else, with the same war time. The
+  reason: the vanilla race academy (Starfleet Academy, Tactical College, Naval Academy, Central Command; 5,000 industry). The
+  AI's one-per-empire limit counted only finished academies and the "already queued" check looked at the one colony, so
+  every yard in the empire started the same academy at once: the academy filled 46-63% of all AI colony build slots in
+  Remastered. The Ferengi have no academy record, so their yards built colony ships instead. Fix (`Structures.h aiAcademy`):
+  one academy project per empire, at its strongest yard. Not a number change; a bug in the AI's build planner.
+  BalanceTests' academy check now runs in observer mode, because the passive-seat campaigns it used end at turn 85-110,
+  before one 5,000-industry project can finish (with every yard building it, one used to finish by chance).
+- **P3, the AI finishes its wars.** `Diplomacy.h finishingWar`: at war, the rival holds 1-3 colonies, the AI holds at least
+  twice as many and at least 6, and its fleets are at least 1.5x as strong. Then the AI offers no peace, refuses the
+  rival's plea (-200 on the evaluation), and its task forces count the rival's worlds 8 squares nearer when picking a
+  target. Test: DiplomacyTests (no offer, refusal, and the old behaviour back at 4 rival colonies).
+
+### Endings, before and after (72 campaigns, 400 turns)
+| | Before | After |
+|---|---|---|
+| Diplomatic | 27 (20 on turn 150, 1 on 151) | 25 (9 on turn 159, the first legal turn now; median 179) |
+| Domination | 3 (turn 311, 395, 399) | 3 (turn 291, 299, 341) |
+| Scientific | 1 (turn 391) | 1 (turn 331) |
+| Vendetta | 1 (turn 122) | 2 (turn 114, 132) |
+| Conquest | 0 | **0** |
+| Turn cap | 40 | 41 |
+| Diplomatic winners | Ferengi 13, Federation 11, Cardassian, Klingon, Romulan 1 each | Federation 15, Ferengi 9, Romulan 1 |
+| Empires eliminated | 18 | 25 |
+
+Average peak colonies: Remastered Ferengi 14.1 -> 15.2, Federation 10.1 -> 14.2, Romulan 6.9 -> 7.2, Cardassian 5.2 -> 7.0,
+Klingon 5.1 -> 7.5. Balance of Power Ferengi 36.4 -> 31.2, Federation 18.6 -> 19.2, Romulan 18.4 -> 19.2, Cardassian 9.0 ->
+13.0, Klingon 8.2 -> 10.9. At turn 150 in Balance of Power the Ferengi no longer lead (Federation 14.2, Romulan 14.2, Ferengi
+12.8); they pull ahead later, when the warlike empires are fighting each other and the Ferengi are left alone (lowest losses
+in every run).
+
+### What it says
+- P1 works: no win on the first legal turn by a bloc that cannot hold it; the spread of diplomatic wins runs from turn 159 to 364.
+- P2 works for the cause found; what remains of the Ferengi lead is their peaceful personality (fewest losses), not a bug.
+- **Conquest still does not happen between AIs.** P3 raised eliminations by 39% (18 to 25), but no campaign ran down to one
+  empire in 400 turns. A conquest ending needs every rival gone; the AIs finish the nearly beaten, but the strong ones still
+  balance each other until the cap or a diplomatic win. The conquest victory remains reachable by a human player. Whether
+  the AI should be pushed further (for example, peace terms that hand over worlds, or alliances breaking late) is Simon's call.

@@ -2,7 +2,7 @@
 
 Outranked by: Simon's words in `AI_stuff\standing\simon\` and `botf-rulings.md`, then MASTER-PLAN.md §7 (decision 4, 8 Nov 2026: private multiplayer, yes) and FINISH-PLAN.md F5 ("Hotseat then LAN multiplayer (private)").
 
-Status: design only, nothing built (Barclay, 20 Nov 2026). The build starts when Simon has read this. Questions for him are at the end.
+Status: design settled 20 Nov 2026. Simon: "design it appropriately"; the lead made the calls below on that word (see "Decisions"). Build order: desktop hotseat first, then LAN.
 
 ## What exists that helps
 - The core is deterministic. Every turn ends in a fingerprint (`botf::fingerprint`) that is the same on native and wasm. Saves round-trip exactly and a reloaded campaign continues identically (SoakTests checks both). A pack's id and checksum are in every save and in the fingerprint, so two peers on different packs disagree straight away (DATA-FORMAT.md).
@@ -34,7 +34,7 @@ Each human on their own PC, same rules as hotseat.
 2. Hotseat in the client: setup (choose which seats are human), hand-over card, per-human briefing, saves. Proof: a three-human hotseat campaign played to a victory in a real window, with the hand-over shown on every turn.
 3. LAN: lockstep host and client, fingerprint check each turn, join from a save. Proof: two instances on this PC (one host, one client) playing 20 turns with matching fingerprints, then a forced desync caught.
 
-## Questions for Simon
-1. Hotseat: should two humans be allowed in the same alliance and share a diplomatic victory, or must every human win alone?
-2. LAN: desktop only (as above), or is browser-to-browser play over the internet wanted later? That would need a relay and is a different job.
-3. Any turn timer by default, or off unless the host sets one?
+## Decisions (20 Nov 2026; Simon "design it appropriately", calls by the lead)
+1. Allies may share a diplomatic victory. When the winning bloc holds two or more humans, every human in it wins (the outcome screen names the bloc); humans outside it lose. A human may still win alone by any other condition. The diplomatic win must hold for 10 turns in a row (P1, Simon's yes the same day).
+2. Desktop hotseat first, then LAN, both lockstep on commands with a fingerprint check after every turn (above). Browser online play is a later, separate job (it needs WebRTC or a relay) and is not part of this one.
+3. The turn timer is off by default. The host can set one (per-turn seconds) in the game setup; when it runs out, that human's turn ends with the orders already given.

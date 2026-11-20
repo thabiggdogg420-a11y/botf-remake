@@ -429,12 +429,51 @@ int main() {
         content::installBase();
     }, passed);
 
+    run("P1: a diplomatic win holds for 10 turns in a row, and the hold survives a save", [] {
+        content::installBase();
+        // Remastered seed 7000 with every seat played (observer mode): before P1 the Ferengi won diplomatically on turn 150.
+        auto s = game("remastered", 7000);
+        s.observerMode = true;
+        int firstHold = 0, winTurn = 0, maxHold = 0;
+        bool roundTrip = false;
+        for (int t = 0; t < 320 && s.outcome == CampaignOutcome::Ongoing; ++t) {
+            advance(s);
+            for (const auto& [id, turns] : s.diplomaticHold) {
+                maxHold = std::max(maxHold, turns);
+                if (!firstHold) firstHold = s.turn;
+                if (turns == 5 && !roundTrip) {   // mid-hold: the save carries it and the reloaded game is the same game
+                    const auto text = serialize(s);
+                    check(text.find("DIPLOMATIC_HOLD ") != std::string::npos, "the save carries the hold");
+                    auto back = deserialize(text);
+                    back.observerMode = true;
+                    check(back.diplomaticHold == s.diplomaticHold && fingerprint(back) == fingerprint(s), "the hold round-trips");
+                    roundTrip = true;
+                }
+            }
+            if (s.outcome != CampaignOutcome::Ongoing) winTurn = s.turn;
+        }
+        std::cout << "  first hold turn " << firstHold << ", longest hold " << maxHold << ", ended turn " << winTurn << std::endl;
+        check(firstHold >= 150, "no hold before turn 150");
+        if (winTurn && s.winnerEmpire) {
+            bool diplomatic = false;
+            for (const auto& v : victoryProgress(s, s.winnerEmpire)) diplomatic |= v.condition == VictoryCondition::Diplomatic && v.achieved;
+            if (diplomatic) check(winTurn >= firstHold + 9 && maxHold >= 10, "the diplomatic win came after 10 held turns");
+        }
+        check(roundTrip, "some bloc held for 5 turns (the save check ran)");
+        GameState fresh = game("remastered", 7000);
+        check(serialize(fresh).find("DIPLOMATIC_HOLD") == std::string::npos, "a new game's save has no hold section");
+        content::installBase();
+    }, passed);
     run("AI vanilla rules: rivals build their race academy and use intercept and raid orders when crew experience is on", [] {
         content::installBase();
         std::set<int> academyOwners; int orders = 0, intercept = 0, raid = 0;
         for (std::uint64_t seed : {1999ULL, 7ULL, 42ULL}) {
             auto s = game("remastered", seed);
             check(s.rules.crewExperience && s.rules.interceptOrders && s.rules.raidOrders, "the vanilla rules are on by default");
+            // Observer mode (soaks only, F5): the AI plays the player's seat too, so the campaign runs its 160 turns. With a passive seat
+            // it ended at turn 85-110 when the seat fell, before a 5,000-industry academy could finish (P2, 20 Nov 2026: one academy
+            // project per empire, at its strongest yard, instead of every yard building the same academy at once).
+            s.observerMode = true;
             for (int t = 0; t < 160 && s.outcome == CampaignOutcome::Ongoing; ++t) {
                 advance(s);
                 for (const auto& f : s.fleets) if (f.ownerId != s.playerEmpire && f.order != 0) { ++orders; (f.order == 1 ? intercept : raid)++; }

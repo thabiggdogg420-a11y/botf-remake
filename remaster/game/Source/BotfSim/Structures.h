@@ -226,11 +226,25 @@ inline int aiNext(const GameState& s, const Colony& c, int industry) {
 }
 
 // Schema 24 (BALANCE-AI.md section 4): the AI's own race academy, when crew experience is on. The record id of the vanilla academy this
-// empire may build at the colony (one per empire, a yard, a treasury and an industry that can pay for it in 150 turns), or -1.
+// empire may build at the colony (one per empire, a yard, a treasury and an industry that can pay for it in AiAcademyMaxTurns turns), or -1.
+inline constexpr int AiAcademyMaxTurns = 150;
 inline int aiAcademy(const GameState& s, const Colony& c, int industry) {
     if (!s.rules.crewExperience || c.shipyards == 0 || industry <= 0 || empire(s, c.ownerId).credits < 300) return -1;
+    // P2: the one project goes to the empire's strongest yard (most industry; ties: the lower system id), so it finishes.
+    for (const auto& o : s.colonies) {
+        if (o.ownerId != c.ownerId || o.shipyards == 0 || o.systemId == c.systemId) continue;
+        const int theirs = economy(s, o).industry;
+        if (theirs > industry || (theirs == industry && o.systemId < c.systemId)) return -1;
+    }
     for (const auto& r : content::tables::buildings()) {
-        if (!isVanillaAcademy(r) || !allowedFor(r, c.ownerId) || r.industryCost > 150 * industry) continue;
+        if (!isVanillaAcademy(r) || !allowedFor(r, c.ownerId) || r.industryCost > AiAcademyMaxTurns * industry) continue;
+        // P2 (Simon's yes, 20 Nov 2026): one academy project per empire. The limit counted only finished academies and the "queued"
+        // check looked at this colony alone, so every yard in the empire started the same academy at once (in the F5 soaks the race
+        // academies filled 46-63% of all AI colony build slots; the Ferengi, the one race with no academy, spent that on colony ships
+        // and ran away with the galaxy).
+        if (std::any_of(s.colonies.begin(), s.colonies.end(), [&](const Colony& o) {
+                return o.ownerId == c.ownerId && std::any_of(o.queue.begin(), o.queue.end(), [&](const Construction& q) {
+                    return q.product == Building::Structure && recordIdOf(q.referenceId) == r.id; }); })) continue;
         if (blocker(s, c, r.id).empty()) return r.id;
     }
     return -1;

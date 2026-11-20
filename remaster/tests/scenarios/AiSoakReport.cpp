@@ -35,6 +35,9 @@ struct EmpireTrack {
     int best[5] = {0, 0, 0, 0, 0};
     int first[5] = {0, 0, 0, 0, 0};
     int colonies = 0, peakColonies = 0, eliminatedTurn = 0;
+    // P2 breakdown (BOTF_SOAK_GAINS): how the empire's colonies came, and its economy at turn 100.
+    std::array<int, 14> queueFront{}; std::map<int, int> structureFront; int warTurns = 0, warsDeclaredOn = 0, settled = 0, joined = 0, taken = 0, lost = 0, colonyShipsSeen = 0, members100 = 0, colonies100 = 0, pop100 = 0;
+    long long credits100 = 0;
 };
 
 const char* condName(int c) {
@@ -96,6 +99,11 @@ int main(int argc, char** argv) {
             for (int id : internal::activeEmpires(state)) { track[id].id = id; track[id].name = empireName(id); }
             std::string ending;
             double slowestTurn = 0;
+            const bool gains = std::getenv("BOTF_SOAK_GAINS") != nullptr;
+            const int snapTurn = std::getenv("BOTF_SOAK_SNAP") ? std::atoi(std::getenv("BOTF_SOAK_SNAP")) : 100;
+            std::map<int, int> ownerAt;   // system id -> colony owner last turn
+            std::set<int> shipsSeen;
+            for (const auto& c : state.colonies) ownerAt[c.systemId] = c.ownerId;
             try {
                 for (int t = 0; t < turns && state.outcome == CampaignOutcome::Ongoing; ++t) {
                     if (const char* dump = std::getenv("BOTF_SOAK_DUMP_TURN"); dump && std::atoi(dump) == state.turn) {
@@ -113,6 +121,34 @@ int main(int argc, char** argv) {
                                   << state.fleets.size() << ", colonies " << state.colonies.size() << ", stations "
                                   << state.stations.size() << ", events this turn " << report.events.size() << std::endl;
                         throw std::runtime_error("runaway");
+                    }
+                    if (gains) {
+                        std::map<int, int> now;
+                        for (const auto& c : state.colonies) now[c.systemId] = c.ownerId;
+                        for (const auto& [sys, owner] : now) {
+                            const auto was = ownerAt.find(sys);
+                            const bool minorWorld = std::any_of(state.minors.begin(), state.minors.end(), [&](const Minor& m) { return m.systemId == sys; });
+                            if (was == ownerAt.end()) { if (track.count(owner)) ++(minorWorld ? track[owner].joined : track[owner].settled); }
+                            else if (was->second != owner) { if (track.count(owner)) ++track[owner].taken; if (track.count(was->second)) ++track[was->second].lost; }
+                        }
+                        for (const auto& [sys, owner] : ownerAt) if (!now.count(sys) && track.count(owner)) ++track[owner].lost;
+                        ownerAt = std::move(now);
+                        for (const auto& f : state.fleets)
+                            if (f.colonyShip && track.count(f.ownerId) && shipsSeen.insert(f.id).second) ++track[f.ownerId].colonyShipsSeen;
+                        for (auto& [id, tr] : track)
+                            if (std::any_of(state.majorRelations.begin(), state.majorRelations.end(), [&, id = id](const MajorRelation& r) {
+                                    return r.atWar && (r.first == id || r.second == id); })) ++tr.warTurns;
+                        for (const auto& c : state.colonies)
+                            if (track.count(c.ownerId) && !c.queue.empty()) {
+                                ++track[c.ownerId].queueFront[std::clamp(static_cast<int>(c.queue.front().product), 0, 13)];
+                                if (c.queue.front().product == Building::Structure) ++track[c.ownerId].structureFront[c.queue.front().referenceId];
+                            }
+                        if (state.turn == snapTurn)
+                            for (auto& [id, tr] : track) {
+                                tr.credits100 = empire(state, id).credits;
+                                for (const auto& c : state.colonies) if (c.ownerId == id) { ++tr.colonies100; tr.pop100 += c.population; }
+                                for (const auto& m : state.minors) tr.members100 += m.memberOf == id;
+                            }
                     }
                     if (state.turn % 50 == 0) std::cout << "TICK " << p->id << " seed " << setup.seed << " turn " << state.turn << " fleets " << state.fleets.size() << std::endl;
                     for (auto& [id, tr] : track) {
@@ -162,6 +198,14 @@ int main(int argc, char** argv) {
                     if (tr.first[c] && (id != state.playerEmpire || state.observerMode)) firstReach[tr.name + " " + condName(c)].push_back(tr.first[c]);
                 }
                 std::cout << std::endl;
+                if (gains)
+                    std::cout << "GAINS " << p->id << " seed " << setup.seed << " " << tr.name << " settled " << tr.settled << " joined " << tr.joined << " taken " << tr.taken
+                              << " lost " << tr.lost << " war-turns " << tr.warTurns << " colony-ships " << tr.colonyShipsSeen << " t" << snapTurn << ": colonies " << tr.colonies100 << " pop "
+                              << tr.pop100 << " credits " << tr.credits100 << " member-minors " << tr.members100 << " queue-front";
+                    for (int b = 0; b < 14; ++b) std::cout << ' ' << tr.queueFront[b];
+                    std::cout << " structure-refs";
+                    for (const auto& [ref, n] : tr.structureFront) std::cout << ' ' << ref << ':' << n;
+                    std::cout << std::endl;
             }
         }
         const double secs = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
