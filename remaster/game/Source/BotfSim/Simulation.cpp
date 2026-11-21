@@ -2298,7 +2298,9 @@ void planAiWarDeclarations(GameState& s, int ownerId) {
             in.targetBetrayals = ds.betrayals(other);
         }
         in.turnsSinceTransition = s.turn - lastTransition;
-        in.activeWars = std::max(0, activeWars - (other == s.playerEmpire && modern ? 1 : 0)); // Rivalry: one front against the human is always open to it
+        // Rivalry: one front against the human is always open to it. Not in observer mode (round 5, 22 Nov 2026): there the seat is
+        // an AI, and the free front let every AI open a war on it without counting it. Soak-only; it did not change the Round 7 (a) result.
+        in.activeWars = std::max(0, activeWars - (other == s.playerEmpire && modern && !s.observerMode ? 1 : 0));
         in.aggressorPower = ctx.militaryPower(diplomacy::ParticipantId::major(ownerId));
         if (ownerId != s.playerEmpire) in.aggressorPower = in.aggressorPower * difficultyProfile(s.galaxy.difficulty).aiWarConfidencePct / 100;
         in.targetPower = blocMilitaryPower(s, ctx, other, ownerId);

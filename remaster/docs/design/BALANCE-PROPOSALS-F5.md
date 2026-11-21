@@ -334,3 +334,58 @@ To answer (a) properly the next step is a measurement tool, not a rule: a script
 would expand fast, build warships and troop transports from turn ~40, gather one strike force, beat the nearest rival's
 fleet, then invade its worlds in turn, and keep peace with everyone else. Its conquest turn on medium and large is the
 number to set against 200-500. If that comes out far outside the range, the sized proposal follows from it.
+
+## Round 8 (22 Nov 2026, Barclay): a scripted strong player, and why its conquest runs long
+Answers Round 7 (a). Nothing below is applied; C11 waits for Simon's yes or no.
+
+### The tool
+`BotfAiSoak` with `BOTF_SOAK_SCRIPT=1` seats a scripted aggressive player in the player's seat (Federation, Classic) instead of
+the observer AI. It plays through `submit()` like the client: fast expansion (rushed colony ships, every minor courted), a
+refinery on every dilithium deposit (one shipbuilding slot each), warships and transports from turn 40, one strike force of 6
+that gathers, then war on the nearest contacted rival; it beats that rival's armed stacks, then lands transports together (C1)
+on its nearest world, garrisons what it takes, and offers peace (with credits) to everyone else. Then the next rival. The
+`SCRIPTEND` line gives the end turn, rivals' elimination turns, worlds taken and lost by empire, and minor worlds that seceded.
+Raw output: `Documents\ChatGPT\rc-captures\soak5\r5-script-*.txt`, `r5-exp-nosecede-*.txt`.
+
+### Result: domination off, Normal rivals, 4 seeds, 1,200-turn cap
+| Run | Medium: conquest turn per seed | Medium median | Large: conquest turn per seed | Large median |
+|---|---|---|---|---|
+| Script, final (v4) | 316, cap, cap, player eliminated t829 | over 1,200 | 264, 413, 441, cap | 427 |
+| Script, earlier version (v2) | 269, 361, 871, 1,184 | 616 | 413, 620, 835, cap | 727 |
+| v4 + soak-only "no secession" switch (removed) | 206, 253, 270, 467 | 262 | 236, 267, 314, 387 | 290 |
+The script wins inside 200-500 on its good seeds (best 206-441), but half its campaigns run past 800 turns or hit the cap.
+Pooled over both script versions the medians are about 1,030 (medium) and 530 (large): outside the target.
+
+### Cause: conquered minor worlds secede, and the last rival courts them back
+The slow campaigns all stall on the last one or two rivals. Seed 7131 medium (v4), traced: the Ferengi were the last rival
+from turn 225 with 3 worlds. By turn 475 the script had taken 38 worlds from them and lost only 6 to them, yet they held 11.
+In the same span 49 of the script's worlds left its empire without being invaded: minor worlds it had conquered seceded.
+Why (Simulation.cpp `resolveMinorDynamics`): an invasion makes the minor a member of the conqueror (`memberOf`) with its
+attitude unchanged. Every 5 turns a member loses 2 loyalty, regains 2 only at morale 70 or more (a conquered world starts at
+35), and loses 2 more per war past the first. A player at war with three AIs loses 6-8 a review, so a conquered minor drops
+below 30 within a few reviews and secedes. It is then independent, and the rival with the best minor diplomacy (the Ferengi,
+here) gifts it back into membership. The front never closes. With the switch that stops secession, all 8 campaigns end in
+conquest at turns 206-467, and the script loses 0-9 worlds to anyone in a campaign.
+
+### C11 (proposed, not applied): a conquered minor world does not secede
+A minor world taken by invasion is a subjugated world, not a member: the loyalty review and secession skip it. Minors that
+joined by treaty keep today's rule (secede below 30). Size: the soak switch turned off all secession, so it is the upper bound
+of C11: conquest medians 262 (medium) and 290 (large), inside 200-500. C11 keeps treaty members' secession, so the real
+figure would sit at or slightly above that. Build: a `subjugated` flag on the minor (save schema bump), set on capture,
+cleared if it later joins by treaty. Side effect to check before landing: AI-AI conquests also stop leaking, so the AI galaxy
+narrows faster (Round 7 (b) churn should be re-measured).
+
+### Round 7 (a) answered: why the observer AI lost in the player seat
+Weak AI, not a player-seat bug, and the handicap is applied. The handicap scales every colony not owned by the player seat
+(Simulation.cpp, rival output by difficulty), so it reached all four rivals. The Klingon AI does as badly when it is not in
+the seat: in the Round 7 AI-only Classic soak (Federation in the seat) the Klingons were out at turns 402, 163 and 257 and held
+14 worlds in the fourth seed; in the seat, out at 1,014, 239 and 388 and 10 worlds. One seat-only asymmetry was found and
+fixed: each AI counted a war on the player seat as a free front even in observer mode (`planAiWarDeclarations`), so the seat
+could be piled on. The fix is observer-only. Re-run (medium, Normal, Klingon seat): out at 851, 245 and 388, 2 worlds in the
+fourth; no material change, as expected if the cause is the AI itself.
+
+### Also seen (not proposed)
+- The player is at war with most AIs from about turn 100 (the rivalry layer opens wars on the human, and peace is accepted only
+  at trust 20 or more). "Keep peace with everyone else" was not achievable; the script wins anyway once C11-style leaking stops.
+- A negative treasury seems to cost nothing: the script ran to -2.5 million credits, and I found no code that penalises debt
+  (only rushing, gifts and credit offers stop). A rule question for Simon, not sized here.
