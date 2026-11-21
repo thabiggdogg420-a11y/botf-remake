@@ -336,7 +336,7 @@ fleet, then invade its worlds in turn, and keep peace with everyone else. Its co
 number to set against 200-500. If that comes out far outside the range, the sized proposal follows from it.
 
 ## Round 8 (22 Nov 2026, Barclay): a scripted strong player, and why its conquest runs long
-Answers Round 7 (a). Nothing below is applied; C11 waits for Simon's yes or no.
+Answers Round 7 (a). C11 and the debt rule (D1) were decided 22 Nov 2026 and applied in Round 9.
 
 ### The tool
 `BotfAiSoak` with `BOTF_SOAK_SCRIPT=1` seats a scripted aggressive player in the player's seat (Federation, Classic) instead of
@@ -389,3 +389,35 @@ fourth; no material change, as expected if the cause is the AI itself.
   at trust 20 or more). "Keep peace with everyone else" was not achievable; the script wins anyway once C11-style leaking stops.
 - A negative treasury seems to cost nothing: the script ran to -2.5 million credits, and I found no code that penalises debt
   (only rushing, gifts and credit offers stop). A rule question for Simon, not sized here.
+
+## Round 9 (22 Nov 2026, Barclay): C11 and D1 applied
+Decided by the coordinator on Simon's delegation (botf-rulings.md, 22 Nov 2026).
+- **C11:** a minor world taken by invasion (fleet invasion, ground assault, or membership that follows a capture) is
+  `subjugated`: it skips secession. Treaty-joined members keep the old rule. Save schema 26 (`remaster-26`) adds an optional
+  `SUBJUGATED <n> <ids>` section. Schema 25 and older saves migrate on load: a member with no friendship with its holder
+  counts as conquered, one with a friendship as treaty-joined. (The diplomacy engine's membership owner mirrors `memberOf`
+  every turn, so it cannot tell the two apart.)
+- **D1:** with a negative treasury nothing can be bought with credits: rush-buy (ships, colony ships, buildings), gifts,
+  credit offers in proposals, flagships, station upgrades, megaprojects and programs. The UI shows the reason "The treasury
+  is in debt: nothing can be bought with credits until it is back above zero". Every colony's morale target drops to 30
+  while in debt (drift 1 a turn, so a short dip costs little and a long one costs a quarter of output below 50). The player
+  gets an event when the debt starts and every 10 turns after that. An AI in debt queues only farms (on a food deficit) and
+  power plants. The scripted player switches its queue governor to Manual while in debt.
+
+### Re-measured (1,200-turn cap, 4 seeds each, seeds 7000/7131/7262/7393)
+| Run | Per seed | Median |
+|---|---|---|
+| Scripted player, medium, domination off | 577, 220, 291, 312 | 302 |
+| Scripted player, large, domination off | 264, 303, 350, 274 | 289 |
+The scripted player's treasury never went below zero in any of the 8 campaigns (Round 8: -2.5M), with D1 in place.
+Treaty-joined minors still seceded (3-5 per campaign).
+
+AI-only, domination off (churn: worlds changing hands per 100 turns; the longest stretch with no war is the opening peace):
+| Preset | Per 100 turns by seed | Longest no-war | Endings |
+|---|---|---|---|
+| Classic | 5.1, 11.7, 2.8, 7.1 (Round 7: 4.9, 10.1, 7.5, 6.1) | 29-33 | cap 3, Cardassian conquest t811 |
+| Klingon civil war | 16.6, 10.2, 12.8, 13.8 | 29-33 | Federation diplomatic t464/423/509, cap 1 |
+The galaxy stays moving. Seed 7262 Classic dropped from 7.5 to 2.8.
+
+AI-only win types, domination on (Classic): medium has Ferengi domination at t471 and t1016, plus 2 caps; large has Ferengi
+domination at t1089, Cardassian at t642, plus 2 caps.

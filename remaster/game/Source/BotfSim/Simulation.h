@@ -34,9 +34,16 @@ namespace botf {
 // schema 24 (the balance lane) adds the Expert difficulty (GALAXY_SETUP difficulty 5, docs/design/BALANCE-AI.md) and star types (optional STAR_TYPES section,
 // written only while a system has one);
 // schema 22 (the era lane) adds the campaign era (docs/design/ERAS.md; optional ERAS section, written only when the eras rule is on).
-// Schemas 4-24 still load and continue.
-inline constexpr const char* ContentVersion = "remaster-25";
-inline constexpr int SaveVersion = 25;
+// schema 26 (C11) adds the optional SUBJUGATED section: minor worlds taken by invasion, which never secede (written only when one
+// exists). Older saves are migrated on load (see load()).
+// Schemas 4-25 still load and continue.
+inline constexpr const char* ContentVersion = "remaster-26";
+inline constexpr int SaveVersion = 26;
+// D1 (22 Nov 2026): debt costs something, as in the original. With a negative treasury nothing can be bought with credits, and
+// the morale of every colony of that empire drifts down towards DebtMoraleTarget (one point a turn, the normal drift) for as
+// long as the treasury stays negative; below 50 a colony loses a quarter of its industry and research.
+inline constexpr const char* DebtBlocker = "The treasury is in debt: nothing can be bought with credits until it is back above zero";
+inline constexpr int DebtMoraleTarget = 30;
 // Campaign empire ids are race slots: 1 Federation, 2 Klingon, 3 Romulan, 4 Cardassian, 5 Ferengi, 6 Dominion, 7 Borg,
 // 8 Breen. A campaign seats two to eight of them (any subset); per-empire arrays are indexed by id, so they hold nine entries.
 inline constexpr int MaxMajors = 8;
@@ -366,6 +373,9 @@ struct Minor {
     // raceId 0 = legacy minor without roster progression; the other three are then 0.
     int raceId = 0;
     int techLevel = 0, population = 0, progress = 0;
+    // C11 (22 Nov 2026, schema 26): a minor world taken by invasion is subjugated, not a member: it never secedes. Treaty-joined
+    // members keep the loyalty/secession rule. Cleared whenever the minor leaves its empire or joins one by treaty.
+    bool subjugated = false;
 };
 // Schema 15: a captured world waiting for the player's Liberate / Subjugate / Exterminate choice.
 // An undecided choice lapses to Subjugate (the pre-15 behaviour) after AftermathLapseTurns.

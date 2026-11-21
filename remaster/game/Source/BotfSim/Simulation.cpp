@@ -562,6 +562,7 @@ void draftDiplomacy(GameState& s, int owner, int systemId, CommandType type) {
         return o.empireId == owner && o.systemId == systemId;
     }), "An offer to this minor is already pending");
     auto& e = mutableEmpire(s, owner);
+    if (type == CommandType::SendGift) require(mutableEmpire(s, owner).credits >= 0, DebtBlocker);   // D1
     if (type == CommandType::SendGift) { const int cost = minorGiftCost(); require(e.credits >= cost, ("Gift needs " + std::to_string(cost) + " available credits").c_str()); e.credits -= cost; }
     s.diplomacy.push_back({s.nextDiplomacyId++, owner, systemId, s.turn + (type == CommandType::SendGift ? 1 : 0), type});
 }
@@ -916,6 +917,7 @@ void applyDraft(GameState& state) {
                 require(!ctx.isEliminated(target), "That empire has been eliminated");
                 require(ctx.hasContact(proposer, target), "Diplomatic proposal requires first contact");
                 if (command.proposalCreditOffer > 0) {
+                    require(state.credits >= 0, DebtBlocker);   // D1
                     require(state.credits >= command.proposalCreditOffer, "Insufficient credits for proposal offer");
                 }
                 std::string err;
@@ -1270,6 +1272,7 @@ void applyDraft(GameState& state) {
             const int cost = rushCost(state, command.systemId);
             require(cost > 0, "No construction work remaining to rush");
             auto& owner = mutableEmpire(state, state.playerEmpire);
+            require(owner.credits >= 0, DebtBlocker);   // D1: no rush-buy (ships, colony ships, buildings) while in debt
             require(owner.credits >= cost, "Insufficient credits to rush construction");
             owner.credits -= cost;
             it->queue.front().work = constructionCost(it->queue.front(), it->ownerId);
@@ -1615,6 +1618,12 @@ void planRivals(GameState& s) {
             c.researchWorkers = std::min(c.laboratories * 10, remaining / 2);
             c.industryWorkers = std::min(c.factories * 10, remaining - c.researchWorkers);
             if (!c.queue.empty()) continue;
+            if (owner.credits < 0) {   // D1: the AI keeps out of debt; in debt it adds nothing with upkeep (farms and power only)
+                if (economy(s, c).foodDeficit > 0 && c.farms < MaxBuildings) c.queue.push_back(Building::Farm);
+                else if (c.energy < c.factories * 5 + c.laboratories * 5 + 5 + 5 * c.refineries && c.powerPlants < MaxBuildings)
+                    c.queue.push_back(Building::PowerPlant);
+                continue;
+            }
             if (economy(s, c).foodDeficit > 0 && c.farms < MaxBuildings) c.queue.push_back(Building::Farm);
             else if (c.energy < c.factories * 5 + c.laboratories * 5 + 5 + 5 * c.refineries && c.powerPlants < MaxBuildings)
                 c.queue.push_back(Building::PowerPlant);
@@ -2032,7 +2041,7 @@ void resolveDiplomacy(GameState& s, TurnReport& report) {
         }
         if (eligible.empty()) continue;
         const auto winner = eligible[eligible.size() == 1 ? 0 : bounded(s.rngState, eligible.size())];
-        m.memberOf = winner->empireId;
+        m.memberOf = winner->empireId; m.subjugated = false;   // C11: joined by treaty
         Colony colony; colony.systemId = m.systemId; colony.ownerId = m.memberOf;
         colony.population = 30; colony.foodWorkers = 15; colony.industryWorkers = 10; colony.researchWorkers = 5;
         minors::configureJoinedColony(m, colony); // Lane G
@@ -2168,7 +2177,7 @@ void applyDiplomacyOps(GameState& next, const diplomacy::TurnResolutionDelta& de
             int newOwner = op.newOwner;
             auto mIt = std::find_if(next.minors.begin(), next.minors.end(), [minorId](const Minor& m) { return m.systemId == minorId; });
             if (mIt != next.minors.end()) {
-                mIt->memberOf = newOwner;
+                mIt->memberOf = newOwner; mIt->subjugated = false;   // C11: membership by treaty
                 if (!colonyAt(next, minorId)) {
                     Colony colony;
                     colony.systemId = minorId;
@@ -2523,13 +2532,13 @@ void resolveMinorDynamics(GameState& next, TurnReport& report) {
         }
         // Secession of unhappy members.
         const int owner = m.memberOf;
-        if (owner >= 1 && owner <= MaxMajors && m.attitude[owner] < MinorSecessionAttitude) {
+        if (owner >= 1 && owner <= MaxMajors && m.attitude[owner] < MinorSecessionAttitude && !m.subjugated) {   // C11: a subjugated world never secedes
             const auto colony = std::find_if(next.colonies.begin(), next.colonies.end(), [&](const Colony& c) { return c.systemId == m.systemId; });
             if (colony == next.colonies.end() || colony->ownerId != owner) continue;
             if (std::count_if(next.colonies.begin(), next.colonies.end(), [owner](const Colony& c) { return c.ownerId == owner; }) <= 1) continue;
             next.colonies.erase(colony);
             std::erase_if(next.tradeRoutes, [&](const TradeRoute& r) { return r.fromSystemId == m.systemId || r.toSystemId == m.systemId; });
-            m.memberOf = 0;
+            m.memberOf = 0; m.subjugated = false;
             m.friendshipTurn[owner] = -1;
             m.attitude[owner] = std::min(m.attitude[owner], 20);
             if (auto* ms = ds.getMinorState(m.systemId)) {
@@ -2650,6 +2659,7 @@ void reconcileMinorMembership(GameState& next, TurnReport& report) {
         if (m.memberOf == holder) continue;
         const int previous = m.memberOf;
         m.memberOf = holder;
+        m.subjugated = holder >= 1 && holder <= MaxMajors;   // C11: membership that follows a conquest is subjugation
         if (holder >= 1 && holder <= MaxMajors) {
             m.contact[holder] = true;
             m.attitude[holder] = std::min(m.attitude[holder], 40);
@@ -3292,7 +3302,7 @@ void resolveInvasions(GameState& s, TurnReport& report) {
             target->queuePriority = GovernorPriority::Manual;
             target->workforceManualOverride = false;
             reveal(s, loc->x, loc->y, fleet.ownerId);
-            for (auto& minor : s.minors) if (minor.systemId == target->systemId) minor.memberOf = fleet.ownerId;
+            for (auto& minor : s.minors) if (minor.systemId == target->systemId) { minor.memberOf = fleet.ownerId; minor.subjugated = true; }   // C11
             if (fleet.ownerId == s.playerEmpire || oldOwner == s.playerEmpire)
                 report.events.push_back(loc->name + " captured by " + empireName(fleet.ownerId) + ".");
         } else {
@@ -3564,6 +3574,16 @@ std::string payload(const GameState& s) {
     }
     if (s.playingOnFrom > 0) out << "PLAYING_ON " << s.playingOnFrom << '\n';   // C4 (20 Nov 2026)
     if (!s.dominationEnabled) out << "NO_DOMINATION 1\n";   // C7 (21 Nov 2026)
+    {   // C11 (schema 26): subjugated minor worlds (ascending system id), only while one exists.
+        std::vector<int> held;
+        for (const auto& m : s.minors) if (m.subjugated) held.push_back(m.systemId);
+        std::sort(held.begin(), held.end());
+        if (!held.empty()) {
+            out << "SUBJUGATED " << held.size();
+            for (int id : held) out << ' ' << id;
+            out << '\n';
+        }
+    }
     // Schema 14: per-ship orders of recorded battle rounds. Written only when some
     // round carries orders, so campaigns without them keep the schema-13 layout.
     const bool anyOrders = std::any_of(s.latestBattles.begin(), s.latestBattles.end(), [](const CombatReport& b) {
@@ -5804,9 +5824,12 @@ TurnReport advanceWithCombat(GameState& state, const std::function<void(GameStat
     }
     for (auto& c : next.colonies) {
         const int moraleTarget = std::min(100, threats::moraleTarget(next, c, minors::moraleTarget(next, c.ownerId)) + structures::colonyEffects(c).morale + economy_rules::moraleBonus(next, c) + scenarios::flagshipMorale(next, c.ownerId)); // Schema 23 shared morale and the Protectorate; Lane G: 70 plus member-minor morale (Borg colonies hold their own value); schema 21 adds the colony's structures
-        if (c.morale < moraleTarget) ++c.morale;
-        else if (c.morale > moraleTarget) --c.morale;
+        const int target = empire(next, c.ownerId).credits < 0 ? std::min(moraleTarget, DebtMoraleTarget) : moraleTarget;   // D1: debt
+        if (c.morale < target) ++c.morale;
+        else if (c.morale > target) --c.morale;
     }
+    if (next.credits < 0 && (state.credits >= 0 || next.turn % 10 == 0))   // D1: tell the player when debt starts, then every 10 turns
+        report.events.push_back("The treasury is in debt (" + std::to_string(next.credits) + " credits): no credit purchases, and morale falls on every world until it is repaid.");
     economy_rules::autoUpgrade(next); // Schema 23: automatic upgrades fill empty queues
     empire_rules::endOfTurn(next, report); // Schema 15: emergency programs hold morale, purge, expire
     if (next.rules.curatedEvents) {
@@ -5967,7 +5990,9 @@ GameState deserialize(const std::string& text) {
     const bool legacy22 = version == 22 && content == "remaster-22";   // Differs from 25 only by the header and the optional ECONOMY_RULES, STAR_TYPES and SCENARIO sections.
     const bool legacy23 = version == 23 && content == "remaster-23";   // Differs from 25 only by the header and the optional STAR_TYPES and SCENARIO sections.
     const bool legacy24 = version == 24 && content == "remaster-24";   // Schema 24 (the balance lane): differs from 25 only by the header and the optional SCENARIO section.
-    const bool current25 = version == SaveVersion && content == ContentVersion;
+    const bool legacy25 = version == 25 && content == "remaster-25";   // Schema 25: differs from 26 only by the header and the optional SUBJUGATED section.
+    const bool current26 = version == SaveVersion && content == ContentVersion;
+    const bool current25 = current26 || legacy25;
     const bool current24 = current25 || legacy24;   // The STAR_TYPES section and Expert difficulty are legal from schema 24 on.
     const bool current23 = current24 || legacy23;   // The ECONOMY_RULES section is legal from schema 23 on.
     const bool current22 = current23 || legacy22;   // The ERAS section is legal from schema 22 on.
@@ -5984,7 +6009,7 @@ GameState deserialize(const std::string& text) {
     require(checksumStart != std::string::npos, "Missing save checksum");
     const auto rawBody = text.substr(0, checksumStart);
     require(text.substr(checksumStart) == "CHECKSUM " + std::to_string(hashText(rawBody)) + "\n",
-        (legacy7 || legacy8 || legacy9 || legacy10 || legacy11 || legacy12 || legacy13 || legacy14 || legacy15 || legacy16 || legacy17 || legacy18 || legacy20 || legacy21 || legacy22 || legacy23 || legacy24) ? "Legacy save checksum mismatch" : "Save checksum mismatch");
+        (legacy7 || legacy8 || legacy9 || legacy10 || legacy11 || legacy12 || legacy13 || legacy14 || legacy15 || legacy16 || legacy17 || legacy18 || legacy20 || legacy21 || legacy22 || legacy23 || legacy24 || legacy25) ? "Legacy save checksum mismatch" : "Save checksum mismatch");
     GameState s;
     tag(in, "STATE");
     in >> s.seed >> s.rngState >> s.lastAcceptedCommand >> s.width >> s.height >> s.turn >> s.credits >> s.research;
@@ -6495,6 +6520,32 @@ GameState deserialize(const std::string& text) {
         s.dominationEnabled = false;
         nextTag = readTag("Malformed save section after NO_DOMINATION");
     }
+    bool subjugatedRead = false;
+    if (nextTag == "SUBJUGATED") {   // C11 (schema 26): minor worlds taken by invasion (ascending system id).
+        require(current26, "Schema 26 section in an older save");
+        std::size_t held = 0;
+        require(static_cast<bool>(in >> held) && held >= 1 && held <= s.minors.size(), "Malformed SUBJUGATED section");
+        int last = 0;
+        for (std::size_t i = 0; i < held; ++i) {
+            int id = 0;
+            require(static_cast<bool>(in >> id) && id > last, "Malformed SUBJUGATED entry");
+            const auto m = std::find_if(s.minors.begin(), s.minors.end(), [id](const Minor& x) { return x.systemId == id; });
+            require(m != s.minors.end() && m->memberOf != 0, "SUBJUGATED names a minor that is not held");
+            m->subjugated = true; last = id;
+        }
+        subjugatedRead = true;
+        nextTag = readTag("Malformed save section after SUBJUGATED");
+    }
+    if (!current26 && !subjugatedRead) {
+        // C11 migration (schema 25 and older): the old save did not record how a member joined. A treaty join needs a friendship
+        // with its holder; a conquest leaves none (it clears the previous holder's). A member with no friendship with its holder is
+        // treated as conquered; a member with one counts as treaty-joined.
+        for (auto& m : s.minors) {
+            if (m.memberOf < 1 || m.memberOf > MaxMajors) continue;
+            const bool friendship = m.friendshipTurn[static_cast<std::size_t>(m.memberOf)] >= 0;
+            m.subjugated = !friendship;   // the engine mirror copies memberOf, so it cannot tell the two apart
+        }
+    }
     if (nextTag == "COMBAT_ORDERS") {
         require(current, "Schema 14 section in an older save");
         parseCombatOrders(in, s);
@@ -6557,12 +6608,15 @@ GameState deserialize(const std::string& text) {
             (!s.modernEnginesActive || hasIntelOperations),
             current ? "Schema 14 save is missing a required section" : "Schema 13 save is missing a required section");
         std::string expected = payload(s);
-        if (legacy13 || legacy14 || legacy15 || legacy16 || legacy17 || legacy18 || legacy20 || legacy21 || legacy22 || legacy23 || legacy24) {
+        if (legacy13 || legacy14 || legacy15 || legacy16 || legacy17 || legacy18 || legacy20 || legacy21 || legacy22 || legacy23 || legacy24 || legacy25) {
             // Schema 13 text is the schema-14 payload of a campaign without recorded round orders; schema 14 to 17 text are
             // the schema-18 payload of a campaign without a galaxy setup / empire rules / preset packs / lineup above slot five.
             const std::string header = std::string("BOTF_SIM ") + std::to_string(SaveVersion) + ' ' + ContentVersion + '\n';
             require(expected.starts_with(header), "Malformed canonical payload header");
-            expected.replace(0, header.size(), legacy24 ? "BOTF_SIM 24 remaster-24\n" : legacy23 ? "BOTF_SIM 23 remaster-23\n" : legacy22 ? "BOTF_SIM 22 remaster-22\n" : legacy21 ? "BOTF_SIM 21 remaster-21\n" : legacy20 ? "BOTF_SIM 20 remaster-20\n" : legacy18 ? "BOTF_SIM 18 remaster-18\n" : legacy17 ? "BOTF_SIM 17 remaster-17\n" : legacy16 ? "BOTF_SIM 16 remaster-16\n" : legacy15 ? "BOTF_SIM 15 remaster-15\n" : legacy14 ? "BOTF_SIM 14 remaster-14\n" : "BOTF_SIM 13 remaster-13\n");
+            expected.replace(0, header.size(), legacy25 ? "BOTF_SIM 25 remaster-25\n" : legacy24 ? "BOTF_SIM 24 remaster-24\n" : legacy23 ? "BOTF_SIM 23 remaster-23\n" : legacy22 ? "BOTF_SIM 22 remaster-22\n" : legacy21 ? "BOTF_SIM 21 remaster-21\n" : legacy20 ? "BOTF_SIM 20 remaster-20\n" : legacy18 ? "BOTF_SIM 18 remaster-18\n" : legacy17 ? "BOTF_SIM 17 remaster-17\n" : legacy16 ? "BOTF_SIM 16 remaster-16\n" : legacy15 ? "BOTF_SIM 15 remaster-15\n" : legacy14 ? "BOTF_SIM 14 remaster-14\n" : "BOTF_SIM 13 remaster-13\n");
+        }
+        if (legacy25) {   // C11: schema 25 never carried SUBJUGATED; the migrated flags are not part of the old text
+            if (const auto pos = expected.find("\nSUBJUGATED "); pos != std::string::npos) expected.erase(pos + 1, expected.find('\n', pos + 1) - pos);
         }
         require(rawBody == expected, "Save is not in canonical format");
     } else if (legacy12) {

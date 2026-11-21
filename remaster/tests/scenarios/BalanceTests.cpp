@@ -109,7 +109,7 @@ int main() {
             check(!p.alwaysStarbases && !p.newestShips && !p.standardBuild && !p.aggressiveExpansion, std::string(id) + ": no AI flags at Normal");
             check(s.galaxy.difficulty == Difficulty::Normal, "default difficulty is Normal");
             const auto text = serialize(s);
-            check(text.starts_with("BOTF_SIM 25 remaster-25\n"), "header");
+            check(text.starts_with("BOTF_SIM " + std::to_string(SaveVersion) + " " + ContentVersion + "\n"), "header");
             check(!contains(text, "STAR_TYPES") && !contains(text, "GALAXY_SETUP") && !contains(text, "PACKS"), std::string(id) + ": no new section");
             for (const auto& sys : s.systems) check(sys.starType == -1, "no star type set");
             check(minorGiftCost() == 50 && minorGiftAttitude() == 20 && packWeaponOutputPercent() == 100, "vanilla gift and weapon values");

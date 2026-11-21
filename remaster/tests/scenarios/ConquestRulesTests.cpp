@@ -4,6 +4,7 @@
 #include "Simulation.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <iostream>
 #include <stdexcept>
 #include <string>
@@ -18,6 +19,37 @@ void check(bool ok, const std::string& what) {
     else { ++failures; std::cout << "  FAIL " << what << '\n'; }
 }
 template <class F> bool throws(F f) { try { f(); } catch (const std::exception&) { return true; } return false; }
+std::string withChecksum(std::string body) {   // FNV-1a over the body, as the save writer seals it
+    if (const auto pos = body.rfind("CHECKSUM "); pos != std::string::npos) body.erase(pos);
+    std::uint64_t hash = 14695981039346656037ULL;
+    for (unsigned char byte : body) { hash ^= byte; hash *= 1099511628211ULL; }
+    return body + "CHECKSUM " + std::to_string(hash) + "\n";
+}
+// A campaign with one minor world held by the player as a member (colony on the minor's system, attitude 0, review turn).
+GameState heldMinor(bool subjugated, int& sid) {
+    auto s = generateCampaign(2024, 3, 16, 12, 28, 1);
+    s.aiAggressionEnabled = false; s.eventsEnabled = false;
+    s.campaignExpansionEnabled = true; s.modernEnginesActive = true;   // minor reviews run in the modern diplomacy pass
+    if (s.minors.empty()) throw std::runtime_error("no minor in this galaxy");
+    auto& m = s.minors.front();
+    sid = m.systemId;
+    m.memberOf = s.playerEmpire; m.subjugated = subjugated;
+    m.contact[static_cast<std::size_t>(s.playerEmpire)] = true;
+    m.attitude[static_cast<std::size_t>(s.playerEmpire)] = 0;
+    m.friendshipTurn[static_cast<std::size_t>(s.playerEmpire)] = subjugated ? -1 : 0;
+    Colony c; c.systemId = sid; c.ownerId = s.playerEmpire; c.population = 30; c.foodWorkers = 15; c.industryWorkers = 10; c.researchWorkers = 5; c.morale = 35;
+    s.colonies.push_back(c);
+    {   // the held world must be explored by its holder
+        auto& ex = const_cast<EmpireState&>(empire(s, s.playerEmpire)).explored;
+        const auto sys = std::find_if(s.systems.begin(), s.systems.end(), [&](const auto& y) { return y.id == sid; });
+        const int cell = sys->y * s.width + sys->x;
+        if (!std::binary_search(ex.begin(), ex.end(), cell)) ex.insert(std::lower_bound(ex.begin(), ex.end(), cell), cell);
+    }
+    std::sort(s.colonies.begin(), s.colonies.end(), [](const Colony& a, const Colony& b) { return a.systemId < b.systemId; });
+    s.turn = 4; s.diplomacyEngineState.currentTurn = 4;   // the minor review runs on turns divisible by 5
+    validate(s);
+    return s;
+}
 }
 
 int main() {
@@ -115,6 +147,58 @@ int main() {
         check(mine == 1 && strength == 2 * one,
               "one assault with both transports' troops added (" + std::to_string(strength) + " = 2 x " + std::to_string(one) + ")");
     } catch (const std::exception& e) { check(false, std::string("C1 setup threw: ") + e.what()); }
+    // ---- C11 (22 Nov 2026): a minor taken by invasion never secedes; a treaty member still does
+    try {
+        int sid = 0;
+        auto treaty = heldMinor(false, sid);
+        advance(treaty);
+        check(colonyAt(treaty, sid) == nullptr, "a treaty member at attitude 0 secedes at the review (turn " + std::to_string(treaty.turn) + ", member " + std::to_string(treaty.minors.front().memberOf) + ", attitude " + std::to_string(treaty.minors.front().attitude[static_cast<std::size_t>(treaty.playerEmpire)]) + ", modern " + std::to_string(treaty.modernEnginesActive) + ")");
+        auto held = heldMinor(true, sid);
+        advance(held);
+        const auto* c = colonyAt(held, sid);
+        check(c && c->ownerId == held.playerEmpire && held.minors.front().subjugated, "a subjugated minor at attitude 0 stays");
+        const auto text = serialize(held);
+        check(text.find("\nSUBJUGATED 1 " + std::to_string(sid) + "\n") != std::string::npos, "SUBJUGATED is saved");
+        check(deserialize(text).minors.front().subjugated, "SUBJUGATED loads back");
+        check(text.starts_with("BOTF_SIM 26 remaster-26\n"), "schema 26 header");
+        // Migration: the same game as a schema-25 save (no section). No friendship and no engine membership: conquered.
+        std::string old = text;
+        old.erase(old.find("SUBJUGATED "), old.find("\n", old.find("SUBJUGATED ")) - old.find("SUBJUGATED ") + 1);
+        old.replace(0, std::string("BOTF_SIM 26 remaster-26").size(), "BOTF_SIM 25 remaster-25");
+        check(deserialize(withChecksum(old)).minors.front().subjugated, "schema 25: a member with no friendship migrates as conquered");
+        auto friendly = held; friendly.minors.front().friendshipTurn[static_cast<std::size_t>(friendly.playerEmpire)] = 2;
+        std::string old2 = serialize(friendly);
+        old2.erase(old2.find("SUBJUGATED "), old2.find("\n", old2.find("SUBJUGATED ")) - old2.find("SUBJUGATED ") + 1);
+        old2.replace(0, std::string("BOTF_SIM 26 remaster-26").size(), "BOTF_SIM 25 remaster-25");
+        check(!deserialize(withChecksum(old2)).minors.front().subjugated, "schema 25: a member with a friendship migrates as treaty-joined");
+        auto none = heldMinor(false, sid);
+        check(serialize(none).find("SUBJUGATED") == std::string::npos, "no subjugated minor: no section");
+    } catch (const std::exception& e) { check(false, std::string("C11 setup threw: ") + e.what()); }
+    // ---- D1 (22 Nov 2026): debt blocks credit purchases and lowers morale; the AI adds nothing with upkeep while in debt
+    try {
+        auto s = generateCampaign(2024, 3, 16, 12, 28, 1);
+        s.aiAggressionEnabled = false; s.eventsEnabled = false;
+        const auto cap = std::find_if(s.colonies.begin(), s.colonies.end(), [&](const Colony& c) { return c.ownerId == s.playerEmpire; });
+        const int capId = cap->systemId;
+        Command e; e.id = s.lastAcceptedCommand + 1; e.type = CommandType::EnqueueBuilding; e.systemId = capId; e.building = Building::Factory;
+        submit(s, e);
+        s.credits = -500;
+        std::string why;
+        try { submit(s, makeBuyConstructionCommand(s.lastAcceptedCommand + 1, capId)); } catch (const std::exception& x) { why = x.what(); }
+        check(why == DebtBlocker, "rush-buy refused in debt with the debt reason ('" + why + "')");
+        const int before = colonyAt(s, capId)->morale;
+        for (int i = 0; i < 5; ++i) { s.credits = -500; advance(s); }
+        check(colonyAt(s, capId)->morale < before && colonyAt(s, capId)->morale >= DebtMoraleTarget, "morale falls while in debt (" + std::to_string(before) + " -> " + std::to_string(colonyAt(s, capId)->morale) + ")");
+        auto r = generateCampaign(2024, 3, 16, 12, 28, 1);
+        r.eventsEnabled = false;
+        for (auto& rv : r.rivals) rv.credits = -1000000;
+        for (auto& c : r.colonies) if (c.ownerId != r.playerEmpire) c.queue.clear();
+        advance(r);
+        bool upkeepQueued = false;
+        for (const auto& c : r.colonies) if (c.ownerId != r.playerEmpire)
+            for (const auto& q : c.queue) if (q.product != Building::Farm && q.product != Building::PowerPlant) upkeepQueued = true;
+        check(!upkeepQueued, "an AI in debt queues only farms and power plants");
+    } catch (const std::exception& e) { check(false, std::string("D1 setup threw: ") + e.what()); }
     std::cout << checks - failures << " passed, " << failures << " failed\n";
     return failures ? 1 : 0;
 }

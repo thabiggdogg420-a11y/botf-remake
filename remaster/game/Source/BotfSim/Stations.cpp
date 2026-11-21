@@ -781,6 +781,7 @@ std::string stationUpgradeBlocker(const GameState& state, int stationId, int fun
     if (empire(state, st->ownerId).technologies[2].level < gameplay::StationUpgradeConstructionLevel)
         return "Requires Construction level " + std::to_string(gameplay::StationUpgradeConstructionLevel);
     const auto cost = stationUpgradeCost(state, st->ownerId);
+    if (empire(state, st->ownerId).credits < 0) return DebtBlocker;   // D1
     if (empire(state, st->ownerId).credits < cost.credits) return "Requires " + std::to_string(cost.credits) + " credits";
     return {};
 }

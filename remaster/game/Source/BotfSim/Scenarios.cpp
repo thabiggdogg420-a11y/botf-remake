@@ -201,6 +201,7 @@ std::string commissionBlocker(const GameState& state, int empireId, int fleetId)
     if (const auto* rec = flagshipOf(state, empireId))
         if (rec->lostTurn > 0 && state.turn < rec->lostTurn + def->cooldown)
             return "A new flagship can be commissioned on turn " + std::to_string(rec->lostTurn + def->cooldown);
+    if (empire(state, empireId).credits < 0) return DebtBlocker;   // D1
     if (empire(state, empireId).credits < def->cost) return "Commissioning needs " + std::to_string(def->cost) + " credits";
     return {};
 }

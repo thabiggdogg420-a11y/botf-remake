@@ -192,6 +192,7 @@ inline std::string programBlocker(const GameState& s, const Colony& c, Program p
     if (c.morale >= ProgramMoraleLimit) return "Morale is " + std::to_string(c.morale) + ": the colony is not in unrest";
     const auto& owner = empire(s, c.ownerId);
     const std::int64_t need = programStartCost(c, p) + std::max(1, c.population / 10) * 2;
+    if (owner.credits < 0) return DebtBlocker;   // D1
     if (owner.credits < need) return "Needs " + std::to_string(need) + " credits in the treasury";
     return {};
 }
@@ -317,7 +318,7 @@ inline void applyAftermath(GameState& s, const AftermathChoice& a, Aftermath o, 
         std::erase_if(s.tradeRoutes, [sid](const TradeRoute& r) { return r.fromSystemId == sid || r.toSystemId == sid; });
         std::erase_if(s.stationUpgrades, [sid](const StationUpgrade& u) { return u.fundingSystemId == sid; });
         std::erase_if(s.megaprojects, [sid](const Megaproject& p) { return p.systemId == sid; });
-        m->memberOf = 0;
+        m->memberOf = 0; m->subjugated = false;
         adjustAttitude(*m, a.conqueror, 30);
         for (int e = 1; e <= MaxMajors; ++e) if (e != a.conqueror && m->contact[static_cast<std::size_t>(e)]) adjustAttitude(*m, e, 5);
         if (events && (a.conqueror == s.playerEmpire || a.formerOwner == s.playerEmpire || m->contact[static_cast<std::size_t>(s.playerEmpire)]))
@@ -551,7 +552,7 @@ inline void resolveMinorAssaults(GameState& s, TurnReport& report, std::map<std:
             casualties = pop0 - c.population;
             s.colonies.push_back(c);
             std::sort(s.colonies.begin(), s.colonies.end(), [](const Colony& a, const Colony& b) { return a.systemId < b.systemId; });
-            minor->memberOf = owner;
+            minor->memberOf = owner; minor->subjugated = true;   // C11: conquered, never secedes
             minor->contact[static_cast<std::size_t>(owner)] = true;
             minor->friendshipTurn[static_cast<std::size_t>(owner)] = -1;
             internal::reveal(s, sys->x, sys->y, owner);

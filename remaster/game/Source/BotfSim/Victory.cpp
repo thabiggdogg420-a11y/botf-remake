@@ -264,6 +264,7 @@ std::string megaprojectBlocker(const GameState& state, int empireId, int systemI
     if (!colony || colony->ownerId != empireId) return "Choose one of our colonies";
     if (empireMegaproject(state, empireId)) return "The megaproject is already under way";
     for (const auto& u : state.stationUpgrades) if (u.fundingSystemId == systemId) return "Colony funds a starbase upgrade";
+    if (owner.credits < 0) return DebtBlocker;   // D1
     if (owner.credits < megaprojectCreditCost(state)) return "Requires " + std::to_string(megaprojectCreditCost(state)) + " credits";
     return {};
 }

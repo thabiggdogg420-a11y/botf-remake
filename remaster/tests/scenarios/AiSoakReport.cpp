@@ -65,7 +65,7 @@ const char* condName(int c) {
 // BOTF_SOAK_FLEETCAP=<n> changes the warship cap. BOTF_SOAK_TRACE_SCRIPT=1 prints the script's state every 25 turns.
 // The SCRIPTEND line per campaign gives the end turn, first launch and war, invasions, rivals' elimination turns, worlds taken
 // and lost by empire, and minor worlds that seceded.
-struct ScriptMem { std::uint64_t nextId = 0; int target = 0; int targetSystem = 0; int warFrom = 0; int strikeSize = 6; int fleetCap = 40; bool launched = false; int firstLaunch = 0; int taken = 0; int lastCredits = 0; int dbgThere = 0, dbgDef = 0, dbgLift = 0, dbgLiftThere = 0, invBlocked = 0, invFailed = 0, invWon = 0, lastAtk = 0, lastDef = 0; bool dbgStation = false; int homeDefence = 0; int peaceProposals = 0; int huntFleet = 0; int huntSince = 0; std::map<int, int> huntSkip; std::map<int, int> garrison; std::set<int> takenFromTarget; std::map<int, int> lostTo, tookFrom; int seceded = 0; };
+struct ScriptMem { std::uint64_t nextId = 0; int target = 0; int targetSystem = 0; int warFrom = 0; int strikeSize = 6; int fleetCap = 40; bool launched = false; int firstLaunch = 0; int taken = 0; int lastCredits = 0; int dbgThere = 0, dbgDef = 0, dbgLift = 0, dbgLiftThere = 0, invBlocked = 0, invFailed = 0, invWon = 0, lastAtk = 0, lastDef = 0; bool dbgStation = false; int homeDefence = 0; int peaceProposals = 0; int huntFleet = 0; int huntSince = 0; std::map<int, int> huntSkip; std::map<int, int> garrison; std::set<int> takenFromTarget; std::map<int, int> lostTo, tookFrom; int seceded = 0; std::int64_t minCredits = 0; int debtTurns = 0; };
 
 bool atWarWith(const GameState& s, int a, int b) {
     return std::any_of(s.majorRelations.begin(), s.majorRelations.end(), [&](const MajorRelation& r) {
@@ -74,6 +74,7 @@ bool atWarWith(const GameState& s, int a, int b) {
 
 void scriptTurn(GameState& s, ScriptMem& m) {
     const int me = s.playerEmpire;
+    m.minCredits = std::min<std::int64_t>(m.minCredits, s.credits); if (s.credits < 0) ++m.debtTurns;
     const std::int64_t creditsPrev = m.lastCredits; m.lastCredits = static_cast<int>(std::clamp<std::int64_t>(s.credits, INT_MIN, INT_MAX));
     auto send = [&](Command c) {
         m.nextId = std::max(m.nextId, s.lastAcceptedCommand) + 1; c.id = m.nextId;
@@ -135,9 +136,11 @@ void scriptTurn(GameState& s, ScriptMem& m) {
     for (const auto& sys : s.systems)
         if (!colonyAt(s, sys.id) && !minorAt(s, sys.id) && explored(s, sys.x, sys.y) && systemCapacity(s, sys.id) > 0) ++freeSystems;
     for (const auto& k : cols) {
-        if (k.w != GovernorPriority::Balanced || k.q != GovernorPriority::Balanced) {
+        // D1: in debt the queue governor is switched off (no new buildings with upkeep) until the treasury recovers.
+        const auto wantQ = s.credits < 0 ? GovernorPriority::Manual : GovernorPriority::Balanced;
+        if (k.w != GovernorPriority::Balanced || k.q != wantQ) {
             Command g; g.type = CommandType::SetColonyGovernor; g.systemId = k.id;
-            g.governorWorkforce = GovernorPriority::Balanced; g.governorQueue = GovernorPriority::Balanced; send(g);
+            g.governorWorkforce = GovernorPriority::Balanced; g.governorQueue = wantQ; send(g);
         }
         if (k.shipyards == 0) {
             if ((k.id == capId || s.turn >= 40) && !k.yardQueued) { Command e; e.type = CommandType::EnqueueBuilding; e.systemId = k.id; e.building = Building::Shipyard; send(e); }
@@ -753,7 +756,7 @@ int main(int argc, char** argv) {
                 for (const auto& [id, tr] : track) if (id != state.playerEmpire) std::cout << " " << id << "@" << tr.eliminatedTurn;
                 std::cout << " took-from"; for (const auto& [id, n] : mem.tookFrom) std::cout << " " << id << ":" << n;
                 std::cout << " lost-to"; for (const auto& [id, n] : mem.lostTo) std::cout << " " << id << ":" << n;
-                std::cout << " seceded " << mem.seceded;
+                std::cout << " seceded " << mem.seceded << " min-credits " << mem.minCredits << " debt-turns " << mem.debtTurns;
                 std::cout << std::endl;
             }
             for (const auto& [id, tr] : track) {
