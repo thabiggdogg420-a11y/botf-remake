@@ -2363,6 +2363,16 @@ public:
                     }
                 }
             }
+            // C9 (21 Nov 2026, Simon's delegation): AI-AI non-aggression, friendship and affiliation also lapse at their
+            // 100-turn review unless the C5 common-enemy test holds, so long-lived AI blocs break up.
+            if (!aiAllianceEnds && getTreatyRank(treaty.type) >= 1 && getTreatyRank(treaty.type) <= 3 &&
+                !treaty.partyA.isMinor && !treaty.partyB.isMinor && !ctx.isHuman(treaty.partyA) && !ctx.isHuman(treaty.partyB)) {
+                const int age = state.currentTurn - treaty.startTurn;
+                if (age > 0 && age % AiAllianceTermTurns == 0 && !aiCommonEnemy(ctx, treaty.partyA, treaty.partyB)) {
+                    aiAllianceEnds = true;
+                    aiAllianceWhy = "Treaty term ended: no common enemy outweighs either partner";
+                }
+            }
 
             if (aiAllianceEnds || (treaty.duration != TreatyDuration::Indefinite && treaty.turnsRemaining <= 0)) {
                 treaty.status = TreatyStatus::Expired;

@@ -1346,6 +1346,46 @@ void testWarIsUnilateral() {
     std::cout << "  PASS: war takes effect at resolution whatever the target says." << std::endl;
 }
 
+// C9 (21 Nov 2026, Simon's delegation): AI-AI non-aggression, friendship and affiliation lapse at their 100-turn review
+// unless a common enemy (a third major at war with one of them, holding more worlds than either) holds. Treaties with the
+// player are untouched.
+void testC9LowerTreatiesLapse() {
+    std::cout << "Testing: C9 AI-AI lower treaties lapse at 100 turns without a common enemy..." << std::endl;
+    struct Counted : SimpleDiplomacyContext {
+        std::map<int, int> colonies;
+        int colonyCount(ParticipantId p) const override { auto it = colonies.find(p.id); return it == colonies.end() ? -1 : it->second; }
+    };
+    auto run = [](bool commonEnemy, bool human, TreatyType type) {
+        Counted ctx;
+        static_cast<SimpleDiplomacyContext&>(ctx) = fiveEmpireContext();
+        if (human) ctx.setHuman(ParticipantId::major(2));
+        ctx.colonies = {{1, 3}, {2, 4}, {3, 4}, {4, commonEnemy ? 9 : 2}, {5, 3}};
+        if (commonEnemy) ctx.setWar(ParticipantId::major(4), ParticipantId::major(2), true);
+        DiplomacyState state;
+        TurnResolutionDelta setup;
+        DIPLOMACY_ASSERT(DiplomacyEngine::establishTreaty(state, ParticipantId::major(2), ParticipantId::major(3), type,
+            TreatyDuration::Indefinite, setup), "Setup treaty");
+        const int start = state.activeTreaties.front().startTurn;
+        int endedAt = -1;
+        std::string why;
+        for (int i = 0; i < 130 && endedAt < 0; ++i) {
+            const int turn = state.currentTurn;
+            const auto d = DiplomacyEngine::resolveTurn(state, ctx);
+            for (const auto& op : d.operations)
+                if (op.opType == DiplomaticOpType::TerminateTreaty && op.treatyType == type) { endedAt = turn; why = op.notes; }
+        }
+        return std::make_pair(endedAt < 0 ? -1 : endedAt - start, why);   // the treaty's age when it ended
+    };
+    for (TreatyType t : {TreatyType::NonAggression, TreatyType::Friendship, TreatyType::Affiliation}) {
+        const auto lapse = run(false, false, t);
+        DIPLOMACY_ASSERT(lapse.first == 100, "An AI-AI lower treaty ends at its 100-turn review without a common enemy");
+        DIPLOMACY_ASSERT(lapse.second.find("no common enemy") != std::string::npos, "The note says why");
+        DIPLOMACY_ASSERT(run(true, false, t).first < 0, "A common enemy holding more worlds keeps it");
+        DIPLOMACY_ASSERT(run(false, true, t).first < 0, "A treaty with the player is untouched");
+    }
+    std::cout << "  PASS: C9 lapse, common-enemy renewal, player treaties untouched." << std::endl;
+}
+
 // Bug 5: eliminated empires kept treaties and could negotiate.
 void testEliminatedParticipantsDissolve() {
     std::cout << "Testing: eliminated participants are removed from diplomacy (bug 5)..." << std::endl;
@@ -1740,6 +1780,7 @@ int main() {
         testAiDiplomacyPlanner();
         testDiplomaticVictoryPredicate();
         testMemorySectionsRoundtrip();
+        testC9LowerTreatiesLapse();
 
         std::cout << "\n>>> ALL 25 DIPLOMACY TEST SUITES PASSED CLEANLY! <<<" << std::endl;
         return 0;
