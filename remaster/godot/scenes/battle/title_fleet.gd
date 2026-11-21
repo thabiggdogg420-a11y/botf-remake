@@ -57,6 +57,11 @@ func setup_sliced(p_empire: int, p_assets: BattleAssets = null) -> void:
 	_stage_environment()
 	_make_camera()
 	LoadTrace.done("title fleet: environment (sliced)", t)
+	# Web (21 Nov 2026): the first draw of the environment compiled the sky, the backdrop planet and the rest together (a 5 s
+	# Firefox frame), then the lead ship's materials all in its frame (3 s). The sky draws alone first; the meshes come in one
+	# shader group a frame.
+	if not await _reveal_by_shader(self):
+		return
 	var lengths := _ship_lengths()   # queues the hero models (a step per frame on the web)
 	while BattleAssets.loading():
 		await get_tree().process_frame
@@ -69,6 +74,38 @@ func setup_sliced(p_empire: int, p_assets: BattleAssets = null) -> void:
 		t = LoadTrace.start()
 		_build_ship(i, lengths)
 		LoadTrace.done("title fleet: ship %d (sliced)" % i, t)
+		if not await _reveal_by_shader(ships[i]):
+			return
+
+
+## Hides the visible meshes under `root`, then shows them one material-shader group a frame. False when the title was left.
+func _reveal_by_shader(root: Node) -> bool:
+	var groups := {}
+	for n in root.find_children("*", "GeometryInstance3D", true, false):
+		var g := n as GeometryInstance3D
+		if not g.visible:
+			continue
+		var mat: Material = g.material_override
+		if mat == null and g is MeshInstance3D and (g as MeshInstance3D).mesh != null and (g as MeshInstance3D).mesh.get_surface_count() > 0:
+			mat = (g as MeshInstance3D).get_active_material(0)
+		var key := "none"
+		if mat is ShaderMaterial and (mat as ShaderMaterial).shader != null:
+			key = str((mat as ShaderMaterial).shader.get_instance_id())
+		elif mat != null:
+			key = mat.get_class() + str(mat.get_rid().get_id() if mat is BaseMaterial3D else 0)
+		key += "|" + g.get_class()
+		if not groups.has(key):
+			groups[key] = []
+		groups[key].append(g)
+		g.visible = false
+	for key in groups:
+		await get_tree().process_frame
+		if not is_inside_tree():
+			return false
+		for g in groups[key]:
+			if is_instance_valid(g):
+				g.visible = true
+	return true
 
 
 func _make_camera() -> void:

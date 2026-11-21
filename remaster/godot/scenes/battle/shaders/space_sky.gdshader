@@ -30,10 +30,22 @@ float noise3(vec3 p) {
 		mix(mix(hash13(i + vec3(0, 0, 1)), hash13(i + vec3(1, 0, 1)), f.x),
 			mix(hash13(i + vec3(0, 1, 1)), hash13(i + vec3(1, 1, 1)), f.x), f.y), f.z);
 }
+// WebGL compile time (21 Nov 2026): constant loop bounds let ANGLE unroll seven 5-octave fbm calls and three 27-cell star
+// layers into each sky program (the title's first draw: three sky programs of 1.5-1.8 s each in Firefox). On Compatibility
+// the bounds come from uniforms (same values, same picture), so the loops stay loops; Forward+ and WebGPU keep constants.
+#if CURRENT_RENDERER == RENDERER_COMPATIBILITY
+uniform int sky_octaves = 5;
+uniform int sky_reach = 1;
+#define SKY_OCTAVES sky_octaves
+#define SKY_REACH sky_reach
+#else
+#define SKY_OCTAVES 5
+#define SKY_REACH 1
+#endif
 float fbm(vec3 p) {
 	float v = 0.0;
 	float a = 0.5;
-	for (int i = 0; i < 5; i++) {
+	for (int i = 0; i < SKY_OCTAVES; i++) {
 		v += a * noise3(p);
 		p = p * 2.03 + vec3(1.7, 9.2, 3.1);
 		a *= 0.5;
@@ -51,9 +63,9 @@ vec3 star_layer(vec3 dir, float scale, float threshold, float size) {
 	vec3 p = dir * scale;
 	vec3 cell = floor(p);
 	vec3 col = vec3(0.0);
-	for (int x = -1; x <= 1; x++)
-	for (int y = -1; y <= 1; y++)
-	for (int z = -1; z <= 1; z++) {
+	for (int x = -SKY_REACH; x <= SKY_REACH; x++)
+	for (int y = -SKY_REACH; y <= SKY_REACH; y++)
+	for (int z = -SKY_REACH; z <= SKY_REACH; z++) {
 		vec3 c = cell + vec3(float(x), float(y), float(z));
 		vec3 r = hash33(c);
 		if (r.x < threshold) continue;

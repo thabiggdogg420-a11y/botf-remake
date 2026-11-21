@@ -163,7 +163,7 @@ static func build(parent: Node3D, arena_size: Vector2, planet_class: String = "G
 
 
 ## Faint motes scattered through the arena: they give the camera parallax so motion reads as motion.
-static func _dust(arena_size: Vector2) -> GPUParticles3D:
+static func _dust(arena_size: Vector2) -> Node3D:
 	var gp := GPUParticles3D.new()
 	gp.name = "Dust"
 	gp.amount = 600
@@ -211,6 +211,14 @@ static func _dust(arena_size: Vector2) -> GPUParticles3D:
 	m.albedo_texture = tex
 	mesh.material = m
 	gp.draw_pass_1 = mesh
+	# Compatibility (web, 21 Nov 2026): a GPUParticles3D compiles a particle process program (two variants, 1.4-1.6 s each in
+	# Firefox) on its first draw, which landed in the title's first frames. The same motes as CPUParticles3D need none.
+	if RenderingServer.get_current_rendering_method() == "gl_compatibility":
+		var cp := CPUParticles3D.new()
+		cp.convert_from_particles(gp)
+		cp.name = "Dust"
+		gp.free()
+		return cp
 	return gp
 
 
