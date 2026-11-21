@@ -2834,6 +2834,17 @@ void queueStarterProjects(botf::GameState& s) {
     }
 }
 
+// D1 (22 Nov 2026): a drill's extra squadrons (and the starbase) cost upkeep the home colony cannot pay. A drill that starts in a
+// net deficit gets the credits to carry it for 40 turns, so practising never puts the player in debt.
+void fundDrill(botf::GameState& s) {
+    const int me = s.playerEmpire;
+    int net = 0;
+    for (const auto& c : s.colonies) if (c.ownerId == me) { const auto e = botf::economy(s, c); net += e.income - e.upkeep; }
+    for (const auto& f : s.fleets) if (f.ownerId == me) net -= maintenanceOf(f);
+    for (const auto& st : s.stations) if (st.ownerId == me) net -= botf::stationStats(s, st).upkeep;
+    if (net < 0) s.credits = std::max<std::int64_t>(s.credits, 1000 + 40LL * -net);
+}
+
 void startGame(botf::GameState&& s, const std::string& scenario) {
     B = Bridge();
     B.state = std::move(s);
@@ -3035,6 +3046,7 @@ void newBattleDrill(bool withStation, int shipsPerSide = 3, bool stationForFoe =
     }
     botf::Command war; war.id = s.lastAcceptedCommand + 1; war.type = botf::CommandType::DeclareWar; war.targetEmpire = foe;
     botf::submit(s, war);
+    fundDrill(s);
     startGame(std::move(s), withStation ? "drill-station" : "drill");
 }
 

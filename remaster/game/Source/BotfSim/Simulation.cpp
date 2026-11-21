@@ -4565,7 +4565,7 @@ void applyCampaignEra(GameState& s, StartingEra era) {
             case StartingEra::Early: e.credits = 1000; break;
             case StartingEra::Developed: e.credits = 2500; break;
             case StartingEra::Expanded: e.credits = 4500; break;
-            case StartingEra::Advanced: e.credits = 7000; break;
+            case StartingEra::Advanced: e.credits = 9500; break;   // 22 Nov 2026 (D1): was 7000; its 8-ship fleet put an idle start in debt by turns 37-45
             case StartingEra::Supreme: e.credits = 10000; break;
             }
         } else {

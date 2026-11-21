@@ -2764,7 +2764,7 @@ int main() {
                 case botf::StartingEra::Expanded:
                     expectedCredits = 4500; expectedPop = 75; expectedShipsPerEmpire = 5; expectedCapacity = 160; break;
                 case botf::StartingEra::Advanced:
-                    expectedCredits = 7000; expectedPop = 95; expectedShipsPerEmpire = 8; expectedCapacity = 190; break;
+                    expectedCredits = 9500; expectedPop = 95; expectedShipsPerEmpire = 8; expectedCapacity = 190; break;
                 case botf::StartingEra::Supreme:
                     expectedCredits = 10000; expectedPop = 120; expectedShipsPerEmpire = 9; expectedCapacity = 220; break;
                 }
@@ -2811,7 +2811,7 @@ int main() {
 
                 for (int empId = 1; empId <= 5; ++empId) {
                     const auto& empState = botf::empire(s, empId);
-                    check(empState.credits == 7000, "All 5 empires receive 7000 starting credits in Advanced era");
+                    check(empState.credits == 9500, "All 5 empires receive 9500 starting credits in Advanced era");
                     for (int f = 0; f < botf::ResearchFields; ++f) {
                         check(empState.technologies[f].level == 7, "All 5 empires have tech level 7 in Advanced era");
                     }
