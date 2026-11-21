@@ -415,7 +415,13 @@ func set_music(context: String) -> void:
 		music_key = r.key
 		stream = library.stream_at(_playlist[_playlist_pos])
 	if stream == null:
-		stream = library.music_tone(str(spec.tone))
+		# Web (21 Nov): the generated bed is built in GDScript on the main thread there (no worker threads), 2.2-2.4 s in
+		# Firefox, and it landed in the title's first frame and the galaxy's first frame (the empire's tracks come in a pack
+		# fetched as the galaxy opens). The web plays nothing until the tracks mount; music_pack_ready swaps them in.
+		if OS.has_feature("web") and not library.music_tone_ready(str(spec.tone)):
+			stream = null
+		else:
+			stream = library.music_tone(str(spec.tone))
 		music_key = "tone:" + str(spec.tone)
 		_playlist = PackedStringArray()
 	_crossfade_to(stream)
@@ -630,10 +636,13 @@ static func on_turn_briefing(briefing: Variant, view: Dictionary, skip_outcome :
 
 func _on_screen(id: String) -> void:
 	var ctx := BotfAudioCues.music_for_screen(id)
+	var t := LoadTrace.start()
 	if ctx != "":
 		set_music(ctx)
+	t = LoadTrace.done("screen %s: music %s" % [id, music_key], t)
 	if _prev_screen != "" and id != "title":
 		cue("ui_open")
+	LoadTrace.done("screen %s: open cue" % id, t)
 	_prev_screen = id
 
 

@@ -188,6 +188,14 @@ func _gen_music(kind: String) -> void:
 	_mutex.unlock()
 
 
+## True when the generated bed for kind is already built (no wait, no generation).
+func music_tone_ready(kind: String) -> bool:
+	_mutex.lock()
+	var have: bool = _tones.has("music." + kind)
+	_mutex.unlock()
+	return have
+
+
 func music_tone(kind: String) -> AudioStream:
 	if _music_tasks.has(kind):
 		WorkerThreadPool.wait_for_task_completion(_music_tasks[kind])

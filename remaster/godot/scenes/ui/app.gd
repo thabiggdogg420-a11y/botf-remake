@@ -189,6 +189,7 @@ func _fetch_background() -> void:
 	web_packs_changed.emit("planets_web.pck")
 	LoadTrace.done("title packs: planets+art in", t)
 	await _warm_new_campaign()
+	await _warm_galaxy_webgl()
 	if await AppLoader.fetch_web_pack(self, AppLoader.WEB_MUSIC):
 		t = LoadTrace.start()
 		BotfAudioSystem.music_pack_ready()
@@ -219,6 +220,140 @@ func _warm_new_campaign() -> void:
 		await tree.process_frame
 	if not _glyphs_warmed and screen == "title":
 		await _warm_glyphs()
+
+## WebGL (21 Nov): the galaxy's first draw compiled every galaxy shader at once through ANGLE (Firefox: a 3.8-4.4 s frame, and
+## Firefox keeps no program cache between visits). While the title idles, after New campaign's warm, an off-screen GalaxyMap
+## of the recorded campaign view (ShaderWarm's, as the WebGPU boot draws it) is drawn a piece at a time: its sky and screen
+## passes on one frame, then one group of meshes sharing a shader each two frames, the whole disc first, then a system
+## close-up. Leaving the title stops it (the galaxy then compiles what is left itself). WebGPU warms the galaxy at boot
+## (ShaderWarm) and the desktop has no such stall, so both skip it. Not at boot: that was the 95% stall caa10e3 removed.
+func _warm_galaxy_webgl() -> void:
+	if not OS.has_feature("web") or GpuReadback.webgpu() or DisplayServer.get_name() == "headless" or screen != "title":
+		return
+	var tree := get_tree()
+	var t := LoadTrace.start()
+	var gv := SubViewport.new()
+	gv.name = "GalaxyWarmGL"
+	gv.size = Vector2i(480, 270)
+	gv.msaa_3d = get_viewport().msaa_3d
+	gv.screen_space_aa = get_viewport().screen_space_aa
+	gv.render_target_update_mode = SubViewport.UPDATE_DISABLED
+	var gm := ShaderWarm.WarmGalaxy.new()
+	gm.size = Vector2(480, 270)
+	gv.add_child(gm)
+	add_child(gv)
+	gm._viewport.render_target_update_mode = SubViewport.UPDATE_DISABLED
+	LoadTrace.done("title warm: galaxy map", t)
+	await tree.process_frame
+	if screen != "title" or not gm.load_view():
+		_drop_galaxy_warm(gv)
+		return
+	t = LoadTrace.start()
+	gm.rebuild()
+	gm.frame_galaxy()
+	var seen := {}
+	var pending := _hide_new_geometry(gm, seen)
+	LoadTrace.done("title warm: galaxy build", t)
+	await tree.process_frame
+	# Sky, tonemap, glow and the bloom canvas passes: the first frame the two viewports draw.
+	gv.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+	gm._viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+	for _i in 2:
+		await tree.process_frame
+	if not await _reveal_groups(pending, tree):
+		_drop_galaxy_warm(gv)
+		return
+	var home: Vector2i = gm.home_cell()
+	gm.focus_cell(home.x, home.y, GalaxyMap.FLY_SYSTEM, false)
+	for _i in 4:
+		if screen != "title":
+			_drop_galaxy_warm(gv)
+			return
+		gm._update_lod()
+		pending = _hide_new_geometry(gm, seen)
+		await tree.process_frame
+		if not await _reveal_groups(pending, tree):
+			_drop_galaxy_warm(gv)
+			return
+	LoadTrace.mark("title warm: galaxy shaders done")
+	_drop_galaxy_warm(gv)
+
+## Frees the galaxy warm but keeps its materials, shaders and sky (21 Nov): the scripts load the .gdshader files through the
+## resource cache and StandardMaterial3D shares one shader per feature set, so the compiled programs live only while something
+## holds them. Freed with the warm, the galaxy's first draw linked the same 25 programs again (Firefox GL trace, 3.6 s).
+func _drop_galaxy_warm(gv: Node) -> void:
+	if not is_instance_valid(gv):
+		return
+	var keep := {}
+	for n in gv.find_children("*", "", true, false):
+		if n is GeometryInstance3D:
+			var g := n as GeometryInstance3D
+			if g.material_override != null:
+				keep[g.material_override] = true
+			if g.material_overlay != null:
+				keep[g.material_overlay] = true
+			if g is MeshInstance3D and (g as MeshInstance3D).mesh != null:
+				var mi := g as MeshInstance3D
+				for i in mi.mesh.get_surface_count():
+					var m := mi.get_active_material(i)
+					if m != null:
+						keep[m] = true
+			if g is MultiMeshInstance3D and (g as MultiMeshInstance3D).multimesh != null and (g as MultiMeshInstance3D).multimesh.mesh != null:
+				var mm := (g as MultiMeshInstance3D).multimesh.mesh
+				for i in mm.get_surface_count():
+					if mm.surface_get_material(i) != null:
+						keep[mm.surface_get_material(i)] = true
+		elif n is WorldEnvironment and (n as WorldEnvironment).environment != null:
+			keep[(n as WorldEnvironment).environment] = true
+		elif n is CanvasItem and (n as CanvasItem).material != null:
+			keep[(n as CanvasItem).material] = true
+		elif n is Camera3D and (n as Camera3D).environment != null:
+			keep[(n as Camera3D).environment] = true
+	for r in keep:
+		_warm_refs.append(r)
+		if r is ShaderMaterial and (r as ShaderMaterial).shader != null:
+			_warm_refs.append((r as ShaderMaterial).shader)
+	if gv is SubViewport and (gv as SubViewport).world_3d != null:
+		_warm_refs.append((gv as SubViewport).world_3d)
+	LoadTrace.mark("title warm: galaxy kept %d materials" % keep.size())
+	gv.queue_free()
+
+## The galaxy warm's meshes not drawn yet, hidden and grouped by shader (one group is revealed at a time).
+func _hide_new_geometry(root: Node, seen: Dictionary) -> Dictionary:
+	var groups := {}
+	for n in root.find_children("*", "GeometryInstance3D", true, false):
+		var g := n as GeometryInstance3D
+		if seen.has(g.get_instance_id()) or not g.visible:
+			continue
+		seen[g.get_instance_id()] = true
+		var mat: Material = g.material_override
+		if mat == null and g is MeshInstance3D and (g as MeshInstance3D).mesh != null and (g as MeshInstance3D).mesh.get_surface_count() > 0:
+			mat = (g as MeshInstance3D).get_active_material(0)
+		var key := "none"
+		if mat is ShaderMaterial and (mat as ShaderMaterial).shader != null:
+			key = (mat as ShaderMaterial).shader.resource_path
+		elif mat != null:
+			key = mat.get_class()
+		key += "|" + g.get_class()
+		if not groups.has(key):
+			groups[key] = []
+		groups[key].append(g)
+		g.visible = false
+	return groups
+
+## Shows each group for two frames, in turn. False when the title was left (the warm stops).
+func _reveal_groups(groups: Dictionary, tree: SceneTree) -> bool:
+	for key in groups:
+		if screen != "title":
+			return false
+		var t := LoadTrace.start()
+		for g in groups[key]:
+			if is_instance_valid(g):
+				g.visible = true
+		await tree.process_frame
+		LoadTrace.done("title warm: galaxy %s" % str(key).get_file(), t)
+		await tree.process_frame
+	return true
 
 ## Web: tells the service worker (web-host/sw.js) the title is up, so it caches the engine files for the next visit.
 func _warm_service_worker() -> void:
@@ -1024,6 +1159,7 @@ func _fetch_empire_audio(player: int) -> void:
 	_empire_audio[tok] = true
 	if await AppLoader.fetch_empire_audio(self, tok):
 		BotfAudioSystem.load_empire_pack(tok)
+		BotfAudioSystem.music_pack_ready()   # the galaxy's empire tracks are in this pack: swap off the placeholder
 
 func _enter_game(v: Dictionary, name_: String, spread := false) -> void:
 	history.clear()
