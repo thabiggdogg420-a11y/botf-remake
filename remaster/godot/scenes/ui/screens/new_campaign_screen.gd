@@ -82,6 +82,15 @@ func refresh() -> void:
 	for f in Lcars.FACTIONS:
 		cards.add_child(_faction_card(f))
 	_t = LoadTrace.done("new: faction cards", _t, 10)
+	# Web (21 Nov): the first open builds over three frames (cards, then the galaxy and middle columns, then the rules), so no
+	# frame carries the whole screen (Firefox: one 0.6-1.0 s frame). Later refreshes (a toggle) stay in one frame.
+	var spread := OS.has_feature("web") and not _built_once and is_inside_tree()
+	_built_once = true
+	if spread:
+		await get_tree().process_frame
+		if not is_instance_valid(col) or col.is_queued_for_deletion():
+			return
+		_t = LoadTrace.start()
 	# The option columns scroll: with the preset and Threats panels the middle column is taller than a 1080p window.
 	var scroll := ScrollContainer.new()
 	scroll.name = "OptionsScroll"
@@ -105,13 +114,25 @@ func refresh() -> void:
 		mid.add_child(_scenario_panel())
 	mid.add_child(_preset_panel())
 	_t = LoadTrace.done("new: presets", _t, 10)
+	if spread:
+		await get_tree().process_frame
+		if not is_instance_valid(col) or col.is_queued_for_deletion():
+			return
+		_t = LoadTrace.start()
 	mid.add_child(_threat_panel())
 	opts.add_child(mid)
+	_t = LoadTrace.done("new: threats", _t, 10)
+	if spread:
+		await get_tree().process_frame
+		if not is_instance_valid(col) or col.is_queued_for_deletion():
+			return
+		_t = LoadTrace.start()
 	opts.add_child(_rules_column())
-	LoadTrace.done("new: threats+rules", _t, 10)
+	LoadTrace.done("new: rules", _t, 10)
 	Motion.stagger(opts)
 
 var _era_read := false
+var _built_once := false
 
 ## A row of ghost toggles under a caption. `core_key` is kept for callers; every option on this screen is now read by the
 ## core (shape, minor races and difficulty joined with the schema-15 generator), so none carries a "generator pending" mark.

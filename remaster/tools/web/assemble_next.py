@@ -16,6 +16,7 @@ Each export dir holds index.html + engine files from tools/web/export_web.ps1. S
 """
 import argparse
 import gzip
+import zlib
 import os
 import shutil
 import subprocess
@@ -30,6 +31,8 @@ WGSL_TAG = '<script src="wgsl-cache.js"></script>'
 def sidecars(path, min_gain=0.10):
     import brotli
     raw = open(path, "rb").read()
+    if len(zlib.compress(raw[:4 << 20], 1)) > min(len(raw), 4 << 20) * (1 - min_gain):   # quick probe: WebP/OGG packs skip brotli q11
+        return
     for ext, data in ((".gz", gzip.compress(raw, 9, mtime=0)), (".br", brotli.compress(raw, quality=11))):
         if len(data) < len(raw) * (1 - min_gain):
             open(path + ext, "wb").write(data)
@@ -77,7 +80,7 @@ def main():
         if name == "webgl":
             shutil.copy2(man, os.path.join(a.out, "manifest.tmp"))
         shutil.rmtree(link)
-        for f in ("wgsl-cache.js", "index.html"):
+        for f in ("wgsl-cache.js", "index.html", "index.shaders.pck"):
             p = os.path.join(dst, f)
             if os.path.exists(p):
                 sidecars(p)
