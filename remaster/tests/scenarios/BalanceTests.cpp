@@ -453,13 +453,26 @@ int main() {
             if (s.outcome != CampaignOutcome::Ongoing) winTurn = s.turn;
         }
         std::cout << "  first hold turn " << firstHold << ", longest hold " << maxHold << ", ended turn " << winTurn << std::endl;
-        check(firstHold >= 150, "no hold before turn 150");
+        // C9 (21 Nov 2026): AI-AI blocs now break at their 100-turn reviews, and seed 7000 forms no bloc in 320 turns. 0 = never held.
+        check(firstHold == 0 || firstHold >= 150, "no hold before turn 150");
         if (winTurn && s.winnerEmpire) {
             bool diplomatic = false;
             for (const auto& v : victoryProgress(s, s.winnerEmpire)) diplomatic |= v.condition == VictoryCondition::Diplomatic && v.achieved;
             if (diplomatic) check(winTurn >= firstHold + 9 && maxHold >= 10, "the diplomatic win came after 10 held turns");
         }
-        check(roundTrip, "some bloc held for 5 turns (the save check ran)");
+        if (!roundTrip) {   // no bloc held in this run (C9): stage a 5-turn hold on a live campaign and check the save path the same way
+            auto h = game("remastered", 7000);
+            h.observerMode = true;
+            for (int t = 0; t < 5; ++t) advance(h);
+            h.diplomaticHold = {{internal::activeEmpires(h).back(), 5}};
+            const auto text = serialize(h);
+            check(text.find("DIPLOMATIC_HOLD ") != std::string::npos, "the save carries the hold (staged)");
+            auto back = deserialize(text);
+            back.observerMode = true;
+            check(back.diplomaticHold == h.diplomaticHold && fingerprint(back) == fingerprint(h), "the hold round-trips (staged)");
+            roundTrip = true;
+        }
+        check(roundTrip, "the hold's save check ran");
         GameState fresh = game("remastered", 7000);
         check(serialize(fresh).find("DIPLOMATIC_HOLD") == std::string::npos, "a new game's save has no hold section");
         content::installBase();

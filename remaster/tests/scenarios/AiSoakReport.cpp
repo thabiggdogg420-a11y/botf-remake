@@ -78,8 +78,12 @@ int main(int argc, char** argv) {
             if (setup.lineup.empty() && p->empires > 0) setup.empires = p->empires;
             if (p->era > 0) setup.era = static_cast<StartingEra>(p->era);
             const std::map<std::string, std::array<int, 3>> sizes{{"small", {16, 13, 30}}, {"medium", {22, 16, 50}}, {"large", {28, 20, 80}}, {"huge", {34, 24, 120}}};
-            const auto sz = sizes.find(p->size.empty() ? std::string("medium") : p->size);
+            // Round 4 (22 Nov 2026): BOTF_SOAK_SIZE=<small|medium|large|huge> overrides the preset's galaxy size.
+            const char* sizeEnv = std::getenv("BOTF_SOAK_SIZE");
+            const auto sz = sizes.find(sizeEnv ? std::string(sizeEnv) : (p->size.empty() ? std::string("medium") : p->size));
             if (sz != sizes.end()) { setup.width = sz->second[0]; setup.height = sz->second[1]; setup.systems = sz->second[2]; }
+            // Round 4: BOTF_SOAK_PLAYER=<empire id> seats the observer AI on that empire (2 = Klingon, the aggressive profile).
+            if (const char* seat = std::getenv("BOTF_SOAK_PLAYER")) { setup.playerEmpire = std::atoi(seat); setup.playerSet = true; }
             if (!p->shape.empty()) parseGalaxyShape(p->shape, setup.galaxy.shape);
             if (!p->minorDensity.empty()) parseMinorDensity(p->minorDensity, setup.galaxy.density);
             if (!p->difficulty.empty()) parseDifficulty(p->difficulty, setup.galaxy.difficulty);
@@ -110,6 +114,10 @@ int main(int argc, char** argv) {
             std::set<int> shipsSeen;
             std::map<int, int> ownerPrev, ownerNow; std::map<std::pair<int, int>, int> captured, pairWarTurns; long long parkedTransportTurns = 0;
             for (const auto& c : state.colonies) ownerPrev[c.systemId] = c.ownerId;
+            // Round 4 (22 Nov 2026): always on. Worlds that change hands between empires, and the longest run of turns with no
+            // war between any two surviving majors (AI only in observer mode).
+            std::map<int, int> churnPrev; for (const auto& c : state.colonies) churnPrev[c.systemId] = c.ownerId;
+            long long handsChanged = 0; int peaceRun = 0, longestPeace = 0, longestPeaceEnd = 0;
             for (const auto& c : state.colonies) ownerAt[c.systemId] = c.ownerId;
             try {
                 for (int t = 0; t < turns && state.outcome == CampaignOutcome::Ongoing; ++t) {
@@ -128,6 +136,16 @@ int main(int argc, char** argv) {
                                   << state.fleets.size() << ", colonies " << state.colonies.size() << ", stations "
                                   << state.stations.size() << ", events this turn " << report.events.size() << std::endl;
                         throw std::runtime_error("runaway");
+                    }
+                    {
+                        std::map<int, int> nowOwners; for (const auto& c : state.colonies) nowOwners[c.systemId] = c.ownerId;
+                        for (const auto& [sys, owner] : nowOwners) { auto w = churnPrev.find(sys); if (w != churnPrev.end() && w->second != owner && w->second > 0 && owner > 0) ++handsChanged; }
+                        std::set<int> alive; for (const auto& [sys, owner] : nowOwners) alive.insert(owner);
+                        churnPrev = std::move(nowOwners);
+                        const bool anyWar = std::any_of(state.majorRelations.begin(), state.majorRelations.end(), [&](const MajorRelation& r) {
+                            return r.atWar && alive.count(r.first) && alive.count(r.second); });
+                        peaceRun = anyWar ? 0 : peaceRun + 1;
+                        if (peaceRun > longestPeace) { longestPeace = peaceRun; longestPeaceEnd = state.turn; }
                     }
                     if (gains) {
                         std::map<int, int> now;
@@ -313,6 +331,8 @@ int main(int argc, char** argv) {
             ++endings[kind];
             const std::string winner = state.winnerEmpire ? empireName(state.winnerEmpire) : "-";
             if (state.winnerEmpire && kind != "player-eliminated") ++winsBy[winner];
+            std::cout << "CHURN " << p->id << " seed " << setup.seed << " turns " << state.turn << " hands-changed " << handsChanged << " per-100 "
+                      << (state.turn > 0 ? 100.0 * handsChanged / state.turn : 0.0) << " longest-no-war " << longestPeace << " ending-turn " << longestPeaceEnd << std::endl;
             std::cout << "GAME " << p->id << " seed " << setup.seed << " turns " << state.turn << " end " << kind << " winner " << winner << " slowest-turn " << slowestTurn << "s"
                       << (ending.empty() ? "" : " | " + ending) << std::endl;
             for (const auto& [id, tr] : track) {
