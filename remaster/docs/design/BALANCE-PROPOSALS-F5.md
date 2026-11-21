@@ -251,3 +251,30 @@ left, their treaties lapse and the stronger declares war. Only one of 8 Classic 
   can win by conquest in a normal campaign; today only a human's play-on allows it (cause 1).
 - C8. Faster wars between equals (for example a transport's troops +50%, or a world's defence from population /4 instead of /3),
   sized by soak once C5-C7 are decided (cause 6).
+
+## Round 6 (21 Nov 2026, Barclay): C5-C8 applied on Simon's delegation
+Simon: "You choose whatever makes the most sense" (rulings 21 Nov, standing\simon\botf-rulings.md). Applied in 1ad9cdb:
+- C5. AI-AI alliances are proposed and renewed (100-turn review) only while a third surviving major at war with one of them
+  holds more worlds than either partner (`aiCommonEnemy`). Human alliances unchanged.
+- C6. Last two powers, both AI: no new proposals; the stronger ends its treaties and declares war (was the soak-only experiment).
+- C7. New Campaign setting "Domination victory" (default on), saved as NO_DOMINATION, shown on the end-screen goals,
+  passed by LAN and hotseat. Off: domination never ends the game; conquest is the military victory.
+- C8. Lever: a world's invasion defence uses population / 5 (was / 3), `InvasionPopDefenseDivisor`. Chosen over transport
+  troops because it also helps the AI's own joint-landing estimate and leaves troop costs untouched.
+
+Soaks, domination off, play-on, 4 seeds each, 1,200 turns:
+| Run | Classic | KCW |
+|---|---|---|
+| C5 (renewal only) - C7, divisor 3 | cap 4 | diplomatic 4 |
+| + divisor 5 | cap 4 | cap 2, diplomatic 2 |
+| + divisor 10 | cap 4 | cap 1, diplomatic 3 |
+| C5 proposal gate + divisor 3 | cap 4 | diplomatic 4 |
+| C5 proposal gate + divisor 5 (chosen) | cap 3, conquest 1 (Ferengi, seed 7131, turn 1086) | cap 2, diplomatic 1, vendetta 1 |
+Domination on, chosen settings, Classic: cap 3, domination 1 (Ferengi, turn 537). No win before turn 200 in any run.
+Divisor 10 bought nothing over 5, so 5 stands. Target "some AI conquest wins" is met only thinly (1 of 8).
+
+Why so few: AI-AI alliances had been lapsing and re-signing at once (hence the proposal gate). Treaties below alliance
+(non-aggression, friendship, affiliation) still hold peace among three or more powers for hundreds of turns.
+### Proposal C9 (Simon's call; not applied)
+- Non-aggression, friendship and affiliation between two AIs also end at a fixed term (e.g. 100 turns) unless C5's common-enemy
+  test holds, so long-lived AI blocs break up and the strong can turn on the weak.
