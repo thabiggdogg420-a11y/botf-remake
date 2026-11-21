@@ -188,6 +188,7 @@ func _fetch_background() -> void:
 	PlanetTextures.reset()
 	web_packs_changed.emit("planets_web.pck")
 	LoadTrace.done("title packs: planets+art in", t)
+	await _warm_new_campaign()
 	if await AppLoader.fetch_web_pack(self, AppLoader.WEB_MUSIC):
 		t = LoadTrace.start()
 		BotfAudioSystem.music_pack_ready()
@@ -197,6 +198,27 @@ func _fetch_background() -> void:
 	web_packs_changed.emit("")
 	_warm_service_worker()
 	_idle_prefetch()
+
+## Web (21 Nov): opening New campaign was one 0.5-1.0 s frame (its script compiled, the eight portraits decoded on the main
+## thread, then its first draw rasterised the fonts). While the title idles, one piece a frame: each portrait into the art
+## cache, the screen's script, then (WebGL, where the battle warm-up that did it is gone) the font sizes.
+func _warm_new_campaign() -> void:
+	var tree := get_tree()
+	for key in PortraitSlot.MAJOR_KEYS.values():
+		if screen != "title":
+			return
+		var t := LoadTrace.start()
+		AppLoader.art(str(key), "portrait")
+		LoadTrace.done("title warm: portrait %s" % key, t)
+		await tree.process_frame
+	var path := AppRoutes.script_for("new")
+	if path != "" and screen == "title":
+		var t2 := LoadTrace.start()
+		_warm_refs.append(AppLoader.resource(path))
+		LoadTrace.done("title warm: new campaign script", t2)
+		await tree.process_frame
+	if not _glyphs_warmed and screen == "title":
+		await _warm_glyphs()
 
 ## Web: tells the service worker (web-host/sw.js) the title is up, so it caches the engine files for the next visit.
 func _warm_service_worker() -> void:

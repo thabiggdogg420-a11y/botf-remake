@@ -53,6 +53,7 @@ func _web_boot() -> void:
 			await tree.process_frame
 			t0 = Time.get_ticks_usec()
 	await tree.process_frame
+	_boot_text("Preparing graphics")   # the title's first draws compile its shaders (WebGL: several seconds); not a stuck 95%
 	# WebGPU round 6: the game's shaders compile one per frame here, behind the panel, not all in the title's first frame.
 	# Loaded by path, not named: naming ShaderWarm here made main.gd (compiled at engine start, before this panel exists)
 	# compile ShaderWarm and the battle scripts it names in the engine's first frames (WebGPU round 7).

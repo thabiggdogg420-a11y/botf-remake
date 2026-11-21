@@ -43,6 +43,7 @@ try {
     $log = Join-Path $Out 'export.log'
     $p = Start-Process -FilePath $Godot -ArgumentList "--headless --audio-driver Dummy --path `"$Proj`" --export-release `"$Preset`" `"$target`"" `
         -PassThru -WindowStyle Hidden -RedirectStandardOutput $log -RedirectStandardError "$log.err"
+    $null = $p.Handle   # PowerShell 5: without a handle ExitCode stays empty
     try { $p.PriorityClass = 'BelowNormal' } catch {}
     $p.WaitForExit()
     if ($p.ExitCode -ne 0 -or -not (Test-Path -LiteralPath (Join-Path $Out 'index.pck'))) { throw "export $Preset failed (exit $($p.ExitCode)); see $log" }
