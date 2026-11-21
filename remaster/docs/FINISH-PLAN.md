@@ -83,3 +83,12 @@ One heavy job at a time (`Documents\ChatGPT\.botf-heavy.lock`), BelowNormal prio
 - Web title first draw (1b7a54b): Firefox worst title frame 7.5 s -> ~2.5 s, title up 24 s -> ~15.5 s. Still over 1 s (open).
 - BOTF-Web-Next-0.1.552 assembled. Chrome WebGPU galaxy open 220-300 ms (WGSL cache 30/30); Firefox 660-680 ms.
 - ctest 27/27 passed.
+
+## Round 4 (21-22 Nov, Barclay)
+- C9 applied and kept (9e58c27). The AI conquest-rate target was dropped on the coordinator's correction. Round 7 of
+  BALANCE-PROPOSALS-F5 has the AI churn figures (no permanent peace) and the aggressive-player soaks. Those soaks don't answer
+  (a): the next step is a scripted aggressive player for BotfAiSoak.
+- Toasts keep clear of every modal panel (5bf239a); toast_capture 10/10 at 1080p and 720p.
+- Firefox title (e73da59): title up 13.4-14.1 s. Three lit-program compile frames are still 1.0-1.6 s (ANGLE compiles a
+  program at its first draw; Firefox has no parallel shader compile).
+- BOTF-Web-Next-0.1.559 assembled. ctest 27/27; verify 42 ok, real-saves guard ok.
