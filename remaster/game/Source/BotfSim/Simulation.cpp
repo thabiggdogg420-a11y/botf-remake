@@ -1434,7 +1434,7 @@ void reveal(GameState& s, int x, int y, int owner = 1) {
 // passes they all land. Returns true when the landing was ordered.
 bool aiJointLanding(GameState& s, int ownerId, const Colony& target, int x, int y) {
     const int defBat = s.advancedRulesEnabled ? economy(s, target).poweredBatteries : 0;
-    const int defStr = (8 + target.population / 3 + target.morale / 10 + batteryDefense(defBat)) * content::balance().shieldDefensePercent / 100;
+    const int defStr = (8 + target.population / InvasionPopDefenseDivisor + target.morale / 10 + batteryDefense(defBat)) * content::balance().shieldDefensePercent / 100;
     int atkStr = 0;
     for (const auto& t : s.fleets)
         if (t.ownerId == ownerId && t.shipClass == Building::Transport && t.hull > 0 && t.x == x && t.y == y)
@@ -2240,7 +2240,8 @@ std::int64_t blocMilitaryPower(const GameState& s, const CampaignDiplomacyContex
 // Replaces the old "IDs 2/4 declare war on the player every turn after 25" rule.
 void planAiWarDeclarations(GameState& s, int ownerId) {
     if (!s.aiAggressionEnabled || empireEliminatedInternal(s, ownerId)) return;
-    if (s.soakEndgameWar) {   // soak experiment only (see GameState::soakEndgameWar); not a rule
+    {   // C6 (21 Nov 2026, Simon's delegation): the last two powers, both AI: their treaties end and the stronger goes to war,
+        // whatever its personality (was the soak-only soakEndgameWar experiment).
         const auto left = survivingEmpires(s);
         if (left.size() == 2 && !humanSeat(s, left[0]) && !humanSeat(s, left[1])) {
             const int other = left[0] == ownerId ? left[1] : left[0];
@@ -3271,7 +3272,7 @@ void resolveInvasions(GameState& s, TurnReport& report) {
             }
         if (wave.empty()) { attacker = 8 + fleet.hull + 2 * empire(s, fleet.ownerId).technologies[5].level; wave.push_back(&fleet); }
         const int defenderBatteries = s.advancedRulesEnabled ? economy(s, *target).poweredBatteries : 0;
-        const int defender = minors::invasionDefense(s, *target, 8 + target->population / 3 + target->morale / 10 + batteryDefense(defenderBatteries))
+        const int defender = minors::invasionDefense(s, *target, 8 + target->population / InvasionPopDefenseDivisor + target->morale / 10 + batteryDefense(defenderBatteries))
             * (100 + empire_rules::programDefensePercent(*target)) / 100; // Schema 15: Martial Law, Tribunal
         const std::uint64_t a2 = static_cast<std::uint64_t>(attacker) * attacker;
         const std::uint64_t d2 = static_cast<std::uint64_t>(defender) * defender;
@@ -3560,6 +3561,7 @@ std::string payload(const GameState& s) {
         out << '\n';
     }
     if (s.playingOnFrom > 0) out << "PLAYING_ON " << s.playingOnFrom << '\n';   // C4 (20 Nov 2026)
+    if (!s.dominationEnabled) out << "NO_DOMINATION 1\n";   // C7 (21 Nov 2026)
     // Schema 14: per-ship orders of recorded battle rounds. Written only when some
     // round carries orders, so campaigns without them keep the schema-13 layout.
     const bool anyOrders = std::any_of(s.latestBattles.begin(), s.latestBattles.end(), [](const CombatReport& b) {
@@ -5827,7 +5829,7 @@ TurnReport advanceWithCombat(GameState& state, const std::function<void(GameStat
             // Observer mode (soaks only): the player's seat is one AI among the others. The campaign ends when one empire is
             // left (conquest) or an empire holds three fifths of the systems from turn 20 (the player's domination test).
             int winner = surviving.size() == 1 ? *surviving.begin() : 0;
-            if (!winner && next.turn >= 20 && next.playingOnFrom == 0)   // C4: no domination end once the campaign plays on
+            if (!winner && next.turn >= 20 && dominationLive(next))   // C4/C7: no domination end once playing on or with domination off
                 for (int id : surviving)
                     if (static_cast<int>(std::count_if(next.colonies.begin(), next.colonies.end(), [&](const Colony& c) { return c.ownerId == id; })) * 5 >=
                         static_cast<int>(next.systems.size()) * 3) { winner = id; break; }
@@ -5852,12 +5854,12 @@ TurnReport advanceWithCombat(GameState& state, const std::function<void(GameStat
             next.outcome = CampaignOutcome::Defeat;
             next.winnerEmpire = surviving.size() == 1 ? *surviving.begin() : 0;
         }
-        else if (surviving.size() == 1 || (next.turn >= 20 && next.playingOnFrom == 0 &&
+        else if (surviving.size() == 1 || (next.turn >= 20 && dominationLive(next) &&
             static_cast<int>(std::count_if(next.colonies.begin(), next.colonies.end(), [&](const Colony& c) { return c.ownerId == next.playerEmpire; })) * 5 >=
             static_cast<int>(next.systems.size()) * 3)) {
             next.outcome = CampaignOutcome::Victory; next.winnerEmpire = next.playerEmpire;
         }
-        else if (!next.hotseatHumans.empty() && next.turn >= 20 && next.playingOnFrom == 0) {
+        else if (!next.hotseatHumans.empty() && next.turn >= 20 && dominationLive(next)) {
             // Hotseat: another human's domination (three fifths of the systems) ends the game too; it is a human win.
             for (int h : next.hotseatHumans)
                 if (h != next.playerEmpire && static_cast<int>(std::count_if(next.colonies.begin(), next.colonies.end(), [&](const Colony& c) { return c.ownerId == h; })) * 5 >=
@@ -6483,6 +6485,13 @@ GameState deserialize(const std::string& text) {
         require(current25, "PLAYING_ON section in an older save");
         require(static_cast<bool>(in >> s.playingOnFrom) && s.playingOnFrom >= 1, "Malformed PLAYING_ON section");
         nextTag = readTag("Malformed save section after PLAYING_ON");
+    }
+    if (nextTag == "NO_DOMINATION") {   // C7 (21 Nov 2026): domination switched off at New Campaign.
+        require(current25, "NO_DOMINATION section in an older save");
+        int one = 0;
+        require(static_cast<bool>(in >> one) && one == 1, "Malformed NO_DOMINATION section");
+        s.dominationEnabled = false;
+        nextTag = readTag("Malformed save section after NO_DOMINATION");
     }
     if (nextTag == "COMBAT_ORDERS") {
         require(current, "Schema 14 section in an older save");

@@ -98,7 +98,8 @@ int main(int argc, char** argv) {
             // C4 (20 Nov 2026): BOTF_SOAK_PLAYON=1 plays on past domination (as a winner who chose "Continue playing"), so a
             // campaign ends only by conquest or another victory type.
             if (std::getenv("BOTF_SOAK_PLAYON")) state.playingOnFrom = 1;
-            state.soakEndgameWar = std::getenv("BOTF_SOAK_ENDGAME_WAR") != nullptr;   // 21 Nov: experiment for a proposal, not a rule
+            // C7 (21 Nov 2026): BOTF_SOAK_NODOM=1 plays with the New Campaign domination setting off (conquest is the military win).
+            if (std::getenv("BOTF_SOAK_NODOM")) state.dominationEnabled = false;
             std::map<int, EmpireTrack> track;
             for (int id : internal::activeEmpires(state)) { track[id].id = id; track[id].name = empireName(id); }
             std::string ending;
@@ -202,7 +203,7 @@ int main(int argc, char** argv) {
                                 const auto* c = colonyAt(state, site.second);
                                 const auto* sy = gameplay::systemById(state, site.second);
                                 const int bat = state.advancedRulesEnabled ? economy(state, *c).poweredBatteries : 0;
-                                const int aiDef = (8 + c->population / 3 + c->morale / 10 + bat * 12 * content::balance().batteryDefensePercent / 100) * content::balance().shieldDefensePercent / 100;
+                                const int aiDef = (8 + c->population / InvasionPopDefenseDivisor + c->morale / 10 + bat * 12 * content::balance().batteryDefensePercent / 100) * content::balance().shieldDefensePercent / 100;
                                 int guards = 0, foes = 0;
                                 for (const auto& o : state.fleets) if (o.hull > 0 && o.x == sy->x && o.y == sy->y && fleetAttack(o) > 0 && o.shipClass != Building::Transport) {
                                     if (o.ownerId == c->ownerId) ++guards;

@@ -54,6 +54,35 @@ int main() {
             std::cout << "  note: this galaxy has too few colonies to stage a domination (" << w.colonies.size() << " for " << need << "); gate checked on the ongoing game only\n";
         }
     }
+    // ---- C7 (21 Nov 2026): the domination setting
+    {
+        auto s = generateCampaign(2024, 3, 16, 12, 28, 1);
+        const auto plain = fingerprint(s);
+        check(s.dominationEnabled && serialize(s).find("NO_DOMINATION") == std::string::npos, "domination is on by default and saves as before");
+        s.dominationEnabled = false;
+        const auto back = deserialize(serialize(s));
+        check(!back.dominationEnabled, "NO_DOMINATION loads back");
+        check(fingerprint(back) != plain, "the domination setting is part of the fingerprint (LAN seats agree on it)");
+        const auto vp = victoryProgress(back, back.playerEmpire);
+        const auto dom = std::find_if(vp.begin(), vp.end(), [](const VictoryProgress& v) { return v.condition == VictoryCondition::Domination; });
+        check(dom != vp.end() && !dom->enabled && !dom->achieved, "victory progress shows domination off");
+        // A staged domination (three fifths of the systems, a rival still standing) on turn 30: with the setting off it does not end the game.
+        for (bool on : {true, false}) {
+            auto w = generateCampaign(2024, 3, 16, 12, 28, 1);
+            w.aiAggressionEnabled = false; w.eventsEnabled = false; w.turn = 30; w.dominationEnabled = on;
+            const int need = (static_cast<int>(w.systems.size()) * 3 + 4) / 5;
+            int own = 0;
+            for (auto& c : w.colonies) if (c.ownerId == w.playerEmpire) ++own;
+            for (auto& c : w.colonies) if (own < need && c.ownerId != w.playerEmpire) {
+                int left = 0; for (auto& o : w.colonies) if (o.ownerId == c.ownerId) ++left;
+                if (left > 1) { c.ownerId = w.playerEmpire; ++own; }
+            }
+            if (own < need) { std::cout << "  note: too few colonies to stage a domination (" << own << " of " << need << ")\n"; break; }
+            advance(w);
+            if (on) check(w.outcome == CampaignOutcome::Victory, "domination on: three fifths of the systems wins");
+            else check(w.outcome == CampaignOutcome::Ongoing, "domination off: three fifths of the systems does not end the campaign");
+        }
+    }
     // ---- C1: two transports at an undefended enemy world assault together
     try {
         auto s = generateCampaign(1999, 3, 16, 12, 28, 1);

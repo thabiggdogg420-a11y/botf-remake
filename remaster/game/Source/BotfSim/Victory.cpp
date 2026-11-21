@@ -293,9 +293,12 @@ std::vector<VictoryProgress> victoryProgress(const GameState& state, int empireI
     const int systems = static_cast<int>(state.systems.size());
     const int required = (systems * 3 + 4) / 5;
     domination.percent = required ? std::clamp(100 * own / required, 0, 100) : 0;
-    domination.achieved = own >= required && state.turn >= 20 && state.playingOnFrom == 0; // C4: not after playing on
-    domination.explanation = "Controls " + std::to_string(own) + " of " + std::to_string(systems) + " systems; domination needs " +
-        std::to_string(required) + " (60%) after turn 20.";
+    domination.enabled = state.dominationEnabled;   // C7: the New Campaign setting
+    domination.achieved = own >= required && state.turn >= 20 && dominationLive(state); // C4: not after playing on
+    domination.explanation = state.dominationEnabled
+        ? "Controls " + std::to_string(own) + " of " + std::to_string(systems) + " systems; domination needs " +
+            std::to_string(required) + " (60%) after turn 20."
+        : std::string("Off in this campaign: conquest is the military victory.");
     result.push_back(domination);
 
     VictoryProgress science;

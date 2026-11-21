@@ -1612,6 +1612,20 @@ inline bool lastTwoPowers(const DiplomacyContext& ctx, ParticipantId a, Particip
     return left == 2;
 }
 
+// C5 (21 Nov 2026, Simon's delegation): a common enemy of two AI empires is a third surviving major at war with at least one of
+// them that holds more worlds than either. An AI-AI alliance is proposed, and renewed at its 100-turn review, only while one
+// exists. Contexts without colony counts (colonyCount -1) always pass.
+inline bool aiCommonEnemy(const DiplomacyContext& ctx, ParticipantId a, ParticipantId b) {
+    const int colA = ctx.colonyCount(a), colB = ctx.colonyCount(b);
+    if (colA < 0 || colB < 0) return true;
+    for (int id : ctx.majorEmpires()) {
+        const auto c = ParticipantId::major(id);
+        if (c == a || c == b || ctx.isEliminated(c)) continue;
+        if ((ctx.isAtWar(c, a) || ctx.isAtWar(c, b)) && ctx.colonyCount(c) > std::max(colA, colB)) return true;
+    }
+    return false;
+}
+
 inline std::vector<AiDiplomaticIntent> planAiDiplomacy(
     const DiplomacyState& state,
     const DiplomacyContext& ctx,
@@ -1636,6 +1650,7 @@ inline std::vector<AiDiplomaticIntent> planAiDiplomacy(
             if (otherId == selfId) continue;
             const ParticipantId other = ParticipantId::major(otherId);
             if (ctx.isEliminated(other) || !ctx.hasContact(self, other)) continue;
+            if (lastTwoPowers(ctx, self, other)) continue;   // C6 (21 Nov 2026): the last two AI powers sign nothing, they fight it out
 
             // One open proposal per direction at a time, and a cool-down between them.
             const bool open = std::any_of(state.proposals.begin(), state.proposals.end(), [&](const Proposal& p) {
@@ -1704,7 +1719,8 @@ inline std::vector<AiDiplomaticIntent> planAiDiplomacy(
                 intent.duration = TreatyDuration::Indefinite;
                 intent.rationale = "share sensors and exploration";
             } else if (rank == 3 && !warMinded && activeTreatyAge(state, self, other, 3) >= 10 && desire >= prof.allianceDesire &&
-                       (shared > 0 || selfP == MajorPersonality::Federation) && !lastTwoPowers(ctx, self, other)) {   // C3: it would end at once
+                       (shared > 0 || selfP == MajorPersonality::Federation) && !lastTwoPowers(ctx, self, other) &&   // C3: it would end at once
+                       (ctx.isHuman(other) || aiCommonEnemy(ctx, self, other))) {   // C5: AI-AI alliances only against a bigger common enemy
                 intent.treatyType = TreatyType::Alliance;
                 intent.duration = TreatyDuration::Indefinite;
                 intent.rationale = shared > 0 ? "common enemies" : "lasting cooperation";
@@ -2340,9 +2356,10 @@ public:
                 } else if (age > 0 && age % AiAllianceTermTurns == 0) {
                     const bool wantsA = diplomaticDesire(state, ctx, treaty.partyA, treaty.partyB) >= profileFor(ctx.personality(treaty.partyA)).allianceDesire;
                     const bool wantsB = diplomaticDesire(state, ctx, treaty.partyB, treaty.partyA) >= profileFor(ctx.personality(treaty.partyB)).allianceDesire;
-                    if (!(wantsA && wantsB)) {
+                    const bool commonEnemy = aiCommonEnemy(ctx, treaty.partyA, treaty.partyB);   // C5
+                    if (!(wantsA && wantsB) || !commonEnemy) {
                         aiAllianceEnds = true;
-                        aiAllianceWhy = "Alliance term ended without renewal";
+                        aiAllianceWhy = commonEnemy ? "Alliance term ended without renewal" : "Alliance term ended: no common enemy outweighs either partner";
                     }
                 }
             }

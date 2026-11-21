@@ -44,6 +44,7 @@ var scenario := ""
 var seed_value := 0
 var events := true
 var aggression := true
+var domination := true   ## C7 (21 Nov 2026): domination on (default) or off; off, conquest is the military win
 ## Schema 24 (docs/design/BALANCE-AI.md section 6): extra colonies each empire starts with, planets per ordinary star, race star types.
 var start_systems := 0
 var planets_id := "standard"
@@ -129,7 +130,7 @@ const DIFFICULTIES := [
 	{"id": "impossible", "label": "Impossible", "blurb": "Rivals produce 135% of normal, start 40% richer and play like an Expert. They cheat; you do not."},
 ]
 ## Option keys the core reads. Shape, minor-race density and difficulty joined them with the schema-15 generator.
-const CORE_READS := ["faction", "empires", "lineup", "seed", "era", "ruleset", "width", "height", "systems", "events", "aiAggression", "preset",
+const CORE_READS := ["faction", "empires", "lineup", "seed", "era", "ruleset", "width", "height", "systems", "events", "aiAggression", "domination", "preset",
 	"shape", "minorDensity", "difficulty", "threats", "scenario", "startSystems", "planetsMin", "planetsMax", "starTypes"]
 
 static func core_reads(key: String) -> bool:
@@ -181,6 +182,8 @@ func pick_preset(id: String) -> bool:
 		events = bool(o["events"])
 	if o.has("aiAggression"):
 		aggression = bool(o["aiAggression"])
+	if o.has("domination"):
+		domination = bool(o["domination"])
 	if o.has("empires"):
 		empires = maxi(int(o["empires"]), faction)
 	# Schema 24 options: the preset's defaults, or the plain galaxy when it names none.
@@ -403,7 +406,7 @@ func threats_text() -> String:
 func options() -> Dictionary:
 	var sz := size_def()
 	var o := {"faction": faction, "empires": powers(), "seed": seed_value, "era": era, "ruleset": ruleset,
-		"width": sz["width"], "height": sz["height"], "systems": sz["systems"], "events": events, "aiAggression": aggression, "preset": preset,
+		"width": sz["width"], "height": sz["height"], "systems": sz["systems"], "events": events, "aiAggression": aggression, "domination": domination, "preset": preset,
 		"shape": shape, "minorDensity": minor_density, "difficulty": difficulty}
 	if not lineup.is_empty():
 		o["lineup"] = lineup_keys()
@@ -479,5 +482,5 @@ func summary() -> Array:
 	return ["%d major powers · %d systems · %dx%d sectors" % [o["empires"], o["systems"], o["width"], o["height"]],
 		"%s era · %s rules · %s preset" % [era_name(), ruleset, preset_name()],
 		"%s galaxy · %s minor races (%d) · %s difficulty" % [shape.capitalize(), minor_density, minors_count(), difficulty.capitalize()],
-		"Seed %d%s%s%s" % [seed_value, " · events" if events else "", " · aggressive AI" if aggression else "", (" · +%d start colonies" % start_systems) if start_systems > 0 else ""],
+		"Seed %d%s%s%s%s" % [seed_value, " · events" if events else "", " · aggressive AI" if aggression else "", "" if domination else " · no domination", (" · +%d start colonies" % start_systems) if start_systems > 0 else ""],
 		threats_text()]

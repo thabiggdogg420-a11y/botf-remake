@@ -47,6 +47,7 @@ var found: Array = []      ## client: [{"address", "port", "name", "players"}]
 var _host_faction := 1
 var _round_deadline := 0.0
 var _seed := 0
+var domination := true   ## C7: the host's New Campaign domination setting (the opening save carries it to every seat)
 
 func _init(app_: App) -> void:
 	app = app_
@@ -135,6 +136,7 @@ func start_game() -> String:
 	var opts := {"faction": _host_faction, "hotseat": extra}
 	if _seed != 0:
 		opts["seed"] = _seed
+	opts["domination"] = domination
 	if not app.start_campaign(opts):
 		return "The campaign did not start."
 	humans = app.hotseat_humans().duplicate()

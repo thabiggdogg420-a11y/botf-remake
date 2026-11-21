@@ -198,12 +198,12 @@ int main() {
         auto plain = onActive(13);
         auto& col = plain.colonies.front();
         col.defenseBatteries = 3;
-        const int base = minors::invasionDefense(plain, col, 8 + col.population / 3 + col.morale / 10 + 3 * 12);
+        const int base = minors::invasionDefense(plain, col, 8 + col.population / InvasionPopDefenseDivisor + col.morale / 10 + 3 * 12);
         content::installStack({overlay("t-d", "\"balance\":{\"shieldDefensePercent\":150}")});
         auto shield = onActive(13);
         shield.colonies.front().defenseBatteries = 3;
         const auto& c2 = shield.colonies.front();
-        const int boosted = minors::invasionDefense(shield, c2, 8 + c2.population / 3 + c2.morale / 10 + 3 * 12);
+        const int boosted = minors::invasionDefense(shield, c2, 8 + c2.population / InvasionPopDefenseDivisor + c2.morale / 10 + 3 * 12);
         check(boosted == base * 150 / 100, "shield 150% scales invasion defence (" + std::to_string(base) + " -> " + std::to_string(boosted) + ")");
         content::installBase();
     }, passed);

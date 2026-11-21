@@ -42,6 +42,13 @@ static func open(app: App) -> Control:
 	host_box.add_child(Lcars.label("Turn timer", "", 15))
 	host_box.add_child(timer)
 	host_box.add_child(Lcars.caption("0 = off"))
+	var dom := CheckBox.new()
+	dom.name = "LanDomination"
+	dom.text = "Domination victory"
+	dom.button_pressed = lan.domination
+	dom.tooltip_text = "Off: conquest (every colony) is the military victory. Every player's game follows the host's choice."
+	dom.toggled.connect(func(on): lan.domination = on)
+	host_box.add_child(dom)
 	host_box.add_child(Lcars.pill("Host a game", "primary", func():
 		var err := lan.host(int(port.value), power.get_selected_id(), int(timer.value))
 		if err != "":

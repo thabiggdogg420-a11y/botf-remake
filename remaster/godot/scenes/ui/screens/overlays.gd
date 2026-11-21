@@ -276,7 +276,8 @@ static func victory_rows(v: Dictionary, compact: bool = false) -> Control:
 		if c["achieved"]:
 			h.add_child(Lcars.badge("achieved", "good"))
 		elif not c["enabled"]:
-			h.add_child(Lcars.badge("off in this ruleset", "dim"))
+			# C7: domination is a campaign setting, the other off goals are the ruleset's
+			h.add_child(Lcars.badge("off in this campaign" if str(c["name"]) == "Domination" else "off in this ruleset", "dim"))
 		h.add_child(Lcars.spacer())
 		h.add_child(Lcars.label("%d%%" % int(c["percent"]) if c["enabled"] else "-", "Mono", 16))
 		row.add_child(h)

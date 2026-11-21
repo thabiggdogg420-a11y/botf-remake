@@ -372,6 +372,13 @@ func _rules_column() -> Control:
 	ag.tooltip_text = "Rivals declare war and raid when they see weakness."
 	ag.toggled.connect(func(on): aggression = on)
 	tg.add_child(ag)
+	var dm := CheckBox.new()
+	dm.name = "Domination"
+	dm.text = "Domination victory"
+	dm.button_pressed = vm.domination
+	dm.tooltip_text = "On: holding three fifths of the systems from turn 20 wins. Off: conquest (every colony) is the military victory."
+	dm.toggled.connect(func(on): vm.domination = on)
+	tg.add_child(dm)
 	var stt := CheckBox.new()
 	stt.text = "Race star types"
 	stt.button_pressed = vm.star_types

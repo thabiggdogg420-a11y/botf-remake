@@ -1035,6 +1035,7 @@ void writeView(Writer& w) {
     w.field("outcome", s.outcome == botf::CampaignOutcome::Victory ? "victory" : s.outcome == botf::CampaignOutcome::Defeat ? "defeat" : "ongoing");
     w.field("winner", s.winnerEmpire);
     w.field("canPlayOn", botf::canPlayOn(s)); w.field("playingOnFrom", s.playingOnFrom);   // C4
+    w.field("domination", s.dominationEnabled);   // C7
     w.key("hotseat").beginArray(); for (int h : s.hotseatHumans) w.value(h); w.endArray();   // human empires, [] for one player
     // Hotseat (21 Nov 2026): the humans who share the win: the winner if human, and for a diplomatic win every human in the
     // winner's full alliance (MULTIPLAYER.md decision 1). [] while the game runs or when no human won.
@@ -2949,6 +2950,7 @@ void newCampaign(const Value& a) {
     if (a.has("wego") && !a.getBool("wego")) s.rules.wegoCombat = false;
     if (a.has("events")) s.eventsEnabled = a.getBool("events");
     if (a.has("aiAggression")) s.aiAggressionEnabled = a.getBool("aiAggression");
+    if (a.has("domination")) s.dominationEnabled = a.getBool("domination");   // C7 (21 Nov 2026), default on
     botf::validate(s);
     if (a.getBool("starterQueue", true)) queueStarterProjects(s);
     startGame(std::move(s), "campaign");

@@ -603,9 +603,6 @@ struct GameState : EmpireState {
     // player's seat, the player's elimination does not end the campaign, and the campaign ends when one empire is left or
     // any empire meets a victory condition (the player's own domination test applied to every empire). Rules are unchanged.
     bool observerMode = false;
-    // Soak experiment for a proposal to Simon (21 Nov 2026; BotfAiSoak BOTF_SOAK_ENDGAME_WAR=1 only, never a game, not saved):
-    // when two AI powers are the last left, their treaties stop binding and the stronger keeps the war on. NOT a rule.
-    bool soakEndgameWar = false;
     // P1 (Simon's yes, 20 Nov 2026): a diplomatic win must hold for DiplomaticVictoryHoldTurns consecutive turns. Each entry is
     // (empire id, consecutive turns the empire has met every diplomatic condition), ascending id, only while the count is >= 1.
     // Saved as the optional DIPLOMATIC_HOLD section (schema 25, written only when non-empty).
@@ -618,6 +615,9 @@ struct GameState : EmpireState {
     // From then domination no longer ends the campaign; conquest and the other victories still do. Saved as the optional
     // PLAYING_ON section (written only when set).
     int playingOnFrom = 0;
+    // C7 (21 Nov 2026, Simon's delegation): the New Campaign domination setting, on by default. Off, domination never ends the
+    // campaign and conquest is the military win. Saved as the optional NO_DOMINATION section (written only when off).
+    bool dominationEnabled = true;
     Ruleset ruleset = Ruleset::Prototype;
     int lastRandomEventTurn = 0;
     bool advancedRulesEnabled = false; // Schema 4-9 games retain their prior combat/diplomacy behavior.
@@ -815,6 +815,11 @@ void switchSeatInternal(GameState& state, int empireId);
 // C4: true when the campaign has just been won by a human through domination (other powers still stand) and the winner has
 // not already chosen to play on. playOn() takes that choice: the campaign is ongoing again and domination no longer ends it.
 bool canPlayOn(const GameState& state);
+// C8 (21 Nov 2026, Simon's delegation, sized by the round 6 observer soaks): a world's ground defence counts its population
+// divided by this (was 3), so wars between equals take worlds faster. Used by the invasion roll and the AI's landing test.
+inline constexpr int InvasionPopDefenseDivisor = 5;
+// C4/C7: whether a domination can end the campaign now (the setting is on and nobody is playing on).
+inline bool dominationLive(const GameState& s) { return s.dominationEnabled && s.playingOnFrom == 0; }
 void playOn(GameState& state);
 // True when `empireId` is played by a human: the seated player, or any hotseat human (never in observer mode).
 bool humanSeat(const GameState& state, int empireId);
