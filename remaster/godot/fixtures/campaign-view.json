@@ -30,6 +30,7 @@
    "winner": 0,
    "canPlayOn": false,
    "playingOnFrom": 0,
+   "domination": true,
    "hotseat": [],
    "winners": [],
    "advancedRules": true,

@@ -17,7 +17,7 @@
     "difficulty": "expert"
    },
    "turns": 40,
-   "result": "3031734779116640894"
+   "result": "15524992027966225181"
   },
   {
    "campaign": {
@@ -32,7 +32,7 @@
     "difficulty": "impossible"
    },
    "turns": 40,
-   "result": "47146056028108220"
+   "result": "18246853999846149194"
   },
   {
    "campaign": {
@@ -47,7 +47,7 @@
     "difficulty": "hard"
    },
    "turns": 40,
-   "result": "10440731235613767412"
+   "result": "1420483034241833695"
   },
   {
    "campaign": {
@@ -62,7 +62,7 @@
     "difficulty": "simple"
    },
    "turns": 40,
-   "result": "13949850282934026586"
+   "result": "5986847885624111585"
   },
   {
    "campaign": {
@@ -81,7 +81,7 @@
     "starTypes": true
    },
    "turns": 40,
-   "result": "9613787540868582212"
+   "result": "13986526727979451234"
   },
   {
    "campaign": {
@@ -100,7 +100,7 @@
     "planetsMax": 9
    },
    "turns": 40,
-   "result": "6250300239282499682"
+   "result": "14712000046072379797"
   },
   {
    "campaign": {
@@ -137,7 +137,7 @@
     ]
    },
    "turns": 40,
-   "result": "15502621315493783863"
+   "result": "9835780864159661733"
   }
  ]
 }
