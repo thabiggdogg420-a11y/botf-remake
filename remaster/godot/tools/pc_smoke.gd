@@ -18,6 +18,10 @@ func _initialize() -> void:
 		# Uncapped frame rates: the real frame cost rather than the display's refresh.
 		DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
 	DirAccess.make_dir_recursive_absolute(out_dir)
+	if LoadTrace.on:
+		# --load-trace (21 Nov): slow frames split into process / draw with the traced steps inside them (battle open).
+		LoadTrace.FRAME_MS = 34
+		LoadTrace.split_frames(self)
 	# F5 round 2: the run's campaign autosaves every turn; keep it out of the player's own saves and settings.
 	AppSaves.sandbox("user://capture_sandbox/pc-smoke/%d" % int(Time.get_unix_time_from_system()))
 	RenderingServer.viewport_set_measure_render_time(root.get_viewport_rid(), true)   # F5 perf pass: slow frames split process / render
@@ -283,12 +287,15 @@ func _run() -> void:
 	# ---- Battle drill: Take command, several rounds with the 3D view, cinematic camera
 	app.start_drill("newBattleDrill", "Tactical drill")
 	await wait()
+	if LoadTrace.on:
+		LoadTrace.min_override = 3
 	var t_open := Time.get_ticks_usec()
 	var status := app.end_turn()
 	print("SMOKE battle open: end_turn call took %.0f ms" % ((Time.get_ticks_usec() - t_open) / 1000.0))
 	await measure("battle open (ships built, models loaded)", 1.0, t_open)
+	LoadTrace.min_override = -1
 	await measure("battle open settle (hero hulls deploy)", 8.0) # the stall must not reappear when the models land
-	check(float(worst_by["battle open (ships built, models loaded)"]) < 150.0, "first battle open: worst frame %.0f ms (was 3818 with hero hulls; target 100)" % float(worst_by["battle open (ships built, models loaded)"]))
+	check(float(worst_by["battle open (ships built, models loaded)"]) < 100.0, "first battle open: worst frame %.0f ms under 100 (was 3818 with hero hulls; 91-139 before the 21 Nov spare-view wait)" % float(worst_by["battle open (ships built, models loaded)"]))
 	check(float(worst_by["battle open settle (hero hulls deploy)"]) < 100.0, "hulls deploy without a stall (worst %.0f ms)" % float(worst_by["battle open settle (hero hulls deploy)"]))
 	check(status == "battle" and app.screen == "combat", "drill opens the combat screen")
 	var take: Control = find(app, "TakeCommand")

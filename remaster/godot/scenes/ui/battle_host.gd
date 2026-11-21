@@ -46,6 +46,8 @@ func _mount_next_frame() -> void:
 	# relaunch) waits for that view, which is built a step a frame, instead of building a second one (its _ready, 40-55 ms)
 	# in one frame. The screen's panels are up meanwhile; the 3D view appears when the spare is ready (at most ~4 s).
 	var waited := 0
+	if App.warming_battle_view():
+		App.hurry_battle_warm()
 	while App.warming_battle_view() and waited < 240 and is_inside_tree():
 		await get_tree().process_frame
 		waited += 1

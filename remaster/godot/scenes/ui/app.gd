@@ -435,11 +435,19 @@ func _warm_battle() -> void:
 	if _warmed_battle or DisplayServer.get_name() == "headless":
 		return
 	_warmed_battle = true
+	# 21 Nov: counts as warming from here, so a battle opened in the first frames after a load (pc_smoke: 7 frames after the
+	# galaxy) waits for this spare instead of instancing a fresh view in its open frame (its _ready, 33 ms of a 91-100 ms
+	# frame). A waiting battle (hurry_battle_warm) cuts the title-draw delay short.
+	_warming_view = true
 	var tree := get_tree()
 	for _i in 30:
+		if _hurry_warm:
+			break
 		await tree.process_frame # let the title draw first
 	if not is_inside_tree():
 		_warmed_battle = false
+		_warming_view = false
+		_hurry_warm = false
 		return
 	await _warm_battle_view()
 	await _warm_glyphs()
@@ -457,6 +465,12 @@ func _warm_battle_view() -> void:
 	_warming_view = true
 	await _warm_battle_view_steps()
 	_warming_view = false
+	_hurry_warm = false
+
+static var _hurry_warm := false
+## A battle screen is waiting for the spare view: skip what is left of the warm's opening delay.
+static func hurry_battle_warm() -> void:
+	_hurry_warm = true
 
 func _warm_battle_view_steps() -> void:
 	var tree := get_tree()
@@ -843,6 +857,7 @@ func _exit_tree() -> void:
 		_spare_battle_view.free() # F2: the warmed view lives outside the tree; free it before the engine shuts down
 	_spare_battle_view = null
 	_warming_view = false
+	_hurry_warm = false
 	# RC (20 Nov): the spare is gone, so the next App must warm its own. The flag stayed set, a relaunched client (pc_smoke's
 	# relaunch, a LAN client) never warmed one, and its first battle built a fresh view (its _ready, 40-55 ms) in the
 	# battle-open frame: the 123-165 ms first-open frame.
