@@ -790,6 +790,7 @@ func _build_layers() -> void:
 	_toasts.alignment = BoxContainer.ALIGNMENT_END
 	_toasts.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_toasts)
+	get_tree().process_frame.connect(_layout_toasts)
 
 func _apply_theme(empire: int) -> void:
 	Lcars.colorblind = settings.get("colorblind", false)
@@ -1437,6 +1438,46 @@ func toast(text: String, tone: String = "info", seconds: float = 3.4) -> void:
 	tw.tween_interval(seconds)
 	tw.tween_property(p, "modulate:a", 0.0, 0.3)
 	tw.tween_callback(p.queue_free)
+
+## Round 4 (21 Nov 2026): toasts keep clear of every open modal panel. With no modal they sit bottom centre; with one
+## or more up they go below the panels, else above, else in the wider side strip (the c7 Victory Progress row was covered).
+var _toasts_moved := false
+func _layout_toasts() -> void:
+	if _toasts == null or _toasts.get_child_count() == 0:
+		return
+	var vp := get_viewport_rect().size
+	var u := Rect2()
+	var have := false
+	for m in _modals:
+		if not is_instance_valid(m) or m.is_queued_for_deletion() or m.get_child_count() == 0 or m.get_child(0).get_child_count() == 0:
+			continue
+		var r := (m.get_child(0).get_child(0) as Control).get_global_rect().grow(12)
+		u = r if not have else u.merge(r)
+		have = true
+	if not have:
+		if _toasts_moved:
+			_toasts_moved = false
+			_toasts.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
+			_toasts.offset_left = 0
+			_toasts.offset_right = 0
+			_toasts.offset_top = 0
+			_toasts.offset_bottom = -90
+		return
+	var sz := _toasts.get_combined_minimum_size()
+	var m_ := 24.0
+	var pos := Vector2()
+	if vp.y - m_ - u.end.y >= sz.y:
+		pos = Vector2((vp.x - sz.x) * 0.5, vp.y - m_ - sz.y)
+	elif u.position.y - m_ >= sz.y:
+		pos = Vector2((vp.x - sz.x) * 0.5, m_)
+	elif vp.x - u.end.x - m_ >= sz.x or vp.x - u.end.x >= u.position.x:
+		pos = Vector2(maxf(u.end.x, vp.x - m_ - sz.x), vp.y - m_ - sz.y)
+	else:
+		pos = Vector2(minf(m_, u.position.x - sz.x), vp.y - m_ - sz.y)
+	_toasts_moved = true
+	_toasts.set_anchors_preset(Control.PRESET_TOP_LEFT)
+	_toasts.global_position = pos
+	_toasts.size = sz
 
 func report_error(message: String) -> void:
 	toast(message if message != "" else "Unknown error", "alert", 6.0)
