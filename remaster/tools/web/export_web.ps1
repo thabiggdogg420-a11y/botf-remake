@@ -11,7 +11,8 @@
   import rewrites .import files).
   The version goes into project.godot (application/config/version, read by the title screen's corner label) and the
   export preset's include filter gets the data/audio JSON (as verify.ps1 does); both files are restored afterwards.
-  Godot runs at BelowNormal priority with the Dummy audio driver, headless.
+  Godot runs at BelowNormal priority with the Dummy audio driver, headless (-Windowed: off-screen at -10000,-10000, for the
+  WebGPU preset's shader baker, which needs a rendering device).
 #>
 param(
     [Parameter(Mandatory)][string]$Preset,
@@ -19,7 +20,8 @@ param(
     [string]$Packs,
     [string]$Proj,
     [string]$Godot = 'C:\Tools\Godot\Godot_v4.5-stable_win64_console.exe',
-    [string]$Version
+    [string]$Version,
+    [switch]$Windowed   # the WebGPU shader baker needs a rendering device: a real window, parked off-screen
 )
 $ErrorActionPreference = 'Stop'
 $remaster = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
@@ -41,7 +43,7 @@ try {
     New-Item -ItemType Directory -Force -Path $Out | Out-Null
     $target = Join-Path (Resolve-Path $Out).Path 'index.html'
     $log = Join-Path $Out 'export.log'
-    $p = Start-Process -FilePath $Godot -ArgumentList "--headless --audio-driver Dummy --path `"$Proj`" --export-release `"$Preset`" `"$target`"" `
+    $p = Start-Process -FilePath $Godot -ArgumentList "$(if ($Windowed) { '--position -10000,-10000 --resolution 640x360' } else { '--headless' }) --audio-driver Dummy --path `"$Proj`" --export-release `"$Preset`" `"$target`"" `
         -PassThru -WindowStyle Hidden -RedirectStandardOutput $log -RedirectStandardError "$log.err"
     $null = $p.Handle   # PowerShell 5: without a handle ExitCode stays empty
     try { $p.PriorityClass = 'BelowNormal' } catch {}
