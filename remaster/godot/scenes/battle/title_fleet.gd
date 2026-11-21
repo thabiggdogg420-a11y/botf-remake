@@ -52,7 +52,12 @@ func setup_sliced(p_empire: int, p_assets: BattleAssets = null) -> void:
 	empire = clampi(p_empire, 1, 5)
 	assets = p_assets
 	name = "TitleFleet"
+	# Round 4: the title's UI and bloom draw first; the environment (and its sky) comes a frame later, not in the same frame.
+	await get_tree().process_frame
+	if not is_inside_tree():
+		return
 	var t := LoadTrace.start()
+	LoadTrace.mark("title fleet: environment build")
 	env = BattleEnvironment.build(self, Vector2(16, 12) * BattleScene.CELL)
 	_stage_environment()
 	_make_camera()
@@ -60,8 +65,25 @@ func setup_sliced(p_empire: int, p_assets: BattleAssets = null) -> void:
 	# Web (21 Nov 2026): the first draw of the environment compiled the sky, the backdrop planet and the rest together (a 5 s
 	# Firefox frame), then the lead ship's materials all in its frame (3 s). The sky draws alone first; the meshes come in one
 	# shader group a frame.
+	# Round 4 (Compatibility): the sky's radiance pass (reflections) is a second sky program; it waits a frame after the
+	# backdrop sky so the two never compile in one frame.
+	var we: WorldEnvironment = null
+	for n in find_children("*", "WorldEnvironment", true, false):
+		we = n as WorldEnvironment
+	var compat := RenderingServer.get_current_rendering_method() == "gl_compatibility"
+	var refl := Environment.REFLECTION_SOURCE_SKY
+	if compat and we != null and we.environment != null:
+		refl = we.environment.reflected_light_source
+		we.environment.reflected_light_source = Environment.REFLECTION_SOURCE_DISABLED
 	if not await _reveal_by_shader(self):
 		return
+	if compat and we != null and we.environment != null:
+		LoadTrace.mark("title reveal: sky radiance")
+		we.environment.reflected_light_source = refl
+		await get_tree().process_frame
+		await get_tree().process_frame
+		if not is_inside_tree():
+			return
 	var lengths := _ship_lengths()   # queues the hero models (a step per frame on the web)
 	while BattleAssets.loading():
 		await get_tree().process_frame
@@ -90,7 +112,7 @@ func _reveal_by_shader(root: Node) -> bool:
 			mat = (g as MeshInstance3D).get_active_material(0)
 		var key := "none"
 		if mat is ShaderMaterial and (mat as ShaderMaterial).shader != null:
-			key = str((mat as ShaderMaterial).shader.get_instance_id())
+			key = (mat as ShaderMaterial).shader.resource_path.get_file() + "#" + str((mat as ShaderMaterial).shader.get_instance_id())
 		elif mat != null:
 			key = mat.get_class() + str(mat.get_rid().get_id() if mat is BaseMaterial3D else 0)
 		key += "|" + g.get_class()
@@ -98,13 +120,29 @@ func _reveal_by_shader(root: Node) -> bool:
 			groups[key] = []
 		groups[key].append(g)
 		g.visible = false
+	# Round 4: a group first shows without casting shadows (its colour program compiles alone), then casts them a frame later
+	# (its depth program), so the two never land in one frame.
+	await get_tree().process_frame   # the sky (and whatever is not a mesh) draws alone first
 	for key in groups:
 		await get_tree().process_frame
 		if not is_inside_tree():
 			return false
+		LoadTrace.mark("title reveal: " + str(key))
+		var shadowed := []
 		for g in groups[key]:
 			if is_instance_valid(g):
+				if g.cast_shadow != GeometryInstance3D.SHADOW_CASTING_SETTING_OFF:
+					shadowed.append([g, g.cast_shadow])
+					g.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 				g.visible = true
+		if not shadowed.is_empty():
+			await get_tree().process_frame
+			if not is_inside_tree():
+				return false
+			LoadTrace.mark("title reveal shadows: " + str(key))
+			for e in shadowed:
+				if is_instance_valid(e[0]):
+					(e[0] as GeometryInstance3D).cast_shadow = e[1]
 	return true
 
 

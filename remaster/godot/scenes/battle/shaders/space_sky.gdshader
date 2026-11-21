@@ -36,6 +36,8 @@ float noise3(vec3 p) {
 #if CURRENT_RENDERER == RENDERER_COMPATIBILITY
 uniform int sky_octaves = 5;
 uniform int sky_reach = 1;
+uniform int sky_fbm_calls = 7;
+uniform int sky_star_layers = 3;
 #define SKY_OCTAVES sky_octaves
 #define SKY_REACH sky_reach
 #else
@@ -85,9 +87,26 @@ void sky() {
 	// Galactic band: a dusty ribbon of faint stars.
 	float band_d = dot(dir, normalize(band_normal));
 	float band = exp(-band_d * band_d / 0.035);
+#if CURRENT_RENDERER == RENDERER_COMPATIBILITY
+	// Round 4 (21 Nov 2026): every fbm in one loop, so ANGLE inlines fbm once instead of seven times (the same seven calls,
+	// same inputs, same picture). The inputs: dir * s + vec3(o) + warp * w, warp = results 2-4.
+	float fb[7];
+	vec3 warp = vec3(0.0);
+	for (int k = 0; k < sky_fbm_calls; k++) {
+		float s = k == 0 ? 6.0 : (k == 1 ? 11.0 : (k <= 4 ? 1.6 : (k == 5 ? 2.24 : 4.16)));
+		float o = k == 0 ? 0.0 : (k == 1 ? 4.0 : (k == 2 ? 1.3 : (k == 3 ? 7.7 : (k == 4 ? 3.1 : (k == 5 ? 0.0 : 11.0)))));
+		float w = k == 5 ? 1.8 : (k == 6 ? -1.2 : 0.0);
+		fb[k] = fbm(dir * s + vec3(o) + warp * w);
+		if (k == 4) warp = vec3(fb[2], fb[3], fb[4]);
+	}
+	float dust = fb[0];
+	col += band * band_strength * vec3(0.14, 0.12, 0.16) * smoothstep(0.3, 0.8, dust);
+	col -= band * band_strength * 0.05 * smoothstep(0.55, 0.75, fb[1]);
+#else
 	float dust = fbm(dir * 6.0);
 	col += band * band_strength * vec3(0.14, 0.12, 0.16) * smoothstep(0.3, 0.8, dust);
 	col -= band * band_strength * 0.05 * smoothstep(0.55, 0.75, fbm(dir * 11.0 + 4.0));
+#endif
 
 	// Nebula: domain-warped fbm, three hues.
 	vec3 na = nebula_a;
@@ -100,10 +119,15 @@ void sky() {
 	nb = mix(pow((nb + 0.055) / 1.055, vec3(2.4)), nb / 12.92, lessThan(nb, vec3(0.04045)));
 	nc = mix(pow((nc + 0.055) / 1.055, vec3(2.4)), nc / 12.92, lessThan(nc, vec3(0.04045)));
 #endif
+#if CURRENT_RENDERER == RENDERER_COMPATIBILITY
+	float n = fb[5];
+	float m = fb[6];
+#else
 	vec3 q = dir * 1.6;
 	vec3 warp = vec3(fbm(q + 1.3), fbm(q + 7.7), fbm(q + 3.1));
 	float n = fbm(q * 1.4 + warp * 1.8);
 	float m = fbm(q * 2.6 - warp * 1.2 + 11.0);
+#endif
 	float mask = smoothstep(0.42, 0.85, n) * (0.35 + 0.65 * smoothstep(-0.6, 0.6, dot(dir, normalize(vec3(-0.6, 0.2, -0.75)))));
 	vec3 neb = mix(nb, na, smoothstep(0.3, 0.7, m));
 	neb = mix(neb, nc, smoothstep(0.62, 0.8, m) * smoothstep(0.55, 0.8, n));
@@ -111,8 +135,16 @@ void sky() {
 	col += na * pow(max(n - 0.35, 0.0), 2.0) * nebula_strength * 0.35;
 
 	// Stars (fewer inside dense nebula).
+#if CURRENT_RENDERER == RENDERER_COMPATIBILITY
+	vec3 stars = vec3(0.0);
+	for (int k = 0; k < sky_star_layers; k++) {
+		stars += star_layer(dir, k == 0 ? 260.0 : (k == 1 ? 120.0 : 50.0), k == 0 ? 0.975 : (k == 1 ? 0.99 : 0.996),
+			k == 0 ? 0.16 : (k == 1 ? 0.08 : 0.045)) * (k == 0 ? 0.6 : (k == 1 ? 1.0 : 2.5));
+	}
+#else
 	vec3 stars = star_layer(dir, 260.0, 0.975, 0.16) * 0.6 + star_layer(dir, 120.0, 0.99, 0.08)
 		+ star_layer(dir, 50.0, 0.996, 0.045) * 2.5;
+#endif
 	stars *= 1.0 + band * 1.5;
 	col += stars * star_strength * (1.0 - 0.6 * mask);
 

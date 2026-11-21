@@ -21,10 +21,17 @@ float n3(vec3 p) {
 	return mix(mix(mix(h13(i), h13(i + vec3(1, 0, 0)), f.x), mix(h13(i + vec3(0, 1, 0)), h13(i + vec3(1, 1, 0)), f.x), f.y),
 		mix(mix(h13(i + vec3(0, 0, 1)), h13(i + vec3(1, 0, 1)), f.x), mix(h13(i + vec3(0, 1, 1)), h13(i + vec3(1, 1, 1)), f.x), f.y), f.z);
 }
+// WebGL compile time (round 4): on Compatibility the loop bound is a uniform (same value), so ANGLE keeps the loop.
+#if CURRENT_RENDERER == RENDERER_COMPATIBILITY
+uniform int planet_octaves = 6;
+#define PLANET_OCTAVES planet_octaves
+#else
+#define PLANET_OCTAVES 6
+#endif
 float fbm(vec3 p) {
 	float v = 0.0;
 	float a = 0.5;
-	for (int i = 0; i < 6; i++) { v += a * n3(p); p *= 2.07; a *= 0.5; }
+	for (int i = 0; i < PLANET_OCTAVES; i++) { v += a * n3(p); p *= 2.07; a *= 0.5; }
 	return v;
 }
 

@@ -218,6 +218,12 @@ static func _dust(arena_size: Vector2) -> Node3D:
 		cp.convert_from_particles(gp)
 		cp.name = "Dust"
 		gp.free()
+		# Round 4: the 40 s preprocess cost 0.9 s of CPU in the first frame (Firefox). Instead the motes fill in over the first
+		# second at 40x speed (the same 40 s of drift, a step a frame), then run at normal speed.
+		cp.preprocess = 0.0
+		cp.speed_scale = 40.0
+		cp.ready.connect(func():
+			cp.create_tween().tween_property(cp, "speed_scale", 1.0, 0.0).set_delay(1.0))
 		return cp
 	return gp
 
