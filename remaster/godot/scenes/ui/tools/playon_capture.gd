@@ -43,6 +43,23 @@ func _shot(name_: String) -> void:
 	root.get_texture().get_image().save_png("%s/%s.png" % [out_dir, name_])
 
 
+## The text of a visible toast whose rect overlaps the button row of `b`, or "".
+func _toast_over(b: Control) -> String:
+	if b == null:
+		return ""
+	var row := b.get_parent() as Control
+	var r := (row if row != null else b).get_global_rect()
+	var tl := root.find_child("Toasts", true, false)
+	if tl == null:
+		return ""
+	for t in tl.get_children():
+		if t is Control and not t.is_queued_for_deletion() and (t as Control).is_visible_in_tree() and (t as Control).get_global_rect().intersects(r):
+			for l in t.find_children("*", "Label", true, false):
+				return "(%s)" % (l as Label).text
+			return "(a toast)"
+	return ""
+
+
 func _meta() -> Dictionary:
 	return app.view.get("meta", {})
 
@@ -116,6 +133,10 @@ func _run() -> void:
 
 func _phase_a() -> void:
 	var turn0 := int(_meta().get("turn", 0))
+	await _wait(30)
+	check(not app.advisor_panel.advisor.tutorial_active() and _button("Skip tutorial") == null, "no tutorial after loading a save")
+	# The "Loaded ..." toast is still up here (3.4 s); it must be gone from over the end screen's buttons once the win lands.
+	app.toast("Loaded test toast over the button row.", "good", 30.0)
 	check(str(_meta().get("outcome", "")) == "ongoing", "the campaign is ongoing before the win")
 	await _end_turn()
 	await _wait(30)
@@ -124,6 +145,7 @@ func _phase_a() -> void:
 	check(bool(_meta().get("canPlayOn", false)), "the core offers play-on (meta canPlayOn)")
 	var cont := _button("Continue playing")
 	check(cont != null, "end screen shows Continue playing")
+	check(_toast_over(cont) == "", "no toast over the end screen's buttons %s" % _toast_over(cont))
 	await _shot("c4-1-domination-end")
 	# LAN: the same win in a LAN game offers no Continue playing (the choice would be one machine's alone).
 	app.lan.in_game = true

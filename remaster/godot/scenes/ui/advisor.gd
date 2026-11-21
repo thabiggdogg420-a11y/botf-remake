@@ -53,6 +53,8 @@ func tutorial_step() -> int:
 	return int(app.settings.get("tutorial", 0))
 
 func tutorial_active() -> bool:
+	if "tutorial_held" in app and app.tutorial_held:
+		return false
 	var s := tutorial_step()
 	return s >= 0 and s < STEPS.size()
 
@@ -66,6 +68,8 @@ func skip_tutorial() -> void:
 	AppSaves.store_settings(app.settings)
 
 func restart_tutorial() -> void:
+	if "tutorial_held" in app:
+		app.tutorial_held = false
 	app.settings["tutorial"] = 0
 	AppSaves.store_settings(app.settings)
 

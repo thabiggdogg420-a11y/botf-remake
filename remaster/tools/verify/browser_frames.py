@@ -80,6 +80,7 @@ def main():
     ap.add_argument("--w", type=int, default=1280)
     ap.add_argument("--h", type=int, default=720)
     ap.add_argument("--gltrace", action="store_true", help="time the blocking WebGL calls (see GLTRACE)")
+    ap.add_argument("--dump-wgsl", action="store_true", help="WebGPU fork: save globalThis.godotWgslCacheOut (the WGSL the run translated) to run<n>-wgsl-out.json, for tools/webgpu-fork/make_wgsl_cache.py")
     ap.add_argument("--click", default="216,598", help="the Tactical drill button at 1280x720 (x,y)")
     a = ap.parse_args()
     os.makedirs(a.out, exist_ok=True)
@@ -128,6 +129,11 @@ def main():
             gl = pg.evaluate("window.__gl || []") if a.gltrace else []
             src = pg.evaluate("window.__src || {}") if a.gltrace else {}
             pg.screenshot(path=os.path.join(a.out, "run%d-galaxy.png" % run))
+            if a.dump_wgsl:
+                wo = pg.evaluate("globalThis.godotWgslCacheOut || {}")
+                hits = pg.evaluate("globalThis.godotWgslCacheInHits | 0")
+                json.dump(wo, open(os.path.join(a.out, "run%d-wgsl-out.json" % run), "w"))
+                print("  WGSL translated %d stages, cache hits %d" % (len(wo), hits))
             iw, ik, _ = window_stats(frames, t_idle0, t_click)
             gw, gk, gn = window_stats(frames, t_click, t_end)
             print("RUN %d title-up %.1f s | idle worst %.0f ms (frames > 250 ms: %d) | galaxy-open worst %.0f ms (frames > 250 ms: %d, %d frames)"

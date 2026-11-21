@@ -57,6 +57,7 @@ void fragment() {
 	vec3 albedo;
 	float spec_mask = 0.0;
 	vec3 emit = vec3(0.0);
+	float hf = 0.0;   // the height field's fbm, reused by the city lights
 	if (has_albedo) {
 		albedo = equirect(albedo_tex, n, 0.0).rgb;
 	} else if (kind == 1) {
@@ -66,7 +67,8 @@ void fragment() {
 		albedo = mix(c_low, c_mid, smoothstep(0.2, 0.8, bands));
 		albedo = mix(albedo, c_high, smoothstep(0.7, 0.95, g_fbm3(n * vec3(3.0, 14.0, 3.0) + o + warp)));
 	} else {
-		float h = g_fbm3(n * 2.6 + o) + 0.12 * g_noise3(n * 18.0 + o);
+		hf = g_fbm3(n * 2.6 + o);
+		float h = hf + 0.12 * g_noise3(n * 18.0 + o);
 		if (kind == 0) {
 			float land = smoothstep(sea_level - 0.01, sea_level + 0.02, h);
 			vec3 sea = mix(c_low * 0.6, c_low, smoothstep(sea_level - 0.2, sea_level, h));
@@ -108,7 +110,7 @@ void fragment() {
 	if (has_night && colonised > 0.0) {
 		col += equirect(night_tex, n, 0.0).rgb * night * colonised * 1.4 * (1.0 - cl * 0.7);
 	} else if (colonised > 0.0 && kind == 0) {
-		float city = smoothstep(0.72, 0.9, g_noise3(n * 40.0 + o)) * step(sea_level + 0.02, g_fbm3(n * 2.6 + o));
+		float city = smoothstep(0.72, 0.9, g_noise3(n * 40.0 + o)) * step(sea_level + 0.02, hf);
 		col += vec3(1.0, 0.75, 0.4) * city * night * colonised * 0.9;
 	}
 	col += emit * (0.35 + 0.65 * night);

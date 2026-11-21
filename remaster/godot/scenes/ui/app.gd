@@ -59,6 +59,7 @@ var _overlay: Control
 var _toasts: VBoxContainer
 var _current: Control
 var _modals: Array[Control] = []
+var tutorial_held := false   ## true for a loaded campaign: the advisor shows no tutorial (Restart tutorial clears it)
 var advisor_panel: AdvisorPanel   ## F3 advisor and first-run tutorial
 var _theme_empire := -1
 
@@ -346,13 +347,21 @@ func _reveal_groups(groups: Dictionary, tree: SceneTree) -> bool:
 	for key in groups:
 		if screen != "title":
 			return false
-		var t := LoadTrace.start()
-		for g in groups[key]:
-			if is_instance_valid(g):
-				g.visible = true
-		await tree.process_frame
-		LoadTrace.done("title warm: galaxy %s" % str(key).get_file(), t)
-		await tree.process_frame
+		# One instance first, then the rest: a group's first draw can ask for several program variants at once (the planet
+		# globe: plain, instanced and unlit, three 1.3-1.5 s links in one 4.7 s Firefox frame); a lone instance asks for fewer.
+		var members: Array = groups[key]
+		for part in [members.slice(0, 1), members.slice(1)]:
+			if part.is_empty():
+				continue
+			if screen != "title":
+				return false
+			var t := LoadTrace.start()
+			for g in part:
+				if is_instance_valid(g):
+					g.visible = true
+			await tree.process_frame
+			LoadTrace.done("title warm: galaxy %s (%d)" % [str(key).get_file(), part.size()], t)
+			await tree.process_frame
 	return true
 
 ## Web: tells the service worker (web-host/sw.js) the title is up, so it caches the engine files for the next visit.
@@ -1194,6 +1203,7 @@ func start_campaign(options: Dictionary) -> bool:
 	var v := session.start("newCampaign", AppSession.campaign_options(options))
 	if v.is_empty():
 		return false
+	tutorial_held = false
 	_enter_game(v, "%s campaign %s" % [v["meta"]["playerName"], str(v["meta"]["seed"])])
 	var extra: Array = options.get("hotseat", [])
 	if not extra.is_empty():
@@ -1220,6 +1230,7 @@ func start_drill(method: String, label_: String, args: Dictionary = {}, spread :
 	LoadTrace.done("drill: core start", t)
 	if v.is_empty():
 		return
+	tutorial_held = false
 	await _enter_game(v, label_, spread)
 	toast(label_ + " loaded.", "warn")
 
@@ -1365,6 +1376,7 @@ func load_game(blob: Dictionary) -> bool:
 	var v := session.start("load", {"data": blob.get("data", ""), "scenario": blob.get("scenario", "campaign")})
 	if v.is_empty():
 		return false
+	tutorial_held = true   # the first-run tutorial is for a new campaign, not a loaded one
 	_enter_game(v, str(blob.get("name", "Loaded campaign")))
 	toast("Loaded %s, turn %d." % [blob.get("name", ""), int(view["meta"]["turn"])], "good")
 	if view.get("session", {}).get("active", false):
@@ -1496,7 +1508,15 @@ func quit_game() -> void:
 
 ## Named overlays: briefing, events, victory, end, menu, settings, help.
 func open_overlay(kind: String) -> Control:
+	if kind == "end":
+		clear_toasts()   # the end screen's buttons sit where the toasts stack (bottom centre); a "Loaded ..." toast hid them
 	return Overlays.open(self, kind)
+
+## Removes every toast at once.
+func clear_toasts() -> void:
+	if _toasts != null:
+		for c in _toasts.get_children():
+			c.queue_free()
 
 func open_menu() -> void:
 	open_overlay("menu")

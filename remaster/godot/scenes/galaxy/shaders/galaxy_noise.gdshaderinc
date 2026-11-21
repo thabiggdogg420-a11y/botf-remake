@@ -1,5 +1,9 @@
 // Shared value noise for the 3D galaxy shaders. Sin-free hash (stable on GL/WebGL, see nebula.gdshader notes),
-// quintic fade, rotated octaves. Loops are constant and capped at 4 (art bible 12.2).
+// quintic fade, rotated octaves. Loops are capped at 4 (art bible 12.2).
+// WebGL compile time (21 Nov 2026): the octave count is a uniform (default 4, the same picture), so the fbm loops stay loops.
+// With a constant bound ANGLE unrolled and inlined every fbm call: Firefox took 1.3-1.5 s per planet globe program variant
+// (three variants, one 5 s frame) and 1.5 s for the galaxy sky's first frame.
+uniform int g_octaves = 4;
 float g_hash13(vec3 p) {
 	p = fract(p * 0.1031);
 	p += dot(p, p.zyx + 31.32);
@@ -26,7 +30,7 @@ float g_noise2(vec2 p) {
 float g_fbm3(vec3 p) {
 	float v = 0.0;
 	float a = 0.5;
-	for (int i = 0; i < 4; i++) {
+	for (int i = 0; i < min(g_octaves, 4); i++) {
 		v += a * g_noise3(p);
 		p = vec3(p.y * 0.8 + p.z * 0.6, p.z * 0.8 - p.y * 0.6, p.x) * 2.03 + vec3(3.1, 1.3, 7.7);
 		a *= 0.5;
@@ -36,7 +40,7 @@ float g_fbm3(vec3 p) {
 float g_fbm2(vec2 p) {
 	float v = 0.0;
 	float a = 0.5;
-	for (int i = 0; i < 4; i++) {
+	for (int i = 0; i < min(g_octaves, 4); i++) {
 		v += a * g_noise2(p);
 		p = mat2(vec2(0.8, 0.6), vec2(-0.6, 0.8)) * p * 2.03 + vec2(3.1, 1.3);
 		a *= 0.5;
