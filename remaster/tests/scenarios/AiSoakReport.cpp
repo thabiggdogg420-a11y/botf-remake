@@ -87,6 +87,7 @@ int main(int argc, char** argv) {
             if (!p->shape.empty()) parseGalaxyShape(p->shape, setup.galaxy.shape);
             if (!p->minorDensity.empty()) parseMinorDensity(p->minorDensity, setup.galaxy.density);
             if (!p->difficulty.empty()) parseDifficulty(p->difficulty, setup.galaxy.difficulty);
+            if (const char* dEnv = std::getenv("BOTF_SOAK_DIFF")) parseDifficulty(dEnv, setup.galaxy.difficulty);   // round 4: e.g. easy, simple
             if (p->startSystems >= 0) setup.startSystems = p->startSystems;
             setup.planetsMin = p->planetsMin; setup.planetsMax = p->planetsMax;
             if (p->starTypes >= 0) setup.starTypes = p->starTypes;

@@ -301,15 +301,36 @@ Seed 7262 had two powers left from about turn 1,000, Federation 46 worlds to Fer
 Defence is not the limit either: divisor 10 bought nothing over 5 (Round 6). Idle transports are rare (191-224
 transport-turns at war across 1,200 turns).
 
-### What the two experiments rule out, and proposal C10 (Simon's call; not applied)
-- Peace is no longer the block (C9 wars are everywhere). Defence is not either (divisor 10 = divisor 5). Finishing undefended
-  worlds is not (siege). Splitting effort across wars is not (war focus).
-- What the soak endings show instead: holdouts keep their fleets at home. At turn 1,200 under siege the Cardassians held 1
-  world with 6 fleets, and in another seed the Romulans held 4 worlds with 13. The AI never brings enough force to beat
-  them. Powers of similar size trade worlds back and forth: 94-207 worlds changed hands in KCW, with no one eliminated.
-- C10, an AI change, not a rule: before an invasion, an AI at war gathers its fleets into one strike force and attacks the
-  target's defending fleet first. It only invades after winning, and it picks the target where its force ratio is highest.
-  Sizing: this cannot be tuned like a number. The measure would be the same 8-run soak, aiming for conquest in 3 or more of 8
-  and none before turn 200.
-- If Simon would rather keep the AI as it is: with C5-C9 in place, a domination-off campaign mostly ends at the turn cap or
-  by diplomacy, and conquest is a rare outcome (1 in 8, between turn 509 and turn 1,086).
+### Target corrected (coordinator, 22 Nov 2026)
+In the original BOTF and in other 4X games, AI conquest wins are rare, and campaigns end in 200-500 turns. The AI conquest-win
+rate is no longer a target, and nothing beyond C9 is proposed. C10, drafted earlier this round, is withdrawn. Round 7 measures
+instead (a) how fast a strong, aggressive player wins by conquest and (b) whether the AI galaxy keeps moving.
+
+#### (b) Does the AI galaxy keep moving? (AI only, C5-C9, domination off, 1,200-turn cap)
+| Seed | Classic: worlds changing hands per 100 turns | Classic: longest run with no AI-AI war | KCW: per 100 turns | KCW: longest no-war run |
+|---|---|---|---|---|
+| 7000 | 4.9 | 31 turns (turns 1-31) | 10.9 (vendetta win t477) | 29 (turns 1-29) |
+| 7131 | 10.1 | 31 (1-31) | 17.3 | 31 (1-31) |
+| 7262 | 7.5 | 29 (1-29) | 14.5 | 29 (1-29) |
+| 7393 | 6.1 | 33 (1-33) | 14.8 (diplomatic win t636) | 33 (1-33) |
+The galaxy never settles into lasting peace. The only war-free stretch is the opening 29-33 turns, before first contact;
+after that some pair of AIs is at war on every turn. Worlds change hands at 5-10 per 100 turns in Classic and 11-17 in KCW.
+(BotfAiSoak CHURN line, files rc-captures\soak4\r7-churn-*.txt.)
+
+#### (a) How fast does a strong, aggressive player win by conquest? (domination off)
+Stand-in: the observer AI seated on the Klingon Empire (the aggressive personality) as the player seat (BOTF_SOAK_PLAYER=2),
+Classic, 4 seeds, 1,200-turn cap. Rival handicaps were added to stand in for a player who outplays the AI.
+| Galaxy, rival difficulty | Conquest wins | Player seat at the end |
+|---|---|---|
+| Medium, Normal | 0 of 4 | eliminated in 3 (turns 239, 388, 1014); 10 worlds in the 4th |
+| Large, Normal | 0 of 4 | eliminated in 4 (turns 193, 513, 672, 836) |
+| Medium, Easy (rivals 90%) | 0 of 4 | eliminated in 3 (107, 697, 987); 10 worlds in the 4th |
+| Large, Easy | 0 of 1 (run stopped) | eliminated turn 703 |
+| Medium, Simple (rivals 75%) | 0 of 4 | eliminated in 1 (227); 17, 6 and 7 worlds in the rest |
+Reading. This stand-in does not answer (a). The AI playing the player seat is not a strong player: it loses even to
+handicapped rivals, and it never wins by conquest inside 1,200 turns on any size. That puts it far outside 200-500, but the
+measurement is of the AI, not of a strong human-style player. No rule is sized from it.
+To answer (a) properly the next step is a measurement tool, not a rule: a scripted aggressive player for BotfAiSoak. It
+would expand fast, build warships and troop transports from turn ~40, gather one strike force, beat the nearest rival's
+fleet, then invade its worlds in turn, and keep peace with everyone else. Its conquest turn on medium and large is the
+number to set against 200-500. If that comes out far outside the range, the sized proposal follows from it.
