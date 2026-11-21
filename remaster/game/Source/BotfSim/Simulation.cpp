@@ -2304,6 +2304,11 @@ void planAiWarDeclarations(GameState& s, int ownerId) {
         in.trust = rel->trust;
         in.tradePact = rel->tradeTreaty;
         in.pressure = modern ? rivalryBreakdown(s, ownerId, other).total() : 0;
+        // Rivalry, overdue (21 Nov 2026): the feedback asked for the human's first AI war by turn 60. From turn 45, while no AI is at
+        // war with the human, an unbound AI weighs the human as if the border were tense (+10 pressure). AiWarFood seed 574 (Dominion
+        // War): the one unbound AI scored 54 of 60 at turn 50, then the Dominion took its last world and the rest were bound by pacts.
+        if (modern && !s.observerMode && other == s.playerEmpire && warsOnHuman == 0 && s.turn >= 45 && !humanSeat(s, ownerId))
+            in.pressure = std::min(50, in.pressure + 10);
         in.seed = s.seed ^ (0x9E3779B97F4A7C15ULL * static_cast<std::uint64_t>(ownerId));
         const auto verdict = diplomacy::assessWarDeclaration(in);
         if (verdict.declare && (best == 0 || verdict.score > bestScore)) {

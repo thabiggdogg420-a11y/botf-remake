@@ -103,6 +103,18 @@ WarRun playWar(const std::string& presetId, std::uint64_t seed, int turns) {
             if (r.contact && out.firstContact < 0) out.firstContact = s.turn;
             if (r.atWar && out.firstWar < 0) { out.firstWar = s.turn; out.firstWarBy = other; }
         }
+        if (std::getenv("BOTF_WAR_TRACE") && s.turn % 10 == 0) {   // BOTF_WAR_TRACE: the player's relations every 10 turns
+            std::cout << "\n  t" << s.turn << " outcome " << static_cast<int>(s.outcome);
+            const auto pw = [&](int o) { long long a = 0; for (const auto& f : s.fleets) if (f.ownerId == o && f.hull > 0) a += fleetAttack(f); return a; };
+            for (const auto& r : s.majorRelations) {
+                if (r.first != s.playerEmpire && r.second != s.playerEmpire) continue;
+                const int other = r.first == s.playerEmpire ? r.second : r.first;
+                std::cout << " | e" << other << " c" << r.contact << " w" << r.atWar << " tr" << r.trust << " rank "
+                          << s.diplomacyEngineState.highestTreatyRank(diplomacy::ParticipantId::major(s.playerEmpire), diplomacy::ParticipantId::major(other))
+                          << " atk " << pw(other);
+            }
+            std::cout << " | me atk " << pw(s.playerEmpire) << std::endl;
+        }
         if (s.turn == 40) {
             const auto self = diplomacy::ParticipantId::major(s.playerEmpire);
             for (const auto& r : s.majorRelations) {
