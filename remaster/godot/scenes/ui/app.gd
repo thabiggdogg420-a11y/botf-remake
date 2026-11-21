@@ -108,7 +108,12 @@ func _ready() -> void:
 	lan = LanSession.new(self)   # LAN multiplayer (desktop): idle until a game is hosted or joined
 	add_child(lan)
 	lan.changed.connect(_lan_strip)
-	var early_warm := web and DisplayServer.get_name() != "headless"
+	# 21 Nov: WebGPU only. On WebGL (Compatibility) each of the battle view's shaders compiles in 1.3-5 s on the main thread, so
+	# this warm-up held the HTML loading screen at "Loading the game (95%)" for 25 s to minutes (the 95% stall). The WebGL build
+	# compiles them when the first battle opens instead, as ShaderWarm already does (bfe288f).
+	var early_warm := web and DisplayServer.get_name() != "headless" and GpuReadback.webgpu()
+	if web and not early_warm:
+		_warmed_battle = true   # WebGL: no battle warm-up before or after the title (it would be the same long frames)
 	if early_warm:
 		_warmed_battle = true
 		await _warm_battle_view()   # WebGPU round 9: behind the HTML loading screen, not after the title
@@ -171,8 +176,13 @@ func _warm_screens() -> void:
 ## is mounted with no request. `web_packs_done` is set and emitted when the title's bundles are in.
 signal web_packs_changed(name: String)
 var web_packs_done := false
+const TITLE_QUIET_SEC := 2.0   ## web: seconds the title runs with no downloads before the first pack starts
 
 func _fetch_background() -> void:
+	# 21 Nov load audit: nothing is fetched until the title has been up and answering input for a moment, then the small
+	# planet tier and the portraits (New campaign wants them), then the music. The ship icons (12 MB) come on first use
+	# (ShipIcons.folder raises the pack) and the full-resolution planets (44 MB) when a campaign starts (_fetch_game_packs).
+	await get_tree().create_timer(TITLE_QUIET_SEC).timeout
 	await AppLoader.fetch_web_packs(self)
 	var t := LoadTrace.start()
 	PlanetTextures.reset()
@@ -182,11 +192,6 @@ func _fetch_background() -> void:
 		t = LoadTrace.start()
 		BotfAudioSystem.music_pack_ready()
 		LoadTrace.done("title packs: music ready", t)
-	if await AppLoader.fetch_web_pack(self, AppLoader.WEB_SHIP_ICONS):
-		t = LoadTrace.start()
-		ShipIcons.reset()
-		web_packs_changed.emit(AppLoader.WEB_SHIP_ICONS)
-		LoadTrace.done("title packs: ship icons in", t)
 	web_packs_done = true
 	print("web packs: %.1f MB downloaded, %.1f MB from cache" % [AppLoader.bytes_downloaded / 1048576.0, AppLoader.bytes_cached / 1048576.0])
 	web_packs_changed.emit("")

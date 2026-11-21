@@ -58,6 +58,7 @@ static func folder() -> String:
 			_dir_done = true
 			_dir = PACK_DIR
 			return _dir
+		_raise_web_pack()
 		return ""
 	_dir_done = true
 	_dir = ""
@@ -71,6 +72,24 @@ static func folder() -> String:
 			_dir = d
 			break
 	return _dir
+
+static var _web_raised := false
+## Web (21 Nov load audit): the 12 MB icon pack is fetched the first time a screen asks for an icon, not after the title.
+## The vector fallback draws until it lands; then the cache is dropped and screens are told (App.web_packs_changed).
+static func _raise_web_pack() -> void:
+	if _web_raised:
+		return
+	_web_raised = true
+	AppLoader.raise_pack(AppLoader.WEB_SHIP_ICONS, func() -> void:
+		reset()
+		var loop := Engine.get_main_loop()
+		if not (loop is SceneTree):
+			return
+		for top in (loop as SceneTree).root.get_children():   # main.gd's node holds the App
+			for n in [top] + top.get_children():
+				if n.has_signal("web_packs_changed"):
+					n.emit_signal("web_packs_changed", AppLoader.WEB_SHIP_ICONS)
+					return)
 
 ## Where the icons come from: "pack" (ship_icons_desktop.pck), "disk" (a dev folder) or "none" (the vector fallback is drawn).
 static func source() -> String:

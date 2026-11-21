@@ -21,8 +21,8 @@ func _initialize() -> void:
 	AppLoader._mounted.clear()
 
 	var title := AppLoader.idle_queue("", ["fed", "kli", "rom"])
-	check(title.size() == 2, "title: only the shared packs (%d)" % title.size())
-	check(title[0] == "ships_base_web.pck" and title[1] == "planets_hi_web.pck", "title: hull manifests, then the planet tier")
+	check(title.size() == 1, "title: only the hull manifests (%d)" % title.size())
+	check(title[0] == "ships_base_web.pck" and not title.has("planets_hi_web.pck"), "title: hull manifests; the 44 MB planet tier waits for a campaign")
 	check(not title.has("audio_fed_web.pck"), "title: no empire audio before an empire is chosen")
 	check(not title.any(func(n): return n.begins_with("hull_")), "title: no hulls before an empire is chosen")
 

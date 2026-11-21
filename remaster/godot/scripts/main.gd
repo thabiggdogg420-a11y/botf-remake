@@ -68,7 +68,16 @@ static func _boot_text(t: String) -> void:
 
 static var _boot_refs: Array = []   ## the compiled scripts stay loaded (the game uses them all)
 
+## Web (21 Nov): while the page's canvas has no size (a hidden or collapsed tab, layout not done yet) nothing is drawn; each
+## draw into a zero-size framebuffer only flooded the console with GL_INVALID_FRAMEBUFFER_OPERATION warnings.
+func _process(_delta: float) -> void:
+	var sz := get_window().size
+	var on := sz.x > 0 and sz.y > 0
+	if RenderingServer.render_loop_enabled != on:
+		RenderingServer.render_loop_enabled = on
+
 func _ready() -> void:
+	set_process(OS.has_feature("web"))
 	if Engine.has_singleton("BotfCore"):
 		var meta: Dictionary = BotfCore.request("meta")
 		print("BOTF Remastered (Godot) booting: core ok=%s, %d empires" % [meta.ok, meta.result.empires.size()])

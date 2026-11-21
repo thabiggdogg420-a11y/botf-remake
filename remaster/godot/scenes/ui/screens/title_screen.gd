@@ -119,10 +119,25 @@ func refresh() -> void:
 	foot.add_child(Lcars.label(vm.footer(), "Mono", 13, Lcars.TEXT3))
 	foot.add_child(Lcars.label("Unofficial fan reconstruction · not affiliated with any rights holder", "Muted"))
 	add_child(foot)
+	# 21 Nov: the build's version, small, bottom-right (stamped into application/config/version by the export scripts).
+	var ver := Lcars.label(build_version(), "Mono", 12, Lcars.TEXT3)
+	ver.name = "BuildVersion"
+	ver.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
+	ver.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	ver.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	ver.offset_right = -14
+	ver.offset_bottom = -10
+	ver.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	add_child(ver)
 	var first := menu.get_child(0) as Button
 	if first and is_inside_tree():
 		first.grab_focus.call_deferred()
 	LoadTrace.done("title: menu", t)
+
+## "BOTF Remastered 0.1.540 (abc1234)" from the stamped project setting, or a plain "dev build" when unstamped.
+static func build_version() -> String:
+	var v := str(ProjectSettings.get_setting("application/config/version", ""))
+	return "BOTF Remastered " + (v if v != "" else "dev build")
 
 func _wide(b: Button) -> Button:
 	b.size_flags_horizontal = Control.SIZE_EXPAND_FILL

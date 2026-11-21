@@ -390,9 +390,9 @@ static func idle_queue(player_tok: String, others: Array) -> Array:
 		if have.has(n) and not _mounted.has(n) and not out.has(n):
 			out.append(n)
 	add_pack.call(WEB_SHIPS_BASE)
-	add_pack.call(WEB_PLANETS_HI)
 	if player_tok == "":
-		return out   # the title: nobody has chosen an empire yet, so only what every campaign needs
+		return out   # the title: only the small hull manifests (21 Nov: the 44 MB planet tier waits for a campaign)
+	add_pack.call(WEB_PLANETS_HI)
 	add_pack.call("audio_%s_web.pck" % player_tok)
 	var toks: Array = [player_tok]
 	for t in others:
