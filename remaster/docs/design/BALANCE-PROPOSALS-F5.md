@@ -278,3 +278,38 @@ Why so few: AI-AI alliances had been lapsing and re-signing at once (hence the p
 ### Proposal C9 (Simon's call; not applied)
 - Non-aggression, friendship and affiliation between two AIs also end at a fixed term (e.g. 100 turns) unless C5's common-enemy
   test holds, so long-lived AI blocs break up and the strong can turn on the weak.
+
+## Round 7 (21 Nov 2026, Barclay): C9 applied, conquest still rare
+C9 (Simon's delegation, rulings 21 Nov): AI-AI non-aggression, friendship and affiliation lapse at their 100-turn review unless
+the C5 common-enemy test holds. Player treaties untouched. Test: DiplomacyTests `testC9LowerTreatiesLapse`.
+
+Soaks, domination off, play-on, 4 seeds, 1,200 turns (C5-C8 + C9):
+| Run | Classic | KCW |
+|---|---|---|
+| Round 6 (C5-C8) | cap 3, conquest 1 (t1086) | cap 2, diplomatic 1, vendetta 1 |
+| + C9 (applied) | cap 4 | cap 2, diplomatic 1 (t636), vendetta 1 (t477) |
+| + C9 + war-focus experiment (soak only, removed) | cap 3, conquest 1 (Ferengi, t807) | cap 3, diplomatic 1 (t760) |
+| + C9 + siege experiment (soak only, removed): undefended world under enemy warships loses 5% pop a turn | cap 3, conquest 1 (Romulan, t509) | cap 4 |
+War focus: an AI at war with two or more majors offered peace to all but its weakest. Siege: an undefended world under enemy warships loses 5% of its population a turn. Each was
+soaked as a switch the game never sets, then removed (the siege patch is kept at rc-captures\soak4\siege-experiment.patch).
+Neither one moves conquest off 1 in 8.
+
+What the soaks show. Wars are no longer rare: with C9, Classic seeds end with 1-6 pairs at war and 33-75 worlds taken; KCW 94-207.
+The galaxy also narrows: by turn 1,200, three of four Classic seeds were down to 2-4 powers. The block is the last few worlds.
+Seed 7262 had two powers left from about turn 1,000, Federation 46 worlds to Ferengi 4. Under C6 they were at war, and at turn
+1,200 it stood at 47 to 3: about one world per 100 turns, with the Ferengi keeping 7 fleets at home. Seed 7131: 39 to 11.
+Defence is not the limit either: divisor 10 bought nothing over 5 (Round 6). Idle transports are rare (191-224
+transport-turns at war across 1,200 turns).
+
+### What the two experiments rule out, and proposal C10 (Simon's call; not applied)
+- Peace is no longer the block (C9 wars are everywhere). Defence is not either (divisor 10 = divisor 5). Finishing undefended
+  worlds is not (siege). Splitting effort across wars is not (war focus).
+- What the soak endings show instead: holdouts keep their fleets at home. At turn 1,200 under siege the Cardassians held 1
+  world with 6 fleets, and in another seed the Romulans held 4 worlds with 13. The AI never brings enough force to beat
+  them. Powers of similar size trade worlds back and forth: 94-207 worlds changed hands in KCW, with no one eliminated.
+- C10, an AI change, not a rule: before an invasion, an AI at war gathers its fleets into one strike force and attacks the
+  target's defending fleet first. It only invades after winning, and it picks the target where its force ratio is highest.
+  Sizing: this cannot be tuned like a number. The measure would be the same 8-run soak, aiming for conquest in 3 or more of 8
+  and none before turn 200.
+- If Simon would rather keep the AI as it is: with C5-C9 in place, a domination-off campaign mostly ends at the turn cap or
+  by diplomacy, and conquest is a rare outcome (1 in 8, between turn 509 and turn 1,086).
