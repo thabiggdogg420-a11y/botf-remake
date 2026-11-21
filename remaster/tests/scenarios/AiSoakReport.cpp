@@ -98,6 +98,7 @@ int main(int argc, char** argv) {
             // C4 (20 Nov 2026): BOTF_SOAK_PLAYON=1 plays on past domination (as a winner who chose "Continue playing"), so a
             // campaign ends only by conquest or another victory type.
             if (std::getenv("BOTF_SOAK_PLAYON")) state.playingOnFrom = 1;
+            state.soakEndgameWar = std::getenv("BOTF_SOAK_ENDGAME_WAR") != nullptr;   // 21 Nov: experiment for a proposal, not a rule
             std::map<int, EmpireTrack> track;
             for (int id : internal::activeEmpires(state)) { track[id].id = id; track[id].name = empireName(id); }
             std::string ending;
@@ -185,6 +186,68 @@ int main(int argc, char** argv) {
                                       << " parked-transport-turns " << parkedTransportTurns << " |";
                             for (const auto& [id, n] : cols) std::cout << " " << empireName(id) << " c" << n << " f" << fleets[id];
                             std::cout << std::endl;
+                            // Stuck sites (21 Nov 2026): every hostile world where an empire's transports sit at war without
+                            // landing: how many, their troops as the AI reckons them, the world's real ground defence, and what
+                            // guards it (a station or armed ships of its owner block any landing; enemy warships make the AI wait).
+                            std::map<std::pair<int, int>, std::array<int, 2>> stuck;   // {owner, system} -> {transports, troops}
+                            for (const auto& f : state.fleets) {
+                                if (f.shipClass != Building::Transport || f.hull <= 0 || f.invadeSystemId) continue;
+                                const auto* c = colonyAt(state, [&] { for (const auto& sy : state.systems) if (sy.x == f.x && sy.y == f.y) return sy.id; return -1; }());
+                                if (!c || c->ownerId == f.ownerId || !combatAllowed(state, f.ownerId, c->ownerId)) continue;
+                                auto& e = stuck[{f.ownerId, c->systemId}];
+                                ++e[0];
+                                e[1] += 8 + f.hull + 2 * empire(state, f.ownerId).technologies[5].level;
+                            }
+                            for (const auto& [site, v] : stuck) {
+                                const auto* c = colonyAt(state, site.second);
+                                const auto* sy = gameplay::systemById(state, site.second);
+                                const int bat = state.advancedRulesEnabled ? economy(state, *c).poweredBatteries : 0;
+                                const int aiDef = (8 + c->population / 3 + c->morale / 10 + bat * 12 * content::balance().batteryDefensePercent / 100) * content::balance().shieldDefensePercent / 100;
+                                int guards = 0, foes = 0;
+                                for (const auto& o : state.fleets) if (o.hull > 0 && o.x == sy->x && o.y == sy->y && fleetAttack(o) > 0 && o.shipClass != Building::Transport) {
+                                    if (o.ownerId == c->ownerId) ++guards;
+                                    else if (combatAllowed(state, site.first, o.ownerId)) ++foes;
+                                }
+                                int own = 0;
+                                for (const auto& o : state.fleets) if (o.hull > 0 && o.x == sy->x && o.y == sy->y && o.ownerId == site.first && fleetAttack(o) > 0 && o.shipClass != Building::Transport) ++own;
+                                const auto* st = stationAt(state, sy->x, sy->y);
+                                std::cout << "  STUCK " << empireName(site.first) << " at " << sy->name << " (" << empireName(c->ownerId) << " pop " << c->population
+                                          << " morale " << c->morale << " bat " << bat << "): transports " << v[0] << " troops " << v[1] << " ai-def " << aiDef
+                                          << " station " << (st && st->hull > 0 ? (st->ownerId == c->ownerId ? "theirs" : "other") : "none")
+                                          << " their-armed " << guards << " other-armed " << foes << " our-armed " << own << std::endl;
+                            }
+                            // Last worlds (21 Nov 2026): an empire down to two colonies, each world's defence, and what each enemy
+                            // at war with it has: transports (troops, at the world, heading there), warships, task forces.
+                            for (const auto& [id, n] : cols) {
+                                if (n > 2 || id <= 0) continue;
+                                for (const auto& c : state.colonies) {
+                                    if (c.ownerId != id) continue;
+                                    const auto* sy = gameplay::systemById(state, c.systemId);
+                                    const auto* st = stationAt(state, sy->x, sy->y);
+                                    int guards = 0;
+                                    for (const auto& o : state.fleets) if (o.hull > 0 && o.x == sy->x && o.y == sy->y && o.ownerId == id && fleetAttack(o) > 0) ++guards;
+                                    std::cout << "  LAST " << empireName(id) << " " << sy->name << " pop " << c.population << " morale " << c.morale
+                                              << " station " << (st && st->hull > 0 ? std::to_string(st->hull) + (st->ownerId == id ? " own" : " other") : std::string("none"))
+                                              << " guards " << guards << " |";
+                                    for (const auto& r : state.majorRelations) {
+                                        if (!r.atWar || (r.first != id && r.second != id)) continue;
+                                        const int foe = r.first == id ? r.second : r.first;
+                                        int tr = 0, troops = 0, here = 0, heading = 0, war = 0, tfs = 0;
+                                        for (const auto& f : state.fleets) {
+                                            if (f.ownerId != foe || f.hull <= 0) continue;
+                                            if (f.shipClass == Building::Transport) {
+                                                ++tr; troops += 8 + f.hull + 2 * empire(state, foe).technologies[5].level;
+                                                if (f.x == sy->x && f.y == sy->y) ++here;
+                                                else if (f.targetX == sy->x && f.targetY == sy->y) ++heading;
+                                            } else if (fleetAttack(f) > 0) ++war;
+                                        }
+                                        for (const auto& tf : state.taskForces) if (tf.ownerId == foe) ++tfs;
+                                        std::cout << " " << empireName(foe) << " transports " << tr << " (troops " << troops << ", here " << here << ", heading " << heading
+                                                  << ") warships " << war << " taskforces " << tfs << ";";
+                                    }
+                                    std::cout << std::endl;
+                                }
+                            }
                             const auto& dip = campaignDiplomacyState(state);
                             for (auto a = cols.begin(); a != cols.end(); ++a)
                                 for (auto b = std::next(a); b != cols.end(); ++b) {
@@ -206,6 +269,17 @@ int main(int argc, char** argv) {
                     for (auto& [id, tr] : track) {
                         int n = 0;
                         for (const auto& c : state.colonies) n += c.ownerId == id;
+                        if (n > 0 && tr.colonies == 0 && tr.peakColonies > 0 && std::getenv("BOTF_SOAK_WARS")) {
+                            // 21 Nov: an empire that had lost every world holds one again; which world, and how.
+                            std::cout << "REVIVE " << p->id << " seed " << setup.seed << " turn " << state.turn << " " << tr.name << ":";
+                            for (const auto& c : state.colonies) if (c.ownerId == id) {
+                                const bool minorWorld = std::any_of(state.minors.begin(), state.minors.end(), [&](const Minor& m) { return m.systemId == c.systemId; });
+                                std::cout << " " << gameplay::systemById(state, c.systemId)->name << (minorWorld ? " (minor world)" : "") << " pop " << c.population;
+                            }
+                            int fl = 0, cs = 0, tp = 0;
+                            for (const auto& f : state.fleets) if (f.ownerId == id) { ++fl; cs += f.colonyShip; tp += f.shipClass == Building::Transport; }
+                            std::cout << " | fleets " << fl << " colony ships " << cs << " transports " << tp << std::endl;
+                        }
                         tr.colonies = n;
                         tr.peakColonies = std::max(tr.peakColonies, n);
                         if (!n) { if (!tr.eliminatedTurn) tr.eliminatedTurn = state.turn; continue; }

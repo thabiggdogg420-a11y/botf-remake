@@ -1603,6 +1603,15 @@ inline int activeTreatyAge(const DiplomacyState& state, ParticipantId a, Partici
 // Plans this turn's AI-initiated proposals (treaties, peace, tribute demands and
 // goodwill gifts) for every AI major in `aiEmpires`. Pure and deterministic: the
 // caller submits the intents through DiplomacyEngine::submitProposal.
+// C3 (Simon, 20 Nov 2026): two AI empires that are the last powers left; an alliance between them ends at once, so the AI does
+// not propose one (21 Nov: the conquest soaks showed a Full Alliance offered, signed and dissolved over and over).
+inline bool lastTwoPowers(const DiplomacyContext& ctx, ParticipantId a, ParticipantId b) {
+    if (a.isMinor || b.isMinor || ctx.isHuman(a) || ctx.isHuman(b)) return false;
+    int left = 0;
+    for (int id : ctx.majorEmpires()) if (!ctx.isEliminated(ParticipantId::major(id))) ++left;
+    return left == 2;
+}
+
 inline std::vector<AiDiplomaticIntent> planAiDiplomacy(
     const DiplomacyState& state,
     const DiplomacyContext& ctx,
@@ -1695,7 +1704,7 @@ inline std::vector<AiDiplomaticIntent> planAiDiplomacy(
                 intent.duration = TreatyDuration::Indefinite;
                 intent.rationale = "share sensors and exploration";
             } else if (rank == 3 && !warMinded && activeTreatyAge(state, self, other, 3) >= 10 && desire >= prof.allianceDesire &&
-                       (shared > 0 || selfP == MajorPersonality::Federation)) {
+                       (shared > 0 || selfP == MajorPersonality::Federation) && !lastTwoPowers(ctx, self, other)) {   // C3: it would end at once
                 intent.treatyType = TreatyType::Alliance;
                 intent.duration = TreatyDuration::Indefinite;
                 intent.rationale = shared > 0 ? "common enemies" : "lasting cooperation";

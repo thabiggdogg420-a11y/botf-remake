@@ -1446,6 +1446,25 @@ bool aiJointLanding(GameState& s, int ownerId, const Colony& target, int x, int 
     return true;
 }
 
+// 21 Nov 2026 (conquest soaks): a world guarded by a minor's signature ship cannot be invaded while the guard stands
+// (empire_rules::guardHolds), and the guard mends a tenth of its hull and shields every turn. When the warships `owner` has at the
+// world plus `extraAttack` (a group on its way) do less damage a turn than that, the guard never falls: the AI does not pick the
+// world as a target and its transports do not wait there. Classic seed 7393: nine Ferengi warships (attack 45 a turn) against
+// a Vulcan guard mending 49 sat at Vulcan for hundreds of turns with three transports. No rule changes; the AI chooses elsewhere.
+bool aiGuardBlocks(const GameState& s, int owner, int systemId, int extraAttack = 0) {
+    if (!s.rules.empireRules) return false;
+    const auto* g = empire_rules::guardAt(s, systemId);
+    if (!g) return false;
+    const auto* sys = gameplay::systemById(s, systemId);
+    if (!sys) return false;
+    int attack = extraAttack;
+    for (const auto& f : s.fleets)
+        if (f.ownerId == owner && f.hull > 0 && f.x == sys->x && f.y == sys->y && f.shipClass != Building::Transport) attack += fleetAttack(f);
+    const int mh = empire_rules::guardMaxHull(*g), ms = empire_rules::guardMaxShields(*g);
+    const int mend = std::max(1, mh / 10) + (ms > 0 ? std::max(1, ms / 10) : 0);
+    return attack <= mend;
+}
+
 bool queueMilitaryShip(GameState& s, Colony& colony, Building role) {
     if (s.ruleset == Ruleset::Prototype) { colony.queue.push_back(role); return true; }
     const referenceData::ShipRecord* choice = nullptr;
@@ -1515,6 +1534,16 @@ void planRivals(GameState& s) {
     std::sort(planners.begin(), planners.end(), [](const EmpireState* a, const EmpireState* b) { return a->id < b->id; });
     for (EmpireState* plannerSeat : planners) {
         auto& owner = *plannerSeat;
+        // 21 Nov 2026 (conquest soaks): an empire with no worlds left is out. Its AI stops playing: the ships it still has hold
+        // their last orders but settle no world, land no troops and make no offers to minors. Before, a beaten AI's leftover
+        // colony ship, transport or membership offer handed it a world back hundreds of turns later (classic and
+        // balance-of-power soaks: Klingons and Cardassians back from 0 colonies), and a conquest could never complete.
+        if (empireEliminatedInternal(s, owner.id)) {
+            for (auto& f : s.fleets)
+                if (f.ownerId == owner.id) { f.colonize = false; f.invadeSystemId = 0; }
+            std::erase_if(s.diplomacy, [&](const DiplomaticOffer& o) { return o.empireId == owner.id; });
+            continue;
+        }
         // Personality- and situation-driven war decisions (treaties, cool-downs,
         // relative strength, trust and grievances); see planAiWarDeclarations.
         planAiWarDeclarations(s, owner.id);
@@ -1683,8 +1712,17 @@ void planRivals(GameState& s) {
 
             const Colony* targetColony = nullptr;
             int bestDist = std::numeric_limits<int>::max();
+            const auto tfAttackAway = [&](int systemId) {   // the group's warships not already at the world
+                const auto* at = gameplay::systemById(s, systemId);
+                int a = 0;
+                for (int fid : tf.fleetIds)
+                    for (const auto& m : s.fleets)
+                        if (m.id == fid && m.shipClass != Building::Transport && (!at || m.x != at->x || m.y != at->y)) a += fleetAttack(m);
+                return a;
+            };
             for (const auto& candidate : s.colonies) {
                 if (!combatAllowed(s, owner.id, candidate.ownerId)) continue;
+                if (empire_rules::guardAt(s, candidate.systemId) && aiGuardBlocks(s, owner.id, candidate.systemId, tfAttackAway(candidate.systemId))) continue;   // a guard this group cannot break
                 const auto loc = std::find_if(s.systems.begin(), s.systems.end(), [&](const System& x) { return x.id == candidate.systemId; });
                 if (loc == s.systems.end() || !known(s, owner.id, loc->x, loc->y)) continue;
                 if (!evaluateSectorSafety(loc->x, loc->y, false, &*leaderIt)) continue;
@@ -1793,6 +1831,7 @@ void planRivals(GameState& s) {
                                 atHostileColony = &candidate; break;
                             }
                         }
+                        if (atHostileColony && aiGuardBlocks(s, owner.id, atHostileColony->systemId)) atHostileColony = nullptr;   // go elsewhere
                         if (atHostileColony) {
                             if (evaluateSectorSafety(f.x, f.y, true, &f)) {
                                 if (aiJointLanding(s, owner.id, *atHostileColony, f.x, f.y)) continue; // C1: troops of every transport there add up
@@ -1803,6 +1842,7 @@ void planRivals(GameState& s) {
                         const Colony* enemyColony = nullptr; int shortest = std::numeric_limits<int>::max();
                         for (const auto& candidate : s.colonies) {
                             if (!combatAllowed(s, owner.id, candidate.ownerId)) continue;
+                            if (aiGuardBlocks(s, owner.id, candidate.systemId)) continue;
                             const auto loc = std::find_if(s.systems.begin(), s.systems.end(), [&](const System& x) { return x.id == candidate.systemId; });
                             if (loc == s.systems.end() || !known(s, owner.id, loc->x, loc->y)) continue;
                             if (!evaluateSectorSafety(loc->x, loc->y, true, &f)) continue;
@@ -1838,6 +1878,8 @@ void planRivals(GameState& s) {
                         const Colony* enemyColony = nullptr; shortest = std::numeric_limits<int>::max();
                         for (const auto& candidate : s.colonies) {
                             if (!combatAllowed(s, owner.id, candidate.ownerId)) continue;
+                            if (empire_rules::guardAt(s, candidate.systemId) && aiGuardBlocks(s, owner.id, candidate.systemId,
+                                    gameplay::systemById(s, candidate.systemId)->x == f.x && gameplay::systemById(s, candidate.systemId)->y == f.y ? 0 : fleetAttack(f))) continue;
                             const auto loc = std::find_if(s.systems.begin(), s.systems.end(), [&](const System& x) { return x.id == candidate.systemId; });
                             if (loc == s.systems.end() || !known(s, owner.id, loc->x, loc->y)) continue;
                             if (!evaluateSectorSafety(loc->x, loc->y, false, &f)) continue;
@@ -2198,6 +2240,21 @@ std::int64_t blocMilitaryPower(const GameState& s, const CampaignDiplomacyContex
 // Replaces the old "IDs 2/4 declare war on the player every turn after 25" rule.
 void planAiWarDeclarations(GameState& s, int ownerId) {
     if (!s.aiAggressionEnabled || empireEliminatedInternal(s, ownerId)) return;
+    if (s.soakEndgameWar) {   // soak experiment only (see GameState::soakEndgameWar); not a rule
+        const auto left = survivingEmpires(s);
+        if (left.size() == 2 && !humanSeat(s, left[0]) && !humanSeat(s, left[1])) {
+            const int other = left[0] == ownerId ? left[1] : left[0];
+            const CampaignDiplomacyContext ctx(s);
+            if (ctx.militaryPower(diplomacy::ParticipantId::major(ownerId)) >= ctx.militaryPower(diplomacy::ParticipantId::major(other))) {
+                auto& ds = s.diplomacyEngineState;
+                for (auto& t : ds.activeTreaties)
+                    if (t.status == diplomacy::TreatyStatus::Active && t.involvesBoth(diplomacy::ParticipantId::major(ownerId), diplomacy::ParticipantId::major(other)))
+                        t.status = diplomacy::TreatyStatus::Expired;
+                enactWar(s, ownerId, other);
+            }
+            return;
+        }
+    }
     const bool modern = modernDiplomacy(s);
     const auto& ds = s.diplomacyEngineState;
     int activeWars = 0;

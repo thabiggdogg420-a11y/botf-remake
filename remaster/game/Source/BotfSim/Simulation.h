@@ -603,6 +603,9 @@ struct GameState : EmpireState {
     // player's seat, the player's elimination does not end the campaign, and the campaign ends when one empire is left or
     // any empire meets a victory condition (the player's own domination test applied to every empire). Rules are unchanged.
     bool observerMode = false;
+    // Soak experiment for a proposal to Simon (21 Nov 2026; BotfAiSoak BOTF_SOAK_ENDGAME_WAR=1 only, never a game, not saved):
+    // when two AI powers are the last left, their treaties stop binding and the stronger keeps the war on. NOT a rule.
+    bool soakEndgameWar = false;
     // P1 (Simon's yes, 20 Nov 2026): a diplomatic win must hold for DiplomaticVictoryHoldTurns consecutive turns. Each entry is
     // (empire id, consecutive turns the empire has met every diplomatic condition), ascending id, only while the count is >= 1.
     // Saved as the optional DIPLOMATIC_HOLD section (schema 25, written only when non-empty).

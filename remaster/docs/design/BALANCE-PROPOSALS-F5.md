@@ -198,3 +198,56 @@ two or three powers end up allied (C3 below), and with alliances lapsing they re
 - C4. Conquest and domination. Either leave it (conquest is a win only in a galaxy with room to spare, which is how the rule
   reads today), or let a campaign go on past domination when the winner chooses to (the original's "continue playing"), or
   count domination only after a set turn. This one is about the rule itself, not the AI.
+
+## Round 5 (21 Nov 2026, Barclay): conquest after C1-C4
+Simon's C1-C4 are in (4e016af). The question: why do observer soaks still give 0 AI conquest wins in 1,200 turns? Evidence in
+`Documents\ChatGPT\rc-captures\soak` (the RC run), `soak2` (diagnosis), `soak3` (fixes 1-2), `soak4` (fixes 1-3). The soak report
+(`tests/scenarios/AiSoakReport.cpp`, BOTF_SOAK_WARS) now also prints STUCK lines (transports sitting at a hostile world: troops,
+the world's defence, what guards it), LAST lines (an empire's last two worlds and what each enemy has against them) and REVIVE
+lines (an empire back from 0 colonies).
+
+### Causes found
+1. Without play-on, domination always comes first. Conquest needs every colony; domination needs 60% of the systems; colonies
+   fill the galaxy by turn ~300, so the winner passes 60% long before it can hold 100%. An AI conquest is possible only in a
+   campaign where domination does not end the game (play-on; BOTF_SOAK_PLAYON simulates it). This is the rule as written (C4 left
+   it), not the AI.
+2. Bug (fixed): a beaten AI came back. An empire with no worlds still planned: its leftover colony ship, transport or a pending
+   membership offer took a world, often a seceded minor world, so the "eliminated" empire held a colony again. Classic play-on,
+   4 seeds: 56 revivals (Klingons at Antede 30 times between turns 761 and 1101). Now an AI with no worlds settles nothing, lands
+   nothing and makes no minor offers; its ships keep their last orders. After: 0 revivals in every soak.
+3. Bug (fixed): transports parked for good at a world guarded by a minor's signature ship. A guard blocks any landing while it
+   stands and mends a tenth of its hull and shields every turn; the AI kept sending groups whose attack was below that. Classic
+   seed 7393 (turn 1100): nine Ferengi warships, 45 attack a turn, against a Vulcan guard mending 49, with three transports
+   (171 troops against a defence of 52), for hundreds of turns. Now such a world is not a target for a group (or transport) that
+   cannot break its guard, and transports there go elsewhere. Parked transport-turns at turn 1,200 (play-on): Classic 591 / 1027
+   / 85 / 1219 -> 297 / 187 / 79 / 180; Klingon Civil War 228 / 967 / 927 / 994 -> 101 / 325 / 623 / 321 (seeds 7000-7393).
+4. C3 consistency (fixed): two AIs that are the last powers left kept proposing a Full Alliance that C3 ended the next turn;
+   the AI no longer proposes it.
+5. Not a bug, rule territory: AI alliances last for ever. C3 renews an AI alliance every 100 turns while both still want it, and
+   they do: Federation-Ferengi from turn 36 to 1,200 in Classic 7131, Cardassian-Ferengi, Romulan-Ferengi and
+   Federation-Ferengi all from turns 35-57 in Classic 7000. Nobody can conquer a galaxy in which a third of it is allied to
+   everyone. And once only two remain, any treaty still binds (non-aggression, friendship, affiliation), the Federation and the
+   Ferengi never start a war, and the Romulans break one only at 3:1 with trust under 20.
+6. Not a bug, tuning: wars between equals take about one world per 50 turns (Classic 7393 with the endgame experiment below:
+   Romulans net +8 worlds in 485 turns of war), so even an open two-power war needs well over 1,000 turns to finish.
+
+### Soak endings (1,200 turns, 4 seeds each; observer mode)
+| Run | Classic | Klingon Civil War |
+|---|---|---|
+| RC (before), normal | domination 2, cap 2 | diplomatic 1, domination 2, cap 1 |
+| RC (before), play-on | cap 4 | diplomatic 1, cap 3 |
+| fixes 1-2, play-on | cap 4 | diplomatic 2, cap 2 |
+| fixes 1-3, play-on | cap 4 | diplomatic 4 (Federation 3, Cardassian 1; turns 376-1143) |
+| fixes 1-3 + endgame experiment, play-on | cap 4 | diplomatic 4 |
+Conquest: 0 in every run. "Endgame experiment" (BOTF_SOAK_ENDGAME_WAR, soak only, not a rule): when two AI powers are the last
+left, their treaties lapse and the stronger declares war. Only one of 8 Classic runs reached two powers inside 1,200 turns.
+
+### Proposals (each is Simon's call; none applied)
+- C5. AI alliances lapse for good at 100 turns (no renewal between AIs), or renewal only while a common enemy holds more worlds
+  than either partner. Fixes the "allied to everyone" Ferengi bloc (cause 5).
+- C6. The last two powers: treaties between two AIs that are the last left end (as C3 does for alliances), and the stronger
+  goes to war whatever its personality.
+- C7. Victory setting at New campaign: domination on or off (the original's choice of victory conditions). With it off, an AI
+  can win by conquest in a normal campaign; today only a human's play-on allows it (cause 1).
+- C8. Faster wars between equals (for example a transport's troops +50%, or a world's defence from population /4 instead of /3),
+  sized by soak once C5-C7 are decided (cause 6).
