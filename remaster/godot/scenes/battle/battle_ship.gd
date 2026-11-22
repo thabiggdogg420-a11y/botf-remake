@@ -94,6 +94,8 @@ func setup(ship: Dictionary, assets: BattleAssets = null) -> void:
 	_measure()
 	if hull.has_meta("botf_hero"):
 		_show_look(hull)
+	elif is_station and not imported:
+		_show_look_station(hull)
 	is_flagship = bool(ship.get("flagship", false))
 	if is_flagship:
 		_add_flagship_marking()
@@ -250,6 +252,28 @@ static func _aabb_of(root: Node3D, xf: Transform3D) -> AABB:
 ## navigation lights the show's ships do (red to port, green to starboard, a white strobe aft), sized to read on screen.
 const HULL_TONE := 0.42
 const WINDOW_GAIN := 2.4
+
+## E8 (22 Nov 2026): the procedural starbase drew in the stock hull shader at full albedo, a pale, flat slab beside the hero hulls
+## round it. Its hull materials (shared between stations through ShipFactory's cache, so copied here) take the hero hulls' tone,
+## darker so the key light models them, with the window emission raised by the same gain.
+func _show_look_station(hull: Node) -> void:
+	var done := {}
+	for mi in hull.find_children("*", "MeshInstance3D", true, false):
+		var m3 := mi as MeshInstance3D
+		var mat := m3.material_override as ShaderMaterial
+		if mat == null or mat.shader != ShipFactory.HULL_SHADER:
+			continue
+		if not done.has(mat):
+			var c := mat.duplicate() as ShaderMaterial
+			var base = c.get_shader_parameter("base_color")
+			var acc = c.get_shader_parameter("accent_color")
+			c.set_shader_parameter("base_color", (base if base is Color else Color(0.62, 0.64, 0.68)) * HULL_TONE)
+			c.set_shader_parameter("accent_color", (acc if acc is Color else Color(0.48, 0.5, 0.56)) * HULL_TONE)
+			var we = c.get_shader_parameter("window_energy")
+			c.set_shader_parameter("window_energy", (float(we) if we != null else 4.0) * WINDOW_GAIN)
+			done[mat] = c
+		m3.material_override = done[mat]
+
 
 func _show_look(hull: Node) -> void:
 	var done := {}

@@ -326,6 +326,13 @@ void checkCommand(const Command& c) {
     require(c.proposalReason.size() <= 256 && !hasControlCharacters(c.proposalReason),
         "Proposal reason must be at most 256 printable characters");
     require(!hasControlCharacters(c.taskForceName), "Task force name contains control characters");
+    require(c.type == CommandType::SubmitDiplomaticProposal || (c.proposalCedeSystems.empty() && c.proposalDemandSystems.empty()),
+        "Only a diplomatic proposal can name worlds");
+    require(c.proposalCedeSystems.size() <= static_cast<std::size_t>(diplomacy::PeaceMaxWorlds) &&
+        c.proposalDemandSystems.size() <= static_cast<std::size_t>(diplomacy::PeaceMaxWorlds) &&
+        std::all_of(c.proposalCedeSystems.begin(), c.proposalCedeSystems.end(), [](int id) { return id > 0 && id <= MaxSystems; }) &&
+        std::all_of(c.proposalDemandSystems.begin(), c.proposalDemandSystems.end(), [](int id) { return id > 0 && id <= MaxSystems; }),
+        "A peace deal names at most three worlds each way");
     require(static_cast<int>(c.stance) >= 0 && static_cast<int>(c.stance) <= 3 &&
         (c.type == CommandType::SetTacticalStance || c.type == CommandType::SetTaskForceOrder || c.stance == TacticalStance::Balanced),
         "Invalid tactical stance field");
@@ -726,6 +733,44 @@ public:
     const GameState& state;
     explicit CampaignDiplomacyContext(const GameState& s) : state(s) {}
 
+    // E3: the capital is the colony on the star that carries the race's capital name (slots::capital); it never changes hands in a peace deal.
+    int capitalSystemOf(int empireId) const {
+        const std::string name = slots::capital(empireId);
+        if (name.empty()) return 0;
+        const auto sys = std::find_if(state.systems.begin(), state.systems.end(), [&](const System& x) { return x.name == name; });
+        return sys == state.systems.end() ? 0 : sys->id;
+    }
+    bool canCedeWorld(diplomacy::ParticipantId owner, int systemId) const override {
+        if (owner.isMinor || !campaignEmpire(state, owner.id) || !modernDiplomacy(state)) return false;
+        const auto* c = colonyAt(state, systemId);
+        if (!c || c->ownerId != owner.id || systemId == capitalSystemOf(owner.id)) return false;
+        return colonyCount(owner) > 1;
+    }
+    std::vector<int> borderWorlds(diplomacy::ParticipantId owner, diplomacy::ParticipantId toward, int maxCount) const override {
+        std::vector<std::pair<int, int>> ranked;   // (distance to the nearest world of `toward`, system id)
+        for (const auto& c : state.colonies) {
+            if (c.ownerId != owner.id || !canCedeWorld(owner, c.systemId)) continue;
+            const auto cs = std::find_if(state.systems.begin(), state.systems.end(), [&](const System& x) { return x.id == c.systemId; });
+            if (cs == state.systems.end()) continue;
+            int best = 1 << 20;
+            for (const auto& t : state.colonies) {
+                if (t.ownerId != toward.id) continue;
+                const auto ts = std::find_if(state.systems.begin(), state.systems.end(), [&](const System& x) { return x.id == t.systemId; });
+                if (ts != state.systems.end()) best = std::min(best, std::abs(ts->x - cs->x) + std::abs(ts->y - cs->y));
+            }
+            ranked.push_back({best, c.systemId});
+        }
+        std::sort(ranked.begin(), ranked.end());
+        std::vector<int> out;
+        for (const auto& r : ranked) {
+            if (static_cast<int>(out.size()) >= maxCount) break;
+            out.push_back(r.second);
+        }
+        // An empire never offers all but its capital: it keeps at least one world beside the capital when it has few.
+        while (!out.empty() && colonyCount(owner) - static_cast<int>(out.size()) < 2) out.pop_back();
+        return out;
+    }
+
     bool rivalryEnabled() const override { return modernDiplomacy(state); }
     int rivalryPressure(diplomacy::ParticipantId a, diplomacy::ParticipantId b) const override {
         if (a.isMinor || b.isMinor || a == b || !campaignEmpire(state, a.id) || !campaignEmpire(state, b.id)) return 0;
@@ -932,7 +977,10 @@ void applyDraft(GameState& state) {
                     command.proposalCreditOffer,
                     command.proposalCreditDemand,
                     nullptr,
-                    &err
+                    &err,
+                    1,
+                    command.proposalCedeSystems,
+                    command.proposalDemandSystems
                 );
                 require(ok, err.empty() ? "Invalid diplomatic proposal" : err.c_str());
             } else if (command.type == CommandType::RespondDiplomaticProposal) {
@@ -2097,8 +2145,41 @@ void creditEmpire(GameState& s, int id, std::int64_t amount) {
     e.credits = std::clamp<std::int64_t>(e.credits + amount, -MaxBalance, MaxBalance);
 }
 
+// E3 (schema 27, Simon's delegation 22 Nov 2026): a world ceded in a peace deal changes hands. It is handled like a conquest without the
+// bloodshed: the new owner starts with an empty queue and no automation, morale takes a knock, trade routes through it end, a starbase
+// or outpost in the sector goes with it, and a megaproject or station upgrade the old owner funded there ends.
+void cedeColony(GameState& next, int systemId, int from, int to, TurnReport* report) {
+    auto it = std::find_if(next.colonies.begin(), next.colonies.end(), [&](const Colony& c) { return c.systemId == systemId; });
+    if (it == next.colonies.end() || it->ownerId != from || !campaignEmpire(next, to)) return;
+    it->ownerId = to; it->queue.clear(); it->overflow = 0; it->morale = std::min(it->morale, 40);
+    it->workforcePriority = GovernorPriority::Manual; it->queuePriority = GovernorPriority::Manual; it->workforceManualOverride = false;
+    it->program = 0; it->programTurns = 0;
+    const auto sys = std::find_if(next.systems.begin(), next.systems.end(), [&](const System& x) { return x.id == systemId; });
+    if (sys != next.systems.end()) {
+        for (auto& st : next.stations) if (st.ownerId == from && st.x == sys->x && st.y == sys->y) st.ownerId = to;
+        reveal(next, sys->x, sys->y, to);
+    }
+    std::erase_if(next.megaprojects, [&](const Megaproject& m) { return m.systemId == systemId && m.ownerId == from; });
+    std::erase_if(next.stationUpgrades, [&](const StationUpgrade& u) { return u.fundingSystemId == systemId; });
+    for (auto& minor : next.minors) {
+        if (minor.systemId != systemId) continue;
+        minor.memberOf = to;
+        if (auto* ms = next.diplomacyEngineState.getMinorState(systemId)) ms->membershipOwner = to;
+    }
+    std::erase_if(next.tradeRoutes, [&](const TradeRoute& route) {
+        const auto source = colonyAt(next, route.fromSystemId), destination = colonyAt(next, route.toSystemId);
+        return !source || !destination || source->ownerId != route.ownerId || destination->ownerId == route.ownerId;
+    });
+    if (report && (from == next.playerEmpire || to == next.playerEmpire) && sys != next.systems.end())
+        report->events.push_back(sys->name + " passed from " + std::string(empireName(from)) + " to " + std::string(empireName(to)) + " under the peace terms.");
+}
+
 void applyDiplomacyOps(GameState& next, const diplomacy::TurnResolutionDelta& delta, TurnReport* report, bool skipWarState) {
     for (const auto& op : delta.operations) {
+        if (op.opType == diplomacy::DiplomaticOpType::TransferColony) {   // E3
+            if (!op.partyA.isMinor && !op.partyB.isMinor) cedeColony(next, op.systemId, op.partyA.id, op.partyB.id, report);
+            continue;
+        }
         if (op.opType == diplomacy::DiplomaticOpType::TransferCredits) {
             // The engine ledger guarantees the payer could afford it; the payee is clamped to MaxBalance.
             const std::int64_t amount = std::clamp<std::int64_t>(op.credits, 0, MaxBalance);
@@ -2572,7 +2653,8 @@ void submitAiProposals(GameState& next, TurnReport& report) {
         const bool toPlayer = ctx.isHuman(intent.target);
         std::uint64_t id = 0;
         if (!diplomacy::DiplomacyEngine::submitProposal(ds, ctx, intent.proposer, intent.target, intent.treatyType,
-                intent.duration, intent.tone, intent.creditOffer, intent.creditDemand, &id, nullptr, toPlayer ? 2 : 1)) continue;
+                intent.duration, intent.tone, intent.creditOffer, intent.creditDemand, &id, nullptr, toPlayer ? 2 : 1,
+                intent.cedeSystems)) continue;
         if (!toPlayer) continue;
         const auto* p = ds.findProposal(id);
         const std::string who = empireName(intent.proposer.id);
@@ -2583,6 +2665,13 @@ void submitAiProposals(GameState& next, TurnReport& report) {
             text = who + " offers a gift of " + std::to_string(intent.creditOffer) + " credits";
         } else {
             text = who + " proposes a " + diplomacy::treatyTypeName(intent.treatyType);
+            if (!intent.cedeSystems.empty()) {   // E3: a losing AI offers border worlds with its peace proposal
+                text += " and offers ";
+                for (std::size_t i = 0; i < intent.cedeSystems.size(); ++i) {
+                    const auto sys = std::find_if(next.systems.begin(), next.systems.end(), [&](const System& x) { return x.id == intent.cedeSystems[i]; });
+                    text += (i ? ", " : "") + (sys != next.systems.end() ? sys->name : std::string("a world"));
+                }
+            }
         }
         report.events.push_back("Diplomacy: " + text + " (proposal " + std::to_string(id) + ", respond by turn " +
             std::to_string(p ? p->dueTurn : next.turn + 2) + ").");
@@ -3492,6 +3581,12 @@ std::string payload(const GameState& s) {
         }
         gameplay::writeCommandTail(out, c); // Schema-13 commands only.
         if (c.type == CommandType::RefuseCallToArms) out << ' ' << c.callAggressor; // Schema 14.
+        if (c.type == CommandType::SubmitDiplomaticProposal && (!c.proposalCedeSystems.empty() || !c.proposalDemandSystems.empty())) {   // Schema 27 (E3)
+            out << ' ' << c.proposalCedeSystems.size();
+            for (int id : c.proposalCedeSystems) out << ' ' << id;
+            out << ' ' << c.proposalDemandSystems.size();
+            for (int id : c.proposalDemandSystems) out << ' ' << id;
+        }
         out << '\n';
     }
     out << "TASKFORCES " << s.nextTaskForceId << ' ' << s.taskForces.size() << '\n';
@@ -3584,6 +3679,7 @@ std::string payload(const GameState& s) {
             out << '\n';
         }
     }
+    scenarios::writeNames(out, s);   // Schema 27 (E4): the player's flagship name, only while one exists
     // Schema 14: per-ship orders of recorded battle rounds. Written only when some
     // round carries orders, so campaigns without them keep the schema-13 layout.
     const bool anyOrders = std::any_of(s.latestBattles.begin(), s.latestBattles.end(), [](const CombatReport& b) {
@@ -3996,6 +4092,54 @@ std::string fleetName(const Fleet& fleet) {
     const auto& ship = sourceShip(fleet.referenceShipId);
     if (fleet.flagship > 0) { const auto name = scenarios::flagshipName(fleet); if (!name.empty()) return name + " — " + ship.shipClass; } // Schema 25: a flagship carries its name
     return std::string(ship.shipClass) + " — " + ship.name;
+}
+int warScoreOf(const GameState& s, int self, int other) {
+    const CampaignDiplomacyContext ctx(s);
+    return diplomacy::warScore(ctx, diplomacy::ParticipantId::major(self), diplomacy::ParticipantId::major(other));
+}
+std::vector<int> cedableWorlds(const GameState& s, int owner) {
+    const CampaignDiplomacyContext ctx(s);
+    std::vector<int> out;
+    for (const auto& c : s.colonies)
+        if (c.ownerId == owner && ctx.canCedeWorld(diplomacy::ParticipantId::major(owner), c.systemId)) out.push_back(c.systemId);
+    return out;
+}
+Command makeProposePeaceTermsCommand(std::uint64_t id, int targetId, const std::vector<int>& cede, const std::vector<int>& demand,
+                                     std::int64_t creditOffer, std::int64_t creditDemand) {
+    Command c = makeProposeTreatyCommand(id, targetId, false, diplomacy::TreatyType::Peace, diplomacy::TreatyDuration::Indefinite,
+        diplomacy::DiplomaticTone::Cordial, creditOffer, creditDemand);
+    c.proposalCedeSystems = cede; c.proposalDemandSystems = demand;
+    return c;
+}
+InvasionOdds invasionOdds(const GameState& s, int fleetId, int systemId) {
+    InvasionOdds o;
+    const auto fleet = std::find_if(s.fleets.begin(), s.fleets.end(), [&](const Fleet& f) { return f.id == fleetId; });
+    if (fleet == s.fleets.end()) { o.blocker = "No such ship"; return o; }
+    const auto* target = colonyAt(s, systemId);
+    if (!target) { o.blocker = "Nobody lives there"; return o; }
+    if (fleet->shipClass != Building::Transport) { o.blocker = "Only a troop transport can land"; return o; }
+    if (target->ownerId == fleet->ownerId) { o.blocker = "That world is already ours"; return o; }
+    const int tech = empire(s, fleet->ownerId).technologies[5].level;
+    o.attack = 8 + fleet->hull + 2 * tech; o.transports = 1;
+    for (const auto& other : s.fleets)
+        if (other.id != fleet->id && other.ownerId == fleet->ownerId && other.invadeSystemId == systemId && other.hull > 0 && other.shipClass == Building::Transport) {
+            o.attack += 8 + other.hull + 2 * tech; ++o.transports;
+        }
+    const int batteries = s.advancedRulesEnabled ? economy(s, *target).poweredBatteries : 0;
+    o.defense = minors::invasionDefense(s, *target, 8 + target->population / InvasionPopDefenseDivisor + target->morale / 10 + batteryDefense(batteries))
+        * (100 + empire_rules::programDefensePercent(*target)) / 100;
+    const std::uint64_t a2 = static_cast<std::uint64_t>(o.attack) * o.attack, d2 = static_cast<std::uint64_t>(o.defense) * o.defense;
+    o.percent = a2 + d2 == 0 ? 0 : static_cast<int>(a2 * 100 / (a2 + d2));
+    const auto loc = std::find_if(s.systems.begin(), s.systems.end(), [&](const System& x) { return x.id == systemId; });
+    if (loc != s.systems.end()) {
+        o.defended = std::any_of(s.fleets.begin(), s.fleets.end(), [&](const Fleet& f) {
+            return f.ownerId == target->ownerId && f.x == loc->x && f.y == loc->y && fleetAttack(f) > 0;
+        }) || gameplay::stationDefends(s, target->ownerId, loc->x, loc->y);
+    }
+    if (!o.defended && std::any_of(s.minorGuards.begin(), s.minorGuards.end(), [&](const MinorGuard& g) { return g.systemId == systemId; })) o.defended = true;
+    if (o.defended) o.blocker = "A defending ship or starbase holds the orbit: it must be beaten first";
+    else if (!combatAllowed(s, fleet->ownerId, target->ownerId)) o.blocker = "A treaty forbids the attack";
+    return o;
 }
 // Schema 25: a flagship's percent bonuses (scenarios::bonusFor) scale its hull, attack and shields; every other ship is untouched.
 int fleetMaxHull(const Fleet& fleet) {
@@ -5483,6 +5627,25 @@ void setHotseat(GameState& state, std::vector<int> humans) {
     state = std::move(next);
 }
 
+void setLanRoster(GameState& state, std::vector<int> humans) {
+    validate(state);
+    std::sort(humans.begin(), humans.end());
+    humans.erase(std::unique(humans.begin(), humans.end()), humans.end());
+    const auto active = internal::activeEmpires(state);
+    humans.erase(std::remove_if(humans.begin(), humans.end(), [&](int h) { return !std::binary_search(active.begin(), active.end(), h); }), humans.end());
+    require(!humans.empty(), "A LAN roster needs at least one active human empire");
+    auto next = state;
+    next.hotseatHumans.clear();
+    if (humans.front() != next.playerEmpire) {
+        applyDraft(next);
+        next.pending.clear();
+        switchSeatInternal(next, humans.front());
+    }
+    if (humans.size() >= 2) next.hotseatHumans = std::move(humans);
+    validate(next);
+    state = std::move(next);
+}
+
 // The seat swap without validation (advance uses it when a hotseat human falls).
 void switchSeatInternal(GameState& s, int empireId) {
     if (empireId == s.playerEmpire) return;
@@ -5991,7 +6154,9 @@ GameState deserialize(const std::string& text) {
     const bool legacy23 = version == 23 && content == "remaster-23";   // Differs from 25 only by the header and the optional STAR_TYPES and SCENARIO sections.
     const bool legacy24 = version == 24 && content == "remaster-24";   // Schema 24 (the balance lane): differs from 25 only by the header and the optional SCENARIO section.
     const bool legacy25 = version == 25 && content == "remaster-25";   // Schema 25: differs from 26 only by the header and the optional SUBJUGATED section.
-    const bool current26 = version == SaveVersion && content == ContentVersion;
+    const bool legacy26 = version == 26 && content == "remaster-26";   // Schema 26 (C11): differs from 27 only by the header and the worlds-in-peace-deals tails and FLAGSHIP_NAMES (never present in 26).
+    const bool current27 = version == SaveVersion && content == ContentVersion;
+    const bool current26 = current27 || legacy26;
     const bool current25 = current26 || legacy25;
     const bool current24 = current25 || legacy24;   // The STAR_TYPES section and Expert difficulty are legal from schema 24 on.
     const bool current23 = current24 || legacy23;   // The ECONOMY_RULES section is legal from schema 23 on.
@@ -6009,7 +6174,7 @@ GameState deserialize(const std::string& text) {
     require(checksumStart != std::string::npos, "Missing save checksum");
     const auto rawBody = text.substr(0, checksumStart);
     require(text.substr(checksumStart) == "CHECKSUM " + std::to_string(hashText(rawBody)) + "\n",
-        (legacy7 || legacy8 || legacy9 || legacy10 || legacy11 || legacy12 || legacy13 || legacy14 || legacy15 || legacy16 || legacy17 || legacy18 || legacy20 || legacy21 || legacy22 || legacy23 || legacy24 || legacy25) ? "Legacy save checksum mismatch" : "Save checksum mismatch");
+        (legacy7 || legacy8 || legacy9 || legacy10 || legacy11 || legacy12 || legacy13 || legacy14 || legacy15 || legacy16 || legacy17 || legacy18 || legacy20 || legacy21 || legacy22 || legacy23 || legacy24 || legacy25 || legacy26) ? "Legacy save checksum mismatch" : "Save checksum mismatch");
     GameState s;
     tag(in, "STATE");
     in >> s.seed >> s.rngState >> s.lastAcceptedCommand >> s.width >> s.height >> s.turn >> s.credits >> s.research;
@@ -6234,6 +6399,17 @@ GameState deserialize(const std::string& text) {
                     if (static_cast<CommandType>(type) == CommandType::RefuseCallToArms) {
                         require(current, "Schema-14 command in an older save");
                         require(static_cast<bool>(rem >> c.callAggressor), "Truncated call-to-arms refusal");
+                    }
+                    if (static_cast<CommandType>(type) == CommandType::SubmitDiplomaticProposal) {   // Schema 27 (E3): worlds in a peace proposal
+                        std::size_t nCede = 0, nDemand = 0;
+                        if (rem >> nCede) {
+                            require(current27, "Schema-27 command tail in an older save");
+                            require(nCede <= static_cast<std::size_t>(diplomacy::PeaceMaxWorlds), "Invalid peace-deal world count");
+                            for (std::size_t m = 0; m < nCede; ++m) { int id = 0; require(static_cast<bool>(rem >> id), "Truncated peace-deal world"); c.proposalCedeSystems.push_back(id); }
+                            require(static_cast<bool>(rem >> nDemand) && nDemand <= static_cast<std::size_t>(diplomacy::PeaceMaxWorlds), "Invalid peace-deal world count");
+                            for (std::size_t m = 0; m < nDemand; ++m) { int id = 0; require(static_cast<bool>(rem >> id), "Truncated peace-deal world"); c.proposalDemandSystems.push_back(id); }
+                            require(nCede + nDemand > 0, "Empty peace-deal world tail");
+                        }
                     }
                 }
             }
@@ -6536,6 +6712,12 @@ GameState deserialize(const std::string& text) {
         subjugatedRead = true;
         nextTag = readTag("Malformed save section after SUBJUGATED");
     }
+    if (nextTag == "FLAGSHIP_NAMES") {   // Schema 27 (E4): a flagship the player renamed
+        require(current27, "Schema 27 section in an older save");
+        scenarios::readNames(in, s);
+        scenarios::syncFlagshipLabels(s);
+        nextTag = readTag("Malformed save section after FLAGSHIP_NAMES");
+    }
     if (!current26 && !subjugatedRead) {
         // C11 migration (schema 25 and older): the old save did not record how a member joined. A treaty join needs a friendship
         // with its holder; a conquest leaves none (it clears the previous holder's). A member with no friendship with its holder is
@@ -6608,12 +6790,12 @@ GameState deserialize(const std::string& text) {
             (!s.modernEnginesActive || hasIntelOperations),
             current ? "Schema 14 save is missing a required section" : "Schema 13 save is missing a required section");
         std::string expected = payload(s);
-        if (legacy13 || legacy14 || legacy15 || legacy16 || legacy17 || legacy18 || legacy20 || legacy21 || legacy22 || legacy23 || legacy24 || legacy25) {
+        if (legacy13 || legacy14 || legacy15 || legacy16 || legacy17 || legacy18 || legacy20 || legacy21 || legacy22 || legacy23 || legacy24 || legacy25 || legacy26) {
             // Schema 13 text is the schema-14 payload of a campaign without recorded round orders; schema 14 to 17 text are
             // the schema-18 payload of a campaign without a galaxy setup / empire rules / preset packs / lineup above slot five.
             const std::string header = std::string("BOTF_SIM ") + std::to_string(SaveVersion) + ' ' + ContentVersion + '\n';
             require(expected.starts_with(header), "Malformed canonical payload header");
-            expected.replace(0, header.size(), legacy25 ? "BOTF_SIM 25 remaster-25\n" : legacy24 ? "BOTF_SIM 24 remaster-24\n" : legacy23 ? "BOTF_SIM 23 remaster-23\n" : legacy22 ? "BOTF_SIM 22 remaster-22\n" : legacy21 ? "BOTF_SIM 21 remaster-21\n" : legacy20 ? "BOTF_SIM 20 remaster-20\n" : legacy18 ? "BOTF_SIM 18 remaster-18\n" : legacy17 ? "BOTF_SIM 17 remaster-17\n" : legacy16 ? "BOTF_SIM 16 remaster-16\n" : legacy15 ? "BOTF_SIM 15 remaster-15\n" : legacy14 ? "BOTF_SIM 14 remaster-14\n" : "BOTF_SIM 13 remaster-13\n");
+            expected.replace(0, header.size(), legacy26 ? "BOTF_SIM 26 remaster-26\n" : legacy25 ? "BOTF_SIM 25 remaster-25\n" : legacy24 ? "BOTF_SIM 24 remaster-24\n" : legacy23 ? "BOTF_SIM 23 remaster-23\n" : legacy22 ? "BOTF_SIM 22 remaster-22\n" : legacy21 ? "BOTF_SIM 21 remaster-21\n" : legacy20 ? "BOTF_SIM 20 remaster-20\n" : legacy18 ? "BOTF_SIM 18 remaster-18\n" : legacy17 ? "BOTF_SIM 17 remaster-17\n" : legacy16 ? "BOTF_SIM 16 remaster-16\n" : legacy15 ? "BOTF_SIM 15 remaster-15\n" : legacy14 ? "BOTF_SIM 14 remaster-14\n" : "BOTF_SIM 13 remaster-13\n");
         }
         if (legacy25) {   // C11: schema 25 never carried SUBJUGATED; the migrated flags are not part of the old text
             if (const auto pos = expected.find("\nSUBJUGATED "); pos != std::string::npos) expected.erase(pos + 1, expected.find('\n', pos + 1) - pos);

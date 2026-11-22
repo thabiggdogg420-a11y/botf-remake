@@ -21,7 +21,7 @@
     }
    },
    "turns": 64,
-   "result": "5199875385589091580",
+   "result": "6537444520798452940",
    "threats": {
     "monsters": true,
     "borg": true,
@@ -54,7 +54,7 @@
     }
    },
    "turns": 50,
-   "result": "12144933419319430060",
+   "result": "15141141912542206900",
    "threats": {
     "monsters": true,
     "borg": true,
@@ -90,7 +90,7 @@
     }
    },
    "turns": 70,
-   "result": "17439810961782187597",
+   "result": "2015612838547616109",
    "threats": {
     "monsters": true,
     "borg": true,

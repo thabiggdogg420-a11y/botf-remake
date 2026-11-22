@@ -23,7 +23,17 @@ var d: Dictionary = {}
 var target := {}          # {minor: bool, id: int}
 var pane := ""
 var dossier_tab := "overview"
-var tb := {"type": "", "duration": 25, "tone": "Cordial", "offer": 0, "demand": 0}
+var tb := {"type": "", "duration": 25, "tone": "Cordial", "offer": 0, "demand": 0, "cede": [], "ask": []}   # E3: cede = our worlds handed over in a peace deal, ask = theirs we ask for
+
+## E3: the most worlds a peace deal can move each way (the core's PeaceMaxWorlds).
+const PEACE_MAX_WORLDS := 3
+
+## Names of worlds from a proposal's [{systemId, name}] list, comma separated.
+static func world_names(list: Array) -> String:
+	var out := []
+	for w in list:
+		out.append(str(w.get("name", "a world")))
+	return ", ".join(out)
 
 static func proposal_title(p: Dictionary) -> String:
 	match str(p["kind"]):
@@ -45,6 +55,10 @@ static func consequences(p: Dictionary) -> Array:
 		acc += " They pay ¢%s." % Fmt.fmt(p["creditOffer"])
 	if int(p.get("creditDemand", 0)) > 0:
 		acc += " We pay ¢%s." % Fmt.fmt(p["creditDemand"])
+	if p.get("cedeSystems", []).size() > 0:   # E3: the proposer hands us worlds
+		acc += " We receive %s." % world_names(p["cedeSystems"])
+	if p.get("demandSystems", []).size() > 0:   # E3: the proposer asks us for worlds
+		acc += " We hand over %s." % world_names(p["demandSystems"])
 	return [acc, "No treaty. Repeated refusals make them wait longer before proposing again."]
 
 ## [text, tone] for an answer deadline.
@@ -248,7 +262,43 @@ func proposal_command(is_minor: bool, tid: int) -> Dictionary:
 		proposal["targetSystemId"] = tid
 	else:
 		proposal["targetEmpire"] = tid
+		if str(tb["type"]) == "Peace":   # E3: worlds in the peace deal
+			if tb["cede"].size() > 0:
+				proposal["proposalCedeSystems"] = tb["cede"].duplicate()
+			if tb["ask"].size() > 0:
+				proposal["proposalDemandSystems"] = tb["ask"].duplicate()
 	return proposal
+
+## E3: how the war with this power stands for us, -100 (losing) to +100 (winning); 0 when there is no war.
+static func war_score(rel: Dictionary) -> int:
+	return int(rel.get("warScore", 0)) if rel.get("atWar", false) else 0
+
+static func war_score_text(rel: Dictionary) -> String:
+	var ws := war_score(rel)
+	var word := "we are winning" if ws >= 25 else ("we are losing" if ws <= -25 else "evenly matched")
+	return "War score %+d: %s. A side that is losing may hand over border worlds to end it." % [ws, word]
+
+## E3: the worlds that could change hands: key "ourCedable" (we hand over) or "theirCedable" (we ask for): [{systemId, name, population}].
+static func world_choices(rel: Dictionary, key: String) -> Array:
+	return rel.get(key, [])
+
+## E3: toggles a world in the peace deal (list "cede" or "ask"), at most PEACE_MAX_WORLDS each; false when the limit stops it.
+func toggle_world(list_key: String, system_id: int) -> bool:
+	var list: Array = tb[list_key]
+	if list.has(system_id):
+		list.erase(system_id)
+		return true
+	if list.size() >= PEACE_MAX_WORLDS:
+		return false
+	list.append(system_id)
+	return true
+
+## E3: drops chosen worlds that are no longer on offer (after a turn, or a change of target).
+func prune_worlds(rel: Dictionary) -> void:
+	var ours := world_choices(rel, "ourCedable").map(func(w): return int(w["systemId"]))
+	var theirs := world_choices(rel, "theirCedable").map(func(w): return int(w["systemId"]))
+	tb["cede"] = tb["cede"].filter(func(id): return ours.has(int(id)))
+	tb["ask"] = tb["ask"].filter(func(id): return theirs.has(int(id)))
 
 func proposal_block(treaties: Array, proposal: Dictionary) -> String:
 	var reason := lock_reason()
@@ -265,7 +315,11 @@ func send_proposal(proposal: Dictionary) -> bool:
 	var p2 := proposal.duplicate()
 	p2["proposalCreditOffer"] = tb["offer"]
 	p2["proposalCreditDemand"] = tb["demand"]
-	return issue(p2, [], "Proposal ordered for turn end.")
+	var done := issue(p2, [], "Proposal ordered for turn end.")
+	if done:
+		tb["cede"] = []
+		tb["ask"] = []
+	return done
 
 ## Classic orders for the target: [{command, label, tone, confirm, hint, block}].
 func classic_actions(is_minor: bool, tid: int, rel: Dictionary) -> Array:

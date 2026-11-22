@@ -57,10 +57,21 @@ namespace intel = botf::intelligence;
 
 [[noreturn]] void fail(const std::string& message) { throw std::runtime_error(message); }
 
+// E9 (Simon's delegation, 22 Nov 2026): a view writer that fails halfway used to leave its section empty with no trace. The error is now
+// logged to stderr (the browser console in the web build) once per distinct place and message. The view itself is unchanged: the section is
+// still skipped, so no behaviour differs. Called from inside a catch handler.
+void logSwallowed(const char* where, int line) {
+    static std::set<std::string> seen;
+    std::string what = "unknown error";
+    try { throw; } catch (const std::exception& e) { what = e.what(); } catch (...) {}
+    const std::string key = std::string(where) + ":" + std::to_string(line) + ": " + what;
+    if (seen.size() < 200 && seen.insert(key).second) std::fprintf(stderr, "BOTF bridge: error swallowed in %s\n", key.c_str());
+}
+
 // ------------------------------------------------------------------------------------------------
 // Enum name tables. Numbers are always accepted as well, so enum growth in the core keeps working.
 // ------------------------------------------------------------------------------------------------
-constexpr std::array<const char*, 51> CommandTypeNames{
+constexpr std::array<const char*, 52> CommandTypeNames{
     "AssignWorkers", "EnqueueBuilding", "MoveFleet", "Colonize", "ToggleShipyard",
     "CancelFirstConstruction", "PrioritizeLastConstruction", "MoveConstruction",
     "RemoveConstruction", "AllocateResearch", "SendGift", "OfferFriendship",
@@ -75,7 +86,7 @@ constexpr std::array<const char*, 51> CommandTypeNames{
     "BuildOutpost", "UpgradeStation", "ResolveEventChoice",
     "DefineBuildTemplate", "DeleteBuildTemplate", "ApplyBuildTemplate", "SetDefaultBuildTemplate",
     "StartMegaproject", "CancelMegaproject", "RefuseCallToArms",
-    "SetEmergencyProgram", "ResolveAftermath", "SetFleetOrder", "CommissionFlagship"};
+    "SetEmergencyProgram", "ResolveAftermath", "SetFleetOrder", "CommissionFlagship", "RenameFlagship"};
 constexpr std::array<const char*, 2> StationTypeNames{"Outpost", "Starbase"};
 constexpr std::array<const char*, 6> FeatureKeys{"Nebula", "Wormhole", "BlackHole", "NeutronStar", "IonStorm", "SubspaceRift"};
 constexpr std::array<const char*, 7> EventKeys{"Plague", "SupernovaWarning", "SubspaceRift", "TradeBoom", "DerelictVessel",
@@ -136,6 +147,7 @@ struct Bridge {
     // core gave a submit) since the last "journal" take. lanApply replays every seat's journal on the canonical state.
     struct JournalEntry { std::string method, args; std::uint64_t id = 0; };
     std::vector<JournalEntry> journal;
+    std::vector<JournalEntry> battleJournal;   // E6: the tacticalOrder calls this seat gave in the pending battle since the last "battleJournal" take (args, seat in id)
     bool journalOn = true;
     std::string callArgs;   // the raw args of the botf_call being dispatched
     std::string scenario = "campaign";
@@ -279,6 +291,8 @@ botf::Command commandFromJson(const Value& j, std::uint64_t id) {
     c.proposalTreatyType = static_cast<dip::TreatyType>(enumIndex(j["proposalTreatyType"], TreatyKeys, "treaty type", 1));
     c.proposalDuration = static_cast<dip::TreatyDuration>(j.getInt("proposalDuration", 25));
     c.proposalTone = static_cast<dip::DiplomaticTone>(enumIndex(j["proposalTone"], ToneKeys, "tone", 0));
+    c.proposalCedeSystems = intList(j["proposalCedeSystems"]);       // Schema 27 (E3)
+    c.proposalDemandSystems = intList(j["proposalDemandSystems"]);
     c.proposalCreditOffer = j["proposalCreditOffer"].asInt(0);
     c.proposalCreditDemand = j["proposalCreditDemand"].asInt(0);
     c.proposalTargetIsMinor = j.getBool("proposalTargetIsMinor");
@@ -338,6 +352,8 @@ std::string describeCommand(const botf::GameState& s, const botf::Command& c) {
         return systemLabel(s, c.systemId) + ": " + botf::empire_rules::aftermathName(c.eventOption);
     case botf::CommandType::CommissionFlagship:
         return fleet(c.fleetId) + ": commission as the flagship";
+    case botf::CommandType::RenameFlagship:
+        return fleet(c.fleetId) + (c.templateName.empty() ? ": restore the flagship's own name" : ": rename the flagship '" + c.templateName + "'");
     case botf::CommandType::SetFleetOrder:
         return fleet(c.fleetId) + (c.eventOption == 0 ? ": stand down" : c.eventOption == 1 ? ": hold an intercept post"
             : ": raid " + systemLabel(s, c.systemId));
@@ -392,7 +408,15 @@ std::string describeCommand(const botf::GameState& s, const botf::Command& c) {
         return systemLabel(s, c.systemId) + ": scrap " + botf::definition(c.building).name;
     case botf::CommandType::SubmitDiplomaticProposal: {
         const std::string target = c.proposalTargetIsMinor ? systemLabel(s, c.targetSystemId ? c.targetSystemId : c.systemId) : empireLabel(c.targetEmpire);
-        return std::string("Propose ") + dip::treatyTypeName(c.proposalTreatyType) + " to " + target;
+        std::string text = std::string("Propose ") + dip::treatyTypeName(c.proposalTreatyType) + " to " + target;
+        const auto names = [&](const std::vector<int>& ids) {
+            std::string out;
+            for (std::size_t i = 0; i < ids.size(); ++i) out += (i ? ", " : "") + systemLabel(s, ids[i]);
+            return out;
+        };
+        if (!c.proposalCedeSystems.empty()) text += ", ceding " + names(c.proposalCedeSystems);
+        if (!c.proposalDemandSystems.empty()) text += ", asking for " + names(c.proposalDemandSystems);
+        return text;
     }
     case botf::CommandType::RespondDiplomaticProposal:
         return std::string(c.proposalAccept ? "Accept" : "Reject") + " proposal #" + std::to_string(c.proposalId);
@@ -435,8 +459,8 @@ std::string describeCommand(const botf::GameState& s, const botf::Command& c) {
         const auto* t = botf::buildTemplateById(s, c.templateId);
         return "Default build template: " + (t ? "\"" + t->name + "\"" : "#" + std::to_string(c.templateId));
     }
-    case botf::CommandType::StartMegaproject: return systemLabel(s, c.systemId) + ": begin the " + botf::megaprojectName(s);
-    case botf::CommandType::CancelMegaproject: return std::string("Abandon the ") + botf::megaprojectName(s);
+    case botf::CommandType::StartMegaproject: return systemLabel(s, c.systemId) + ": begin the " + botf::megaprojectName(s, s.playerEmpire);
+    case botf::CommandType::CancelMegaproject: return std::string("Abandon the ") + botf::megaprojectName(s, s.playerEmpire);
     }
     return enumName(static_cast<int>(c.type), CommandTypeNames);
 }
@@ -471,7 +495,10 @@ void writeCommand(Writer& w, const botf::GameState& s, const botf::Command& c) {
     if (c.type == botf::CommandType::SubmitDiplomaticProposal) {
         w.field("proposalTargetIsMinor", c.proposalTargetIsMinor);
         w.field("proposalTreatyType", enumName(static_cast<int>(c.proposalTreatyType), TreatyKeys));
+        if (!c.proposalCedeSystems.empty()) { w.key("proposalCedeSystems").beginArray(); for (int id : c.proposalCedeSystems) w.value(id); w.endArray(); }
+        if (!c.proposalDemandSystems.empty()) { w.key("proposalDemandSystems").beginArray(); for (int id : c.proposalDemandSystems) w.value(id); w.endArray(); }
     }
+    if (c.type == botf::CommandType::RenameFlagship) w.field("templateName", c.templateName);
     if (!c.memberFleetIds.empty()) {
         w.key("memberFleetIds").beginArray();
         for (int id : c.memberFleetIds) w.value(id);
@@ -548,7 +575,7 @@ int constructionCostOf(const botf::GameState& s, int systemId, const botf::Const
     try {
         for (const auto& choice : botf::constructionChoices(s, systemId))
             if (choice.product == project.product && choice.referenceId == project.referenceId) return choice.industryCost;
-    } catch (...) {}
+    } catch (...) { logSwallowed(__func__, __LINE__); }
     if (const auto* ship = botf::roster::findShip(project.referenceId))
         return ship->industryCost;
     return botf::definition(project.product).industryCost;
@@ -721,6 +748,7 @@ void writeOwnFleet(Writer& w, const botf::GameState& d, const botf::GameState& c
         .field("postX", f.postX).field("postY", f.postY); // Schema 23
     if (f.flagship > 0) w.field("flagship", true).field("flagshipName", botf::scenarios::flagshipName(f)); // Schema 25
     if (f.ownerId == committed.playerEmpire && botf::scenarios::flagshipsOn()) w.field("flagshipBlocker", botf::scenarios::commissionBlocker(committed, f.ownerId, f.id));
+    if (f.flagship > 0 && f.ownerId == committed.playerEmpire) w.field("renameBlocker", botf::scenarios::renameBlocker(committed, f.ownerId, f.id, "A")); // Schema 27 (E4)
     w.field("experience", f.experience).field("crewRating", botf::crew::ratingName(botf::crew::ratingFor(f.experience, f.ownerId)))
         .field("crewLevel", botf::crew::ratingFor(f.experience, f.ownerId)).field("raidPercent", botf::economy_rules::raidPercent(d, f));
     w.field("terraforming", f.terraforming);
@@ -755,17 +783,32 @@ void writeRelation(Writer& w, const botf::GameState& s, int other) {
     w.field("name", empireLabel(other));
     w.field("contact", r && r->contact);
     bool eliminated = false;
-    try { eliminated = botf::empireEliminated(s, other); } catch (...) {}
+    try { eliminated = botf::empireEliminated(s, other); } catch (...) { logSwallowed(__func__, __LINE__); }
     w.field("eliminated", eliminated);
     if (r && r->contact) {
         w.field("atWar", r->atWar); w.field("tradeTreaty", r->tradeTreaty); w.field("trust", r->trust);
         w.field("warStartTurn", r->warStartTurn);
+        if (r->atWar && !eliminated) {   // Schema 27 (E3): what a peace deal could move, and how the war stands
+            w.field("warScore", botf::warScoreOf(s, me, other));
+            const auto worldList = [&](const char* key, const std::vector<int>& ids, bool onlyKnown) {
+                w.key(key).beginArray();
+                for (int id : ids) {
+                    const auto* sys = systemById(s, id);
+                    if (!sys || (onlyKnown && !knownSystem(s, *sys))) continue;
+                    const auto* col = botf::colonyAt(s, id);
+                    w.beginObject().field("systemId", id).field("name", systemLabel(s, id)).field("population", col ? col->population : 0).endObject();
+                }
+                w.endArray();
+            };
+            worldList("ourCedable", botf::cedableWorlds(s, me), false);
+            worldList("theirCedable", botf::cedableWorlds(s, other), true);
+        }
         w.field("personality", dip::personalityName(dip::personalityForEmpire(other)));
         try {
             w.field("allied", listHas(botf::alliedEmpires(s, me), other));
             w.field("sensorSharing", listHas(botf::sensorSharingEmpires(s, me), other));
             w.field("treatyForbidsAttack", botf::treatyForbidsAttack(s, me, other));
-        } catch (...) {}
+        } catch (...) { logSwallowed(__func__, __LINE__); }
         // Relation memory and galaxy-wide standing (modern diplomacy, see DIPLOMACY.md §3.3, §5).
         const auto& ds = s.diplomacyEngineState;
         w.key("memory").beginObject();
@@ -937,7 +980,7 @@ void writeVictory(Writer& w, const botf::GameState& s, int me) {
     w.endArray();
     w.field("alternative", s.rules.alternativeVictories);
     w.field("threshold", botf::scientificVictoryThreshold(s));
-    w.field("megaprojectName", botf::megaprojectName(s));
+    w.field("megaprojectName", botf::megaprojectName(s, me));
     w.field("megaprojectCost", botf::megaprojectIndustryCost(s));
     w.field("megaprojectCredits", botf::megaprojectCreditCost(s));
     w.field("megaprojectWorkPerTurn", botf::megaprojectWorkPerTurn(s, me));
@@ -1001,6 +1044,7 @@ void writeScenarioLayer(Writer& w, const botf::GameState& s, int me) {
                 .field("hullPct", d->hullPct).field("attackPct", d->attackPct).field("shieldsPct", d->shieldsPct).field("morale", d->morale);
             const auto* fleet = botf::scenarios::flagshipFleet(s, me);
             w.field("fleetId", fleet ? fleet->id : 0).field("lostTurn", rec ? rec->lostTurn : 0);
+            w.field("maxNameLength", static_cast<int>(botf::scenarios::MaxFlagshipNameLength)).field("customName", rec ? rec->name : std::string()); // Schema 27 (E4)
         }
     }
     w.endObject();
@@ -1047,7 +1091,7 @@ void writeView(Writer& w) {
             for (const auto& v : botf::victoryProgress(s, s.winnerEmpire))
                 if (v.condition == botf::VictoryCondition::Diplomatic && v.achieved) diplomatic = true;
             if (diplomatic) for (int ally : botf::diplomaticVictoryStatus(s, s.winnerEmpire).allies) bloc.insert(ally);
-        } catch (...) {}
+        } catch (...) { logSwallowed(__func__, __LINE__); }
         for (int id : bloc) if (botf::humanSeat(s, id)) w.value(id);
     }
     w.endArray();
@@ -1397,6 +1441,12 @@ void writeView(Writer& w) {
                         ? (p.creditDemand > 0 ? " demands " + std::to_string(p.creditDemand) + " credits in tribute"
                                               : " offers a gift of " + std::to_string(p.creditOffer) + " credits")
                         : std::string(" proposes a ") + dip::treatyTypeName(p.treatyType)) +
+                    [&] {
+                        std::string extra;
+                        for (std::size_t i = 0; i < p.cedeSystems.size(); ++i) extra += (i ? ", " : " and offers ") + systemLabel(s, p.cedeSystems[i]);
+                        for (std::size_t i = 0; i < p.demandSystems.size(); ++i) extra += (i ? ", " : (p.cedeSystems.empty() ? " and asks for " : "; asks for ")) + systemLabel(s, p.demandSystems[i]);
+                        return extra;
+                    }() +
                     " — answer by turn " + std::to_string(p.dueTurn)).endObject();
         for (const auto& call : botf::openCallsToArms(s, me)) {
             const auto* rel = botf::majorRelation(s, me, call.aggressor);
@@ -1405,7 +1455,7 @@ void writeView(Writer& w) {
                 .field("text", empireLabel(call.defender) + " calls us to arms against " + empireLabel(call.aggressor) +
                     " — declare war by turn " + std::to_string(call.dueTurn)).endObject();
         }
-    } catch (...) {}
+    } catch (...) { logSwallowed(__func__, __LINE__); }
     for (const auto& e : botf::empireEvents(s, me)) {
         if (e.choiceDeadline <= 0 || e.choice >= 0 || e.empireId != me) continue;
         bool drafted = false;
@@ -1550,7 +1600,7 @@ void writeColonyDetail(Writer& w, int systemId) {
         const auto* m = botf::empireMegaproject(d, s.playerEmpire);
         w.key("megaproject").beginObject();
         w.field("enabled", s.rules.alternativeVictories);
-        w.field("name", botf::megaprojectName(s));
+        w.field("name", botf::megaprojectName(s, s.playerEmpire));
         w.field("here", m && m->systemId == systemId);
         if (m) { w.field("systemId", m->systemId); w.field("system", systemLabel(s, m->systemId)); w.field("work", m->work); }
         w.field("cost", botf::megaprojectIndustryCost(s));
@@ -1915,6 +1965,14 @@ void writeDiplomacy(Writer& w) {
             w.field("duration", dip::treatyDurationName(p.duration));
             w.field("tone", dip::toneName(p.tone));
             w.field("creditOffer", p.creditOffer); w.field("creditDemand", p.creditDemand);
+            {   // Schema 27 (E3): worlds named in a peace proposal
+                const auto worlds = [&](const char* key, const std::vector<int>& ids) {
+                    w.key(key).beginArray();
+                    for (int id : ids) w.beginObject().field("systemId", id).field("name", systemLabel(s, id)).endObject();
+                    w.endArray();
+                };
+                worlds("cedeSystems", p.cedeSystems); worlds("demandSystems", p.demandSystems);
+            }
             w.field("submittedTurn", p.submittedTurn); w.field("dueTurn", p.dueTurn);
             w.field("status", dip::proposalStatusName(p.status));
             w.field("kind", p.treatyType == dip::TreatyType::None ? (p.creditDemand > 0 ? "tribute" : "gift")
@@ -1925,7 +1983,7 @@ void writeDiplomacy(Writer& w) {
             w.field("responseDrafted", responded);
             w.endObject();
         }
-    } catch (...) {}
+    } catch (...) { logSwallowed(__func__, __LINE__); }
     w.endArray();
     w.key("treaties").beginArray();
     try {
@@ -1939,7 +1997,7 @@ void writeDiplomacy(Writer& w) {
             w.field("turnsRemaining", t.turnsRemaining); w.field("startTurn", t.startTurn);
             w.endObject();
         }
-    } catch (...) {}
+    } catch (...) { logSwallowed(__func__, __LINE__); }
     w.endArray();
     w.key("events").beginArray();
     try {
@@ -1954,7 +2012,7 @@ void writeDiplomacy(Writer& w) {
             w.key("b"); writeParticipant(w, s, it->partyB);
             w.endObject();
         }
-    } catch (...) {}
+    } catch (...) { logSwallowed(__func__, __LINE__); }
     w.endArray();
     // Galactic news: newsworthy engine events between powers we have met (betrayals, wars, calls
     // to arms, eliminations, secessions) — the memory the AI empires act on.
@@ -1983,7 +2041,7 @@ void writeDiplomacy(Writer& w) {
             w.key("b"); writeParticipant(w, s, it->partyB);
             w.endObject();
         }
-    } catch (...) {}
+    } catch (...) { logSwallowed(__func__, __LINE__); }
     w.endArray();
     w.key("majorOffers").beginArray();
     for (const auto& o : s.pendingMajorOffers) {
@@ -2031,7 +2089,7 @@ void writeDiplomacy(Writer& w) {
             w.field("honorBlocker", B.session.active ? std::string("Finish the battle in progress first") : drafted ? std::string() : dryRunError(s, war));
             w.endObject();
         }
-    } catch (...) {}
+    } catch (...) { logSwallowed(__func__, __LINE__); }
     w.endArray();
 
     // Treaty history: ended treaties (expired, broken by war, superseded, dissolved) involving us.
@@ -2062,7 +2120,7 @@ void writeDiplomacy(Writer& w) {
         w.key("allies").beginArray(); for (int id : v.allies) w.value(id); w.endArray();
         w.key("memberMinors").beginArray(); for (int id : v.memberMinors) w.value(systemLabel(s, id)); w.endArray();
         w.endObject();
-    } catch (...) {}
+    } catch (...) { logSwallowed(__func__, __LINE__); }
     w.field("turn", s.turn);
     w.endObject();
 }
@@ -2653,7 +2711,7 @@ std::string writeBriefing(const botf::GameState& before, const botf::GameState& 
             if (contains(raw, "no decision")) e.severity = "warn";
             if (const auto at = raw.find("Decide by turn "); at != std::string::npos) {
                 e.kind = "eventChoice"; e.severity = "warn";
-                try { e.dueTurn = std::stoi(raw.substr(at + 15)); } catch (...) {}
+                try { e.dueTurn = std::stoi(raw.substr(at + 15)); } catch (...) { logSwallowed(__func__, __LINE__); }
             } else if (contains(raw, "shortage") || contains(raw, "unrest") || contains(raw, "warning") || contains(raw, "plague") ||
                        contains(raw, "Plague") || contains(raw, "detonat") || contains(raw, "lost")) e.severity = "warn";
             else if (contains(raw, "windfall") || contains(raw, "celebration") || contains(raw, "boom") || contains(raw, "breakthrough") ||
@@ -2675,10 +2733,10 @@ std::string writeBriefing(const botf::GameState& before, const botf::GameState& 
                 e.kind = contains(raw, "demands") ? "tribute" : contains(raw, "gift") ? "gift" : "proposal";
                 e.severity = e.kind == "tribute" ? "warn" : "info";
                 if (const auto at = raw.find("(proposal "); at != std::string::npos) {
-                    try { e.proposalId = std::stoull(raw.substr(at + 10)); } catch (...) {}
+                    try { e.proposalId = std::stoull(raw.substr(at + 10)); } catch (...) { logSwallowed(__func__, __LINE__); }
                 }
                 if (const auto at = raw.find("respond by turn "); at != std::string::npos) {
-                    try { e.dueTurn = std::stoi(raw.substr(at + 16)); } catch (...) {}
+                    try { e.dueTurn = std::stoi(raw.substr(at + 16)); } catch (...) { logSwallowed(__func__, __LINE__); }
                 }
             } else if (contains(raw, "broke its treaty")) { e.kind = "betrayal"; e.severity = news ? "warn" : "alert"; }
             else if (contains(raw, "refused") && contains(raw, "call to arms")) { e.kind = "callRefused"; e.severity = "warn"; }
@@ -2723,7 +2781,7 @@ std::string writeBriefing(const botf::GameState& before, const botf::GameState& 
                 " (declare war by turn " + std::to_string(call.dueTurn) + ").";
             add(e);
         }
-    } catch (...) {}
+    } catch (...) { logSwallowed(__func__, __LINE__); }
 
     for (auto& e : events) {
         if (e.systemId && e.x < 0) if (const auto* sys = systemById(after, e.systemId); sys && knownSystem(after, *sys)) { e.x = sys->x; e.y = sys->y; }
@@ -2779,6 +2837,7 @@ void writeTurnStatus(Writer& w, const char* status) {
 void continueTurn(Writer& w) {
     const auto before = B.session.baseline;
     B.battleSeat = 0;   // each battle starts under its default commander
+    B.battleJournal.clear();
     auto report = botf::session::resume(B.session, B.state);
     touch();
     if (!report) {
@@ -2800,7 +2859,7 @@ void continueTurn(Writer& w) {
             botf::switchSeatInternal(b, h);
             botf::switchSeatInternal(a, h);
             B.hotseatBriefings[h] = writeBriefing(b, a, *report);
-        } catch (...) {}
+        } catch (...) { logSwallowed(__func__, __LINE__); }
     }
     writeTurnStatus(w, "complete");
 }
@@ -2830,7 +2889,7 @@ void queueStarterProjects(botf::GameState& s) {
     const int homeId = home->systemId;
     for (auto b : {botf::Building::Factory, botf::Building::Farm, botf::Building::Laboratory}) {
         botf::Command c; c.id = s.lastAcceptedCommand + 1; c.type = botf::CommandType::EnqueueBuilding; c.systemId = homeId; c.building = b;
-        try { botf::submit(s, c); } catch (...) {}
+        try { botf::submit(s, c); } catch (...) { logSwallowed(__func__, __LINE__); }
     }
 }
 
@@ -3687,7 +3746,13 @@ std::string dispatch(const std::string& method, const Value& a) {
         for (int y = 0; y < d.height; ++y) for (int x = 0; x < d.width; ++x)
             if (botf::supplied(d, *limiting, x, y)) grid[static_cast<std::size_t>(y * d.width + x)] = '1';
         w.value(grid);
-    } else if (method == "colony") writeColonyDetail(w, a.getInt("systemId"));
+    } else if (method == "invasionOdds") {   // E2: the odds of a ground assault, before the order is given
+        requireGame();
+        const auto o = botf::invasionOdds(draft(), a.getInt("fleetId"), a.getInt("systemId"));
+        w.beginObject().field("attack", o.attack).field("defense", o.defense).field("percent", o.percent).field("transports", o.transports)
+            .field("defended", o.defended).field("blocker", o.blocker).endObject();
+    }
+    else if (method == "colony") writeColonyDetail(w, a.getInt("systemId"));
     else if (method == "workforcePreview") writeWorkforcePreview(w, a);
     else if (method == "research") writeResearch(w);
     else if (method == "forecast") writeForecast(w);
@@ -3718,6 +3783,24 @@ std::string dispatch(const std::string& method, const Value& a) {
         w.endArray();
         if (!a.getBool("keep")) B.journal.clear();
     }
+    // E6 (22 Nov 2026): the humans playing this turn; a seat that is not listed is run by the AI (a player who dropped), one that is
+    // listed again plays (a player who rejoined). Applied on every peer after the canonical load and before lanApply.
+    else if (method == "lanRoster") {
+        requireGame(); requireNoSession();
+        botf::setLanRoster(B.state, a.has("humans") ? intList(a["humans"]) : std::vector<int>{});
+        B.battleSeat = 0;
+        touch();
+        writeView(w);
+    }
+    // E6: this seat's battle orders since the last take, [{"seat":n,"args":{...}}]; cleared by the take.
+    else if (method == "battleJournal") {
+        requireGame();
+        w.beginArray();
+        for (const auto& e : B.battleJournal)
+            w.beginObject().field("seat", static_cast<int>(e.id)).key("args").raw(e.args.empty() ? "{}" : e.args).endObject();
+        w.endArray();
+        B.battleJournal.clear();
+    }
     else if (method == "lanApply") {
         requireGame(); requireNoSession();
         int applied = 0, skipped = 0;
@@ -3725,7 +3808,7 @@ std::string dispatch(const std::string& method, const Value& a) {
         auto next = B.state;
         for (const auto& seat : a["seats"].items) {
             const int empire = seat.getInt("empire");
-            botf::switchSeat(next, empire);
+            if (empire != next.playerEmpire) botf::switchSeat(next, empire);   // E6: a lone remaining human holds the chair already
             std::map<std::uint64_t, std::uint64_t> renumber;
             const auto mapIds = [&](const Value& v) {
                 std::vector<std::uint64_t> out;
@@ -3851,6 +3934,7 @@ std::string dispatch(const std::string& method, const Value& a) {
             trial.pending->controllingOwnerId = controller;
             B.session = std::move(trial);
             touch();
+            B.battleJournal.push_back({"tacticalOrder", B.callArgs, static_cast<std::uint64_t>(battleViewer())});
             w.value(count);
             return w.out;
         }
@@ -3873,6 +3957,7 @@ std::string dispatch(const std::string& method, const Value& a) {
         }
         B.session = std::move(trial);
         touch();
+        B.battleJournal.push_back({"tacticalOrder", B.callArgs, static_cast<std::uint64_t>(battleViewer())});
         w.value(static_cast<int>(ids.size()));
     } else if (method == "tacticalRound") {
         requireGame();
@@ -3984,7 +4069,7 @@ BOTF_EXPORT const char* botf_call(const char* method, const char* args) {
         const std::string text = args && *args ? args : "{}";
         const Value parsed = botfweb::json::parse(text);
         B.callArgs = text;
-        if (m == "newCampaign" || m == "load" || m.rfind("new", 0) == 0) B.journal.clear();   // a new game starts a new journal
+        if (m == "newCampaign" || m == "load" || m.rfind("new", 0) == 0) { B.journal.clear(); B.battleJournal.clear(); }   // a new game starts a new journal
         const std::string result = dispatch(m, parsed);
         w.beginObject().field("ok", true).key("result").raw(result.empty() ? "null" : result).endObject();
     } catch (const std::exception& e) {

@@ -1261,6 +1261,9 @@ func preview_turn() -> void:
 
 ## Ends the turn. Returns the status ("battle" or "complete").
 func end_turn() -> String:
+	if lan != null and lan.in_game and lan.in_battle:   # LAN: a decided battle goes on into the rest of the turn on every peer
+		lan.battle_continue()
+		return "battle"
 	# Hotseat: each human plans in turn; the chair passes behind a hand-over card and the turn resolves after the last.
 	var hs := hotseat_humans()
 	if hs.size() >= 2 and screen != "combat" and not session.battle_active():
@@ -1789,6 +1792,8 @@ func battle_humans() -> Array:
 ## of a two-human battle.
 func hotseat_battle_open() -> void:
 	battle_planned.clear()
+	if lan != null and lan.in_game:
+		return   # LAN battles are lockstep on orders (lan_session.gd), not a hand-over card
 	if hotseat_humans().size() < 2:
 		return
 	var bh := battle_humans()
@@ -1802,6 +1807,8 @@ func hotseat_battle_open() -> void:
 ## Before a round resolves in a two-human battle: true when another human still has to plan (the chair passes behind the
 ## card and their Resolve ends the round), false when the round may resolve now.
 func hotseat_battle_next() -> bool:
+	if lan != null and lan.in_game:
+		return false
 	var bh := battle_humans()
 	if hotseat_humans().size() < 2 or bh.size() < 2:
 		return false
@@ -1817,6 +1824,8 @@ func hotseat_battle_next() -> bool:
 
 ## After a round has played in a two-human battle: the first human plans the next round behind the card.
 func hotseat_battle_round_done() -> void:
+	if lan != null and lan.in_game:
+		return
 	var bh := battle_humans()
 	if hotseat_humans().size() < 2 or bh.size() < 2:
 		return
@@ -1851,6 +1860,24 @@ func _battle_seat(seat: int) -> void:
 # screen shows the game's state (whose orders are awaited, the turn timer when the host set one, the last fingerprint check).
 var lan: LanSession
 var _lan_label: Label
+
+## E6: a human-planned LAN battle opens its screen (the same opening as a battle after End turn).
+func lan_open_battle() -> void:
+	var leaving := _current
+	_current = null
+	refresh()
+	_current = leaving
+	session.fetch_encounter()
+	if DisplayServer.get_name() != "headless":
+		_open_combat_next_frame.call_deferred()
+	else:
+		goto("combat")
+	get_tree().create_timer(0.25).timeout.connect(BotfAudioSystem.on_battle_joined)
+
+## E6: the round the commanders resolved together is in this peer's core; the battle screen plays it.
+func lan_battle_round_played() -> void:
+	if screen == "combat" and _current != null and _current.has_method("lan_round_played"):
+		_current.lan_round_played()
 
 func _lan_strip() -> void:
 	if _lan_label == null:

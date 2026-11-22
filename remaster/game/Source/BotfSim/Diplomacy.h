@@ -218,7 +218,8 @@ enum class DiplomaticOpType : int {
     TransferMinorMembership = 5,
     UpdateMinorAttitude = 6,
     RecordEvent = 7,
-    AdjustTrust = 8 // Major-major trust delta (attitudeDelta) applied symmetrically to the campaign relation
+    AdjustTrust = 8, // Major-major trust delta (attitudeDelta) applied symmetrically to the campaign relation
+    TransferColony = 9 // E3 (schema 27): a world ceded in a peace deal moves from partyA to partyB (systemId)
 };
 
 enum class DiplomaticEventType : int {
@@ -301,6 +302,10 @@ struct Proposal {
     DiplomaticTone tone = DiplomaticTone::Neutral;
     int64_t creditOffer = 0;   // Credits offered by proposer to target upon acceptance
     int64_t creditDemand = 0;  // Credits demanded by proposer from target upon acceptance
+    // E3 (schema 27, Simon's delegation 22 Nov 2026): a peace deal may move worlds. `cedeSystems` are worlds the proposer hands to
+    // the target; `demandSystems` are worlds the target hands to the proposer. Peace proposals only; at most PeaceMaxWorlds each.
+    std::vector<int> cedeSystems;
+    std::vector<int> demandSystems;
     int submittedTurn = 0;
     int dueTurn = 0;           // Turn at which proposal expires/resolves
     ProposalStatus status = ProposalStatus::Pending;
@@ -395,6 +400,7 @@ struct DiplomacyOperation {
     int64_t credits = 0;        // Transferred from partyA to partyB
     int attitudeDelta = 0;
     int newOwner = 0;
+    int systemId = 0;           // TransferColony: the ceded world
     bool setAtWar = false;      // Explicit typed boolean for SetWarState (true = War, false = Peace)
     std::string notes;
 
@@ -495,7 +501,23 @@ public:
     virtual int rivalryPressure(ParticipantId, ParticipantId) const { return 0; }
     // P3 (Simon's yes, 20 Nov 2026): colonies a major holds, or -1 when the context does not know (standalone harnesses).
     virtual int colonyCount(ParticipantId) const { return -1; }
+    // E3: whether `owner` holds `systemId` as a colony that may change hands in a peace deal (not its capital, and not its last world).
+    // Standalone harnesses answer false, so a peace proposal that names worlds is refused there.
+    virtual bool canCedeWorld(ParticipantId, int) const { return false; }
+    // E3: up to `maxCount` of `owner`'s cedable worlds nearest `toward`'s territory (nearest first); empty when unknown.
+    virtual std::vector<int> borderWorlds(ParticipantId, ParticipantId, int) const { return {}; }
 };
+
+// E3 (Simon's delegation, 22 Nov 2026): the war score of `self` against `other`, -100 (losing badly) to +100 (winning), from the fleets
+// that stand and the worlds each side holds. A context that cannot count worlds scores on fleets alone. Integer and deterministic.
+inline constexpr int PeaceMaxWorlds = 3;
+inline int warScore(const DiplomacyContext& ctx, ParticipantId self, ParticipantId other) {
+    const int64_t a = std::max<int64_t>(0, ctx.militaryPower(self)), b = std::max<int64_t>(0, ctx.militaryPower(other));
+    int score = (a + b) > 0 ? static_cast<int>((a - b) * 60 / (a + b)) : 0;   // -60..+60 from the fleets
+    const int ours = ctx.colonyCount(self), theirs = ctx.colonyCount(other);
+    if (ours >= 0 && theirs >= 0) score += std::clamp((ours - theirs) * 4, -40, 40);
+    return std::clamp(score, -100, 100);
+}
 
 // P3 (Simon's yes, 20 Nov 2026; BALANCE-PROPOSALS-F5.md): the AI finishes its wars. `self` is finishing `other` when they are at
 // war, `other` is down to its last 1 to 3 colonies, `self` holds at least twice as many and at least 6 (so the opening turns,
@@ -946,6 +968,43 @@ inline bool validateProposalCreation(
         return false;
     }
 
+    // 7b. E3: worlds named in a peace deal
+    if (!p.cedeSystems.empty() || !p.demandSystems.empty()) {
+        if (p.treatyType != TreatyType::Peace) {
+            if (outReason) *outReason = "Only a peace deal can move worlds";
+            return false;
+        }
+        if (p.proposer.isMinor || p.target.isMinor) {
+            if (outReason) *outReason = "Only major empires trade worlds for peace";
+            return false;
+        }
+        if (p.cedeSystems.size() > static_cast<size_t>(PeaceMaxWorlds) || p.demandSystems.size() > static_cast<size_t>(PeaceMaxWorlds)) {
+            if (outReason) *outReason = "A peace deal can move at most " + std::to_string(PeaceMaxWorlds) + " worlds each way";
+            return false;
+        }
+        std::set<int> seen;
+        for (int id : p.cedeSystems) {
+            if (id <= 0 || !seen.insert(id).second || !ctx.canCedeWorld(p.proposer, id)) {
+                if (outReason) *outReason = "A world offered in the peace deal cannot be ceded (it must be a colony of the proposer that is not its capital or last world)";
+                return false;
+            }
+        }
+        for (int id : p.demandSystems) {
+            if (id <= 0 || !seen.insert(id).second || !ctx.canCedeWorld(p.target, id)) {
+                if (outReason) *outReason = "A world demanded in the peace deal cannot be ceded (it must be a colony of the target that is not its capital or last world)";
+                return false;
+            }
+        }
+        if (p.cedeSystems.size() >= static_cast<size_t>(std::max(1, ctx.colonyCount(p.proposer))) && ctx.colonyCount(p.proposer) >= 0) {
+            if (outReason) *outReason = "An empire cannot cede all its worlds";
+            return false;
+        }
+        if (p.demandSystems.size() >= static_cast<size_t>(std::max(1, ctx.colonyCount(p.target))) && ctx.colonyCount(p.target) >= 0) {
+            if (outReason) *outReason = "An empire cannot be made to cede all its worlds";
+            return false;
+        }
+    }
+
     // 8. Treaty Type Legality Matrix
     const bool currentlyAtWar = ctx.isAtWar(p.proposer, p.target);
 
@@ -1368,6 +1427,26 @@ inline AiDecisionResult evaluateAiProposal(
                 score += weariness;
                 expl << "+ War weariness (+" << weariness << ") ";
             }
+            // E3: worlds in the deal are weighed against the war score. Taking a world is welcome. Giving one up is accepted only by an
+            // empire that is clearly losing (war score -20 or worse): each world costs 25, and a bad war score (down to -100) takes up
+            // to 50 off the bill. An empire that is holding its own will not give up a world to end a war.
+            if (!p.cedeSystems.empty()) {
+                const int gain = std::min(36, 12 * static_cast<int>(p.cedeSystems.size()));
+                score += gain;
+                expl << "+ Worlds offered (+" << gain << ") ";
+            }
+            if (!p.demandSystems.empty()) {
+                const int ws = warScore(ctx, p.target, p.proposer);
+                const int cost = 25 * static_cast<int>(p.demandSystems.size());
+                const int relief = std::clamp(-ws / 2, 0, 50);
+                score -= cost;
+                score += std::min(cost, relief);
+                expl << "- Worlds demanded (-" << cost << ", war score " << ws << " eases " << std::min(cost, relief) << ") ";
+                if (ws > -20) {
+                    score -= 200;
+                    expl << "- Not losing the war: no world is given up (-200) ";
+                }
+            }
             break;
         }
         case TreatyType::NonAggression: {
@@ -1560,6 +1639,7 @@ struct AiDiplomaticIntent {
     DiplomaticTone tone = DiplomaticTone::Cordial;
     int64_t creditOffer = 0;
     int64_t creditDemand = 0;
+    std::vector<int> cedeSystems;   // E3: worlds a losing AI hands over with its peace offer
     std::string rationale;
 
     bool operator==(const AiDiplomaticIntent& other) const = default;
@@ -1685,6 +1765,29 @@ inline std::vector<AiDiplomaticIntent> planAiDiplomacy(
                     intent.duration = TreatyDuration::Indefinite;
                     intent.tone = DiplomaticTone::Cordial;
                     intent.rationale = losing ? "losing the war" : weary ? "war weariness" : "relations have thawed";
+                    // E3: an AI that is clearly losing buys peace with border worlds: one at a war score of -30 or worse, two at -60.
+                    const int ws = warScore(ctx, self, other);
+                    if (ws <= -30) {
+                        const auto worlds = ctx.borderWorlds(self, other, ws <= -60 ? 2 : 1);
+                        if (!worlds.empty()) {
+                            intent.cedeSystems = worlds;
+                            intent.rationale += ": offers " + std::to_string(worlds.size()) + (worlds.size() == 1 ? " world" : " worlds");
+                        }
+                    }
+                    {
+                        Proposal probe;
+                        probe.id = state.nextProposalId;
+                        probe.proposer = intent.proposer;
+                        probe.target = intent.target;
+                        probe.treatyType = intent.treatyType;
+                        probe.duration = intent.duration;
+                        probe.tone = intent.tone;
+                        probe.cedeSystems = intent.cedeSystems;
+                        probe.submittedTurn = state.currentTurn;
+                        probe.dueTurn = state.currentTurn + 1;
+                        std::string why;
+                        if (!validateProposalCreation(state, ctx, probe, &why)) intent.cedeSystems.clear();   // plain peace instead
+                    }
                     intents.push_back(intent);
                     ++planned;
                 }
@@ -1845,9 +1948,13 @@ public:
         int64_t creditDemand,
         uint64_t* outProposalId = nullptr,
         std::string* outError = nullptr,
-        int responseTurns = 1)
+        int responseTurns = 1,
+        const std::vector<int>& cedeSystems = {},      // E3: worlds the proposer hands over (peace only)
+        const std::vector<int>& demandSystems = {})    // E3: worlds the proposer asks for (peace only)
     {
         Proposal p;
+        p.cedeSystems = cedeSystems;
+        p.demandSystems = demandSystems;
         p.id = state.nextProposalId;
         p.proposer = proposer;
         p.target = target;
@@ -2514,6 +2621,7 @@ public:
         // Step 4: Resolve Proposals against Cumulative State & Working Ledger
         // ---------------------------------------------------------------------
         std::set<int> minorsJoinedThisTurn;
+        std::set<int> cededThisTurn;   // E3: a world moves at most once per resolution
 
         auto rejectWithEvent = [&](Proposal& p, ProposalStatus status, const std::string& reason, const std::string& text) {
             p.status = status;
@@ -2662,6 +2770,17 @@ public:
                     }
                 }
 
+                // 3b. E3: every world in the deal must still be held by the side that gives it up, and move only once this turn
+                if (p.treatyType == TreatyType::Peace && (!p.cedeSystems.empty() || !p.demandSystems.empty())) {
+                    bool stale = false;
+                    for (int id : p.cedeSystems) if (cededThisTurn.count(id) || !ctx.canCedeWorld(p.proposer, id)) stale = true;
+                    for (int id : p.demandSystems) if (cededThisTurn.count(id) || !ctx.canCedeWorld(p.target, id)) stale = true;
+                    if (stale) {
+                        rejectWithEvent(p, ProposalStatus::Rejected, "A world in the peace deal is no longer the giver's to cede", "");
+                        continue;
+                    }
+                }
+
                 // 4. Working Ledger Overdraft Check
                 int64_t propBal = getWorkingBalance(p.proposer);
                 int64_t targetBal = getWorkingBalance(p.target);
@@ -2716,6 +2835,19 @@ public:
                 if (p.treatyType == TreatyType::Peace) {
                     setWorkingAtWar(p.proposer, p.target, false);
                     recordPeace(state, p.proposer, p.target, delta);
+                    auto moveWorld = [&](ParticipantId from, ParticipantId to, int systemId) {
+                        cededThisTurn.insert(systemId);
+                        DiplomacyOperation worldOp;
+                        worldOp.opType = DiplomaticOpType::TransferColony;
+                        worldOp.partyA = from;
+                        worldOp.partyB = to;
+                        worldOp.systemId = systemId;
+                        worldOp.newOwner = to.id;
+                        worldOp.notes = "World ceded in a peace deal";
+                        delta.operations.push_back(worldOp);
+                    };
+                    for (int id : p.cedeSystems) moveWorld(p.proposer, p.target, id);
+                    for (int id : p.demandSystems) moveWorld(p.target, p.proposer, id);
                 } else if (p.treatyType == TreatyType::Membership) {
                     auto* minor = state.getMinorState(p.target.id);
                     if (minor) {
@@ -2952,6 +3084,7 @@ public:
             return p.creditDemand > 0 ? "Tribute Demand" : "Gift";
         }
         if (p.treatyType == TreatyType::War) return "Declaration of War";
+        if (p.treatyType == TreatyType::Peace && (!p.cedeSystems.empty() || !p.demandSystems.empty())) return "Peace Treaty with ceded worlds";
         return treatyTypeName(p.treatyType);
     }
 
@@ -3168,6 +3301,23 @@ inline std::string serializeDiplomacyState(const DiplomacyState& state) {
            << static_cast<int>(p.status) << " "
            << (p.resolved ? 1 : 0) << " "
            << encodeString(p.rejectionReason) << "\n";
+    }
+
+    // E3 (schema 27): worlds named in peace proposals, only while one exists (so a game without them saves as before).
+    {
+        size_t withTerms = 0;
+        for (const auto& p : state.proposals) if (!p.cedeSystems.empty() || !p.demandSystems.empty()) ++withTerms;
+        if (withTerms) {
+            ss << "proposalTerms " << withTerms << "\n";
+            for (const auto& p : state.proposals) {
+                if (p.cedeSystems.empty() && p.demandSystems.empty()) continue;
+                ss << "w " << p.id << " " << p.cedeSystems.size();
+                for (int id : p.cedeSystems) ss << " " << id;
+                ss << " " << p.demandSystems.size();
+                for (int id : p.demandSystems) ss << " " << id;
+                ss << "\n";
+            }
+        }
     }
 
     // Active Treaties
@@ -3401,9 +3551,49 @@ inline bool deserializeDiplomacyState(
         temp.proposals.push_back(p);
     }
 
+    // E3 (schema 27): the optional worlds-in-peace-deals block
+    if (!(ss >> token)) {
+        if (outError) *outError = "Malformed activeTreaties count";
+        return false;
+    }
+    if (token == "proposalTerms") {
+        size_t termCount = 0;
+        if (!(ss >> termCount) || termCount == 0 || termCount > temp.proposals.size()) {
+            if (outError) *outError = "Malformed proposalTerms count";
+            return false;
+        }
+        for (size_t i = 0; i < termCount; ++i) {
+            uint64_t propId = 0;
+            size_t nCede = 0, nDemand = 0;
+            if (!(ss >> token) || token != "w" || !(ss >> propId >> nCede) || nCede > static_cast<size_t>(PeaceMaxWorlds)) {
+                if (outError) *outError = "Malformed proposalTerms row";
+                return false;
+            }
+            std::vector<int> cede, demand;
+            for (size_t k = 0; k < nCede; ++k) { int id = 0; if (!(ss >> id) || id <= 0) { if (outError) *outError = "Malformed proposalTerms world"; return false; } cede.push_back(id); }
+            if (!(ss >> nDemand) || nDemand > static_cast<size_t>(PeaceMaxWorlds)) {
+                if (outError) *outError = "Malformed proposalTerms row";
+                return false;
+            }
+            for (size_t k = 0; k < nDemand; ++k) { int id = 0; if (!(ss >> id) || id <= 0) { if (outError) *outError = "Malformed proposalTerms world"; return false; } demand.push_back(id); }
+            auto it = std::find_if(temp.proposals.begin(), temp.proposals.end(), [&](const Proposal& q) { return q.id == propId; });
+            if (it == temp.proposals.end() || it->treatyType != TreatyType::Peace || (cede.empty() && demand.empty()) ||
+                !it->cedeSystems.empty() || !it->demandSystems.empty()) {
+                if (outError) *outError = "proposalTerms names a proposal that cannot carry worlds";
+                return false;
+            }
+            it->cedeSystems = cede;
+            it->demandSystems = demand;
+        }
+        if (!(ss >> token)) {
+            if (outError) *outError = "Malformed activeTreaties count";
+            return false;
+        }
+    }
+
     // Active Treaties
     size_t activeCount = 0;
-    if (!(ss >> token) || token != "activeTreaties" || !(ss >> activeCount)) {
+    if (token != "activeTreaties" || !(ss >> activeCount)) {
         if (outError) *outError = "Malformed activeTreaties count";
         return false;
     }

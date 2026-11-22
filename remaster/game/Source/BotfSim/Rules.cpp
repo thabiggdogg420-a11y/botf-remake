@@ -33,7 +33,8 @@ bool isGameplayCommand(CommandType type) {
         type == CommandType::DeleteBuildTemplate || type == CommandType::ApplyBuildTemplate ||
         type == CommandType::SetDefaultBuildTemplate || type == CommandType::StartMegaproject ||
         type == CommandType::CancelMegaproject || type == CommandType::SetEmergencyProgram ||
-        type == CommandType::ResolveAftermath || type == CommandType::SetFleetOrder || type == CommandType::CommissionFlagship;
+        type == CommandType::ResolveAftermath || type == CommandType::SetFleetOrder || type == CommandType::CommissionFlagship ||
+        type == CommandType::RenameFlagship;
 }
 
 namespace rules_detail {
@@ -55,10 +56,12 @@ void checkCommand(const Command& c) {
         c.building == Building::Farm && c.targetX == 0 && c.targetY == 0 && c.queueIndex == 0 &&
         c.queueDestination == 0 && c.targetEmpire == 0 && c.targetFleetId == 0 && c.targetSystemId == 0 &&
         c.taskForceId == 0 && c.planetIndex == 0 && c.memberFleetIds.empty() && c.taskForceName.empty() &&
-        c.stance == TacticalStance::Balanced && c.referenceId == -1,
+        c.stance == TacticalStance::Balanced && c.referenceId == -1 &&
+        c.proposalCedeSystems.empty() && c.proposalDemandSystems.empty(),
         "Gameplay command contains unrelated fields");
     for (int amount : c.researchAllocation) require(amount == 0, "Gameplay command contains research fields");
-    const bool usesFleet = c.type == CommandType::BuildOutpost || c.type == CommandType::SetFleetOrder || c.type == CommandType::CommissionFlagship;
+    const bool usesFleet = c.type == CommandType::BuildOutpost || c.type == CommandType::SetFleetOrder || c.type == CommandType::CommissionFlagship ||
+        c.type == CommandType::RenameFlagship;
     const bool usesSystem = c.type == CommandType::UpgradeStation || c.type == CommandType::ApplyBuildTemplate ||
         c.type == CommandType::StartMegaproject || c.type == CommandType::SetEmergencyProgram ||
         c.type == CommandType::ResolveAftermath;
@@ -90,6 +93,10 @@ void checkCommand(const Command& c) {
         require(!c.templateName.empty() && c.templateName.size() <= 48 && rules_detail::printable(c.templateName),
             "Template name must be 1-48 printable characters");
         checkTemplateItems(c);
+    } else if (c.type == CommandType::RenameFlagship) {   // Schema 27 (E4): templateName carries the flagship's new name
+        require(c.templateName.size() <= scenarios::MaxFlagshipNameLength && rules_detail::printable(c.templateName) &&
+            c.templateName.find('"') == std::string::npos && c.templateName.find('\\') == std::string::npos && c.templateItems.empty(),
+            "A flagship name is at most 24 plain printable characters");
     } else {
         require(c.templateName.empty() && c.templateItems.empty(), "Invalid template contents field");
     }
@@ -118,6 +125,8 @@ void applyCommand(GameState& state, const Command& command, std::set<int>& order
         economy_rules::applyOrderCommand(state, command); break;
     case CommandType::CommissionFlagship: // Schema 25 (Scenarios.h): the player's empire commissions one of its ships
         scenarios::commission(state, state.playerEmpire, command.fleetId); break;
+    case CommandType::RenameFlagship: // Schema 27 (E4): the player renames their flagship
+        scenarios::renameFlagship(state, state.playerEmpire, command.fleetId, command.templateName); break;
     default:
         throw std::runtime_error("Not a gameplay-layer command");
     }

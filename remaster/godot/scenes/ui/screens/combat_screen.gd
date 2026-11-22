@@ -116,13 +116,15 @@ func _header(e: Dictionary, mine: Array, foes: Array, foe_name: String, last: Di
 		var au := Lcars.pill("Auto-resolve", "alert", func(): _auto(), "", "Let your captains fight the battle to its end")
 		au.name = "AutoResolve"
 		h.add_child(au)
-		var rt := Lcars.toggle("Real-time", realtime, func(on): set_realtime(on), "F6: rounds run on by themselves with your standing orders; Space pauses, 1-0 give orders, Tab picks a target (R)")
+		var rt := Lcars.toggle("Real-time", realtime, func(on): set_realtime(on), "F6 (Beta): rounds run on by themselves with your standing orders; Space pauses, 1-0 give orders, Tab picks a target (R). Beta: still being tuned, tell us what feels off.")
 		rt.name = "RealtimeToggle"
 		h.add_child(rt)
 		var sel := _selected()
 		var helm_ok: bool = not sel.is_empty() and is_active(sel) and not sel.get("station", false)
-		var hp := Lcars.pill("Release helm" if helm != 0 else "Take the helm", "primary" if helm != 0 else "secondary", func(): toggle_helm(), "" if helm_ok or helm != 0 else "Select one of your ships first", "F6: fly the selected ship yourself from its own camera, in real time (H)")
+		var hp := Lcars.pill("Release helm" if helm != 0 else "Take the helm", "primary" if helm != 0 else "secondary", func(): toggle_helm(), "" if helm_ok or helm != 0 else "Select one of your ships first", "F6 (Beta): fly the selected ship yourself from its own camera, in real time (H). Beta: still being tuned, tell us what feels off.")
 		hp.name = "HelmToggle"
+		if hp.disabled:
+			hp.tooltip_text += "  (F6 Beta feature)"   # E1: the tag stays when the reason replaces the hint
 		h.add_child(hp)
 	return h
 
@@ -498,11 +500,23 @@ func order(maneuver: String) -> void:
 	refresh()
 
 func _round() -> void:
+	if app.lan != null and app.lan.in_battle:   # E6: LAN, the commanders resolve each round together (the orders go to the host)
+		app.lan.battle_resolve_pressed()
+		app.toast("Orders sent. The round resolves when every commander has resolved.", "info", 2.0)
+		return
 	if app.has_method("hotseat_battle_next") and app.hotseat_battle_next():   # hotseat: the other human plans this round first
 		return
 	var _t0 := Time.get_ticks_usec()
 	if not vm.resolve(false):
 		return
+	_play_resolved_round(_t0)
+
+## E6: the round the LAN commanders resolved together (lan_session.gd resolved it in the core); the screen plays it as any round.
+func lan_round_played() -> void:
+	choice = false
+	_play_resolved_round(Time.get_ticks_usec())
+
+func _play_resolved_round(_t0: int) -> void:
 	var rounds: Array = _enc().get("rounds", [])
 	var timing := OS.get_environment("ROUND_TIMING") != ""
 	if timing:
@@ -587,6 +601,9 @@ func _plan_after_round(_idx: int) -> void:
 	app.hotseat_battle_round_done()   # hotseat: a two-human battle's next round starts with the first human behind the card
 
 func _auto() -> void:
+	if app.lan != null and app.lan.in_battle:   # E6: a LAN battle is fought round by round with the other commanders
+		app.toast("LAN battles are fought round by round: give orders and resolve the round.", "warn", 2.5)
+		return
 	if not vm.resolve(true):
 		return
 	refresh()
@@ -608,7 +625,8 @@ func _encounter_choice(e: Dictionary, mine: Array, foes: Array, foe_name: String
 	var take := Lcars.pill("Take command", "alert", func(): choice = false; app.close_modal(), "", "Command your ships round by round")
 	take.name = "TakeCommand"
 	row.add_child(take)
-	row.add_child(Lcars.pill("Auto-resolve", "secondary", func(): app.close_modal(); _auto(), "", "Your ships fight under automatic command"))
+	if not (app.lan != null and app.lan.in_battle):   # E6: no auto-resolve in a LAN battle (every commander resolves each round)
+		row.add_child(Lcars.pill("Auto-resolve", "secondary", func(): app.close_modal(); _auto(), "", "Your ships fight under automatic command"))
 	row.add_child(Lcars.pill("HAIL", "ghost", func(): app.close_modal(); _hail(), "", "Every ship hails and one round resolves"))
 	col.add_child(row)
 	app.open_modal.call_deferred(col, TrekText.term(0, "contact_title", "Enemy contact"), Vector2(720, 0), "alert")

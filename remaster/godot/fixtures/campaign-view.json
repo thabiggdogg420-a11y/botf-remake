@@ -24,8 +24,8 @@
    "erasRule": false,
    "year": 0,
    "techCap": 10,
-   "contentVersion": "remaster-26",
-   "saveVersion": 26,
+   "contentVersion": "remaster-27",
+   "saveVersion": 27,
    "outcome": "ongoing",
    "winner": 0,
    "canPlayOn": false,
@@ -809,7 +809,7 @@
      "enabled": true,
      "achieved": false,
      "percent": 17,
-     "explanation": "0 of 6 research fields at level 4; Genesis Initiative: not started."
+     "explanation": "0 of 6 research fields at level 4; Federation Genesis-class Project: not started."
     },
     {
      "condition": "Diplomatic",
@@ -830,7 +830,7 @@
    ],
    "alternative": true,
    "threshold": 4,
-   "megaprojectName": "Genesis Initiative",
+   "megaprojectName": "Federation Genesis-class Project",
    "megaprojectCost": 4000,
    "megaprojectCredits": 500,
    "megaprojectWorkPerTurn": 35,

@@ -75,7 +75,7 @@ void planRivalMegaprojects(GameState& next, TurnReport& report) {
         }
         if (!best) continue;
         startMegaproject(next, rival.id, best);
-        noteVictory(next, report, rival.id, best, std::string(empireName(rival.id)) + " began the " + megaprojectName(next) +
+        noteVictory(next, report, rival.id, best, std::string(empireName(rival.id)) + " began the " + megaprojectName(next, rival.id) +
             " at " + systemLabel(next, best) + ". Its completion would win a scientific victory.");
     }
 }
@@ -84,7 +84,7 @@ void resolveMegaprojectLosses(GameState& next, TurnReport& report) {
     std::erase_if(next.megaprojects, [&](const Megaproject& m) {
         const auto colony = colonyAt(next, m.systemId);
         if (colony && colony->ownerId == m.ownerId) return false;
-        noteVictory(next, report, m.ownerId, m.systemId, std::string(empireName(m.ownerId)) + " lost the " + megaprojectName(next) +
+        noteVictory(next, report, m.ownerId, m.systemId, std::string(empireName(m.ownerId)) + " lost the " + megaprojectName(next, m.ownerId) +
             " when " + systemLabel(next, m.systemId) + " fell.");
         return true;
     });
@@ -195,7 +195,7 @@ void evaluateVictory(GameState& next, TurnReport& report) {
         ? std::string(empireName(winner)) + " settled its vendetta: both of its sworn rivals are finished. Vendetta victory. " +
             (winner == next.playerEmpire ? "Campaign victory." : "Campaign defeat.")
         : how == VictoryCondition::Scientific
-        ? std::string(empireName(winner)) + " completed the " + megaprojectName(next) + " at " + systemLabel(next, where) +
+        ? std::string(empireName(winner)) + " completed the " + megaprojectName(next, winner) + " at " + systemLabel(next, where) +
             ": scientific victory. " + (winner == next.playerEmpire ? "Campaign victory." : "Campaign defeat.")
         : std::string(empireName(winner)) + " united the galaxy through diplomacy: diplomatic victory. " +
             (winner == next.playerEmpire ? "Campaign victory." : "Campaign defeat.");
@@ -217,6 +217,22 @@ const char* victoryConditionName(VictoryCondition condition) {
 
 int scientificVictoryThreshold(const GameState& state) {
     return std::min(techCap(state), eraStartTech(state) + 3);
+}
+
+// E5 (Simon's delegation, 22 Nov 2026): the science-victory megaproject carries its power's name, not its era's. A race the table does not
+// know (a pack's own) keeps the era name.
+const char* megaprojectName(const GameState& state, int empireId) {
+    const std::string_view key = slots::key(empireId);
+    if (key == "federation") return "Federation Genesis-class Project";
+    if (key == "klingon") return "Klingon Praxis Restoration Project";
+    if (key == "romulan") return "Romulan Singularity Core Initiative";
+    if (key == "cardassian") return "Cardassian Union Subspace Lattice";
+    if (key == "ferengi") return "Ferengi Dilithium Transmutation Works";
+    if (key == "dominion") return "Dominion Founders' Genome Synthesis";
+    if (key == "borg") return "Borg Unimatrix Assimilation Nexus";
+    if (key == "breen") return "Breen Energy Dampening Citadel";
+    if (key == "duras") return "House of Duras Praxis Restoration Project";
+    return megaprojectName(state);
 }
 
 const char* megaprojectName(const GameState& state) {
@@ -251,7 +267,7 @@ std::string megaprojectBlocker(const GameState& state, int empireId, int systemI
     if (!state.rules.alternativeVictories) return "Alternative victories are disabled by the ruleset";
     if (state.outcome != CampaignOutcome::Ongoing) return "Campaign has ended";
     if (state.turn < gameplay::MegaprojectFirstTurn)
-        return "The " + std::string(megaprojectName(state)) + " can begin on turn " + std::to_string(gameplay::MegaprojectFirstTurn);
+        return "The " + std::string(megaprojectName(state, empireId)) + " can begin on turn " + std::to_string(gameplay::MegaprojectFirstTurn);
     const auto& owner = empire(state, empireId);
     const int threshold = scientificVictoryThreshold(state);
     std::string missing;
@@ -318,7 +334,7 @@ std::vector<VictoryProgress> victoryProgress(const GameState& state, int empireI
     science.percent = threshold ? std::clamp(70 * techPoints / (ResearchFields * threshold) + 30 * work / cost, 0, 100) : 0;
     science.achieved = science.enabled && project && work >= cost;
     science.explanation = science.enabled
-        ? std::to_string(fieldsReady) + " of 6 research fields at level " + std::to_string(threshold) + "; " + megaprojectName(state) + ": " +
+        ? std::to_string(fieldsReady) + " of 6 research fields at level " + std::to_string(threshold) + "; " + megaprojectName(state, empireId) + ": " +
             (project ? std::to_string(work) + "/" + std::to_string(cost) + " industry at " + gameplay::systemLabel(state, project->systemId)
                      : std::string("not started")) + "."
         : "Disabled by the Classic ruleset.";

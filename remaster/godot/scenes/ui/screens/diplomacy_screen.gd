@@ -176,6 +176,15 @@ func _inbox(incoming: Array) -> Control:
 		var terms := ("%s · %s tone" % [p["duration"], str(p["tone"]).to_lower()]) if p["kind"] == "treaty" else "%s tone" % str(p["tone"]).to_lower()
 		th.tooltip_text = terms
 		th.mouse_filter = Control.MOUSE_FILTER_PASS
+		var terms_lines := []   # E3: worlds named in a peace proposal
+		if p.get("cedeSystems", []).size() > 0:
+			terms_lines.append("They offer %s." % DiplomacyVM.world_names(p["cedeSystems"]))
+		if p.get("demandSystems", []).size() > 0:
+			terms_lines.append("They ask for %s." % DiplomacyVM.world_names(p["demandSystems"]))
+		if terms_lines.size() > 0:
+			var tl := Lcars.para(" ".join(terms_lines), Lcars.accent2(), 14)
+			tl.name = "WorldTerms"
+			col.add_child(tl)
 		var cons := consequences(p)
 		h.add_child(col)
 		var acts := Lcars.vbox(6)
@@ -467,6 +476,31 @@ func _dossier() -> Control:
 	b.add_child(Lcars.scroll(body))
 	return f
 
+## E3 (22 Nov 2026): the worlds in a peace deal. The war score line, then one toggle per world we could hand over and per world of
+## theirs we know of and could ask for (at most three each way). A losing AI accepts giving up a world; a winning one will not.
+func _peace_worlds(rel: Dictionary) -> Control:
+	var box := Lcars.vbox(4)
+	box.name = "PeaceWorlds"
+	var ws := DiplomacyVM.war_score(rel)
+	box.add_child(Lcars.para(DiplomacyVM.war_score_text(rel), Lcars.GOOD if ws >= 25 else (Lcars.ALERT if ws <= -25 else Lcars.TEXT2), 14))
+	for spec in [["cede", "ourCedable", "Hand over"], ["ask", "theirCedable", "Ask for"]]:
+		var list_key: String = spec[0]
+		var worlds := DiplomacyVM.world_choices(rel, spec[1])
+		if worlds.is_empty():
+			continue
+		var row := HFlowContainer.new()
+		row.add_child(Lcars.caption(spec[2]))
+		for w in worlds:
+			var sid := int(w["systemId"])
+			var tg := Lcars.toggle("%s (%d)" % [w["name"], int(w["population"])], tb[list_key].has(sid), func(_on):
+				if not vm.toggle_world(list_key, sid):
+					app.toast("A peace deal can move at most %d worlds each way." % DiplomacyVM.PEACE_MAX_WORLDS, "warn", 2.0)
+				refresh(), "Population %d. Never a capital or a last world." % int(w["population"]))
+			tg.name = "%s%d" % ["Cede" if list_key == "cede" else "Ask", sid]
+			row.add_child(tg)
+		box.add_child(row)
+	return box
+
 func _negotiate(is_minor: bool, tid: int, rel: Dictionary) -> Control:
 	var v := app.view
 	var col := Lcars.vbox(10)
@@ -487,6 +521,9 @@ func _negotiate(is_minor: bool, tid: int, rel: Dictionary) -> Control:
 				tg.add_theme_color_override("font_color", Lcars.TEXT3)
 			types.add_child(tg)
 		bv.add_child(types)
+		if not is_minor and str(tb["type"]) == "Peace" and rel.get("atWar", false):
+			vm.prune_worlds(rel)
+			bv.add_child(_peace_worlds(rel))
 		var dr := Lcars.hbox(4)
 		dr.add_child(Lcars.caption("Duration"))
 		for x in app.meta.get("durations", []):

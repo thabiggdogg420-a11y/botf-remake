@@ -57,6 +57,20 @@ static func sector_label(app: App, cell: int) -> String:
 static func _act(id: String, label: String, group: String, tone: String, run: Callable, detail: String = "", disabled: String = "") -> Dictionary:
 	return {"id": id, "label": label, "group": group, "tone": tone, "run": run, "detail": detail, "disabled": disabled}
 
+## E2: the core's odds for this transport landing on this world: {attack, defense, percent, transports, defended, blocker}, or {}
+## when the core cannot say (no game, an old backend).
+static func invasion_odds(app: App, fleet: Dictionary, system: Dictionary) -> Dictionary:
+	var r: Variant = app.core.request("invasionOdds", {"fleetId": int(fleet["id"]), "systemId": int(system["id"])})
+	return r if r is Dictionary else {}
+
+## The odds as one plain line for the Invade tooltip: troops against defence, the chance, and how many transports are pooled.
+static func odds_text(odds: Dictionary) -> String:
+	if str(odds.get("blocker", "")) != "":
+		return str(odds["blocker"])
+	var n := int(odds.get("transports", 1))
+	return "Odds: %d troops%s against a ground defence of %d: about %d%% to take it. Troops count pop/5, morale, batteries and shields; no ground fight is played." % [
+		int(odds["attack"]), (" (%d transports pooled)" % n) if n > 1 else "", int(odds["defense"]), int(odds["percent"])]
+
 static func upgrade_action(app: App, station: Dictionary, battle_lock: String) -> Dictionary:
 	if not station.get("mine", false) or station.get("type", "") != "Outpost":
 		return {}
@@ -266,6 +280,12 @@ static func cell_actions(app: App, cell: int) -> Array:
 				var tip_: String = "Ground assault resolves at turn end"
 				if natives:
 					tip_ = "Conquer an independent world. Transports here pool their troops; a defending ship must be beaten first (send warships along). The race will resent it."
+				# E2 (22 Nov 2026): the odds are shown before the order is given (the core's own numbers; no ground combat is played).
+				var odds := invasion_odds(app, fleet, system)
+				if not odds.is_empty():
+					tip_ += "\n" + odds_text(odds)
+					if odds.get("blocker", "") == "":
+						label_ += "  (%d%%)" % int(odds["percent"])
 				actions.append(_act("invade", label_, "orders", "alert", func(): app.issue(ic, cancel_ids, "Invasion of %s ordered." % system["name"]),
 					tip_, battle_lock if battle_lock != "" else app.dry_run(ic, cancel_ids)))
 			if int(fleet["targetX"]) != int(fleet["x"]) or int(fleet["targetY"]) != int(fleet["y"]) or cancel_ids.size() > 0:

@@ -215,18 +215,27 @@ func _structures(host: MeshInstance3D, r: float) -> void:
 			continue
 		var mm := MultiMesh.new()
 		mm.transform_format = MultiMesh.TRANSFORM_3D
-		var bm := BoxMesh.new()
-		bm.size = Vector3(0.12, 0.12, 0.07) * r
+		# E8 (22 Nov 2026): the works read as small lights on the surface, like a night-side city, not as coloured cubes standing on the
+		# planet (the cubes looked like markers and were most of what Earth showed). A tiny glowing disc per site, tinted by kind.
+		var bm := SphereMesh.new()
+		bm.radius = 0.022 * r
+		bm.height = 0.022 * r   # flattened against the ground
+		bm.radial_segments = 8
+		bm.rings = 3
 		var mat := StandardMaterial3D.new()
 		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-		mat.albedo_color = STRUCT_COLORS[kind]
+		var tint: Color = STRUCT_COLORS[kind]
+		mat.albedo_color = tint.lerp(Color(1.0, 0.92, 0.7), 0.55)
+		mat.emission_enabled = true
+		mat.emission = tint
+		mat.emission_energy_multiplier = 1.4
 		bm.material = mat
 		mm.mesh = bm
 		mm.instance_count = cnt
 		for i in cnt:
 			var d := Vector3(rng.randf_range(-0.85, 0.85), rng.randf_range(-0.35, 0.8), rng.randf_range(0.35, 1.0)).normalized()
 			var b := Basis.looking_at(d, Vector3.UP if absf(d.y) < 0.95 else Vector3.RIGHT)
-			mm.set_instance_transform(i, Transform3D(b, d * r * 1.04))
+			mm.set_instance_transform(i, Transform3D(b, d * r * 1.012))
 		var mmi := MultiMeshInstance3D.new()
 		mmi.name = "Surface_" + kind
 		mmi.multimesh = mm

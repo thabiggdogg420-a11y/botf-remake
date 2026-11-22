@@ -30,7 +30,21 @@ const HASHED_PACK = /^packs\/[^/]+\.[0-9a-f]{12}\.pck$/;
 let build = null;   // the build id of the page now being served ('' = unknown)
 
 self.addEventListener('install', () => { self.skipWaiting(); });
-self.addEventListener('activate', (e) => { e.waitUntil(self.clients.claim()); });
+// E7 (22 Nov 2026): a one-time cleanup. Before the hashed layout (packs/<name>.<12 hex>.pck) the packs were cached under flat names in
+// this same bucket, so a returning visitor still carries megabytes no build will ever ask for again. The first activation after
+// this build drops the bucket whole (the packs a page needs are fetched again and cached under the hashed names) and records that
+// it did, so it never runs twice.
+const FLAT_DONE_KEY = SCOPE + '__flat-packs-cleaned';
+async function dropOldFlatPacks() {
+  try {
+    const meta = await caches.open(META);
+    if (await meta.match(FLAT_DONE_KEY)) return;
+    await caches.delete(PACKS);
+    await meta.put(FLAT_DONE_KEY, new Response('1'));
+  } catch (_) { /* storage trouble: the bucket stays, the game still runs */ }
+}
+
+self.addEventListener('activate', (e) => { e.waitUntil(dropOldFlatPacks().then(() => self.clients.claim())); });
 
 function rel(url) {
   const u = new URL(url);

@@ -145,6 +145,52 @@ func _run() -> void:
 	var fb := ship4.hardpoint(0, 0, 0)
 	check(fb.is_finite(), "fallback hardpoint")
 
+	# E6 (22 Nov 2026): the hull cache is capped. 50 distinct hulls load one after another; only the 40 most recently used stay parsed,
+	# the oldest are forgotten and load again when wanted, and a ship made from a forgotten hull is still whole.
+	var many := {"version": 1, "heroes": {}}
+	var copies := BattleAssets.HULL_CACHE_CAP + 10
+	for i in copies:
+		var sub := "ship.kli.cap%02d" % i
+		DirAccess.make_dir_recursive_absolute(dir.path_join(sub))
+		DirAccess.copy_absolute(plated_glb, dir.path_join(sub).path_join("SM_cap.glb"))
+		many["heroes"][sub] = {"glb": sub + "/SM_cap.glb", "faction": "kli", "lengthMeters": 100.0, "sockets": ["WPN_Beam_01"], "socketPrefix": "SOCKET_", "material": "plated",
+			"lods": [{"node": "SM_testplated", "ratio": 1.0, "screen": 1.0}],
+			"slots": [{"name": "M00", "kind": "plated", "faction": "kli", "vertexColor": "Col", "tint": null, "roughnessMin": 0.32, "metallic": 0.15}]}
+	var cpath := dir.path_join("godot-hero-manifest-cap.json")
+	var cf := FileAccess.open(cpath, FileAccess.WRITE)
+	cf.store_string(JSON.stringify(many))
+	cf.close()
+	var cap_assets := BattleAssets.new()
+	check(cap_assets.load_hero_manifest(cpath), "cap test manifest loads")
+	var evicted_before := BattleAssets.evicted_total
+	var first_node: Node3D = null
+	for i in copies:
+		var n := cap_assets.instantiate_hero("ship.kli.cap%02d" % i)
+		check(n != null, "hull %d instantiates" % i)
+		if i == 0:
+			first_node = n
+		elif n != null:
+			n.free()
+	var loaded := 0
+	for p in BattleAssets._shared:
+		if BattleAssets._shared[p] != null:
+			loaded += 1
+	check(loaded <= BattleAssets.HULL_CACHE_CAP, "no more than %d hulls stay parsed (got %d)" % [BattleAssets.HULL_CACHE_CAP, loaded])
+	check(BattleAssets.evicted_total - evicted_before >= copies - BattleAssets.HULL_CACHE_CAP, "the oldest hulls were forgotten (%d)" % (BattleAssets.evicted_total - evicted_before))
+	check(first_node != null and first_node.find_children("*", "MeshInstance3D", true, false).size() > 0, "a ship made from a hull the cache has since forgotten keeps its meshes")
+	if first_node != null:
+		first_node.free()
+	var again := cap_assets.instantiate_hero("ship.kli.cap00")
+	check(again != null, "a forgotten hull loads again when it is wanted")
+	if again != null:
+		again.free()
+	# The mipped copy of a texture hangs off the texture, not a process-wide table.
+	var plain := ImageTexture.create_from_image(Image.create(16, 16, false, Image.FORMAT_RGBA8))
+	var m1 := HeroLook.mipmapped(plain)
+	check(m1 != plain and plain.has_meta("botf_mipped_copy") and HeroLook.mipmapped(plain) == m1, "the mipped copy is cached on its texture and reused")
+	var already := ImageTexture.create_from_image(Image.create_empty(16, 16, true, Image.FORMAT_RGBA8))
+	check(HeroLook.mipmapped(already) == already, "a texture that already has mips is returned as it is")
+
 	holder.queue_free()
 	await process_frame
 	print("hero model tests: %d failures" % failures)

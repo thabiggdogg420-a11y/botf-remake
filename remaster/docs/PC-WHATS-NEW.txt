@@ -1,6 +1,17 @@
-BOTF Remastered PC beta (round 8): what changed since 0.1.566
+BOTF Remastered PC beta (round 9): what changed since 0.1.566
 
-The 0.1.538 to 0.1.566 notes follow the new ones.
+The round 8 notes (Gemini audit fixes) and the 0.1.538 to 0.1.566 notes follow the new ones.
+
+New in this build (round 9)
+- Peace deals can hand over worlds. When you are at war, the Diplomacy screen shows a war score (-100 losing to +100 winning). A Peace proposal can name up to three of your border worlds to hand over and up to three of theirs to ask for (never a capital or a last world). The AI offers worlds when it is clearly losing and accepts or refuses a deal by the war score; a winning AI will not give a world up. Proposals the AI sends you name the worlds.
+- Invasion odds. The Invade action shows the chance of taking the world (your troops against its population / 5 plus batteries and shields) before you commit. There is still no ground combat; the odds are the same figures the invasion uses.
+- Name your flagship. Fleets, Flagship row: type a name and press Rename. It is saved and shows in battle logs.
+- Megaprojects have a name per power (for example the Federation Genesis-class Project, the Klingon Praxis Restoration Project).
+- Real-time battle and Take the helm are marked "Beta" in their tooltips: they work, and are still being tuned.
+- Ship textures unload: the battle keeps the 40 most recently used hulls and forgets the rest, so a long campaign or a long browse of the Encyclopedia does not run the graphics card out of memory.
+- Earth and other worlds in the system view show their buildings as small lights on the surface instead of coloured cubes; the battle starbase is toned like the other hulls.
+- LAN: each player plans their own ships in a battle and the commanders resolve the round together; a player who leaves is replaced by the AI until they rejoin (they rejoin at the start of a turn).
+- Saves: schema 27. Older saves load; a game that never uses the new features saves the same apart from the header.
 
 Fixes in this build (Gemini audit, round 8)
 - Battle: the ship brackets, name tags and the radar are placed from the real view size, so they sit on the ships and the radar is in the bottom-right corner while a round plays (they sat up-left of the ships and the radar floated over the starbase).

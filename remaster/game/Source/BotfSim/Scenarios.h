@@ -411,6 +411,7 @@ inline Bonus bonusFor(const Fleet& fleet) {
 }
 inline std::string flagshipName(const Fleet& fleet) {
     if (fleet.flagship <= 0) return {};
+    if (!fleet.flagshipLabel.empty()) return fleet.flagshipLabel;   // Schema 27 (E4): the player's own name
     const auto* d = flagshipDef(fleet.ownerId);
     if (!d) return {};
     return d->names[static_cast<std::size_t>(fleet.flagship - 1) % d->names.size()];
@@ -420,6 +421,14 @@ const Fleet* flagshipFleet(const GameState& state, int empireId);          // Th
 int flagshipMorale(const GameState& state, int empireId);                  // Morale added to the empire's colonies while its flagship lives
 std::string commissionBlocker(const GameState& state, int empireId, int fleetId); // Empty when the empire may commission this ship
 Command makeCommissionFlagshipCommand(std::uint64_t id, int fleetId);
+// Schema 27 (E4, Simon's delegation 22 Nov 2026): the player renames their flagship (1-24 printable characters; an empty name restores the pack's).
+inline constexpr std::size_t MaxFlagshipNameLength = 24;
+std::string renameBlocker(const GameState& state, int empireId, int fleetId, const std::string& name);   // Empty when the rename is allowed
+Command makeRenameFlagshipCommand(std::uint64_t id, int fleetId, const std::string& name);
+void renameFlagship(GameState& state, int empireId, int fleetId, const std::string& name);
+void syncFlagshipLabels(GameState& state);                                  // Copies each record's name onto its ship (after a load)
+void writeNames(std::ostream& out, const GameState& s);                     // The optional FLAGSHIP_NAMES section
+void readNames(std::istream& in, GameState& s);
 void commission(GameState& state, int empireId, int fleetId);              // Pays, marks the ship, records it (the blocker must be empty)
 void planFlagships(GameState& next, int empireId);      // AI: commissions its strongest warship when it can afford the refit
 

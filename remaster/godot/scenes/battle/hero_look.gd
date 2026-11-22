@@ -63,16 +63,15 @@ static func slot_for(slots: Array, material_name: String, surface: int) -> Dicti
 ## A glb loaded at runtime brings its images without mipmaps, so a hull seen from afar sampled the full-size texture
 ## and its window dots and panel lines aliased into black speckle (R3.5, title close-ups). Builds the mip chain once
 ## per texture (cached), compressed-format images are left as they are.
-static var _mipped := {}
+## E6 (22 Nov 2026): the mipped copy hangs off the source texture itself (a meta entry) instead of a process-wide table keyed by instance
+## id. The table kept every copy alive for the whole run (and could hand a recycled id the wrong texture); now the copy lives and dies
+## with the texture it was made from, so a hull the cache has dropped frees its textures too.
 static func mipmapped(t: Texture2D) -> Texture2D:
 	if t == null:
 		return null
 	if t.has_meta("botf_mipped"):
 		return t # already mip-chained on the model's worker thread (BattleAssets.mip_scene_images)
-	var id := t.get_instance_id()
-	_lock.lock()
-	var hit: Variant = _mipped.get(id)
-	_lock.unlock()
+	var hit: Variant = t.get_meta("botf_mipped_copy", null)
 	if hit != null:
 		return hit
 	var out: Texture2D = t
@@ -80,9 +79,10 @@ static func mipmapped(t: Texture2D) -> Texture2D:
 	if img != null and not img.has_mipmaps() and not img.is_compressed():
 		img.generate_mipmaps()
 		out = ImageTexture.create_from_image(img)
-	_lock.lock()
-	_mipped[id] = out
-	_lock.unlock()
+	if out == t:
+		t.set_meta("botf_mipped", true) # nothing to build; a copy that is the texture itself would be a reference cycle
+	else:
+		t.set_meta("botf_mipped_copy", out)
 	return out
 
 

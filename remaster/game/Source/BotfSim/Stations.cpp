@@ -186,7 +186,7 @@ int divertIndustry(GameState& next, const Colony& colony, int industry, TurnRepo
             ChronicleEntry e;
             e.category = ChronicleCategory::Victory;
             e.text = "System " + std::to_string(colony.systemId) + ": " + std::to_string(used) + " industry to the " +
-                megaprojectName(next) + " (" + std::to_string(m.work) + "/" + std::to_string(cost) + ").";
+                megaprojectName(next, colony.ownerId) + " (" + std::to_string(m.work) + "/" + std::to_string(cost) + ").";
             e.systemId = colony.systemId; e.empireId = colony.ownerId;
             if (const auto sys = systemById(next, colony.systemId)) { e.x = sys->x; e.y = sys->y; }
             note(report, std::move(e));

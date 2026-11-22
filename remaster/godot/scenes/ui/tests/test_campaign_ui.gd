@@ -168,6 +168,9 @@ func _workflow(backend: String) -> void:
 		check(app.current_screen() != null and app.current_screen().get_child_count() > 0, "%s screen renders" % id)
 	check(find(app.current_screen(), "ShipEntry") != null, "database shows a ship entry")
 
+	# ---- Round 9 view-model surface (E2 odds text, E3 peace-deal worlds)
+	_round9_vm()
+
 	# ---- R2 gameplay surface
 	await _r2_surface(backend)
 
@@ -246,6 +249,28 @@ func _workflow(backend: String) -> void:
 		check(app.encounter.get("finished", false), "battle finished")
 		check(app.end_turn() == "complete", "turn completes after the battle")
 		await frames()
+
+## E2 and E3 (22 Nov 2026): the invasion odds line and the worlds picked for a peace deal (pure view-model, no war needed).
+func _round9_vm() -> void:
+	var odds := {"attack": 48, "defense": 21, "percent": 77, "transports": 2}
+	var line := GalaxyOrders.odds_text(odds)
+	check("77%" in line and "48 troops" in line and "pooled" in line and "defence of 21" in line, "E2: the odds line names troops, defence, chance and pooled transports")
+	check(GalaxyOrders.odds_text({"blocker": "No such ship"}) == "No such ship", "E2: a blocked invasion shows the reason instead of odds")
+	var dvm := DiplomacyVM.new(app.session)
+	var rel := {"atWar": true, "warScore": -45, "ourCedable": [{"systemId": 11, "name": "A", "population": 8}, {"systemId": 12, "name": "B", "population": 5}, {"systemId": 13, "name": "C", "population": 4}, {"systemId": 14, "name": "D", "population": 3}], "theirCedable": [{"systemId": 21, "name": "X", "population": 9}]}
+	check(DiplomacyVM.war_score(rel) == -45 and "losing" in DiplomacyVM.war_score_text(rel), "E3: the war score reads as losing at -45")
+	check(DiplomacyVM.war_score({"atWar": false, "warScore": 80}) == 0, "E3: no war, no war score")
+	dvm.tb["type"] = "Peace"
+	check(dvm.toggle_world("cede", 11) and dvm.toggle_world("cede", 12) and dvm.toggle_world("cede", 13), "E3: three worlds can be handed over")
+	check(not dvm.toggle_world("cede", 14), "E3: a fourth world is refused (at most three each way)")
+	check(dvm.toggle_world("cede", 12) and dvm.tb["cede"] == [11, 13], "E3: a chosen world toggles off again")
+	dvm.toggle_world("ask", 21)
+	var pc := dvm.proposal_command(false, 2)
+	check(pc.get("proposalCedeSystems", []) == [11, 13] and pc.get("proposalDemandSystems", []) == [21], "E3: the proposal carries both world lists")
+	dvm.prune_worlds({"ourCedable": [{"systemId": 13, "name": "C", "population": 4}], "theirCedable": []})
+	check(dvm.tb["cede"] == [13] and dvm.tb["ask"].is_empty(), "E3: worlds no longer on offer are dropped from the deal")
+	dvm.tb["type"] = "Friendship"
+	check(not dvm.proposal_command(false, 2).has("proposalCedeSystems"), "E3: only a Peace proposal carries worlds")
 
 ## R2: trade routes, retreat, terraform preview, end-turn check, empire managers.
 func _r2_surface(backend: String) -> void:
@@ -589,6 +614,7 @@ func _f6_realtime(cs) -> void:
 	cs.refresh()
 	await frames()
 	check(find(cs, "RealtimeToggle") != null and find(cs, "HelmToggle") != null, "F6: Real-time and Take the helm are on the combat header")
+	check("Beta" in find(cs, "RealtimeToggle").tooltip_text and "Beta" in find(cs, "HelmToggle").tooltip_text, "E1: both F6 buttons are tagged Beta in their tooltips")
 	var mine: Array = app.encounter.get("ships", []).filter(func(sd): return sd.get("mine", false) and CombatVM.is_active(sd) and not sd.get("station", false))
 	if mine.is_empty():
 		return

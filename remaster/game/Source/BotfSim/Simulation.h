@@ -36,9 +36,13 @@ namespace botf {
 // schema 22 (the era lane) adds the campaign era (docs/design/ERAS.md; optional ERAS section, written only when the eras rule is on).
 // schema 26 (C11) adds the optional SUBJUGATED section: minor worlds taken by invasion, which never secede (written only when one
 // exists). Older saves are migrated on load (see load()).
-// Schemas 4-25 still load and continue.
-inline constexpr const char* ContentVersion = "remaster-26";
-inline constexpr int SaveVersion = 26;
+// schema 27 (E3, E4; Simon's delegation 22 Nov 2026) adds worlds in peace deals and a renameable flagship: pending proposal commands and engine
+// proposals may carry ceded/demanded world lists (written only when present, as a tail on the command line and a `proposalTerms` block in the
+// engine text), and the optional FLAGSHIP_NAMES section holds the player-given names (written only while one exists). A schema-26 save loads
+// unchanged, with no worlds in any proposal and the ships' default names.
+// Schemas 4-26 still load and continue.
+inline constexpr const char* ContentVersion = "remaster-27";
+inline constexpr int SaveVersion = 27;
 // D1 (22 Nov 2026): debt costs something, as in the original. With a negative treasury nothing can be bought with credits, and
 // the morale of every colony of that empire drifts down towards DebtMoraleTarget (one point a turn, the normal drift) for as
 // long as the treasury stays negative; below 50 a colony loses a quarter of its industry and research.
@@ -89,7 +93,9 @@ enum class CommandType : int {
     // Appended for schema 23 (ECONOMY-MECHANICS.md): fleetId plus eventOption (0 clear, 1 intercept, 2 raid); raid names the target colony in systemId.
     SetFleetOrder,
     // Appended for schema 25 (Scenarios.h): fleetId names the ship the empire commissions as its flagship.
-    CommissionFlagship
+    CommissionFlagship,
+    // Appended for schema 27 (E4): fleetId names the flagship, templateName the new name (1-24 printable characters; empty restores the default).
+    RenameFlagship
 };
 enum class CampaignOutcome : int { Ongoing, Victory, Defeat };
 // MaxTechLevel is the classic research cap (every game without the eras rule); HighestTechLevel is the hard ceiling the data
@@ -208,6 +214,8 @@ struct Command {
     diplomacy::TreatyType proposalTreatyType = diplomacy::TreatyType::NonAggression;
     diplomacy::TreatyDuration proposalDuration = diplomacy::TreatyDuration::Turns25;
     diplomacy::DiplomaticTone proposalTone = diplomacy::DiplomaticTone::Cordial;
+    std::vector<int> proposalCedeSystems;    // Schema 27 (E3): a peace proposal hands these worlds to the target...
+    std::vector<int> proposalDemandSystems;  // ...and asks for these from it.
     std::int64_t proposalCreditOffer = 0;
     std::int64_t proposalCreditDemand = 0;
     bool proposalTargetIsMinor = false;
@@ -259,6 +267,7 @@ struct Fleet {
     // Schema 25 (Scenarios.h): 0 for an ordinary ship, else the 1-based index of its flagship name; the owner's flagship bonuses apply to
     // the ship. Saved in the FLAGSHIPS rows of the optional SCENARIO section, not in the fleet rows.
     int flagship = 0;
+    std::string flagshipLabel;   // Schema 27 (E4): the player's name for this flagship, a cache of Flagship::name (saved in FLAGSHIP_NAMES, not in the fleet rows).
 };
 
 struct TaskForce {
@@ -394,6 +403,7 @@ struct MinorGuard {
 // (parent empire, the new house, the turn).
 struct Flagship {
     int empireId = 0, fleetId = 0, serial = 0, lostTurn = 0;
+    std::string name;   // Schema 27 (E4): the player's name for the ship (empty: the pack's default name for the serial). Saved in FLAGSHIP_NAMES.
     bool operator==(const Flagship&) const = default;
 };
 struct Secession {
@@ -800,6 +810,23 @@ const char* shipName(Building shipClass);
 int shipMaxHull(Building shipClass);
 int shipAttack(Building shipClass);
 std::string fleetName(const Fleet& fleet);
+// E2 (Simon's delegation, 22 Nov 2026): the odds of a ground assault, shown before the order is given. `attack` is the troops of the
+// transport and of every other transport of its empire ordered to the same world (they land together, Round C1); `defense` is the world's
+// ground defence as the resolution reckons it (population / 5, morale, batteries, the owner's bonuses, shields); `percent` is the chance
+// the landing wins (attack^2 against attack^2 + defense^2). `blocker` is empty when the landing can go ahead, else why not (a defending
+// ship or starbase must be beaten first). No ground combat is played; the 20 Nov ruling stands.
+struct InvasionOdds {
+    int attack = 0, defense = 0, percent = 0, transports = 0;
+    bool defended = false;
+    std::string blocker;
+};
+InvasionOdds invasionOdds(const GameState& state, int fleetId, int systemId);
+// E3 (schema 27): the war score of `self` against `other` (-100 losing to +100 winning) and the worlds `owner` could put into a peace deal
+// (colonies that are not its capital, while it keeps another). Both are what the AI reckons with; the Diplomacy screen shows them too.
+int warScoreOf(const GameState& state, int self, int other);
+std::vector<int> cedableWorlds(const GameState& state, int owner);
+Command makeProposePeaceTermsCommand(std::uint64_t id, int targetId, const std::vector<int>& cede, const std::vector<int>& demand,
+                                     std::int64_t creditOffer = 0, std::int64_t creditDemand = 0);
 int fleetMaxHull(const Fleet& fleet);
 int fleetAttack(const Fleet& fleet);
 int fleetMaxShields(const Fleet& fleet);
@@ -817,6 +844,10 @@ void cancel(GameState& state, std::uint64_t commandId); // IDs never reused.
 // Hotseat (MULTIPLAYER.md): `humans` are the human empires (2 or more, each a seated major, the current player among them).
 // An empty list makes the game one-player again.
 void setHotseat(GameState& state, std::vector<int> humans);
+// E6 (22 Nov 2026), LAN: the humans actually playing this turn. A player who left is not in the list and their empire is run by
+// the AI from this turn on; one who rejoins is back in it. The chair goes to the lowest listed human. One human leaves the game
+// without a hotseat list (a single player). Listed empires that are no longer active are ignored.
+void setLanRoster(GameState& state, std::vector<int> humans);
 // Hands the chair to `empireId` (one of the hotseat humans): the seated human's queued orders are applied to the state first
 // (as at the start of a turn), then that empire becomes playerEmpire. The turn does not advance.
 void switchSeat(GameState& state, int empireId);
@@ -1072,6 +1103,7 @@ std::vector<VictoryProgress> victoryProgress(const GameState& state, int empireI
 const char* victoryConditionName(VictoryCondition condition);
 int scientificVictoryThreshold(const GameState& state);
 const char* megaprojectName(const GameState& state);
+const char* megaprojectName(const GameState& state, int empireId);   // E5: the empire's own name for it ("Federation Genesis-class Project")
 int megaprojectIndustryCost(const GameState& state);
 int megaprojectWorkPerTurn(const GameState& state, int empireId); // Most industry the project absorbs per turn.
 std::int64_t megaprojectCreditCost(const GameState& state);

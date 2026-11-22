@@ -202,6 +202,18 @@ func _detail(u: Dictionary) -> Control:
 		frow.add_child(Pic.tipped(Lcars.icon("victory", 22, Lcars.WARN), "Flagship"))
 		if bool(lead.get("flagship", false)):
 			frow.add_child(Lcars.badge("Flagship · " + str(lead.get("flagshipName", "")), "good"))
+			if lead.has("renameBlocker"):   # E4: the player names their flagship
+				var ne := LineEdit.new()
+				ne.name = "FlagshipName"
+				ne.text = str(lead.get("flagshipName", ""))
+				ne.max_length = vm.flagship_name_limit()
+				ne.custom_minimum_size.x = 190
+				ne.tooltip_text = "Rename the flagship (up to %d characters). The new name shows in battle logs and is saved with the game; an empty name restores the original." % vm.flagship_name_limit()
+				ne.editable = str(lead.get("renameBlocker", "")) == "" and lock == ""
+				frow.add_child(ne)
+				var rn := Lcars.pill("Rename", "tertiary", func(): vm.rename_flagship(lead, ne.text), str(lead.get("renameBlocker", "")) if str(lead.get("renameBlocker", "")) != "" else lock, "Give the flagship this name")
+				rn.name = "RenameFlagship"
+				frow.add_child(rn)
 		else:
 			var blocker := str(lead.get("flagshipBlocker", ""))
 			var cm := Lcars.pill("Commission flagship", "tertiary", func(): vm.commission_flagship(lead), blocker if blocker != "" else lock, vm.flagship_tip())

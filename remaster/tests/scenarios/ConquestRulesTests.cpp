@@ -160,16 +160,16 @@ int main() {
         const auto text = serialize(held);
         check(text.find("\nSUBJUGATED 1 " + std::to_string(sid) + "\n") != std::string::npos, "SUBJUGATED is saved");
         check(deserialize(text).minors.front().subjugated, "SUBJUGATED loads back");
-        check(text.starts_with("BOTF_SIM 26 remaster-26\n"), "schema 26 header");
+        check(text.starts_with("BOTF_SIM 27 remaster-27\n"), "schema 27 header");
         // Migration: the same game as a schema-25 save (no section). No friendship and no engine membership: conquered.
         std::string old = text;
         old.erase(old.find("SUBJUGATED "), old.find("\n", old.find("SUBJUGATED ")) - old.find("SUBJUGATED ") + 1);
-        old.replace(0, std::string("BOTF_SIM 26 remaster-26").size(), "BOTF_SIM 25 remaster-25");
+        old.replace(0, std::string("BOTF_SIM 27 remaster-27").size(), "BOTF_SIM 25 remaster-25");
         check(deserialize(withChecksum(old)).minors.front().subjugated, "schema 25: a member with no friendship migrates as conquered");
         auto friendly = held; friendly.minors.front().friendshipTurn[static_cast<std::size_t>(friendly.playerEmpire)] = 2;
         std::string old2 = serialize(friendly);
         old2.erase(old2.find("SUBJUGATED "), old2.find("\n", old2.find("SUBJUGATED ")) - old2.find("SUBJUGATED ") + 1);
-        old2.replace(0, std::string("BOTF_SIM 26 remaster-26").size(), "BOTF_SIM 25 remaster-25");
+        old2.replace(0, std::string("BOTF_SIM 27 remaster-27").size(), "BOTF_SIM 25 remaster-25");
         check(!deserialize(withChecksum(old2)).minors.front().subjugated, "schema 25: a member with a friendship migrates as treaty-joined");
         auto none = heldMinor(false, sid);
         check(serialize(none).find("SUBJUGATED") == std::string::npos, "no subjugated minor: no section");

@@ -2448,12 +2448,12 @@
   ],
   "megaproject": {
    "enabled": true,
-   "name": "Genesis Initiative",
+   "name": "Federation Genesis-class Project",
    "here": false,
    "cost": 4000,
    "credits": 500,
    "workPerTurn": 35,
-   "startBlocker": "The Genesis Initiative can begin on turn 50",
+   "startBlocker": "The Federation Genesis-class Project can begin on turn 50",
    "cancelBlocker": "No megaproject under way"
   },
   "templates": [],

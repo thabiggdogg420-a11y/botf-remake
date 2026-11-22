@@ -14,7 +14,7 @@
     "preset": "remastered"
    },
    "turns": 50,
-   "result": "9687990125421919858"
+   "result": "13102340320373369604"
   },
   {
    "campaign": {
@@ -26,7 +26,7 @@
     "preset": "ultimate"
    },
    "turns": 50,
-   "result": "8517309247037660263"
+   "result": "4529772451198357880"
   },
   {
    "campaign": {
@@ -38,7 +38,7 @@
     "preset": "balance-of-power"
    },
    "turns": 50,
-   "result": "1025866100389326958"
+   "result": "13220040089749558816"
   },
   {
    "campaign": {
@@ -50,7 +50,7 @@
     "preset": "dominion-war"
    },
    "turns": 50,
-   "result": "11926121317797728413"
+   "result": "13299742740919877190"
   }
  ]
 }

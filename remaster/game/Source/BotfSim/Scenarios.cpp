@@ -7,7 +7,9 @@
 #include "GameplayInternal.h"
 #include "Threats.h"
 
+#include <algorithm>
 #include <cctype>
+#include <iomanip>
 #include <set>
 #include <stdexcept>
 
@@ -215,11 +217,12 @@ void markFlagship(GameState& state, int empireId, Fleet& fleet) {
     Flagship* rec = nullptr;
     for (auto& f : state.flagships) if (f.empireId == empireId) rec = &f;
     if (!rec) {
-        state.flagships.push_back({empireId, 0, 0, 0});
+        state.flagships.push_back({empireId, 0, 0, 0, {}});
         std::sort(state.flagships.begin(), state.flagships.end(), [](const Flagship& a, const Flagship& b) { return a.empireId < b.empireId; });
         for (auto& f : state.flagships) if (f.empireId == empireId) rec = &f;
     }
     rec->serial += 1; rec->fleetId = fleet.id; rec->lostTurn = 0;
+    rec->name.clear(); fleet.flagshipLabel.clear();   // A new commission takes the pack's next name
     fleet.flagship = rec->serial;
     // The refit scales the ship's current hull and shields with the new maxima, so a damaged ship stays equally damaged.
     fleet.hull = std::min(fleetMaxHull(fleet), std::max(1, fleet.hull * fleetMaxHull(fleet) / oldHull));
@@ -227,6 +230,56 @@ void markFlagship(GameState& state, int empireId, Fleet& fleet) {
     if (state.rules.crewExperience) fleet.experience = std::max(fleet.experience, 75);
 }
 } // namespace scn_detail
+std::string renameBlocker(const GameState& state, int empireId, int fleetId, const std::string& name) {
+    if (!flagshipsOn()) return "This game has no flagships";
+    if (state.outcome != CampaignOutcome::Ongoing) return "Campaign has ended";
+    const Fleet* fleet = flagshipFleet(state, empireId);
+    if (!fleet || fleet->id != fleetId) return "Only the empire's commissioned flagship can be renamed";
+    if (name.size() > MaxFlagshipNameLength) return "A flagship name is at most " + std::to_string(MaxFlagshipNameLength) + " characters";
+    for (char ch : name) {
+        const auto byte = static_cast<unsigned char>(ch);
+        if (byte < 0x20 || byte == 0x7f || ch == '"' || ch == '\\') return "A flagship name uses plain printable characters (no quotes or backslashes)";
+    }
+    return {};
+}
+Command makeRenameFlagshipCommand(std::uint64_t id, int fleetId, const std::string& name) {
+    Command c; c.id = id; c.type = CommandType::RenameFlagship; c.fleetId = fleetId; c.templateName = name; return c;
+}
+void renameFlagship(GameState& state, int empireId, int fleetId, const std::string& name) {
+    const auto blocker = renameBlocker(state, empireId, fleetId, name);
+    require(blocker.empty(), blocker);
+    std::string trimmed = name;
+    while (!trimmed.empty() && trimmed.front() == ' ') trimmed.erase(trimmed.begin());
+    while (!trimmed.empty() && trimmed.back() == ' ') trimmed.pop_back();
+    for (auto& f : state.flagships) if (f.empireId == empireId) f.name = trimmed;
+    if (auto* fl = fleetMut(state, fleetId)) fl->flagshipLabel = trimmed;
+}
+void syncFlagshipLabels(GameState& state) {
+    for (const auto& rec : state.flagships) {
+        if (rec.fleetId <= 0) continue;
+        if (auto* fl = fleetMut(state, rec.fleetId)) fl->flagshipLabel = rec.name;
+    }
+}
+void writeNames(std::ostream& out, const GameState& s) {
+    std::size_t named = 0;
+    for (const auto& f : s.flagships) if (!f.name.empty()) ++named;
+    if (!named) return;
+    out << "FLAGSHIP_NAMES " << named << '\n';
+    for (const auto& f : s.flagships) if (!f.name.empty()) out << f.empireId << ' ' << std::quoted(f.name) << '\n';
+}
+void readNames(std::istream& in, GameState& s) {
+    std::size_t n = 0;
+    require(static_cast<bool>(in >> n) && n >= 1 && n <= 8, "Malformed FLAGSHIP_NAMES section");
+    int last = 0;
+    for (std::size_t i = 0; i < n; ++i) {
+        int empireId = 0; std::string name;
+        require(static_cast<bool>(in >> empireId >> std::quoted(name)) && empireId > last && !name.empty(), "Malformed FLAGSHIP_NAMES row");
+        last = empireId;
+        auto rec = std::find_if(s.flagships.begin(), s.flagships.end(), [&](const Flagship& f) { return f.empireId == empireId; });
+        require(rec != s.flagships.end(), "FLAGSHIP_NAMES names an empire with no flagship record");
+        rec->name = name;
+    }
+}
 void commission(GameState& state, int empireId, int fleetId) {
     const auto blocker = commissionBlocker(state, empireId, fleetId);
     require(blocker.empty(), blocker);
@@ -547,7 +600,7 @@ void step(GameState& next, TurnReport& report) {
         if (rec.fleetId == 0) continue;
         const bool alive = std::any_of(next.fleets.begin(), next.fleets.end(), [&](const Fleet& f) { return f.id == rec.fleetId && f.hull > 0; });
         if (alive) continue;
-        const std::string name = [&] {
+        const std::string name = !rec.name.empty() ? rec.name : [&] {
             const auto* d = flagshipDef(rec.empireId);
             return d ? d->names[static_cast<std::size_t>(rec.serial - 1) % d->names.size()] : std::string("The flagship");
         }();
@@ -646,6 +699,8 @@ void validate(const GameState& s) {
         priorEmpire = f.empireId;
         require(flagshipsOn(), "Flagships without a flagships pack");
         require(f.serial >= 1 && f.serial < 10000 && f.lostTurn >= 0 && f.lostTurn <= s.turn, "Invalid flagship record");
+        require(f.name.size() <= MaxFlagshipNameLength && std::none_of(f.name.begin(), f.name.end(), [](char ch) {
+            const auto byte = static_cast<unsigned char>(ch); return byte < 0x20 || byte == 0x7f || ch == '"' || ch == '\\'; }), "Invalid flagship name");
         if (f.fleetId == 0) {
             require(f.lostTurn > 0, "A flagship record without a ship was never lost");
         } else {

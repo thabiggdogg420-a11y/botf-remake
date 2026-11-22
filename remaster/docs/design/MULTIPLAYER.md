@@ -103,9 +103,27 @@ Not yet (next steps, in this order):
   with a 6 s timer and a client that takes 20 s to plan, the client's turns ended on the timer and the fingerprints matched.
   Driver: `BOTF_LAN_AUTO` (lan_session.gd, test only), runner `Documents\ChatGPT\r6-lan\lan_run.ps1`.
 
+## Round 3 (22 Nov 2026, Barclay, E6): LAN battles planned by each human, AI takeover, rejoin
+- Human-planned battles. After a turn's orders are replayed, every peer reaches the same battle with the same state. A battle
+  with no human commander in this turn's roster is fought by the tactical AI as before. Otherwise it goes round by round: each
+  commander plans on their own PC (the bridge journals the `tacticalOrder` calls, `battleJournal`), Resolve sends them to the
+  host (`borders`), the host answers every peer with `bround` once every commander still present has sent, each peer applies the
+  other seats' orders (`battleSeat` then `tacticalOrder`), resolves the round in its own core and the commanders watch it play.
+  Auto-resolve is not offered in a LAN battle. The turn goes on after the battle is decided ("Continue turn"); the end-of-turn
+  fingerprint covers the battle. A seat that sends nothing in time (the turn timer) resolves with the orders given.
+- AI takeover. A player who leaves is left out of the turn's roster (the `turn` message carries it); every peer calls
+  `lanRoster {humans}` after loading the canonical state, so the dropped player's power is planned by the AI in the core
+  (`setLanRoster`: the chair goes to the lowest listed human, one human left means no hotseat list). A player who drops in the
+  middle of a battle keeps their ships on their last orders for the rest of that battle; the AI has the power from the next turn.
+- Rejoin. A hello for a dropped power is accepted at any turn start (refused while a turn is resolving or a battle is being
+  fought): the host sends the canonical state of the turn in progress with `start`, the player plans it like anyone else, and
+  they are in the next roster.
+- Tests: test_lan_session.gd (29 checks: rejoin rules, battle quorum and forged senders, held rounds, a real-core turn with one
+  human dropped and a rejoin) and BotfPeaceCessionTests (roster rules in the core). Not proven in two live windows: an actual
+  human-against-human LAN battle needs a fight between two humans, which no scripted run reaches.
+
 Not yet:
-1. LAN battles are fought by the tactical AI on every peer; planning them on each human's PC (design point LAN 4) is next.
-2. A dropped player's seat plans nothing until the end of the game (the design says the AI plays it until they rejoin from
-   the host's latest save); rejoining is not built.
+1. A player who drops in the middle of a battle is not replaced by the AI until the next turn.
+2. A rejoin waits for a turn start (it is refused while a turn is being resolved).
 3. The host starts a new campaign from the lobby (default galaxy, the host's power, a fixed seed in tests); starting LAN from
    a saved game or the full New campaign setup is not built.

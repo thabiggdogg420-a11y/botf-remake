@@ -462,3 +462,21 @@ byte-for-byte.
 4. Done (schema 14): `sensorSharingEmpires` partners share sensors in `visible()` (section 4).
 5. Done: `diplomaticVictoryAchieved` feeds the victory check with remaster pacing rules
    (GAMEPLAY-REMASTER.md section 5).
+
+## 12. Peace deals that move worlds (E3, 22 Nov 2026; save schema 27, `remaster-27`)
+- A Peace proposal may carry `proposalCedeSystems` (worlds the proposer hands over) and `proposalDemandSystems` (worlds the proposer
+  asks for), at most `PeaceMaxWorlds` (3) each. Rejected: a capital, an empire's last other world, a world not held or not known to
+  the proposer, a duplicate, a world already moving this turn. They resolve as `TransferColony` operations when the peace takes effect.
+- `warScore(ctx, self, other)`: plus or minus 60 from the fleets' relative strength, plus clamp(4 x difference in colonies, +-40);
+  -100 (losing) to +100 (winning). The bridge writes `warScore`, `ourCedable`, `theirCedable` on each relation at war.
+- AI evaluation: +12 for each world offered to it (cap 36); each world it is asked for costs 25, relieved by up to 50 when it is
+  losing (-ws / 2); asked for a world while not clearly losing (ws > -20) it refuses (-200). A losing AI (ws <= -30: one world,
+  <= -60: two) adds border worlds to its own peace offers. The soak after this change: scripted conquest medians stay in 200 to 500
+  (302 medium, 317 large) and AI churn holds (rc-captures/soak9).
+- Save: the terms are written only when a proposal has them (a `proposalTerms` block, a pending-command tail); the header chain is
+  26 -> 27. Schema 26 saves load unchanged.
+- E2 invasion odds: `invasionOdds(state, fleetId, systemId)` (bridge `invasionOdds`) pools the transports ordered to the world and
+  gives troops against defence (population / 5 plus batteries and shields); the same numbers resolve the invasion.
+- E4: `RenameFlagship` (the name travels in `templateName`, 24 characters) writes a `FLAGSHIP_NAMES` section; the name shows in
+  battle logs and the flagship-loss message. E5: `megaprojectName(state, empire)` gives each power its own project name.
+

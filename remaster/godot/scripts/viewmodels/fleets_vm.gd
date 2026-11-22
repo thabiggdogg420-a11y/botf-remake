@@ -148,6 +148,16 @@ func flagship_tip() -> String:
 func commission_flagship(lead: Dictionary) -> bool:
 	return issue({"type": "CommissionFlagship", "fleetId": int(lead["id"])}, [], "%s commissioned as the flagship." % str(flagships().get("nextName", "Flagship")))
 
+## E4 (Simon's delegation, 22 Nov 2026; schema 27): the player renames their flagship. The name is saved and shows in battle logs; every
+## other ship keeps its generated display name.
+func rename_flagship(lead: Dictionary, new_name: String) -> bool:
+	var trimmed := new_name.strip_edges()
+	var msg := "The flagship is now the %s." % trimmed if trimmed != "" else "The flagship has its own name back."
+	return issue({"type": "RenameFlagship", "fleetId": int(lead["id"]), "templateName": trimmed}, [], msg)
+
+func flagship_name_limit() -> int:
+	return int(flagships().get("maxNameLength", 24))
+
 ## Schema 23: standing orders (intercept and raid) and crew experience.
 func rules() -> Dictionary:
 	return view().get("meta", {}).get("rules", {})

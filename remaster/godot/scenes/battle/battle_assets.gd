@@ -25,7 +25,7 @@ var _streams := {}        ## key -> AudioStream or null
 var hero_manifest_path := ""
 var hero_root := ""
 var heroes := {}          ## key -> godot-hero-manifest.json entry {glb, lengthMeters, sockets, lods, slots, ...}
-var _hero_scenes := {}    ## key -> PackedScene or null
+var _hero_failed := {}    ## key -> true for a hero whose glb did not load (the parsed models themselves live in the shared, capped cache)
 
 
 ## Every file probe in the battle scenes goes through these three. res:// and user:// go to AppLoader (the browser
@@ -87,7 +87,7 @@ func load_hero_manifest(path: String) -> bool:
 	hero_manifest_path = path
 	hero_root = path.get_base_dir()
 	heroes = data.heroes
-	_hero_scenes.clear()
+	_hero_failed.clear()
 	return true
 
 
@@ -229,17 +229,18 @@ func instantiate_ship(keys: PackedStringArray) -> Node3D:
 ## The parsed model is shared by every BattleAssets (a PackedScene per glb path) and loaded once, on a worker thread when
 ## warm() asked for it earlier, so a battle opening with 24 ships a side does not parse each hull one after another.
 func instantiate_hero(key: String) -> Node3D:
-	if not _hero_scenes.has(key):
-		var e := hero(key)
-		# The hero entry goes along so a synchronous load (the web build: no worker threads, warm() starts nothing) also
-		# mip-chains the glb's images from the decoded bytes. Without it HeroLook.mipmapped fell back to a GPU readback,
-		# which WebGL cannot give, and the hulls drew unmipped: white, speckled (WEB-PARITY.md gap 5, 19 Nov).
-		_hero_scenes[key] = _shared_model(hero_glb_path(e), e, hero_root) if not e.is_empty() else null
-		if e.is_empty() or _hero_scenes[key] == null:
-			if not e.is_empty():
-				push_warning("BattleAssets: hero %s glb did not load (%s)" % [key, hero_glb_path(e)])
-	var packed: PackedScene = _hero_scenes[key]
+	var e := hero(key)
+	if e.is_empty() or _hero_failed.has(key):
+		return null
+	# The hero entry goes along so a synchronous load (the web build: no worker threads, warm() starts nothing) also
+	# mip-chains the glb's images from the decoded bytes. Without it HeroLook.mipmapped fell back to a GPU readback,
+	# which WebGL cannot give, and the hulls drew unmipped: white, speckled (WEB-PARITY.md gap 5, 19 Nov).
+	# E6 (22 Nov 2026): nothing here keeps the parsed model. It lives in the shared cache, which drops the least recently used
+	# hulls past HULL_CACHE_CAP, so a long campaign or a long browse of the Encyclopedia does not fill the graphics memory.
+	var packed: PackedScene = _shared_model(hero_glb_path(e), e, hero_root)
 	if packed == null:
+		_hero_failed[key] = true
+		push_warning("BattleAssets: hero %s glb did not load (%s)" % [key, hero_glb_path(e)])
 		return null
 	var node: Node3D = packed.instantiate()
 	node.set_meta("botf_hero", heroes[key])
@@ -369,6 +370,8 @@ static func _step_sliced(j: Dictionary) -> bool:
 			j.node.free()
 			j.node = null
 			_shared[j.path] = packed
+			_note_use(j.path)
+			trim_shared()
 			finished = true
 	LoadTrace.done(label, t)
 	return finished
@@ -428,6 +431,42 @@ static func loading() -> bool:
 
 
 static var _shared := {}   ## glb path -> PackedScene or null (a failed load)
+
+## E6 (Simon's delegation, 22 Nov 2026): ship textures unload when not in use. Every parsed hull keeps its HD textures alive for as long as
+## its PackedScene is cached, and verify.ps1 recorded the Vulkan device lost after about 75 hulls in one process. The cache now keeps
+## the HULL_CACHE_CAP most recently used hulls; an older one is forgotten (its textures go with it once no ship in a battle or viewer
+## still uses it) and parsed again if it is ever needed. A battle never needs more than a dozen classes at once, so the 40 newest are
+## always safe. Models still loading on a worker thread or in the sliced queue are never dropped.
+const HULL_CACHE_CAP := 40
+static var _shared_used := {}   ## glb path -> use counter (higher = more recent)
+static var _use_clock := 0
+static var evicted_total := 0   ## hulls forgotten since the process started (the test reads it)
+
+
+static func _note_use(path: String) -> void:
+	_use_clock += 1
+	_shared_used[path] = _use_clock
+
+
+## Forgets the least recently used loaded hulls until at most `cap` remain. Returns how many were forgotten.
+static func trim_shared(cap: int = HULL_CACHE_CAP) -> int:
+	var dropped := 0
+	while true:
+		var loaded: Array = []
+		for p in _shared:
+			if _shared[p] != null and not _tasks.has(p) and _sliced_index(p) < 0:
+				loaded.append(p)
+		if loaded.size() <= cap:
+			break
+		var oldest: String = loaded[0]
+		for p in loaded:
+			if int(_shared_used.get(p, 0)) < int(_shared_used.get(oldest, 0)):
+				oldest = p
+		_shared.erase(oldest)
+		_shared_used.erase(oldest)
+		dropped += 1
+	evicted_total += dropped
+	return dropped
 static var _tasks := {}    ## glb path -> WorkerThreadPool task id still to be collected
 static var _results := {}  ## glb path -> PackedScene, written by the worker, collected on the main thread
 static var _mutex := Mutex.new()
@@ -454,6 +493,10 @@ static func _shared_model(path: String, hero: Dictionary = {}, root: String = ""
 		_mutex.unlock()
 	if not _shared.has(path):
 		_shared[path] = _load_model(path, hero, root)
+		_note_use(path)
+		trim_shared()
+	else:
+		_note_use(path)
 	return _shared[path]
 
 
