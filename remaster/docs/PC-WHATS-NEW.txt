@@ -1,0 +1,20 @@
+BOTF Remastered PC beta 0.1.566: what changed since 0.1.538 (20 Nov)
+
+Rules you can feel in a campaign
+- C1-C4 were already in 0.1.538. New since then:
+- C5: AI powers only form or renew alliances while a third surviving major is at war with one of them. The "allied to everyone" bloc is gone.
+- C6: when only two powers are left and both are AI, they stop making treaties and the stronger one goes to war.
+- C7: New campaign has a "Domination victory" setting (on by default). Off means domination never ends the game and conquest is the military win. It shows on the end screen and carries into hotseat and LAN.
+- C8: invading a world is harder: its defence now counts population / 5 instead of / 3.
+- C9: AI-to-AI non-aggression, friendship and affiliation also lapse at their 100-turn review unless two AIs share a common enemy. Your own treaties are untouched.
+- C11: a minor world you (or an AI) take by invasion stays conquered; it never secedes. Worlds that joined by treaty can still leave. Older saves load and are sorted into one or the other.
+- D1: the debt rule. With a negative treasury you cannot buy anything with credits (rush-buys, gifts, credit offers, flagships, station upgrades, megaprojects). The screen tells you why, every colony's morale drops toward 30 while you are in debt, and you get a warning when debt starts and every 10 turns after. The AI in debt only builds farms and power plants.
+- Start credits: the Advanced era starts with 9,500 credits (was 7,000, an idle start ran into debt by turn 37-45), and drills that begin in a deficit get credits for 40 turns of it.
+
+Fixes
+- Toasts keep clear of every panel, so a "Loaded ..." message no longer sits over buttons. The end screen clears toasts when it opens.
+- A loaded campaign no longer shows the first-run tutorial again.
+- Battle open: opening a battle straight after loading a save no longer stalls (about 50 ms, was about 100-135 ms).
+- AI: a beaten AI with no worlds stops planning, so leftover ships or minor-world offers no longer hand it worlds back. AI transports and groups stop waiting forever at worlds whose guard they cannot break. The AI no longer proposes a Full Alliance between the last two powers. AI avoids running into debt.
+- The AI now brings its first war to the human by turn 60 at the latest.
+- Save format is now schema 26; saves from older builds load.

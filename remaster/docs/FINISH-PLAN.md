@@ -28,6 +28,7 @@ Each phase ends in a packaged beta Simon plays. At most 2 lanes at once. Barclay
 
 ## Machine rules (unchanged)
 One heavy job at a time (`Documents\ChatGPT\.botf-heavy.lock`), BelowNormal priority, `--audio-driver Dummy`, stall watch on every running lane, full suite once per job at the end.
+Every round that produces a web build also refreshes the PC beta: `powershell -NoProfile -File remaster\tools\refresh_pc_latest.ps1 [-Export]` archives the previous `Documents\ChatGPT\BOTF-PC-Latest` (never deletes) and repackages it from HEAD with VERSION.txt, WHATS-NEW.txt (edit `remaster\docs\PC-WHATS-NEW.txt` first) and the check sheet; update BOTF-RC-CHECKSHEET.md for the round's changes (Simon, 22 Nov 2026: the PC beta is always the latest beta).
 
 ## F3 status (18 Nov, Barclay)
 - Built, awaiting the lead's frame review and Simon's verdict. Frames: `remaster\captures\2026-11-18\f3b-exe`, `f3b-web`.
