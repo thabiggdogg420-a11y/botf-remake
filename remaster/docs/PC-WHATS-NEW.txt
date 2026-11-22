@@ -1,11 +1,22 @@
-BOTF Remastered PC beta 0.1.566: what changed since 0.1.538 (20 Nov)
+BOTF Remastered PC beta (round 8): what changed since 0.1.566
 
+The 0.1.538 to 0.1.566 notes follow the new ones.
+
+Fixes in this build (Gemini audit, round 8)
+- Battle: the ship brackets, name tags and the radar are placed from the real view size, so they sit on the ships and the radar is in the bottom-right corner while a round plays (they sat up-left of the ships and the radar floated over the starbase).
+- New campaign: the Launch campaign button is on a bar under the options, always on screen (1920x1080 and 1366x768).
+- Tutorial: "This is the star chart" and the other steps show only on the screen they teach from; they no longer sit over the System, Empire and Diplomacy panels.
+- Title: "Eight powers" and all eight emblems; the corner label shows the build number, not "dev build".
+- Diplomacy and Empire: the record row and the member-worlds pill have labels.
+- LAN: players on the sixth to eighth powers can be seated, and a player can only send orders for their own seat.
+
+--- 0.1.538 to 0.1.566 ---
 Rules you can feel in a campaign
 - C1-C4 were already in 0.1.538. New since then:
 - C5: AI powers only form or renew alliances while a third surviving major is at war with one of them. The "allied to everyone" bloc is gone.
 - C6: when only two powers are left and both are AI, they stop making treaties and the stronger one goes to war.
 - C7: New campaign has a "Domination victory" setting (on by default). Off means domination never ends the game and conquest is the military win. It shows on the end screen and carries into hotseat and LAN.
-- C8: invading a world is harder: its defence now counts population / 5 instead of / 3.
+- C8: invading a world is easier: its defence now counts population / 5 instead of / 3, so a world holds less against a landing and wars between equals end sooner. (Earlier notes had this backwards.)
 - C9: AI-to-AI non-aggression, friendship and affiliation also lapse at their 100-turn review unless two AIs share a common enemy. Your own treaties are untouched.
 - C11: a minor world you (or an AI) take by invasion stays conquered; it never secedes. Worlds that joined by treaty can still leave. Older saves load and are sorted into one or the other.
 - D1: the debt rule. With a negative treasury you cannot buy anything with credits (rush-buys, gifts, credit offers, flagships, station upgrades, megaprojects). The screen tells you why, every colony's morale drops toward 30 while you are in debt, and you get a warning when debt starts and every 10 turns after. The AI in debt only builds farms and power plants.

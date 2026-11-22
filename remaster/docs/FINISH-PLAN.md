@@ -19,7 +19,7 @@ Each phase ends in a packaged beta Simon plays. At most 2 lanes at once. Barclay
 | Phase | Work | Done when | Beta |
 |---|---|---|---|
 | F0 Housekeeping | Push main (done). Merged worktrees: archive any untracked files, then remove the worktree (branches stay). Fix the intermittent crash while importing sound files during packaging. | No stale worktrees; three clean import runs in a row | none |
-| F1 Browser | Browser shows the full galaxy disc. First load and total download inside the web budget (faction and hull packs lazy-loaded and cached, lighter browser hulls). wasm core builds from any lane. Full browser play-through: title, new game with presets/scenarios, galaxy, every screen, a battle, save/load. A host-ready static folder (relative paths, correct MIME/gzip notes for Simon's host). | A remote-style load (throttled) plays end to end; Odo audit passes | v9 |
+| F1 Browser | Browser shows the full galaxy disc. Fast first load (under 25 MB as sent; faction and hull packs lazy-loaded and cached, lighter browser hulls). No total-download budget: Simon removed the 400 MB one on 16 Nov (botf-rulings.md). wasm core builds from any lane. Full browser play-through: title, new game with presets/scenarios, galaxy, every screen, a battle, save/load. A host-ready static folder (relative paths, correct MIME/gzip notes for Simon's host). | A remote-style load (throttled) plays end to end; Odo audit passes | v9 |
 | F2 Combat to show standard | Beams from round 1; per-round 55 ms and first-open 320 ms hitches gone; camera never holds on empty space; glare and explosion white-out capped; top bar and rail fold away in rounds. Side-by-side with DS9 "Sacrifice of Angels". | Lead's frame review against the show clip, then Simon's verdict | v10 |
 | F3 Planets and people | 3D system view (star, orbiting textured planets, structures). Hail scenes (silhouette bust on a viewscreen, per ruling 10 Nov). Busts for Dominion, Borg, Breen, Mirror powers; Terran portrait. Voice acknowledgements on orders. Advisor hints and a first-run tutorial. | New player reaches turn 10 unaided | v11 |
 | F4 Content and models | Online models then Blender for Ferengi, Xindi, Suliban, Andorian, Vulcan, Bajoran, Talarian, Nausicaan, K-7, stations; flagship models; Mirror Romulans and Ferengi; House of Duras personality. MOD-9: Dominion voice, intro sequence, Borg cutscenes. End-game speeches. Ground-combat step on invasion. | No stand-in or procedural hull in a normal game | v12 |
@@ -93,3 +93,19 @@ Every round that produces a web build also refreshes the PC beta: `powershell -N
 - Firefox title (e73da59): title up 13.4-14.1 s. Three lit-program compile frames are still 1.0-1.6 s (ANGLE compiles a
   program at its first draw; Firefox has no parallel shader compile).
 - BOTF-Web-Next-0.1.559 assembled. ctest 27/27; verify 42 ok, real-saves guard ok.
+
+## Round 5 (22 Nov, Barclay)
+- Scripted strong player for BotfAiSoak (`BOTF_SOAK_SCRIPT=1`, 6da79da): Balanced governors, research to Construction then Biotech, refineries, rushed colony ships, minors courted, one strike force of 6 from turn 40 that beats the nearest rival's stacks then lands its transports together (C1). `SCRIPTEND` line per campaign. Round 8 of BALANCE-PROPOSALS-F5 holds the soaks; C11 was proposed. No rule changed.
+
+## Round 6 (22 Nov, Barclay)
+- C11 and D1 applied (ec62b67, 37e3809). C11: a minor taken by invasion is flagged `subjugated` and never secedes (save schema 26, `SUBJUGATED` section; older saves migrate: a member with no friendship with its holder is treated as conquered, one known mis-call if a treaty friendship later lapsed). D1: in debt nothing can be bought with credits, colony morale target capped at 30, a warning when debt starts and every 10 turns, the AI in debt builds only farms and power plants.
+- Scripted strong player wins by conquest at a median of turn 302 (medium) and 289 (large); no debt in 8 campaigns. suite-core's turn-20 fingerprint re-pinned. ctest 27/27, verify 42 ok, real-saves guard ok.
+- BOTF-Web-Next-0.1.565 assembled, both wasm cores rebuilt.
+
+## Round 7 (22 Nov, Barclay)
+- Starting credits (43b567a): the Advanced era starts with 9,500 (was 7,000; an idle start ran into debt by turn 37-45), drills that begin in deficit get 1,000 credits plus 40 turns of it; no start goes into debt within 30 turns of idle play. Native and wasm turn-20 fingerprints agree (2487431229240081333).
+- BOTF-Web-Next-0.1.566 assembled; first playable load 15.2 MB (WebGL) and 17.0 MB (WebGPU) brotli.
+- PC beta: fixed-name `Documents\ChatGPT\BOTF-PC-Latest` and `toolsefresh_pc_latest.ps1` (f105795; machine rule above).
+
+## Round 8 (22 Nov, Barclay): the small confirmed findings of Gemini's audit
+- Battle brackets and the radar projected with a stale `BattleMarkers` size after the panels fold; they now use the SubViewport's rect. New Campaign's Launch bar is pinned under the scroll (1920x1080 and 1366x768). Tutorial steps show only on the screens they teach from. Title says eight powers and draws all eight emblems; the PC exe stamps `config/version` like the web export; the Diplomacy record row and the Empire member-worlds pill are labelled. `lan_session.gd`: one save per turn, seats for all eight powers (the opening campaign widens its lineup to the seated powers), orders and fingerprints count only from the peer that holds the seat (`test_lan_session.gd`, new verify suite). Web host: `.htaccess` and `nginx.conf.example` are copied into the assembled folder, the unused pack sidecars (286 MB) are gone, `.htaccess` serves `index.pck` sidecars inside `webgl/` and `webgpu/`, `sw.js` caches `index.shaders.pck` and `wgsl-cache.js`, HOSTING.md describes the two-build layout. Report: rc-capturesound8-report.md.

@@ -20,9 +20,11 @@ const PACKS = 'botf-packs';
 const SCOPE = self.registration.scope;
 const BUILD_KEY = SCOPE + '__build';
 const MANIFEST_KEY = SCOPE + '__manifest';
+// index.shaders.pck and wgsl-cache.js exist in the webgpu/ build only (27 MB and 17 MB raw); a build without them simply 404s on
+// warm, which is skipped.
 const ENGINE_FILES = ['index.js', 'index.wasm', 'index.side.wasm', 'index.pck', 'index.audio.worklet.js',
   'index.audio.position.worklet.js', 'libbotf_core.web.template_release.wasm32.wasm', 'index.png', 'index.icon.png',
-  'index.apple-touch-icon.png'];
+  'index.apple-touch-icon.png', 'index.shaders.pck', 'wgsl-cache.js'];
 const HASHED_PACK = /^packs\/[^/]+\.[0-9a-f]{12}\.pck$/;
 
 let build = null;   // the build id of the page now being served ('' = unknown)

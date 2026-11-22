@@ -417,7 +417,10 @@ func _dossier() -> Control:
 				var lp := int(mem.get("lastPeaceTurn", -1))
 				g.add_child(Pic.num("war", ("T%d" % lw) if lw >= 0 else "-", "Last war", Lcars.TEXT2, 22, 16, Lcars.ALERT))
 				g.add_child(Pic.num("peace", ("T%d" % lp) if lp >= 0 else "-", "Last peace", Lcars.TEXT2, 22, 16, Lcars.GOOD))
+				body.add_child(Lcars.caption("Record with them"))
 				body.add_child(g)
+				# R8 (Gemini audit): six bare icons had to be hovered one by one; a legend names them in order.
+				body.add_child(Lcars.label("Their grievances · our grievances · their betrayals · our refused proposals · last war · last peace", "Muted", 12))
 			if minor.get("race") is Dictionary:
 				var race: Dictionary = minor["race"]
 				body.add_child(Lcars.para(str(race["description"]), Lcars.TEXT2, 14))
@@ -444,7 +447,10 @@ func _dossier() -> Control:
 			if not dz.is_empty():
 				body.add_child(Lcars.para("Intelligence (turn %d): %d known colonies, about ¢%s in reserve." % [int(dz["turn"]), int(dz["knownColonies"]), Lcars.fmt(dz["estimatedCredits"])]))
 			elif not is_minor:
-				body.add_child(Pic.num("intel", "-", "No intelligence dossier yet - run espionage from the Intel screen.", Lcars.TEXT3, 22, 16, Lcars.TEXT3))
+				var nd := Lcars.hbox(8)
+				nd.add_child(Pic.num("intel", "-", "No intelligence dossier yet - run espionage from the Intel screen.", Lcars.TEXT3, 22, 16, Lcars.TEXT3))
+				nd.add_child(Lcars.label("No intelligence dossier yet (run espionage from the Intel screen)", "Muted", 12))
+				body.add_child(nd)
 			var props: Array = ds["proposals"]
 			for p in props:
 				body.add_child(Lcars.label("%s: %s · due turn %d · %s" % ["From them" if p.get("incoming", false) else "From you", proposal_title(p), int(p["dueTurn"]), p["status"]], "", 14))

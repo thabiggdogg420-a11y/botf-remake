@@ -39,6 +39,16 @@ const STEPS := [
 		"act": "next", "act_label": "Understood"},
 ]
 
+## The screens each tutorial step is shown on (R8, Gemini audit): "This is the star chart" sat over the Workforce rows, the
+## Colony Registry and the diplomacy bars when the player wandered off. A step not listed shows on every screen.
+const STEP_SCREENS := {
+	"welcome": ["galaxy"],
+	"system": ["galaxy"],
+	"build": ["system"],
+	"research": ["system", "research"],
+	"explore": ["galaxy", "research"],
+}
+
 var app: App
 var _dismissed := {}     ## hint id -> turn it was set aside
 var _system_vm: SystemVM
@@ -62,6 +72,12 @@ func _advance() -> void:
 	var s := tutorial_step() + 1
 	app.settings["tutorial"] = s if s < STEPS.size() else -1
 	AppSaves.store_settings(app.settings)
+
+## Whether this guidance may be drawn on `screen`: a tutorial step only on the screens it teaches from.
+func shown_on(g: Dictionary, screen: String) -> bool:
+	if not g.get("tutorial", false):
+		return true
+	return not STEP_SCREENS.has(str(g.get("id", ""))) or screen in STEP_SCREENS[str(g["id"])]
 
 func skip_tutorial() -> void:
 	app.settings["tutorial"] = -1

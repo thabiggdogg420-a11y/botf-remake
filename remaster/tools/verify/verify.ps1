@@ -112,6 +112,8 @@ $productVersion = "$version ($sha$dirty, $($stampDate.ToString('yyyy-MM-dd HH:mm
 Write-Host "version $productVersion"
 $presets = Join-Path $proj 'export_presets.cfg'
 $presetsOriginal = [System.IO.File]::ReadAllText($presets)
+$projectFile = Join-Path $proj 'project.godot'
+$projectOriginal = [System.IO.File]::ReadAllText($projectFile)
 
 # Content packs (docs/DATA-FORMAT.md section 10): copy remaster/data/*.pack.json into res://data/ so the exports carry them
 # inside the .pck (the core never opens files; the client reads res://data/<pack>.pack.json and calls loadContent).
@@ -248,6 +250,12 @@ try {
             -replace 'application/product_version="[^"]*"', "application/product_version=`"$productVersion`"" `
             -replace 'include_filter="fixtures/\*\.json"', 'include_filter="fixtures/*.json, data/*.pack.json, scripts/audio/pack/*.json, scripts/audio/pack/*/*.json"'
         [System.IO.File]::WriteAllText($presets, $stamped)
+        # Stamp config/version into project.godot as export_web.ps1 does, so the PC title screen shows "BOTF Remastered 0.1.N (sha)"
+        # and not "dev build" (R8, Gemini audit); the finally block restores the committed file.
+        $verText = "$version ($sha$dirty)"
+        $projStamped = if ($projectOriginal -match '(?m)^config/version=') { $projectOriginal -replace '(?m)^config/version="[^"]*"', "config/version=`"$verText`"" }
+                       else { $projectOriginal -replace '(?m)^(config/name="[^"]*")', "`$1`nconfig/version=`"$verText`"" }
+        [System.IO.File]::WriteAllText($projectFile, $projStamped)
         New-Item -ItemType Directory -Force -Path (Join-Path $proj 'build\web') | Out-Null
         Set-Content -LiteralPath (Join-Path $proj 'build\VERSION.txt') -Value "BOTF Remastered $productVersion" -Encoding ASCII
         if ($wantWin) {
@@ -267,6 +275,7 @@ try {
             @('empire-rules-vm', 'res://scripts/viewmodels/tests/test_empire_rules_vm.gd'),
             @('pack-editor-vm', 'res://scripts/viewmodels/tests/test_pack_editor_vm.gd'),
             @('ui', 'res://scenes/ui/tests/test_campaign_ui.gd'),
+            @('lan-session', 'res://scenes/ui/tests/test_lan_session.gd'),
             @('save-sandbox', 'res://scenes/ui/tests/test_save_sandbox.gd'),
             @('idle-prefetch', 'res://scenes/ui/tests/test_idle_prefetch.gd'),
             @('trek-icons', 'res://scenes/ui/tests/test_trek_icons.gd'),
@@ -317,6 +326,7 @@ try {
     if ($exportJobs) { Wait-Jobs $exportJobs $SuiteTimeoutSec }
 } finally {
     [System.IO.File]::WriteAllText($presets, $presetsOriginal)   # the committed preset file is never left stamped
+    [System.IO.File]::WriteAllText($projectFile, $projectOriginal)   # nor the project file (config/version)
 }
 
 foreach ($j in $exportJobs) {
@@ -511,7 +521,7 @@ if (-not $SkipExport) {
             Wait-Jobs @($ej) 600
         }
         # Content-hashed names, packs\manifest.json, gzip sidecars and the download sizes (hash_web_packs.py). Budgets (coordinator,
-        # 9 Nov): the first playable load (engine, main pck, page) under 60 MB as sent, everything under 400 MB.
+        # 9 Nov): the first playable load (engine, main pck, page) under 25 MB as sent (hash_web_packs.py default); no total budget since Simon removed the 400 MB one on 16 Nov.
         $ho = & $python (Join-Path $PSScriptRoot 'hash_web_packs.py') (Join-Path $proj 'build\web') 2>&1 | Out-String
         $hx = $LASTEXITCODE
         $ho | Set-Content -LiteralPath (Join-Path $logs 'web-sizes.log')

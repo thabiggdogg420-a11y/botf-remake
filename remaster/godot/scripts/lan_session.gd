@@ -18,6 +18,8 @@ signal changed   ## lobby or turn state changed (the lobby and the status strip 
 const PORT := 47474
 const PROTOCOL := 1
 const FIND_ASK := "BOTF_LAN_FIND 1"
+const DEFAULT_EMPIRES := 5   ## the core's default lineup (newCampaign "empires"); a seat above it widens the lineup
+const MAX_EMPIRES := 8       ## the playable powers (race slots 1..8)
 
 var app: App
 var peer: ENetMultiplayerPeer
@@ -130,10 +132,14 @@ func start_game() -> String:
 	if lobby.size() < 2:
 		return "Waiting for at least one other player."
 	var extra := []
+	var top := maxi(DEFAULT_EMPIRES, _host_faction)
 	for id in lobby:
+		top = maxi(top, int(lobby[id]["empire"]))
 		if int(id) != 1:
 			extra.append(int(lobby[id]["empire"]))
-	var opts := {"faction": _host_faction, "hotseat": extra}
+	# The campaign must hold every seated power: a player on power 6-8 needs the lineup to reach it (R8: setHotseat failed
+	# quietly and the game started with no second human).
+	var opts := {"faction": _host_faction, "hotseat": extra, "empires": top}
 	if _seed != 0:
 		opts["seed"] = _seed
 	opts["domination"] = domination
@@ -166,8 +172,13 @@ func end_turn_pressed() -> void:
 		_send(1, msg)
 	_status("Orders sent (%d). Waiting for the other players." % journal.size())
 
-func _on_orders(_from: int, m: Dictionary) -> void:
-	if not is_host or int(m.get("turn", -1)) != turn:
+## Host: whether peer `from` holds the seat the message names. The peer id is set by the transport, the empire by the sender, so a
+## message counts only for the seat the host gave that peer (R8, Gemini audit: any peer could send orders for another seat).
+func _from_seat(from: int, m: Dictionary) -> bool:
+	return lobby.has(from) and int(lobby[from].get("empire", -1)) == int(m.get("empire", -2))
+
+func _on_orders(from: int, m: Dictionary) -> void:
+	if not is_host or int(m.get("turn", -1)) != turn or not _from_seat(from, m):
 		return
 	orders[int(m["empire"])] = m.get("journal", [])
 	_status("Turn %d: orders from %s." % [turn, ", ".join(_names(orders.keys()))])
@@ -222,8 +233,8 @@ func _apply_turn(m: Dictionary) -> void:
 	else:
 		_send(1, msg)
 
-func _on_fp(_from: int, m: Dictionary) -> void:
-	if not is_host or int(m.get("turn", -1)) != turn:
+func _on_fp(from: int, m: Dictionary) -> void:
+	if not is_host or int(m.get("turn", -1)) != turn or not _from_seat(from, m):
 		return
 	prints[int(m["empire"])] = str(m.get("fp", ""))
 	for h in humans:
@@ -278,7 +289,8 @@ func _begin_turn() -> void:
 ## Seats this peer's human on the canonical state for planning and shows their view and briefing.
 func _show_own_seat(brief: Variant) -> void:
 	var core := app.session.core
-	var blob: Dictionary = core.request("save") if core.request("save") is Dictionary else {}   # who holds the chair now
+	var saved = core.request("save")   # who holds the chair now (one serialisation, not two)
+	var blob: Dictionary = saved if saved is Dictionary else {}
 	if int(blob.get("player", my_empire)) != my_empire and str(app.session.view.get("meta", {}).get("outcome", "ongoing")) == "ongoing":
 		var r := core.invoke("switchSeat", {"empire": my_empire})
 		if not r["ok"]:
@@ -371,7 +383,7 @@ func _on_hello(from: int, m: Dictionary) -> void:
 	var want := int(m.get("faction", 0))
 	if want < 1 or taken.has(want):
 		want = 0
-		for e in range(1, 6):
+		for e in range(1, MAX_EMPIRES + 1):
 			if not taken.has(e):
 				want = e
 				break

@@ -97,6 +97,7 @@ func refresh() -> void:
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	col.add_child(scroll)
+	col.add_child(_launch_bar())
 	var opts := Lcars.hbox(16)
 	opts.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	opts.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -389,29 +390,40 @@ func _rules_column() -> Control:
 	rb.add_child(tg)
 	rb.add_child(_choice_row("Interface look", UiTokens.ERA_ORDER.map(func(id): return [id, UiTokens.ERAS[id]["label"], "%s interface: shapes and colours of that era's LCARS." % UiTokens.ERAS[id]["name"]]), vm.ui_era, func(id): vm.ui_era = id; UiTokens.era = id; refresh()))
 	colr.add_child(rules)
+	return colr
+
+## R8 (Gemini audit): the launch card sat at the foot of the Rules column inside the scroll, below the fold at 1080p. It is now
+## a bar under the scroll, so Launch campaign is on screen at 1920x1080 and at 1366x768 whatever the option columns hold.
+func _launch_bar() -> Control:
 	var summ := PanelContainer.new()
-	var ss := Lcars.box_lcars(Color(Lcars.accent().darkened(0.8), 0.95), UiTokens.radius(), Lcars.accent(), 2, Vector4(18, 14, 18, 14))
+	summ.name = "LaunchBar"
+	var ss := Lcars.box_lcars(Color(Lcars.accent().darkened(0.8), 0.95), UiTokens.radius(), Lcars.accent(), 2, Vector4(18, 10, 18, 10))
 	ss.shadow_color = Color(Lcars.accent(), 0.25)
 	ss.shadow_size = 16
 	summ.add_theme_stylebox_override("panel", ss)
-	var sb := Lcars.vbox(8)
-	summ.add_child(sb)
-	var sh := Lcars.hbox(12)
-	sh.add_child(Lcars.emblem(faction, 44))
+	var row := Lcars.hbox(18)
+	summ.add_child(row)
+	row.add_child(Lcars.emblem(faction, 44))
 	var nm := Lcars.vbox(0)
-	nm.add_child(Lcars.label(vm.faction_name(faction, ""), "Heading", 28))
+	nm.custom_minimum_size.x = 190
+	nm.add_child(Lcars.label(vm.faction_name(faction, ""), "Heading", 26))
 	nm.add_child(Lcars.caption("from " + Lcars.FACTIONS[faction - 1]["capital"]))
-	sh.add_child(nm)
-	sb.add_child(sh)
+	row.add_child(nm)
+	var lines := Lcars.vbox(1)
+	lines.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	lines.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	for line in vm.summary():
-		sb.add_child(Lcars.label(line, "", 13, Lcars.TEXT2))
+		var l := Lcars.label(line, "", 12, Lcars.TEXT2)
+		l.clip_text = true
+		lines.add_child(l)
+	row.add_child(lines)
 	var launch := Lcars.pill("Launch campaign", "primary", func(): start(), "", "", "Enter")
 	launch.name = "Launch"
-	launch.custom_minimum_size.y = 60
+	launch.custom_minimum_size = Vector2(360, 60)
+	launch.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	launch.add_theme_font_size_override("font_size", 28)
-	sb.add_child(launch)
-	colr.add_child(summ)
-	return colr
+	row.add_child(launch)
+	return summ
 
 func _pick_faction(id: int) -> void:
 	vm.pick_faction(id)

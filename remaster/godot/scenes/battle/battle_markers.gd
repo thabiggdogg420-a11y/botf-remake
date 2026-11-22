@@ -24,6 +24,25 @@ func _ready() -> void:
 	add_child(radar)
 
 
+## The rect the camera projects into is its own viewport's. A Control under a CanvasLayer inside a SubViewport keeps the size it
+## was laid out with when the viewport changes (the combat screen folds its panels for playback and the viewport grows), so the
+## brackets were projected with a stale size, and the radar anchored to a stale corner (R8, Gemini audit 22 Nov).
+func _vsize() -> Vector2:
+	if is_inside_tree():
+		var vs := get_viewport().get_visible_rect().size
+		if vs.x > 0.0 and vs.y > 0.0:
+			return vs
+	return size
+
+
+func _process(_d: float) -> void:
+	var vs := _vsize()
+	if size != vs:
+		position = Vector2.ZERO
+		size = vs
+		queue_redraw()
+
+
 static func owner_color(owner: int) -> Color:
 	return Lcars.owner_color(owner)
 
@@ -45,15 +64,15 @@ func _draw() -> void:
 		var p := CameraRig.project(view, b.center, b.radius)
 		if not p.visible:
 			continue
-		var c := Vector2(p.u * size.x, p.v * size.y)
-		var r := p.radius * size.y
+		var c := Vector2(p.u * _vsize().x, p.v * _vsize().y)
+		var r := p.radius * _vsize().y
 		var sel: bool = int(b.id) == camera.selected_id
 		var tgt: bool = int(b.id) == camera.target_id
 		var hover: bool = int(b.id) == camera.hover_id
 		var key := sel or tgt or hover
 		var base := target_color() if tgt else (selected_color() if sel else owner_color(int(b.owner)))
 		# A hull filling much of the view (a follow shot) needs no frame: only its name and bars, kept compact.
-		var large := r > size.y * 0.16
+		var large := r > _vsize().y * 0.16
 		if large and not key:
 			continue
 		var alpha := 0.95 if key else remap(clampf(r, 14.0, 110.0), 14.0, 110.0, 0.75, 0.16)
@@ -70,7 +89,7 @@ func _draw() -> void:
 			draw_circle(c, 2.2, pip)
 			continue
 		var col := Color(base.lightened(0.15 if key else 0.0), alpha)
-		var h := minf(r * 0.55, size.y * 0.2) if large else maxf(r * 1.08, 9.0)
+		var h := minf(r * 0.55, _vsize().y * 0.2) if large else maxf(r * 1.08, 9.0)
 		var l := clampf(h * 0.32, 4.0, 22.0)
 		var thick := 2.0 if key else 1.4
 		if not large:
@@ -226,7 +245,7 @@ func _draw_icon(view: CameraRig.View, b: Dictionary, c: Vector2, col: Color, key
 	var hd := deg_to_rad(float(b.get("heading", 0.0)))
 	var bow3: Vector3 = (b.center as Vector3) + Vector3(cos(hd), 0.0, sin(hd)) * maxf(float(b.radius), 1.0)
 	var pb := CameraRig.project(view, bow3, 0.0)
-	var d := Vector2(pb.u * size.x, pb.v * size.y) - c
+	var d := Vector2(pb.u * _vsize().x, pb.v * _vsize().y) - c
 	d = d.normalized() if d.length() > 0.01 else Vector2.UP
 	var rad: float = float(b.radius)
 	var k := 7.0 if rad < 6.0 else (9.0 if rad < 14.0 else 11.0)

@@ -1,5 +1,7 @@
 # BOTF Remastered: Parity Matrix
 
+> **Archived snapshot, 8 Nov 2026.** Not maintained. The "ours today" columns describe the build of 8 Nov (save schema 14, no galaxy shapes, no Dominion, Borg or Breen, no portraits, no tutorial, no multiplayer, no mod tools); all of those exist now. For the current state read `FINISH-PLAN.md`, `MASTER-PLAN.md` and the round reports. The vanilla and mod columns and the target classes still stand.
+
 Compiled by Tuvok (Lane L1), 8 Nov 2026. Authoritative comparison between vanilla *Star Trek: Birth of the Federation* (1999), major community mods (Ultimate Dominion Mod III, Supremacy, Rise of the UFP, Birth of the Empires, Ultimate Editor), our C++ rules core today, our Godot UI client today, and our modernization targets across milestones M1–M4.
 
 ### Target Classification Key

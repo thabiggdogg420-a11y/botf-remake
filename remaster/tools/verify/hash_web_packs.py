@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Makes the web export cacheable and measures its download (M1 webparity). Run after the export and the pack copy:
 
-  python hash_web_packs.py <web_dir> [--first-budget-mb 25] [--total-budget-mb 400]
+  python hash_web_packs.py <web_dir> [--first-budget-mb 25] [--total-budget-mb N (default 0: none, Simon 16 Nov 2026)]
 
 1. Every packs/<stem>.pck is renamed to packs/<stem>.<12 hex of its sha256>.pck and packs/manifest.json maps the logical
    name to it ({"files": {...}, "bytes": {...}}). The game (AppLoader.fetch_web_pack) reads the manifest, so a hashed name

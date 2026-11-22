@@ -19,3 +19,4 @@ Tally by type: citation-heavy docs have 1 slice with substantial errors. Watch t
 | 2026-11-08 | G3 event cards (17, §1.11) | content writing | landed. Claude check: 17 cards, ids evt_* do not collide with events.json kinds, 3 existing kinds excluded correctly; effects are prose, need numbers at implementation | none found |
 
 Tally: content writing is 3 for 3 clean, so it is a good fit for Gemini.
+| 2026-11-22 | Whole-project audit (gemini-4-neon-high) | audit | landed; lead spot-checked 6 claims, all true (C8 wording, title copy, dev-build label, lan double save, 5-seat loop, no htaccess) | 0 found so far |

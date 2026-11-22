@@ -7,22 +7,22 @@ AddType text/javascript .js
 AddType application/json .json
 
 # Precompressed sidecars: index.js.br / index.wasm.gz and so on are served in place of the plain file when the browser accepts
-# them. index.pck (the game's own data, not a pack) is served this way too. The downloaded packs (packs/*.pck) are never compressed: Godot's downloader cannot take a content-encoded body.
+# them. index.pck and index.shaders.pck (the game's own data, not packs; also inside webgl/ and webgpu/) are served this way too. The downloaded packs (packs/*.pck) are never compressed: Godot's downloader cannot take a content-encoded body.
 <IfModule mod_rewrite.c>
 RewriteEngine On
 RewriteCond %{HTTP:Accept-Encoding} br
 RewriteCond %{REQUEST_FILENAME}.br -f
-RewriteRule ^((?:index\.pck)|.+\.(?:js|wasm|html))$ $1.br [L,QSA,E=BOTF_BR:1]
+RewriteRule ^((?:.+/)?index(?:\.shaders)?\.pck|.+\.(?:js|wasm|html))$ $1.br [L,QSA,E=BOTF_BR:1]
 RewriteCond %{HTTP:Accept-Encoding} gzip
 RewriteCond %{REQUEST_FILENAME}.gz -f
-RewriteRule ^((?:index\.pck)|.+\.(?:js|wasm|html))$ $1.gz [L,QSA,E=BOTF_GZ:1]
+RewriteRule ^((?:.+/)?index(?:\.shaders)?\.pck|.+\.(?:js|wasm|html))$ $1.gz [L,QSA,E=BOTF_GZ:1]
 </IfModule>
 <IfModule mod_headers.c>
-<FilesMatch "(\.(js|wasm|html)|^index\.pck)\.br$">
+<FilesMatch "(\.(js|wasm|html)|^index(\.shaders)?\.pck)\.br$">
   Header set Content-Encoding br
   Header append Vary Accept-Encoding
 </FilesMatch>
-<FilesMatch "(\.(js|wasm|html)|^index\.pck)\.gz$">
+<FilesMatch "(\.(js|wasm|html)|^index(\.shaders)?\.pck)\.gz$">
   Header set Content-Encoding gzip
   Header append Vary Accept-Encoding
 </FilesMatch>
@@ -35,7 +35,7 @@ RewriteRule ^((?:index\.pck)|.+\.(?:js|wasm|html))$ $1.gz [L,QSA,E=BOTF_GZ:1]
 <FilesMatch "\.html\.(br|gz)$">
   ForceType text/html
 </FilesMatch>
-<FilesMatch "^index\.pck\.(br|gz)$">
+<FilesMatch "^index(\.shaders)?\.pck\.(br|gz)$">
   ForceType application/octet-stream
 </FilesMatch>
 # Content-hashed packs never change under their name: keep them a year. Everything else is revalidated (a 304 costs nothing).

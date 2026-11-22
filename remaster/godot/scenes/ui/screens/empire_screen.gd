@@ -254,6 +254,7 @@ func _members(v: Dictionary) -> Control:
 	l.tooltip_text = "Member worlds: minor races that joined your empire. Each adds its join bonus to every colony."
 	l.mouse_filter = Control.MOUSE_FILTER_PASS
 	h.add_child(l)
+	h.add_child(Lcars.caption("Member worlds"))
 	if int(b.get("members", 0)) > 0:
 		var parts: Array = b["parts"]
 		h.add_child(Lcars.label(" · ".join(parts) if parts.size() > 0 else "no bonus", "", 14, Lcars.GOOD))
@@ -263,6 +264,7 @@ func _members(v: Dictionary) -> Control:
 			h.add_child(bd)
 	else:
 		h.add_child(Pic.num("plus", "", "None yet - befriend minor races in Diplomacy and invite them to join for their bonuses.", Lcars.TEXT3, 22, 14, Lcars.TEXT3))
+		h.add_child(Lcars.label("none yet", "Muted", 13))
 	h.add_child(Lcars.spacer())
 	var sc := vm.station_counts()
 	var sb: int = sc["starbases"]

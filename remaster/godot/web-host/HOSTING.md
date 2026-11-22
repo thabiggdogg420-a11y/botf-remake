@@ -1,8 +1,16 @@
 # BOTF Remastered: web build, hosting notes
 
-This folder is the whole browser game as static files. Upload **everything in it**, keeping the layout, to any folder on a
-static host, for example `https://example.com/botf/`, and open `https://example.com/botf/` (the trailing slash matters).
+This folder is the whole browser game as static files. Upload **everything in it** (including the hidden `.htaccess`), keeping the
+layout, to any folder on a static host, for example `https://example.com/botf/`, and open `https://example.com/botf/` (the trailing slash matters).
 Nothing is uploaded for you. The game is a private fan project: share the link only with the people you mean to.
+
+## Layout (two builds, one set of packs)
+- `index.html`: the loader. It picks `webgpu/` (desktop Chrome or Edge with hardware WebGPU) or `webgl/` (Firefox, Safari, mobile,
+  everything else) and sends the player there.
+- `webgl/` and `webgpu/`: one complete engine build each (`index.html`, `index.js`, `index.wasm`, `index.side.wasm`, `index.pck`,
+  the core wasm, worklets, `sw.js`; `webgpu/` also has `index.shaders.pck` and `wgsl-cache.js`).
+- `packs/`: the one shared pack set (both builds read `../packs/`), `manifest.json` and the content-hashed `*.pck`.
+- `.htaccess`, `nginx.conf.example`, `HOSTING.md`, `VERSION.txt` (`tools/web/assemble_next.py` puts all of them in the folder).
 
 ## What the host must do
 1. **Serve the files over HTTPS** (the browser needs a secure page for saves in IndexedDB and for audio).
@@ -24,15 +32,18 @@ Nothing is uploaded for you. The game is a private fan project: share the link o
 The first load is the engine (`index.js`, `index.wasm`, `index.side.wasm`, `libbotf_core.web.template_release.wasm32.wasm`)
 plus the game's own `index.pck`. The wasm files compress to a quarter of their size.
 - **Precompressed sidecars are in the folder**: `X.gz` for gzip and, where it helps, `X.br` for brotli, beside `index.js`,
-  `index.wasm`, `index.side.wasm`, the core `.wasm`, `index.html` and the worklets. Serve the sidecar with
+  `index.wasm`, `index.side.wasm`, `index.pck`, `index.shaders.pck`, `wgsl-cache.js`, the core `.wasm`, `index.html` and the worklets,
+  in `webgl/`, `webgpu/` and the loader. `packs/` has none. Serve the sidecar with
   `Content-Encoding: gzip` or `br` (and the original file's `Content-Type`) when the browser accepts it.
   - Apache: the included `.htaccess` does exactly this (mod_rewrite + mod_headers).
   - nginx: `nginx.conf.example` (`gzip_static on;` and, with the brotli module, `brotli_static on;`).
   - Cloudflare or another CDN in front: switch on its Brotli and gzip compression for `application/wasm` and JavaScript; it then
     compresses on the fly and you can ignore the sidecars.
   - A host that can do neither: upload as is. It works, just with a much bigger first download.
-- **Do not compress `packs/*.pck`.** They are already compressed assets, and the game's downloader cannot take a
-  content-encoded body. If your host or CDN compresses everything, exclude `/packs/`.
+- **`packs/*.pck` have no sidecars and need no compression.** They are already compressed assets (WebP, Vorbis), so a pre-built
+  `.br` or `.gz` saves almost nothing (the assembler used to write 286 MB of them that no rule served; it no longer does). The game
+  downloads packs with the browser's `fetch()`, which undoes a Content-Encoding a host or CDN adds, so on-the-fly compression is
+  harmless but pointless there; just do not rewrite or redirect `/packs/`.
 
 ## Caching
 - `packs/*.<12 hex>.pck`: the name carries a hash of the content, so a pack never changes under its name. Send
@@ -43,34 +54,35 @@ plus the game's own `index.pck`. The wasm files compress to a quarter of their s
 
 
 ## Service worker (17 Nov 2026)
-`sw.js` sits beside `index.html` and `index.html` registers it (relative path, so any sub-path works; it needs HTTPS or localhost,
+Each build folder (`webgl/`, `webgpu/`) has its own `sw.js` beside its `index.html`, and that page registers it (relative path, so any sub-path works; it needs HTTPS or localhost,
 and the host must serve `sw.js` as JavaScript with no redirect). It keeps what the player has already downloaded, whatever cache
 headers the host sends:
-- every `packs/*.<12 hex>.pck` is cached forever on first fetch (the hash is the content, so it never goes stale);
-- the engine files are cached in a bucket named for the build id, which `hash_web_packs.py` writes into `index.html`
+- in this two-build layout the packs live outside the worker's scope (`../packs/`), so the worker does not cache them: the game's
+  own IndexedDB copy is the pack cache and a returning player downloads no pack twice. (The flat single-build layout of the first releases
+  cached `packs/*.<12 hex>.pck` in the worker too and pruned them against the manifest; `sw.js` still carries that code, now idle.)
+- the engine files, including `webgpu/`'s `index.shaders.pck` and `wgsl-cache.js` (17 MB raw, the pre-recorded WGSL pipelines), are cached in a bucket named for the build id, which `hash_web_packs.py` writes into `index.html`
   (`<meta name="botf-build">`) and `packs/manifest.json`; `index.html` and `manifest.json` always go to the network first;
 - on a new upload the page carries a new build id, the old bucket is deleted and every cached pack the new manifest no longer lists
   is dropped, so nothing from an old build is ever served with a new page.
 It adds nothing to the host: no headers, no rules. If the browser blocks it, the game runs as before from the network and IndexedDB.
-The packs are held twice when fetched this session (the game's own IndexedDB copy and the worker's cache); the browser's storage
-quota covers both, and a full quota only means a pack is fetched again.
+A full storage quota only means a file is fetched again.
 
 ## Files
-- `index.html`, `index.js`, `index.wasm`, `index.side.wasm`, `index.pck`, `index.audio*.js`, `index.png`, `index.icon.png`,
-  `index.apple-touch-icon.png`: the engine and the game.
+- In each of `webgl/` and `webgpu/`: `index.html`, `index.js`, `index.wasm`, `index.side.wasm`, `index.pck`, `index.audio*.js`,
+  `index.png`, `index.icon.png`, `index.apple-touch-icon.png`, `sw.js`, `sizes.json`: the engine and the game.
 - `libbotf_core.web.template_release.wasm32.wasm`: the simulation core (C++ compiled to WebAssembly).
-- `packs/manifest.json` and `packs/*.pck`: ship models by faction, planets, portraits, music, ship pictures, voices. They download
-  as the game needs them, not all at once.
-- `sizes.json`: the measured file sizes (raw, gzip, brotli).
+- `packs/manifest.json` and `packs/*.pck` (top level, shared): ship models by faction, planets, portraits, music, ship pictures, voices.
+  They download as the game needs them, not all at once.
 - `.htaccess`, `nginx.conf.example`, this file: host notes, not needed by the game.
 
 ## Download sizes (measured at release; see `sizes.json`)
-There is no total-download budget (Simon, 16 Nov 2026: quality first). Measured on the 17 Nov 2026 build (0.1.430), served gzip-compressed:
+There is no total-download budget (Simon, 16 Nov 2026: quality first). Measured on the 22 Nov 2026 build (0.1.566; each build's own figures are in its `sizes.json`):
 
 | What | Raw | Transferred |
 |---|---|---|
-| First playable load (engine, core, main pack, title) | 58.8 MB | 18.8 MB gzip (14.8 MB brotli) |
-| Every pack in the game (what "Preload whole game" downloads; the button shows 386 MB) | 445 MB | 405 MB |
+| First playable load, `webgl/` (engine, core, main pack, title) | 59.3 MB | 19.3 MB gzip (15.2 MB brotli) |
+| First playable load, `webgpu/` | 64.8 MB | 21.9 MB gzip (17.0 MB brotli) |
+| Every pack in the game (what "Preload whole game" downloads) | about 418 MB | about 418 MB (the packs are not compressible) |
 
 17 Nov compression pass (same build, before and after): all packs 621.0 MiB -> 386.4 MiB (-37.8 %). Hull textures are WebP via
 `EXT_texture_webp` (colour q88, normal maps q95; `build_ship_packs.py --web-format jpeg` restores the JPEG route): the 135 hull packs went
@@ -87,8 +99,9 @@ Cold first load under a 10 Mbps, 60 ms browser throttle: the game core is runnin
 
 Background fetching (17 Nov): once the title bundles are in, the game fetches the next packs one at a time while the player is on the title, new-campaign or galaxy screens (never during a battle load, a campaign-start fetch or a preload): on the title `ships_base` and `planets_hi`; once a campaign runs the player's empire audio and every hull of the player's empire, then the rival empires' hulls (`App._idle_prefetch`, `AppLoader.idle_queue`). The preload button stays for the rest (minor-race and monster hulls, the other empires' audio).
 
-Not tested here: the shipped `.htaccess` (Apache) and `nginx.conf.example`. The game downloads packs with the browser's `fetch()`, so
-a host or CDN that compresses on the fly is fine; do not add rules that rewrite or redirect `/packs/`.
+Not tested on a live Apache or nginx here: the shipped `.htaccess` and `nginx.conf.example` (22 Nov 2026: the `.htaccess` sidecar rule was
+widened to match `webgl/index.pck`, `webgpu/index.pck` and `index.shaders.pck`; before, only a root-level `index.pck` matched, which in this layout does not exist).
+Do not add rules that rewrite or redirect `/packs/`.
 
 ## Quick check after uploading
 Open the address in Chrome, press F12, Network tab: `index.wasm` and `index.side.wasm` must show type `wasm` and a

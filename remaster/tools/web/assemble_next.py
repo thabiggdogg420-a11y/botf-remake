@@ -11,8 +11,9 @@ Each export dir holds index.html + engine files from tools/web/export_web.ps1. S
   3. both pages get globalThis.BOTF_PACKS='../packs/' (the shared pack set) before the engine starts;
   4. tools/verify/hash_web_packs.py stamps the build id, copies sw.js and writes .gz/.br sidecars and sizes.json per build
      (run with a temporary packs/ link so its manifest step sees the shared packs, which are already hashed);
-  5. .br/.gz sidecars for packs that brotli shrinks by more than 10 % (only the hull manifests; the rest is WebP/OGG and does
-     not compress), VERSION.txt, HOSTING.md, the loader index.html (+ sidecars).
+  5. VERSION.txt, HOSTING.md, .htaccess and nginx.conf.example (from the HOSTING.md folder; the host needs them, R8), the loader
+     index.html (+ sidecars). packs/ gets no .br/.gz sidecars: nothing serves them (.htaccess and nginx never do, and
+     app_loader fetches the plain .pck); R7 wrote 286 MB of them (dropped in R8, Gemini audit).
 """
 import argparse
 import gzip
@@ -86,12 +87,15 @@ def main():
                 sidecars(p)
     shutil.copytree(a.packs, os.path.join(a.out, "packs"), ignore=shutil.ignore_patterns("*.gz", "*.br"))
     os.replace(os.path.join(a.out, "manifest.tmp"), os.path.join(a.out, "packs", "manifest.json"))
-    for f in os.listdir(os.path.join(a.out, "packs")):
-        if f.endswith(".pck") and os.path.getsize(os.path.join(a.out, "packs", f)) < 64 << 20:
-            sidecars(os.path.join(a.out, "packs", f))
     shutil.copy2(a.loader, os.path.join(a.out, "index.html"))
     sidecars(os.path.join(a.out, "index.html"))
     shutil.copy2(a.hosting, os.path.join(a.out, "HOSTING.md"))
+    host_dir = os.path.dirname(os.path.abspath(a.hosting))
+    for f in (".htaccess", "nginx.conf.example"):
+        src = os.path.join(host_dir, f)
+        if not os.path.isfile(src):
+            sys.exit("missing host file beside HOSTING.md: " + src)
+        shutil.copy2(src, os.path.join(a.out, f))
     open(os.path.join(a.out, "VERSION.txt"), "w", encoding="utf-8").write(a.version.replace("\\n", "\n") + "\n")
     print("assembled", a.out)
 

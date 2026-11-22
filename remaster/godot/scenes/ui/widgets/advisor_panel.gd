@@ -133,7 +133,8 @@ func update() -> void:
 		_highlight_target()
 		return
 	current = advisor.guidance()
-	if current.is_empty():
+	if current.is_empty() or not advisor.shown_on(current, app.screen):
+		current = {}
 		visible = false
 		_highlight_target()
 		return

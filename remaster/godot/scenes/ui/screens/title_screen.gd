@@ -34,7 +34,7 @@ func refresh() -> void:
 	crest.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 	root.add_child(crest)
 	var emblems := Lcars.hbox(14)
-	for id in range(1, 6):
+	for id in range(1, Lcars.FACTIONS.size() + 1): # all eight powers (R8: it drew five)
 		emblems.add_child(Lcars.emblem(id, 30))
 	root.add_child(emblems)
 	root.add_child(Lcars.label("BIRTH OF THE FEDERATION", "Caption", 22, Lcars.accent2()))
@@ -50,7 +50,7 @@ func refresh() -> void:
 	var eraname := Lcars.hbox(8)
 	eraname.add_child(Lcars.badge(UiTokens.era_def()["label"] + " interface", "secondary"))
 	eraname.add_child(Lcars.label("Ctrl+K in game opens the command palette", "Muted", 13))
-	var tag := Lcars.para("Five powers. One quadrant. A modern reconstruction of the 1999 grand strategy classic, running on its deterministic simulation core.", Lcars.TEXT2, 17)
+	var tag := Lcars.para("Eight powers. One quadrant. A modern reconstruction of the 1999 grand strategy classic, running on its deterministic simulation core.", Lcars.TEXT2, 17)
 	tag.custom_minimum_size.x = 560
 	root.add_child(tag)
 	root.add_child(eraname)
