@@ -129,6 +129,7 @@ func close() -> void:
 	in_game = false
 	is_host = false
 	sent = false
+	my_id = 0   # E6: a client that is refused and tries again must say hello again
 	lobby = {}
 	orders = {}
 	prints = {}
@@ -563,7 +564,13 @@ func _on_message(from: int, m: Dictionary) -> void:
 			_status("In the lobby as %s. Waiting for the host to start." % app.session.empire_name(my_empire))
 		"refused":
 			_status("The host refused: %s" % m.get("reason", ""))
+			var retry: bool = bool(auto.get("retry", false))
 			close()
+			if retry:   # test driver (BOTF_LAN_RETRY): a rejoin is refused while a turn resolves; try again shortly
+				await get_tree().create_timer(1.0).timeout
+				var err := join(str(auto.get("addr", "127.0.0.1")), int(auto.get("port", PORT)), int(auto.get("faction", 2)))
+				if err != "":
+					_status(err)
 		"start": _on_start(m)
 		"orders": _on_orders(from, m)
 		"borders": _on_borders(from, m)
@@ -621,7 +628,11 @@ func _rejoin(from: int, want: int) -> void:
 			lobby.erase(id)
 	lobby[from] = {"empire": want, "name": app.session.empire_name(want)}
 	dropped.erase(want)
-	_send(from, {"t": "start", "blob": canonical, "humans": humans, "lobby": _lobby_wire(), "timer": timer_secs, "rejoin": true})
+	var present := []
+	for h in humans:
+		if not dropped.has(int(h)):
+			present.append(int(h))
+	_send(from, {"t": "start", "blob": canonical, "humans": humans, "roster": present, "lobby": _lobby_wire(), "timer": timer_secs, "rejoin": true})
 	_status("%s rejoined; they plan this turn." % app.session.empire_name(want))
 
 func _on_start(m: Dictionary) -> void:
@@ -638,6 +649,15 @@ func _on_start(m: Dictionary) -> void:
 		return
 	turn = int(canonical.get("turn", 0))
 	in_game = true
+	if m.has("roster"):
+		# A rejoin: the saved state names only the humans who were playing, so the returning player is not in its hotseat list yet.
+		# Seat the roster (the returning player included) so this peer can take the chair; the next turn's roster does the same on all peers.
+		roster = []
+		for h in m["roster"]:
+			roster.append(int(h))
+		var rr: Dictionary = app.session.core.invoke("lanRoster", {"humans": roster})
+		if not rr["ok"]:
+			_status("Cannot seat the returning player: %s" % rr["error"])
 	_show_own_seat(null)
 	_begin_turn()
 
@@ -767,7 +787,10 @@ func start_auto(spec: String) -> void:
 		if err != "":
 			_status(err)
 	else:
-		auto = {"role": "join", "turns": int(p[3])}
+		auto = {"role": "join", "turns": int(p[3]), "addr": p[1], "port": int(p[2]), "faction": 2}
+		if OS.get_environment("BOTF_LAN_DROP") != "":
+			auto["drop"] = int(OS.get_environment("BOTF_LAN_DROP"))   # this peer leaves for good at that turn (the AI-takeover proof)
+		auto["retry"] = OS.get_environment("BOTF_LAN_RETRY") == "1"     # this peer rejoins a game already running (the rejoin proof)
 	if think != "":
 		auto["think"] = float(think)
 	if p[0] != "host":
@@ -784,6 +807,10 @@ func _auto_plan() -> void:
 		await get_tree().create_timer(1.0).timeout
 		await _auto_shot("done")
 		await get_tree().create_timer(3.0).timeout   # the other peer's last verdict is on its way
+		app.get_tree().quit()
+		return
+	if int(auto.get("drop", 0)) > 0 and turn >= int(auto["drop"]):
+		print("LAN AUTO DROP: leaving the game at turn %d" % turn)
 		app.get_tree().quit()
 		return
 	var planning := turn

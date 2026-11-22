@@ -2156,7 +2156,15 @@ void cedeColony(GameState& next, int systemId, int from, int to, TurnReport* rep
     it->program = 0; it->programTurns = 0;
     const auto sys = std::find_if(next.systems.begin(), next.systems.end(), [&](const System& x) { return x.id == systemId; });
     if (sys != next.systems.end()) {
-        for (auto& st : next.stations) if (st.ownerId == from && st.x == sys->x && st.y == sys->y) st.ownerId = to;
+        for (auto& st : next.stations) {
+            if (st.ownerId != from || st.x != sys->x || st.y != sys->y) continue;
+            st.ownerId = to;
+            // The new owner's race and technology set the station's ceilings (the Reference catalogue differs by race), so a ceded
+            // station keeps what it has up to those (found by the soak: seed 31342, turn 74, "Station integrity out of bounds").
+            const auto stats = stationStats(next, st);
+            st.hull = std::clamp(st.hull, 1, stats.maxHull);
+            st.shields = std::clamp(st.shields, 0, stats.maxShields);
+        }
         reveal(next, sys->x, sys->y, to);
     }
     std::erase_if(next.megaprojects, [&](const Megaproject& m) { return m.systemId == systemId && m.ownerId == from; });

@@ -364,6 +364,24 @@ int main() {
         if (rec) check(rec->attackStrength == pooled.attack && rec->defenseStrength == pooled.defense, "preview and resolution agree: attack " + std::to_string(rec->attackStrength) + " / " + std::to_string(pooled.attack) + ", defence " + std::to_string(rec->defenseStrength) + " / " + std::to_string(pooled.defense));
     } catch (const std::exception& e) { check(false, std::string("E2 test threw: ") + e.what()); }
 
+    // ---- E3, a ceded world's station keeps its hull only up to the new owner's ceilings (soak: seed 31342, turn 74, "Station integrity out of bounds")
+    try {
+        auto s = warGame();
+        s.rules.stations = true;
+        const int world = cedableWorlds(s, 1).front();
+        const auto* sys = [&]() -> const System* { for (const auto& y : s.systems) if (y.id == world) return &y; return nullptr; }();
+        Station st; st.id = s.nextStationId++; st.ownerId = 1; st.x = sys->x; st.y = sys->y; st.type = StationType::Starbase;
+        const auto mine = stationStats(s, 1, StationType::Starbase), theirs = stationStats(s, 2, StationType::Starbase);
+        st.hull = mine.maxHull; st.shields = mine.maxShields; st.builtTurn = s.turn;
+        s.stations.push_back(st);
+        submit(s, makeProposePeaceTermsCommand(s.lastAcceptedCommand + 1, 2, {world}, {}));
+        advance(s);
+        const auto it = std::find_if(s.stations.begin(), s.stations.end(), [&](const Station& x) { return x.x == sys->x && x.y == sys->y; });
+        check(it != s.stations.end() && it->ownerId == 2, "the station went with the world");
+        check(it != s.stations.end() && it->hull <= theirs.maxHull && it->shields <= theirs.maxShields && loads(serialize(s)),
+              "its hull and shields are within the new owner's ceilings (" + std::to_string(it != s.stations.end() ? it->hull : -1) + " <= " + std::to_string(theirs.maxHull) + "), and the game validates");
+    } catch (const std::exception& e) { check(false, std::string("E3 ceded-station test threw: ") + e.what()); }
+
     // ---- E6, LAN roster: a player who dropped has the AI run their power, a rejoined one plays again, the chair follows
     try {
         auto g = warGame();

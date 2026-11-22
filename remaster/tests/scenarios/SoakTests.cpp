@@ -394,7 +394,9 @@ int main() {
     std::size_t largestSave = 0;
     int warCampaigns = 0, warTurns = 0, aiWars = 0, aiBattles = 0, aiStationBattles = 0, stationCaptures = 0, colonyCaptures = 0;
     int earlyEliminations = 0;
+    const char* onlyFilter = std::getenv("BOTF_SOAK_ONLY");   // reproduce one campaign: part of its PASS/FAIL description, e.g. "seed 31342"
     for (const auto& config : configs) {
+        if (onlyFilter && *onlyFilter && describe(config).find(onlyFilter) == std::string::npos) continue;
         try {
             const auto stats = soak(config);
             largestSave = std::max(largestSave, stats.largestSave);
