@@ -97,6 +97,8 @@ func _on_click(cell: int, double: bool) -> void:
 	var w := app.width()
 	var x := cell % w
 	var y := cell / w
+	if not double and app.advisor_panel != null and app.advisor_panel.advisor.beat_click(cell):
+		return   # the tutorial's "tap a star": the selected scout or colony ship is sent there
 	if double:
 		# Double-click flies the camera one level closer (galaxy -> sector -> system close-up). Once the view is
 		# already on that system's close-up, double-clicking your own system opens it, as on the 2D chart.
@@ -649,7 +651,9 @@ func _sector_card(cell: int, primary: bool) -> Control:
 		if int(f["x"]) == x and int(f["y"]) == y:
 			var fid := int(f["id"])
 			var fk := str(f.get("designClass", "")) if str(f.get("designClass", "")) != "" else str(f.get("className", ""))
-			units.add_child(_unit_button(app.player(), fk, "%s%s%s" % [f["name"], " (task force)" if int(f.get("taskForceId", 0)) != 0 else "", ", orders given" if f.get("hasOrders", false) else ""], fid == sel_id, f.get("hasOrders", false), func(): app.select_fleet(fid)))
+			var ub := _unit_button(app.player(), fk, "%s%s%s" % [f["name"], " (task force)" if int(f.get("taskForceId", 0)) != 0 else "", ", orders given" if f.get("hasOrders", false) else ""], fid == sel_id, f.get("hasOrders", false), func(): app.select_fleet(fid))
+			ub.name = "Unit_%d" % fid   # the tutorial spotlights it
+			units.add_child(ub)
 	for c in v.get("contacts", []):
 		if int(c["x"]) == x and int(c["y"]) == y:
 			var cid := int(c["id"])

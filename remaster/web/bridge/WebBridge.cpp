@@ -3020,6 +3020,7 @@ void newCampaign(const Value& a) {
     if (a.has("wego") && !a.getBool("wego")) s.rules.wegoCombat = false;
     if (a.has("events")) s.eventsEnabled = a.getBool("events");
     if (a.has("aiAggression")) s.aiAggressionEnabled = a.getBool("aiAggression");
+    if (a.has("aiWarHoldTurn")) s.aiWarHoldTurn = std::clamp(a.getInt("aiWarHoldTurn", 0), 0, 1000);   // Quick Start only (26 Nov 2026)
     if (a.has("domination")) s.dominationEnabled = a.getBool("domination");   // C7 (21 Nov 2026), default on
     botf::validate(s);
     if (a.getBool("starterQueue", true)) queueStarterProjects(s);

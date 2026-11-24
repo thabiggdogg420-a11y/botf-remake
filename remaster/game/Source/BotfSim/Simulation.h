@@ -619,6 +619,9 @@ struct GameState : EmpireState {
     int winnerEmpire = 0;
     bool eventsEnabled = true;
     bool aiAggressionEnabled = true;
+    // Quick Start (26 Nov 2026, onboarding lane): no AI empire declares war before this turn. 0 (every other game) holds nothing back.
+    // Only the new-game option "aiWarHoldTurn" sets it. Saved as the optional AI_WAR_HOLD section (written only when non-zero).
+    int aiWarHoldTurn = 0;
     // F5 observer mode (soaks only; no game, screen or save sets it, and it is not serialized): the AI also plays the
     // player's seat, the player's elimination does not end the campaign, and the campaign ends when one empire is left or
     // any empire meets a victory condition (the player's own domination test applied to every empire). Rules are unchanged.

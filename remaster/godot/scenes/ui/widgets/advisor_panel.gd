@@ -13,6 +13,7 @@ var _sig := ""
 var _poll := 0.0
 var _busy := false
 var _hl: Control     ## AdvisorHighlight, the ring on the control the guidance points at
+var _spot: Spotlight ## TutorialSpotlight: a tutorial beat dims everything but its control and pulses it
 
 static func make(app_: App) -> AdvisorPanel:
 	var p := AdvisorPanel.new()
@@ -45,19 +46,38 @@ func _process(delta: float) -> void:
 	elif visible:
 		_place()   # the screen may have laid out or scrolled since: keep the card off its target and the ring on it
 
-## The on-screen rects of the controls the current guidance points at (Advisor.targets), in this panel's parent space.
+## The on-screen rects of the controls the current guidance points at (Advisor.targets), in this panel's parent space. A tutorial
+## beat lists alternatives, so only the first one found counts.
 func target_rects() -> Array[Rect2]:
 	var out: Array[Rect2] = []
 	if current.is_empty() or app == null:
 		return out
 	var host: Node = app.current_screen() if app.current_screen() else app
 	for n in advisor.targets(current):
-		var c: Control = host.find_child(n, true, false) as Control
-		if c == null:
-			c = app.find_child(n, true, false) as Control
-		if c and c.is_visible_in_tree() and c.size.x > 0:
-			out.append(c.get_global_rect())
+		if n is Rect2:
+			if (n as Rect2).size.x > 0 and app.get_global_rect().intersects(n):
+				out.append(n)
+		else:
+			var c := _find_target(host, str(n))
+			if c:
+				out.append(c.get_global_rect())
+		if current.get("beat", false) and not out.is_empty():
+			break
 	return out
+
+## A named control on the current screen, else anywhere in the app (a dialog). A trailing * names the first enabled button
+## that matches (the first thing the player may pick).
+func _find_target(host: Node, n: String) -> Control:
+	for root_ in [host, app]:
+		if n.ends_with("*"):
+			for b in root_.find_children(n, "Button", true, false):
+				if not (b as Button).disabled and (b as Button).is_visible_in_tree() and (b as Button).size.x > 0:
+					return b as Button
+		else:
+			var c := root_.find_child(n, true, false) as Control
+			if c and c.is_visible_in_tree() and c.size.x > 0:
+				return c
+	return null
 
 ## The slots the card may take, in order of preference: bottom-left (above the map layer bar, clear of the centre-bottom
 ## toasts), bottom-right, top-right and top-left under the top bar. It takes the first slot that covers none of the
@@ -83,6 +103,7 @@ func _place() -> void:
 
 ## Highlights the control the guidance points at: a pulsing ring in the card's colour (the first target found).
 func _highlight_target() -> void:
+	_spotlight_target()
 	if _hl == null and get_parent():
 		_hl = Highlight.new()
 		_hl.name = "AdvisorHighlight"
@@ -92,12 +113,25 @@ func _highlight_target() -> void:
 		get_parent().move_child(_hl, get_index())
 	if _hl:
 		var rects: Array[Rect2] = []
-		if visible and not folded:
-			rects = target_rects()
+		if visible and not folded and not current.get("beat", false):
+			rects = target_rects()   # a tutorial beat is spotlit instead
 		_hl.rect = rects[0] if not rects.is_empty() else Rect2()
 		_hl.color = Lcars.tone_color(str(current.get("tone", "primary")))
 		_hl.visible = _hl.rect.size.x > 0
 		_hl.queue_redraw()
+
+## A tutorial beat dims the whole screen but the one control it wants, and pulses that control.
+func _spotlight_target() -> void:
+	if _spot == null and get_parent():
+		_spot = Spotlight.new()
+		_spot.name = "TutorialSpotlight"
+		get_parent().add_child(_spot)
+		get_parent().move_child(_spot, get_index())
+	if _spot:
+		var rects: Array[Rect2] = []
+		if visible and current.get("beat", false):
+			rects = target_rects()
+		_spot.point_at(rects[0] if not rects.is_empty() else Rect2())
 
 class Highlight extends Control:
 	var rect := Rect2()
@@ -144,6 +178,10 @@ func update() -> void:
 	add_theme_stylebox_override("panel", sb)
 	var v := Lcars.vbox(8)
 	add_child(v)
+	if current.get("beat", false):
+		_beat_card(v, col)
+		_place.call_deferred()
+		return
 	var head := Lcars.hbox(8)
 	head.add_child(UiIcon.make("padd" if current.get("tutorial", false) else "info", 20, col))
 	var t := Lcars.label(str(current["title"]).to_upper(), "", 18, col)
@@ -183,6 +221,28 @@ func update() -> void:
 	row.add_child(act)
 	v.add_child(row)
 	_place.call_deferred()
+
+## A tutorial beat: progress pips, the one short line, and Skip. No button to press: the player does the thing.
+func _beat_card(v: VBoxContainer, col: Color) -> void:
+	if int(current.get("steps", 0)) > 0:
+		var pips := Lcars.hbox(4)
+		pips.name = "BeatPips"
+		for k in int(current["steps"]):
+			var pip := ColorRect.new()
+			pip.custom_minimum_size = Vector2(22, 5)
+			pip.color = col if k < int(current["step"]) else Color(col, 0.25)
+			pips.add_child(pip)
+		v.add_child(pips)
+	var body := Lcars.para(str(current["text"]), Lcars.TEXT, 18)
+	body.name = "AdvisorText"
+	body.custom_minimum_size.x = 340
+	v.add_child(body)
+	var row := Lcars.hbox(8)
+	row.alignment = BoxContainer.ALIGNMENT_END
+	var sk := Lcars.pill("Skip tutorial", "ghost", func(): advisor.skip_tutorial(); update())
+	sk.name = "AdvisorDismiss"
+	row.add_child(sk)
+	v.add_child(row)
 
 ## The action button: performs the guidance and moves on.
 func press() -> String:

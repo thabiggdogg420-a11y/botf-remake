@@ -15,6 +15,11 @@ var vm: TitleVM:
 var backdrop: Control       ## The live fleet and its scrim; kept across refreshes.
 var fleet: TitleFleet
 var fleet_empire := 0
+## Quick Start (ONBOARDING-AND-MOBILE-PLAN.md 1.1): the power the emblems have picked (0 = the one the title shows), and the
+## galaxy seed it starts with (0 = a fresh random one; a test pins it).
+var quick_empire := 0
+var quick_seed := 0
+var _emblem_row: HBoxContainer
 
 func refresh() -> void:
 	for c in get_children():
@@ -34,8 +39,16 @@ func refresh() -> void:
 	crest.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 	root.add_child(crest)
 	var emblems := Lcars.hbox(14)
+	_emblem_row = emblems
 	for id in range(1, Lcars.FACTIONS.size() + 1): # all eight powers (R8: it drew five)
-		emblems.add_child(Lcars.emblem(id, 30))
+		if id <= QUICK_POWERS:
+			emblems.add_child(_emblem_button(id))   # a Quick Start power: tap one, then Quick Start
+		else:
+			var em := Lcars.emblem(id, 30)
+			em.modulate.a = 0.5
+			em.tooltip_text = "%s: play it from Custom game" % Lcars.FACTIONS[id - 1]["short"]
+			em.mouse_filter = Control.MOUSE_FILTER_PASS
+			emblems.add_child(em)
 	root.add_child(emblems)
 	root.add_child(Lcars.label("BIRTH OF THE FEDERATION", "Caption", 22, Lcars.accent2()))
 	var big := Lcars.hbox(14)
@@ -59,12 +72,15 @@ func refresh() -> void:
 	menu.custom_minimum_size.x = 420
 	root.add_child(menu)
 	var saves := vm.saves
+	var qs := Lcars.pill("Quick Start", "primary" if saves.size() == 0 else "secondary", func(): quick_start(), "", "Small galaxy, early era, classic rules and a guided first three turns. Pick an empire above, or play the one shown.")
+	qs.name = "QuickStart"
+	menu.add_child(qs)
 	if saves.size() > 0:
 		var s: Dictionary = vm.latest()
 		var b := Lcars.pill("Continue  ·  %s turn %d" % [s.get("playerName", ""), int(s.get("turn", 0))], "primary", func(): app.load_game(s), "", str(s.get("name", "")))
 		b.name = "Continue"
 		menu.add_child(b)
-	var nb := Lcars.pill("New campaign", "secondary" if saves.size() > 0 else "primary", func(): app.goto("new"))
+	var nb := Lcars.pill("Custom game", "secondary", func(): app.goto("new"), "", "Every option: galaxy, era, rules, presets and powers")
 	nb.name = "NewCampaign"
 	menu.add_child(nb)
 	var lb := Lcars.pill("Load campaign", "secondary", func(): app.goto("saves"), "", "Saved campaigns")
@@ -99,7 +115,7 @@ func refresh() -> void:
 			b2.add_theme_font_size_override("font_size", 22)
 			b2.alignment = HORIZONTAL_ALIGNMENT_LEFT
 			var nm := str(b2.name)
-			var ic := UiIcon.make("save" if nm.begins_with("Load") or nm == "Continue" else ("star" if nm == "NewCampaign" else "arrow_right"), 22, Lcars.ink())
+			var ic := UiIcon.make("save" if nm.begins_with("Load") or nm == "Continue" else ("star" if nm == "NewCampaign" or nm == "QuickStart" else "arrow_right"), 22, Lcars.ink())
 			ic.position = Vector2(b2.custom_minimum_size.y * 0.5 + 6, 15)
 			b2.add_child(ic)
 			b2.text = "        " + b2.text
@@ -133,6 +149,54 @@ func refresh() -> void:
 	if first and is_inside_tree():
 		first.grab_focus.call_deferred()
 	LoadTrace.done("title: menu", t)
+
+const QUICK_POWERS := 5   ## the classic five (Federation to Ferengi) can start a Quick Start; the other three play from Custom game
+
+## The power a Quick Start plays: the emblem picked, else the one the title is showing.
+func quick_faction() -> int:
+	var f := quick_empire if quick_empire > 0 else title_empire()
+	return f if f >= 1 and f <= QUICK_POWERS else 1
+
+## One tap and the player is in the galaxy: the beginner defaults (NewCampaignVM.quick) and the tutorial.
+func quick_start() -> void:
+	var qv := NewCampaignVM.quick(app.session, quick_faction())
+	if quick_seed > 0:
+		qv.seed_value = quick_seed
+	app.start_campaign(qv.quick_options())
+
+func _emblem_button(id: int) -> Button:
+	var b := Button.new()
+	b.name = "Emblem%d" % id
+	b.toggle_mode = true
+	b.flat = true
+	b.focus_mode = Control.FOCUS_NONE
+	b.custom_minimum_size = Vector2(44, 44)
+	b.tooltip_text = "%s · capital %s. Tap it, then Quick Start." % [Lcars.FACTIONS[id - 1]["short"], Lcars.FACTIONS[id - 1]["capital"]]
+	var em := Lcars.emblem(id, 30)
+	em.position = Vector2(7, 7)
+	em.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	b.add_child(em)
+	b.pressed.connect(func(): _pick_emblem(id))
+	_style_emblem(b, id == quick_faction())
+	return b
+
+func _style_emblem(b: Button, picked: bool) -> void:
+	b.button_pressed = picked
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(Lcars.owner_color(int(b.name.substr(6))), 0.16) if picked else Color(0, 0, 0, 0)
+	sb.border_color = Lcars.owner_color(int(b.name.substr(6))) if picked else Color(0, 0, 0, 0)
+	sb.set_border_width_all(2)
+	sb.set_corner_radius_all(10)
+	for st in ["normal", "hover", "pressed", "hover_pressed", "focus"]:
+		b.add_theme_stylebox_override(st, sb)
+
+func _pick_emblem(id: int) -> void:
+	quick_empire = id
+	if _emblem_row == null:
+		return
+	for c in _emblem_row.get_children():
+		if c is Button:
+			_style_emblem(c as Button, int(c.name.substr(6)) == id)
 
 ## "BOTF Remastered 0.1.540 (abc1234)" from the stamped project setting, or a plain "dev build" when unstamped.
 static func build_version() -> String:
