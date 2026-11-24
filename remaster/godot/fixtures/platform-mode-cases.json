@@ -1,0 +1,23 @@
+{
+  "_note": "Mode-detection cases shared by PlatformMode.decide (scripts/tests/test_platform_mode.gd) and web-host/botf-mode.js (tools/verify/test_platform_mode_js.py). Rule: ?mode= wins, then the remembered switch, then touch + a screen whose shorter side is <= 640 CSS px is mobile.",
+  "cases": [
+    {"name": "desktop browser, nothing set",       "query": "",        "stored": "",        "touch": false, "short": 1080, "mode": "desktop", "source": "auto"},
+    {"name": "phone landscape (844x390)",          "query": "",        "stored": "",        "touch": true,  "short": 390,  "mode": "mobile",  "source": "auto"},
+    {"name": "phone landscape (915x412)",          "query": "",        "stored": "",        "touch": true,  "short": 412,  "mode": "mobile",  "source": "auto"},
+    {"name": "phone portrait",                     "query": "",        "stored": "",        "touch": true,  "short": 390,  "mode": "mobile",  "source": "auto"},
+    {"name": "touch laptop, wide screen",          "query": "",        "stored": "",        "touch": true,  "short": 1080, "mode": "desktop", "source": "auto"},
+    {"name": "tablet, touch, 768 short side",      "query": "",        "stored": "",        "touch": true,  "short": 768,  "mode": "desktop", "source": "auto"},
+    {"name": "narrow screen but no touch",         "query": "",        "stored": "",        "touch": false, "short": 390,  "mode": "desktop", "source": "auto"},
+    {"name": "edge of narrow (640)",               "query": "",        "stored": "",        "touch": true,  "short": 640,  "mode": "mobile",  "source": "auto"},
+    {"name": "just over narrow (641)",             "query": "",        "stored": "",        "touch": true,  "short": 641,  "mode": "desktop", "source": "auto"},
+    {"name": "unknown screen size",                "query": "",        "stored": "",        "touch": true,  "short": 0,    "mode": "desktop", "source": "auto"},
+    {"name": "?mode=mobile on a desktop",          "query": "mobile",  "stored": "",        "touch": false, "short": 1080, "mode": "mobile",  "source": "query"},
+    {"name": "?mode=desktop on a phone",           "query": "desktop", "stored": "",        "touch": true,  "short": 390,  "mode": "desktop", "source": "query"},
+    {"name": "query beats the stored choice",      "query": "desktop", "stored": "mobile",  "touch": true,  "short": 390,  "mode": "desktop", "source": "query"},
+    {"name": "query is case-insensitive",          "query": "MOBILE",  "stored": "",        "touch": false, "short": 1080, "mode": "mobile",  "source": "query"},
+    {"name": "stored mobile on a desktop",         "query": "",        "stored": "mobile",  "touch": false, "short": 1080, "mode": "mobile",  "source": "stored"},
+    {"name": "stored desktop on a phone",          "query": "",        "stored": "desktop", "touch": true,  "short": 390,  "mode": "desktop", "source": "stored"},
+    {"name": "junk query falls through to stored", "query": "tablet",  "stored": "mobile",  "touch": false, "short": 1080, "mode": "mobile",  "source": "stored"},
+    {"name": "junk query and junk stored",         "query": "x",       "stored": "y",       "touch": true,  "short": 390,  "mode": "mobile",  "source": "auto"}
+  ]
+}

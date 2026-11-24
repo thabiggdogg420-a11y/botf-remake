@@ -120,7 +120,7 @@ static func apply_viewport(v: Viewport, s: Dictionary) -> void:
 	if v == null:
 		return
 	fill_defaults(s)
-	var scale := clampf(float(s["display.renderScale"]), 0.5, 1.0)
+	var scale := clampf(PlatformMode.effective_render_scale(float(s["display.renderScale"])), 0.5, 1.0)
 	v.scaling_3d_scale = scale
 	# Set by a built name on purpose (WebGPU round 7): the export's shader baker bakes Forward+'s advanced variants (TAA,
 	# FSR 2 motion vectors: 70 MB of the browser build's shader pack) for any script that names this property, without

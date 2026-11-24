@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BOTF Remastered</title>
+<!-- BOTF Remastered browser loader (WebGPU trial round 2, 19 Nov 2026). Picks the full-graphics Forward+ build (WebGPU)
+     where it is known to run well, otherwise the standard build (WebGL2, Compatibility). Layout on the host:
+       index.html          this page
+       webgpu/index.html   the WebGPU fork export (Forward+)
+       webgl/index.html    the WebGL export
+     Rules, in order:
+       0. Mobile mode (the Desktop | Mobile switch, ?mode=mobile, or touch + a narrow screen: see botf-mode.js) always gets
+          WebGL, and the mode is passed on to the game page (?mode= is forwarded; the remembered switch is read there too).
+       1. ?build=webgl or ?build=webgpu forces a build (remembered for the tab, so Reload stays on it); ?build=auto clears it.
+       2. Only Chromium desktop browsers (Chrome, Edge) get WebGPU. Firefox's WebGPU ran the 3D views at 1-11 fps in
+          testing, so Firefox gets WebGL until that improves. Safari, mobile and anything else get WebGL (untested on WebGPU).
+       3. No WebGPU, no secure page, no adapter within 3 s, a software/fallback adapter (SwiftShader, Microsoft Basic
+          Render), limits below what Forward+ needs, or a refused device: WebGL.
+     Saves live in the browser's storage for this site, shared by both builds. -->
+<style>
+ html,body{margin:0;height:100%;background:#05070f;color:#cfe0ff;font:16px sans-serif}
+ #m{position:fixed;inset:0;display:flex;flex-direction:column;gap:14px;align-items:center;justify-content:center;text-align:center;padding:24px}
+ #m a{color:#ffcc66}
+</style>
+<!--botf-mode--><script data-botf-mode>(function () { var NARROW_MAX = 640; function decide(query, stored, touch, shortSide) { var q = String(query || '').trim().toLowerCase(); if (q === 'mobile' || q === 'desktop') { return { mode: q, source: 'query' }; } var s = String(stored || '').trim().toLowerCase(); if (s === 'mobile' || s === 'desktop') { return { mode: s, source: 'stored' }; } if (touch && shortSide > 0 && shortSide <= NARROW_MAX) { return { mode: 'mobile', source: 'auto' }; } return { mode: 'desktop', source: 'auto' }; } function read() { var q = '', s = ''; try { q = new URLSearchParams(location.search).get('mode') || ''; } catch (e) {} try { s = localStorage.getItem('botf-mode') || ''; } catch (e) {} var touch = ((navigator.maxTouchPoints || 0) > 0) || ('ontouchstart' in window); var shortSide = 0; try { shortSide = Math.min(screen.width, screen.height) || 0; } catch (e) {} return decide(q, s, touch, shortSide); } var d = read(); globalThis.BOTF_MODE = d.mode; globalThis.BOTF_MODE_SRC = d.source; globalThis.botfDecideMode = decide; var inGpu = /\/webgpu\/[^\/]*$/.test(location.pathname); var inGl = /\/webgl\/[^\/]*$/.test(location.pathname); if (d.mode === 'mobile' && inGpu) { location.replace(location.pathname.replace('/webgpu/', '/webgl/') + location.search + location.hash); return; } function setMode(m) { var kept = true; try { localStorage.setItem('botf-mode', m); } catch (e) { kept = false; } try { sessionStorage.removeItem('botf-build'); } catch (e) {} var u = new URL(location.href); u.searchParams.delete('mode'); if (!kept) { u.searchParams.set('mode', m); } if (inGl || inGpu) { u.pathname = u.pathname.replace(/\/(webgl|webgpu)\/[^\/]*$/, '/'); } location.href = u.toString(); } globalThis.botfSetMode = setMode; function build() { if (document.getElementById('botf-mode')) { return; } var st = document.createElement('style'); st.textContent = '#botf-mode{position:fixed;z-index:60;font:14px sans-serif;color:#cfe0ff;background:rgba(5,7,15,.92);border:1px solid #2a4064;border-radius:999px;display:flex;overflow:hidden;top:10px;left:50%;transform:translateX(-50%)}#botf-mode button{all:unset;cursor:pointer;padding:8px 16px;min-width:64px;text-align:center}#botf-mode button.on{background:#2a4064;color:#fff;font-weight:600}#botf-mode.small,#botf-mode.fold{top:auto;bottom:6px;left:6px;right:auto;transform:none;opacity:.45}#botf-mode.small{font-size:12px;opacity:.9}#botf-mode.small button{padding:6px 10px;min-width:0}#botf-mode.fold{width:32px;height:32px;border-radius:16px;justify-content:center;align-items:center;cursor:pointer}#botf-mode.fold:hover{opacity:1}#botf-mode.fold button{display:none}#botf-mode.fold:after{content:"\\21C4";font-size:16px}'; document.head.appendChild(st); var box = document.createElement('div'); box.id = 'botf-mode'; box.setAttribute('role', 'group'); box.setAttribute('aria-label', 'Display mode'); [['desktop', 'Desktop'], ['mobile', 'Mobile']].forEach(function (p) { var b = document.createElement('button'); b.type = 'button'; b.textContent = p[1]; b.dataset.mode = p[0]; if (p[0] === d.mode) { b.className = 'on'; b.setAttribute('aria-pressed', 'true'); } b.addEventListener('click', function (ev) { ev.stopPropagation(); if (box.className.indexOf('fold') >= 0) { box.className = 'small'; return; } if (p[0] !== d.mode) { setMode(p[0]); } }); box.appendChild(b); }); document.body.appendChild(box); globalThis.botfModeBox = box; } if (document.readyState === 'loading') { document.addEventListener('DOMContentLoaded', build); } else { build(); } var done = globalThis.botfBootDone; globalThis.botfBootDone = function () { if (typeof done === 'function') { done(); } var box = document.getElementById('botf-mode'); if (box) { box.className = 'fold'; box.addEventListener('click', function (ev) { if (box.className === 'fold') { box.className = 'small'; setTimeout(function () { if (box.className === 'small') { box.className = 'fold'; } }, 5000); } }); } }; }());</script><!--/botf-mode-->
+</head>
+<body>
+<div id="m"><div id="t">Checking your graphics…</div><noscript>The game needs JavaScript.</noscript></div>
+<script>
+(async function () {
+  var WEBGPU = 'webgpu/index.html', WEBGL = 'webgl/index.html';
+  var q = new URLSearchParams(location.search);
+  var t = document.getElementById('t');
+  if (q.get('build') === 'auto') { try { sessionStorage.removeItem('botf-build'); } catch (e) {} }
+  var forced = q.get('build');
+  if (forced !== 'webgl' && forced !== 'webgpu') { try { forced = sessionStorage.getItem('botf-build'); } catch (e) { forced = null; } }
+  function go(which, why) {
+    try { sessionStorage.setItem('botf-build', which); } catch (e) {}
+    window.__botfChoice = { build: which, why: why || '', mode: window.BOTF_MODE || '' };
+    if (window.console) console.log('BOTF_LOADER ' + which + (why ? ' (' + why + ')' : ''));
+    t.textContent = (which === 'webgpu' ? 'Loading the full-graphics build' : 'Loading the standard build') + (why ? ' (' + why + ')' : '') + '…';
+    if (q.get('dry') === '1') return; // test hook: decide, do not navigate
+    var qm = q.get('mode');
+    var pass = (qm === 'mobile' || qm === 'desktop') ? '?mode=' + qm : '';
+    location.replace((which === 'webgpu' ? WEBGPU : WEBGL) + pass + location.hash);
+  }
+  if (window.BOTF_MODE === 'mobile') return go('webgl', 'mobile mode');
+  if (forced === 'webgl' || forced === 'webgpu') return go(forced, 'chosen');
+  var ua = navigator.userAgent || '';
+  var brands = (navigator.userAgentData && navigator.userAgentData.brands || []).map(function (b) { return b.brand; }).join(' ');
+  var mobile = (navigator.userAgentData && navigator.userAgentData.mobile) || /Android|iPhone|iPad|Mobile/i.test(ua);
+  var chromium = /Chromium|Google Chrome|Microsoft Edge/.test(brands) || (/Chrome\/|Edg\//.test(ua) && !/Firefox\//.test(ua));
+  if (/Firefox\/|FxiOS/.test(ua)) return go('webgl', 'Firefox');
+  if (!chromium) return go('webgl', 'browser not tested with full graphics');
+  if (mobile) return go('webgl', 'mobile');
+  if (!('gpu' in navigator) || !window.isSecureContext) return go('webgl', 'no WebGPU');
+  try {
+    var adapter = await Promise.race([
+      navigator.gpu.requestAdapter({ powerPreference: 'high-performance' }),
+      new Promise(function (r) { setTimeout(function () { r(null); }, 3000); })
+    ]);
+    if (!adapter) return go('webgl', 'no WebGPU adapter');
+    var info = adapter.info || (adapter.requestAdapterInfo ? await adapter.requestAdapterInfo().catch(function () { return {}; }) : {});
+    var desc = [info.vendor, info.architecture, info.device, info.description].join(' ');
+    if (adapter.isFallbackAdapter || info.isFallbackAdapter || /swiftshader|llvmpipe|software|basic render|warp/i.test(desc)) return go('webgl', 'software graphics');
+    // Forward+ binds several storage buffers per stage and 4 bind groups, and its cluster/scene buffers outgrow 128 MB.
+    var L = adapter.limits;
+    if (L.maxStorageBuffersPerShaderStage < 8 || L.maxBindGroups < 4 || L.maxTextureDimension2D < 8192 || L.maxStorageBufferBindingSize < 134217728) return go('webgl', 'limited WebGPU');
+    var device = await adapter.requestDevice().catch(function () { return null; });
+    if (!device) return go('webgl', 'WebGPU device refused');
+    device.destroy();
+    go('webgpu');
+  } catch (e) {
+    go('webgl', 'WebGPU check failed');
+  }
+})();
+</script>
+</body>
+</html>

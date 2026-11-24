@@ -40,7 +40,7 @@ func _ready() -> void:
 	env.ambient_light_color = Color(0.2, 0.21, 0.26)
 	env.tonemap_mode = Environment.TONE_MAPPER_ACES
 	env.tonemap_exposure = 0.9
-	env.glow_enabled = true
+	env.glow_enabled = PlatformMode.glow_allowed()   # off on a phone
 	env.glow_intensity = 0.3
 	we.environment = env
 	_root.add_child(we)

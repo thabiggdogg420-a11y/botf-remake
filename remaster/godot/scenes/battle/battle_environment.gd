@@ -32,7 +32,7 @@ static func build(parent: Node3D, arena_size: Vector2, planet_class: String = "G
 	env.tonemap_mode = Environment.TONE_MAPPER_ACES
 	env.tonemap_exposure = 0.85 # stage 3: hulls read white beside the show (was 1.0); fill light carries the shadow side; 1.15 blew out white saucers
 	env.tonemap_white = 8.0
-	env.glow_enabled = true
+	env.glow_enabled = PlatformMode.glow_allowed()   # off on a phone
 	env.glow_normalized = false
 	env.set_glow_level(0, 0.0)
 	env.set_glow_level(1, 1.0)
