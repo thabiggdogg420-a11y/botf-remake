@@ -219,7 +219,8 @@ func _bracket_report(s: String, view: Node, cam: BattleCamera, mode_name: String
 			bad.append("%s bracket half-size %s round a hull of half-extent %s (x%.2f)" % [str(b.get("name", b.id)), bhalf.round(), half.round(), fit])
 		if err > maxf(8.0, 0.35 * maxf(half.x, half.y)):
 			bad.append("%s bracket centre %s, hull centre %s, off %.0f px (hull half-extent %s)" % [str(b.get("name", b.id)), marker.round(), sil.get_center().round(), err, half.round()])
-	var ok := bad.is_empty() and lens_err < 0.01
+	# (before the fleets deploy there are no bodies and the camera has not filmed yet: its lens is not the markers' business)
+	var ok := bad.is_empty() and (lens_err < 0.01 or cam.bodies.is_empty())
 	print("BRACKET_CHECK ", "ok " if ok else "FAIL ", s, " ", mode_name, ": ", n, " ships judged, worst centre error ", snappedf(worst, 0.1), " px, worst bracket/hull size ratio ", snappedf(worst_size, 0.01), ", camera-vs-view ", snappedf(lens_err, 0.0001),
 		"" if bad.is_empty() else " | " + "; ".join(bad))
 	return ok
