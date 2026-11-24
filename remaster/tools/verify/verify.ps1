@@ -567,7 +567,7 @@ if ($wantWeb -and -not $SkipCapture) {
 
 # ---- Phase 3b: web frame-time bar (25 Nov 2026: the browser build was choppy from the title to the galaxy map) ----------------
 # perf_frames.py drives headed Chrome (cold profile, off-screen window) title -> New Campaign -> galaxy and times every presented
-# frame. Bar at the real CPU: p95 <= 20 ms, p99 <= 33 ms, <= 2 % of frames over 33 ms, none over 250 ms, in the steady phases
+# frame. Bar at Chrome's 4x CPU throttle (a mid-range PC): median <= 35 ms, p95 <= 120, p99 <= 250, <= 15 % of frames over 33 ms, none over 500 ms, in the steady phases
 # (title idle + mouse, galaxy idle + mouse) after a 20 s settle for the first visit's own warm-ups. Timing under heavy outside load
 # is not clean: the detail line carries the CPU load and free RAM at the start, and a FAIL under load is re-run when quiet.
 if ($wantWeb -and -not $SkipCapture) {
@@ -575,7 +575,7 @@ if ($wantWeb -and -not $SkipCapture) {
     if (Test-Path -LiteralPath (Join-Path $webDir 'index.html')) {
         $load = try { [int](Get-Counter '\Processor(_Total)\% Processor Time' -SampleInterval 1 -MaxSamples 2 | ForEach-Object { $_.CounterSamples.CookedValue } | Measure-Object -Average).Average } catch { -1 }
         $freeGb = try { [math]::Round((Get-CimInstance Win32_OperatingSystem).FreePhysicalMemory / 1MB, 1) } catch { -1 }
-        $po = & $python (Join-Path $PSScriptRoot 'perf_frames.py') $webDir (Join-Path $run 'perf') --tag verify --settle-s 20 --pass-bar 2>&1 | Out-String
+        $po = & $python (Join-Path $PSScriptRoot 'perf_frames.py') $webDir (Join-Path $run 'perf') --tag verify --settle-s 20 --cpu 4 --pass-bar 2>&1 | Out-String
         $pc = $LASTEXITCODE
         $po | Set-Content -LiteralPath (Join-Path $logs 'web-frame-bar.log')
         $pl = ($po -split "`n" | Where-Object { $_ -match 'BAR MISS|PASS BAR|all-steady' } | Select-Object -First 3 | ForEach-Object { $_.Trim() }) -join ' | '
