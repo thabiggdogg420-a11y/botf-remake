@@ -166,32 +166,37 @@ func _turn10(backend: String) -> void:
 		if g.is_empty():
 			check(false, "advisor has guidance on turn %d (screen %s)" % [int(app.view["meta"]["turn"]), app.screen])
 			break
+		var beat: bool = g.get("beat", false)
 		var btn: Button = panel.find_child("AdvisorAct", true, false)
-		if btn == null:
+		if btn == null and not beat:
 			check(false, "advisor shows an action button")
 			break
 		if g.get("tutorial", false):
 			tutorial_steps[str(g["id"])] = true
-		# F3 review: the card never sits on the control the step points at, and that control is ringed
+		# F3 review: the card never sits on the control the step points at, and that control is ringed (a tutorial beat is
+		# spotlit: everything else dimmed)
 		panel._place()
 		var rects := panel.target_rects()
 		if not rects.is_empty():
 			pointed += 1
-			var hl: Control = app.find_child("AdvisorHighlight", true, false)
+			var hl: Control = app.find_child("TutorialSpotlight" if beat else "AdvisorHighlight", true, false)
 			if hl == null or not hl.visible:
 				covered.append(str(g["id"]) + " (no ring)")
 		for r in rects:
 			if panel.get_global_rect().intersects(r):
 				covered.append(str(g["id"]))
 		var t0 := int(app.view["meta"]["turn"])
-		btn.pressed.emit()       # the only input the run gives
+		if beat:
+			panel.advisor.perform(g)   # a beat has no button: the run does the thing it asks, as the player would
+		else:
+			btn.pressed.emit()       # the only input the run gives
 		presses += 1
 		await frames(2)
-		print("  T%02d %-8s %-22s -> %s%s" % [t0, app.screen, str(g["title"]), str(g["act_label"]), ("  [tutorial %d/%d]" % [int(g["step"]), int(g["steps"])]) if g.get("tutorial", false) else ""])
+		print("  T%02d %-8s %-22s -> %s%s" % [t0, app.screen, str(g["title"]) if str(g["title"]) != "" else str(g["text"]).left(22), str(g["act_label"]) if beat == false else "(does: " + str(g["act"]) + ")", ("  [tutorial %d/%d]" % [int(g["step"]), int(g["steps"])]) if g.get("tutorial", false) else ""])
 	var turn := int(app.view.get("meta", {}).get("turn", 0))
 	check(turn >= 10, "reached turn %d by advisor presses only (%d presses)" % [turn, presses])
 	check(pointed > 0 and covered.is_empty(), "the advisor card left every pointed-at control clear and ringed (%d steps pointed, covered: %s)" % [pointed, str(covered)])
-	check(tutorial_steps.size() >= 6, "the tutorial taught the loop (%s)" % ", ".join(tutorial_steps.keys()))
+	check(tutorial_steps.has("scout") and tutorial_steps.has("build") and tutorial_steps.has("end_turn"), "the tutorial taught the loop (%s)" % ", ".join(tutorial_steps.keys()))
 	check(str(app.view["meta"].get("outcome", "ongoing")) == "ongoing", "the empire is still in the game at turn %d" % turn)
 	check(app.view.get("colonies", []).size() >= 1, "colonies at turn %d: %d" % [turn, app.view.get("colonies", []).size()])
 	var charted: int = app.view.get("systems", []).filter(func(s): return AppSession.is_charted(s)).size()

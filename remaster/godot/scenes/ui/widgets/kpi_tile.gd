@@ -49,5 +49,9 @@ static func make(icon: String, caption: String, value: String, delta: String = "
 	Lcars.ignore_mouse(row)
 	return t
 
+## The tile's tooltip as plain text: the one string a hover and a long-press both show.
+func tip_text() -> String:
+	return RichTip.text(ex)
+
 func _make_custom_tooltip(_for_text: String) -> Object:
 	return RichTip.build(ex)

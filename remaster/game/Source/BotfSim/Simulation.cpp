@@ -2338,6 +2338,7 @@ std::int64_t blocMilitaryPower(const GameState& s, const CampaignDiplomacyContex
 // Replaces the old "IDs 2/4 declare war on the player every turn after 25" rule.
 void planAiWarDeclarations(GameState& s, int ownerId) {
     if (!s.aiAggressionEnabled || empireEliminatedInternal(s, ownerId)) return;
+    if (s.turn < s.aiWarHoldTurn) return;   // Quick Start: the AI's first war waits (aiWarHoldTurn is 0 in every other game)
     {   // C6 (21 Nov 2026, Simon's delegation): the last two powers, both AI: their treaties end and the stronger goes to war,
         // whatever its personality (was the soak-only soakEndgameWar experiment).
         const auto left = survivingEmpires(s);
@@ -3677,6 +3678,7 @@ std::string payload(const GameState& s) {
     }
     if (s.playingOnFrom > 0) out << "PLAYING_ON " << s.playingOnFrom << '\n';   // C4 (20 Nov 2026)
     if (!s.dominationEnabled) out << "NO_DOMINATION 1\n";   // C7 (21 Nov 2026)
+    if (s.aiWarHoldTurn > 0) out << "AI_WAR_HOLD " << s.aiWarHoldTurn << '\n';   // Quick Start (26 Nov 2026)
     {   // C11 (schema 26): subjugated minor worlds (ascending system id), only while one exists.
         std::vector<int> held;
         for (const auto& m : s.minors) if (m.subjugated) held.push_back(m.systemId);
@@ -6703,6 +6705,11 @@ GameState deserialize(const std::string& text) {
         require(static_cast<bool>(in >> one) && one == 1, "Malformed NO_DOMINATION section");
         s.dominationEnabled = false;
         nextTag = readTag("Malformed save section after NO_DOMINATION");
+    }
+    if (nextTag == "AI_WAR_HOLD") {   // Quick Start (26 Nov 2026): the turn before which no AI declares war.
+        require(current25, "AI_WAR_HOLD section in an older save");
+        require(static_cast<bool>(in >> s.aiWarHoldTurn) && s.aiWarHoldTurn >= 1 && s.aiWarHoldTurn <= 1000, "Malformed AI_WAR_HOLD section");
+        nextTag = readTag("Malformed save section after AI_WAR_HOLD");
     }
     bool subjugatedRead = false;
     if (nextTag == "SUBJUGATED") {   // C11 (schema 26): minor worlds taken by invasion (ascending system id).

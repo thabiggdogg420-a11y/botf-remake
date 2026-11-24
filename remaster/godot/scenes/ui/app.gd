@@ -60,6 +60,9 @@ var _toasts: VBoxContainer
 var _current: Control
 var _modals: Array[Control] = []
 var tutorial_held := false   ## true for a loaded campaign: the advisor shows no tutorial (Restart tutorial clears it)
+var tutorial_game := false   ## true for a Quick Start: the side tabs light up as they get something to show (TabReveal)
+var tab_lit := {}            ## tab (screen id) -> true once it first had something to show; only in a tutorial game
+var tab_seen := {}           ## tab -> true once the player has opened it, which clears its "new" mark
 var advisor_panel: AdvisorPanel   ## F3 advisor and first-run tutorial
 var _theme_empire := -1
 
@@ -891,6 +894,7 @@ func _build_chrome() -> void:
 	_rail.position = Vector2(0, TOP_H + 44)
 	_rail.custom_minimum_size = Vector2(RAIL_W, 0)
 	_chrome.add_child(_rail)
+	TabReveal.refresh(self)
 	for s in GAME_SCREENS:
 		var b := Button.new()
 		b.theme_type_variation = "RailButton"
@@ -913,6 +917,7 @@ func _build_chrome() -> void:
 		keyl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		b.add_child(keyl)
 		_rail_icon(b, str(ShellVM.SCREEN_ICONS.get(s["id"], "arrow_right")), 18, Vector2(5, 21))
+		TabReveal.style(self, b, str(s["id"]))
 		_rail.add_child(b)
 	var fill := ColorRect.new()
 	fill.color = a.darkened(0.45)
@@ -1061,6 +1066,7 @@ func goto(id: String, remember: bool = true) -> void:
 		if history.size() > 12:
 			history.pop_front()
 	screen = id
+	TabReveal.mark_seen(self, id)
 	if _chrome_folded:
 		_chrome_folded = false
 		_chrome.visible = true
@@ -1195,6 +1201,8 @@ func _fetch_empire_audio(player: int) -> void:
 
 func _enter_game(v: Dictionary, name_: String, spread := false) -> void:
 	history.clear()
+	if advisor_panel != null:
+		advisor_panel.advisor.new_game()   # nothing taught yet in this game
 	save_name = name_
 	session._adopt_pack_look(v)   # before the theme: the pack may recolour the empires (schema 25)
 	var web := spread and OS.has_feature("web") and DisplayServer.get_name() != "headless"
@@ -1223,10 +1231,21 @@ func _enter_game(v: Dictionary, name_: String, spread := false) -> void:
 ## Starts a campaign. The player's power is options.faction; options.empire is accepted as an alias
 ## (AppSession.campaign_options).
 func start_campaign(options: Dictionary) -> bool:
+	var quick := bool(options.get("quickStart", false))   # a Quick Start (TitleScreen): the tutorial game
+	options = options.duplicate()
+	options.erase("quickStart")
 	var v := session.start("newCampaign", AppSession.campaign_options(options))
 	if v.is_empty():
 		return false
 	tutorial_held = false
+	tutorial_game = quick
+	tab_lit.clear()
+	tab_seen.clear()
+	if quick:   # the tutorial is on for a Quick Start, even for a player who has finished or skipped it before
+		settings["tutorial"] = 0
+		settings["tutorialBeats"] = 1
+		AppSaves.store_settings(settings)
+
 	_enter_game(v, "%s campaign %s" % [v["meta"]["playerName"], str(v["meta"]["seed"])])
 	var extra: Array = options.get("hotseat", [])
 	if not extra.is_empty():
@@ -1254,6 +1273,7 @@ func start_drill(method: String, label_: String, args: Dictionary = {}, spread :
 	if v.is_empty():
 		return
 	tutorial_held = false
+	tutorial_game = false
 	await _enter_game(v, label_, spread)
 	toast(label_ + " loaded.", "warn")
 
@@ -1403,6 +1423,7 @@ func load_game(blob: Dictionary) -> bool:
 	if v.is_empty():
 		return false
 	tutorial_held = true   # the first-run tutorial is for a new campaign, not a loaded one
+	tutorial_game = false
 	_enter_game(v, str(blob.get("name", "Loaded campaign")))
 	toast("Loaded %s, turn %d." % [blob.get("name", ""), int(view["meta"]["turn"])], "good")
 	if view.get("session", {}).get("active", false):

@@ -3,6 +3,10 @@ extends ViewModel
 ## New-campaign model: the chosen power, galaxy size, powers in play, seed, era, ruleset, preset and switches,
 ## and the options dictionary handed to App.start_campaign.
 
+## Quick Start (ONBOARDING-AND-MOBILE-PLAN.md 1.1): no AI empire declares war before this turn. Only Quick Start sets it (the core
+## option "aiWarHoldTurn"); Custom games leave the AI as it was.
+const QUICK_AI_WAR_TURN := 40
+
 ## The one place the galaxy sizes live on the Godot side (the web client's twin is web/src/screens/NewCampaign.tsx SIZES).
 ## Simon, 10 Nov 2026: Medium is the default and holds about 50 systems (the original's limits were its engine's, not a design
 ## choice). Each grid keeps star density near 0.145 systems per sector. Only Medium = ~50 is his ruling; the rest is scaling
@@ -305,6 +309,25 @@ func preview_galaxy() -> Dictionary:
 		var r := session.core.invoke("galaxyPreview", o)
 		_pv = r["result"] if r.get("ok", false) and r["result"] is Dictionary else {}
 	return _pv
+
+## The Quick Start choices for a power: a Small galaxy, the Early era, the Classic rules (the preset), the normal AI, a fresh seed.
+static func quick(session_: AppSession, faction_id: int) -> NewCampaignVM:
+	var q := NewCampaignVM.new(session_)
+	q.roll_seed()
+	q.pick_preset("classic")
+	q.pick_faction(faction_id)
+	q.size_id = "small"
+	q.era = 1
+	q.ruleset = "reference"
+	q.difficulty = "normal"
+	return q
+
+## The options a Quick Start hands App.start_campaign: the chosen ones, the AI's first war held back, and the tutorial game flag.
+func quick_options() -> Dictionary:
+	var o := options()
+	o["aiWarHoldTurn"] = QUICK_AI_WAR_TURN
+	o["quickStart"] = true
+	return o
 
 func roll_seed() -> void:
 	seed_value = randi_range(100000, 999999)

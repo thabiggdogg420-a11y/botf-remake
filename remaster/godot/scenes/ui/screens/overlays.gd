@@ -26,6 +26,8 @@ static func open(app: App, kind: String) -> Control:
 const CATEGORY_ICON := {"construction": "build", "research": "research", "exploration": "star", "diplomacy": "diplomacy", "intel": "intel", "combat": "combat",
 	"colonization": "colony", "events": "events", "stations": "system", "victory": "victory", "economy": "credits", "fleets": "fleets"}
 
+const SHORT_LOG_ENTRIES := 4   ## the tutorial's log shows this many headlines
+
 static func briefing(app: App, filter: String = "all") -> Control:
 	var b: Variant = _vm(app).briefing()
 	var root := Lcars.vbox(12)
@@ -33,6 +35,7 @@ static func briefing(app: App, filter: String = "all") -> Control:
 	if not b is Dictionary:
 		root.add_child(Lcars.empty_note("No briefing yet. End a turn to receive the chronicle."))
 		return app.open_modal(root, TrekText.log_title(app.player()), Vector2(900, 0))
+	var short := app.advisor_panel != null and app.advisor_panel.advisor.log_short()   # the tutorial's log beat: the headlines only
 	var head := Lcars.hbox(24)
 	var t := Lcars.vbox(0)
 	t.add_child(Lcars.caption("Stardate %s · turn %d" % [TrekText.stardate_text(int(b["turn"])), int(b["turn"])]))
@@ -41,10 +44,11 @@ static func briefing(app: App, filter: String = "all") -> Control:
 	head.add_child(t)
 	head.add_child(Lcars.spacer())
 	var credits := int(b.get("creditsAfter", 0)) - int(b.get("creditsBefore", 0))
-	head.add_child(Lcars.kpi("credits", "Credits", Lcars.signed(credits), "", "alert" if credits < 0 else "good", {"title": "Credits this turn", "value": Lcars.signed(credits), "parts": [["Before", Lcars.fmt(b.get("creditsBefore", 0)), ""], ["After", Lcars.fmt(b.get("creditsAfter", 0)), ""]], "effect": "Income less upkeep and spending, resolved this turn."}))
-	head.add_child(Lcars.kpi("save", "Treasury", Lcars.fmt(b.get("creditsAfter", 0)), "", "", {"title": "Treasury", "value": Lcars.fmt(b.get("creditsAfter", 0)), "effect": "Credits held after the turn resolved."}))
-	head.add_child(Lcars.kpi("research", "Research", "+" + Lcars.fmt(b.get("researchGained", 0)), "", "info", {"title": "Research gained", "value": "+" + Lcars.fmt(b.get("researchGained", 0)), "effect": "Points added across the six fields by the allocation."}))
-	head.add_child(Lcars.kpi("orders", "Orders", int(b.get("ordersApplied", 0)), "", "", {"title": "Orders applied", "value": str(int(b.get("ordersApplied", 0))), "effect": "Drafted orders that resolved this turn."}))
+	if not short:
+		head.add_child(Lcars.kpi("credits", "Credits", Lcars.signed(credits), "", "alert" if credits < 0 else "good", {"title": "Credits this turn", "value": Lcars.signed(credits), "parts": [["Before", Lcars.fmt(b.get("creditsBefore", 0)), ""], ["After", Lcars.fmt(b.get("creditsAfter", 0)), ""]], "effect": "Income less upkeep and spending, resolved this turn."}))
+		head.add_child(Lcars.kpi("save", "Treasury", Lcars.fmt(b.get("creditsAfter", 0)), "", "", {"title": "Treasury", "value": Lcars.fmt(b.get("creditsAfter", 0)), "effect": "Credits held after the turn resolved."}))
+		head.add_child(Lcars.kpi("research", "Research", "+" + Lcars.fmt(b.get("researchGained", 0)), "", "info", {"title": "Research gained", "value": "+" + Lcars.fmt(b.get("researchGained", 0)), "effect": "Points added across the six fields by the allocation."}))
+		head.add_child(Lcars.kpi("orders", "Orders", int(b.get("ordersApplied", 0)), "", "", {"title": "Orders applied", "value": str(int(b.get("ordersApplied", 0))), "effect": "Drafted orders that resolved this turn."}))
 	var ack := Lcars.pill(TrekText.term(app.player(), "log_filed", "Acknowledge"), "primary", func(): app.close_modal(), "", "", "Enter")
 	ack.name = "Acknowledge"
 	ack.size_flags_vertical = Control.SIZE_SHRINK_CENTER
@@ -52,6 +56,9 @@ static func briefing(app: App, filter: String = "all") -> Control:
 	root.add_child(head)
 	var events: Array = _vm(app).log_entries()
 	var cats := OverlaysVM.categories(events)
+	if short:
+		events = events.slice(0, SHORT_LOG_ENTRIES)   # headlines only; the Chronicle keeps the rest
+		cats = OverlaysVM.categories(events)
 	var tabs := Lcars.hbox(6)
 	var modal_holder := {"m": null}
 	var mk_tab := func(id: String, text: String):
@@ -62,7 +69,8 @@ static func briefing(app: App, filter: String = "all") -> Control:
 	mk_tab.call("all", "All  %d" % events.size())
 	for c in cats:
 		mk_tab.call(c, "%s  %d" % [Lcars.CATEGORY_LABELS.get(c, c), events.filter(func(e): return e["category"] == c).size()])
-	root.add_child(tabs)
+	if not short:
+		root.add_child(tabs)
 	var list := Lcars.vbox(10)
 	for c in cats:
 		if filter != "all" and filter != c:
@@ -80,14 +88,15 @@ static func briefing(app: App, filter: String = "all") -> Control:
 	if events.is_empty():
 		list.add_child(Lcars.empty_note("A quiet turn. Production and research continue."))
 	var sc := Lcars.scroll(list)
-	sc.custom_minimum_size = Vector2(0, 520)
+	sc.custom_minimum_size = Vector2(0, 220 if short else 520)
 	root.add_child(sc)
 	var foot := HFlowContainer.new()
 	for col in b.get("colonies", []):
 		var bd := Lcars.badge("%s%s" % [col["name"], (" ✓ " + str(col["completed"])) if str(col.get("completed", "")) != "" else ""], "alert" if int(col["economy"].get("foodDeficit", 0)) > 0 else "dim")
 		bd.tooltip_text = "Food %s · industry %s · research %s · net %s" % [col["economy"]["food"], col["economy"]["industry"], col["economy"]["research"], Lcars.signed(col["economy"]["net"])]
 		foot.add_child(bd)
-	root.add_child(foot)
+	if not short:
+		root.add_child(foot)
 	var m := app.open_modal(root, "", Vector2(1100, 0))
 	modal_holder["m"] = m
 	ack.grab_focus.call_deferred()
@@ -399,7 +408,7 @@ static func end_screen(app: App, preview: String = "") -> Control:
 	acts.add_child(Lcars.pill("Save", "secondary", func():
 		if app.save_game("%s - %s turn %d" % [v["meta"]["playerName"], outcome, int(v["meta"]["turn"])]):
 			app.toast("Campaign saved.", "good")))
-	acts.add_child(Lcars.pill("New campaign", "primary", func(): app.close_modal(); app.view = {}; app.goto("new")))
+	acts.add_child(Lcars.pill("Custom game", "primary", func(): app.close_modal(); app.view = {}; app.goto("new")))
 	acts.add_child(Lcars.pill("Title", "tertiary", func(): app.close_modal(); app.view = {}; app.goto("title")))
 	root.add_child(acts)
 	var m := app.open_modal(root, "", Vector2(1040, 0), "good" if won else "alert")

@@ -23,6 +23,16 @@ func _colony_sums() -> Dictionary:
 			idle.append(str(c["name"]))
 	return {"food": food_bal, "short": short, "idle": idle}
 
+## Every top-bar figure's tooltip as plain text, by caption: what the figure is and what moves it. The text lives here, in
+## data, so a hover and a long-press (the mobile layout) show the same words.
+func figure_tips() -> Dictionary:
+	var out := {}
+	for st in stats():
+		out[str(st["cap"])] = RichTip.text(RichTip.from(st["explain"]))
+	var o := orders_stat()
+	out[str(o["cap"])] = RichTip.text(RichTip.from(o["explain"]))
+	return out
+
 ## Top-bar stats left of the spacer: [{cap, icon, value, delta, tone, tip, explain}].
 func stats() -> Array:
 	var v := view()
@@ -34,7 +44,7 @@ func stats() -> Array:
 	var credit_ex := {"title": "Treasury", "value": "¢" + Fmt.fmt(credits),
 		"parts": [["Colony income (net of upkeep)", Fmt.signed(int(inc.get("colonies", 0))), "good"], ["Trade routes", Fmt.signed(int(inc.get("trade", 0))), ""],
 			["Ship upkeep", "-" + str(int(inc.get("ships", 0))), "alert"], ["Drafted spending this turn", "-" + str(int(inc.get("spend", 0))), ""], ["Net per turn", Fmt.signed(net), "alert" if net < 0 else "good"]],
-		"effect": "Build or buy orders spend from the treasury when the turn ends. Scrapping ships cuts upkeep; trade treaties and routes add income.",
+		"effect": "Orders spend from the treasury when the turn ends. Fewer ships and more trade raise income.",
 		"forecast": ("Treasury runs dry in %d turns at this rate." % int(ceil(float(credits) / -net))) if net < 0 else "Treasury after this turn: ¢%s." % Fmt.fmt(credits + net)}
 	var rr := int(e.get("researchOutput", 0))
 	var research_ex := {"title": "Research output", "value": "%d per turn" % rr,
