@@ -99,6 +99,7 @@ func status() -> Array:
 	var total := maxi(1, fog.length())
 	var contacts: Array = v.get("contacts", [])
 	var hostile := contacts.filter(func(c): return c.get("atWar", false)).size()
+	var met := TabReveal.met_count(v)
 	return [
 		{"cap": "Charted", "icon": "galaxy", "value": "%d%%" % int(round(100.0 * known / total)), "tone": "",
 			"tip": {"title": "Charted space", "value": "%d of %d sectors" % [known, total], "effect": "Scouts and sensors chart sectors. Unexplored sectors may hold systems and anomalies."}},
@@ -106,7 +107,7 @@ func status() -> Array:
 			"tip": {"title": "Colonies", "value": str(v.get("colonies", []).size()), "effect": "Your inhabited systems. Open System (F2) to manage one."}},
 		{"cap": "Ships", "icon": "ship", "value": str(v.get("fleets", []).size()), "tone": "",
 			"tip": {"title": "Your ships", "value": str(v.get("fleets", []).size()), "effect": "Tab cycles through them on the chart."}},
-		{"cap": "Contacts", "icon": "sensor", "value": str(contacts.size()), "tone": "alert" if hostile > 0 else "",
-			"tip": {"title": "Foreign contacts", "value": "%d in sensor range" % contacts.size(), "parts": [["At war with you", str(hostile), "alert" if hostile > 0 else ""]],
-				"effect": "Contacts are only tracked inside your sensor range."}},
+		{"cap": "Contacts", "icon": "sensor", "value": str(met), "tone": "alert" if hostile > 0 else "",
+			"tip": {"title": "Contacts", "value": "%d met" % met, "parts": [["Foreign ships in sensor range", str(contacts.size()), ""], ["At war with you", str(hostile), "alert" if hostile > 0 else ""]],
+				"effect": "Powers and minor races you have met. Ships are tracked only inside sensor range."}},
 	]

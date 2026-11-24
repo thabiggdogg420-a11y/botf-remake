@@ -25,6 +25,18 @@ static func contact_made(view: Dictionary) -> bool:
 			return true
 	return false
 
+## How many powers and minor races have been met (what the beat and the Contacts tile both count).
+static func met_count(view: Dictionary) -> int:
+	var n := 0
+	for e in view.get("empires", []):
+		if e.get("contact", false) and not e.get("eliminated", false):
+			n += 1
+	for s in view.get("systems", []):
+		var m: Variant = s.get("minor", null)
+		if m is Dictionary and int(s.get("owner", 0)) == 0 and not (m as Dictionary).get("unknown", false) and AppSession.is_charted(s):
+			n += 1
+	return n
+
 ## Whether the tab has something to show now (the test behind lighting it).
 static func has_content(app: App, id: String) -> bool:
 	var v := app.view
@@ -65,5 +77,5 @@ static func style(app: App, b: Button, id: String) -> void:
 		var mark := Lcars.badge("new", "good")
 		mark.name = "NewMark"
 		mark.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		mark.position = Vector2(app.RAIL_W - 58, 3)
+		mark.position = Vector2(app.RAIL_W - 50, -13)   # on the tab's top edge, above the label (which sits mid-height)
 		b.add_child(mark)

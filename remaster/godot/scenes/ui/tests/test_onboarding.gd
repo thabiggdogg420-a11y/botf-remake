@@ -255,6 +255,12 @@ func _event_beats(native: bool) -> void:
 	var g := panel.current
 	check(str(g.get("id", "")) == "contact" and g.get("event", false) and g.get("beat", false), "first contact fires its beat (%s)" % str(g.get("text", "")))
 	check(_words(str(g.get("text", ""))) <= 12, "the contact line is 12 words or fewer (%d)" % _words(str(g.get("text", ""))))
+	var tile := GalaxyVM.new(app.session).status()
+	var shown := ""
+	for st in tile:
+		if st["cap"] == "Contacts":
+			shown = str(st["value"])
+	check(shown != "0" and shown != "", "the Contacts tile agrees with the contact line (%s)" % shown)
 	check(panel.target_rects().size() == 1 and str(adv.targets(g)[0]) == "Rail_diplomacy", "it points at the diplomacy tab")
 	app.goto("diplomacy")
 	await frames(3)
@@ -311,6 +317,13 @@ func _tab_reveal(native: bool) -> void:
 	app.goto("galaxy")
 	await frames(3)
 	check(_rail("diplomacy").find_child("NewMark", true, false) == null, "opening the tab clears its new mark")
+	for sc in [1.0, 1.5]:
+		app.scale = Vector2(sc, sc)
+		await frames(2)
+		var rb := _rail("intel")
+		var mk := rb.find_child("NewMark", true, false) as Control
+		check(mk != null and mk.position.y + mk.size.y <= 10.0 and mk.position.x + mk.size.x <= rb.size.x, "the new mark sits on the tab top edge, clear of the label (scale %.1f; mark y %.0f h %.0f x %.0f w %.0f, tab w %.0f)" % [sc, mk.position.y, mk.size.y, mk.position.x, mk.size.x, rb.size.x])
+	app.scale = Vector2.ONE
 	check(_rail("intel").find_child("NewMark", true, false) != null, "the other tabs keep theirs until opened")
 	# a Custom game shows every tab as it always did
 	await _new_app()
