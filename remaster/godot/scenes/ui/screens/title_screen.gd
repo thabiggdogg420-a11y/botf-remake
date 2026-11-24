@@ -50,6 +50,9 @@ func refresh() -> void:
 			em.mouse_filter = Control.MOUSE_FILTER_PASS
 			emblems.add_child(em)
 	root.add_child(emblems)
+	var pick_hint := Lcars.label("Tap a power, then Quick Start", "Muted", 13)
+	pick_hint.name = "QuickHint"
+	root.add_child(pick_hint)
 	root.add_child(Lcars.label("BIRTH OF THE FEDERATION", "Caption", 22, Lcars.accent2()))
 	var big := Lcars.hbox(14)
 	var logo := Lcars.label("BOTF", "", 132, Lcars.TEXT)
@@ -168,7 +171,6 @@ func _emblem_button(id: int) -> Button:
 	var b := Button.new()
 	b.name = "Emblem%d" % id
 	b.toggle_mode = true
-	b.flat = true
 	b.focus_mode = Control.FOCUS_NONE
 	b.custom_minimum_size = Vector2(44, 44)
 	b.tooltip_text = "%s · capital %s. Tap it, then Quick Start." % [Lcars.FACTIONS[id - 1]["short"], Lcars.FACTIONS[id - 1]["capital"]]

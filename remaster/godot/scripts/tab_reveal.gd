@@ -21,7 +21,7 @@ static func contact_made(view: Dictionary) -> bool:
 			return true
 	for s in view.get("systems", []):
 		var m: Variant = s.get("minor", null)
-		if m is Dictionary and int(s.get("owner", 0)) == 0 and not (m as Dictionary).get("unknown", true) and AppSession.is_charted(s):
+		if m is Dictionary and int(s.get("owner", 0)) == 0 and not (m as Dictionary).get("unknown", false) and AppSession.is_charted(s):
 			return true
 	return false
 

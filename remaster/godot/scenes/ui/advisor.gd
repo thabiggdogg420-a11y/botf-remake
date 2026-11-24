@@ -150,9 +150,6 @@ func guidance() -> Dictionary:
 		return {}   # "Not now" on a battle, log or aftermath card: it stays away until that situation ends
 	if not urgent.is_empty():
 		return urgent
-	var ev := _event_beat()
-	if not ev.is_empty():
-		return ev
 	for k in STEPS.size() + 1:
 		if not tutorial_active():
 			break
@@ -161,7 +158,10 @@ func guidance() -> Dictionary:
 			continue          # that beat was done or had nothing to teach: look at the next
 		if b.is_empty():
 			break             # the next beat is not due yet
-		return b
+		return b              # a tutorial beat that is due comes before an event line
+	var ev := _event_beat()
+	if not ev.is_empty():
+		return ev
 	return _hint()
 
 ## The current tutorial beat as guidance; {"again": true} after it moved the tutorial on (ask again); {} while it waits for its turn.
@@ -257,7 +257,7 @@ func _event_beat() -> Dictionary:
 		return {}
 	if not _taught.has("contact") and _contact_made():
 		if not _taught.has("contact_turn"):
-			_taught["contact_turn"] = turn()
+			_taught["contact_turn"] = turn()   # the turn the line first shows
 		if app.screen == "diplomacy" or turn() >= int(_taught["contact_turn"]) + 3:
 			_taught["contact"] = true   # opened, or left alone for three turns
 			return {}
@@ -290,8 +290,8 @@ func _situational() -> Dictionary:
 		if top.find_child("Aftermath", true, false) != null:
 			return _sit(_t("aftermath", "warn", "aftermath", "Decide"))
 		var report := top.find_child("Briefing", true, false) != null or top.find_child("Events", true, false) != null
-		if report and tutorial_active() and str(STEPS[tutorial_step()]["id"]) == "log":
-			return {}
+		if report and log_short():
+			return {}   # the tutorial's log beat speaks for the log (the poll that advances to it has not run yet)
 		if report:
 			return _sit(_t("report", "info", "close", "Close log"))
 		return {"hide": true}   # a menu, a confirmation or a hail: the player is busy with it

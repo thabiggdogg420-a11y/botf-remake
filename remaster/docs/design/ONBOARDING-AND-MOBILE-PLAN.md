@@ -136,3 +136,19 @@ Questions as originally put:
 2. **Gradual reveal:** should advanced tabs be dimmed in the tutorial game until they first have something to show?
 3. **Portrait battle:** should battle work in portrait, or should the game ask the player to turn the phone sideways for battles?
 4. **Order:** should onboarding come first and then mobile, or both at once in parallel lanes?
+
+## 4. Built: onboarding lane (section 1), 26 Nov
+Branch `lane/onboarding`. Everything in section 1 is built; what was chosen where the plan left room:
+- **Quick Start** (`title_screen.gd`, `NewCampaignVM.quick`): the five classic emblems on the title are buttons (Federation to Ferengi; the other three stay under Custom game). The emblem the title shows is picked by default, so a first-time player taps only Quick Start. It starts the Classic preset (the "classic rules"), Small (16x13, 30 systems), Early era, normal difficulty, rivals aggressive, tutorial on.
+- **AI first war at turn 40:** the core had no such setting (only `aiAggression`, all or nothing). New core option `aiWarHoldTurn` (default 0): no AI empire declares war before that turn. Only Quick Start sets it (40). Saved as the optional `AI_WAR_HOLD` section, written only when set, so every other save is unchanged. Seven seeds: the first war falls at turn 30 to 35 without it and at exactly turn 40 with it (`test_onboarding.gd`). **The core changed, so the Windows and wasm core libraries need a rebuild before the hold-back works in an export.** An old core ignores the option and Quick Start still plays, with the normal AI.
+- **Tutorial:** `Advisor.STEPS` is the five beats. A beat is done when the empire shows it done (scout has a course; a build order was added since the beat began; the turn advanced; the log closed; the colony ship has orders), never on a button. `Spotlight` (`widgets/spotlight.gd`) dims all but the target and pulses it; clicks pass through. During the scout and colony beats a left click on a star sends the selected ship (`Advisor.beat_click`); the right-click menu is unchanged. The captain's log opens as four headlines during its beat.
+- **Event beats:** first contact ("First contact. Open the Diplomats tab.", turn it up to three turns, or until the tab is opened) and the first battle (spotlights Auto-resolve). They run while the tutorial runs and through a whole Quick Start game unless the player pressed Skip tutorial.
+- **Old settings:** the saved `tutorial` index from the 8-card list maps to the beat that teaches the same thing next (0,4 scout; 1,2,3 build; 5 end turn; 6 log; 7 and up done); a `tutorialBeats` marker stops it being remapped twice.
+- **Tab dimming** (`scripts/tab_reveal.gd`): Council lights on a second colony or contact, Diplomats and Fleet Intel on contact (a major power or a minor race), Records on contact or turn 6. Lit tabs stay lit and carry a "new" mark until opened. Tutorial game only; Custom games and loaded games are unchanged.
+- **Words:** every advisor string is in `Advisor.TEXTS`, 20 words or fewer with a three-word name filled in (longest 16). The top-bar figures' tooltips are data: `ShellVM.figure_tips()` and `KpiTile.tip_text()`, so a long-press can show the same text as a hover.
+- **Measured** (`test_first_time_drive.gd`, a verify step with `test_onboarding.gd`). Clicks from the title to the first End Turn; words of guidance shown (advisor card, toasts, dialogs, each distinct text once, the log that follows the End Turn not counted); time = wall time plus 1.5 s a click and 0.3 s a word:
+
+  | | clicks (6 or fewer) | words (under 60) | time (under 60 s) |
+  |---|---|---|---|
+  | before (891efbd) | 8 | 166 | 63.7 s |
+  | after | 6 | 44 | 23.5 s |
