@@ -30,3 +30,14 @@ GDExtension core exists (lane L5): `core\botf_core.gdextension` has no `web` lib
 Debug env switches in the game (all off unless set, all read-only diagnostics, none in a shipped path):
 `ROUND_TIMING` (prints round-start timings), `BOTF_CUE_TRACE` (prints audio cue scheduling), `SHOT_*` (screenshot tool only),
 `BOTF_AUDIO_DIR`, `BOTF_HERO_MANIFEST`, `BOTF_RESOLVED_MANIFEST` (asset locations; to become pack-building inputs for the web build).
+
+Browser frame-time tools (25 Nov 2026, the choppy-browser round; each is headed Chrome, window parked off-screen, BelowNormal, muted):
+- `perf_frames.py <url or build folder> <out> [--scenario cold|warm|reload] [--cpu 1|4] [--settle-s 20] [--pass-bar]`: title -> New Campaign
+  -> galaxy, every presented frame timed (p50/p95/p99, worst, frames over 33 ms) for the title and galaxy, idle and with the mouse
+  moving. `--cpu 4` is Chrome's 4x CPU throttle (a mid-range machine). `--pass-bar` exits 1 on a miss; `verify.ps1` runs it as
+  `web-frame-bar`. `perf_table.py <dir> [glob]` prints one line per saved pass. A `?build=webgl|webgpu` loader URL picks the renderer.
+- `perf_probe.py`: per-phase main-thread callback time, draws / program switches per frame, `--census` (draws per framebuffer and
+  program, blocking GL queries), `--ablate` / `--ablate-title` (drop groups of draws and see what the frame costs).
+  `--chrome-arg=--disable-gpu-vsync --chrome-arg=--disable-frame-rate-limit` shows the uncapped cost of a frame.
+- `perf_cpuprof.py`: DevTools CPU profile of the idle title and galaxy.
+Timing taken while another job loads the machine is not clean: note the CPU load and re-measure when quiet.

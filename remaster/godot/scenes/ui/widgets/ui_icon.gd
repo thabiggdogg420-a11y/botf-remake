@@ -59,9 +59,24 @@ static func draw_delta(ci: CanvasItem, c: Vector2, r: float, ang: float, col: Co
 
 ## A broken ring: `n` arcs with gaps (the LCARS segmented ring) instead of a plain circle. `fill` is the share of each step drawn.
 static func draw_seg_ring(ci: CanvasItem, c: Vector2, r: float, col: Color, w: float = 2.0, n: int = 8, fill: float = 0.72, rot: float = -0.3) -> void:
+	# One draw_multiline for the whole ring (26 Nov perf pass): each draw_arc was two canvas draws, and the galaxy chart's rings
+	# (a dozen arcs round each of 40-50 stars) came to ~2000 draws a frame, the main-thread cost behind the choppy web build.
+	# The chords are the arcs' own six points each, so the ring is the same shape.
+	var pts := PackedVector2Array()
+	pts.resize(n * 10)
+	var k := 0
 	for i in n:
 		var a0 := rot + TAU * i / n
-		ci.draw_arc(c, r, a0, a0 + TAU / n * fill, 6, col, w, true)
+		var span := TAU / n * fill
+		var prev := c + Vector2(cos(a0), sin(a0)) * r
+		for s in range(1, 6):
+			var a := a0 + span * float(s) / 5.0
+			var cur := c + Vector2(cos(a), sin(a)) * r
+			pts[k] = prev
+			pts[k + 1] = cur
+			k += 2
+			prev = cur
+	ci.draw_multiline(pts, col, w, true)
 
 ## A target reticle: four corner brackets around `c` at half-size `r` (the selection mark in place of a plain circle).
 static func draw_reticle(ci: CanvasItem, c: Vector2, r: float, col: Color, w: float = 2.0) -> void:

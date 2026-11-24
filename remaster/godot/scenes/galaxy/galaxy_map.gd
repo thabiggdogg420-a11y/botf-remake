@@ -61,6 +61,8 @@ var _stars: Node3D
 var _decor: Node3D
 var _overlay: GalaxyOverlay
 var _overlay_fx: GalaxyOverlay
+var _static_vp: SubViewport
+var _static_tex: TextureRect
 var _overlay_sig := []
 var _overlay_dirty := true
 var _volumetric := true
@@ -131,11 +133,36 @@ func _ready() -> void:
 		o.anim = k == 1
 		o.set_anchors_preset(Control.PRESET_FULL_RECT)
 		o.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		add_child(o)
 		if k == 0:
+			# 26 Nov perf pass: the static layer (grid, drop lines, rings, labels, icons) is hundreds of canvas draws that the
+			# web build re-submitted every frame although it changes only when the camera or the data does. It now renders into
+			# a SubViewport that updates once per change (UPDATE_ONCE) and one textured rect shows the result.
+			_static_vp = SubViewport.new()
+			_static_vp.name = "OverlayCache"
+			_static_vp.disable_3d = true
+			_static_vp.transparent_bg = true
+			_static_vp.gui_disable_input = true
+			_static_vp.size_2d_override_stretch = true
+			_static_vp.render_target_update_mode = SubViewport.UPDATE_ONCE
+			add_child(_static_vp)
+			_static_vp.add_child(o)
+			_static_tex = TextureRect.new()
+			_static_tex.name = "OverlayCacheView"
+			_static_tex.texture = _static_vp.get_texture()
+			_static_tex.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+			_static_tex.stretch_mode = TextureRect.STRETCH_SCALE
+			_static_tex.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			_static_tex.set_anchors_preset(Control.PRESET_FULL_RECT)
+			var pm := CanvasItemMaterial.new()
+			pm.blend_mode = CanvasItemMaterial.BLEND_MODE_PREMULT_ALPHA   # a transparent viewport holds premultiplied colour
+			_static_tex.material = pm
+			add_child(_static_tex)
 			_overlay = o
+			get_viewport().size_changed.connect(_sync_static_vp)
 		else:
+			add_child(o)
 			_overlay_fx = o
+	_sync_static_vp()
 	_apply_camera()
 
 func _build_environment() -> void:
@@ -407,6 +434,7 @@ func _redraw_overlay() -> void:
 		_overlay_sig = sig
 		_overlay_dirty = false
 		_overlay.queue_redraw()
+		_static_vp.render_target_update_mode = SubViewport.UPDATE_ONCE
 
 ## The focus rides on the star under it at sector and system zoom, so a close-up of a star above the plane is
 ## centred on the star; at galaxy zoom it settles back to the plane.
@@ -478,8 +506,20 @@ func _key_camera(delta: float) -> void:
 	pitch = clampf(pitch + tilt * 1.0 * delta, PITCH_MIN, PITCH_MAX)
 
 func _notification(what: int) -> void:
-	if what == NOTIFICATION_RESIZED and _camera:
-		_apply_camera()
+	if what == NOTIFICATION_RESIZED:
+		_sync_static_vp()
+		if _camera:
+			_apply_camera()
+
+## The overlay cache renders at the window's real pixel size (so text and lines stay as sharp as when drawn straight to the
+## screen) with the overlay laid out in this control's own coordinates (size_2d_override).
+func _sync_static_vp() -> void:
+	if _static_vp == null or not is_inside_tree() or size.x < 1.0 or size.y < 1.0:
+		return
+	var sc := get_viewport().get_final_transform().get_scale()
+	_static_vp.size_2d_override = Vector2i(size.round())
+	_static_vp.size = Vector2i(maxi(1, ceili(size.x * sc.x)), maxi(1, ceili(size.y * sc.y)))
+	_overlay_dirty = true
 
 # ---------------------------------------------------------------------------------------------
 # Data -> scene
