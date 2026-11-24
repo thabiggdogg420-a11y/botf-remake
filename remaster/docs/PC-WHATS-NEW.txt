@@ -2,6 +2,10 @@ BOTF Remastered PC beta (round 9): what changed since 0.1.566
 
 The round 8 notes (Gemini audit fixes) and the 0.1.538 to 0.1.566 notes follow the new ones.
 
+Smoother galaxy map (25 Nov, from the browser playtest report)
+- The galaxy chart draws far less per frame: the ownership rings round each star are one draw instead of a dozen, and the chart's static layer (grid, drop lines, labels, icons) is drawn once per camera or data change instead of every frame. The browser build's galaxy went from 40-50 ms frames to 10 ms on the test machine; the look is unchanged.
+- Browser: background shader warm-ups wait for the mouse and keyboard to be still, so hovering the menu no longer lands on a compile hitch.
+
 Fixes since 0.1.571 (24 Nov)
 - Battle advisor: Not now closes the Battle Joined card (and the Battle over, Captain's log and Decision cards) and it stays closed until something else happens. Before, it came straight back.
 - Battle brackets: each bracket is drawn round the hull's real outline and centred on it, so it no longer runs far below a flat ship or under the top panel, in every camera mode.
