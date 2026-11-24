@@ -172,8 +172,10 @@ def main():
     ap.add_argument("--h", type=int, default=720)
     ap.add_argument("--phase-s", type=float, default=6.0)
     ap.add_argument("--preload", action="store_true")
+    ap.add_argument("--settle-s", type=float, default=0.0, help="wait this long after the title is up before the title-idle window (the first visit's warm-ups land here; reported as title-settle and galaxy-settle, outside the bar)")
     ap.add_argument("--pass-bar", action="store_true")
     ap.add_argument("--keep-profile", default="", help="reuse/keep this profile dir (a warm run needs the cold run's dir)")
+    ap.add_argument("--default-flags", action="store_true", help="launch Chrome with its default switches (only --mute-audio and the off-screen position added)")
     ap.add_argument("--onscreen", action="store_true", help="do not park the window off-screen")
     a = ap.parse_args()
     os.makedirs(a.out, exist_ok=True)
@@ -203,7 +205,9 @@ def _main(a):
             prof = a.keep_profile or tempfile.mkdtemp(prefix="botf-perf-")
             if a.scenario == "warm" and not a.keep_profile:
                 print("warm needs --keep-profile (the dir a cold run left)"); return 2
-            args = ["--use-angle=d3d11", "--enable-unsafe-webgpu", "--ignore-gpu-blocklist", "--mute-audio"]
+            # default-flags: what a visitor's Chrome runs (no ANGLE override, no unsafe-WebGPU or blocklist switches); the older
+            # runs used the verify tools' flags below, which this machine's Chrome treats the same.
+            args = ["--mute-audio"] if a.default_flags else ["--use-angle=d3d11", "--enable-unsafe-webgpu", "--ignore-gpu-blocklist", "--mute-audio"]
             if not a.onscreen:
                 args.append("--window-position=-10000,-10000")
             ctx = p.chromium.launch_persistent_context(prof, channel="chrome", headless=False, args=args,

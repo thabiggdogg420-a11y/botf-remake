@@ -355,6 +355,9 @@ func _reveal_groups(groups: Dictionary, tree: SceneTree) -> bool:
 				continue
 			if screen != "title":
 				return false
+			await _warm_gap()   # 26 Nov perf pass: a compile step waits for the player's hands to be still
+			if screen != "title":
+				return false
 			var t := LoadTrace.start()
 			for g in part:
 				if is_instance_valid(g):
@@ -363,6 +366,24 @@ func _reveal_groups(groups: Dictionary, tree: SceneTree) -> bool:
 			LoadTrace.done("title warm: galaxy %s (%d)" % [str(key).get_file(), part.size()], t)
 			await tree.process_frame
 	return true
+
+## 26 Nov perf pass: the background warm-ups compile shaders one group at a time, and on WebGL each compile is a 150-500 ms
+## frame (the 510 ms hover spike, and the hitches that followed a refresh). A compile step now waits until the player has not
+## touched the mouse, keyboard or screen for WARM_QUIET_MSEC (at most WARM_MAX_WAIT_MSEC a step, so a hovering player never
+## starves the warm-up for good), so a hover or a drag does not land on a compile frame.
+const WARM_QUIET_MSEC := 600
+const WARM_MAX_WAIT_MSEC := 4000
+static var last_input_msec := 0
+
+func _input(event: InputEvent) -> void:
+	if event is InputEventMouseMotion or event is InputEventMouseButton or event is InputEventKey or event is InputEventScreenTouch or event is InputEventScreenDrag:
+		last_input_msec = Time.get_ticks_msec()
+
+func _warm_gap() -> void:
+	var tree := get_tree()
+	var t0 := Time.get_ticks_msec()
+	while is_inside_tree() and Time.get_ticks_msec() - last_input_msec < WARM_QUIET_MSEC and Time.get_ticks_msec() - t0 < WARM_MAX_WAIT_MSEC:
+		await tree.process_frame
 
 ## Web: tells the service worker (web-host/sw.js) the title is up, so it caches the engine files for the next visit.
 func _warm_service_worker() -> void:
@@ -662,6 +683,7 @@ func _warm_battle_view_steps() -> void:
 	var warm_meshes: Array = []
 	for sh in [HeroLook.HULL_SHADER, HeroLook.PLATED_SHADER, BattleShip.HULL_SHADER, BattleShip.SHIELD_SHADER, BattleShip.CLOAK_SHADER, BattleShip.BLINK_SHADER]:
 		await tree.process_frame
+		await _warm_gap()
 		if not is_instance_valid(view):
 			break
 		t = LoadTrace.start()
