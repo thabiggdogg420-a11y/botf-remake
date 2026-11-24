@@ -104,6 +104,8 @@ func _run() -> void:
 		await _prepare(s)
 		if _env("SHOT_HERO_CHECK") != "" and s.begins_with("battle") and not _hero_check(s):
 			code = 1
+		if _env("SHOT_BRACKET_CHECK") != "" and s.begins_with("battle") and not await _bracket_check(s):
+			code = 1
 		for t in app.get_node("Toasts").get_children():
 			t.queue_free()
 		await _wait(10)
@@ -142,6 +144,110 @@ func _hero_check(s: String) -> bool:
 	print("HERO_CHECK ", "ok " if ok else "FAIL ", s, ": manifest ", view.assets.hero_manifest_path, ", ", int(r.heroes),
 		" ships with a hero model", "" if r.fallback.is_empty() else ", fallback hulls: " + ", ".join(r.fallback))
 	return ok
+
+## SHOT_BRACKET_CHECK=1: on every battle shot, every tactical bracket must sit on its hull. Each ship's bracket (the screen
+## rect BattleMarkers draws it round) is compared with the screen rect of the hull's drawn mesh vertices through the Camera3D:
+## the centres must agree within max(8 px, 35% of the hull's half-extent) and each half-size of the bracket must be no more than
+## 2.6x the hull's (floor 12 px; the old bounding-sphere square stood 3x as tall as a flat hull). The camera's own transform and fov
+## must equal the view the markers project with. Ships cut by the screen edge or
+## filling the frame (no bracket is drawn on those) are not judged. SHOT_BRACKET_MODES=1 also walks every camera mode
+## (overview, chase, ship, target, top-down, cinematic), six samples each. SHOT_BRACKET_VERBOSE=1 lists every ship.
+## Prints "BRACKET_CHECK ok|FAIL <shot> <mode>: ..."; a failure makes the exit code 1.
+func _bracket_check(s: String) -> bool:
+	var view: Node = app._current.host.view_node if app._current != null and app._current.get("host") != null else null
+	if view == null or view.camera == null:
+		print("BRACKET_CHECK FAIL ", s, ": no battle view")
+		return false
+	var cam: BattleCamera = view.camera
+	var all_ok := true
+	var modes: Array = [cam.mode]
+	if _env("SHOT_BRACKET_MODES") != "":
+		modes = [BattleCamera.Mode.OVERVIEW, BattleCamera.Mode.CHASE, BattleCamera.Mode.SHIP, BattleCamera.Mode.TARGET,
+			BattleCamera.Mode.TOP_DOWN, BattleCamera.Mode.CINEMATIC]
+	for m in modes:
+		if m != cam.mode:
+			cam.set_mode(m)
+			await _wait(60)
+		# Sampled across the shot (the director cuts, the lens moves): every sample must hold, not just the last frame.
+		for k in (6 if modes.size() > 1 else 1):
+			if k > 0:
+				await _wait(25)
+			all_ok = _bracket_report(s, view, cam, BattleCamera.MODE_NAMES[m] if m < BattleCamera.MODE_NAMES.size() else str(m)) and all_ok
+	return all_ok
+
+func _bracket_report(s: String, view: Node, cam: BattleCamera, mode_name: String) -> bool:
+	var vp := cam.get_viewport().get_visible_rect().size
+	var bad: Array[String] = []
+	var worst := 0.0
+	var worst_size := 1.0
+	var n := 0
+	var lens_err := absf(cam.fov - cam.view.fov) + (cam.global_position - cam.view.eye).length() + (cam.global_basis.z + cam.view.forward).length()
+	for b in cam.bodies:
+		var ship: BattleShip = view._ships.get(int(b.id))
+		if ship == null:
+			continue
+		var p := CameraRig.project(cam.view, b.center, b.radius)
+		if not p.visible or cam.is_position_behind(b.center):
+			continue
+		var marker := Vector2(p.u * vp.x, p.v * vp.y)
+		var bh := Rect2()
+		if cam.markers.has_method("hull_rect"):
+			bh = cam.markers.hull_rect(cam.view, b)   # the rect BattleMarkers draws its bracket round (size 0: sphere fallback)
+		if bh.size.x > 0.0:
+			marker = bh.get_center()
+		var sil := _hull_screen_rect(ship, cam, vp)   # where the hull's drawn vertices fall on the screen
+		if sil.size.x <= 0.0:
+			continue
+		var half := sil.size * 0.5
+		if OS.get_environment("SHOT_BRACKET_VERBOSE") != "":
+			print("  BR ", mode_name, " ", b.get("name", b.id), " marker ", marker.round(), " hull ", sil.get_center().round(), " half ", half.round(), " r_px ", snappedf(p.radius * vp.y, 0.1), " rad ", snappedf(float(b.radius), 0.01), " depth ", snappedf(p.depth, 0.1))
+		var r_px := p.radius * vp.y
+		# Ships cut by the screen edge or filling the frame (a follow shot draws no bracket on them) are not judged.
+		if not Rect2(Vector2.ZERO, vp).encloses(sil) or r_px > vp.y * 0.16:
+			continue
+		var err := marker.distance_to(sil.get_center())
+		n += 1
+		worst = maxf(worst, err)
+		# The bracket's own half-size per axis (BattleMarkers): it must also hug the hull, not float round empty space
+		# (the old square from the bounding sphere stood 3x as tall as a flat hull).
+		var bhalf := Vector2(maxf(r_px * 1.08, 9.0), maxf(r_px * 1.08, 9.0))
+		if bh.size.x > 0.0:
+			bhalf = Vector2(maxf(bh.size.x * 0.5 + 4.0, 9.0), maxf(bh.size.y * 0.5 + 4.0, 9.0))
+		var fit := maxf(bhalf.x / maxf(half.x, 12.0), bhalf.y / maxf(half.y, 12.0))
+		worst_size = maxf(worst_size, fit)
+		if fit > 2.6:
+			bad.append("%s bracket half-size %s round a hull of half-extent %s (x%.2f)" % [str(b.get("name", b.id)), bhalf.round(), half.round(), fit])
+		if err > maxf(8.0, 0.35 * maxf(half.x, half.y)):
+			bad.append("%s bracket centre %s, hull centre %s, off %.0f px (hull half-extent %s)" % [str(b.get("name", b.id)), marker.round(), sil.get_center().round(), err, half.round()])
+	var ok := bad.is_empty() and lens_err < 0.01
+	print("BRACKET_CHECK ", "ok " if ok else "FAIL ", s, " ", mode_name, ": ", n, " ships judged, worst centre error ", snappedf(worst, 0.1), " px, worst bracket/hull size ratio ", snappedf(worst_size, 0.01), ", camera-vs-view ", snappedf(lens_err, 0.0001),
+		"" if bad.is_empty() else " | " + "; ".join(bad))
+	return ok
+
+## The screen rect of a ship's drawn hull: its mesh vertices (every 5th, shield and effects excluded) through the camera.
+func _hull_screen_rect(ship: BattleShip, cam: Camera3D, vp: Vector2) -> Rect2:
+	var lo := Vector2(INF, INF)
+	var hi := Vector2(-INF, -INF)
+	if ship.model == null:
+		return Rect2()
+	for node in ship.model.find_children("*", "MeshInstance3D", true, false):
+		var mi := node as MeshInstance3D
+		if mi == null or mi == ship.shield or mi.mesh == null or not mi.is_visible_in_tree():
+			continue
+		for si in mi.mesh.get_surface_count():
+			var arr := mi.mesh.surface_get_arrays(si)
+			if arr.is_empty() or arr[Mesh.ARRAY_VERTEX] == null:
+				continue
+			var verts: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
+			var xf := mi.global_transform
+			for i in range(0, verts.size(), 5):
+				var w := xf * verts[i]
+				if cam.is_position_behind(w):
+					continue
+				var q := cam.unproject_position(w)
+				lo = lo.min(q)
+				hi = hi.max(q)
+	return Rect2(lo, hi - lo) if lo.x < INF else Rect2()
 
 ## Web capture (tools/verify/web_parity.py): hands the frame Godot read back to the page as base64 PNG, prints SHOT_READY and
 ## holds the scene until the page has taken its own screenshot and set window.__shotAck to the shot name (2 min at most).

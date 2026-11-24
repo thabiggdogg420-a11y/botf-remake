@@ -2,6 +2,10 @@ BOTF Remastered PC beta (round 9): what changed since 0.1.566
 
 The round 8 notes (Gemini audit fixes) and the 0.1.538 to 0.1.566 notes follow the new ones.
 
+Fixes since 0.1.571 (24 Nov)
+- Battle advisor: Not now closes the Battle Joined card (and the Battle over, Captain's log and Decision cards) and it stays closed until something else happens. Before, it came straight back.
+- Battle brackets: each bracket is drawn round the hull's real outline and centred on it, so it no longer runs far below a flat ship or under the top panel, in every camera mode.
+
 New in this build (round 9)
 - Peace deals can hand over worlds. When you are at war, the Diplomacy screen shows a war score (-100 losing to +100 winning). A Peace proposal can name up to three of your border worlds to hand over and up to three of theirs to ask for (never a capital or a last world). The AI offers worlds when it is clearly losing and accepts or refuses a deal by the war score; a winning AI will not give a world up. Proposals the AI sends you name the worlds.
 - Invasion odds. The Invade action shows the chance of taking the world (your troops against its population / 5 plus batteries and shields) before you commit. There is still no ground combat; the odds are the same figures the invasion uses.

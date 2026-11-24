@@ -648,7 +648,7 @@ func _update_camera(t: float, delta: float, centroid: Vector3, spread: float) ->
 		if not ws.is_empty():
 			ship.set_wego_state(ws)
 		var bow := ship.global_basis.x
-		bodies.append({"id": fid, "center": ship.global_position, "radius": camera.hull_radius(ship), "owner": ship.owner_id,
+		bodies.append({"id": fid, "center": ship.global_position, "radius": camera.hull_radius(ship), "box": camera.hull_box(ship), "xf": ship.global_transform, "owner": ship.owner_id,
 			"mine": info.get("mine", ship.owner_id == me), "heading": rad_to_deg(atan2(bow.z, bow.x)),
 			"name": str(info.get("name", ship.ship_name)).split(" — ")[0],
 			"hull": hs[0] / maxf(1.0, float(info.get("maxHull", hs[0]))),

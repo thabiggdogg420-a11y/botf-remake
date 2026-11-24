@@ -90,13 +90,24 @@ func _draw() -> void:
 			continue
 		var col := Color(base.lightened(0.15 if key else 0.0), alpha)
 		var h := minf(r * 0.55, _vsize().y * 0.2) if large else maxf(r * 1.08, 9.0)
-		var l := clampf(h * 0.32, 4.0, 22.0)
+		var hx := h   # the bracket's half-width and half-height
+		var hy := h
+		if not large:
+			# Round the hull as drawn: its bounds box projected, centred on its own screen centre. The bounding sphere
+			# overstated a long flat hull (the top Klingon's square bracket ran 90 px below it, its top half under the panel).
+			var fit := hull_rect(view, b)
+			if fit.size.x > 0.0:
+				c = fit.get_center()
+				hx = maxf(fit.size.x * 0.5 + 4.0, 9.0)
+				hy = maxf(fit.size.y * 0.5 + 4.0, 9.0)
+				h = maxf(hx, hy)
+		var l := clampf(minf(hx, hy) * 0.32, 4.0, 22.0)
 		var thick := 2.0 if key else 1.4
 		if not large:
 			for corner in 4:
 				var sx := 1.0 if corner & 1 else -1.0
 				var sy := 1.0 if corner & 2 else -1.0
-				var q := c + Vector2(sx * h, sy * h)
+				var q := c + Vector2(sx * hx, sy * hy)
 				draw_polyline(PackedVector2Array([q - Vector2(sx * l, 0), q, q - Vector2(0, sy * l)]), col, thick, true)
 		if r < 5.0:
 			var d := 3.5
@@ -114,10 +125,10 @@ func _draw() -> void:
 		# Name above the bracket, bars below it.
 		var name_text := str(b.get("name", ""))
 		if name_text != "":
-			var above := maxf(h, ring if (sel or tgt) else h) + 6.0
+			var above := maxf(hy, ring if (sel or tgt) else hy) + 6.0
 			draw_string(_font, c + Vector2(-60.0, -above), name_text.to_upper(), HORIZONTAL_ALIGNMENT_CENTER, 120, 12, col)
-		var w := clampf(h * 2.0, 46.0, 180.0)
-		var o := c + Vector2(-w * 0.5, h + 5.0)
+		var w := clampf(hx * 2.0, 46.0, 180.0)
+		var o := c + Vector2(-w * 0.5, hy + 5.0)
 		var hull := clampf(float(b.get("hull", 1.0)), 0.0, 1.0)
 		var shields := clampf(float(b.get("shields", 0.0)), 0.0, 1.0)
 		var hull_col := Color("#8fd18a") if hull > 0.5 else (Color("#ffcf6a") if hull > 0.25 else Lcars.ALERT)
@@ -239,6 +250,27 @@ class Radar extends Control:
 			cam.follow_fleet(best)
 		else:
 			cam.fly_to_point(to_world(mb.position))
+
+
+## The screen rect of a ship's hull box (the corners of `box` in the ship's own space, carried by `xf`), in this control's
+## pixels; size zero when the body carries no box or a corner is behind the lens (the caller falls back to the sphere).
+func hull_rect(view: CameraRig.View, b: Dictionary) -> Rect2:
+	var box: AABB = b.get("box", AABB())
+	if box.size.length() < 1e-3 or not b.has("xf"):
+		return Rect2()
+	var xf: Transform3D = b["xf"]
+	var vs := _vsize()
+	var lo := Vector2(INF, INF)
+	var hi := Vector2(-INF, -INF)
+	for i in 8:
+		var w := xf * box.get_endpoint(i)
+		var p := CameraRig.project(view, w, 0.0)
+		if p.depth <= 1e-3:
+			return Rect2()
+		var q := Vector2(p.u * vs.x, p.v * vs.y)
+		lo = lo.min(q)
+		hi = hi.max(q)
+	return Rect2(lo, hi - lo)
 
 
 func _draw_icon(view: CameraRig.View, b: Dictionary, c: Vector2, col: Color, key: bool) -> void:

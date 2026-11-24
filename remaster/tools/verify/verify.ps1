@@ -281,6 +281,7 @@ try {
             @('trek-icons', 'res://scenes/ui/tests/test_trek_icons.gd'),
             @('trek-text', 'res://scenes/ui/tests/test_trek_text.gd'),
             @('f3-people', 'res://scenes/ui/tests/test_f3_people.gd'),
+            @('advisor-notnow', 'res://scenes/ui/tests/test_advisor_notnow.gd'),
             @('mod9', 'res://scenes/ui/tests/test_mod9.gd'),
             @('battle-timeline', 'res://scenes/battle/tests/test_battle_timeline.gd'),
             @('camera-rig', 'res://scenes/battle/tests/test_camera_rig.gd'),
@@ -454,6 +455,24 @@ if (-not $SkipExport) {
         $hl = @(Get-Content -LiteralPath (Join-Path $logs 'exe-hero-hulls.log') -ErrorAction SilentlyContinue | Where-Object { $_ -match '^HERO_CHECK' })
         $heroOk = $hc.ExitCode -eq 0 -and $hl.Count -ge 2 -and -not ($hl -match 'FAIL')
         Add-Result 'exe-hero-hulls' $(if ($heroOk) { 'ok' } else { 'FAIL' }) ((@($hl | ForEach-Object { $_ -replace '^HERO_CHECK\s+', '' -replace 'manifest \S+, ', '' }) -join ' | ') + " (clean folder $clean)")
+        # Tactical brackets sit on their hulls in every camera mode (round 9: the top Klingon's bracket ran 90 px below it): the
+        # packaged exe plays a battle, walks overview/chase/ship/target/top-down/cinematic and screenshot.gd SHOT_BRACKET_CHECK
+        # compares each bracket with the hull's drawn vertices. It prints BRACKET_CHECK lines and exits 1 on any bracket off its hull.
+        $brLog = Join-Path $logs 'exe-brackets.log'
+        $env:APPDATA = Join-Path $clean 'appdata'
+        $env:SHOT_BRACKET_CHECK = '1'; $env:SHOT_BRACKET_MODES = '1'; $env:SHOT_FULL = '1'
+        $brDir = Join-Path $run 'exe-brackets'
+        New-Item -ItemType Directory -Force -Path $brDir | Out-Null
+        $br = Start-Process -FilePath (Join-Path $clean 'BOTFRemastered.exe') -WorkingDirectory $clean -PassThru `
+            -ArgumentList "--audio-driver Dummy --resolution 1920x1080 -s res://scenes/ui/tools/screenshot.gd -- `"$brDir`" battle-r3" `
+            -RedirectStandardOutput $brLog -RedirectStandardError (Join-Path $logs 'exe-brackets.err')
+        $null = $br.Handle
+        try { $br.PriorityClass = [System.Diagnostics.ProcessPriorityClass]::BelowNormal } catch {}
+        if (-not $br.WaitForExit(600 * 1000)) { try { Stop-Process -Id $br.Id -Force } catch {} }
+        Remove-Item Env:\SHOT_BRACKET_CHECK, Env:\SHOT_BRACKET_MODES, Env:\SHOT_FULL -ErrorAction SilentlyContinue; $env:APPDATA = $savedAppData
+        $bl = @(Get-Content -LiteralPath $brLog -ErrorAction SilentlyContinue | Where-Object { $_ -match '^BRACKET_CHECK' })
+        $brOk = $br.ExitCode -eq 0 -and $bl.Count -ge 36 -and -not ($bl -match 'FAIL')
+        Add-Result 'exe-brackets' $(if ($brOk) { 'ok' } else { 'FAIL' }) ("$($bl.Count) samples over 6 camera modes, " + @($bl | Where-Object { $_ -match 'FAIL' }).Count + ' off their hulls')
         # The baked ship pictures, in the same clean folder (no LocalAssets, no BOTF_* variables): icon_check.gd exits 1 unless
         # ship_icons_desktop.pck mounted and every icon in it loads through ShipIcons. The vector line drawing counts as a failure.
         $icLog = Join-Path $logs 'exe-ship-icons.log'

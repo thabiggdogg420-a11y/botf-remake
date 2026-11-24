@@ -87,6 +87,7 @@ var _last_pos := Vector2.ZERO
 var _double := false
 var _time := 0.0
 var _radius_cache := {}
+var _box_cache := {}
 var _clear_subject := 0
 var _clear_angle := Vector3(0, 0, 1)
 var _clear_check := 0.0
@@ -601,6 +602,7 @@ func hull_radius(ship: BattleShip) -> float:
 	if _radius_cache.has(key):
 		return _radius_cache[key]
 	var r := ship.radius()
+	var hull_box := AABB()
 	if ship.model != null:
 		var inv := ship.global_transform.affine_inverse()
 		var box := AABB()
@@ -614,10 +616,20 @@ func hull_radius(ship: BattleShip) -> float:
 			any = true
 		if any and box.size.length() > 1e-3:
 			r = box.size.length() * 0.5 + box.get_center().length() * 0.5
+			hull_box = box
 	if _radius_cache.size() > 256:
 		_radius_cache.clear()
+		_box_cache.clear()
 	_radius_cache[key] = r
+	_box_cache[key] = hull_box
 	return r
+
+
+## The hull's bounds in the ship's own space (shield bubble excluded), measured with hull_radius; size zero when the ship has
+## no model. The tactical brackets are drawn round this box, projected, so they hug the hull and centre on it.
+func hull_box(ship: BattleShip) -> AABB:
+	hull_radius(ship)
+	return _box_cache.get(ship.get_instance_id(), AABB())
 
 
 ## The rig the current mode asks for this frame, before easing (tests, tools).
