@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Assembles the two-build host folder (loader + webgpu/ + webgl/ + one shared packs/) from two exports. Barclay, 21 Nov 2026.
 
-  python assemble_next.py --webgl <export dir> --webgpu <export dir> --packs <hashed packs dir> --loader <index.html>
+  python assemble_next.py --webgl <export dir> --webgpu <export dir> --packs <hashed packs dir> --loader <godot/web-host/loader.html>
                           --wgsl-cache <wgsl-cache.js> --hosting <HOSTING.md> --version "<text>" --out <folder>
 
 Each export dir holds index.html + engine files from tools/web/export_web.ps1. Steps:
@@ -14,6 +14,9 @@ Each export dir holds index.html + engine files from tools/web/export_web.ps1. S
   5. VERSION.txt, HOSTING.md, .htaccess and nginx.conf.example (from the HOSTING.md folder; the host needs them, R8), the loader
      index.html (+ sidecars). packs/ gets no .br/.gz sidecars: nothing serves them (.htaccess and nginx never do, and
      app_loader fetches the plain .pck); R7 wrote 286 MB of them (dropped in R8, Gemini audit).
+  6. Desktop | Mobile (mobile stage M-A, 25 Nov 2026): the loader is godot/web-host/loader.html, and both exports' pages carry the
+     mode script (godot/web-host/botf-mode.js, embedded in the Web and WebGPU presets). The assembler refuses a loader or a page
+     without it. Mobile always gets webgl/ (the loader and the webgpu/ page both send it there).
 """
 import argparse
 import gzip
@@ -63,6 +66,8 @@ def main():
     a = ap.parse_args()
     if os.path.exists(a.out):
         sys.exit("out folder exists (archive it first): " + a.out)
+    if "data-botf-mode" not in open(a.loader, encoding="utf-8").read():
+        sys.exit("the loader has no Desktop | Mobile support: use godot/web-host/loader.html (" + a.loader + ")")
     os.makedirs(a.out)
     for name, src in (("webgl", a.webgl), ("webgpu", a.webgpu)):
         dst = os.path.join(a.out, name)
@@ -73,6 +78,8 @@ def main():
             shutil.copy2(a.wgsl_cache, os.path.join(dst, "wgsl-cache.js"))
             tags.append(WGSL_TAG)
         inject(html, tags)
+        if "data-botf-mode" not in open(html, encoding="utf-8").read():
+            sys.exit(name + "/index.html has no Desktop | Mobile switch (export it from a preset that carries botf-mode.js: tools/web/embed_mode_js.py)")
         r = subprocess.run([sys.executable, HASHER, dst, "--first-budget-mb", "999", "--total-budget-mb", "9999"], capture_output=True, text=True)
         print(name, r.stdout.strip().splitlines()[-3:] if r.stdout else "", r.stderr.strip()[-400:])
         if r.returncode != 0:

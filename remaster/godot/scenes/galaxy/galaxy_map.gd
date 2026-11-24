@@ -181,7 +181,7 @@ func _build_environment() -> void:
 	_env.tonemap_mode = Environment.TONE_MAPPER_ACES
 	_env.tonemap_exposure = 1.0
 	_env.tonemap_white = 8.0
-	_env.glow_enabled = true
+	_env.glow_enabled = PlatformMode.glow_allowed()   # off on a phone
 	_env.glow_intensity = 0.4
 	_env.glow_hdr_threshold = 1.8
 	_env.glow_hdr_scale = 1.2
@@ -1012,7 +1012,7 @@ func _gui_input(event: InputEvent) -> void:
 						cell_clicked.emit(c, true)
 					_drag_button = 0
 			else:
-				if _drag_button == mb.button_index and _drag_moved < 6.0:
+				if _drag_button == mb.button_index and _drag_moved < _tap_slop():
 					var c2 := cell_at(mb.position)
 					if c2 >= 0:
 						if mb.button_index == MOUSE_BUTTON_LEFT:
@@ -1026,17 +1026,38 @@ func _gui_input(event: InputEvent) -> void:
 		var mm := event as InputEventMouseMotion
 		if _drag_button != 0:
 			_drag_moved += mm.relative.length()
-			if _drag_moved >= 6.0:
+			if _drag_moved >= _tap_slop():
 				_animating = false
 				if _drag_button == MOUSE_BUTTON_RIGHT:
 					orbit(-mm.relative.x * 0.006, mm.relative.y * 0.004)
 				else:
 					cam += screen_to_map(mm.position - mm.relative) - screen_to_map(mm.position)
 					_apply_camera()
+		if PlatformMode.is_mobile():
+			return   # a finger does not hover; its long-press opens the order menu (on_long_press)
 		var c4 := cell_at(mm.position)
 		if c4 != hover_cell:
 			hover_cell = c4
 		hover_changed.emit(c4, mm.position)
+
+## How far a press may wander and still be a click: a fingertip jitters more than a mouse.
+func _tap_slop() -> float:
+	return 16.0 if PlatformMode.is_mobile() else 6.0
+
+## Phone mode (PlatformRuntime): a held finger on a star opens its order menu, what a right-click opens with a mouse (move,
+## survey and colonise orders live there, and a phone has no right button); a pinch zooms about the fingers' centre. A tap
+## selects and a one-finger drag pans through the touch-to-mouse emulation as before.
+func on_long_press(at: Vector2) -> bool:
+	var c := cell_at(at)
+	if c < 0:
+		return false
+	_drag_button = 0
+	cell_context.emit(c, at)
+	return true
+
+func on_pinch(factor: float, center: Vector2) -> void:
+	_drag_button = 0   # two fingers are a zoom: the first finger's drag stops panning
+	zoom_at(center, factor)
 
 ## Zooms by `factor`, keeping the point under `screen_pos` fixed.
 func zoom_at(screen_pos: Vector2, factor: float) -> void:

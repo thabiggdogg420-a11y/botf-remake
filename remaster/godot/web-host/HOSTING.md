@@ -5,12 +5,27 @@ layout, to any folder on a static host, for example `https://example.com/botf/`,
 Nothing is uploaded for you. The game is a private fan project: share the link only with the people you mean to.
 
 ## Layout (two builds, one set of packs)
-- `index.html`: the loader. It picks `webgpu/` (desktop Chrome or Edge with hardware WebGPU) or `webgl/` (Firefox, Safari, mobile,
-  everything else) and sends the player there.
+- `index.html`: the loader (source: `godot/web-host/loader.html`). It picks `webgpu/` (desktop Chrome or Edge with hardware WebGPU) or
+  `webgl/` (Firefox, Safari, Mobile mode, everything else) and sends the player there. It carries the Desktop | Mobile switch.
 - `webgl/` and `webgpu/`: one complete engine build each (`index.html`, `index.js`, `index.wasm`, `index.side.wasm`, `index.pck`,
   the core wasm, worklets, `sw.js`; `webgpu/` also has `index.shaders.pck` and `wgsl-cache.js`).
 - `packs/`: the one shared pack set (both builds read `../packs/`), `manifest.json` and the content-hashed `*.pck`.
 - `.htaccess`, `nginx.conf.example`, `HOSTING.md`, `VERSION.txt` (`tools/web/assemble_next.py` puts all of them in the folder).
+
+## Desktop | Mobile (25 Nov 2026)
+One build serves both. The page (the loader `index.html` in the two-build layout, otherwise the game's own `index.html`) has a
+small **Desktop | Mobile** switch: centred over the loading screen, then a small round tab at the bottom-left while you play (tap it
+to open the switch for a few seconds). Nothing for the host to do; no extra files, no headers, no second upload.
+- **Which mode:** `?mode=mobile` or `?mode=desktop` in the address wins (for one visit, not remembered); else the choice the player
+  made with the switch (kept in the browser's localStorage on this site; a browser that refuses storage gets it in the address
+  instead); else a touch screen whose shorter side is 640 px or less is Mobile, everything else is Desktop.
+- **What Mobile changes:** a larger interface for a phone in landscape, taps as clicks, long-press for tooltips, drag to pan and
+  pinch to zoom the star chart, no bloom, and the 3D views lower their resolution when frames run slow.
+- **Mobile always runs the WebGL build.** The loader sends Mobile to `webgl/`, and a `webgpu/` page reached in Mobile mode forwards
+  to `webgl/`. Desktop is picked as before (WebGPU where it is known to run well, else WebGL).
+- **Handing a friend a phone link:** `https://example.com/botf/?mode=mobile`.
+- The code is `botf-mode.js` in the project (`godot/web-host`); `tools/web/embed_mode_js.py` copies it into the two export presets
+  and `loader.html`, and the build scripts refuse a page without it. There is nothing to edit on the host.
 
 ## What the host must do
 1. **Serve the files over HTTPS** (the browser needs a secure page for saves in IndexedDB and for audio).

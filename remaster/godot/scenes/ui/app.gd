@@ -859,11 +859,15 @@ func _build_chrome() -> void:
 	who.add_child(Lcars.label(head[0], "Heading", 26))
 	who.add_child(Lcars.caption(head[1]))
 	row.add_child(who)
+	var stat_row := row
+	if PlatformMode.is_mobile():
+		stat_row = PlatformMode.scroll_row(row)   # a phone's width cannot hold every figure: they scroll, End turn stays put
 	for st in shell.stats():
-		row.add_child(Lcars.kpi(st["icon"], st["cap"], st["value"], st["delta"], st["tone"], st["explain"], true))
-	row.add_child(Lcars.spacer())
+		stat_row.add_child(Lcars.kpi(st["icon"], st["cap"], st["value"], st["delta"], st["tone"], st["explain"], true))
+	if stat_row == row:
+		row.add_child(Lcars.spacer())
 	var os_ := shell.orders_stat()
-	row.add_child(Lcars.kpi(os_["icon"], os_["cap"], os_["value"], "", os_["tone"], os_["explain"], true))
+	stat_row.add_child(Lcars.kpi(os_["icon"], os_["cap"], os_["value"], "", os_["tone"], os_["explain"], true))
 	var pal := Lcars.icon_button("", "Command palette: jump to any screen, colony, fleet or command  [Ctrl+K]", "", func(): open_palette())
 	pal.name = "PaletteButton"
 	pal.icon = null
@@ -890,7 +894,10 @@ func _build_chrome() -> void:
 	_rail = Lcars.vbox(5)
 	_rail.position = Vector2(0, TOP_H + 44)
 	_rail.custom_minimum_size = Vector2(RAIL_W, 0)
-	_chrome.add_child(_rail)
+	if PlatformMode.is_mobile():
+		_chrome.add_child(PlatformMode.scroll_column(_rail, Rect2(0, TOP_H + 44, RAIL_W + 8, size.y - TOP_H - 44)))   # ten tabs outgrow a phone's height
+	else:
+		_chrome.add_child(_rail)
 	for s in GAME_SCREENS:
 		var b := Button.new()
 		b.theme_type_variation = "RailButton"
@@ -1111,6 +1118,7 @@ func _place_current() -> void:
 	var r := stage_rect()
 	_current.position = r.position
 	_current.size = r.size
+	PlatformMode.fit_overflow(_stage, _current, screen)   # phone mode only: a screen wider than the window pans
 
 func current_screen() -> Control:
 	return _current
@@ -1421,10 +1429,12 @@ func autosave() -> void:
 
 func _load_settings() -> void:
 	AppSaves.load_settings(settings)
+	PlatformMode.init_from(settings)   # desktop or mobile (web-host switch, command line, or the Settings row)
 	_apply_scale()
 
 func save_settings() -> void:
 	AppSaves.store_settings(settings)
+	PlatformMode.init_from(settings)
 	Lcars.colorblind = settings.get("colorblind", false)
 	_apply_scale()
 	_theme_empire = -1
@@ -1434,7 +1444,8 @@ func save_settings() -> void:
 
 func _apply_scale() -> void:
 	if is_inside_tree():
-		get_window().content_scale_factor = float(settings.get("uiScale", 1.0))
+		PlatformMode.apply_window(get_window(), float(settings.get("uiScale", 1.0)))   # desktop: just the scale, as before
+		PlatformMode.sync_runtime(self)
 
 # ---------------------------------------------------------------------------------------------
 # Toasts, modals and overlays

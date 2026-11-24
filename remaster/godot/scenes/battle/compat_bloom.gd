@@ -20,7 +20,7 @@ var _mat: ShaderMaterial
 ## Adds the bloom chain to `container` (which shows `viewport`). threshold is on the tonemapped frame (0-1); the
 ## intensities scale the 1/4 (tight) and 1/16 (wide) levels.
 static func attach(container_: SubViewportContainer, viewport: SubViewport, threshold := 0.7, intensity_a := 0.7, intensity_b := 1.1) -> CompatBloom:
-	if not CompatLook.active() or container_ == null or viewport == null or CompatLook.flag("BOTF_NO_COMPAT_BLOOM") != "":
+	if not PlatformMode.glow_allowed() or not CompatLook.active() or container_ == null or viewport == null or CompatLook.flag("BOTF_NO_COMPAT_BLOOM") != "":
 		return null
 	CompatLook.viewport(viewport) # HDR buffer for views that do not go through DisplaySettings.apply_viewport
 	var b := CompatBloom.new()

@@ -545,6 +545,22 @@ static func settings(app: App) -> Control:
 	scale_row.add_child(sl)
 	scale_row.add_child(pct)
 	root.add_child(scale_row)
+	if not OS.has_feature("web"):   # in the browser the page's Desktop | Mobile switch decides
+		var pm_row := Lcars.hbox(12)
+		pm_row.name = "Setting_platformMode"
+		pm_row.add_child(_setting_text("Touch layout", "Mobile suits a phone or tablet: a larger interface, long-press tooltips, pinch zoom, no bloom, and the 3D views drop in quality when frames run slow. Auto is Desktop on a PC."))
+		var pms := Lcars.hbox(4)
+		for pair in [["auto", "Auto"], ["mobile", "Mobile"], ["desktop", "Desktop"]]:
+			var pid: String = pair[0]
+			var pt := Lcars.toggle(pair[1], str(s.get("platformMode", "auto")) == pid, func(_on):
+				s["platformMode"] = pid
+				app.save_settings()
+				app.close_modal()
+				settings(app), pair[1])
+			pt.name = "PlatformMode_" + pid
+			pms.add_child(pt)
+		pm_row.add_child(pms)
+		root.add_child(pm_row)
 	var era_row := Lcars.hbox(12)
 	era_row.name = "Setting_uiEra"
 	era_row.add_child(_setting_text("Interface look", "The LCARS of an era: shapes and colours of TOS, the movies, TNG and DS9, Voyager or the post-Nemesis years."))

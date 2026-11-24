@@ -9,6 +9,7 @@
   3. copies the export to <Out> (default godot\build\botf-web-host) without build leftovers (.import files) and adds
      HOSTING.md, .htaccess and nginx.conf.example from godot\web-host.
   -SkipBuild assembles from an export that is already in godot\build\web.
+  The page has a Desktop | Mobile switch (see HOSTING.md, "Desktop | Mobile"); the build fails without it.
   -Release also mirrors the folder to Documents\ChatGPT\BOTF-Web-Latest (the one folder ChatGPT uploads to
   Free4allhub.com/botfremaster) with VERSION.txt and UPDATE-SITE.md. Nothing is uploaded. The folder uses relative paths only and runs from any sub-path (https://site/botf/).
 #>
@@ -37,6 +38,12 @@ if (Test-Path -LiteralPath $Out) { Remove-Item -LiteralPath $Out -Recurse -Force
 New-Item -ItemType Directory -Force -Path $Out | Out-Null
 & robocopy $src $Out /E /XF '*.import' 'serve_web.py' 'play-in-browser.bat' /NFL /NDL /NJH /NJS /NP | Out-Null
 if ($LASTEXITCODE -ge 8) { throw "robocopy failed ($LASTEXITCODE)" }
+# The host page: the export's index.html carries the Desktop | Mobile switch (godot\web-host\botf-mode.js, embedded in the Web
+# preset's head_include by tools\web\embed_mode_js.py). One build serves both modes; a page without it would lose the switch.
+$page = Get-Content -LiteralPath (Join-Path $Out 'index.html') -Raw
+if ($page -notmatch 'data-botf-mode') { throw "index.html has no Desktop | Mobile switch (run remaster\tools\web\embed_mode_js.py, then re-export)" }
+& python (Join-Path $remaster 'tools\web\embed_mode_js.py') --check
+if ($LASTEXITCODE -ne 0) { throw 'botf-mode.js and its embedded copies differ (run remaster\tools\web\embed_mode_js.py)' }
 foreach ($f in 'HOSTING.md', '.htaccess', 'nginx.conf.example', 'UPDATE-SITE.md') {
     Copy-Item -LiteralPath (Join-Path $proj "web-host\$f") -Destination (Join-Path $Out $f) -Force
 }

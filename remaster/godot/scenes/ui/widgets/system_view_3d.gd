@@ -74,7 +74,7 @@ func _build() -> void:
 	e.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	e.ambient_light_color = Color(0.12, 0.13, 0.18)
 	e.ambient_light_energy = 0.5
-	e.glow_enabled = true
+	e.glow_enabled = PlatformMode.glow_allowed()   # off on a phone
 	e.glow_intensity = 0.6
 	env.environment = e
 	world.add_child(env)
