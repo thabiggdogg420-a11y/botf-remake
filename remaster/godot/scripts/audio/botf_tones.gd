@@ -1,6 +1,6 @@
 class_name BotfTones
 extends RefCounted
-## Generated fallback sounds, used when no local file resolves: short LCARS-style interface tones, the red alert,
+## Generated fallback sounds, used when no local file resolves: short LCARS-style interface tones (never the red alert),
 ## and four looping ambient music beds (title, galaxy, battle, tension). Battle effects come from BattleAudio.synth.
 ## Original in-repo synthesis: no third-party audio.
 
@@ -13,6 +13,8 @@ const MUSIC_SECONDS := 8.0
 static func kind_for(key: String) -> String:
 	if key.begins_with("vo.") or key.begins_with("mus."):
 		return ""
+	if key.begins_with("sfx.alert"):
+		return ""   # Simon (8 and 25 Nov): no generated sound ever stands in for the red alert klaxon; a missing file is silence
 	match key:
 		"sfx.ui.click": return "click"
 		"sfx.ui.open": return "open"
@@ -22,11 +24,8 @@ static func kind_for(key: String) -> String:
 		"sfx.ui.research": return "research"
 		"sfx.ui.construction": return "construction"
 		"sfx.ui.beep": return "beep"
-		"sfx.alert.red": return "alert"
 	if key.begins_with("sfx.ui."):
 		return "beep"
-	if key.begins_with("sfx.alert"):
-		return "alert"
 	return BattleAudio.battle_kind_for(key)
 
 
@@ -40,7 +39,6 @@ static func synth(kind: String) -> AudioStreamWAV:
 		"turn": return _notes([[784.0, 0.16], [988.0, 0.34]], 0.003, 0.4)
 		"research": return _notes([[659.0, 0.1], [831.0, 0.1], [988.0, 0.1], [1318.0, 0.36]], 0.004, 0.45)
 		"construction": return _notes([[392.0, 0.12], [587.0, 0.4]], 0.0, 0.5)
-		"alert": return _alert()
 	if kind in ["beam", "beam_d", "pulse", "pulse_d", "torpedo", "torpedo_d", "shield", "hull", "explosion", "cloak", "warp"]:
 		return BattleAudio.synth(kind)
 	return null
@@ -77,24 +75,6 @@ static func _notes(notes: Array, vibrato: float, gain: float) -> AudioStreamWAV:
 			var s := (sin(phase) * 0.75 + sin(phase * 2.0) * 0.18) * env * gain
 			data.encode_s16(i * 2, clampi(int(s * 30000.0), -32768, 32767))
 			i += 1
-	return _wav(data, RATE)
-
-
-## Two alternating tones, a klaxon: 3 pulses over about 1.5 s.
-static func _alert() -> AudioStreamWAV:
-	var dur := 1.5
-	var count := int(dur * RATE)
-	var data := PackedByteArray()
-	data.resize(count * 2)
-	var phase := 0.0
-	for i in count:
-		var t := float(i) / RATE
-		var slot := fmod(t, 0.5) / 0.5
-		var f := 440.0 if int(t / 0.5) % 2 == 0 else 587.0
-		phase += TAU * (f + 30.0 * slot) / RATE
-		var env := minf(slot * 40.0, 1.0) * (1.0 - smoothstep(0.7, 1.0, slot)) * minf((dur - t) * 10.0, 1.0)
-		var s: float = (signf(sin(phase)) * 0.25 + sin(phase) * 0.45) * env * 0.8
-		data.encode_s16(i * 2, clampi(int(s * 30000.0), -32768, 32767))
 	return _wav(data, RATE)
 
 

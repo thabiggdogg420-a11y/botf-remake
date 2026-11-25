@@ -89,6 +89,12 @@ func has_era(era: String) -> bool:
 	return eras_present.has(era)
 
 
+## The red-alert klaxon recordings in the shared sfx folder, which is in the base pck of the web build and in the exe. A red-alert key
+## always finds these, even before any cue table has loaded (the web's first frames), so no tone is ever needed for it.
+const ALERT_BASE := ["res://scripts/audio/pack/shared/sfx/sfx_sfx_0132.ogg", "res://scripts/audio/pack/shared/sfx/ds9_alert_alert_red_s04e01_422.ogg",
+	"res://scripts/audio/pack/shared/sfx/ds9_alert_alert_red_s05e26_206.ogg", "res://scripts/audio/pack/shared/sfx/ds9_alert_alert_red_s06e06_242.ogg",
+	"res://scripts/audio/pack/shared/sfx/tng_alert_alert_red_s04e26_1397.ogg", "res://scripts/audio/pack/shared/sfx/tos_alert_alert_red_s02e06_2994.ogg"]
+
 ## Existing files for one key (not following fallbacks).
 func files_for(key: String, extra: BattleAssets = null) -> PackedStringArray:
 	var out := PackedStringArray()
@@ -102,6 +108,10 @@ func files_for(key: String, extra: BattleAssets = null) -> PackedStringArray:
 	if cue_files.has(key):
 		for f in cue_files[key]:
 			if not out.has(f) and not AudioDoubtful.blocked(f) and AppLoader.exists(f):
+				out.append(f)
+	if key == "sfx.alert.red" and out.is_empty():
+		for f in ALERT_BASE:
+			if AppLoader.exists(f) and not AudioDoubtful.blocked(f):
 				out.append(f)
 	for ext in ["wav", "ogg"]:
 		var rp := "res://scenes/battle/audio/%s.%s" % [key, ext]

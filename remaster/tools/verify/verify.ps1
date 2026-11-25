@@ -284,6 +284,7 @@ try {
             @('advisor-notnow', 'res://scenes/ui/tests/test_advisor_notnow.gd'),
             @('onboarding', 'res://scenes/ui/tests/test_onboarding.gd'),
             @('first-time-drive', 'res://scenes/ui/tests/test_first_time_drive.gd'),
+            @('klaxon', 'res://scripts/audio/tests/klaxon_dump.gd'),
             @('mod9', 'res://scenes/ui/tests/test_mod9.gd'),
             @('battle-timeline', 'res://scenes/battle/tests/test_battle_timeline.gd'),
             @('camera-rig', 'res://scenes/battle/tests/test_camera_rig.gd'),
@@ -490,6 +491,17 @@ if (-not $SkipExport) {
         foreach ($v in $saved.Keys) { [Environment]::SetEnvironmentVariable($v, $saved[$v]) }
         $il = @(Get-Content -LiteralPath $icLog -ErrorAction SilentlyContinue | Where-Object { $_ -match '^ICON_CHECK' })
         Add-Result 'exe-ship-icons' $(if ($ic.ExitCode -eq 0 -and $il.Count -ge 1 -and -not ($il -match '^ICON_CHECK\s+FAIL')) { 'ok' } else { 'FAIL' }) ((@($il | ForEach-Object { $_ -replace '^ICON_CHECK\s+', '' }) -join ' | ') + " (clean folder $clean)")
+
+        # Red alert is never a synthesised beep (Simon, 8 and 25 Nov): the packaged exe, cold start, resolves every alert cue to a recorded klaxon file.
+        $kxLog = Join-Path $logs 'exe-klaxon.log'
+        $kx = Start-Process -FilePath (Join-Path $clean 'BOTFRemastered.exe') -WorkingDirectory $clean -PassThru `
+            -ArgumentList "--headless --audio-driver Dummy -s res://scripts/audio/tests/klaxon_dump.gd" `
+            -RedirectStandardOutput $kxLog -RedirectStandardError (Join-Path $logs 'exe-klaxon.err')
+        $null = $kx.Handle
+        try { $kx.PriorityClass = [System.Diagnostics.ProcessPriorityClass]::BelowNormal } catch {}
+        if (-not $kx.WaitForExit(300 * 1000)) { try { Stop-Process -Id $kx.Id -Force } catch {} }
+        $kl = @(Get-Content -LiteralPath $kxLog -ErrorAction SilentlyContinue | Where-Object { $_ -match '^KLAXON ' })
+        Add-Result 'exe-klaxon' $(if ($kl.Count -eq 4 -and -not ($kl -match ' BAD$')) { 'ok' } else { 'FAIL' }) ((@($kl | ForEach-Object { $_ -replace '^KLAXON ', '' }) -join ' | '))
 
         # M1 hullhd: every hero model in the manifest, drawn by hull_gallery.gd inside the same clean exe folder (no LocalAssets, no
         # BOTF_* variables, private APPDATA). A "HULL FAIL" line is a class whose hero model did not load from the packs and fell

@@ -232,9 +232,23 @@ func _library() -> void:
 	check(r.get("key", "") == "sfx.ui.beep", "the key chain falls back to the next key with a file")
 	check(lib.stream_of(r) is AudioStreamWAV, "a wav loads as a stream")
 	check(lib.resolve_files(PackedStringArray(["vo.advisor.rom"])).is_empty(), "no files -> unresolved (voice stays silent)")
-	for k in ["sfx.ui.click", "sfx.ui.open", "sfx.ui.endturn", "sfx.ui.turn", "sfx.ui.research", "sfx.ui.construction", "sfx.alert.red", "weapon.PhaserArray.fed", "sfx.explosion.large", "sfx.warp.in"]:
+	for k in ["sfx.ui.click", "sfx.ui.open", "sfx.ui.endturn", "sfx.ui.turn", "sfx.ui.research", "sfx.ui.construction", "weapon.PhaserArray.fed", "sfx.explosion.large", "sfx.warp.in"]:
 		check(lib.tone_for(k) is AudioStreamWAV, "generated tone for %s" % k)
 	check(lib.tone_for("vo.advisor.fed") == null and lib.tone_for("mus.botf.all") == null, "no tone for voice or music keys")
+	# Simon (8 and 25 Nov): the red alert is never a synthesised beep. No tone for any sfx.alert key, and on a cold start (no cue table
+	# loaded yet: the web's first frames) every cue that maps to sfx.alert.* resolves to a klaxon FILE from the pack.
+	check(lib.tone_for("sfx.alert.red") == null and lib.tone_for("sfx.alert.red.ds9") == null and BotfTones.kind_for("sfx.alert.red") == "", "no generated tone for any sfx.alert key")
+	var cold := BotfAudioLibrary.new()
+	for cue_name in ["red_alert", "system_under_attack", "war_declared", "encounter_opens"]:
+		var cdef := BotfAudioCues.cue_for(cue_name, "fed", "kli", "")
+		var alert_keys := PackedStringArray()
+		for k in cdef.sfx:
+			if str(k).begins_with("sfx.alert"):
+				alert_keys.append(k)
+		check(not alert_keys.is_empty(), "%s maps to an sfx.alert key" % cue_name)
+		var rr := cold.resolve_files(alert_keys)
+		check(not rr.is_empty() and str(rr.files[0]).begins_with("res://scripts/audio/pack/") and str(rr.files[0]).ends_with(".ogg"), "%s cold start: klaxon file %s" % [cue_name, str(rr.get("files", PackedStringArray([""]))[0])])
+		check(cold.stream_of(rr) is AudioStreamOggVorbis, "%s cold start: the klaxon loads as a recorded stream, not a tone" % cue_name)
 	for m in ["title", "galaxy", "battle", "tension"]:
 		var ms := lib.music_tone(m) as AudioStreamWAV
 		check(ms != null and ms.loop_mode == AudioStreamWAV.LOOP_FORWARD and ms.data.size() > 100000, "generated %s bed loops" % m)

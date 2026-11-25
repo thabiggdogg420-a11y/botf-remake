@@ -313,9 +313,15 @@ func _play_effect(keys: PackedStringArray, bus: String, priority: int, cue_name:
 	var r := library.resolve_files(keys, extra)
 	if not r.is_empty():
 		key = r.key
-		stream = library.stream_of(r, scheduler.pick_variant(r.key, r.files.size()))
+		var pick := scheduler.pick_variant(r.key, r.files.size())
+		stream = library.stream_of(r, pick)
+		if key.begins_with("sfx.alert"):
+			print("ALERT_CUE cue=%s key=%s file=%s stream=%s" % [cue_name, key, str(r.files[pick % r.files.size()]), stream.get_class() if stream else "none"])   # what was resolved, for the verify check (no sound needed)
 	if stream == null:
 		if not tones:
+			return ""
+		if key.begins_with("sfx.alert"):
+			push_warning("red alert: no klaxon file resolved for %s (silent, never a tone)" % key)
 			return ""
 		for k in keys:
 			stream = library.tone_for(k)
