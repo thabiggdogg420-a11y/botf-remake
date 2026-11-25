@@ -198,6 +198,9 @@ func _beats(native: bool) -> void:
 	panel.update()
 	var id4 := str(panel.current.get("id", ""))
 	check(id4 == "colony" or id4 == "", "closing the log finishes beat 4 (next: %s)" % id4)
+	if id4 == "colony" and app.screen != "galaxy":
+		# the log was closed on a screen other than the chart (a Quick Start builds on the System screen): beat 5 is still shown, and points at the Cartography tab
+		check(panel.visible and str(adv.targets(panel.current)[0]) == "Rail_galaxy" and panel.target_rects().size() == 1, "beat 5 off the star chart points at the Cartography tab (screen %s)" % app.screen)
 	# skipping
 	adv.skip_tutorial()
 	panel.update()

@@ -36,7 +36,7 @@ const EVENT_BEATS := {
 const STEP_SCREENS := {
 	"scout": ["galaxy"],
 	"build": ["galaxy", "system"],
-	"colony": ["galaxy"],
+	"colony": ["galaxy", "system", "empire", "research", "fleets", "intel", "database", "diplomacy"],   # off the chart it points at the Cartography tab
 	"contact": ["galaxy", "system", "empire", "research", "fleets", "intel", "database"],
 }
 
@@ -370,7 +370,13 @@ func _beat_targets(id: String) -> Array:
 				return []
 			if int(app.selection.get("fleetId", 0)) != int(scout["id"]):
 				return ["Unit_%d" % int(scout["id"]), _cell_rect(int(scout["x"]), int(scout["y"]))]
-			var t := _explore_target()
+			var skip := {}
+			var t := {}
+			for _try in 12:
+				t = _explore_target(skip)
+				if t.is_empty() or not _under_hud(_cell_rect(int(t["x"]), int(t["y"])).get_center()):
+					break
+				skip["%d,%d" % [int(t["x"]), int(t["y"])]] = true   # that star sits behind a HUD panel (a phone window is crowded): point at the next
 			return [_cell_rect(int(t["x"]), int(t["y"]))] if not t.is_empty() else []
 		"build":
 			return ["Rail_system"] if app.screen != "system" else ["Choice_*"]
@@ -382,6 +388,8 @@ func _beat_targets(id: String) -> Array:
 			var ship := _idle_colony_ship()
 			if ship.is_empty():
 				return []
+			if app.screen != "galaxy":
+				return ["Rail_galaxy"]   # the ship is on the star chart: go there first
 			if int(app.selection.get("fleetId", 0)) != int(ship["id"]):
 				return ["Unit_%d" % int(ship["id"]), _cell_rect(int(ship["x"]), int(ship["y"]))]
 			var c := _colony_target(ship)
@@ -398,6 +406,20 @@ func _scout() -> Dictionary:
 		if int(f.get("owner", 0)) == app.player() and not f.get("colonyShip", false) and EndTurnVM.is_idle(app.session, f):
 			return f
 	return {}
+
+## Whether a point on the chart is covered by a HUD panel that would take the tap instead of the star.
+func _under_hud(p: Vector2) -> bool:
+	var gs := app.current_screen()
+	if gs == null:
+		return false
+	var hud := gs.find_child("GalaxyHud", true, false)
+	if hud == null:
+		return false
+	for c in hud.find_children("*", "Control", true, false):
+		var ctl := c as Control
+		if ctl.visible and ctl.is_visible_in_tree() and ctl.mouse_filter != Control.MOUSE_FILTER_IGNORE and ctl.get_global_rect().has_point(p):
+			return true
+	return false
 
 ## A sector on the star chart as a screen rect (the chart is 3D; the rect is where the sector's star is drawn now).
 func _cell_rect(x: int, y: int) -> Rect2:
