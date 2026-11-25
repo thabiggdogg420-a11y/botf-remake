@@ -150,6 +150,15 @@ static func asset_keys_for(ship: Dictionary) -> PackedStringArray:
 	var fac := BattleTimeline.faction_prefix(int(ship.get("owner", 0)))
 	if str(ship.get("assetKey", "")) != "":
 		keys.append(str(ship.assetKey))
+	# Hull-look lane (25 Nov 2026): a station in a real battle is named "Starbase 1" / "Outpost 3" (slug starbase_1), which matched
+	# no hero model, so every battle starbase was drawn as the procedural spindle (its aliased window grid: Simon's "starbases in the
+	# battles ... little white specs"), on the PC too. The station's type picks the faction's own station model.
+	if fac != "" and BattleShip.is_station_ship(ship):
+		var kind := str(ship.get("stationType", "")).to_lower()
+		if kind == "":
+			kind = str(ship.get("name", "")).strip_edges().to_lower().split(" ")[0]
+		if kind in ["starbase", "outpost"]:
+			keys.append("ship.%s.%s" % [fac, kind])
 	var klass := str(ship.get("name", "")).split(" — ")[0].split(" - ")[0].strip_edges()
 	if fac != "" and klass != "":
 		keys.append("ship.%s.%s" % [fac, _slug(klass)])
@@ -296,15 +305,20 @@ func _show_look(hull: Node) -> void:
 				var g = mat.get_shader_parameter("color_gain")
 				mat.set_shader_parameter("color_gain", (float(g) if g != null else 1.0) * HULL_TONE)
 	var he := half_extents
-	var r := clampf(length * 0.011, 0.12, 0.45)
+	# Hull-look lane (25 Nov 2026, Simon: "little white specs all over them"): the lights sat at the corners of the bounding
+	# box, which on a saucer, a nacelle pair or a bird-of-prey is open space, so a red, a green and a blinding white ball
+	# hung beside the hull (title frames before/pc-dev). Each now sits on the hull's own surface nearest its corner, and is
+	# a light's size (a few pixels), not an orb.
+	var r := clampf(length * 0.0045, 0.03, 0.16)
 	var mesh := SphereMesh.new()
 	mesh.radius = 1.0
 	mesh.height = 2.0
 	mesh.radial_segments = 8
 	mesh.rings = 4
-	var spots := [[Vector3(-he.x * 0.15, he.y * 0.1, -he.z * 0.96), Color(1.0, 0.12, 0.08), 0.5, 0.0],
-		[Vector3(-he.x * 0.15, he.y * 0.1, he.z * 0.96), Color(0.1, 1.0, 0.25), 0.5, 0.0],
-		[Vector3(-he.x * 0.92, he.y * 0.55, 0.0), Color(1.0, 1.0, 1.0), BattleTimeline.unit_hash(fleet_id, 91), 0.7]]
+	var pts := _hull_points()
+	var spots := [[_snap_to_hull(pts, Vector3(-he.x * 0.15, he.y * 0.1, -he.z * 0.96)), Color(1.0, 0.12, 0.08), 0.5, 0.0],
+		[_snap_to_hull(pts, Vector3(-he.x * 0.15, he.y * 0.1, he.z * 0.96)), Color(0.1, 1.0, 0.25), 0.5, 0.0],
+		[_snap_to_hull(pts, Vector3(-he.x * 0.92, he.y * 0.55, 0.0)), Color(1.0, 1.0, 1.0), BattleTimeline.unit_hash(fleet_id, 91), 0.7]]
 	for sp in spots:
 		var light := MeshInstance3D.new()
 		light.name = "NavLight"
@@ -320,6 +334,38 @@ func _show_look(hull: Node) -> void:
 		light.set_instance_shader_parameter("blink_rate", sp[3])
 		model.add_child(light)
 		_meshes.append(light) # cloak, damage and visibility treat it as part of the hull
+
+
+## Vertices of the drawn hull in `model` space (nav lights, flagship marks and shields excluded), thinned to about 6000 so
+## the nearest-point search is cheap whatever the hull's triangle count.
+func _hull_points() -> PackedVector3Array:
+	var out := PackedVector3Array()
+	var stack := [[model, Transform3D.IDENTITY]]
+	while not stack.is_empty():
+		var item = stack.pop_back()
+		var node: Node = item[0]
+		var t: Transform3D = item[1]
+		if node is MeshInstance3D and node.mesh != null and node.visible and not str(node.name).begins_with("NavLight") 				and not str(node.name).begins_with("Flagship") and not "hield" in str(node.name):
+			var f: PackedVector3Array = (node.mesh as Mesh).get_faces()
+			var step := maxi(1, f.size() / 6000)
+			for i in range(0, f.size(), step):
+				out.append(t * f[i])
+		for c in node.get_children():
+			if c is Node3D:
+				stack.append([c, t * (c as Node3D).transform])
+	return out
+
+
+## The hull point nearest `target` (or `target` itself when the hull has no vertices).
+static func _snap_to_hull(pts: PackedVector3Array, target: Vector3) -> Vector3:
+	var best := target
+	var bd := INF
+	for v in pts:
+		var d := v.distance_squared_to(target)
+		if d < bd:
+			bd = d
+			best = v
+	return best
 
 
 ## F4 (20 Nov 2026): a commissioned flagship reads apart in battle: a thin gold command ring around the hull and a

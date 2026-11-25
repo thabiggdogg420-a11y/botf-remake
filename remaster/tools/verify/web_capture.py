@@ -39,7 +39,7 @@ def main():
                 try:
                     browser = p.chromium.launch(channel=channel, headless=True,
                                                 args=["--use-angle=d3d11", "--enable-gpu",
-                                                      "--ignore-gpu-blocklist", "--autoplay-policy=no-user-gesture-required"])
+                                                      "--ignore-gpu-blocklist", "--mute-audio", "--autoplay-policy=user-gesture-required"])
                     report["browser"] = channel or "playwright-chromium"
                     break
                 except Exception as e:  # try the next channel

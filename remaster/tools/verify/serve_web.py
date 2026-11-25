@@ -44,6 +44,24 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         super().end_headers()
 
     def send_head(self):
+        # SERVE_INJECT_ARGS="A=1,B=2" (hull-look lane, 25 Nov 2026): the page is served with those engine user arguments
+        # ("--" then each) in place of its empty start-up list, so a capture can pin BOTF_TITLE_EMPIRE=<n> on the web build.
+        inject = os.environ.get("SERVE_INJECT_ARGS", "")
+        if inject:
+            p = self.path.split("?", 1)[0]
+            page = self.translate_path(self.path)
+            if os.path.isdir(page):
+                page = os.path.join(page, "index.html")
+            if (p.endswith("/") or p.endswith("index.html")) and os.path.isfile(page):
+                import io
+                import json
+                body = open(page, "rb").read().decode("utf-8").replace('"args":[]', '"args":' + json.dumps(["--"] + inject.split(",")))
+                data = body.encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html")
+                self.send_header("Content-Length", str(len(data)))
+                self.end_headers()
+                return io.BytesIO(data)
         # A .gz sidecar for a browser that accepts gzip: same Last-Modified / 304 handling as the plain file.
         path = self.translate_path(self.path)
         gz = path + ".gz"
