@@ -60,10 +60,25 @@ func target_rects() -> Array[Rect2]:
 		else:
 			var c := _find_target(host, str(n))
 			if c:
+				if current.get("beat", false) and _reveal(c):
+					_spotlight_target.call_deferred()   # it scrolled into view: point the spotlight again once the layout has moved
 				out.append(c.get_global_rect())
 		if current.get("beat", false) and not out.is_empty():
 			break
 	return out
+
+## A beat's target may sit in a scrolled panel (the phone layout's top bar and rail scroll): bring it into view. True when anything moved.
+func _reveal(c: Control) -> bool:
+	var moved := false
+	var p := c.get_parent()
+	while p != null:
+		if p is ScrollContainer:
+			var sc := p as ScrollContainer
+			var before := Vector2(sc.scroll_horizontal, sc.scroll_vertical)
+			sc.ensure_control_visible(c)
+			moved = moved or before != Vector2(sc.scroll_horizontal, sc.scroll_vertical)
+		p = p.get_parent()
+	return moved
 
 ## A named control on the current screen, else anywhere in the app (a dialog). A trailing * names the first enabled button
 ## that matches (the first thing the player may pick).
