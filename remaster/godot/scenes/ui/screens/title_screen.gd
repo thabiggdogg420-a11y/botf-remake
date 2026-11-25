@@ -134,7 +134,7 @@ func refresh() -> void:
 	# A short window (a 720 px browser tab) with a Continue button: lift the column so the last row clears the footer.
 	root.position.y = clampf(root.position.y, 8.0, maxf(8.0, size.y - 64.0 - root.get_combined_minimum_size().y))
 	var foot := Lcars.hbox(40)
-	foot.position = Vector2(size.x * 0.09, size.y - 48)
+	foot.position = Vector2(size.x * 0.09, maxf(size.y - 48.0, root.position.y + root.get_combined_minimum_size().y + 14.0))   # a phone window is shorter than the column: the footer follows it, not the window bottom
 	foot.add_child(Lcars.label(vm.footer(), "Mono", 13, Lcars.TEXT3))
 	foot.add_child(Lcars.label("Unofficial fan reconstruction · not affiliated with any rights holder", "Muted"))
 	add_child(foot)

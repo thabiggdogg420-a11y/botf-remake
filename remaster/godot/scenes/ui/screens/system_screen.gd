@@ -60,6 +60,8 @@ func refresh() -> void:
 	root.add_child(_kpis())
 	var cols := Lcars.hbox(14)
 	cols.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	if PlatformMode.is_mobile():
+		cols.custom_minimum_size.y = 440   # a phone window leaves these columns no height at all (their lists collapse to nothing): the screen pans instead
 	root.add_child(cols)
 	var left := Lcars.vbox(12)
 	left.custom_minimum_size.x = 560

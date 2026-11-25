@@ -1476,6 +1476,7 @@ func toast(text: String, tone: String = "info", seconds: float = 3.4) -> void:
 	if _toasts == null:
 		return
 	var p := PanelContainer.new()
+	p.mouse_filter = Control.MOUSE_FILTER_IGNORE   # a toast is a message, not a control: a tap or click goes through it (on a phone one can cover a tutorial target)
 	var c := Lcars.tone_color(tone)
 	var sb := Lcars.box_lcars(Color(Lcars.PANEL_SOLID, 0.96), 12, c, 1, Vector4(16, 10, 16, 10))
 	sb.border_width_left = 6
@@ -1487,6 +1488,8 @@ func toast(text: String, tone: String = "info", seconds: float = 3.4) -> void:
 	trow.add_child(UiIcon.make(ticon, 20, c))
 	trow.add_child(l)
 	p.add_child(trow)
+	for inner in p.find_children("*", "Control", true, false):
+		(inner as Control).mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_toasts.add_child(p)
 	while _toasts.get_child_count() > 5:
 		_toasts.get_child(0).free()
