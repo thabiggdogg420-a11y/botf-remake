@@ -2,6 +2,12 @@ BOTF Remastered PC beta (round 9): what changed since 0.1.566
 
 The round 8 notes (Gemini audit fixes) and the 0.1.538 to 0.1.566 notes follow the new ones.
 
+Quick Start, guided first turns and a phone layout (26 Nov)
+- Quick Start on the title: tap one of the five classic powers, then Quick Start. Small galaxy, early era, classic rules, a five-step spotlight tutorial (scout, build, end turn, read the log, colony ship), side tabs that light up as they get something to show, and the AI's first war held back to turn 40.
+- The tutorial's lines are shorter. Tabs with nothing to show yet are dimmed in a Quick Start game only; Custom games are unchanged.
+- Mobile mode (website switch Desktop / Mobile; on the PC: Settings, Touch layout, or --mobile): a landscape phone layout with touch pan and pinch on the star chart and long-press tooltips. Portrait and battle gestures come later.
+- On a phone-sized window the build lists on the Colony screen are visible, the title footer no longer prints over the text, and messages no longer block taps.
+
 Smoother galaxy map (25 Nov, from the browser playtest report)
 - The galaxy chart draws far less per frame: the ownership rings round each star are one draw instead of a dozen, and the chart's static layer (grid, drop lines, labels, icons) is drawn once per camera or data change instead of every frame. The browser build's galaxy went from 40-50 ms frames to 10 ms on the test machine; the look is unchanged.
 - Browser: background shader warm-ups wait for the mouse and keyboard to be still, so hovering the menu no longer lands on a compile hitch.
