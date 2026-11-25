@@ -599,6 +599,31 @@ if ($wantWeb -and -not $SkipCapture) {
     }
 }
 
+# Hull look (hull-look lane): every title fleet and station hull is a hero model (no procedural stand-in, no low-detail model, no white specks),
+# and the web build's packs carry them; then Chrome opens the web build's title for empires 1-5 and the Starbase drill and the hero packs
+# must have been fetched by the last frame. 0 misses on each.
+if (-not $SkipCapture) {
+    $hlOut = Join-Path $run 'hull-look'
+    $hlWeb = ''
+    if ($wantWeb -and (Test-Path -LiteralPath (Join-Path $proj 'build\web\index.html'))) { $hlWeb = Join-Path $proj 'build\web' }
+    $hlArgs = @('-NoProfile', '-File', (Join-Path $PSScriptRoot 'hull_look_check.ps1'), '-Out', $hlOut)
+    if ($hlWeb) { $hlArgs += @('-Web', $hlWeb) }
+    $hlo = & powershell @hlArgs 2>&1 | Out-String
+    $hlc = $LASTEXITCODE
+    $hlo | Set-Content -LiteralPath (Join-Path $logs 'hull-look.log')
+    Add-Result 'hull-look' $(if ($hlc -eq 0) { 'ok' } else { 'FAIL' }) (($hlo -split "`n" | Where-Object { $_ -match 'HULLLOOK|hull look check' } | Select-Object -Last 3 | ForEach-Object { $_.Trim() }) -join ' | ')
+    if ($hlWeb) {
+        foreach ($mode in @('title', 'battle')) {
+            $wsArgs = @((Join-Path $PSScriptRoot 'web_title_shots.py'), $hlWeb, 'index.html', (Join-Path $run "web-title-$mode"), '--empires', '1,2,3,4,5', '--assert', '--tag', "verify-$mode")
+            if ($mode -eq 'battle') { $wsArgs += '--battle' }
+            $wso = & $python @wsArgs 2>&1 | Out-String
+            $wsc = $LASTEXITCODE
+            $wso | Set-Content -LiteralPath (Join-Path $logs "web-title-$mode.log")
+            Add-Result "web-title-$mode" $(if ($wsc -eq 0) { 'ok' } else { 'FAIL' }) (($wso -split "`n" | Select-Object -Last 2 | ForEach-Object { $_.Trim() }) -join ' | ')
+        }
+    }
+}
+
 # ---- Phase 4: contact sheets ----------------------------------------------------------------------------------------------
 if (-not $SkipCapture) {
     $s = & $python (Join-Path $PSScriptRoot 'make_sheets.py') $run 2>&1 | Out-String
