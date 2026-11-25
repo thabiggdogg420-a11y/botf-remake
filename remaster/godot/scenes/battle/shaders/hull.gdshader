@@ -84,13 +84,16 @@ void fragment() {
 		* smoothstep(0.15, 0.3, fract(cx)) * (1.0 - smoothstep(0.7, 0.85, fract(cx)));
 	float warm = h31(vec3(cell, floor(v_pos.y * rows), 1.0));
 	float energy = window_energy;
-#if CURRENT_RENDERER == RENDERER_COMPATIBILITY
-	// Compatibility (the web build): no HDR range and no tonemap roll-off, so every window over 1.0 clips to white, and the
-	// window grid is finer than a pixel at battle and title range: it aliased into a white speckle over the whole hull
-	// (WEB-PARITY.md gap 5, 19 Nov). Fade the windows out as a window cell shrinks under ~3 pixels, and cap their energy.
+	// Hull-look lane (25 Nov 2026, Simon: "little white specs all over them, and the starbases in the battles do too"). This
+	// window grid is finer than a pixel at battle and title range in every renderer, and its energy (window_energy x the
+	// battle's WINDOW_GAIN, 9.6) is far over the glow threshold, so each aliased window cell was a white sparkle that
+	// bloomed. The Compatibility build had the fix (below); Forward+ did not. Now both fade the windows out as a cell
+	// shrinks under ~3 pixels and cap their energy under the glow threshold.
 	float px = max(fwidth(cx), fwidth(v_pos.y * rows));
-	energy = min(energy, 1.2) * (1.0 - smoothstep(0.12, 0.35, px));
+	energy = min(energy, 2.2) * (1.0 - smoothstep(0.12, 0.35, px));
 	ROUGHNESS = max(ROUGHNESS, 0.45 + 0.4 * smoothstep(0.05, 0.3, px));
+#if CURRENT_RENDERER == RENDERER_COMPATIBILITY
+	energy = min(energy, 1.2);   // no HDR range: anything over 1.0 clips to white
 	// The 8-bit frame clips the lit plating that Forward+ ACES rolls off: a shade darker reads as the desktop's grey.
 	ALBEDO *= 0.8;
 #endif

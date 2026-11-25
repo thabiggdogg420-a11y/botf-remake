@@ -271,3 +271,19 @@ Library model swaps for B hulls (not viewed; tris and max texture from BULK-REPO
 - The emissive-sampler cause is read from the shader and frame, not tested live.
 - Starting-fleet picks use the role sets in `Simulation.cpp` and the legacy catalogue; `eraBaseTechLevel` gating was not evaluated, so some cruiser/troop picks may be a tier later than listed.
 - `docs/ASSET-SOURCES.md` lists Sketchfab/Trekmeshes candidates (e.g. Nebula `nestor_d`, Galaxy `CrustyBread`), but the models in use are BC-library models; ASSET-SOURCES.md marks BC Remastered as restricted (author permission needed). Licensing was not assessed.
+
+## 9. Hull look lane (25 Nov 2026, Barclay): the title fleet and battle stations
+
+Simon, 25 Nov: "the main menu ships are always really low res and low poly and look terrible, they have all these little white specs all over them, and the starbases in the battles do too". Frames: `Documents\ChatGPT\rc-captures\hull-look\before` and `after` (side by side in `after\side-by-side`).
+
+Causes, each seen in a frame:
+1. **The web title never drew a hero model.** `TitleFleet` was given a `BattleAssets` with no hull pack mounted (the hero packs are lazy: a campaign start fetches them), and nothing ever raised the title's own three packs, so the WebGL and WebGPU title drew the procedural stand-in hulls for the whole visit (`before\web-webgl\webgl-title-e*-40s.png`, `before\web-webgpu\`; the page fetched 0 hull packs). Those hulls are `hull.gdshader`: a window grid finer than a pixel with window energy 9.6 (4 x the battle's WINDOW_GAIN 2.4), which aliased into white speckle and bloomed. The 19 Nov Compatibility fix (WEB-PARITY gap 5) fixed the aliasing on web only and left Forward+ (the PC procedural station, any fallback hull) as it was.
+2. **Navigation lights hung in open space.** `BattleShip._show_look` put the red, green and white strobe lights at the corners of the hull's bounding box (radius 0.12-0.45 units, flash 15x), so on a saucer, a nacelle pair or a bird-of-prey they floated beside the ship as red, green and blinding white balls: the white specks beside the PC title ships and every PC station (`before\pc-dev\title-real-e*.png`, `station-e*-*-close.png`).
+3. **Window and normal-map sparkle on the hero shader.** `hero_hull.gdshader` sampled the emissive (window) map at full sharpness at grazing angles and let the window emission (strength x 2.4) run far over the glow threshold, with no specular anti-aliasing: each window texel landed on one pixel one frame and none the next. On Compatibility the same emission clipped to white dots and a white dome blob.
+4. The fleet filled about a quarter of the frame (hulls about 500 px), so even correct hulls read soft; three escorts were low-detail (Cardassian Hideki 1.5k triangles, Romulan Bird-of-Prey 2.4k with 128 px mips).
+
+Not causes (checked): dust motes (alpha 0.08), MSAA (the title viewport already runs MSAA 2x), texture mipmaps (the glb images are mip-chained on the load thread), VRAM compression (none on desktop; the web packs are WebP).
+
+Changes: `TitleFleet` fetches its empire's hero packs on the web behind the finished backdrop, never draws a stand-in while they download, and fades each ship in (dither dissolve in the hero shaders); camera a fifth closer; Hideki and Bird-of-Prey escorts replaced by Kraxon and Mogai. `hero_hull.gdshader`: emission sampled `emissive_bias` softer and capped (0.8 and warmed on Compatibility), Toksvig plus geometric specular anti-aliasing. `hull.gdshader`: window fade and energy cap in every renderer. Nav lights snap to the nearest hull vertex, a light's size, strobe 5x not 15x.
+
+Check: `tools\verify\hull_look_check.ps1` (PC: triangles, texture size, speck count per million hull pixels, nav-light distance, stand-in hull; web: `check_title_packs.py` for the packs and `web_title_shots.py --assert` for the title actually fetching them). Result before and after in the lane report.

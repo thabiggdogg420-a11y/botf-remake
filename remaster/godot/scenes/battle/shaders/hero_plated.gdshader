@@ -77,7 +77,16 @@ void vertex() {
 	v_nrm = NORMAL;
 }
 
+// Title fade-in (hull-look lane): 1 = solid. A dither dissolve, not alpha, so it sorts like an opaque and works in every renderer.
+uniform float title_fade = 1.0;
+
 void fragment() {
+	if (title_fade < 0.999) {
+		float d = fract(52.9829189 * fract(dot(FRAGCOORD.xy, vec2(0.06711056, 0.00583715))));
+		if (d > title_fade) {
+			discard;
+		}
+	}
 	vec3 n = abs(normalize(v_nrm));
 	vec3 wgt = pow(n, vec3(6.0));
 	wgt /= (wgt.x + wgt.y + wgt.z);

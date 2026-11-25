@@ -9,5 +9,6 @@ instance uniform float blink_rate = 0.8;
 void fragment() {
 	float f = fract(TIME * blink_rate + blink_phase);
 	float flash = exp(-f * 18.0);
-	ALBEDO = light_color.rgb * (1.5 + 14.0 * flash);
+	// Hull-look lane: the strobe was 15.5x and bloomed into a white speck on every hull; a light is bright, not a flare.
+	ALBEDO = light_color.rgb * (1.1 + 4.0 * flash);
 }

@@ -2057,3 +2057,16 @@ Private, local only (nothing below is committed; `tools/mod9/build_mod9.py` rebu
 | Dominion voice (8 clips) | DS9 episodes on `D:\TV Shows` (To the Death, By Inferno's Light, A Time to Stand, Rocks and Shoals, What You Leave Behind), centre channel, cut by subtitle line | Paramount, Simon's own copies |
 | Borg lines `vo.borg.hail`, `vo.borg.locutus` | Star Trek: First Contact on `D:\Movies\Star Trek`, centre channel, cut by subtitle line | as above |
 | Borg cutscenes, the Dominion intro | drawn in-engine (`scenes/ui/cinema.gd`) with the game's own hulls and planets | ours |
+
+## Hull look lane (25 Nov 2026, Barclay): title fleet and battle stations
+Simon, 25 Nov: "the main menu ships are always really low res and low poly and look terrible, they have all these little white specs all over them, and the starbases in the battles do too". Diagnosis and frames: `Documents\ChatGPT\rc-captures\hull-look\` (before, after, work). No third-party file was downloaded or added by this lane. The models are the ones already in `LocalAssets/ships` (Bridge Commander library conversions and the F4 builds above, sources logged in this file); the lane only changes which of them the title fleet uses and how they are lit.
+
+| Title fleet (lead, escorts) | Models (asset keys) | Source |
+|---|---|---|
+| Federation | ship.fed.sovereign (19.0k tris), ship.fed.galaxy (18.5k, 4096 px), ship.fed.defiant (10.6k) | BC library DS9FXSovereign, Galaxy (4x pipeline), DS9FXDefiant |
+| Klingon | ship.kli.neghvar (23.6k), ship.kli.vorcha (25.0k), ship.kli.bop (19.6k) | BC library Neghvar, Vorcha, D4_BOP |
+| Romulan | ship.rom.dderidex (12.6k), ship.rom.valdore (4.0k), ship.rom.mogai (5.2k; replaces the 2.2k Bird-of-Prey) | BC library DS9FXWarbird, R_TNG_VALDORE, R_TNG_TAVARA |
+| Cardassian | ship.car.keldon (7.4k), ship.car.galor (5.7k), ship.car.kraxon (7.4k; replaces the 1.4k Hideki) | BC library Keldon, Galor, ObsidianKeldon |
+| Ferengi | ship.fer.dkora (8.5k), ship.fer.nagus (10.5k), ship.fer.pod (3.5k, plated) | BC library Marauder (x2), F4 original model |
+
+Stations in battle: ship.<fac>.starbase and ship.<fac>.outpost, unchanged (Federation 17.6k / 35.8k tris, Klingon 5.6k / 3.5k, Romulan 1.0k / 3.4k, Cardassian 51.8k (CardStarbase, DS9) / 16.5k, Ferengi 7.7k / 4.8k plated). The Romulan starbase (1.0k) is the lowest-detail station on disk; the library has nothing better and no free model was found that is not a download from a site needing an account.

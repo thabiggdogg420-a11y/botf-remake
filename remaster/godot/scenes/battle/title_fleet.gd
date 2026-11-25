@@ -9,8 +9,8 @@ extends Node3D
 const HEROES := {
 	1: [["ship.fed.sovereign", "Sovereign", 685.0], ["ship.fed.galaxy", "Galaxy", 642.0], ["ship.fed.defiant", "Defiant", 170.0]],
 	2: [["ship.kli.neghvar", "Negh'Var", 682.0], ["ship.kli.vorcha", "Vor'cha", 481.0], ["ship.kli.bop", "Bird-of-Prey", 110.0]],
-	3: [["ship.rom.dderidex", "D'deridex", 1041.0], ["ship.rom.valdore", "Valdore", 843.0], ["ship.rom.bop", "Bird-of-Prey", 180.0]],
-	4: [["ship.car.keldon", "Keldon", 400.0], ["ship.car.galor", "Galor", 371.0], ["ship.car.hideki", "Hideki", 80.0]],
+	3: [["ship.rom.dderidex", "D'deridex", 1041.0], ["ship.rom.valdore", "Valdore", 843.0], ["ship.rom.mogai", "Mogai", 500.0]], # hull-look lane: the Bird-of-Prey escort was a 2.2k-triangle model (128 px mips); Mogai is 5.2k with 1024 maps
+	4: [["ship.car.keldon", "Keldon", 400.0], ["ship.car.galor", "Galor", 371.0], ["ship.car.kraxon", "Kraxon", 280.0]], # hull-look lane: the Hideki escort was a 1.5k-triangle scout; Kraxon is the Obsidian Keldon variant (7.4k)
 	5: [["ship.fer.dkora", "D'Kora", 350.0], ["ship.fer.nagus", "Nagus", 520.0], ["ship.fer.pod", "Pod", 45.0]],
 }
 const HERO_LENGTH := 30.0   ## World units of the lead ship.
@@ -84,6 +84,12 @@ func setup_sliced(p_empire: int, p_assets: BattleAssets = null) -> void:
 		await get_tree().process_frame
 		if not is_inside_tree():
 			return
+	# Hull-look lane (25 Nov 2026): the web build's hero hulls were lazy (a campaign start fetched them), so the title drew
+	# the procedural stand-ins (low-poly, brick-tile windows that aliased into white specks) for the whole visit. The title's
+	# own three hulls (a few MB) come now, behind the finished backdrop, and each ship fades in when its model is ready.
+	# No stand-in is ever drawn while they download.
+	if OS.has_feature("web") and not await _ensure_web_heroes():
+		return
 	var lengths := _ship_lengths()   # queues the hero models (a step per frame on the web)
 	while BattleAssets.loading():
 		await get_tree().process_frame
@@ -96,8 +102,10 @@ func setup_sliced(p_empire: int, p_assets: BattleAssets = null) -> void:
 		t = LoadTrace.start()
 		_build_ship(i, lengths)
 		LoadTrace.done("title fleet: ship %d (sliced)" % i, t)
+		_set_fade(ships[i], 0.0)
 		if not await _reveal_by_shader(ships[i]):
 			return
+		_fade_in(ships[i])
 
 
 ## Hides the visible meshes under `root`, then shows them one material-shader group a frame. False when the title was left.
@@ -176,6 +184,64 @@ func _build_ships() -> void:
 	var lengths := _ship_lengths()
 	for i in (HEROES[empire] as Array).size():
 		_build_ship(i, lengths)
+		if animate and is_inside_tree():
+			_set_fade(ships[i], 0.0)
+			_fade_in(ships[i])
+
+
+## Seconds a ship takes to come in (the hull shaders dissolve through a dither, so it works in every renderer).
+const FADE_SEC := 1.1
+
+func _hull_materials(ship: Node) -> Array:
+	var out := []
+	for n in ship.find_children("*", "MeshInstance3D", true, false):
+		var mi := n as MeshInstance3D
+		if mi.mesh == null:
+			continue
+		for i in mi.mesh.get_surface_count():
+			var m := mi.get_surface_override_material(i) as ShaderMaterial
+			if m != null and m.shader != null and m.shader.get_code().contains("uniform float title_fade") and not out.has(m):
+				out.append(m)
+	return out
+
+
+func _set_fade(ship: Node, v: float) -> void:
+	for m: ShaderMaterial in _hull_materials(ship):
+		m.set_shader_parameter("title_fade", v)
+
+
+func _fade_in(ship: Node) -> void:
+	if not animate or not is_inside_tree():
+		_set_fade(ship, 1.0)
+		return
+	var mats := _hull_materials(ship)
+	if mats.is_empty():
+		return
+	var tw := create_tween()
+	tw.tween_method(func(v: float) -> void:
+		for m: ShaderMaterial in mats:
+			m.set_shader_parameter("title_fade", v), 0.0, 1.0, FADE_SEC)
+
+
+## Web: mounts the title empire's three hero hull packs (and the manifests they need), then re-reads the manifests. False when
+## the title was left meanwhile. A failed download is not fatal: that ship then draws procedurally, as an offline visit always did.
+func _ensure_web_heroes() -> bool:
+	await AppLoader.load_manifest(self)
+	if not is_inside_tree():
+		return false
+	if not await AppLoader.fetch_web_pack(self, AppLoader.WEB_SHIPS_BASE):
+		return is_inside_tree()
+	var names: Array = []
+	for p in HEROES[empire]:
+		var pack := AppLoader.hull_pack_for(str(p[0]))
+		if pack != "" and not names.has(pack):
+			names.append(pack)
+	for pack in names:
+		await AppLoader.fetch_web_pack(self, pack)
+		if not is_inside_tree():
+			return false
+	assets = BattleAssets.shared()   # re-reads the manifests now that the packs are mounted
+	return true
 
 
 ## Display lengths of the lead and escorts (starts the hero loads first: worker threads on desktop).
@@ -241,8 +307,10 @@ func _pose(t: float) -> void:
 		ships[i].transform = Transform3D(_base[i].basis * roll, _base[i].origin + bob)
 	if camera != null:
 		var drift := Vector3(sin(t * 0.05) * 6.0, sin(t * 0.07) * 2.0, cos(t * 0.04) * 4.0)
-		camera.position = Vector3(-4.0, 9.0, 88.0) + drift
-		camera.look_at(Vector3(-17.0, -3.0, 0.0) + drift * 0.5, Vector3.UP)
+		# Hull-look lane (25 Nov 2026): the fleet filled a quarter of the frame's width (hulls about 500 px at 1080p), so even the
+		# right hulls read small and soft. The camera is a fifth closer: the same shot, the hulls a fifth larger.
+		camera.position = Vector3(-4.0, 8.0, 72.0) + drift
+		camera.look_at(Vector3(-15.0, -2.5, 0.0) + drift * 0.5, Vector3.UP)
 
 
 func _process(delta: float) -> void:
