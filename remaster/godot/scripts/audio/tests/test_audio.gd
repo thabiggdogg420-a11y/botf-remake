@@ -249,6 +249,8 @@ func _library() -> void:
 		var rr := cold.resolve_files(alert_keys)
 		check(not rr.is_empty() and str(rr.files[0]).begins_with("res://scripts/audio/pack/") and str(rr.files[0]).ends_with(".ogg"), "%s cold start: klaxon file %s" % [cue_name, str(rr.get("files", PackedStringArray([""]))[0])])
 		check(cold.stream_of(rr) is AudioStreamOggVorbis, "%s cold start: the klaxon loads as a recorded stream, not a tone" % cue_name)
+		var fn := str(rr.files[0]).get_file()
+		check(fn.contains("_alert_alert_red_") and not fn.begins_with("sfx_sfx_"), "%s cold start: the klaxon is a show alert_red recording, not the game-bank guess (%s)" % [cue_name, fn])
 	for m in ["title", "galaxy", "battle", "tension"]:
 		var ms := lib.music_tone(m) as AudioStreamWAV
 		check(ms != null and ms.loop_mode == AudioStreamWAV.LOOP_FORWARD and ms.data.size() > 100000, "generated %s bed loops" % m)

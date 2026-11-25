@@ -91,7 +91,8 @@ func has_era(era: String) -> bool:
 
 ## The red-alert klaxon recordings in the shared sfx folder, which is in the base pck of the web build and in the exe. A red-alert key
 ## always finds these, even before any cue table has loaded (the web's first frames), so no tone is ever needed for it.
-const ALERT_BASE := ["res://scripts/audio/pack/shared/sfx/sfx_sfx_0132.ogg", "res://scripts/audio/pack/shared/sfx/ds9_alert_alert_red_s04e01_422.ogg",
+## These are the show's own alert_red recordings (DS9, TNG, TOS). sfx_0132 (a guessed whoop from the original game's bank) is not one, so it is not listed.
+const ALERT_BASE := ["res://scripts/audio/pack/shared/sfx/ds9_alert_alert_red_s04e01_422.ogg",
 	"res://scripts/audio/pack/shared/sfx/ds9_alert_alert_red_s05e26_206.ogg", "res://scripts/audio/pack/shared/sfx/ds9_alert_alert_red_s06e06_242.ogg",
 	"res://scripts/audio/pack/shared/sfx/tng_alert_alert_red_s04e26_1397.ogg", "res://scripts/audio/pack/shared/sfx/tos_alert_alert_red_s02e06_2994.ogg"]
 
@@ -109,10 +110,14 @@ func files_for(key: String, extra: BattleAssets = null) -> PackedStringArray:
 		for f in cue_files[key]:
 			if not out.has(f) and not AudioDoubtful.blocked(f) and AppLoader.exists(f):
 				out.append(f)
-	if key == "sfx.alert.red" and out.is_empty():
+	if key == "sfx.alert.red":
+		# The show klaxon always leads, on a cold start and after every pack has loaded: it goes ahead of the old game-bank guess.
+		var show := PackedStringArray()
 		for f in ALERT_BASE:
 			if AppLoader.exists(f) and not AudioDoubtful.blocked(f):
-				out.append(f)
+				show.append(f)
+		if not show.is_empty():
+			out = show   # only the show's recordings: the game-bank guess (sfx_0132) never plays as a red alert
 	for ext in ["wav", "ogg"]:
 		var rp := "res://scenes/battle/audio/%s.%s" % [key, ext]
 		if AppLoader.exists(rp) and not out.has(rp):
