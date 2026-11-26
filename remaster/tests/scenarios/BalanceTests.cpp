@@ -351,7 +351,8 @@ int main() {
         check(normal.rivals.front().credits == expert.rivals.front().credits, "same starting treasury as Normal");
         for (int i = 0; i < 6; ++i) { advance(normal); advance(expert); }
         std::int64_t rn = 0, re = 0;
-        for (const auto& r : normal.rivals) rn += r.research; for (const auto& r : expert.rivals) re += r.research;
+        for (const auto& r : normal.rivals) rn += r.research;
+        for (const auto& r : expert.rivals) re += r.research;
         check(re >= rn * 95 / 100 && re <= rn * 105 / 100, "rival research within 5% of Normal early on (" + std::to_string(rn) + " vs " + std::to_string(re) + ")");
         check(serialize(expert).find("GALAXY_SETUP 0 0 5") != std::string::npos || contains(serialize(expert), " 5\n"), "saved as difficulty 5");
         const auto text = serialize(expert);

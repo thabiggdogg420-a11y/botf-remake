@@ -119,7 +119,7 @@ int main() {
             "\"roster\":{\"patch\":[{\"id\":1000,\"buildable\":false,\"flight\":{\"turnRate\":45}}]},"
             "\"events\":{\"patch\":[{\"kind\":\"Plague\",\"name\":\"Blight\"}]},"
             "\"balance\":{\"researchCostPercent\":50}");
-        const auto& info = content::installStack({one});
+        const auto info = content::installStack({one});   // a copy: the argument is a temporary (gcc -Wdangling-reference)
         check(!info.base && info.id == "botf-base+t-one" && info.stack.size() == 1 && info.stack[0].id == "t-one", "stack identity: " + info.id);
         check(referenceData::TechnologyCatalogue[13].cost == 777 && std::string(referenceData::TechnologyCatalogue[13].name) == "Overlay Tech", "technology patched");
         check(referenceData::TechnologyCatalogue[13].level == 2 && referenceData::TechnologyCatalogue[14].cost == 777 * 0 + referenceData::TechnologyCatalogue[14].cost, "neighbours untouched");

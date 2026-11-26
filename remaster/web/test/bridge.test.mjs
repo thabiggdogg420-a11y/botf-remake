@@ -570,7 +570,7 @@ test('Balance and AI (MOD-7): Expert, planets per star, start colonies, race sta
   const base = { faction: 1, seed: 424242, era: 1, ruleset: 'reference', width: 22, height: 16, systems: 50 };
   assert.equal(attempt('newCampaign', { ...base, difficulty: 'godlike' }).ok, false, 'an unknown difficulty is refused');
   const ex = call('newCampaign', { ...base, difficulty: 'expert' });
-  assert.equal(call('meta').saveVersion, 25);
+  assert.equal(call('meta').saveVersion, 27);
   const crowded = call('newCampaign', { ...base, planetsMin: 6, planetsMax: 9, startSystems: 2, starTypes: true });
   const owned = crowded.systems.filter((x) => x.owner === 1);
   assert.ok(owned.length >= 1, 'the player has colonies');

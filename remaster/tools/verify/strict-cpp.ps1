@@ -25,7 +25,9 @@ $ErrorActionPreference = 'Stop'
 $remaster = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 
 function Invoke-Wsl([string]$Script) {
-    $out = & wsl.exe -d $Distro -- bash -c $Script 2>&1
+    $ErrorActionPreference = 'Continue'   # wsl.exe writes warnings to stderr; the exit code is what counts
+    # The script goes in on stdin: wsl.exe's own argument handling would expand $VARIABLES before bash sees them.
+    $out = ($Script -replace "`r?`n", "`n") | & wsl.exe -d $Distro -- bash -s 2>&1
     [pscustomobject]@{ Exit = $LASTEXITCODE; Text = (($out | ForEach-Object { "$_" -replace "`0", '' }) -join "`n") }
 }
 
@@ -35,7 +37,8 @@ if ($probe.Text -notmatch 'TOOLS_OK') {
     exit 2
 }
 $src = (Invoke-Wsl "wslpath -a '$remaster'").Text.Trim()
-$freeMb = [int](Invoke-Wsl "awk '/MemAvailable/ {print int(`$2/1024)}' /proc/meminfo").Text.Trim()
+$mem = (Invoke-Wsl 'cat /proc/meminfo').Text
+$freeMb = if ($mem -match 'MemAvailable:\s+(\d+)') { [int]([long]$Matches[1] / 1024) } else { 99999 }
 if ($freeMb -lt 4000) { $Jobs = [Math]::Min($Jobs, 2); Write-Host "strict-cpp: only $freeMb MB free in WSL, using -j$Jobs" -ForegroundColor Yellow }
 
 $cfgs = @()

@@ -57,7 +57,7 @@ for cxx in "${compilers[@]}"; do
   echo "== $cxx: client logic unit tests (asset registry, audio cues, ship database)"
   "$cxx" "${flags[@]}" "${hostile[@]}" -I"$client" -DBOTF_MANIFEST_PATH="\"$manifest\"" "$here/Tools/client-logic-tests.cpp" || status=1
   if "$cxx" -std=c++20 -O1 -Wall -Wextra -Wshadow -Werror -I"$core" -I"$client" -DBOTF_MANIFEST_PATH="\"$manifest\"" \
-      "$here/Tools/client-logic-tests.cpp" -o "$scratch/client-logic-tests"; then
+      "$here/Tools/client-logic-tests.cpp" "$client/SimulationBridge.cpp" -o "$scratch/client-logic-tests"; then   # + core: content::embeddedBaseBundle() is defined there
     "$scratch/client-logic-tests" || status=1
   else
     status=1
