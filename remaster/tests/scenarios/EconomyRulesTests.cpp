@@ -450,7 +450,7 @@ int main() {
     run("soak: 100 turns, every flag on, deterministic and save-stable", [] {
         auto run1 = [](std::uint64_t seed) {
             auto s = game(seed, "dominion-war", 5);
-            setEconomyFlags(s, economy_rules::AllFlagBits & ~(4 | 2) | 2); // everything except noUpgrades (autoUpgrades on)
+            setEconomyFlags(s, (economy_rules::AllFlagBits & ~(4 | 2)) | 2); // everything except noUpgrades (autoUpgrades on)
             setTech(s, 4);
             makeWar(s, s.playerEmpire, s.rivals.front().id); // one war keeps raids and intercepts live without ending the campaign early
             std::vector<std::uint64_t> hashes;

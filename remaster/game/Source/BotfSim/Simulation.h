@@ -209,23 +209,23 @@ struct Command {
     TacticalStance stance = TacticalStance::Balanced;
     int taskForceId = 0;
     int planetIndex = 0;
-    std::vector<int> memberFleetIds;
-    std::string taskForceName;
+    std::vector<int> memberFleetIds{};
+    std::string taskForceName{};
     diplomacy::TreatyType proposalTreatyType = diplomacy::TreatyType::NonAggression;
     diplomacy::TreatyDuration proposalDuration = diplomacy::TreatyDuration::Turns25;
     diplomacy::DiplomaticTone proposalTone = diplomacy::DiplomaticTone::Cordial;
-    std::vector<int> proposalCedeSystems;    // Schema 27 (E3): a peace proposal hands these worlds to the target...
-    std::vector<int> proposalDemandSystems;  // ...and asks for these from it.
+    std::vector<int> proposalCedeSystems{};    // Schema 27 (E3): a peace proposal hands these worlds to the target...
+    std::vector<int> proposalDemandSystems{};  // ...and asks for these from it.
     std::int64_t proposalCreditOffer = 0;
     std::int64_t proposalCreditDemand = 0;
     bool proposalTargetIsMinor = false;
     std::uint64_t proposalId = 0;
     bool proposalAccept = false;
-    std::string proposalReason;
+    std::string proposalReason{};
     int intelInternalSecurity = 0;
-    std::vector<int> intelRivalIds;
-    std::vector<int> intelEspionagePcts;
-    std::vector<int> intelSabotagePcts;
+    std::vector<int> intelRivalIds{};
+    std::vector<int> intelEspionagePcts{};
+    std::vector<int> intelSabotagePcts{};
     intelligence::IntelDepartment intelDepartmentFocus = intelligence::IntelDepartment::General;
     GovernorPriority governorWorkforce = GovernorPriority::Manual;
     GovernorPriority governorQueue = GovernorPriority::Manual;
@@ -234,8 +234,8 @@ struct Command {
     int stationId = 0;                       // UpgradeStation
     int eventId = 0, eventOption = 0;        // ResolveEventChoice
     int templateId = 0;                      // Define/Delete/Apply/SetDefault build template
-    std::string templateName;                // DefineBuildTemplate
-    std::vector<Construction> templateItems; // DefineBuildTemplate (product + referenceId only)
+    std::string templateName{};                // DefineBuildTemplate
+    std::vector<Construction> templateItems{}; // DefineBuildTemplate (product + referenceId only)
     // Schema 14: RefuseCallToArms names the defender in targetEmpire and the aggressor here.
     int callAggressor = 0;
 };
@@ -267,7 +267,7 @@ struct Fleet {
     // Schema 25 (Scenarios.h): 0 for an ordinary ship, else the 1-based index of its flagship name; the owner's flagship bonuses apply to
     // the ship. Saved in the FLAGSHIPS rows of the optional SCENARIO section, not in the fleet rows.
     int flagship = 0;
-    std::string flagshipLabel;   // Schema 27 (E4): the player's name for this flagship, a cache of Flagship::name (saved in FLAGSHIP_NAMES, not in the fleet rows).
+    std::string flagshipLabel{};   // (default initializer keeps -Wmissing-field-initializers quiet for positional Fleet{...}) Schema 27 (E4): the player's name for this flagship, a cache of Flagship::name (saved in FLAGSHIP_NAMES, not in the fleet rows).
 };
 
 struct TaskForce {

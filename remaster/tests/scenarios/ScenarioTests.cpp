@@ -61,7 +61,7 @@ int fleetsOf(const GameState& s, int owner) {
 const Fleet* fleetById(const GameState& s, int id) { for (const auto& f : s.fleets) if (f.id == id) return &f; return nullptr; }
 const System* systemNamed(const GameState& s, const std::string& name) { for (const auto& sys : s.systems) if (sys.name == name) return &sys; return nullptr; }
 bool atWar(const GameState& s, int a, int b) { const auto* r = majorRelation(s, a, b); return r && r->atWar; }
-int empireOf(const std::string& key) { return slots::raceForKey(key)->empireId; }
+[[maybe_unused]] int empireOf(const std::string& key) { return slots::raceForKey(key)->empireId; }
 
 GameState scenarioGame(const std::string& id, int player = 0, std::uint64_t seed = 0) {
     CampaignSetup setup;

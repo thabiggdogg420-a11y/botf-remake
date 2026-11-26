@@ -317,8 +317,9 @@ int main() {
         auto s = warGame();
         const auto theirs = cedableWorlds(s, 2);
         const int target = theirs.front();
-        const System* sys = nullptr;
-        for (const auto& x : s.systems) if (x.id == target) sys = &x;
+        System sysCopy;   // A copy: submit() move-assigns the whole state, which would leave a pointer into s.systems dangling.
+        for (const auto& x : s.systems) if (x.id == target) sysCopy = x;
+        const System* sys = &sysCopy;
         std::erase_if(s.fleets, [&](const Fleet& f) { return f.ownerId == 2 && f.x == sys->x && f.y == sys->y; });
         std::erase_if(s.stations, [&](const Station& st) { return st.ownerId == 2 && st.x == sys->x && st.y == sys->y; });
         int firstId = 0;
@@ -369,7 +370,9 @@ int main() {
         auto s = warGame();
         s.rules.stations = true;
         const int world = cedableWorlds(s, 1).front();
-        const auto* sys = [&]() -> const System* { for (const auto& y : s.systems) if (y.id == world) return &y; return nullptr; }();
+        System sysCopy;   // A copy: submit() replaces the state, so a pointer into s.systems would dangle.
+        for (const auto& y : s.systems) if (y.id == world) sysCopy = y;
+        const System* sys = &sysCopy;
         Station st; st.id = s.nextStationId++; st.ownerId = 1; st.x = sys->x; st.y = sys->y; st.type = StationType::Starbase;
         const auto mine = stationStats(s, 1, StationType::Starbase), theirs = stationStats(s, 2, StationType::Starbase);
         st.hull = mine.maxHull; st.shields = mine.maxShields; st.builtTurn = s.turn;

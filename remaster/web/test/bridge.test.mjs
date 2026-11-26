@@ -560,7 +560,7 @@ test('Economy rules (MOD-6): flags in the view, upgrade entries in the build lis
   assert.equal(bad.ok, false, 'a raid on your own colony is refused');
   for (let i = 0; i < 3; i++) endTurn();
   const save = call('save');
-  assert.ok(String(save.data).startsWith('BOTF_SIM 25 remaster-25\n') && String(save.data).includes('\nECONOMY_RULES 1 '), 'schema 25 with the economy section');
+  assert.ok(String(save.data).startsWith('BOTF_SIM 27 remaster-27\n') && String(save.data).includes('\nECONOMY_RULES 1 '), 'schema 27 with the economy section');
   const fp = call('fingerprint');
   call('load', { data: save.data });
   assert.equal(call('fingerprint'), fp);
@@ -584,7 +584,7 @@ test('Balance and AI (MOD-7): Expert, planets per star, start colonies, race sta
   assert.ok(bop.options.startSystems === 1 && bop.options.planetsMin === 2 && bop.options.planetsMax === 9, 'Balance of Power option defaults');
   assert.equal(presets.find((x) => x.id === 'galaxies').options.starTypes, true);
   const save = call('save');
-  assert.ok(String(save.data).startsWith('BOTF_SIM 25 remaster-25\n'));
+  assert.ok(String(save.data).startsWith('BOTF_SIM 27 remaster-27\n'));
   call('load', { data: save.data });
   assert.equal(ex.meta.playerName, 'Federation');
 });

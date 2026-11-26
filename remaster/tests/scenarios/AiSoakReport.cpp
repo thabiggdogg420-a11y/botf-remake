@@ -208,7 +208,7 @@ void scriptTurn(GameState& s, ScriptMem& m) {
     for (const auto& c : s.colonies) claimed.insert(c.systemId);
     const std::vector<Fleet> fleets = s.fleets;
     for (const auto& f : fleets) {
-        if (f.ownerId != me || f.hull <= 0 || !f.colonyShip || f.x == f.targetX && f.y == f.targetY) continue;
+        if (f.ownerId != me || f.hull <= 0 || !f.colonyShip || (f.x == f.targetX && f.y == f.targetY)) continue;
         if (const auto* t = gameplay::systemAtCell(s, f.targetX, f.targetY)) heading.insert(t->id);
     }
     for (const auto& f : fleets) {
@@ -431,7 +431,8 @@ int main(int argc, char** argv) {
         std::map<std::string, int> endings, winsBy;
         std::map<std::string, std::vector<int>> firstReach;   // "<empire> <condition>" -> first turns
         std::map<std::string, int> appearances;
-        int games = 0, totalTurns = 0, capped = 0, playerOut = 0;
+        int games = 0, totalTurns = 0;
+        [[maybe_unused]] int capped = 0, playerOut = 0;   // Counted for the endings breakdown; not all builds print them.
         const auto t0 = std::chrono::steady_clock::now();
         for (int k = 0; k < seeds; ++k) {
             CampaignSetup setup;
@@ -769,7 +770,7 @@ int main(int argc, char** argv) {
                     if (tr.first[c] && (id != state.playerEmpire || state.observerMode)) firstReach[tr.name + " " + condName(c)].push_back(tr.first[c]);
                 }
                 std::cout << std::endl;
-                if (gains)
+                if (gains) {
                     std::cout << "GAINS " << p->id << " seed " << setup.seed << " " << tr.name << " settled " << tr.settled << " joined " << tr.joined << " taken " << tr.taken
                               << " lost " << tr.lost << " war-turns " << tr.warTurns << " colony-ships " << tr.colonyShipsSeen << " t" << snapTurn << ": colonies " << tr.colonies100 << " pop "
                               << tr.pop100 << " credits " << tr.credits100 << " member-minors " << tr.members100 << " queue-front";
@@ -777,6 +778,7 @@ int main(int argc, char** argv) {
                     std::cout << " structure-refs";
                     for (const auto& [ref, n] : tr.structureFront) std::cout << ' ' << ref << ':' << n;
                     std::cout << std::endl;
+                }
             }
         }
         const double secs = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();

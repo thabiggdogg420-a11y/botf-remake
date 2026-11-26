@@ -212,7 +212,15 @@ struct Value {
     int scale = 0;            // Digits after the decimal point.
     std::string text;
     std::vector<Value> items;
-    std::vector<std::pair<std::string, Value>> members;
+    // Object members in document order. Member is declared here and defined right after Value: a std::pair<std::string, Value> member
+    // would need Value complete inside its own definition, which clang with libstdc++ 14+ rejects.
+    struct Member;
+    std::vector<Member> members;
+};
+struct Value::Member {
+    std::string first;
+    Value second;
+    Member(std::string k, Value v) : first(std::move(k)), second(std::move(v)) {}
 };
 
 class Parser {

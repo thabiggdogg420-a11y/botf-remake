@@ -92,7 +92,7 @@ void setLevels(GameState& s, int level) {
         for (int l = 1; l <= level; ++l) s.research += researchCost(s, f, l);
     }
 }
-std::uint64_t runTurns(GameState& s, int turns) {
+[[maybe_unused]] std::uint64_t runTurns(GameState& s, int turns) {
     for (int t = 0; t < turns && s.outcome == CampaignOutcome::Ongoing; ++t) advance(s);
     return fingerprint(s);
 }

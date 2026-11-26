@@ -35,6 +35,7 @@ param(
     [switch]$SkipExport,
     [switch]$SkipTests,
     [switch]$SkipCapture,
+    [switch]$SkipStrictCpp,   # the WSL gcc/clang -Werror compile CI does (strict-cpp.ps1)
     [switch]$Sequential,   # the default now; kept so old command lines still work
     [switch]$Parallel,     # opt in to the old all-at-once phases (several GPU windows open together)
     [int]$SuiteTimeoutSec = 900,
@@ -57,7 +58,7 @@ $results = New-Object System.Collections.Generic.List[object]
 
 function Add-Result($Name, $Status, $Detail) {
     $results.Add([pscustomobject]@{ Step = $Name; Status = $Status; Detail = $Detail })
-    $color = switch ($Status) { 'ok' { 'Green' } 'BLOCKED' { 'Yellow' } 'skipped' { 'DarkGray' } default { 'Red' } }
+    $color = switch ($Status) { 'ok' { 'Green' } 'BLOCKED' { 'Yellow' } 'skipped' { 'DarkGray' } 'info' { 'Cyan' } default { 'Red' } }
     Write-Host ("  {0,-8} {1,-26} {2}" -f $Status, $Name, $Detail) -ForegroundColor $color
 }
 
@@ -630,6 +631,21 @@ if (-not $SkipCapture) {
     Write-Host $s.TrimEnd()
     Add-Result 'contact-sheets' $(if ($LASTEXITCODE -eq 0) { 'ok' } else { 'FAIL' }) "$run"
 }
+
+# ---- Strict C++ (what GitHub remaster-ci compiles: gcc and clang -Werror, ASan/UBSan, Unreal one-TU) -----------------------
+# MSVC passes things these reject, which kept CI red from 8 Nov to 26 Nov 2026. Needs WSL with g++/clang++/cmake; a missing
+# toolchain FAILs (it is a gap), it is not skipped silently. -SkipStrictCpp leaves it out.
+if (-not $SkipTests -and -not $SkipStrictCpp) {
+    $sc = & powershell -NoProfile -File (Join-Path $PSScriptRoot 'strict-cpp.ps1') 2>&1 | Out-String
+    $scExit = $LASTEXITCODE
+    Write-Host $sc.TrimEnd()
+    $scDetail = (($sc -split "`n" | Where-Object { $_ -match '^\s*(ok|FAIL)\s+strict-|error|lacks' } | Select-Object -First 4 | ForEach-Object { $_.Trim() }) -join ' | ')
+    Add-Result 'strict-cpp' $(if ($scExit -eq 0) { 'ok' } else { 'FAIL' }) $scDetail
+}
+
+# ---- Live site version (info only: never fails the run; ChatGPT does the uploads) ----------------------------------------
+$siteOut = (& powershell -NoProfile -File (Join-Path $PSScriptRoot 'check-site-version.ps1') 2>&1 | Out-String).Trim()
+Add-Result 'site-version' 'info' $siteOut
 
 # ---- Real saves guard -----------------------------------------------------------------------------------------------------
 $g = & $python (Join-Path $PSScriptRoot 'real_saves_guard.py') check $guardState 2>&1 | Out-String
